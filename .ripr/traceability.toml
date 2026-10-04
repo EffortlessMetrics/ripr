@@ -9,6 +9,17 @@ id = "RIPR-SPEC-0001"
 name = "static exposure loop"
 spec = "docs/specs/RIPR-SPEC-0001-static-exposure-loop.md"
 tests = [
+  "crates/ripr/src/analysis/facts/index_tests.rs::moved_large_payload_has_one_backing_through_both_ordered_views",
+  "crates/ripr/src/analysis/facts/index_tests.rs::union_mutation_visits_shared_flat_only_and_file_only_once",
+  "crates/ripr/src/analysis/facts/index_tests.rs::compaction_keeps_independent_membership_and_duplicate_occurrences",
+  "crates/ripr/src/analysis/facts/index_tests.rs::whole_index_wire_stays_expanded_and_cloning_does_not_pin_a_generation",
+  "crates/ripr/src/analysis/facts/index_tests.rs::invalid_membership_fails_finalization_before_compaction",
+  "crates/ripr/src/analysis/facts/index_tests.rs::finalization_observes_deadline_at_return_after_compaction_and_membership_refresh",
+  "crates/ripr/src/analysis/facts/index_tests.rs::shared_harness_demotion_splits_only_disagreeing_containing_paths",
+  "crates/ripr/src/analysis/facts/index_tests.rs::flat_slot_identity_survives_reordering_compaction_and_repeated_membership",
+  "crates/ripr/src/analysis/facts/index_tests.rs::fact_view_equality_compares_values_and_order_across_storage_layouts",
+  "crates/ripr/src/analysis/facts/index_tests.rs::file_view_equality_compares_complete_metadata_and_local_membership",
+  "crates/ripr/src/analysis/facts/index_tests.rs::unresolved_property_macros_survive_file_view_wire_and_owned_round_trip",
   "crates/ripr/src/analysis/classify/reveal.rs::tests::related_test_total_retains_six_eight_nine_matches_without_changing_packed_prefix",
   "crates/ripr/src/analysis/classify/reveal.rs::tests::related_test_total_uses_existing_post_dedup_oracle_row_unit",
   "crates/ripr/src/output/json/mod.rs::tests::finding_matched_total_preserves_legacy_serde_and_retained_count_floor",
@@ -93,6 +104,7 @@ fixtures = [
   "fixtures/weak_error_oracle_assert_matches"
 ]
 code = [
+  "crates/ripr/src/analysis/facts/index.rs",
   "crates/ripr/src/analysis/facts/build.rs",
   "crates/ripr/src/analysis/seam_cache.rs",
   "crates/ripr/src/domain",
@@ -1238,6 +1250,7 @@ id = "RIPR-SPEC-0012"
 name = "PR test guidance annotations"
 spec = "docs/specs/RIPR-SPEC-0012-pr-test-guidance.md"
 tests = [
+  "crates/ripr/src/analysis/facts/index_tests.rs::finalization_observes_deadline_at_return_after_compaction_and_membership_refresh",
   "crates/ripr/src/analysis/test_grip_evidence/related_tests/context.rs::tests::unqualified_helper_calls_have_no_module_candidates",
   "crates/ripr/src/analysis/test_grip_evidence/related_tests/context.rs::tests::qualified_helper_filter_matches_unbounded_relations",
   "crates/ripr/src/analysis/cancellation.rs::tests::optional_worker_context_clears_and_restores_an_outer_request",
@@ -1303,6 +1316,7 @@ fixtures = [
   "fixtures/boundary_gap/expected/pr-guidance"
 ]
 code = [
+  "crates/ripr/src/analysis/facts/index.rs",
   "crates/ripr/src/analysis/generated_rust_corpus.rs",
   "crates/ripr/src/output/review_comments_receipt.rs",
   "xtask/src/reports/review_comments.rs",
@@ -9214,6 +9228,8 @@ id = "RIPR-SPEC-0153"
 name = "Rust producer-owned source role"
 spec = "docs/specs/RIPR-SPEC-0153-rust-source-role.md"
 tests = [
+  "crates/ripr/src/analysis/facts/index_tests.rs::shared_harness_demotion_splits_only_disagreeing_containing_paths",
+  "crates/ripr/src/analysis/facts/test_styles/tests.rs::equal_function_keys_keep_distinct_local_context_and_legacy_flat_roles",
   "crates/ripr/src/analysis/facts/test_styles/tests.rs::normalization_identity_keys_borrow_body_storage",
   "crates/ripr/src/analysis/facts/test_styles/tests.rs::borrowed_normalization_matches_owned_reference_with_duplicate_coordinates",
   "crates/ripr/src/analysis/workspace/source_role.rs::tests::layout_classifies_evidence_and_production",
@@ -9293,6 +9309,7 @@ fixtures = [
   "crates/ripr/tests/data/source-role-corpus",
 ]
 code = [
+  "crates/ripr/src/analysis/facts/index.rs",
   "crates/ripr/src/analysis/workspace/source_role.rs",
   "crates/ripr/src/analysis/workspace/cargo_targets.rs",
   "crates/ripr/src/analysis/workspace/module_graph.rs",

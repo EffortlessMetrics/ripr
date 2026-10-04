@@ -22,9 +22,9 @@ use super::facts::ModulePathTarget;
 pub(crate) use super::facts::build_index_from_loaded_files_with_cache_and_test_harnesses;
 pub(crate) use super::facts::validated_file_wide_harness_targets;
 #[cfg(test)]
-pub use super::facts::{CallFact, LiteralFact, ReturnFact};
+pub use super::facts::{CallFact, FileFacts, LiteralFact, ReturnFact};
 pub use super::facts::{
-    FileFacts, FunctionFact, FunctionSummary, OracleFact, ProbeShapeFact, RustIndex, TestFact,
+    FileFactsView, FunctionFact, FunctionSummary, OracleFact, ProbeShapeFact, RustIndex, TestFact,
     TestSummary, build_index, build_index_with_test_harnesses,
 };
 #[cfg(test)]
@@ -33,7 +33,7 @@ pub use super::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, 
 
 pub(crate) fn lexical_fallback_files(index: &RustIndex) -> Vec<PathBuf> {
     let mut files = index
-        .files
+        .files()
         .values()
         .filter(|facts| facts.used_lexical_fallback)
         .map(|facts| facts.path.clone())
@@ -88,7 +88,7 @@ pub(crate) fn lexical_fallback_disclosure(index: &RustIndex) -> Option<String> {
             if index.non_utf8_sources.contains(path) {
                 return Some((path.as_path(), RUST_SOURCE_NOT_UTF8_REASON.to_string()));
             }
-            let facts = index.files.values().find(|facts| &facts.path == path)?;
+            let facts = index.files().values().find(|facts| &facts.path == path)?;
             Some((
                 path.as_path(),
                 super::syntax::rust_nesting_refusal(&facts.source)?,
@@ -175,7 +175,7 @@ const MODULE_COMPOSITION_ORIENTATION: &str = "This is an analysis-limit note abo
 pub(crate) fn module_composition_disclosure(index: &RustIndex) -> Option<String> {
     let mut details = BTreeSet::new();
     let mut count = 0usize;
-    for (file, facts) in &index.files {
+    for (file, facts) in index.files().iter() {
         if let Some(reason) = &facts.role_provenance.earliest_unresolved_reason
             && reason.starts_with("rust_module_")
         {
@@ -213,14 +213,9 @@ pub(crate) fn module_composition_disclosure(index: &RustIndex) -> Option<String>
 }
 
 pub(crate) fn apply_oracle_policy(index: &mut RustIndex, policy: &OraclePolicy) {
-    for test in &mut index.tests {
+    index.for_each_test_mut(|test| {
         apply_oracle_policy_to_assertions(&mut test.assertions, policy);
-    }
-    for facts in index.files.values_mut() {
-        for test in &mut facts.tests {
-            apply_oracle_policy_to_assertions(&mut test.assertions, policy);
-        }
-    }
+    });
 }
 
 fn apply_oracle_policy_to_assertions(assertions: &mut [OracleFact], policy: &OraclePolicy) {
@@ -268,8 +263,8 @@ pub(crate) fn find_enclosing_functions<'a>(
         .filter(move |f| f.start_line <= line && line <= f.end_line)
 }
 
-pub(crate) fn find_file_facts<'a>(index: &'a RustIndex, file: &Path) -> Option<&'a FileFacts> {
-    if let Some(summary) = index.files.get(file) {
+pub(crate) fn find_file_facts<'a>(index: &'a RustIndex, file: &Path) -> Option<FileFactsView<'a>> {
+    if let Some(summary) = index.files().get(file) {
         return Some(summary);
     }
     // Repo seams normalize their file identity to `/` separators
@@ -283,7 +278,7 @@ pub(crate) fn find_file_facts<'a>(index: &'a RustIndex, file: &Path) -> Option<&
     // one form and attribute the wrong owner, so neither side of the
     // comparison may pass through lossy conversion.
     let target = file.to_str()?.replace('\\', "/");
-    index.files.iter().find_map(|(key, summary)| {
+    index.files().iter().find_map(|(key, summary)| {
         let key_text = key.to_str()?;
         (key_text.replace('\\', "/") == target).then_some(summary)
     })
@@ -304,7 +299,7 @@ pub fn changed_nodes_for_lines(
     file: &Path,
     lines: &[usize],
 ) -> Vec<SyntaxNodeFact> {
-    let Some(facts) = index.files.get(file) else {
+    let Some(facts) = index.files().get(file) else {
         return Vec::new();
     };
     let ranges = lines
@@ -316,7 +311,7 @@ pub fn changed_nodes_for_lines(
             end_column: usize::MAX,
         })
         .collect::<Vec<_>>();
-    RaRustSyntaxAdapter.changed_nodes(facts, &ranges)
+    RaRustSyntaxAdapter.changed_nodes(facts.functions, &ranges)
 }
 
 pub(crate) fn is_test_file(path: &Path) -> bool {
@@ -337,7 +332,7 @@ mod tests {
                 .to_string(),
         );
         let mut index = RustIndex::default();
-        index.files.insert(PathBuf::from("src\\pricing.rs"), facts);
+        index.insert_file_only(PathBuf::from("src\\pricing.rs"), facts);
         // Repo seams carry `/`-normalized file identity; on Linux this is
         // not component-equal to the `\`-separator index key, so the
         // direct lookup misses and the normalized fallback must resolve.
@@ -365,7 +360,7 @@ mod tests {
             "fn apply_discount(amount: i32) -> i32 { amount }\n".to_string(),
         );
         let mut index = RustIndex::default();
-        index.files.insert(
+        index.insert_file_only(
             PathBuf::from(OsStr::from_bytes(b"src/pricing_\xff.rs")),
             facts,
         );
@@ -655,7 +650,7 @@ pub fn price(amount: i32) -> i32 {
 "#,
         )?;
         let nodes = adapter.changed_nodes(
-            &facts,
+            crate::analysis::facts::FactSlice::from_slice(&facts.functions),
             &[TextRange {
                 start_line: 3,
                 start_column: 5,
@@ -757,7 +752,7 @@ mod reporting {
         let facts = adapter.summarize_file(Path::new("src/lib.rs"), source)?;
         let changed_line = line_containing(source, "amount >= 100")?;
         let mut index = RustIndex::default();
-        index.files.insert(PathBuf::from("src/lib.rs"), facts);
+        index.insert_file_only(PathBuf::from("src/lib.rs"), facts);
         let nodes = changed_nodes_for_lines(&index, Path::new("src/lib.rs"), &[changed_line]);
 
         assert_eq!(nodes.len(), 1);
@@ -783,7 +778,7 @@ mod tests {
         let facts = adapter.summarize_file(Path::new("src/lib.rs"), source)?;
         let changed_line = line_containing(source, "discounted_total")?;
         let mut index = RustIndex::default();
-        index.files.insert(PathBuf::from("src/lib.rs"), facts);
+        index.insert_file_only(PathBuf::from("src/lib.rs"), facts);
         let nodes = changed_nodes_for_lines(&index, Path::new("src/lib.rs"), &[changed_line]);
 
         assert_eq!(nodes.len(), 1);
@@ -999,7 +994,7 @@ fn feature_gated_test() {}
     fn lexical_fallback_disclosure_is_stable_and_conservative() {
         let mut index = RustIndex::default();
         for path in ["z.rs", "a.rs"] {
-            index.files.insert(
+            index.insert_file_only(
                 PathBuf::from(path),
                 FileFacts {
                     path: PathBuf::from(path),
@@ -1034,15 +1029,15 @@ fn feature_gated_test() {}
 
     #[test]
     fn include_resolution_disclosure_names_stable_reason_and_source() {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             include_limitations: vec![RustIncludeLimitation {
                 parent: PathBuf::from("src/lib.rs"),
                 line: 7,
                 expression: "include!(concat!(...))".to_string(),
                 reason_code: "rust_include_dynamic_expression".to_string(),
             }],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert_eq!(
             include_resolution_disclosure(&index).as_deref(),
@@ -1059,7 +1054,7 @@ fn feature_gated_test() {}
         let mut index = RustIndex::default();
         // A file whose composed context chain failed closed (ambiguous
         // ownership), and a declaration whose target is a typed unknown.
-        index.files.insert(
+        index.insert_file_only(
             PathBuf::from("src/shared.rs"),
             FileFacts {
                 role_provenance: crate::analysis::facts::SourceRoleProvenance {
@@ -1069,7 +1064,7 @@ fn feature_gated_test() {}
                 ..FileFacts::default()
             },
         );
-        index.files.insert(
+        index.insert_file_only(
             PathBuf::from("src/lib.rs"),
             FileFacts {
                 module_declarations: vec![crate::analysis::facts::ModuleDeclarationFact {
@@ -1082,9 +1077,7 @@ fn feature_gated_test() {}
             },
         );
         // A clean file must not appear.
-        index
-            .files
-            .insert(PathBuf::from("src/plain.rs"), FileFacts::default());
+        index.insert_file_only(PathBuf::from("src/plain.rs"), FileFacts::default());
 
         let disclosure = module_composition_disclosure(&index).ok_or_else(no_disclosure)?;
         assert!(
@@ -1115,7 +1108,7 @@ fn feature_gated_test() {}
             "ambiguous parents name a next step: {disclosure}"
         );
         // Without an ambiguous parent, no ambiguity next step is printed.
-        index.files.remove(Path::new("src/shared.rs"));
+        index.remove_file(Path::new("src/shared.rs"));
         let unresolved_only = module_composition_disclosure(&index).ok_or_else(no_disclosure)?;
         assert!(!unresolved_only.contains("rust_module_ambiguous_parent"));
 

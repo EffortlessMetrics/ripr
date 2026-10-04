@@ -132,7 +132,7 @@ pub(super) fn apply_registrations(
         // Exact target identity only: a registration whose file is not in
         // this index (stale, wrong package, unanalyzed scope) applies to
         // nothing here.
-        let Some(facts) = index.files.get(&registration.target) else {
+        let Some(facts) = index.files().get(&registration.target) else {
             continue;
         };
         let source = facts.source.clone();
@@ -629,8 +629,7 @@ fn admit_pending_subjects(
             reachability::TrialReachability::Reachable
             | reachability::TrialReachability::Unknown => {
                 subjects.push(entry.subject);
-                push_file_test(index, target, entry.test.clone());
-                index.tests.push(entry.test);
+                push_admitted_test(index, target, entry.test);
             }
             reachability::TrialReachability::Unreachable(reason) => {
                 let detail_suffix = match reason {
@@ -1431,7 +1430,7 @@ fn resolve_helper_function<'a>(
     if top_level_same_named != 1 {
         return None;
     }
-    let facts = index.files.get(target)?;
+    let facts = index.files().get(target)?;
     let mut matches = facts
         .functions
         .iter()
@@ -1451,7 +1450,7 @@ fn enclosing_function<'a>(
     line: usize,
 ) -> Option<&'a FunctionFact> {
     index
-        .files
+        .files()
         .get(target)?
         .functions
         .iter()
@@ -1628,7 +1627,7 @@ fn apply_registered_attribute(
     let use_bindings =
         top_level_use_bindings(parse.tree().syntax(), marker_leaf(&registration.marker));
     let promoted_functions: Vec<(usize, String, TestFact, HarnessSubjectFact)> = {
-        let Some(facts) = index.files.get(&target) else {
+        let Some(facts) = index.files().get(&target) else {
             return;
         };
         let mut promoted = Vec::new();
@@ -1694,37 +1693,32 @@ fn apply_registered_attribute(
         return;
     }
 
-    let Some(facts) = index.files.get_mut(&target) else {
-        return;
+    let eligible = |id| {
+        let function = &index.function_facts[id];
+        promoted_functions
+            .iter()
+            .any(|(line, name, _, _)| *line == function.start_line && *name == function.name)
+            && !function.source_role.registers_executable_test()
     };
-    for function in &mut facts.functions {
-        if promoted_functions
-            .iter()
-            .any(|(line, name, _, _)| *line == function.start_line && *name == function.name)
-            && !function.source_role.registers_executable_test()
-        {
-            function.source_role = FunctionSourceRole::RegisteredTestAttribute;
-        }
-    }
-    for (_, name, test, subject) in &promoted_functions {
-        let _ = name;
-        subjects.push(subject.clone());
-        push_file_test(index, &target, test.clone());
-        index.tests.push(test.clone());
-    }
-    // Mirror the promotion into the flat function list so every consumer
-    // of `index.functions` sees the same producer-owned role.
-    for function in &mut index.functions {
-        if function.file != target {
-            continue;
-        }
-        if promoted_functions
-            .iter()
-            .any(|(line, name, _, _)| *line == function.start_line && *name == function.name)
-            && !function.source_role.registers_executable_test()
-        {
-            function.source_role = FunctionSourceRole::RegisteredTestAttribute;
-        }
+    let local_roles = index
+        .files
+        .get(&target)
+        .into_iter()
+        .flat_map(|file| file.functions.iter().copied())
+        .filter(|&id| eligible(id))
+        .map(|id| (id, FunctionSourceRole::RegisteredTestAttribute))
+        .collect::<Vec<_>>();
+    let flat_roles = index
+        .function_order
+        .iter()
+        .copied()
+        .filter(|&id| index.function_facts[id].file == target && eligible(id))
+        .map(|id| (id, FunctionSourceRole::RegisteredTestAttribute))
+        .collect::<Vec<_>>();
+    index.apply_function_roles(flat_roles, local_roles);
+    for (_, _, test, subject) in promoted_functions {
+        subjects.push(subject);
+        push_admitted_test(index, &target, test);
     }
 }
 
@@ -1749,17 +1743,21 @@ fn registered_attribute_test_fact(function: &FunctionFact) -> TestFact {
     }
 }
 
-fn push_file_test(index: &mut RustIndex, target: &Path, test: TestFact) {
+fn push_admitted_test(index: &mut RustIndex, target: &Path, test: TestFact) {
+    let id = index.test_facts.allocate(test);
+    index.test_order.push(id);
     let Some(facts) = index.files.get_mut(target) else {
         return;
     };
-    if facts
-        .tests
-        .iter()
-        .all(|existing| existing.name != test.name || existing.start_line != test.start_line)
-    {
-        facts.tests.push(test);
-        facts.tests.sort_by(|left, right| {
+    let test = &index.test_facts[id];
+    if facts.tests.iter().all(|&existing| {
+        let existing = &index.test_facts[existing];
+        existing.name != test.name || existing.start_line != test.start_line
+    }) {
+        facts.tests.push(id);
+        facts.tests.sort_by(|&left, &right| {
+            let left = &index.test_facts[left];
+            let right = &index.test_facts[right];
             left.start_line
                 .cmp(&right.start_line)
                 .then(left.end_line.cmp(&right.end_line))
@@ -1782,42 +1780,47 @@ fn push_file_test(index: &mut RustIndex, target: &Path, test: TestFact) {
 /// preventing any future producer that names `TestFact`s differently from its
 /// source function from leaking phantom tests into the harness target.
 pub(crate) fn demote_harness_target_functions(index: &mut RustIndex, target: &Path) {
-    let demoted_spans: Vec<(usize, usize)> = {
-        let Some(facts) = index.files.get(target) else {
-            return;
-        };
-        facts
-            .functions
-            .iter()
-            .filter(|function| function.source_role != FunctionSourceRole::HarnessHelper)
-            .map(|function| (function.start_line, function.end_line))
-            .collect()
+    let Some(facts) = index.files.get(target) else {
+        return;
     };
+    let demoted_spans = facts
+        .functions
+        .iter()
+        .map(|&id| &index.function_facts[id])
+        .filter(|function| function.source_role != FunctionSourceRole::HarnessHelper)
+        .map(|function| (function.start_line, function.end_line))
+        .collect::<Vec<_>>();
     if demoted_spans.is_empty() {
         return;
     }
-    let Some(facts) = index.files.get_mut(target) else {
-        return;
+    let local_roles = facts
+        .functions
+        .iter()
+        .copied()
+        .map(|id| (id, FunctionSourceRole::HarnessHelper))
+        .collect::<Vec<_>>();
+    let flat_roles = index
+        .function_order
+        .iter()
+        .copied()
+        .filter(|&id| index.function_facts[id].file == target)
+        .map(|id| (id, FunctionSourceRole::HarnessHelper))
+        .collect::<Vec<_>>();
+    index.apply_function_roles(flat_roles, local_roles);
+    let overlaps_demoted = |test: &TestFact| {
+        demoted_spans
+            .iter()
+            .any(|&(start, end)| test.start_line <= end && test.end_line >= start)
     };
-    for function in &mut facts.functions {
-        function.source_role = FunctionSourceRole::HarnessHelper;
+    if let Some(facts) = index.files.get_mut(target) {
+        facts
+            .tests
+            .retain(|&id| !overlaps_demoted(&index.test_facts[id]));
     }
-    let overlaps_demoted = |test: &TestFact| -> bool {
-        demoted_spans.iter().any(|&(start, end)| {
-            // Span overlap between test [test.start_line, test.end_line] and
-            // demoted function [start, end].
-            test.start_line <= end && test.end_line >= start
-        })
-    };
-    facts.tests.retain(|test| !overlaps_demoted(test));
-    index
-        .tests
-        .retain(|test| test.file != target || !overlaps_demoted(test));
-    for function in &mut index.functions {
-        if function.file == target {
-            function.source_role = FunctionSourceRole::HarnessHelper;
-        }
-    }
+    index.test_order.retain(|&id| {
+        let test = &index.test_facts[id];
+        test.file != target || !overlaps_demoted(test)
+    });
 }
 
 enum RegisteredAttributeResolution {

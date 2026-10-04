@@ -35,7 +35,7 @@ pub(super) fn discrimination(
     if context.probe.owner.as_ref() != Some(&owner.id)
         || context
             .index
-            .functions
+            .functions()
             .iter()
             .filter(|f| f.name == owner.name)
             .count()
@@ -45,7 +45,7 @@ pub(super) fn discrimination(
     }
     let facts = find_file_facts(context.index, &owner.file)?;
     let same_source = find_file_facts(context.index, &context.probe.location.file)
-        .is_some_and(|probe_facts| std::ptr::eq(facts, probe_facts))
+        .is_some_and(|probe_facts| std::ptr::eq(facts.data(), probe_facts.data()))
         || same_current_file(
             context,
             &owner.file,

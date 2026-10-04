@@ -41,7 +41,11 @@ impl RustSyntaxAdapter for CountingSyntaxAdapter {
         RaRustSyntaxAdapter.summarize_file(path, text)
     }
 
-    fn changed_nodes(&self, facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
+    fn changed_nodes(
+        &self,
+        facts: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
+        ranges: &[TextRange],
+    ) -> Vec<SyntaxNodeFact> {
         RaRustSyntaxAdapter.changed_nodes(facts, ranges)
     }
 }
@@ -164,11 +168,11 @@ impl EditFixture {
                 .map(|path| PathBuf::from(*path))
                 .collect()
         );
-        assert_eq!(cached.index.files.len(), self.files.len());
+        assert_eq!(cached.index.files().len(), self.files.len());
         assert!(
             cached
                 .index
-                .files
+                .files()
                 .values()
                 .all(|facts| !facts.used_lexical_fallback),
             "the parser-count controls must exercise the primary syntax adapter"
@@ -177,9 +181,9 @@ impl EditFixture {
         // This reads physical source files and parses all of them without any
         // cache. Do not use a second warm build as the correctness oracle.
         let uncached = build_index(&self.root, &self.files)?;
-        assert_eq!(cached.index.files, uncached.files);
-        assert_eq!(cached.index.functions, uncached.functions);
-        assert_eq!(cached.index.tests, uncached.tests);
+        assert_eq!(cached.index.files(), uncached.files());
+        assert_eq!(cached.index.functions(), uncached.functions());
+        assert_eq!(cached.index.tests(), uncached.tests());
         assert_eq!(cached.index.package_names, uncached.package_names);
         assert_eq!(
             serde_json::to_value(owner_findings(&cached.index))?,
@@ -233,14 +237,14 @@ fn production_edit_reuses_other_files_and_revert_reuses_old_generation() -> Test
     assert_eq!(original.len(), edited.len(), "same-size content edit");
     fixture.write(OWNER, &edited)?;
     let changed = fixture.replay(FILE_COUNT - 1, 1, &[OWNER])?;
-    assert_ne!(first.index.files, changed.index.files);
+    assert_ne!(first.index.files(), changed.index.files());
     assert_ne!(
         serde_json::to_value(owner_findings(&first.index))?,
         serde_json::to_value(owner_findings(&changed.index))?
     );
     fixture.write(OWNER, &original)?;
     let restored = fixture.replay(FILE_COUNT, 0, &[])?;
-    assert_eq!(first.index.files, restored.index.files);
+    assert_eq!(first.index.files(), restored.index.files());
     assert_eq!(
         serde_json::to_value(owner_findings(&first.index))?,
         serde_json::to_value(owner_findings(&restored.index))?
@@ -256,14 +260,14 @@ fn related_test_edit_refreshes_assertions_without_reparsing_owner() -> TestResul
     fixture.write(RELATED, &test_source("boundary_case", 9))?;
     let changed = fixture.replay(FILE_COUNT - 1, 1, &[RELATED])?;
     assert_eq!(
-        first.index.files.get(Path::new(OWNER)),
-        changed.index.files.get(Path::new(OWNER))
+        first.index.files().get(Path::new(OWNER)),
+        changed.index.files().get(Path::new(OWNER))
     );
-    assert_ne!(first.index.tests, changed.index.tests);
+    assert_ne!(first.index.tests(), changed.index.tests());
     assert!(relates(&changed.index, "boundary_case"));
     let test = changed
         .index
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "boundary_case")
         .ok_or("updated test fact missing")?;
@@ -281,8 +285,8 @@ fn previously_unrelated_test_enters_and_leaves_the_relation_set() -> TestResult<
     let now_related = fixture.replay(FILE_COUNT - 1, 1, &[UNRELATED])?;
     assert!(relates(&now_related.index, "spare_case"));
     assert_eq!(
-        first.index.files.get(Path::new(OWNER)),
-        now_related.index.files.get(Path::new(OWNER))
+        first.index.files().get(Path::new(OWNER)),
+        now_related.index.files().get(Path::new(OWNER))
     );
     fixture.write(UNRELATED, UNRELATED_SOURCE)?;
     let no_longer_related = fixture.replay(FILE_COUNT, 0, &[])?;
@@ -303,7 +307,7 @@ fn added_and_deleted_test_refreshes_relations_without_false_invalidation() -> Te
     assert!(
         !deleted
             .index
-            .files
+            .files()
             .contains_key(Path::new("tests/later.rs"))
     );
     Ok(())
@@ -318,7 +322,7 @@ fn manifest_edit_refreshes_package_authority_without_source_reparse() -> TestRes
     let changed = fixture.replay(FILE_COUNT, 0, &[])?;
     assert!(changed.index.package_names.contains("renamed_fixture"));
     assert!(!changed.index.package_names.contains("cache_edit_fixture"));
-    assert_eq!(first.index.files, changed.index.files);
+    assert_eq!(first.index.files(), changed.index.files());
     Ok(())
 }
 
@@ -394,7 +398,7 @@ fn observer_predicate_facts_recompute_after_build_miss_and_match_warm() -> TestR
         }
         let cold_facts = cold
             .index
-            .files
+            .files()
             .get(&path)
             .ok_or("cold file facts absent")?;
         if cold_facts.used_lexical_fallback || cold_facts.source != text {
@@ -439,7 +443,7 @@ fn observer_predicate_facts_recompute_after_build_miss_and_match_warm() -> TestR
             )
             .into());
         }
-        if warm.index.files.get(&path) != Some(cold_facts) {
+        if warm.index.files().get(&path) != Some(cold_facts) {
             return Err("warm whole facts differ from cold recomputation".into());
         }
         Ok(())

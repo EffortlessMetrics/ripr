@@ -46,7 +46,7 @@ pub(super) fn apply_rust_value_propagation_limit(
         return;
     };
     let Some(owner) = index
-        .functions
+        .functions()
         .iter()
         .find(|function| &function.id == owner_id)
     else {
@@ -577,10 +577,10 @@ mod tests {
             "    let end = input.rfind(delim).map_or(0, |idx| idx);\n",
             "    if end == start { return 1; }\n",
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner_function("src/lib.rs::split", "split", body)],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let mut named = static_unknown_finding(expression, "src/lib.rs::split");
         let probe = named.probe.clone();
@@ -616,10 +616,10 @@ mod tests {
             "    let end = input.rfind(delim).map_or(0, |idx| idx);\n",
             "    if end == start { return 1; }\n",
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner_function("src/lib.rs::split", "split", body)],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let mut no_tests = static_unknown_finding(expression, "src/lib.rs::split");
         no_tests.related_tests.clear();

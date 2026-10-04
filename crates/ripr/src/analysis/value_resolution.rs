@@ -44,7 +44,7 @@
 //! Without that, a comment like `// let threshold = 999;` would
 //! shadow the real binding.
 
-use super::rust_index::{FileFacts, RustIndex, TestSummary};
+use super::rust_index::{FileFactsView, RustIndex, TestSummary};
 use super::seams::{RepoSeam, RequiredDiscriminator};
 use crate::domain::{ValueContext, ValueFact};
 use std::collections::BTreeMap;
@@ -448,8 +448,8 @@ impl<'a> ValueEnv<'a> {
 /// Look up the test's home-file facts in the index. The test fact
 /// stores the original file path; we use it to find the matching
 /// FileFacts entry.
-fn file_facts_for<'a>(test: &TestSummary, index: &'a RustIndex) -> Option<&'a FileFacts> {
-    index.files.get(&test.file)
+fn file_facts_for<'a>(test: &TestSummary, index: &'a RustIndex) -> Option<FileFactsView<'a>> {
+    index.files().get(&test.file)
 }
 
 #[derive(Clone, Copy, Default)]

@@ -52,9 +52,9 @@ fn index_from_files_at_stamp(
     let mut index = RustIndex::default();
     for (path, source) in files {
         let facts = adapter.summarize_file(path, source)?;
-        index.tests.extend(facts.tests.iter().cloned());
-        index.functions.extend(facts.functions.iter().cloned());
-        index.files.insert(path.clone(), facts);
+        index.extend_tests(facts.tests.iter().cloned());
+        index.extend_functions(facts.functions.iter().cloned());
+        index.insert_file_only(path.clone(), facts);
     }
     let fixture_root = claim_index_fixture_root(stamp)?;
     fs::write(
@@ -69,9 +69,12 @@ fn index_from_files_at_stamp(
         }
         fs::write(full, source).map_err(|error| error.to_string())?;
     }
-    index.workspace_authority = Some(WorkspaceRootAuthority::from_index(
+    index.workspace_authority = Some(WorkspaceRootAuthority::from_sources(
         &fixture_root,
-        &index.files,
+        index
+            .files()
+            .iter()
+            .map(|(path, facts)| (path, facts.data().source.as_str())),
     ));
     Ok(FixtureIndex {
         index,
@@ -210,7 +213,7 @@ fn simultaneous_same_stamp_indexes_keep_distinct_live_target_authority() -> Resu
             .find(|seam| seam.kind() == SeamKind::PredicateBoundary)
             .ok_or_else(|| "fixture lost its predicate seam".to_string())?;
         let test = fixture
-            .tests
+            .tests()
             .iter()
             .find(|test| test.name == "score_boundary")
             .ok_or_else(|| "fixture lost its indexed test".to_string())?;
@@ -253,7 +256,7 @@ fn simultaneous_same_stamp_indexes_keep_distinct_live_target_authority() -> Resu
         .find(|seam| seam.kind() == SeamKind::PredicateBoundary)
         .ok_or_else(|| "stale fixture lost its indexed seam".to_string())?;
     let test = second
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "score_boundary")
         .ok_or_else(|| "stale fixture lost its indexed test".to_string())?;
@@ -486,7 +489,7 @@ fn production_target_evidence_rejects_authority_failures() -> Result<(), String>
     let (mut index, seam, source) = authority_fixture_target(&root)?;
     let file = PathBuf::from("src/lib.rs");
     let test = index
-        .files
+        .files()
         .get(&file)
         .and_then(|facts| facts.tests.first())
         .cloned()
@@ -574,7 +577,7 @@ fn production_target_evidence_rejects_authority_failures() -> Result<(), String>
         .ok_or_else(|| "missing file authority".to_string())?
         .package_identity = original_package;
     let duplicate = index
-        .files
+        .files()
         .get(&file)
         .and_then(|facts| {
             facts
@@ -584,12 +587,11 @@ fn production_target_evidence_rejects_authority_failures() -> Result<(), String>
                 .cloned()
         })
         .ok_or_else(|| "missing test function".to_string())?;
-    index
-        .files
-        .get_mut(&file)
-        .ok_or_else(|| "missing file facts".to_string())?
-        .functions
-        .push(duplicate);
+    let mut facts = index
+        .owned_file(&file)
+        .ok_or_else(|| "missing file facts".to_string())?;
+    facts.functions.push(duplicate);
+    index.insert_file_only(file.clone(), facts);
     if target_for_index(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
         return Err("duplicate target identity was accepted".to_string());
     }
@@ -3518,7 +3520,7 @@ mod tests {
     assert_eq!(
         inline_target.symbol_id,
         inline_index
-            .files
+            .files()
             .get(&prod)
             .and_then(|file| {
                 file.functions
@@ -3603,7 +3605,7 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
         let_bindings: Vec::new(),
     };
     let mut index = RustIndex::default();
-    index.files.insert(
+    index.insert_file_only(
         file.clone(),
         crate::analysis::facts::FileFacts {
             path: file.clone(),
@@ -5517,7 +5519,7 @@ mod nested {
         .as_ref()
         .ok_or_else(|| "nested pipeline relation lost its indexed test target".to_string())?;
     let nested_function = index
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "nested_module_test_observes_pipeline_target")
         .ok_or_else(|| "nested test must be indexed".to_string())?;
@@ -6978,7 +6980,7 @@ fn aliased_direct_imported_support_helper_reaches_pipeline() {
         ("exercise_after", "gamma"),
     ] {
         let function = index
-            .functions
+            .functions()
             .iter()
             .find(|function| {
                 function.name == helper
@@ -7024,7 +7026,7 @@ fn aliased_direct_imported_support_helper_reaches_pipeline() {
         ("exercise_after", "calculate", "pipeline"),
     ] {
         let function = index
-            .functions
+            .functions()
             .iter()
             .find(|function| {
                 function.name == helper
@@ -7092,7 +7094,7 @@ fn aliased_direct_imported_support_helper_reaches_pipeline() {
         "pipeline helper relation lost its indexed test target after presence check".to_string()
     })?;
     let pipeline_function = index
-        .functions
+        .functions()
         .iter()
         .find(|function| {
             function.source_role.is_evidence_role()
@@ -7144,7 +7146,7 @@ fn aliased_direct_imported_support_helper_reaches_pipeline() {
         "report helper relation lost its indexed test target after presence check".to_string()
     })?;
     let report_function = index
-        .functions
+        .functions()
         .iter()
         .find(|function| {
             function.source_role.is_evidence_role()
@@ -11148,8 +11150,8 @@ fn given_foreign_separator_paths_when_grip_associates_then_same_test_file_still_
              owner={owner_fn:?} owner_stem_norm={:?} owner_stem_native={:?} \
              test_stem_norm={:?} test_stem_native={:?}",
             evidence.related_tests,
-            index.files.keys().collect::<Vec<_>>(),
-            index.tests.len(),
+            index.files().keys().collect::<Vec<_>>(),
+            index.tests().len(),
             context.tests_by_file_stem.keys().collect::<Vec<_>>(),
             predicate.file(),
             predicate.display_line(),
@@ -11590,7 +11592,7 @@ fn given_affinity_union_past_the_limit_then_tests_asserting_more_target_tokens_w
         .collect::<Vec<_>>();
     assert_eq!(
         affinity.len(),
-        crowded_relation_limit(index.tests.len()),
+        crowded_relation_limit(index.tests().len()),
         "{affinity:?}"
     );
     assert!(
@@ -13536,7 +13538,7 @@ fn given_unresolved_identifier_arg_when_extracting_values_then_no_observed_value
 #[test]
 fn same_file_test_helper_call_counts_as_owner_call_evidence() {
     let file = PathBuf::from("src/pricing.rs");
-    let index = RustIndex {
+    let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![FunctionSummary {
                 id: crate::domain::SymbolId("src/pricing.rs::discounted_total".to_string()),
                 name: "discounted_total".to_string(),
@@ -13600,8 +13602,8 @@ fn same_file_test_helper_call_counts_as_owner_call_evidence() {
                 nested_fn_names: Vec::new(),
                 let_bindings: Vec::new(),
             }],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
     let context = CompactGripContext::new(&index);
 
@@ -14156,9 +14158,9 @@ fn index_from_edition2021_diagnostics_workspace(
     let mut index = RustIndex::default();
     for (path, source) in files {
         let facts = adapter.summarize_file(path, source)?;
-        index.tests.extend(facts.tests.iter().cloned());
-        index.functions.extend(facts.functions.iter().cloned());
-        index.files.insert(path.clone(), facts);
+        index.extend_tests(facts.tests.iter().cloned());
+        index.extend_functions(facts.functions.iter().cloned());
+        index.insert_file_only(path.clone(), facts);
     }
     let fixture_root = claim_index_fixture_root(stamp)?;
     fs::write(
@@ -14192,9 +14194,12 @@ fn index_from_edition2021_diagnostics_workspace(
         }
         fs::write(full, source).map_err(|error| error.to_string())?;
     }
-    index.workspace_authority = Some(WorkspaceRootAuthority::from_index(
+    index.workspace_authority = Some(WorkspaceRootAuthority::from_sources(
         &fixture_root,
-        &index.files,
+        index
+            .files()
+            .iter()
+            .map(|(path, facts)| (path, facts.data().source.as_str())),
     ));
     Ok(FixtureIndex {
         index,
@@ -14895,13 +14900,13 @@ mod tests {
     assert_eq!(helper_relation.oracle_strength, OracleStrength::Weak);
     assert!(
         !index
-            .tests
+            .tests()
             .iter()
             .any(|test| test.name == "exercise_device_labels"),
         "a plain helper must not become an executable TestFact selector"
     );
     assert!(
-        index.functions.iter().any(|function| {
+        index.functions().iter().any(|function| {
             function.name == "exercise_device_labels"
                 && function.source_role == FunctionSourceRole::CfgTestModule
         }),
@@ -14952,7 +14957,7 @@ mod other {
     let index = index_from_files(&[(source, source_src)])?;
     assert_eq!(
         index
-            .tests
+            .tests()
             .iter()
             .filter(|test| test.name == "exercise_device_labels")
             .count(),
@@ -14961,7 +14966,7 @@ mod other {
     );
     assert_eq!(
         index
-            .functions
+            .functions()
             .iter()
             .filter(|function| function.name == "exercise_device_labels")
             .count(),
@@ -15222,7 +15227,7 @@ fn nested_alias_ancestry_reaches_every_indexed_owner() {
         ("exercise_tail", "compute_alpha", "alpha"),
     ] {
         let function = index
-            .functions
+            .functions()
             .iter()
             .find(|function| function.name == helper && function.file == support)
             .ok_or_else(|| format!("missing helper identity {helper}"))?;
@@ -15304,7 +15309,7 @@ fn nested_alias_ancestry_reaches_every_indexed_owner() {
         .as_ref()
         .ok_or_else(|| "nested helper relation lost its indexed test target".to_string())?;
     let test_function = index
-        .functions
+        .functions()
         .iter()
         .find(|function| {
             function.source_role.is_evidence_role()
@@ -15399,7 +15404,7 @@ pub fn exercise_tail() -> String {
         .collect::<BTreeSet<_>>();
     let owners_for = |helper: &str| -> Result<BTreeSet<String>, String> {
         let function = index
-            .functions
+            .functions()
             .iter()
             .find(|function| function.name == helper && function.file == support)
             .ok_or_else(|| format!("missing helper identity {helper}"))?;
@@ -16560,7 +16565,7 @@ fn duplicate_evidence_function_identity_invalidates_target() -> Result<(), Strin
     let mut case = refresh_plan_case(WEAK_SINGLE_BINDING_REFRESH_TEST)?;
     route_must_be_ready(&case)?;
     let file = PathBuf::from("src/diagnostics.rs");
-    let Some(facts) = case.index.files.get_mut(&file) else {
+    let Some(mut facts) = case.index.owned_file(&file) else {
         return Err("lost indexed file facts".to_string());
     };
     let Some(function) = facts.functions.iter().find(|function| {
@@ -16571,7 +16576,8 @@ fn duplicate_evidence_function_identity_invalidates_target() -> Result<(), Strin
     };
     let duplicate = function.clone();
     facts.functions.push(duplicate.clone());
-    case.index.functions.push(duplicate);
+    case.index.insert_file_only(file, facts);
+    case.index.push_function(duplicate);
     let evidence = evidence_for_seam(&case.seam, &case.index);
     let classified = ClassifiedSeam {
         seam: case.seam.clone(),

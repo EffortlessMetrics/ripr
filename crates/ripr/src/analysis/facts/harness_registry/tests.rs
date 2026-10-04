@@ -244,7 +244,7 @@ fn ordinary_test_attribute_is_inert_without_the_harness() {
 
     // The subjects enter the executable-test denominator.
     let test_names = index
-        .tests
+        .tests()
         .iter()
         .filter(|test| test.file.as_path() == Path::new("tests/price_mimic.rs"))
         .map(|test| test.name.as_str())
@@ -254,14 +254,14 @@ fn ordinary_test_attribute_is_inert_without_the_harness() {
     // The inert `#[test]` attribute does not make the fn a test here:
     // the whole registered target is helper-evidence only.
     let inert = index
-        .functions
+        .functions()
         .iter()
         .find(|function| function.name == "ordinary_test_attribute_is_inert_without_the_harness")
         .ok_or("missing inert attribute fn")?;
     assert_eq!(inert.source_role, FunctionSourceRole::HarnessHelper);
     assert!(
         index
-            .tests
+            .tests()
             .iter()
             .all(|test| test.name != "ordinary_test_attribute_is_inert_without_the_harness"),
         "inert attributes must not enter the executable-test denominator"
@@ -286,13 +286,13 @@ fn ordinary_test_attribute_is_inert_without_the_harness() {
     // executable test.
     assert!(
         index
-            .tests
+            .tests()
             .iter()
             .any(|test| test.name == "ordinary_libtest_runs_here"),
         "an ordinary libtest target beside the custom target is unaffected"
     );
     let ordinary = index
-        .functions
+        .functions()
         .iter()
         .find(|function| function.name == "ordinary_libtest_runs_here")
         .ok_or("missing ordinary test fn")?;
@@ -301,7 +301,7 @@ fn ordinary_test_attribute_is_inert_without_the_harness() {
     // Same function name in production and harness files: the production
     // one stays a production subject.
     let production = index
-        .functions
+        .functions()
         .iter()
         .find(|function| {
             function.name == "price" && function.file.as_path() == Path::new("src/lib.rs")
@@ -497,7 +497,7 @@ fn plain_idents_inside_trial_bodies_never_become_oracles() -> Result<(), Box<dyn
     let registrations = [custom_target_registration("tests/ident_noise.rs")];
     let index = build_index_with_test_harnesses(&root.0, &files, &registrations)?;
     let subject_test = index
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "noise_case")
         .ok_or("subject test present")?;
@@ -541,7 +541,7 @@ fn snapshot_named_helpers_never_become_oracles_but_snapshot_asserts_do()
     let registrations = [custom_target_registration("tests/leaf_boundary.rs")];
     let index = build_index_with_test_harnesses(&root.0, &files, &registrations)?;
     let subject_test = index
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "leaf_case")
         .ok_or("subject test present")?;
@@ -681,7 +681,7 @@ fn trials() -> Vec<Trial> {
     // The mirrored TestFact carries the same widened evidence so every
     // existing test consumer sees the subject the same way.
     let beta_test = index
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "beta_round_trips")
         .ok_or("beta test missing")?;
@@ -911,7 +911,7 @@ impl Reader {
     let registrations = [custom_target_registration("tests/keyword_receivers.rs")];
     let index = build_index_with_test_harnesses(&root.0, &files, &registrations)?;
     let subject_test = index
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "keyword_receivers")
         .ok_or("keyword_receivers test missing")?;
@@ -985,7 +985,7 @@ fn trials() -> Vec<Trial> {
     let registrations = [custom_target_registration("tests/dormant_macro.rs")];
     let index = build_index_with_test_harnesses(&root.0, &files, &registrations)?;
     let subject_test = index
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "dormant_template")
         .ok_or("dormant_template test missing")?;
@@ -1060,7 +1060,7 @@ fn trials() -> Vec<Trial> {
     )];
     let index = build_index_with_test_harnesses(&root.0, &files, &registrations)?;
     let subject_test = index
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "helper_template")
         .ok_or("helper_template test missing")?;
@@ -1305,7 +1305,7 @@ fn trials() -> Vec<Trial> {
         .ok_or("ordinary qualified oracle missing")?;
 
     let insta = index
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "qualified_insta")
         .ok_or("qualified_insta test missing")?;
@@ -1325,7 +1325,7 @@ fn trials() -> Vec<Trial> {
     assert_eq!(insta_oracle.line, 8, "{insta_oracle:?}");
 
     let json = index
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "qualified_json")
         .ok_or("qualified_json test missing")?;
@@ -1445,7 +1445,7 @@ fn trials() -> Vec<Trial> {
         .ok_or("ordinary assert![..] oracle missing")?;
 
     let bracket = index
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "bracket_assert")
         .ok_or("bracket_assert test missing")?;
@@ -1465,7 +1465,7 @@ fn trials() -> Vec<Trial> {
     assert_eq!(bracket_oracle.line, 9, "{bracket_oracle:?}");
 
     let brace = index
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "brace_assert")
         .ok_or("brace_assert test missing")?;
@@ -1486,7 +1486,7 @@ fn trials() -> Vec<Trial> {
     // A semicolon on the NEXT line is not part of the invocation: the
     // oracle text ends at the group close (IDV7).
     let newline_semi = index
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "newline_semi")
         .ok_or("newline_semi test missing")?;
@@ -1536,7 +1536,7 @@ fn trials() -> Vec<Trial> {
     let registrations = [custom_target_registration("tests/dormant_alt_delims.rs")];
     let index = build_index_with_test_harnesses(&root.0, &files, &registrations)?;
     let subject_test = index
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "alt_delim_templates")
         .ok_or("alt_delim_templates test missing")?;
@@ -1843,7 +1843,7 @@ fn trials() -> Vec<Trial> {
     let registrations = [custom_target_registration("tests/receiver_forms.rs")];
     let index = build_index_with_test_harnesses(&root.0, &files, &registrations)?;
     let subject_test = index
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "receiver_forms")
         .ok_or("receiver_forms test missing")?;
@@ -1926,7 +1926,7 @@ fn trials() -> Vec<Trial> {
     let registrations = [custom_target_registration("tests/comparison_receivers.rs")];
     let index = build_index_with_test_harnesses(&root.0, &files, &registrations)?;
     let subject_test = index
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "comparison_forms")
         .ok_or("comparison_forms test missing")?;
@@ -2013,7 +2013,7 @@ struct Config {
     let registrations = [custom_target_registration("tests/method_oracles.rs")];
     let index = build_index_with_test_harnesses(&root.0, &files, &registrations)?;
     let alpha = index
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "alpha_unwraps")
         .ok_or("alpha test missing")?;
@@ -2118,7 +2118,7 @@ fn other() -> Vec<Trial> {
         "{:?}",
         index.harness_subjects
     );
-    assert!(index.tests.is_empty(), "{:?}", index.tests);
+    assert!(index.tests().is_empty(), "{:?}", index.tests());
     Ok(())
 }
 
@@ -2185,7 +2185,7 @@ fn macro_input_data_never_becomes_a_subject() -> Result<(), Box<dyn std::error::
         "{:?}",
         index.harness_subjects
     );
-    assert!(index.tests.is_empty(), "{:?}", index.tests);
+    assert!(index.tests().is_empty(), "{:?}", index.tests());
     Ok(())
 }
 
@@ -2255,7 +2255,7 @@ fn trials() -> Vec<libtest_mimic::Trial> {
         "{:?}",
         index.harness_subjects
     );
-    assert!(index.tests.is_empty(), "{:?}", index.tests);
+    assert!(index.tests().is_empty(), "{:?}", index.tests());
     Ok(())
 }
 
@@ -2323,7 +2323,7 @@ fn plain_helper() -> i32 {
     }
 
     let promoted = index
-        .functions
+        .functions()
         .iter()
         .find(|function| function.name == "price_round_trips")
         .ok_or("missing promoted fn")?;
@@ -2333,20 +2333,20 @@ fn plain_helper() -> i32 {
     );
     assert!(
         index
-            .tests
+            .tests()
             .iter()
             .any(|test| test.name == "price_round_trips"),
         "registered attribute tests join the executable-test denominator"
     );
     assert!(
-        index.functions.iter().all(|function| function.name
+        index.functions().iter().all(|function| function.name
             != "lookalike_suffix_is_not_registered"
             || !function.source_role.is_evidence_role()),
         "prefix/suffix lookalikes must never classify"
     );
     assert!(
         index
-            .tests
+            .tests()
             .iter()
             .all(|test| !test.name.contains("lookalike")),
         "lookalikes must not join the test denominator"
@@ -2388,7 +2388,7 @@ fn ambiguous_owner() {
         index.harness_limitations
     );
     let function = index
-        .functions
+        .functions()
         .iter()
         .find(|function| function.name == "ambiguous_owner")
         .ok_or("missing fn")?;
@@ -2417,7 +2417,7 @@ fn stale_or_foreign_registrations_grant_nothing() -> Result<(), Box<dyn std::err
     let index = build_index_with_test_harnesses(&root.0, &files, &registrations)?;
     assert!(index.harness_subjects.is_empty());
     assert!(index.harness_limitations.is_empty());
-    assert!(index.tests.is_empty());
+    assert!(index.tests().is_empty());
     Ok(())
 }
 
@@ -2505,13 +2505,13 @@ fn main() {
         );
         // Only the adapter-established trial subject enters the executable test
         // denominator; the inert #[test] is demoted on both cold and warm runs (#3602).
-        assert_eq!(index.tests.len(), 1);
-        assert_eq!(index.tests[0].name, "cached_case");
-        let file_facts = index.files.get(&file).ok_or("file facts missing")?;
+        assert_eq!(index.tests().len(), 1);
+        assert_eq!(index.tests()[0].name, "cached_case");
+        let file_facts = index.files().get(&file).ok_or("file facts missing")?;
         assert_eq!(file_facts.tests.len(), 1);
         assert_eq!(file_facts.tests[0].name, "cached_case");
         let inert = index
-            .functions
+            .functions()
             .iter()
             .find(|f| f.name == "inert_test_in_harness_target")
             .ok_or("inert fn present")?;
@@ -2555,7 +2555,7 @@ fn double_attributed() {
     );
     assert_eq!(
         index
-            .tests
+            .tests()
             .iter()
             .filter(|test| test.name == "double_attributed")
             .count(),
@@ -2563,7 +2563,7 @@ fn double_attributed() {
         "exactly one executable test fact, from the built-in family"
     );
     let function = index
-        .functions
+        .functions()
         .iter()
         .find(|function| function.name == "double_attributed")
         .ok_or("missing fn")?;
@@ -2617,18 +2617,18 @@ fn demote_harness_target_functions_drops_differently_named_test_facts()
         tests: vec![test_fact.clone()],
         ..Default::default()
     };
-    index.files.insert(target.to_path_buf(), file_facts.clone());
-    index.functions.push(function);
-    index.tests.push(test_fact);
+    index.insert_file_only(target.to_path_buf(), file_facts.clone());
+    index.push_function(function);
+    index.push_test(test_fact);
 
     demote_harness_target_functions(&mut index, target);
 
     // Span overlap drops the test fact despite the name mismatch.
     assert!(
-        index.tests.is_empty(),
+        index.tests().is_empty(),
         "differently-named TestFact overlapping demoted span must be dropped"
     );
-    let facts = index.files.get(target).ok_or("file facts missing")?;
+    let facts = index.files().get(target).ok_or("file facts missing")?;
     assert!(
         facts.tests.is_empty(),
         "file-level differently-named TestFact must be dropped"
@@ -2638,7 +2638,7 @@ fn demote_harness_target_functions_drops_differently_named_test_facts()
         FunctionSourceRole::HarnessHelper
     );
     assert_eq!(
-        index.functions[0].source_role,
+        index.functions()[0].source_role,
         FunctionSourceRole::HarnessHelper
     );
     Ok(())
@@ -2688,13 +2688,13 @@ fn ordinary_libtest_still_runs_here() {
     );
     assert!(
         index
-            .tests
+            .tests()
             .iter()
             .any(|test| test.name == "ordinary_libtest_still_runs_here"),
         "the ordinary #[test] keeps running: the misdeclared file is not demoted"
     );
     let function = index
-        .functions
+        .functions()
         .iter()
         .find(|function| function.name == "ordinary_libtest_still_runs_here")
         .ok_or("missing fn")?;
@@ -2750,7 +2750,7 @@ fn ordinary_libtest_still_runs_here() {
     assert!(index.harness_subjects.is_empty());
     assert_eq!(
         index
-            .tests
+            .tests()
             .iter()
             .map(|test| test.name.as_str())
             .collect::<Vec<_>>(),
@@ -2904,7 +2904,7 @@ fn malformed_manifest_records_manifest_unavailable_and_keeps_per_function_roles(
     );
     assert!(
         index
-            .tests
+            .tests()
             .iter()
             .any(|test| test.name == "ordinary_libtest_still_runs_here"),
         "the ordinary #[test] keeps running: nothing is demoted"
@@ -2986,7 +2986,7 @@ fn ordinary_libtest_still_runs_here() {
             index.harness_limitations
         );
         let function = index
-            .functions
+            .functions()
             .iter()
             .find(|function| function.name == "ordinary_libtest_still_runs_here")
             .ok_or("missing fn")?;
@@ -3202,12 +3202,12 @@ fn never_called_trials() -> Vec<Trial> {
     // denominator — while both subject facts stay.
     assert!(
         index
-            .tests
+            .tests()
             .iter()
             .all(|test| !test.file.ends_with(Path::new("tests/dead_construction.rs"))),
         "dead constructions must leave the executable-test denominator: {:?}",
         index
-            .tests
+            .tests()
             .iter()
             .filter(|test| test.file.ends_with(Path::new("tests/dead_construction.rs")))
             .collect::<Vec<_>>()
@@ -3284,7 +3284,7 @@ fn main() {
 
     assert_eq!(
         index
-            .tests
+            .tests()
             .iter()
             .filter(|test| test.file.ends_with(Path::new("tests/foreign_suffix.rs")))
             .count(),
@@ -3353,7 +3353,7 @@ fn main() {
 
     assert_eq!(
         index
-            .tests
+            .tests()
             .iter()
             .filter(|test| test.file.ends_with(Path::new("tests/shadow_closure.rs")))
             .count(),
@@ -3421,7 +3421,7 @@ fn main() {
 
     assert_eq!(
         index
-            .tests
+            .tests()
             .iter()
             .filter(|test| test.file.ends_with(Path::new("tests/shadow_param.rs")))
             .count(),
@@ -3482,7 +3482,7 @@ fn main() {
     let index = build_index_with_test_harnesses(&root.0, &files, &registrations)?;
 
     let mut admitted: Vec<_> = index
-        .tests
+        .tests()
         .iter()
         .filter(|test| test.file.ends_with(Path::new("tests/trivia_paren.rs")))
         .map(|test| test.name.as_str())
@@ -3547,7 +3547,7 @@ fn main() {
     let index = build_index_with_test_harnesses(&root.0, &files, &registrations)?;
 
     let mut admitted: Vec<_> = index
-        .tests
+        .tests()
         .iter()
         .filter(|test| test.file.ends_with(Path::new("tests/nested_run.rs")))
         .map(|test| test.name.as_str())
@@ -3611,7 +3611,7 @@ fn build_trials() -> Vec<Trial> {
 
     assert_eq!(
         index
-            .tests
+            .tests()
             .iter()
             .filter(|test| test.file.ends_with(Path::new("tests/mut_push.rs")))
             .count(),
@@ -3666,7 +3666,7 @@ fn keep_first(trials: Vec<Trial>) -> Trial {
 
     assert_eq!(
         index
-            .tests
+            .tests()
             .iter()
             .filter(|test| test.file.ends_with(Path::new("tests/wrapper_unknown.rs")))
             .count(),
@@ -3726,7 +3726,7 @@ fn main() {
 
     assert!(
         index
-            .tests
+            .tests()
             .iter()
             .all(|test| !test.file.ends_with(Path::new("tests/method_run.rs"))),
         "a method-only call shape leaves the entry absent: {:?}",
@@ -3777,7 +3777,7 @@ fn main() {
 
     assert_eq!(
         index
-            .tests
+            .tests()
             .iter()
             .filter(|test| test.file.ends_with(Path::new("tests/alias_entry.rs")))
             .count(),
@@ -3847,7 +3847,7 @@ fn main() {
 
     assert_eq!(
         index
-            .tests
+            .tests()
             .iter()
             .filter(|test| test.file.ends_with(Path::new("tests/reexport_entry.rs")))
             .count(),
@@ -3909,7 +3909,7 @@ fn build_trials() -> Vec<Trial> {
     let index = build_index_with_test_harnesses(&root.0, &files, &registrations)?;
 
     let admitted: Vec<_> = index
-        .tests
+        .tests()
         .iter()
         .filter(|test| test.file.ends_with(Path::new("tests/builder_unused.rs")))
         .map(|test| test.name.as_str())
@@ -3969,7 +3969,7 @@ fn build_trials() -> Vec<Trial> {
 
     assert_eq!(
         index
-            .tests
+            .tests()
             .iter()
             .filter(|test| test.file.ends_with(Path::new("tests/builder_return.rs")))
             .count(),
@@ -4023,7 +4023,7 @@ fn build_trials() -> Vec<Trial> {
 
     assert_eq!(
         index
-            .tests
+            .tests()
             .iter()
             .filter(|test| test.file.ends_with(Path::new("tests/builder_cond.rs")))
             .count(),
@@ -4078,7 +4078,7 @@ fn dead_elsewhere() -> Vec<Trial> {
     let index = build_index_with_test_harnesses(&root.0, &files, &registrations)?;
 
     let mut admitted: Vec<_> = index
-        .tests
+        .tests()
         .iter()
         .filter(|test| test.file.ends_with(Path::new("tests/multi_trials.rs")))
         .map(|test| test.name.as_str())
@@ -4136,7 +4136,7 @@ use libtest_mimic::Trial;
     let index = build_index_with_test_harnesses(&root.0, &files, &registrations)?;
 
     let admitted: Vec<_> = index
-        .tests
+        .tests()
         .iter()
         .filter(|test| test.file.ends_with(Path::new("tests/nested_trial.rs")))
         .map(|test| test.name.as_str())
@@ -4192,7 +4192,7 @@ fn dead_elsewhere() -> Vec<Trial> {
     let index = build_index_with_test_harnesses(&root.0, &files, &registrations)?;
 
     let admitted: Vec<_> = index
-        .tests
+        .tests()
         .iter()
         .filter(|test| test.file.ends_with(Path::new("tests/mut_arg.rs")))
         .map(|test| test.name.as_str())
@@ -4275,7 +4275,7 @@ fn main() {
     }
     // Every admitted trial keeps its executable-test denominator entry.
     let mut test_names = index
-        .tests
+        .tests()
         .iter()
         .filter(|test| test.file.ends_with(Path::new("tests/admitted_forms.rs")))
         .map(|test| test.name.as_str())
@@ -4354,7 +4354,7 @@ fn main() {
 
     // Only the admitted trial enters the executable-test denominator.
     let test_names: Vec<_> = index
-        .tests
+        .tests()
         .iter()
         .filter(|test| {
             test.file
@@ -4438,7 +4438,7 @@ fn main() {
         index.harness_subjects
     );
     assert!(
-        index.tests.iter().any(|test| test.name == "pushed_trial"),
+        index.tests().iter().any(|test| test.name == "pushed_trial"),
         "an unknown keeps today's denominator behavior"
     );
     let disclosure = index
@@ -4488,11 +4488,11 @@ fn main() {
     let index = build_index_with_test_harnesses(&root.0, &files, &registrations)?;
     assert!(
         index
-            .tests
+            .tests()
             .iter()
             .any(|test| test.name == "run_tests_trial"),
         "an unsupported entry spelling keeps the trial admitted: {:?}",
-        index.tests
+        index.tests()
     );
     let disclosure = index
         .harness_limitations
@@ -4549,7 +4549,7 @@ fn trials() -> Vec<Trial> {
     );
     for (label, index) in [("cold", &cold.index), ("warm", &warm.index)] {
         assert_eq!(index.harness_subjects.len(), 1, "{label}");
-        assert_eq!(index.tests.len(), 0, "{label}: dead trials never admit");
+        assert_eq!(index.tests().len(), 0, "{label}: dead trials never admit");
         let limitation = index
             .harness_limitations
             .iter()

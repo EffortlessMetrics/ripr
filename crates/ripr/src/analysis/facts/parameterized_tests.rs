@@ -7,42 +7,48 @@ use std::path::PathBuf;
 type FunctionKey = (PathBuf, usize, usize, String);
 
 pub(super) fn promote_explicit_test_case_functions(index: &mut RustIndex) {
-    let mut known_tests = index.tests.iter().map(test_key).collect::<BTreeSet<_>>();
+    let mut known_tests = index.tests().iter().map(test_key).collect::<BTreeSet<_>>();
     let mut promoted = Vec::new();
-
-    for function in &mut index.functions {
+    let mut flat_roles = Vec::new();
+    let mut local_roles = Vec::new();
+    for &id in &index.function_order {
+        let function = &index.function_facts[id];
         if !is_explicit_test_case_function(function) {
             continue;
         }
-        let key = function_key(function);
-        if !known_tests.insert(key) {
+        if !known_tests.insert(function_key(function)) {
             continue;
         }
-        // Explicit promotion: the function becomes an executable test whose
-        // provenance is the exact test-case attribute (#3531 typed role).
-        function.source_role = FunctionSourceRole::ParameterizedExpansion;
-        promoted.push(test_fact(function));
+        flat_roles.push((id, FunctionSourceRole::ParameterizedExpansion));
+        promoted.push((id, test_fact(function)));
     }
-
     if promoted.is_empty() {
         return;
     }
-
-    for test in &promoted {
-        let key = test_key(test);
-        let Some(file) = index.files.get_mut(&test.file) else {
+    for (_, test) in promoted {
+        let key = test_key(&test);
+        let file_path = test.file.clone();
+        let id = index.test_facts.allocate(test);
+        index.test_order.push(id);
+        let Some(file) = index.files.get_mut(&file_path) else {
             continue;
         };
-        if let Some(function) = file
+        if let Some(&function_id) = file
             .functions
-            .iter_mut()
-            .find(|function| function_key(function) == key)
+            .iter()
+            .find(|&&function_id| function_key(&index.function_facts[function_id]) == key)
         {
-            function.source_role = FunctionSourceRole::ParameterizedExpansion;
+            local_roles.push((function_id, FunctionSourceRole::ParameterizedExpansion));
         }
-        if file.tests.iter().all(|existing| test_key(existing) != key) {
-            file.tests.push(test.clone());
-            file.tests.sort_by(|left, right| {
+        if file
+            .tests
+            .iter()
+            .all(|&existing| test_key(&index.test_facts[existing]) != key)
+        {
+            file.tests.push(id);
+            file.tests.sort_by(|&left, &right| {
+                let left = &index.test_facts[left];
+                let right = &index.test_facts[right];
                 left.start_line
                     .cmp(&right.start_line)
                     .then(left.end_line.cmp(&right.end_line))
@@ -50,17 +56,16 @@ pub(super) fn promote_explicit_test_case_functions(index: &mut RustIndex) {
             });
         }
     }
-
-    index.tests.extend(promoted);
+    index.apply_function_roles(flat_roles, local_roles);
     let positions = index
-        .functions
+        .functions()
         .iter()
         .enumerate()
         .map(|(position, function)| (function_key(function), position))
         .collect::<BTreeMap<_, _>>();
-    index.tests.sort_by_key(|test| {
+    index.test_order.sort_by_key(|&id| {
         positions
-            .get(&test_key(test))
+            .get(&test_key(&index.test_facts[id]))
             .copied()
             .unwrap_or(usize::MAX)
     });
@@ -211,12 +216,12 @@ fn ordinary_test() {
             &[PathBuf::from("tests/parameterized.rs")],
         )?;
         let test_names = index
-            .tests
+            .tests()
             .iter()
             .map(|test| test.name.as_str())
             .collect::<Vec<_>>();
 
-        assert_eq!(index.functions.len(), 7);
+        assert_eq!(index.functions().len(), 7);
         assert_eq!(
             test_names,
             vec![
@@ -229,7 +234,7 @@ fn ordinary_test() {
         );
         assert!(
             index
-                .functions
+                .functions()
                 .iter()
                 .find(|function| function.name == "helper")
                 .is_some_and(|function| function.source_role == FunctionSourceRole::Production),
@@ -237,7 +242,7 @@ fn ordinary_test() {
         );
         assert!(
             index
-                .functions
+                .functions()
                 .iter()
                 .find(|function| function.name == "orphan_case")
                 .is_some_and(|function| function.source_role == FunctionSourceRole::Production),
@@ -245,7 +250,7 @@ fn ordinary_test() {
         );
 
         let test_case = index
-            .tests
+            .tests()
             .iter()
             .find(|test| test.name == "test_case_case")
             .ok_or("missing unqualified test-case fact")?;
@@ -266,7 +271,7 @@ fn ordinary_test() {
         );
 
         let qualified = index
-            .tests
+            .tests()
             .iter()
             .find(|test| test.name == "qualified_test_case")
             .ok_or("missing qualified test-case fact")?;
@@ -280,7 +285,7 @@ fn ordinary_test() {
         );
 
         let false_positive = index
-            .tests
+            .tests()
             .iter()
             .find(|test| test.name == "assertion_text_is_not_an_assertion")
             .ok_or("missing comment/string test-case fact")?;
@@ -290,7 +295,7 @@ fn ordinary_test() {
         );
 
         let file = index
-            .files
+            .files()
             .get(Path::new("tests/parameterized.rs"))
             .ok_or("missing file facts")?;
         assert_eq!(
@@ -333,14 +338,14 @@ fn stacked_test_case(value: i32) {
         for index in [&cold.index, &warm.index] {
             assert_eq!(
                 index
-                    .tests
+                    .tests()
                     .iter()
                     .filter(|test| test.name == "stacked_test_case")
                     .count(),
                 1
             );
             assert_eq!(
-                index.files.get(&file).map(|facts| {
+                index.files().get(&file).map(|facts| {
                     facts
                         .tests
                         .iter()

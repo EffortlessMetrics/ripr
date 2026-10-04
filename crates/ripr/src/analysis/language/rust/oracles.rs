@@ -146,7 +146,7 @@ pub(super) fn cross_language_limit_kind(
     }
     let owner_id = probe.owner.as_ref()?;
     let owner_fn = index
-        .functions
+        .functions()
         .iter()
         .find(|function| &function.id == owner_id)?;
     if owner_has_ffi_attr(owner_fn) {
@@ -199,8 +199,8 @@ struct PropertyMacroLocation<'a> {
 impl<'a> PropertyMacroMentionIndex<'a> {
     pub(super) fn new(index: &'a RustIndex, selected_root: &'a std::path::Path) -> Self {
         let mut by_identifier = std::collections::BTreeMap::new();
-        for (file, facts) in &index.files {
-            for witness in &facts.unresolved_property_macros {
+        for (file, facts) in index.files().iter() {
+            for witness in &facts.data().unresolved_property_macros {
                 for identifier in &witness.mentioned_identifiers {
                     by_identifier
                         .entry(identifier.as_str())
@@ -393,9 +393,9 @@ fn find_unresolved_assertion_macro_witness(
 ) -> Option<RustMacroAssertionWitness> {
     let mut candidates = Vec::new();
     for test in index
-        .tests
+        .tests()
         .iter()
-        .chain(index.files.values().flat_map(|file| file.tests.iter()))
+        .chain(index.files().values().flat_map(|file| file.tests.iter()))
     {
         if !finding
             .related_tests
@@ -841,15 +841,15 @@ mod tests {
             "tests/it.rs",
             4,
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             tests: vec![test_summary(
                 "test_inner_with_custom_assertion_macro",
                 "tests/it.rs",
                 4,
                 "let result = inner(10, 3);\nassert_result!(result, 7);",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         apply_rust_macro_wrapped_assertion_limit(&mut finding, &index);
 
@@ -881,15 +881,15 @@ mod tests {
             "tests/it.rs",
             4,
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             tests: vec![test_summary(
                 "test_inner_with_known_assertion_macro",
                 "tests/it.rs",
                 4,
                 "let result = inner(10, 3);\nassert_eq!(result, 7);",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         apply_rust_macro_wrapped_assertion_limit(&mut finding, &index);
 
@@ -904,7 +904,7 @@ mod tests {
             "tests/it.rs",
             4,
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             tests: vec![test_summary(
                 "test_inner_with_commented_assertion_macro",
                 "tests/it.rs",
@@ -916,8 +916,8 @@ let note = "assert_string_result!(result, 7)";
 let raw = r#"assert_raw_result!(result, 7)"#;
 let _ = (result, note, raw);"##,
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         apply_rust_macro_wrapped_assertion_limit(&mut finding, &index);
 
@@ -1008,10 +1008,10 @@ let _ = (result, note, raw);"##,
     fn cross_language_guard_fires_for_weakly_exposed_with_ffi_attr() {
         let owner = ffi_function("src/lib.rs", "exported_fn", vec!["#[no_mangle]"]);
         let probe = probe_for_owner("src/lib.rs", "exported_fn", ProbeFamily::Predicate);
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let result = cross_language_limit_kind(&probe, &index, &ExposureClass::WeaklyExposed);
         assert_eq!(
             result,
@@ -1023,10 +1023,10 @@ let _ = (result, note, raw);"##,
     fn cross_language_guard_fires_for_reachable_unrevealed_with_wasm_bindgen() {
         let owner = ffi_function("src/lib.rs", "wasm_fn", vec!["#[wasm_bindgen]"]);
         let probe = probe_for_owner("src/lib.rs", "wasm_fn", ProbeFamily::ReturnValue);
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let result = cross_language_limit_kind(&probe, &index, &ExposureClass::ReachableUnrevealed);
         assert_eq!(
             result,
@@ -1038,10 +1038,10 @@ let _ = (result, note, raw);"##,
     fn cross_language_guard_fires_for_infection_unknown_with_ffi_attr() {
         let owner = ffi_function("src/lib.rs", "exported_fn", vec!["#[no_mangle]"]);
         let probe = probe_for_owner("src/lib.rs", "exported_fn", ProbeFamily::Predicate);
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let result = cross_language_limit_kind(&probe, &index, &ExposureClass::InfectionUnknown);
         assert_eq!(
             result,
@@ -1053,10 +1053,10 @@ let _ = (result, note, raw);"##,
     fn cross_language_guard_does_not_fire_for_pure_rust_owner_weakly_exposed() {
         let owner = ffi_function("src/lib.rs", "pure_fn", vec![]);
         let probe = probe_for_owner("src/lib.rs", "pure_fn", ProbeFamily::Predicate);
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let result = cross_language_limit_kind(&probe, &index, &ExposureClass::WeaklyExposed);
         assert_eq!(result, None);
     }
@@ -1065,10 +1065,10 @@ let _ = (result, note, raw);"##,
     fn cross_language_guard_skips_exposed_and_names_no_static_path_with_ffi() {
         let owner = ffi_function("src/lib.rs", "exported_fn", vec!["#[no_mangle]"]);
         let probe = probe_for_owner("src/lib.rs", "exported_fn", ProbeFamily::ReturnValue);
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         assert_eq!(
             cross_language_limit_kind(&probe, &index, &ExposureClass::Exposed),
             None
@@ -1087,10 +1087,10 @@ let _ = (result, note, raw);"##,
         let owner = ffi_function("src/lib.rs", "exported_fn", vec!["#[no_mangle]"]);
         let mut probe = probe_for_owner("src/lib.rs", "exported_fn", ProbeFamily::Predicate);
         probe.owner = None;
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         assert_eq!(
             cross_language_limit_kind(&probe, &index, &ExposureClass::WeaklyExposed),
             None
@@ -1155,10 +1155,10 @@ let _ = (result, note, raw);"##,
 
     #[test]
     fn cross_language_limit_replaces_the_co_located_test_step_on_no_static_path() {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![ffi_function("src/lib.rs", "inner", vec!["#[pyfunction]"])],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let mut finding = no_static_path_finding();
         finding.recommended_next_step = Some("add a co-located test".to_string());
         let probe = finding.probe.clone();
@@ -1202,10 +1202,10 @@ let _ = (result, note, raw);"##,
         );
 
         // A pure-Rust owner is untouched.
-        let pure = RustIndex {
+        let pure = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![ffi_function("src/lib.rs", "inner", vec![])],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let mut plain = no_static_path_finding();
         plain.recommended_next_step = Some("add a co-located test".to_string());
         apply_cross_language_limit(&mut plain, &probe, &pure);

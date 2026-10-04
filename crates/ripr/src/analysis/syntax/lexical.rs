@@ -15,8 +15,12 @@ impl RustSyntaxAdapter for LexicalRustSyntaxAdapter {
         ))
     }
 
-    fn changed_nodes(&self, facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
-        owner_changed_nodes(facts, ranges)
+    fn changed_nodes(
+        &self,
+        functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
+        ranges: &[TextRange],
+    ) -> Vec<SyntaxNodeFact> {
+        owner_changed_nodes(functions, ranges)
     }
 }
 
@@ -230,11 +234,13 @@ fn property_safe_lexical_assertions(
     assertions
 }
 
-fn owner_changed_nodes(facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
+fn owner_changed_nodes(
+    functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
+    ranges: &[TextRange],
+) -> Vec<SyntaxNodeFact> {
     let mut nodes = Vec::new();
     for range in ranges {
-        let mut owners = facts
-            .functions
+        let mut owners = functions
             .iter()
             .filter(|function| {
                 ranges_overlap(
@@ -473,7 +479,10 @@ fn checks_value() {
                 end_column: 40,
             },
         ];
-        let nodes = adapter.changed_nodes(&facts, &ranges);
+        let nodes = adapter.changed_nodes(
+            crate::analysis::facts::FactSlice::from_slice(&facts.functions),
+            &ranges,
+        );
 
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].kind, "test_function");

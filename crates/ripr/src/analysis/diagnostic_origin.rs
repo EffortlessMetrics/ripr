@@ -241,7 +241,7 @@ fn captured_file_index<'a>(
     let mut captured = BTreeMap::new();
     for (path, bytes) in loaded_files {
         let source = rust_source_text(bytes).text;
-        let facts = index.files.get(path);
+        let facts = index.files().get(path);
         let text = source.as_ref();
         captured.insert(
             path.clone(),
@@ -550,9 +550,7 @@ mod tests {
 
     fn index_with(source: &str) -> RustIndex {
         let mut index = RustIndex::default();
-        index
-            .files
-            .insert(PathBuf::from("src/lib.rs"), facts_for(source));
+        index.insert_file_only(PathBuf::from("src/lib.rs"), facts_for(source));
         index
     }
 
@@ -564,9 +562,7 @@ mod tests {
     ) -> RustDiagnosticOrigins {
         let mut index = RustIndex::default();
         if let Some(facts_source) = facts_source {
-            index
-                .files
-                .insert(PathBuf::from("src/lib.rs"), facts_for(facts_source));
+            index.insert_file_only(PathBuf::from("src/lib.rs"), facts_for(facts_source));
         } else {
             index = index_with(source);
         }
@@ -772,7 +768,7 @@ mod tests {
         let start = require_find(source, PREDICATE, "predicate")?;
         let finding = current_finding("probe:lex", 2, PREDICATE);
         let mut index = index_with(source);
-        if let Some(facts) = index.files.get_mut(&PathBuf::from("src/lib.rs")) {
+        if let Some(facts) = index.file_data_mut(&PathBuf::from("src/lib.rs")) {
             facts.used_lexical_fallback = true;
         } else {
             return Err("facts missing".to_string());

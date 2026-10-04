@@ -187,7 +187,7 @@ fn owner_is_public_library_item(
     if normalize_relative(&owner_fn.file) != package.library_root {
         return Err(NewTestProposalBlocker::PrivateOwner);
     }
-    let Some(facts) = index.files.get(&owner_fn.file) else {
+    let Some(facts) = index.files().get(&owner_fn.file) else {
         return Err(NewTestProposalBlocker::OwnerUnresolved);
     };
     if facts.used_lexical_fallback {

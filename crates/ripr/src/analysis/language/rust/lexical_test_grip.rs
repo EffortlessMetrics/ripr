@@ -13,7 +13,9 @@
 
 use super::mask_rust_comments_and_strings;
 use super::owner_name_from_id;
-use crate::analysis::facts::{FileFacts, RustIndex};
+#[cfg(test)]
+use crate::analysis::facts::FileFacts;
+use crate::analysis::facts::{FileFactsView, RustIndex};
 use crate::analysis::rust_index;
 use crate::analysis::workspace;
 use crate::analysis_outcome::{
@@ -72,7 +74,7 @@ fn consulted_gaps(
         .collect::<BTreeSet<_>>();
 
     let mut gaps = BTreeSet::new();
-    for (path, facts) in &index.files {
+    for (path, facts) in index.files().iter() {
         let normalized = repo_relative(path, workspace_root);
         if !facts.used_lexical_fallback || changed.contains(&normalized) {
             continue;
@@ -92,7 +94,7 @@ fn consulted_gaps(
     gaps.into_iter().collect()
 }
 
-fn is_test_evidence_file(path: &Path, facts: &FileFacts) -> bool {
+fn is_test_evidence_file(path: &Path, facts: FileFactsView<'_>) -> bool {
     rust_index::is_test_file(path)
         || !facts.tests.is_empty()
         || source_registers_executable_test(&facts.source)
@@ -508,7 +510,7 @@ mod tests {
         let mut index = RustIndex::default();
         for path in &gaps {
             let source = format!("#[test] fn p() {{ price(200, 10); }}\n{PARSER_REFUSAL}");
-            index.files.insert(
+            index.insert_file_only(
                 path.clone(),
                 fallback_file(&path.to_string_lossy(), &source, &[]),
             );
@@ -542,7 +544,7 @@ mod tests {
     fn detector_names_a_fallback_file_that_already_contributed_related_tests() -> Result<(), String>
     {
         let mut index = RustIndex::default();
-        index.files.insert(
+        index.insert_file_only(
             PathBuf::from("tests/price.rs"),
             fallback_file(
                 "tests/price.rs",
@@ -565,7 +567,7 @@ mod tests {
     fn detector_ignores_an_unrelated_fallback_file_that_does_not_name_the_owner()
     -> Result<(), String> {
         let mut index = RustIndex::default();
-        index.files.insert(
+        index.insert_file_only(
             PathBuf::from("tests/nightly.rs"),
             fallback_file(
                 "tests/nightly.rs",
@@ -589,7 +591,7 @@ mod tests {
     #[test]
     fn detector_ignores_owner_mentions_inside_comments_and_strings() -> Result<(), String> {
         let mut index = RustIndex::default();
-        index.files.insert(
+        index.insert_file_only(
             PathBuf::from("tests/nightly.rs"),
             fallback_file(
                 "tests/nightly.rs",
@@ -613,7 +615,7 @@ mod tests {
     #[test]
     fn detector_skips_changed_files_so_it_does_not_absorb_producer_failure() -> Result<(), String> {
         let mut index = RustIndex::default();
-        index.files.insert(
+        index.insert_file_only(
             PathBuf::from("tests/price.rs"),
             fallback_file(
                 "tests/price.rs",
@@ -637,7 +639,7 @@ mod tests {
     #[test]
     fn detector_stays_quiet_when_no_owner_was_classified() -> Result<(), String> {
         let mut index = RustIndex::default();
-        index.files.insert(
+        index.insert_file_only(
             PathBuf::from("tests/price.rs"),
             fallback_file(
                 "tests/price.rs",
@@ -691,7 +693,7 @@ mod tests {
     #[test]
     fn detector_ignores_an_unrelated_fn_declaration_with_the_owner_name() -> Result<(), String> {
         let mut index = RustIndex::default();
-        index.files.insert(
+        index.insert_file_only(
             PathBuf::from("tests/nightly.rs"),
             fallback_file(
                 "tests/nightly.rs",
@@ -715,7 +717,7 @@ mod tests {
     #[test]
     fn detector_names_a_dropped_turbofish_owner_call() -> Result<(), String> {
         let mut index = RustIndex::default();
-        index.files.insert(
+        index.insert_file_only(
             PathBuf::from("tests/price.rs"),
             fallback_file(
                 "tests/price.rs",
@@ -739,7 +741,7 @@ mod tests {
     #[test]
     fn detector_ignores_a_same_named_call_in_another_crate() -> Result<(), String> {
         let mut index = RustIndex::default();
-        index.files.insert(
+        index.insert_file_only(
             PathBuf::from("crate_b/tests/nightly.rs"),
             fallback_file(
                 "crate_b/tests/nightly.rs",
@@ -763,7 +765,7 @@ mod tests {
     #[test]
     fn detector_names_a_same_crate_call_under_a_package_prefix() -> Result<(), String> {
         let mut index = RustIndex::default();
-        index.files.insert(
+        index.insert_file_only(
             PathBuf::from("crate_a/tests/price.rs"),
             fallback_file(
                 "crate_a/tests/price.rs",
@@ -786,7 +788,7 @@ mod tests {
     fn detector_matches_absolute_index_paths_against_a_relative_owner() -> Result<(), String> {
         let root = PathBuf::from("/tmp/demo-crate");
         let mut index = RustIndex::default();
-        index.files.insert(
+        index.insert_file_only(
             root.join("tests/price.rs"),
             fallback_file(
                 "tests/price.rs",
@@ -810,7 +812,7 @@ mod tests {
     #[test]
     fn detector_names_a_spaced_test_attribute_outside_tests_dir() -> Result<(), String> {
         let mut index = RustIndex::default();
-        index.files.insert(
+        index.insert_file_only(
             PathBuf::from("src/discount_tests.rs"),
             fallback_file(
                 "src/discount_tests.rs",

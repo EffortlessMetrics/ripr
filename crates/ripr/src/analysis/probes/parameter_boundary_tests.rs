@@ -23,10 +23,10 @@ fn probes_at(source: &str, line: usize) -> Result<Vec<Probe>, String> {
         .ok_or_else(|| format!("fixture has no line {line}"))?
         .to_string();
     let facts = RaRustSyntaxAdapter.summarize_file(&path, source)?;
-    let index = RustIndex {
+    let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
         files: BTreeMap::from([(path.clone(), facts)]),
-        ..RustIndex::default()
-    };
+        ..Default::default()
+    });
     let changed = ChangedFile {
         path,
         added_lines: vec![ChangedLine {
@@ -150,10 +150,10 @@ fn unsafe_parameter_retains_both_declaration_and_boundary_identity() -> Result<(
         .find(|shape| shape.kind == PROBE_SHAPE_UNSAFE_BOUNDARY)
         .cloned()
         .ok_or_else(|| "fixture has no unsafe boundary".to_string())?;
-    let index = RustIndex {
+    let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
         files: BTreeMap::from([(path.clone(), facts)]),
-        ..RustIndex::default()
-    };
+        ..Default::default()
+    });
     let text = "out: &Path, // preserve both subjects";
     let shapes = parser_probe_shapes_for_changed_line(&index, &path, 3, text);
     assert_eq!(
@@ -188,10 +188,10 @@ fn unsafe_body_without_parameter_keeps_its_existing_obligation() -> Result<(), S
     let source = "unsafe fn project() {\n    let value = 7;\n}\n";
     let path = PathBuf::from("src/lib.rs");
     let facts = RaRustSyntaxAdapter.summarize_file(&path, source)?;
-    let index = RustIndex {
+    let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
         files: BTreeMap::from([(path.clone(), facts)]),
-        ..RustIndex::default()
-    };
+        ..Default::default()
+    });
     let shapes = parser_probe_shapes_for_changed_line(&index, &path, 2, "let value = 7;");
     assert_eq!(shapes.len(), 1);
     assert!(shapes[0].unsafe_boundary);

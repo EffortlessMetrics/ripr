@@ -917,7 +917,7 @@ pub(crate) fn inventory_changed_test_classified_seams_at_with_config_node(
 
     let selected_tests = cached
         .index
-        .tests
+        .tests()
         .iter()
         .filter(|test| normalized_inventory_path(&test.file) == changed_test)
         .filter(|test| test_node.is_none_or(|node| test.name == node))
@@ -957,7 +957,7 @@ pub(crate) fn inventory_changed_test_classified_seams_at_with_config_node(
 
     let candidate_functions = cached
         .index
-        .functions
+        .functions()
         .iter()
         .filter(|function| {
             !function.source_role.is_evidence_role() && direct_call_names.contains(&function.name)
@@ -1703,7 +1703,7 @@ fn immediate_caller_file_set(
     }
 
     index
-        .functions
+        .functions()
         .iter()
         .filter(|function| !function.source_role.is_evidence_role())
         .filter_map(|function| {
@@ -2142,7 +2142,7 @@ pub(crate) fn inventory_seams_from_index(
     // Iterate `production_files` in caller-given order, but the final
     // sort below makes the output independent of that order anyway.
     for path in production_files {
-        let Some(facts) = index.files.get(path) else {
+        let Some(facts) = index.files().get(path) else {
             continue;
         };
         for shape in &facts.probe_shapes {
@@ -2399,10 +2399,11 @@ marker = "libtest_mimic::Trial"
         let mut index = RustIndex::default();
         for (path, source) in files {
             let facts = adapter.summarize_file(path, source)?;
-            index.files.insert(path.clone(), facts);
-            index
-                .functions
-                .extend(index.files[path].functions.iter().cloned());
+            // This fixture intentionally populates only the flat functions;
+            // callers select flat tests separately from the per-file facts.
+            let functions = facts.functions.clone();
+            index.insert_file_only(path.clone(), facts);
+            index.extend_functions(functions);
         }
         Ok(index)
     }
@@ -2462,12 +2463,13 @@ marker = "libtest_mimic::Trial"
                 "#[test] fn exercises_both() { let _ = eligible(11); let _ = other(11); }",
             ),
         ])?;
-        index.tests = index
-            .files
+        let tests = index
+            .files()
             .values()
             .flat_map(|facts| facts.tests.iter().cloned())
-            .collect();
-        assert!(!index.tests.is_empty());
+            .collect::<Vec<_>>();
+        index.replace_tests(tests);
+        assert!(!index.tests().is_empty());
         let seams = inventory_seams_from_index(&[path], &index);
         if seams.len() < 2 {
             return Err("fixture must span windows".into());
@@ -2622,13 +2624,14 @@ pub fn eligible(value: i32) -> bool { if value >= 10 { true } else { false } }
 }
 "#,
         )])?;
-        index.tests = index
-            .files
+        let tests = index
+            .files()
             .values()
             .flat_map(|facts| facts.tests.iter().cloned())
-            .collect();
+            .collect::<Vec<_>>();
+        index.replace_tests(tests);
         let seams = inventory_seams_from_index(&[path], &index);
-        if seams.is_empty() || index.tests.is_empty() {
+        if seams.is_empty() || index.tests().is_empty() {
             return Err(
                 "late deadline fixture must contain production seams and a test".to_string(),
             );
@@ -2802,7 +2805,7 @@ pub fn check_b(x: i32) -> i32 {
             ));
         }
         assert!(!forward_ids.is_empty());
-        let facts = index.files.get_mut(&a).ok_or("fixture file facts")?;
+        let facts = index.file_data_mut(&a).ok_or("fixture file facts")?;
         let probe = facts
             .probe_shapes
             .first()
@@ -3301,7 +3304,7 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
         // The repo walker keeps its production-file list and the index
         // in lockstep, but in tests the two can diverge when a caller
         // passes a synthetic file list. The early-continue at the
-        // `index.files.get(path)` lookup is what keeps the walker
+        // `index.files().get(path)` lookup is what keeps the walker
         // crash-free in that case.
         let index = RustIndex::default();
         let seams = inventory_seams_from_index(&[PathBuf::from("missing.rs")], &index);
@@ -3338,8 +3341,8 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
             impl_context: Default::default(),
         };
         let mut index = RustIndex::default();
-        index.functions.push(owner.clone());
-        index.files.insert(
+        index.push_function(owner.clone());
+        index.insert_file_only(
             path.clone(),
             FileFacts {
                 path: path.clone(),
@@ -3390,8 +3393,8 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
             impl_context: Default::default(),
         };
         let mut index = RustIndex::default();
-        index.functions.push(test_owner.clone());
-        index.files.insert(
+        index.push_function(test_owner.clone());
+        index.insert_file_only(
             path.clone(),
             FileFacts {
                 path: path.clone(),

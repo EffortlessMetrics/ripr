@@ -2,7 +2,7 @@
 
 use super::super::lexical::classify_changed_line;
 use super::{ParserProbeShape, source_line_byte_range};
-use crate::analysis::rust_index::FileFacts;
+use crate::analysis::facts::FileData;
 use crate::analysis::syntax::parse_clean_source_file;
 use crate::domain::ProbeFamily;
 use ra_ap_syntax::{AstNode, SyntaxKind, SyntaxNode, ast};
@@ -15,7 +15,7 @@ use std::ops::Range;
 /// eligible. Record fields containing const expressions or macros remain with
 /// the existing analysis rather than acquiring a declaration-only disposition.
 pub(super) fn declaration_shape<'a>(
-    facts: &'a FileFacts,
+    facts: &'a FileData,
     line: usize,
     changed_text: &str,
 ) -> Option<ParserProbeShape<'a>> {
@@ -123,10 +123,26 @@ mod tests {
 
     const SOURCE: &str = "struct Path;\nfn project(\n    out: &Path,\n) {}\n";
 
+    fn declaration_facts(source: &str) -> Result<FileData, String> {
+        let facts = RaRustSyntaxAdapter.summarize_file(Path::new("src/lib.rs"), source)?;
+        Ok(FileData {
+            path: facts.path,
+            calls: facts.calls,
+            returns: facts.returns,
+            literals: facts.literals,
+            probe_shapes: facts.probe_shapes,
+            used_lexical_fallback: facts.used_lexical_fallback,
+            module_declarations: facts.module_declarations,
+            unresolved_property_macros: facts.unresolved_property_macros,
+            role_provenance: facts.role_provenance,
+            source: facts.source,
+        })
+    }
+
     #[test]
     fn parameter_shape_preserves_exact_coordinates_and_unknown_family() -> Result<(), String> {
         for source in [SOURCE.to_string(), SOURCE.replace('\n', "\r\n")] {
-            let facts = RaRustSyntaxAdapter.summarize_file(Path::new("src/lib.rs"), &source)?;
+            let facts = declaration_facts(&source)?;
             let shape = declaration_shape(&facts, 3, "    out: &Path,")
                 .ok_or_else(|| "missing parser-confirmed parameter".to_string())?;
             assert_eq!(shape.family, ProbeFamily::StaticUnknown);
@@ -141,7 +157,7 @@ mod tests {
 
     #[test]
     fn parameter_shape_requires_current_parser_owned_source() -> Result<(), String> {
-        let mut facts = RaRustSyntaxAdapter.summarize_file(Path::new("src/lib.rs"), SOURCE)?;
+        let mut facts = declaration_facts(SOURCE)?;
         assert!(declaration_shape(&facts, 3, "out: &Other,").is_none());
         assert!(declaration_shape(&facts, 0, "out: &Path,").is_none());
         assert!(declaration_shape(&facts, 30, "out: &Path,").is_none());
@@ -189,7 +205,7 @@ mod tests {
                 "out: &Path, /* note */ other: &Path,",
             ),
         ] {
-            let facts = RaRustSyntaxAdapter.summarize_file(Path::new("src/lib.rs"), source)?;
+            let facts = declaration_facts(source)?;
             assert!(
                 declaration_shape(&facts, line, text).is_none(),
                 "non-parameter or shared line was reclassified: {source}"
@@ -210,7 +226,7 @@ mod tests {
                 let text = format!("out: &Path{suffix}");
                 let source = format!("// λ\nstruct Path;\nfn project(\n    {text}\n) {{}}\n")
                     .replace('\n', newline);
-                let facts = RaRustSyntaxAdapter.summarize_file(Path::new("src/lib.rs"), &source)?;
+                let facts = declaration_facts(&source)?;
                 let shape = declaration_shape(&facts, 4, &text)
                     .ok_or_else(|| format!("commented parameter was lost: {text}"))?;
                 assert_eq!(shape.family, ProbeFamily::StaticUnknown);
@@ -234,7 +250,7 @@ mod tests {
             for newline in ["\n", "\r\n"] {
                 let source = format!("// λ\nstruct Marker;\nstruct Packet {{\n    {text}\n}}\n")
                     .replace('\n', newline);
-                let facts = RaRustSyntaxAdapter.summarize_file(Path::new("src/lib.rs"), &source)?;
+                let facts = declaration_facts(&source)?;
                 let shape = declaration_shape(&facts, 4, text)
                     .ok_or_else(|| format!("record declaration was not retained: {text}"))?;
                 assert_eq!(shape.family, ProbeFamily::StaticUnknown);
@@ -251,7 +267,7 @@ mod tests {
     #[test]
     fn record_field_fallback_requires_current_valid_source() -> Result<(), String> {
         let source = "struct Packet {\n    value: u8,\n}\n";
-        let mut facts = RaRustSyntaxAdapter.summarize_file(Path::new("src/lib.rs"), source)?;
+        let mut facts = declaration_facts(source)?;
         assert!(declaration_shape(&facts, 2, "value: u8,").is_some());
         assert!(declaration_shape(&facts, 2, "value: u16,").is_none());
         assert!(declaration_shape(&facts, 0, "value: u8,").is_none());
@@ -296,7 +312,7 @@ mod tests {
                 "value: field_type!(),",
             ),
         ] {
-            let facts = RaRustSyntaxAdapter.summarize_file(Path::new("src/lib.rs"), source)?;
+            let facts = declaration_facts(source)?;
             assert!(
                 declaration_shape(&facts, line, text).is_none(),
                 "shared or unsupported field context was admitted: {text}"

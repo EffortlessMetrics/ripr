@@ -22,7 +22,7 @@ pub(crate) fn probes_for_repo_file_seeded(
     index: &RustIndex,
 ) -> Vec<SeededProbe> {
     let mut probes = Vec::new();
-    let Some(facts) = index.files.get(path) else {
+    let Some(facts) = index.files().get(path) else {
         return probes;
     };
 
@@ -102,7 +102,7 @@ mod tests {
     #[test]
     fn probes_for_repo_file_emits_known_shape_with_owner() {
         let path = PathBuf::from("src/lib.rs");
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -146,8 +146,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let probes = probes_for_repo_file(Path::new("workspace"), &path, &index);
 
@@ -183,7 +183,7 @@ mod tests {
     #[test]
     fn probes_for_included_file_keep_fragment_location_and_parent_owner() {
         let fragment = PathBuf::from("src/parser_fragment.rs");
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 fragment.clone(),
                 FileFacts {
@@ -216,8 +216,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let probes = probes_for_repo_file(Path::new("workspace"), &fragment, &index);
 

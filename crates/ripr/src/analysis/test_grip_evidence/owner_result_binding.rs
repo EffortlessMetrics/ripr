@@ -95,7 +95,7 @@ fn owner_result_field_observation(
     }) {
         return None;
     }
-    let facts = context.index.files.get(indexed.test.file.as_path())?;
+    let facts = context.index.files().get(indexed.test.file.as_path())?;
     if facts.used_lexical_fallback {
         return None;
     }
@@ -453,7 +453,7 @@ fn resolve_use_module_path(item_path: &str, current_module: &str) -> Option<Stri
 fn owner_name_is_unique_in_module(index: &RustIndex, module_path: &str, owner_name: &str) -> bool {
     let normalized = normalize_module_key(module_path);
     let mut seen = false;
-    for function in &index.functions {
+    for function in &index.functions() {
         if function.source_role.is_evidence_role() {
             continue;
         }

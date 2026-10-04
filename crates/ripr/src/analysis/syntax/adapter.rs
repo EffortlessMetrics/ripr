@@ -6,7 +6,11 @@ use super::super::facts::FileFacts;
 pub trait RustSyntaxAdapter {
     fn summarize_file(&self, path: &Path, text: &str) -> Result<FileFacts, String>;
 
-    fn changed_nodes(&self, facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact>;
+    fn changed_nodes(
+        &self,
+        functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
+        ranges: &[TextRange],
+    ) -> Vec<SyntaxNodeFact>;
 }
 
 #[derive(Clone, Debug, Default)]

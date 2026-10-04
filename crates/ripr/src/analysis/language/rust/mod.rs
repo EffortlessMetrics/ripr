@@ -895,7 +895,7 @@ fn find_subprocess_binary_test<'a>(
         return None;
     }
     index
-        .tests
+        .tests()
         .iter()
         .filter(|test| rust_index::is_test_file(&test.file))
         .filter(|test| is_cargo_binary_invocation(&test.body))
@@ -1430,7 +1430,7 @@ impl RustAdapter {
 
         // #2971: The cross-crate calls_owner bypass in find_related_tests
         // requires a workspace-complete function index. In Instant/Draft/Fast
-        // mode, index.functions is scoped to changed files or changed packages,
+        // mode, index.functions() is scoped to changed files or changed packages,
         // so a same-named function in an unchanged file would be absent from
         // the uniqueness count — fail-closed by treating the index as
         // incomplete for those modes.
@@ -4312,7 +4312,7 @@ fn absent_delimiter_boundary_returns_head() {
     #[test]
     fn subprocess_limit_only_applies_to_binary_source_paths_and_integration_tests() {
         let mut index = RustIndex::default();
-        index.tests.push(TestFact {
+        index.push_test(TestFact {
             name: "cli_receipt".to_string(),
             file: PathBuf::from("tests/cli.rs"),
             start_line: 12,
@@ -4328,7 +4328,7 @@ fn absent_delimiter_boundary_returns_head() {
         assert!(is_binary_source_path(Path::new("src/main.rs")));
         assert!(super::find_subprocess_binary_test(&index, Path::new("src/main.rs")).is_some());
         assert!(super::find_subprocess_binary_test(&index, Path::new("src/lib.rs")).is_none());
-        index.tests[0].file = PathBuf::from("src/lib.rs");
+        index.test_at_mut(0).file = PathBuf::from("src/lib.rs");
         assert!(super::find_subprocess_binary_test(&index, Path::new("src/main.rs")).is_none());
     }
 
@@ -6183,10 +6183,10 @@ fn absent_delimiter_boundary_returns_head() {
             impl_context: Default::default(),
             item: Default::default(),
         };
-        let rust_index = RustIndex {
+        let rust_index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![rust_owner.clone()],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = finding.probe.clone();
         apply_probe_and_oracle_limits(&mut finding, &probe, &rust_index, None);
         assert_eq!(
@@ -6200,10 +6200,10 @@ fn absent_delimiter_boundary_returns_head() {
         ffi_finding.evidence.clear();
         let mut ffi_owner = rust_owner;
         ffi_owner.attrs = vec!["#[no_mangle]".to_string()];
-        let ffi_index = RustIndex {
+        let ffi_index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![ffi_owner],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = ffi_finding.probe.clone();
         apply_probe_and_oracle_limits(&mut ffi_finding, &probe, &ffi_index, None);
         assert_eq!(

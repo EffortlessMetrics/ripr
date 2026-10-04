@@ -142,23 +142,25 @@ pub(super) fn compose_index_source_roles(index: &mut RustIndex, workspace_root: 
 /// Existing evidence roles (executable tests, promoted expansions, same-file
 /// cfg-test helpers) are never demoted: evidence roles union.
 fn apply_cfg_test_module_grants(index: &mut RustIndex, granted: &BTreeSet<PathBuf>) {
-    for file in granted {
-        let Some(facts) = index.files.get_mut(file) else {
-            continue;
-        };
-        for function in &mut facts.functions {
-            if function.source_role == FunctionSourceRole::Production {
-                function.source_role = FunctionSourceRole::CfgTestModule;
-            }
-        }
-    }
-    for function in &mut index.functions {
-        if granted.contains(&function.file)
-            && function.source_role == FunctionSourceRole::Production
-        {
-            function.source_role = FunctionSourceRole::CfgTestModule;
-        }
-    }
+    let local = granted
+        .iter()
+        .filter_map(|file| index.files.get(file))
+        .flat_map(|file| file.functions.iter().copied())
+        .filter(|&id| index.function_facts[id].source_role == FunctionSourceRole::Production)
+        .map(|id| (id, FunctionSourceRole::CfgTestModule))
+        .collect::<Vec<_>>();
+    let flat = index
+        .function_order
+        .iter()
+        .copied()
+        .filter(|&id| {
+            let function = &index.function_facts[id];
+            granted.contains(&function.file)
+                && function.source_role == FunctionSourceRole::Production
+        })
+        .map(|id| (id, FunctionSourceRole::CfgTestModule))
+        .collect::<Vec<_>>();
+    index.apply_function_roles(flat, local);
 }
 
 /// Resolution outcome for one declaration's target path.
@@ -868,7 +870,7 @@ mod tests {
 
     fn role_of(index: &RustIndex, file: &str, name: &str) -> Result<FunctionSourceRole, String> {
         index
-            .functions
+            .functions()
             .iter()
             .find(|function| function.file == Path::new(file) && function.name == name)
             .map(|function| function.source_role)
@@ -881,7 +883,7 @@ mod tests {
         name: &str,
     ) -> Result<FunctionSourceRole, String> {
         index
-            .files
+            .files()
             .get(Path::new(file))
             .and_then(|facts| {
                 facts
@@ -894,7 +896,7 @@ mod tests {
     }
 
     fn test_names(index: &RustIndex) -> Vec<String> {
-        index.tests.iter().map(|test| test.name.clone()).collect()
+        index.tests().iter().map(|test| test.name.clone()).collect()
     }
 
     /// The live-defect shape: ripr's own `#[cfg(test)] mod tests;` modules.
@@ -946,7 +948,11 @@ mod tests {
         assert!(names.contains(&"real_test".to_string()));
         assert!(!names.contains(&"unattributed_helper".to_string()));
         // Provenance records the granting chain.
-        let provenance = &index.files[Path::new("src/tests.rs")].role_provenance;
+        let provenance = &index
+            .files()
+            .at(Path::new("src/tests.rs"))
+            .data()
+            .role_provenance;
         assert!(provenance.earliest_unresolved_reason.is_none());
         assert_eq!(provenance.edges.len(), 1);
         let edge = &provenance.edges[0];
@@ -957,7 +963,11 @@ mod tests {
         assert_eq!(edge.declaration, "mod tests;");
         assert!(edge.line >= 3);
         // Standalone files record no provenance.
-        let parent_provenance = &index.files[Path::new("src/lib.rs")].role_provenance;
+        let parent_provenance = &index
+            .files()
+            .at(Path::new("src/lib.rs"))
+            .data()
+            .role_provenance;
         assert!(parent_provenance.edges.is_empty());
         Ok(())
     }
@@ -986,7 +996,11 @@ mod tests {
         );
         // The chain is recorded without granting: the edge resolved but does
         // not require a test build.
-        let provenance = &index.files[Path::new("src/child.rs")].role_provenance;
+        let provenance = &index
+            .files()
+            .at(Path::new("src/child.rs"))
+            .data()
+            .role_provenance;
         assert!(provenance.earliest_unresolved_reason.is_none());
         assert_eq!(provenance.edges.len(), 1);
         assert!(!provenance.edges[0].requires_test);
@@ -1024,7 +1038,11 @@ mod tests {
             role_of(&index, "src/ordinary/tests.rs", "nested_helper")?,
             FunctionSourceRole::CfgTestModule
         );
-        let provenance = &index.files[Path::new("src/ordinary/tests.rs")].role_provenance;
+        let provenance = &index
+            .files()
+            .at(Path::new("src/ordinary/tests.rs"))
+            .data()
+            .role_provenance;
         assert!(provenance.earliest_unresolved_reason.is_none());
         let edges = &provenance.edges;
         assert_eq!(edges.len(), 2, "both chain edges are recorded");
@@ -1151,7 +1169,7 @@ mod tests {
                 return Err(format!("ambiguous child {file} received an evidence role"));
             }
             let facts = index
-                .files
+                .files()
                 .get(Path::new(file))
                 .ok_or_else(|| format!("missing child facts for {file}"))?;
             if facts.role_provenance.earliest_unresolved_reason.as_deref()
@@ -1292,7 +1310,11 @@ mod tests {
         let names = test_names(&index);
         assert!(names.contains(&"fragment_test".to_string()));
         assert!(!names.contains(&"fragment_helper".to_string()));
-        let provenance = &index.files[Path::new("src/fragment.rs")].role_provenance;
+        let provenance = &index
+            .files()
+            .at(Path::new("src/fragment.rs"))
+            .data()
+            .role_provenance;
         assert!(provenance.earliest_unresolved_reason.is_none());
         let edges = &provenance.edges;
         assert_eq!(edges.len(), 2, "module edge then include edge");
@@ -1363,7 +1385,11 @@ mod tests {
             FunctionSourceRole::CfgTestModule,
             "the fragment of a test-gated invocation is test-only even beside a production unit"
         );
-        let provenance = &index.files[Path::new("src/fragment.rs")].role_provenance;
+        let provenance = &index
+            .files()
+            .at(Path::new("src/fragment.rs"))
+            .data()
+            .role_provenance;
         assert!(provenance.earliest_unresolved_reason.is_none());
         assert_eq!(provenance.edges.len(), 1);
         assert_eq!(
@@ -1473,7 +1499,7 @@ mod tests {
         );
         assert!(
             index
-                .files
+                .files()
                 .get(Path::new("src/child.rs"))
                 .ok_or("physical child facts missing")?
                 .role_provenance
@@ -1485,7 +1511,7 @@ mod tests {
         );
         assert!(
             index
-                .files
+                .files()
                 .get(Path::new("src/fragment/child.rs"))
                 .ok_or("stem child facts missing")?
                 .role_provenance
@@ -1560,7 +1586,11 @@ mod tests {
             role_of(&index, "src/shared.rs", "contested_helper")?,
             FunctionSourceRole::Production
         );
-        let provenance = &index.files[Path::new("src/shared.rs")].role_provenance;
+        let provenance = &index
+            .files()
+            .at(Path::new("src/shared.rs"))
+            .data()
+            .role_provenance;
         assert_eq!(
             provenance.earliest_unresolved_reason.as_deref(),
             Some(REASON_MODULE_AMBIGUOUS_PARENT),
@@ -1588,7 +1618,11 @@ mod tests {
         ];
         let index = crate::analysis::facts::build_index(&root, &files)
             .map_err(|error| error.to_string())?;
-        let provenance = &index.files[Path::new("tests/common/mod.rs")].role_provenance;
+        let provenance = &index
+            .files()
+            .at(Path::new("tests/common/mod.rs"))
+            .data()
+            .role_provenance;
         assert_eq!(provenance.earliest_unresolved_reason, None);
         assert_eq!(provenance.edges.len(), 1, "{:?}", provenance.edges);
         assert_eq!(provenance.edges[0].parent, PathBuf::from("tests/alpha.rs"));
@@ -1609,7 +1643,9 @@ mod tests {
         let index = crate::analysis::facts::build_index(&root, &files)
             .map_err(|error| error.to_string())?;
         assert_eq!(
-            index.files[Path::new("tests/common/mod.rs")]
+            index
+                .files()
+                .at(Path::new("tests/common/mod.rs"))
                 .role_provenance
                 .earliest_unresolved_reason
                 .as_deref(),
@@ -1646,7 +1682,11 @@ mod tests {
             role_of(&index, "src/shared.rs", "dual_context_helper")?,
             FunctionSourceRole::Production
         );
-        let provenance = &index.files[Path::new("src/shared.rs")].role_provenance;
+        let provenance = &index
+            .files()
+            .at(Path::new("src/shared.rs"))
+            .data()
+            .role_provenance;
         assert_eq!(
             provenance.earliest_unresolved_reason.as_deref(),
             Some(REASON_MODULE_CONTEXT_CONFLICT)
@@ -1681,7 +1721,11 @@ mod tests {
             role_of(&index, "src/shared.rs", "agreed_helper")?,
             FunctionSourceRole::CfgTestModule
         );
-        let provenance = &index.files[Path::new("src/shared.rs")].role_provenance;
+        let provenance = &index
+            .files()
+            .at(Path::new("src/shared.rs"))
+            .data()
+            .role_provenance;
         assert!(provenance.earliest_unresolved_reason.is_none());
         assert!(
             provenance.edges.len() >= 3,
@@ -1909,7 +1953,11 @@ mod tests {
             FunctionSourceRole::Production,
             "the same-named file beside the compilation unit is not this module"
         );
-        let provenance = &index.files[Path::new("src/frags/child.rs")].role_provenance;
+        let provenance = &index
+            .files()
+            .at(Path::new("src/frags/child.rs"))
+            .data()
+            .role_provenance;
         assert!(provenance.earliest_unresolved_reason.is_none());
         let edges = &provenance.edges;
         assert_eq!(
@@ -1962,7 +2010,11 @@ mod tests {
             FunctionSourceRole::CfgTestModule,
             "the crate root's sibling tests.rs is the real module child"
         );
-        let provenance = &index.files[Path::new("source/tests.rs")].role_provenance;
+        let provenance = &index
+            .files()
+            .at(Path::new("source/tests.rs"))
+            .data()
+            .role_provenance;
         assert!(provenance.earliest_unresolved_reason.is_none());
         assert_eq!(provenance.edges.len(), 1);
         assert_eq!(provenance.edges[0].parent, Path::new("source/root.rs"));
@@ -2107,7 +2159,7 @@ mod cycle_depth_tests {
         // reach both files) — fail-closed before any recursion.
         for (file, helper) in [("src/a.rs", "a_helper"), ("src/b.rs", "b_helper")] {
             let facts = index
-                .files
+                .files()
                 .get(Path::new(file))
                 .ok_or_else(|| format!("expected {file} in the index"))?;
             for function in &facts.functions {
@@ -2119,7 +2171,7 @@ mod cycle_depth_tests {
                     );
                 }
             }
-            let provenance = &index.files[Path::new(file)].role_provenance;
+            let provenance = &index.files().at(Path::new(file)).data().role_provenance;
             assert_eq!(
                 provenance.earliest_unresolved_reason.as_deref(),
                 Some(REASON_MODULE_AMBIGUOUS_PARENT),
@@ -2146,7 +2198,11 @@ pub fn helper() -> i32 { 1 }
         let index = crate::analysis::facts::build_index(&root, &[PathBuf::from("src/lib.rs")])
             .map_err(|error| error.to_string())?;
 
-        let provenance = &index.files[Path::new("src/lib.rs")].role_provenance;
+        let provenance = &index
+            .files()
+            .at(Path::new("src/lib.rs"))
+            .data()
+            .role_provenance;
         assert_eq!(
             provenance.earliest_unresolved_reason.as_deref(),
             Some(REASON_MODULE_CYCLE_OR_DEPTH_LIMIT),

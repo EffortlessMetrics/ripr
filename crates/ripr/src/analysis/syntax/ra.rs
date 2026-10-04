@@ -186,8 +186,12 @@ impl RustSyntaxAdapter for RaRustSyntaxAdapter {
         summarize_file_with_parser(path, text)
     }
 
-    fn changed_nodes(&self, facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
-        owner_changed_nodes(facts, ranges)
+    fn changed_nodes(
+        &self,
+        functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
+        ranges: &[TextRange],
+    ) -> Vec<SyntaxNodeFact> {
+        owner_changed_nodes(functions, ranges)
     }
 }
 
@@ -1569,13 +1573,12 @@ pub(super) fn slice_macro_call_text(text: &str, start: TextSize, end: TextSize) 
 }
 
 fn owner_changed_nodes(
-    facts: &crate::analysis::facts::FileFacts,
+    functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
     ranges: &[TextRange],
 ) -> Vec<SyntaxNodeFact> {
     let mut nodes = Vec::new();
     for range in ranges {
-        let mut owners = facts
-            .functions
+        let mut owners = functions
             .iter()
             .filter(|function| {
                 ranges_overlap(
@@ -2102,21 +2105,22 @@ pub fn wrap(value: u64) -> Result<Option<u64>, ()> {
             end_column: 80,
         }];
 
+        let facts = crate::analysis::facts::FileFacts {
+            path: std::path::PathBuf::from("nonexistent.rs"),
+            functions: vec![],
+            tests: vec![],
+            calls: vec![],
+            returns: vec![],
+            literals: vec![],
+            probe_shapes: vec![],
+            used_lexical_fallback: false,
+            module_declarations: Vec::new(),
+            unresolved_property_macros: Vec::new(),
+            role_provenance: Default::default(),
+            source: String::new(),
+        };
         let nodes = adapter.changed_nodes(
-            &crate::analysis::facts::FileFacts {
-                path: std::path::PathBuf::from("nonexistent.rs"),
-                functions: vec![],
-                tests: vec![],
-                calls: vec![],
-                returns: vec![],
-                literals: vec![],
-                probe_shapes: vec![],
-                used_lexical_fallback: false,
-                module_declarations: Vec::new(),
-                unresolved_property_macros: Vec::new(),
-                role_provenance: Default::default(),
-                source: String::new(),
-            },
+            crate::analysis::facts::FactSlice::from_slice(&facts.functions),
             &ranges,
         );
 

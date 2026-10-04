@@ -43,10 +43,22 @@ pub(crate) struct WorkspaceFileAuthority {
 }
 
 impl WorkspaceRootAuthority {
+    #[cfg(test)]
     pub(crate) fn from_index(root: &Path, files: &BTreeMap<PathBuf, FileFacts>) -> Self {
+        Self::from_sources(
+            root,
+            files
+                .iter()
+                .map(|(path, facts)| (path, facts.source.as_str())),
+        )
+    }
+    pub(crate) fn from_sources<'a>(
+        root: &Path,
+        files: impl Iterator<Item = (&'a PathBuf, &'a str)>,
+    ) -> Self {
         let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
         let mut authorities = BTreeMap::new();
-        for (relative, facts) in files {
+        for (relative, source) in files {
             let path_valid = is_relative_without_parent(relative)
                 && canonical_root
                     .join(relative)
@@ -68,7 +80,7 @@ impl WorkspaceRootAuthority {
             authorities.insert(
                 relative.clone(),
                 WorkspaceFileAuthority {
-                    source_digest: source_digest(facts.source.as_bytes()),
+                    source_digest: source_digest(source.as_bytes()),
                     package_identity,
                     valid: path_valid && package_valid,
                 },
@@ -258,8 +270,10 @@ fn relative_path(root: &Path, path: &Path) -> String {
         .to_string_lossy()
         .replace('\\', "/")
 }
+pub use super::index::RustIndex;
+
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
-pub struct RustIndex {
+pub(crate) struct OwnedRustIndex {
     pub files: BTreeMap<PathBuf, FileFacts>,
     pub tests: Vec<TestFact>,
     pub functions: Vec<FunctionFact>,
@@ -935,9 +949,9 @@ mod tests {
     #[test]
     fn rust_index_default_has_empty_fact_sets() {
         let index = RustIndex::default();
-        assert!(index.files.is_empty());
-        assert!(index.tests.is_empty());
-        assert!(index.functions.is_empty());
+        assert!(index.files().is_empty());
+        assert!(index.tests().is_empty());
+        assert!(index.functions().is_empty());
     }
 
     #[test]

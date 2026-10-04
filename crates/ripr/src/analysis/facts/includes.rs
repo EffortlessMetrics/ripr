@@ -335,14 +335,9 @@ fn cycle_or_depth_limited_children(
 }
 
 fn rebase_function_identities(index: &mut RustIndex) {
-    let parents = &index.include_parents;
-    for function in &mut index.functions {
-        rebase_function_identity(function, parents);
-    }
-    for facts in index.files.values_mut() {
-        for function in &mut facts.functions {
-            rebase_function_identity(function, parents);
-        }
+    let ids = index.live_function_ids();
+    for id in ids {
+        rebase_function_identity(&mut index.function_facts[id], &index.include_parents);
     }
 }
 

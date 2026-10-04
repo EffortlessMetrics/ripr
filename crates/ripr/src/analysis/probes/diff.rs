@@ -849,7 +849,7 @@ mod tests {
                 text: "if amount > threshold {".to_string(),
             }],
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -882,8 +882,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let probes = probes_for_file(Path::new("workspace"), &changed, &index);
 
@@ -968,7 +968,7 @@ mod tests {
                 text: "    let decoy = \"montant_é > discount_threshold\"; if montant_é > discount_threshold { true } else { false }".to_string(),
             }],
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -1002,8 +1002,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let seeded = probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
         let predicate = seeded
             .iter()
@@ -1072,7 +1072,7 @@ mod tests {
             ],
             removed_lines: vec![],
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -1106,8 +1106,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let probes = probes_for_file(Path::new("workspace"), &changed, &index);
         if probes.len() != 1 {
@@ -1136,7 +1136,7 @@ mod tests {
             }],
             removed_lines: vec![],
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -1151,8 +1151,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let probes = probes_for_file(Path::new("workspace"), &changed, &index);
         let Some(probe) = probes.first() else {
@@ -1189,7 +1189,7 @@ mod tests {
                 line(50, "macro_rules! choose { ($v:expr) => { $v } }"),
             ],
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -1197,8 +1197,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let probes = probes_for_file(Path::new("workspace"), &changed, &index);
         let families_at = |number: usize| -> Vec<ProbeFamily> {
@@ -1240,7 +1240,7 @@ mod tests {
             }],
             removed_lines: vec![],
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -1255,8 +1255,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let probes = probes_for_file(Path::new("workspace"), &changed, &index);
         let Some(probe) = probes.first() else {
@@ -1280,33 +1280,35 @@ mod tests {
             }],
             removed_lines: vec![],
         };
-        let index_with = |source_role: FunctionSourceRole| RustIndex {
-            files: BTreeMap::from([(
-                path.clone(),
-                FileFacts {
-                    path: path.clone(),
-                    functions: vec![FunctionFact {
-                        id: SymbolId("config::tests::parses".to_string()),
-                        name: "parses".to_string(),
-                        file: path.clone(),
-                        start_line: 1,
-                        end_line: 5,
-                        body: "fn parses() { let config = toml::from_str(text)?; }".to_string(),
-                        calls: vec![],
-                        returns: vec![],
-                        literals: vec![],
-                        source_role,
-                        attrs: vec![],
-                        impl_attrs: Vec::new(),
-                        nested_fn_names: Vec::new(),
-                        let_bindings: Vec::new(),
-                        item: Default::default(),
-                        impl_context: Default::default(),
-                    }],
-                    ..FileFacts::default()
-                },
-            )]),
-            ..RustIndex::default()
+        let index_with = |source_role: FunctionSourceRole| {
+            RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
+                files: BTreeMap::from([(
+                    path.clone(),
+                    FileFacts {
+                        path: path.clone(),
+                        functions: vec![FunctionFact {
+                            id: SymbolId("config::tests::parses".to_string()),
+                            name: "parses".to_string(),
+                            file: path.clone(),
+                            start_line: 1,
+                            end_line: 5,
+                            body: "fn parses() { let config = toml::from_str(text)?; }".to_string(),
+                            calls: vec![],
+                            returns: vec![],
+                            literals: vec![],
+                            source_role,
+                            attrs: vec![],
+                            impl_attrs: Vec::new(),
+                            nested_fn_names: Vec::new(),
+                            let_bindings: Vec::new(),
+                            item: Default::default(),
+                            impl_context: Default::default(),
+                        }],
+                        ..FileFacts::default()
+                    },
+                )]),
+                ..Default::default()
+            })
         };
 
         // Control: a production owner still probes the error path.
@@ -1357,7 +1359,7 @@ mod tests {
             }],
             earliest_unresolved_reason: None,
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([
                 (
                     test_path.clone(),
@@ -1369,8 +1371,8 @@ mod tests {
                 ),
                 (production_path.clone(), FileFacts::default()),
             ]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let test_probes = probes_for_file(Path::new("workspace"), &changed(test_path), &index);
         if !test_probes.is_empty() {
@@ -1414,8 +1416,7 @@ mod tests {
         ] {
             let mut conservative_index = index.clone();
             let facts = conservative_index
-                .files
-                .get_mut(Path::new("src/support.rs"))
+                .file_data_mut(Path::new("src/support.rs"))
                 .ok_or("fixture support file is missing")?;
             facts.role_provenance = provenance;
             let probes = probes_for_file(
@@ -1477,7 +1478,7 @@ mod tests {
         let source = "pub fn loyalty_price(amount: u64, member_years: u32) -> u64 {\n    if member_years >= 5 {\n        amount - amount * 5 / 100\n    } else {\n        amount\n    }\n}\n";
         let path = PathBuf::from("src/lib.rs");
         let mut index = RustIndex::default();
-        index.files.insert(
+        index.insert_file_only(
             path.clone(),
             crate::analysis::rust_index::summarize_file(path.clone(), source.to_string()),
         );
@@ -1695,7 +1696,7 @@ mod tests {
                 text: "events.publish(invoice);".to_string(),
             }],
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -1721,8 +1722,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let probes = probes_for_file(Path::new("workspace"), &changed, &index);
 
@@ -1971,7 +1972,7 @@ mod tests {
                 text: "let end = input.rfind(delim).map_or(0, |idx| idx + 1);".to_string(),
             }],
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -1997,8 +1998,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let probes = probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
 
@@ -2047,7 +2048,7 @@ mod tests {
             }],
             removed_lines: vec![],
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -2073,8 +2074,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let probes = probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
 
@@ -2111,7 +2112,7 @@ mod tests {
             ],
             removed_lines: vec![],
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -2137,8 +2138,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let probes = probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
 

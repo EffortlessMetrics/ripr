@@ -183,7 +183,13 @@ fn build_index_with_file_fact_cache(
     cancellation::checkpoint()?;
     super::includes::resolve_repository_local_includes(root, &mut index);
     cancellation::checkpoint()?;
-    index.workspace_authority = Some(WorkspaceRootAuthority::from_index(root, &index.files));
+    index.workspace_authority = Some(WorkspaceRootAuthority::from_sources(
+        root,
+        index
+            .files()
+            .iter()
+            .map(|(path, facts)| (path, facts.data().source.as_str())),
+    ));
     cancellation::checkpoint()?;
     index.package_names = manifest_package_names(root);
     cancellation::checkpoint()?;
@@ -259,7 +265,13 @@ fn build_index_with_adapters(
     cancellation::checkpoint()?;
     super::includes::resolve_repository_local_includes(root, &mut index);
     cancellation::checkpoint()?;
-    index.workspace_authority = Some(WorkspaceRootAuthority::from_index(root, &index.files));
+    index.workspace_authority = Some(WorkspaceRootAuthority::from_sources(
+        root,
+        index
+            .files()
+            .iter()
+            .map(|(path, facts)| (path, facts.data().source.as_str())),
+    ));
     cancellation::checkpoint()?;
     index.package_names = manifest_package_names(root);
     cancellation::checkpoint()?;
@@ -372,9 +384,7 @@ fn summarize_file_with_adapters(
 }
 
 fn insert_file_summary(index: &mut RustIndex, file: PathBuf, summary: super::FileFacts) {
-    index.tests.extend(summary.tests.clone());
-    index.functions.extend(summary.functions.clone());
-    index.files.insert(file, summary);
+    index.insert_file(file, summary, true);
 }
 
 #[cfg(test)]
@@ -441,13 +451,13 @@ mod tests {
         // lexical facts and the shallow file stays parser-backed.
         let index = build_index(&root, &files)?;
         let deep_facts = index
-            .files
+            .files()
             .get(Path::new("src/deep.rs"))
             .ok_or("deep file missing from index")?;
         assert!(deep_facts.used_lexical_fallback);
-        assert!(index.functions.iter().any(|f| f.name == "deep"));
+        assert!(index.functions().iter().any(|f| f.name == "deep"));
         let lib_facts = index
-            .files
+            .files()
             .get(Path::new("src/lib.rs"))
             .ok_or("lib file missing from index")?;
         assert!(!lib_facts.used_lexical_fallback);
@@ -489,9 +499,9 @@ fn test_add() {
         )?;
 
         let index = build_index(&root, &[PathBuf::from("src/lib.rs")])?;
-        assert!(!index.functions.is_empty());
-        assert!(!index.tests.is_empty());
-        assert!(index.files.contains_key(&PathBuf::from("src/lib.rs")));
+        assert!(!index.functions().is_empty());
+        assert!(!index.tests().is_empty());
+        assert!(index.files().contains_key(&PathBuf::from("src/lib.rs")));
         Ok(())
     }
 
@@ -587,12 +597,12 @@ fn some_fn() -> i32 {
         )?;
 
         let index = build_index(&root, &[PathBuf::from("src/lib.rs")])?;
-        let file_facts = index.files.get(&PathBuf::from("src/lib.rs"));
+        let file_facts = index.files().get(&PathBuf::from("src/lib.rs"));
         assert!(file_facts.is_some());
         assert!(file_facts.is_some_and(|facts| !facts.calls.is_empty()));
         assert!(
             index
-                .files
+                .files()
                 .get(&PathBuf::from("src/lib.rs"))
                 .is_some_and(|facts| !facts.returns.is_empty())
         );
@@ -620,7 +630,7 @@ pub fn check(x: i32) -> bool {
         let index = build_index(&root, &[PathBuf::from("src/lib.rs")])?;
         assert!(
             index
-                .files
+                .files()
                 .get(&PathBuf::from("src/lib.rs"))
                 .is_some_and(|facts| !facts.probe_shapes.is_empty())
         );
@@ -651,7 +661,7 @@ pub fn check(x: i32) -> bool {
 
         fn changed_nodes(
             &self,
-            _facts: &super::super::FileFacts,
+            _facts: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
             _ranges: &[TextRange],
         ) -> Vec<SyntaxNodeFact> {
             Vec::new()
@@ -676,7 +686,7 @@ pub fn check(x: i32) -> bool {
 
         fn changed_nodes(
             &self,
-            _facts: &super::super::FileFacts,
+            _facts: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
             _ranges: &[TextRange],
         ) -> Vec<SyntaxNodeFact> {
             Vec::new()
@@ -697,25 +707,25 @@ pub fn check(x: i32) -> bool {
         )?;
         assert_eq!(
             index
-                .files
+                .files()
                 .get(&PathBuf::from("src/lib.rs"))
-                .map_or("", |facts| facts.source.as_str()),
+                .map_or("", |facts| facts.data().source.as_str()),
             "pub fn fallback() {}\n"
         );
         assert!(
             index
-                .files
+                .files()
                 .get(&PathBuf::from("src/lib.rs"))
                 .is_some_and(|facts| facts.used_lexical_fallback)
         );
         assert!(
             FailingSyntaxAdapter
-                .changed_nodes(&super::super::FileFacts::default(), &[])
+                .changed_nodes(crate::analysis::facts::FactSlice::from_slice(&[]), &[])
                 .is_empty()
         );
         assert!(
             StubSyntaxAdapter
-                .changed_nodes(&super::super::FileFacts::default(), &[])
+                .changed_nodes(crate::analysis::facts::FactSlice::from_slice(&[]), &[])
                 .is_empty()
         );
         Ok(())
@@ -733,14 +743,14 @@ pub fn check(x: i32) -> bool {
         assert_eq!(cold.file_fact_cache.hits, 0);
         assert_eq!(cold.file_fact_cache.misses, 1);
         assert_eq!(cold.file_fact_cache.stores, 1);
-        assert!(cold.index.files.contains_key(&file));
-        assert!(!cold.index.functions.is_empty());
+        assert!(cold.index.files().contains_key(&file));
+        assert!(!cold.index.functions().is_empty());
 
         let warm = build_index_from_loaded_files_with_cache(&root, &files)?;
         assert_eq!(warm.file_fact_cache.hits, 1);
         assert_eq!(warm.file_fact_cache.misses, 0);
         assert_eq!(warm.file_fact_cache.stores, 0);
-        assert_eq!(warm.index.files.get(&file), cold.index.files.get(&file));
+        assert_eq!(warm.index.files().get(&file), cold.index.files().get(&file));
         Ok(())
     }
 
@@ -762,7 +772,7 @@ pub fn check(x: i32) -> bool {
         assert!(
             changed
                 .index
-                .files
+                .files()
                 .get(&file)
                 .is_some_and(|facts| facts.source.contains("{ 2 }"))
         );
@@ -818,13 +828,13 @@ pub fn check(x: i32) -> bool {
 
         let index = build_loaded(&fixture, &with_bom)?.index;
         let facts = index
-            .files
+            .files()
             .get(&file)
             .ok_or("bom file missing from index")?;
         assert!(!facts.used_lexical_fallback);
         assert!(!facts.source.starts_with('\u{feff}'));
         let owner = index
-            .functions
+            .functions()
             .iter()
             .find(|function| function.name == "b")
             .ok_or("line-1 owner missing")?;
@@ -843,7 +853,7 @@ pub fn check(x: i32) -> bool {
         // The same bytes without the mark index to the same facts.
         let fixture = CacheInventoryFixture::new("index_no_bom")?;
         let plain = build_loaded(&fixture, &[(file.clone(), source.to_vec())])?.index;
-        assert_eq!(plain.functions, index.functions);
+        assert_eq!(plain.functions(), index.functions());
         Ok(())
     }
 
@@ -863,13 +873,13 @@ pub fn check(x: i32) -> bool {
 
         // Before: the whole build failed with "failed to read ...".
         let cold = build_loaded(&fixture, &files)?;
-        let latin_facts = cold.index.files.get(&latin).ok_or("latin file missing")?;
+        let latin_facts = cold.index.files().get(&latin).ok_or("latin file missing")?;
         assert!(latin_facts.used_lexical_fallback);
-        assert!(cold.index.functions.iter().any(|f| f.name == "l"));
+        assert!(cold.index.functions().iter().any(|f| f.name == "l"));
         assert!(
             !cold
                 .index
-                .files
+                .files()
                 .get(&lib)
                 .ok_or("lib missing")?
                 .used_lexical_fallback
@@ -968,9 +978,9 @@ pub fn check(x: i32) -> bool {
         assert_eq!(warm.file_fact_cache.stores, 0);
         assert_eq!(warm.file_fact_cache.store_errors, 0);
         assert!(warm.file_fact_cache.invalidated_files.is_empty());
-        assert_eq!(warm.index.files, cold.index.files);
-        assert_eq!(warm.index.functions, cold.index.functions);
-        assert_eq!(warm.index.tests, cold.index.tests);
+        assert_eq!(warm.index.files(), cold.index.files());
+        assert_eq!(warm.index.functions(), cold.index.functions());
+        assert_eq!(warm.index.tests(), cold.index.tests());
         Ok(())
     }
 
@@ -998,9 +1008,9 @@ pub fn check(x: i32) -> bool {
         let cold = build()?;
         let declarations = cold
             .index
-            .files
+            .files()
             .values()
-            .flat_map(|facts| facts.module_declarations.iter())
+            .flat_map(|facts| facts.data().module_declarations.iter())
             .map(|declaration| declaration.path_target.clone())
             .collect::<Vec<_>>();
         assert_eq!(
@@ -1018,7 +1028,7 @@ pub fn check(x: i32) -> bool {
         assert_eq!(warm.file_fact_cache.hits, 1);
         assert_eq!(warm.file_fact_cache.misses, 0);
         assert_eq!(warm.file_fact_cache.corrupt_ignored, 0);
-        assert_eq!(warm.index.files, cold.index.files);
+        assert_eq!(warm.index.files(), cold.index.files());
         Ok(())
     }
 
@@ -1081,7 +1091,7 @@ pub fn check(x: i32) -> bool {
                 .invalidated_files
                 .contains(&new_file)
         );
-        assert_eq!(changed.index.files.len(), 4);
+        assert_eq!(changed.index.files().len(), 4);
         Ok(())
     }
 
@@ -1132,9 +1142,9 @@ pub fn check(x: i32) -> bool {
         assert_eq!(recovered.file_fact_cache.stores, 1);
         assert_eq!(recovered.file_fact_cache.store_errors, 0);
         assert!(recovered.file_fact_cache.invalidated_files.is_empty());
-        assert_eq!(recovered.index.files, cold.index.files);
-        assert_eq!(recovered.index.functions, cold.index.functions);
-        assert_eq!(recovered.index.tests, cold.index.tests);
+        assert_eq!(recovered.index.files(), cold.index.files());
+        assert_eq!(recovered.index.functions(), cold.index.functions());
+        assert_eq!(recovered.index.tests(), cold.index.tests());
         assert!(matches!(
             fixture.cache.load_file_facts(&key),
             CacheLoad::Hit(_)
@@ -1158,7 +1168,7 @@ pub fn check(x: i32) -> bool {
             },
         )?;
         assert_eq!(inventory_reads.get(), 0);
-        assert!(empty.index.files.is_empty());
+        assert!(empty.index.files().is_empty());
         assert_eq!(empty.file_fact_cache.hits, 0);
         assert_eq!(empty.file_fact_cache.misses, 0);
         assert_eq!(empty.file_fact_cache.stores, 0);
@@ -1193,7 +1203,7 @@ pub fn check(x: i32) -> bool {
             )
         };
         let cold = build()?;
-        if cold.index.functions.is_empty() || cold.index.tests.is_empty() {
+        if cold.index.functions().is_empty() || cold.index.tests().is_empty() {
             return Err("integrity fixture must produce functions and tests".into());
         }
         let entries = fs::read_dir(fixture.root.join("cache"))?.collect::<Result<Vec<_>, _>>()?;
@@ -1205,7 +1215,8 @@ pub fn check(x: i32) -> bool {
         let mut edited: serde_json::Value = serde_json::from_slice(&original)?;
         fs::write(&entry, serde_json::to_vec(&edited)?)?;
         let reformatted = build()?;
-        if reformatted.file_fact_cache.hits != 1 || reformatted.index.tests != cold.index.tests {
+        if reformatted.file_fact_cache.hits != 1 || reformatted.index.tests() != cold.index.tests()
+        {
             return Err("semantic-preserving JSON formatting must remain a warm hit".into());
         }
         let changed_source_key = RepoFileFactCacheKey::new(
@@ -1254,14 +1265,14 @@ pub fn check(x: i32) -> bool {
             )
             .into());
         }
-        if recovered.index.files != cold.index.files
-            || recovered.index.functions != cold.index.functions
-            || recovered.index.tests != cold.index.tests
+        if recovered.index.files() != cold.index.files()
+            || recovered.index.functions() != cold.index.functions()
+            || recovered.index.tests() != cold.index.tests()
         {
             return Err("recovered complete index must equal cold source truth".into());
         }
         let warm = build()?;
-        if warm.file_fact_cache.hits != 1 || warm.index.tests != cold.index.tests {
+        if warm.file_fact_cache.hits != 1 || warm.index.tests() != cold.index.tests() {
             return Err("corrected entry must warm-hit original evidence".into());
         }
         Ok(())
@@ -1312,7 +1323,7 @@ pub fn check(x: i32) -> bool {
 
     fn non_test_function_names(index: &RustIndex) -> Vec<&str> {
         index
-            .functions
+            .functions()
             .iter()
             .filter(|function| !function.source_role.is_evidence_role())
             .map(|function| function.name.as_str())
@@ -1326,7 +1337,7 @@ pub fn check(x: i32) -> bool {
         write_manifest(&root)?;
         // Spanning two parse batches (batch size 64) proves the ordered
         // collect-then-insert drain reproduces the sequential loop's
-        // per-file extension order of `index.functions` / `index.tests`.
+        // per-file extension order of `index.functions()` / `index.tests()`.
         let mut files = Vec::new();
         for ordinal in 0..70 {
             files.push(write_named_fn_file(&root, &format!("f{ordinal:03}"))?);
@@ -1335,7 +1346,11 @@ pub fn check(x: i32) -> bool {
         let index = build_index(&root, &files)?;
         let expected: Vec<String> = (0..70).map(|ordinal| format!("fn_f{ordinal:03}")).collect();
         assert_eq!(non_test_function_names(&index), expected);
-        let test_names: Vec<&str> = index.tests.iter().map(|test| test.name.as_str()).collect();
+        let test_names: Vec<&str> = index
+            .tests()
+            .iter()
+            .map(|test| test.name.as_str())
+            .collect();
         let expected_tests: Vec<String> = (0..70)
             .map(|ordinal| format!("test_f{ordinal:03}"))
             .collect();
@@ -1356,9 +1371,9 @@ pub fn check(x: i32) -> bool {
         let baseline = build_index(&root, &files)?;
         for _ in 0..3 {
             let rerun = build_index(&root, &files)?;
-            assert_eq!(baseline.tests, rerun.tests);
-            assert_eq!(baseline.functions, rerun.functions);
-            assert_eq!(baseline.files, rerun.files);
+            assert_eq!(baseline.tests(), rerun.tests());
+            assert_eq!(baseline.functions(), rerun.functions());
+            assert_eq!(baseline.files(), rerun.files());
         }
         Ok(())
     }
@@ -1415,7 +1430,7 @@ pub fn check(x: i32) -> bool {
             }
             fn changed_nodes(
                 &self,
-                _: &super::super::FileFacts,
+                _: super::super::FactSlice<'_, super::super::FunctionFact>,
                 _: &[TextRange],
             ) -> Vec<SyntaxNodeFact> {
                 Vec::new()
@@ -1503,7 +1518,7 @@ pub fn check(x: i32) -> bool {
 
             fn changed_nodes(
                 &self,
-                _facts: &super::super::FileFacts,
+                _facts: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
                 _ranges: &[TextRange],
             ) -> Vec<SyntaxNodeFact> {
                 Vec::new()
@@ -1547,9 +1562,9 @@ pub fn check(x: i32) -> bool {
             .collect::<Result<_, Box<dyn Error>>>()?;
         let cached = build_index_from_loaded_files_with_cache(&root, &loaded)?;
 
-        assert_eq!(cached.index.tests, uncached.tests);
-        assert_eq!(cached.index.functions, uncached.functions);
-        assert_eq!(cached.index.files.len(), uncached.files.len());
+        assert_eq!(cached.index.tests(), uncached.tests());
+        assert_eq!(cached.index.functions(), uncached.functions());
+        assert_eq!(cached.index.files().len(), uncached.files().len());
         Ok(())
     }
 
@@ -1585,7 +1600,7 @@ pub fn check(x: i32) -> bool {
             }
             fn changed_nodes(
                 &self,
-                _: &super::super::FileFacts,
+                _: super::super::FactSlice<'_, super::super::FunctionFact>,
                 _: &[TextRange],
             ) -> Vec<SyntaxNodeFact> {
                 Vec::new()

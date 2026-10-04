@@ -1,4 +1,5 @@
 use super::*;
+use crate::analysis::facts::{FileFacts, OwnedRustIndex};
 use crate::analysis::syntax::{LexicalRustSyntaxAdapter, RaRustSyntaxAdapter, RustSyntaxAdapter};
 use std::error::Error;
 use std::fs;
@@ -10,7 +11,11 @@ fn test_names(facts: &FileFacts) -> Vec<&str> {
 }
 
 fn index_test_names(index: &RustIndex) -> Vec<&str> {
-    index.tests.iter().map(|test| test.name.as_str()).collect()
+    index
+        .tests()
+        .iter()
+        .map(|test| test.name.as_str())
+        .collect()
 }
 
 fn assert_non_test_functions(facts: &FileFacts, names: &[&str]) {
@@ -494,21 +499,21 @@ fn fallback_lookalike() {}
     assert_eq!(index_test_names(&warm_cached.index), expected_tests);
     assert!(
         index
-            .files
+            .files()
             .get(Path::new("tests/fallback.rs"))
             .is_some_and(|facts| facts.used_lexical_fallback),
         "invalid source must exercise the lexical fallback producer"
     );
     assert!(
         index
-            .functions
+            .functions()
             .iter()
             .find(|function| function.name == "parser_lookalike")
             .is_some_and(|function| !function.source_role.is_evidence_role())
     );
     assert!(
         index
-            .functions
+            .functions()
             .iter()
             .find(|function| function.name == "fallback_lookalike")
             .is_some_and(|function| !function.source_role.is_evidence_role())
@@ -619,7 +624,7 @@ fn integration_test() {
 
     let role_of = |file: &str, name: &str| -> Result<FunctionSourceRole, String> {
         index
-            .functions
+            .functions()
             .iter()
             .find(|function| function.file == Path::new(file) && function.name == name)
             .map(|function| function.source_role)
@@ -725,7 +730,11 @@ fn integration_test() {
 
     // Executable-test membership stays TestFact-driven: evidence-only roles
     // never register a TestFact.
-    let test_names: Vec<&str> = index.tests.iter().map(|test| test.name.as_str()).collect();
+    let test_names: Vec<&str> = index
+        .tests()
+        .iter()
+        .map(|test| test.name.as_str())
+        .collect();
     for evidence_only in [
         "cfg_test_helper",
         "cfg_all_helper_test_second",
@@ -795,18 +804,16 @@ fn normalization_fixture_index() -> Result<RustIndex, String> {
         ),
     ] {
         let facts = RaRustSyntaxAdapter.summarize_file(Path::new(file), source)?;
-        index.functions.extend(facts.functions.clone());
-        index.tests.extend(facts.tests.clone());
-        index.files.insert(PathBuf::from(file), facts);
+        index.insert_file(PathBuf::from(file), facts, true);
     }
     Ok(index)
 }
 
 /// Frozen pre-repair aggregation oracle. The per-file role authority is shared;
 /// only the formerly owning whole-index maps are reproduced here.
-fn legacy_normalization_aggregate(index: &mut RustIndex) -> Result<(), String> {
+fn legacy_normalization_aggregate(index: &mut OwnedRustIndex) -> Result<(), String> {
     for facts in index.files.values_mut() {
-        normalize_file_test_styles(facts)?;
+        legacy_normalize_file_test_styles(facts)?;
     }
     let mut roles = BTreeMap::new();
     let mut tests = BTreeMap::new();
@@ -873,7 +880,7 @@ fn borrowed_normalization_matches_owned_reference_with_duplicate_coordinates() -
 {
     let mut actual = normalization_fixture_index()?;
     let original = actual
-        .functions
+        .functions()
         .iter()
         .find(|function| function.name == "pins")
         .ok_or("pins function")?
@@ -886,16 +893,18 @@ fn borrowed_normalization_matches_owned_reference_with_duplicate_coordinates() -
     // Keep a distinct role so equality cannot pass merely because the first
     // original function already consumed the sole matching TestFact.
     other_body.source_role = FunctionSourceRole::Production;
-    actual.functions.push(other_body);
-    actual.functions.push(original);
-    let mut expected = actual.clone();
+    actual.push_function(other_body);
+    actual.push_function(original);
+    let mut expected: OwnedRustIndex =
+        serde_json::from_value(serde_json::to_value(&actual).map_err(|error| error.to_string())?)
+            .map_err(|error| error.to_string())?;
     legacy_normalization_aggregate(&mut expected)?;
     normalize_index_test_styles(&mut actual)?;
     assert_eq!(
         serde_json::to_value(&actual).map_err(|error| error.to_string())?,
         serde_json::to_value(&expected).map_err(|error| error.to_string())?
     );
-    assert!(!actual.tests.is_empty());
+    assert!(!actual.tests().is_empty());
     Ok(())
 }
 
@@ -911,17 +920,16 @@ fn normalization_observes_cancellation_inside_function_walk() -> Result<(), Stri
     // If the first file's inner checkpoints are missing, the later global
     // checkpoints can still return the same error/count after touching file b.
     // This sentinel must remain untouched when cancellation happens in file a.
-    index
+    let sentinel = index
         .files
-        .get_mut(Path::new("src/b.rs"))
-        .and_then(|facts| {
-            facts
-                .functions
-                .iter_mut()
-                .find(|function| function.name == "lookalike")
-        })
-        .ok_or("second-file sentinel")?
-        .source_role = FunctionSourceRole::CfgTestModule;
+        .get(Path::new("src/b.rs"))
+        .ok_or("sentinel file")?
+        .functions
+        .iter()
+        .copied()
+        .find(|&id| index.function_facts[id].name == "lookalike")
+        .ok_or("second-file sentinel")?;
+    index.function_facts[sentinel].source_role = FunctionSourceRole::CfgTestModule;
     let start = Instant::now();
     let calls = Arc::new(AtomicUsize::new(0));
     let observed = Arc::clone(&calls);
@@ -943,7 +951,7 @@ fn normalization_observes_cancellation_inside_function_walk() -> Result<(), Stri
     );
     assert_eq!(calls.load(Ordering::SeqCst), 4);
     let untouched = index
-        .files
+        .files()
         .get(Path::new("src/b.rs"))
         .and_then(|facts| {
             facts
@@ -953,5 +961,143 @@ fn normalization_observes_cancellation_inside_function_walk() -> Result<(), Stri
         })
         .ok_or("retained second-file sentinel")?;
     assert_eq!(untouched.source_role, FunctionSourceRole::CfgTestModule);
+    Ok(())
+}
+
+// Frozen ddf76083 per-file normalization oracle for expanded-input parity.
+fn legacy_normalize_file_test_styles(facts: &mut FileFacts) -> Result<(), String> {
+    let mut existing_tests = std::mem::take(&mut facts.tests)
+        .into_iter()
+        .map(|test| ((test.start_line, test.name.clone()), test))
+        .collect::<BTreeMap<_, _>>();
+    let lexical_lines = facts
+        .used_lexical_fallback
+        .then(|| facts.source.lines().collect::<Vec<_>>());
+    let mut normalized_tests = Vec::new();
+
+    for function in &mut facts.functions {
+        cancellation::checkpoint()?;
+        let key = (function.start_line, function.name.clone());
+        let existing_test = existing_tests.remove(&key);
+        let has_test_attribute = match lexical_lines.as_deref() {
+            Some(lines) => {
+                attributes_define_test(lexical_attributes_before(lines, function.start_line))
+            }
+            None => attributes_define_test(function.attrs.iter().map(String::as_str)),
+        };
+
+        // Parser-backed cfg(test) helpers are evidence-role functions without
+        // executable TestFacts. Preserve that producer-owned distinction while
+        // correcting prefix lookalikes that arrived with a TestFact.
+        let preserve_cfg_test_role = !has_test_attribute
+            && function.source_role.is_evidence_role()
+            && is_inside_cfg_test_module(&facts.source, function.start_line);
+        // The normalizer's role law (#3531): the exact attribute vocabulary
+        // makes the function an executable test, the preserved cfg-test walk
+        // keeps evidence-only helper role, and everything else demotes to
+        // production — the same bit the boolean recomputed before the typed
+        // role existed. A promotion-claimed expansion keeps its explicit
+        // test-case provenance; the normalizer credits the same exact
+        // attribute family, so this only preserves which producer said so.
+        let promotion_claimed_expansion =
+            function.source_role == FunctionSourceRole::ParameterizedExpansion;
+        function.source_role = if has_test_attribute {
+            if promotion_claimed_expansion {
+                FunctionSourceRole::ParameterizedExpansion
+            } else {
+                FunctionSourceRole::TestAttribute
+            }
+        } else if preserve_cfg_test_role {
+            FunctionSourceRole::CfgTestModule
+        } else {
+            FunctionSourceRole::Production
+        };
+
+        if has_test_attribute {
+            normalized_tests.push(match existing_test {
+                Some(test) => test,
+                None => test_fact_from_function(function),
+            });
+        }
+    }
+
+    facts.tests = normalized_tests;
+    Ok(())
+}
+
+fn normalize_file_test_styles(facts: &mut FileFacts) -> Result<(), String> {
+    let path = facts.path.clone();
+    let mut index = RustIndex::default();
+    index.insert_file(path.clone(), std::mem::take(facts), false);
+    let file = index
+        .files
+        .get_mut(&path)
+        .ok_or("normalization fixture file")?;
+    normalize_indexed_file_test_styles(file, &mut index.function_facts, &mut index.test_facts)?;
+    *facts = index.owned_file(&path).ok_or("normalized fixture file")?;
+    Ok(())
+}
+
+#[test]
+fn equal_function_keys_keep_distinct_local_context_and_legacy_flat_roles() -> Result<(), String> {
+    let shared_path = Path::new("src/shared.rs");
+    let mut gated = RaRustSyntaxAdapter.summarize_file(
+        shared_path,
+        "#[cfg(test)]\nmod tests {\nfn helper() -> usize { 7 }\n}\n",
+    )?;
+    let function = gated
+        .functions
+        .iter()
+        .find(|function| function.name == "helper")
+        .ok_or("gated helper")?
+        .clone();
+    assert_eq!(function.source_role, FunctionSourceRole::CfgTestModule);
+    gated.functions = vec![function.clone()];
+    let mut plain = gated.clone();
+    plain.source = "\n\nfn helper() -> usize { 7 }\n".to_string();
+    let mut actual = RustIndex::default();
+    actual.insert_file(PathBuf::from("a-context.rs"), gated, true);
+    actual.insert_file(PathBuf::from("z-context.rs"), plain, true);
+    let mut expected: OwnedRustIndex =
+        serde_json::from_value(serde_json::to_value(&actual).map_err(|error| error.to_string())?)
+            .map_err(|error| error.to_string())?;
+    legacy_normalization_aggregate(&mut expected)?;
+    assert_eq!(
+        expected.files[Path::new("a-context.rs")].functions[0].source_role,
+        FunctionSourceRole::CfgTestModule
+    );
+    assert!(
+        expected
+            .functions
+            .iter()
+            .all(|function| function.source_role == FunctionSourceRole::Production)
+    );
+    normalize_index_test_styles(&mut actual)?;
+    actual.finalize()?;
+    assert_eq!(
+        serde_json::to_value(&actual).map_err(|error| error.to_string())?,
+        serde_json::to_value(&expected).map_err(|error| error.to_string())?
+    );
+    let local_gated = actual
+        .files()
+        .get(Path::new("a-context.rs"))
+        .ok_or("local gated occurrence")?;
+    let local_plain = actual
+        .files()
+        .get(Path::new("z-context.rs"))
+        .ok_or("local plain occurrence")?;
+    assert!(!std::ptr::eq(
+        actual.functions().at(0),
+        local_gated.functions.at(0)
+    ));
+    assert!(std::ptr::eq(
+        actual.functions().at(1),
+        local_plain.functions.at(0)
+    ));
+    assert_eq!(
+        actual.function_facts.len(),
+        3,
+        "only the genuine role divergence creates a distinct normalized occurrence"
+    );
     Ok(())
 }

@@ -1,6 +1,7 @@
 use super::super::extract::PROBE_SHAPE_UNSAFE_BOUNDARY;
-use super::super::rust_index::{FileFacts, ProbeShapeFact, RustIndex};
+use super::super::rust_index::{ProbeShapeFact, RustIndex};
 use super::family::family_for_probe_shape;
+use crate::analysis::facts::FileData;
 use crate::analysis::syntax::parse_clean_source_file;
 use crate::domain::ProbeFamily;
 use ra_ap_syntax::{AstNode, ast};
@@ -103,7 +104,7 @@ pub(crate) fn parser_probe_shapes_for_changed_line<'a>(
 /// AST range and fail closed on those ambiguous edge lines; interior lines and
 /// edge lines wholly owned by the boundary remain eligible.
 fn unsafe_boundary_owns_changed_line(
-    facts: &FileFacts,
+    facts: &FileData,
     shape: &ProbeShapeFact,
     line: usize,
 ) -> bool {
@@ -141,7 +142,7 @@ fn unsafe_boundary_owns_changed_line(
 }
 
 fn unsafe_boundary_syntax_range(
-    facts: &FileFacts,
+    facts: &FileData,
     shape: &ProbeShapeFact,
 ) -> Option<ra_ap_syntax::TextRange> {
     let parse = parse_clean_source_file(&facts.source)?;
@@ -187,7 +188,7 @@ fn boundary_edge_is_empty(text: &str) -> bool {
         .all(|character| character.is_whitespace() || character == ';')
 }
 
-fn parser_call_shape_is_standalone(facts: &FileFacts, shape: &ProbeShapeFact) -> bool {
+fn parser_call_shape_is_standalone(facts: &FileData, shape: &ProbeShapeFact) -> bool {
     if family_for_probe_shape(&shape.kind) != Some(ProbeFamily::CallDeletion) {
         return true;
     }
@@ -219,15 +220,19 @@ pub(crate) fn parser_expression_for_probe<'a>(
         .map(|shape| shape.text)
 }
 
-fn file_facts<'a>(index: &'a RustIndex, file: &Path) -> Option<&'a FileFacts> {
-    index.files.get(file).or_else(|| {
-        index
-            .files
-            .iter()
-            .filter(|(indexed_path, _)| file.ends_with(indexed_path))
-            .max_by_key(|(indexed_path, _)| indexed_path.as_os_str().len())
-            .map(|(_, facts)| facts)
-    })
+fn file_facts<'a>(index: &'a RustIndex, file: &Path) -> Option<&'a FileData> {
+    index
+        .files()
+        .get(file)
+        .or_else(|| {
+            index
+                .files()
+                .iter()
+                .filter(|(indexed_path, _)| file.ends_with(indexed_path))
+                .max_by_key(|(indexed_path, _)| indexed_path.as_os_str().len())
+                .map(|(_, facts)| facts)
+        })
+        .map(|facts| facts.data())
 }
 
 fn shape_match_rank(shape_text: &str, changed_text: &str) -> Option<(u8, usize)> {
@@ -328,7 +333,7 @@ mod tests {
     #[test]
     fn parser_probe_shapes_use_matching_syntax_shape() {
         let path = PathBuf::from("src/lib.rs");
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -352,8 +357,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let shapes = parser_probe_shapes_for_changed_line(&index, &path, 3, "amount >= threshold;");
         assert_eq!(shapes.len(), 1);
@@ -363,7 +368,7 @@ mod tests {
     #[test]
     fn parser_probe_shapes_are_empty_without_matching_shape() {
         let path = PathBuf::from("src/lib.rs");
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -378,8 +383,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let shapes = parser_probe_shapes_for_changed_line(&index, &path, 4, "return total");
         assert!(shapes.is_empty());
@@ -398,7 +403,7 @@ mod tests {
         let predicate_start = source
             .find("value < limit")
             .ok_or_else(|| "missing predicate".to_string())?;
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -430,8 +435,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let shapes = parser_probe_shapes_for_changed_line(&index, &path, 3, "value < limit");
         assert_eq!(shapes.len(), 2);
@@ -458,7 +463,7 @@ mod tests {
         let block_start = source
             .find("unsafe {")
             .ok_or_else(|| "missing unsafe block token".to_string())?;
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -474,8 +479,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let shapes = parser_probe_shapes_for_changed_line(
             &index,
@@ -494,7 +499,7 @@ mod tests {
         let block_start = source
             .find("unsafe {")
             .ok_or_else(|| "missing unsafe block token".to_string())?;
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -510,8 +515,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let shapes =
             parser_probe_shapes_for_changed_line(&index, &path, 2, "unsafe { ptr.add(1).read() }");
@@ -530,7 +535,7 @@ mod tests {
         let second = source
             .rfind("read()")
             .ok_or_else(|| "missing initializer call".to_string())?;
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -557,8 +562,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let standalone = parser_probe_shapes_for_changed_line(&index, &path, 2, "read()?;");
         let initializer =
@@ -575,7 +580,7 @@ mod tests {
     #[test]
     fn parser_expression_resolves_absolute_probe_to_most_specific_shape() -> Result<(), String> {
         let path = PathBuf::from("src/gate_watchdog.rs");
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path,
                 FileFacts {
@@ -603,8 +608,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let expression = parser_expression_for_probe(
             &index,

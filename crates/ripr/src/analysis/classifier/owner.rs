@@ -7,7 +7,7 @@ pub(in crate::analysis) fn resolve_owner_function<'index>(
 ) -> Option<&'index FunctionSummary> {
     let owner = probe.owner.as_ref()?;
     index
-        .functions
+        .functions()
         .iter()
         .find(|function| same_symbol_id(&function.id.0, &owner.0))
 }
@@ -55,10 +55,10 @@ mod tests {
             item: Default::default(),
             impl_context: Default::default(),
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:include-owner".to_string()),
             location: SourceLocation::new("workspace/src/parser_fragment.rs", 2, 1),
@@ -148,13 +148,13 @@ mod tests {
     #[test]
     fn normalized_lookup_preserves_first_match_before_later_exact_match() {
         let (mut index, probe) = include_owner_fixture();
-        let mut later = index.functions.clone();
+        let mut later = index.functions().iter().cloned().collect::<Vec<_>>();
         for function in &mut later {
             function.id.0 = "src/lib.rs::impl Parser::clamp".to_string();
             function.name = "later_exact_match".to_string();
         }
-        index.functions.extend(later);
-        assert_eq!(index.functions.len(), 2);
+        index.extend_functions(later);
+        assert_eq!(index.functions().len(), 2);
         // An exact-spelling lookup before a normalized lookup would choose
         // the wrong row. Keep the original first canonical-match contract.
         assert_eq!(
@@ -178,15 +178,15 @@ mod tests {
         let (mut index, probe) = include_owner_fixture();
         let mut unrelated = Vec::new();
         for ordinal in 0..4096 {
-            for mut function in index.functions.iter().cloned() {
+            for mut function in index.functions().iter().cloned() {
                 function.id.0 =
                     format!("crates/unrelated_{ordinal}/src/lib.rs::impl Parser::clamp");
                 unrelated.push(function);
             }
         }
-        unrelated.append(&mut index.functions);
-        index.functions = unrelated;
-        assert_eq!(index.functions.len(), 4097);
+        unrelated.extend(index.functions().iter().cloned());
+        index.replace_functions(unrelated);
+        assert_eq!(index.functions().len(), 4097);
         // A fresh in-memory index has no persistent cache or base proof.
         // The source-location file is the include fragment, not the owner
         // compilation unit, so location-based narrowing is also invalid.

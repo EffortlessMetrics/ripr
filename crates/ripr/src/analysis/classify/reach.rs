@@ -112,7 +112,7 @@ pub(in crate::analysis) fn owner_may_be_reached_unseen(
     index: &RustIndex,
 ) -> bool {
     is_trait_impl_method(owner)
-        || index.files.values().any(|file| {
+        || index.files().values().any(|file| {
             names_identifier_outside_fn_definition(&file.source, &owner.name)
                 || includes_external_docs(&file.source)
         })

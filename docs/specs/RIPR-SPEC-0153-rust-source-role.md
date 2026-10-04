@@ -203,15 +203,27 @@ The #3532 harness registry joined the same identity as FindingAffecting
 
 Whole-index source-role normalization borrows its exact identity keys
 (file, start/end lines, name and full body) and per-file test references.
-It does not allocate another owned body for every lookup key or retain an
-obsolete flat test payload while rebuilding the normalized flat view. Full
-body equality remains part of identity; this is not a hash-only or weakened
-match. The per-file and global test/function order and role semantics remain
-identical to the previous owning-map implementation.
+It does not allocate another owned body for every lookup key. Generation-owned
+fact arenas retain payloads once for shared occurrences; per-file and flat
+views keep independent ordered memberships. Rebuilding a flat view clears its
+membership, while unreachable payloads are reclaimed during finalization, not
+necessarily during normalization. Full body equality remains part of the
+normalization key; explicit occurrence identity, rather than a name/span/body
+match, governs storage sharing.
 
-Cancellation in these walks refuses the partially normalized index. This
-reduces transient duplication; complete corpus/source facts still scale with
-input size and no constant-memory or reduced-analysis-coverage claim is made.
+The per-file and global test/function order and role semantics remain identical
+to the previous owning-map implementation. When those existing role laws require
+different local and flat roles, the occurrences split rather than overwrite each
+other. Repeated membership is preserved. Readers borrow the owning generation;
+a view cannot retain it after the index is released. Wire serialization remains
+the expanded legacy representation, and per-file cache DTOs remain owned. Whole
+index deserialization preserves independent expanded occurrences; it does not
+promise to reconstruct shared ownership from equal content.
+
+Cancellation in these walks refuses the partially normalized index. Finalization
+validates memberships before compaction and observes cancellation before return.
+Complete corpus/source facts still scale with input size; this ownership contract
+is not a measured throughput, peak-RSS, constant-memory, or reduced-coverage claim.
 
 ## Required Evidence
 

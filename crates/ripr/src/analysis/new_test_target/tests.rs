@@ -165,7 +165,7 @@ fn assert_missing_with(
 
 fn admit_from_source(file: &str, source: &str) -> NewTestTargetAdmission {
     let mut index = RustIndex::default();
-    index.files.insert(
+    index.insert_file_only(
         PathBuf::from(file),
         rust_index::summarize_file(PathBuf::from(file), source.to_string()),
     );

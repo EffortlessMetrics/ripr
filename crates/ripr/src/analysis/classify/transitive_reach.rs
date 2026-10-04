@@ -116,7 +116,7 @@ pub(in crate::analysis) fn find_transitive_witness(
 
     // Build a flat list of production (non-test) function facts for name lookup.
     let prod_fns: Vec<&FunctionSummary> = index
-        .files
+        .files()
         .values()
         .flat_map(|file| {
             file.functions
@@ -193,7 +193,7 @@ pub(in crate::analysis) fn find_macro_reach_witness(
 
     let all_tests = collect_all_tests(index);
     let prod_fns: Vec<&FunctionSummary> = index
-        .files
+        .files()
         .values()
         .flat_map(|file| {
             file.functions
@@ -437,12 +437,12 @@ pub(in crate::analysis) fn macro_reach_limitation_detail_lines(
 fn collect_all_tests(index: &RustIndex) -> Vec<&TestFact> {
     let mut seen: HashSet<(&str, &std::path::Path)> = HashSet::new();
     let mut v: Vec<&TestFact> = Vec::new();
-    for t in &index.tests {
+    for t in &index.tests() {
         if seen.insert((t.name.as_str(), t.file.as_path())) {
             v.push(t);
         }
     }
-    for file in index.files.values() {
+    for file in index.files().values() {
         for t in &file.tests {
             if seen.insert((t.name.as_str(), t.file.as_path())) {
                 v.push(t);
@@ -678,7 +678,7 @@ fn next_non_ws_is_macro_delimiter(bytes: &[u8], start: usize) -> bool {
 fn macro_definition_mentions_owner(index: &RustIndex, macro_name: &str, owner_name: &str) -> bool {
     let mut same_name_count = 0usize;
     let mut owner_mention_count = 0usize;
-    for file in index.files.values() {
+    for file in index.files().values() {
         let scan = scan_macro_definitions(&file.source, macro_name, owner_name);
         same_name_count = same_name_count.saturating_add(scan.same_name_count);
         owner_mention_count = owner_mention_count.saturating_add(scan.owner_mention_count);
@@ -950,13 +950,13 @@ mod tests {
                 source,
             },
         );
-        RustIndex {
+        RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files,
             tests,
             functions: Vec::new(),
             workspace_authority: None,
-            ..RustIndex::default()
-        }
+            ..Default::default()
+        })
     }
 
     // (a) Candidate path found -> witness captured naming the test + entry symbol.
@@ -1262,9 +1262,13 @@ mod tests {
             body: "fn test_macro_entry() {\n    beta_inner!();\n}".to_string(),
             ..make_test_at("test_file_local", "tests/file_local.rs", 7, vec!["outer"])
         };
-        if let Some(file) = index.files.values_mut().next() {
+        let path = PathBuf::from("src/lib.rs");
+        if let Some(mut file) = index.owned_file(&path) {
             file.tests.push(test);
+            index.insert_file_only(path.clone(), file);
         }
+        assert!(index.tests().is_empty());
+        assert_eq!(index.files().at(&path).tests.len(), 1);
 
         let witness = find_macro_reach_witness("inner", &index);
         assert_eq!(

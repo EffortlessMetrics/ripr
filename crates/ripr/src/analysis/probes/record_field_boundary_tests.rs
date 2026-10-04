@@ -22,10 +22,10 @@ fn probes_at(source: &str, line: usize) -> Result<Vec<Probe>, String> {
         .ok_or_else(|| format!("fixture has no line {line}"))?
         .to_string();
     let facts = RaRustSyntaxAdapter.summarize_file(&path, source)?;
-    let index = RustIndex {
+    let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
         files: BTreeMap::from([(path.clone(), facts)]),
-        ..RustIndex::default()
-    };
+        ..Default::default()
+    });
     let changed = ChangedFile {
         path,
         added_lines: vec![ChangedLine {
@@ -106,10 +106,10 @@ fn nested_record_declaration_retains_its_unsafe_boundary() -> Result<(), String>
         .find(|shape| shape.kind == PROBE_SHAPE_UNSAFE_BOUNDARY)
         .cloned()
         .ok_or_else(|| "fixture has no unsafe boundary".to_string())?;
-    let index = RustIndex {
+    let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
         files: BTreeMap::from([(path.clone(), facts)]),
-        ..RustIndex::default()
-    };
+        ..Default::default()
+    });
     let shapes = parser_probe_shapes_for_changed_line(&index, &path, 3, "value: u8,");
     assert_eq!(shapes.len(), 2);
     let declaration = shapes

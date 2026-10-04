@@ -55,7 +55,7 @@ pub(in crate::analysis) fn is_assertion_shaped_owner(
 /// same-named function, but a collision only *blocks* the oracle reframe —
 /// the fail-closed direction.
 fn has_non_test_caller(owner: &FunctionSummary, index: &RustIndex) -> bool {
-    index.functions.iter().any(|function| {
+    index.functions().iter().any(|function| {
         !function.source_role.is_evidence_role()
             && !is_test_file(&function.file)
             && function.id != owner.id
@@ -417,10 +417,10 @@ mod tests {
             true,
             vec!["assert_workspace_source_paths_are_stable"],
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone(), caller_test],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             is_assertion_shaped_owner(&owner, &index),
@@ -445,10 +445,10 @@ mod tests {
             false,
             vec!["check_invariants"],
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone(), production_caller],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             !is_assertion_shaped_owner(&owner, &index),
@@ -466,10 +466,10 @@ mod tests {
             false,
             Vec::new(),
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone()],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             !is_assertion_shaped_owner(&owner, &index),
@@ -487,10 +487,10 @@ mod tests {
             false,
             Vec::new(),
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone()],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             !is_assertion_shaped_owner(&owner, &index),
@@ -508,10 +508,10 @@ mod tests {
             false,
             Vec::new(),
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone()],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             !is_assertion_shaped_owner(&owner, &index),
@@ -533,10 +533,10 @@ mod tests {
             false,
             Vec::new(),
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone()],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             !is_assertion_shaped_owner(&owner, &index),
@@ -556,10 +556,10 @@ mod tests {
             false,
             Vec::new(),
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone()],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             !is_assertion_shaped_owner(&owner, &index),
@@ -579,10 +579,10 @@ mod tests {
             false,
             Vec::new(),
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone()],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             !is_assertion_shaped_owner(&owner, &index),
@@ -602,10 +602,10 @@ mod tests {
             false,
             Vec::new(),
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone()],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             !is_assertion_shaped_owner(&owner, &index),
@@ -634,10 +634,10 @@ mod tests {
             true,
             vec!["assert_pattern"],
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone(), caller_test],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             is_assertion_shaped_owner(&owner, &index),
@@ -664,10 +664,10 @@ mod tests {
             true,
             vec!["assert_positive"],
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone(), caller_test],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             is_assertion_shaped_owner(&owner, &index),
@@ -685,10 +685,10 @@ mod tests {
             false,
             Vec::new(),
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone()],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             !is_assertion_shaped_owner(&owner, &index),
@@ -713,10 +713,10 @@ mod tests {
             true,
             vec!["assert_invariants"],
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone(), test_caller],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             is_assertion_shaped_owner(&owner, &index),
@@ -734,10 +734,10 @@ mod tests {
             false,
             Vec::new(),
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone()],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             is_assertion_shaped_owner(&owner, &index),
@@ -782,10 +782,10 @@ mod tests {
             false,
             Vec::new(),
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone()],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             !is_assertion_shaped_owner(&owner, &index),
@@ -803,10 +803,10 @@ mod tests {
             false,
             Vec::new(),
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone()],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             is_assertion_shaped_owner(&owner, &index),
@@ -834,10 +834,10 @@ mod tests {
             false,
             vec!["assert_invariants"],
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone(), test_helper_caller],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             is_assertion_shaped_owner(&owner, &index),
@@ -868,10 +868,10 @@ mod tests {
             false,
             vec!["check"],
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone(), coincidental_caller],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             !is_assertion_shaped_owner(&owner, &index),
@@ -896,10 +896,10 @@ mod tests {
             false,
             vec!["assert_invariants"],
         );
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner.clone(), src_helper_caller],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         assert!(
             !is_assertion_shaped_owner(&owner, &index),

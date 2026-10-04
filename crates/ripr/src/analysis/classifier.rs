@@ -100,7 +100,7 @@ mod tests {
     fn given_owner_symbol_when_resolving_owner_then_matches_full_identity() {
         let crate_b_fn = function("crates/crate_b/src/lib.rs", "score");
         let crate_a_fn = function("crates/crate_a/src/lib.rs", "score");
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![crate_b_fn, crate_a_fn],
             tests: vec![
                 test(
@@ -116,8 +116,8 @@ mod tests {
                     "assert_eq!(score(1), 2);",
                 ),
             ],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:crate_a:score".to_string()),
             location: SourceLocation::new("crates/crate_a/src/lib.rs", 2, 1),
@@ -139,7 +139,7 @@ mod tests {
 
     #[test]
     fn given_unrelated_test_mentions_probe_token_when_owner_is_not_called_then_no_static_path() {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "discounted_total")],
             tests: vec![TestSummary {
                 name: "token_label_includes_token_text".to_string(),
@@ -165,8 +165,8 @@ mod tests {
                 nested_fn_names: Vec::new(),
                 let_bindings: Vec::new(),
             }],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -190,7 +190,7 @@ mod tests {
     #[test]
     fn given_three_character_probe_token_in_test_name_when_owner_is_not_called_then_test_is_related()
      {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "tax_total")],
             tests: vec![TestSummary {
                 name: "vat_boundary_is_checked_by_macro".to_string(),
@@ -216,8 +216,8 @@ mod tests {
                 nested_fn_names: Vec::new(),
                 let_bindings: Vec::new(),
             }],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -247,7 +247,7 @@ mod tests {
 
     #[test]
     fn given_infection_unknown_probe_when_classified_then_stop_reason_is_present() {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "price")],
             tests: vec![test(
                 "tests/pricing.rs",
@@ -255,8 +255,8 @@ mod tests {
                 "price(1)",
                 "assert_eq!(price(1), 2);",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -288,7 +288,7 @@ mod tests {
             body: "value".to_string(),
             ..function("src/lib.rs", "score")
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function],
             tests: vec![test(
                 "tests/score.rs",
@@ -296,8 +296,8 @@ mod tests {
                 "score(1)",
                 "assert_eq!(score(1), 2);",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:return_value".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -324,7 +324,7 @@ mod tests {
 
     #[test]
     fn given_static_unknown_probe_when_classified_then_stop_reason_is_present() {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "score")],
             tests: vec![test(
                 "tests/score.rs",
@@ -332,8 +332,8 @@ mod tests {
                 "score(1)",
                 "assert_eq!(score(1), 2);",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:static_unknown".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -375,10 +375,10 @@ mod tests {
         };
         // Nothing in the workspace names `score`: no test can run the
         // change, so the finding is a plain missing test (#4428).
-        let uncalled = RustIndex {
+        let uncalled = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "score")],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let finding = classify_probe(&probe, &uncalled, true, None);
         assert_eq!(finding.class, ExposureClass::NoStaticPath);
         assert!(
@@ -393,7 +393,7 @@ mod tests {
         // A production caller names `score`, so a test may reach it through a
         // chain static evidence does not follow: the shape stays unknown and
         // the next step asks for a reaching test first.
-        let unreached = RustIndex {
+        let unreached = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "score")],
             files: BTreeMap::from([(
                 PathBuf::from("src/lib.rs"),
@@ -405,8 +405,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let finding = classify_probe(&probe, &unreached, true, None);
         assert_eq!(finding.class, ExposureClass::StaticUnknown);
         assert_eq!(finding.ripr.reach.state, StageState::No);
@@ -420,7 +420,7 @@ mod tests {
         );
 
         // Control: a reached owner keeps the escalation guidance.
-        let reached = RustIndex {
+        let reached = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "score")],
             tests: vec![test(
                 "tests/score.rs",
@@ -428,8 +428,8 @@ mod tests {
                 "score(1)",
                 "assert_eq!(score(1), 2);",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let finding = classify_probe(&probe, &reached, true, None);
         assert_eq!(
             finding.recommended_next_step.as_deref(),
@@ -439,7 +439,7 @@ mod tests {
 
     #[test]
     fn given_exact_error_variant_assertion_when_error_path_probe_changes_then_oracle_is_strong() {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "score")],
             tests: vec![test_with_oracle(
                 "tests/errors.rs",
@@ -451,8 +451,8 @@ mod tests {
                     OracleStrength::Strong,
                 ),
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:error_path".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -481,7 +481,7 @@ mod tests {
 
     #[test]
     fn given_broad_is_err_assertion_when_error_variant_changes_then_oracle_is_weak() {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "score")],
             tests: vec![test_with_oracle(
                 "tests/errors.rs",
@@ -493,8 +493,8 @@ mod tests {
                     OracleStrength::Weak,
                 ),
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:error_path".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -540,7 +540,7 @@ mod tests {
     #[test]
     fn given_unwrap_only_test_when_return_value_probe_changes_then_oracle_is_smoke() {
         let unwrap_only = format!("score(1).{}();", "unwrap");
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![FunctionSummary {
                 body: "pub fn score(input: i32) -> Result<i32, Error> { Ok(input) }".to_string(),
                 ..function("src/lib.rs", "score")
@@ -551,8 +551,8 @@ mod tests {
                 "score(1)",
                 oracle_fact(&unwrap_only, OracleKind::SmokeOnly, OracleStrength::Smoke),
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:return_value".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -590,7 +590,7 @@ mod tests {
 
     #[test]
     fn given_broad_error_assertion_when_non_error_probe_changes_then_gap_stays_generic() {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "score")],
             tests: vec![test_with_oracle(
                 "tests/score.rs",
@@ -602,8 +602,8 @@ mod tests {
                     OracleStrength::Weak,
                 ),
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:call_deletion".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -662,7 +662,7 @@ mod tests {
             end_line: 7,
             ..function("src/lib.rs", "score")
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function],
             tests: vec![test(
                 "tests/score.rs",
@@ -670,8 +670,8 @@ mod tests {
                 "score(100, 50)",
                 "assert_eq!(score(100, 50), 90);",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -699,7 +699,7 @@ mod tests {
 
     #[test]
     fn given_changed_error_variant_when_result_err_is_returned_then_flow_sink_is_error_variant() {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "score")],
             tests: vec![test_with_oracle(
                 "tests/errors.rs",
@@ -711,8 +711,8 @@ mod tests {
                     OracleStrength::Weak,
                 ),
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:error_path".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -798,7 +798,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
 
     #[test]
     fn given_changed_side_effect_call_when_event_is_published_then_flow_sink_is_event_call() {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "score")],
             tests: vec![test(
                 "tests/score.rs",
@@ -806,8 +806,8 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
                 "score(1)",
                 "assert_eq!(score(1), 2);",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:side_effect".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -830,7 +830,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
 
     #[test]
     fn given_changed_field_construction_when_field_is_assigned_then_flow_sink_is_struct_field() {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "score")],
             tests: vec![test(
                 "tests/score.rs",
@@ -838,8 +838,8 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
                 "score(1)",
                 "assert_eq!(score(1).total, 2);",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:field_construction".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -866,7 +866,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
     #[test]
     fn given_field_construction_observed_only_by_token_coincidence_when_classified_then_not_exposed()
      {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "score")],
             tests: vec![test(
                 "tests/score.rs",
@@ -874,8 +874,8 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
                 "score(1)",
                 "assert_eq!(score(1).downcast_ref::<Box<dyn E>>().is_some(), true);",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:field_construction".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -906,7 +906,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
 
     #[test]
     fn given_changed_match_arm_when_arm_returns_value_then_flow_sink_is_match_arm_return() {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "score")],
             tests: vec![test(
                 "tests/score.rs",
@@ -914,8 +914,8 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
                 "score(1)",
                 "assert_eq!(score(1), 2);",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:match_arm".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -947,7 +947,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
             }],
             ..function("src/lib.rs", "score")
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function],
             tests: vec![test(
                 "tests/score.rs",
@@ -955,8 +955,8 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
                 "score(1)",
                 "assert_eq!(score(1), Ok(2));",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:1:return_value".to_string()),
             location: SourceLocation::new("src/lib.rs", 1, 1),
@@ -1001,7 +1001,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
             ],
             ..function("src/lib.rs", "authenticate")
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function],
             tests: vec![test_with_oracle(
                 "tests/auth.rs",
@@ -1013,8 +1013,8 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
                     OracleStrength::Weak,
                 ),
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -1057,7 +1057,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
             end_line: 11,
             ..function("src/lib.rs", "quote")
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function],
             tests: vec![test(
                 "tests/quote.rs",
@@ -1065,8 +1065,8 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
                 "quote(100)",
                 "assert_eq!(quote(100).total, 90);",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -1103,7 +1103,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
             end_line: 7,
             ..function("src/lib.rs", "message")
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function],
             tests: vec![test(
                 "tests/message.rs",
@@ -1111,8 +1111,8 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
                 "message(1)",
                 "assert_eq!(message(1), \"error:1\");",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -1149,7 +1149,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
             end_line: 8,
             ..function("src/lib.rs", "score")
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function],
             tests: vec![test(
                 "tests/score.rs",
@@ -1157,8 +1157,8 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
                 "score(100, 50)",
                 "assert_eq!(score(100, 50), 90);",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -1198,7 +1198,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
             }],
             ..function("src/lib.rs", "score")
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function],
             tests: vec![test(
                 "tests/score.rs",
@@ -1206,8 +1206,8 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
                 "score(1)",
                 "assert_eq!(score(1), 1);",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:5:return_value".to_string()),
             location: SourceLocation::new("src/lib.rs", 5, 1),
@@ -1230,7 +1230,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
 
     #[test]
     fn given_changed_call_deletion_when_result_ok_is_returned_then_flow_sink_is_return_value() {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "score")],
             tests: vec![test(
                 "tests/score.rs",
@@ -1238,8 +1238,8 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
                 "score(1)",
                 "assert_eq!(score(1), Ok(2));",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:call".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -1262,7 +1262,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
 
     #[test]
     fn given_changed_match_arm_when_arm_returns_error_then_flow_sink_is_error_variant() {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "authenticate")],
             tests: vec![test_with_oracle(
                 "tests/auth.rs",
@@ -1274,8 +1274,8 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
                     OracleStrength::Strong,
                 ),
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:match_arm".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -1302,7 +1302,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
     #[test]
     fn given_changed_opaque_return_expression_when_no_sink_is_obvious_then_propagation_is_unknown()
     {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "score")],
             tests: vec![test(
                 "tests/score.rs",
@@ -1310,8 +1310,8 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
                 "score(1)",
                 "assert_eq!(score(1), 2);",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:return_value".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -1413,7 +1413,7 @@ fn far_above_threshold_discounts() {
             end_line: 7,
             ..function("src/lib.rs", "score")
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function],
             tests: vec![test(
                 "tests/score.rs",
@@ -1421,8 +1421,8 @@ fn far_above_threshold_discounts() {
                 "score(100, 100)",
                 "assert_eq!(score(100, 100), 90);",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -1469,7 +1469,7 @@ fn far_above_threshold_discounts() {
             ],
             ..function("src/lib.rs", "score")
         };
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function],
             tests: vec![test_with_oracle(
                 "tests/errors.rs",
@@ -1481,8 +1481,8 @@ fn far_above_threshold_discounts() {
                     OracleStrength::Weak,
                 ),
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:3:error_path".to_string()),
             location: SourceLocation::new("src/lib.rs", 3, 1),
@@ -1570,7 +1570,7 @@ fn far_above_threshold_discounts() {
     fn given_assertion_shaped_owner_when_classifying_then_guidance_is_reframed_not_reclassified() {
         let mut owner = function("tests/fragments.rs", "assert_paths_are_stable");
         owner.body = "fn assert_paths_are_stable(spans: &[Span]) {\n    for span in spans {\n        assert!(!span.file.contains('\\\\'));\n        assert_eq!(span.root.as_deref(), Some(\"src\"));\n    }\n}\n".to_string();
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner],
             tests: vec![test(
                 "tests/fragments.rs",
@@ -1578,8 +1578,8 @@ fn far_above_threshold_discounts() {
                 "assert_paths_are_stable(&spans)",
                 "assert!(true);",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:tests_fragments_rs:2:predicate".to_string()),
             location: SourceLocation::new("tests/fragments.rs", 3, 1),
@@ -1647,7 +1647,7 @@ fn far_above_threshold_discounts() {
             name: "check_invariants".to_string(),
             text: "check_invariants(value);".to_string(),
         }];
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner, production_caller],
             tests: vec![test(
                 "tests/lib.rs",
@@ -1655,8 +1655,8 @@ fn far_above_threshold_discounts() {
                 "validate(2)",
                 "assert_eq!(2 + 2, 4);",
             )],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -1770,7 +1770,7 @@ fn far_above_threshold_discounts() {
         let owner_id = owner.id.clone();
         let path = PathBuf::from("src/gate_watchdog.rs");
         let assertion = r#"ensure!(reason.kind == "run-missing");"#;
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner],
             tests: vec![test_with_oracle(
                 "src/tests/gate_watchdog_tests.rs",
@@ -1793,8 +1793,8 @@ fn far_above_threshold_discounts() {
                 },
             )]),
             workspace_authority: None,
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:watchdog-reason".to_string()),
             location: SourceLocation::new(
@@ -1831,7 +1831,7 @@ fn far_above_threshold_discounts() {
         let owner_id = owner.id.clone();
         let path = PathBuf::from("src/gate_watchdog.rs");
         let assertion = "ensure!(reason.receipt == receipt);";
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner],
             tests: vec![test_with_oracle(
                 "src/tests/gate_watchdog_tests.rs",
@@ -1854,8 +1854,8 @@ fn far_above_threshold_discounts() {
                 },
             )]),
             workspace_authority: None,
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = Probe {
             id: ProbeId("probe:watchdog-reason".to_string()),
             location: SourceLocation::new(
@@ -1907,7 +1907,7 @@ fn far_above_threshold_discounts() {
         let source = format!(
             "pub fn fragile_fee(weight_grams: u32) -> u32 {{\n    if weight_grams > 2_000 {{ 1 }} else {{ 0 }}\n}}\npub fn tax_bps(region: u32) -> u32 {{ 2000 }}\n{extra_source}"
         );
-        RustIndex {
+        RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![
                 function("src/lib.rs", "fragile_fee"),
                 function("src/lib.rs", "tax_bps"),
@@ -1921,8 +1921,8 @@ fn far_above_threshold_discounts() {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        }
+            ..Default::default()
+        })
     }
 
     fn fragile_fee_probe(family: ProbeFamily, owner: &str) -> Probe {
@@ -2020,7 +2020,7 @@ fn far_above_threshold_discounts() {
         let mut owner = function("src/lib.rs", "fmt");
         owner.id = SymbolId("src/lib.rs::impl Display for Money::fmt".to_string());
         // Replace `fragile_fee`: nothing in the source names `fmt`.
-        index.functions[0] = owner;
+        *index.function_at_mut(0) = owner;
         let mut probe = fragile_fee_probe(ProbeFamily::Predicate, "fmt");
         probe.owner = Some(SymbolId(
             "src/lib.rs::impl Display for Money::fmt".to_string(),
@@ -2036,10 +2036,10 @@ fn far_above_threshold_discounts() {
     // "cannot classify; escalate to real mutation testing".
     #[test]
     fn given_static_unknown_probe_in_unreached_owner_when_classified_then_no_static_path() {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "fragile_fee")],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = fragile_fee_probe(ProbeFamily::StaticUnknown, "fragile_fee");
 
         let finding = classify_probe(&probe, &index, true, None);
@@ -2052,7 +2052,7 @@ fn far_above_threshold_discounts() {
     // the resolver cannot follow, so its unknown shape stays unknown.
     #[test]
     fn given_static_unknown_probe_with_named_caller_and_no_related_test_then_static_unknown() {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "fragile_fee")],
             files: BTreeMap::from([(
                 PathBuf::from("src/lib.rs"),
@@ -2062,8 +2062,8 @@ fn far_above_threshold_discounts() {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = fragile_fee_probe(ProbeFamily::StaticUnknown, "fragile_fee");
 
         let finding = classify_probe(&probe, &index, true, None);
@@ -2074,10 +2074,10 @@ fn far_above_threshold_discounts() {
 
     #[test]
     fn given_static_unknown_probe_without_resolved_owner_when_classified_then_static_unknown() {
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![function("src/lib.rs", "fragile_fee")],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let probe = fragile_fee_probe(ProbeFamily::StaticUnknown, "not_indexed");
 
         let finding = classify_probe(&probe, &index, true, None);
@@ -2117,9 +2117,7 @@ fn far_above_threshold_discounts() {
                 (*source).to_string(),
             );
             assert!(!facts.used_lexical_fallback, "{path}");
-            index.functions.extend(facts.functions.iter().cloned());
-            index.tests.extend(facts.tests.iter().cloned());
-            index.files.insert(PathBuf::from(path), facts);
+            index.insert_file(PathBuf::from(path), facts, true);
         }
         index
     }
