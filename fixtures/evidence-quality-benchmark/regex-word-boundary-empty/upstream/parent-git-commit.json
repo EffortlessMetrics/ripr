@@ -1,0 +1,35 @@
+{
+  "sha": "72f09f1aeb0ff3f703b1afdbdd21f5ff63162fb4",
+  "node_id": "C_kwDOAamT7doAKDcyZjA5ZjFhZWIwZmYzZjcwM2IxYWZkYmRkMjFmNWZmNjMxNjJmYjQ",
+  "url": "https://api.github.com/repos/rust-lang/regex/git/commits/72f09f1aeb0ff3f703b1afdbdd21f5ff63162fb4",
+  "html_url": "https://github.com/rust-lang/regex/commit/72f09f1aeb0ff3f703b1afdbdd21f5ff63162fb4",
+  "author": {
+    "name": "Andrew Gallant",
+    "email": "jamslam@gmail.com",
+    "date": "2022-05-17T13:39:16Z"
+  },
+  "committer": {
+    "name": "Andrew Gallant",
+    "email": "jamslam@gmail.com",
+    "date": "2022-05-18T12:18:14Z"
+  },
+  "tree": {
+    "sha": "e28038bb6f134c486fb94350df945a2497f127b4",
+    "url": "https://api.github.com/repos/rust-lang/regex/git/trees/e28038bb6f134c486fb94350df945a2497f127b4"
+  },
+  "message": "syntax: fix ascii class union bug\n\nThis fixes a bug in how ASCII class unioning was implemented. Namely, it\npreviously and erroneously unioned together two classes and then applied\nnegation/case-folding based on the most recently added class, even if\nthe class added previously wasn't negated. So for example, given the\nregex '[[:alnum:][:^ascii:]]', this would initialize the class with\n'[:alnum:]', then add all '[:^ascii:]' codepoints and then negate the\nentire thing because of the negation in '[:^ascii:]'. Negating the\nentire thing is clearly wrong and not the intended semantics.\n\nWe fix this by applying negation/case-folding only to the class we're\ndealing with, and then we union it with whatever existing class we're\nbuilding.\n\nFixes #680",
+  "parents": [
+    {
+      "sha": "b5372864e2df6a2f5e543a556a62197f50ca3650",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/commits/b5372864e2df6a2f5e543a556a62197f50ca3650",
+      "html_url": "https://github.com/rust-lang/regex/commit/b5372864e2df6a2f5e543a556a62197f50ca3650"
+    }
+  ],
+  "verification": {
+    "verified": false,
+    "reason": "unsigned",
+    "signature": null,
+    "payload": null,
+    "verified_at": null
+  }
+}

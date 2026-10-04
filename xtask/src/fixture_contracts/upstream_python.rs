@@ -3,10 +3,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::{Component, Path};
+use std::path::Path;
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+
+use super::retained_files::{local_path, read_json, verify_file};
 
 const VARIANTS: &[&str] = &[
     "fixed_full",
@@ -17,35 +19,6 @@ const VARIANTS: &[&str] = &[
     "fixed_positive_controls",
     "broken_positive_controls",
 ];
-
-fn local_path(path: &str) -> bool {
-    !path.is_empty()
-        && !path.contains('\\')
-        && Path::new(path)
-            .components()
-            .all(|part| matches!(part, Component::Normal(_)))
-}
-
-fn read_json(path: &Path) -> Result<Value, String> {
-    let bytes = fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
-    serde_json::from_slice(&bytes).map_err(|error| format!("{}: {error}", path.display()))
-}
-
-fn verify_file(root: &Path, entry: &Value) -> Result<(), String> {
-    let path = entry["path"]
-        .as_str()
-        .filter(|path| local_path(path))
-        .ok_or_else(|| "upstream evidence needs a contained relative file path".to_string())?;
-    let bytes = fs::read(root.join(path)).map_err(|error| format!("{path}: {error}"))?;
-    let actual = format!("{:x}", Sha256::digest(&bytes));
-    if entry["sha256"].as_str() != Some(actual.as_str()) {
-        return Err(format!("upstream evidence digest mismatch: {path}"));
-    }
-    if entry["bytes"].as_u64() != Some(bytes.len() as u64) {
-        return Err(format!("upstream evidence size mismatch: {path}"));
-    }
-    Ok(())
-}
 
 fn validate_observation(row: &Value) -> Result<(), String> {
     let variant = row["variant"].as_str().unwrap_or_default();
@@ -392,5 +365,46 @@ mod tests {
             assert!(!local_path(path), "accepted {path}");
         }
         Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn upstream_python_manifest_preserves_relocation_and_refuses_outside_links()
+    -> Result<(), String> {
+        use std::os::unix::fs::symlink;
+
+        let sandbox = crate::tests::temp_dir("upstream-python-contained-evidence");
+        let result = (|| {
+            for mode in ["file", "parent"] {
+                let root = sandbox.join(mode);
+                crate::tests::copy_dir_recursive(&case_root(), &root)?;
+                let manifest = read_json(&root.join("manifest.json"))?;
+                validate_manifest(&root, &manifest)?;
+                let relocated = sandbox.join(format!("{mode}-relocated"));
+                fs::rename(&root, &relocated).map_err(|error| error.to_string())?;
+                validate_manifest(&relocated, &manifest)?;
+                let outside = sandbox.join(format!("{mode}-outside"));
+                fs::create_dir(&outside).map_err(|error| error.to_string())?;
+                let upstream = relocated.join("upstream");
+                if mode == "file" {
+                    fs::rename(upstream.join("fix.patch"), outside.join("fix.patch"))
+                        .map_err(|error| error.to_string())?;
+                    symlink(outside.join("fix.patch"), upstream.join("fix.patch"))
+                        .map_err(|error| error.to_string())?;
+                } else {
+                    fs::rename(&upstream, outside.join("upstream"))
+                        .map_err(|error| error.to_string())?;
+                    symlink(outside.join("upstream"), &upstream)
+                        .map_err(|error| error.to_string())?;
+                }
+                let error = validate_manifest(&relocated, &manifest)
+                    .err()
+                    .ok_or_else(|| format!("accepted Python evidence outside {mode} link"))?;
+                assert!(error.contains("escapes fixture root"), "{mode}: {error}");
+            }
+            Ok(())
+        })();
+        let cleanup = fs::remove_dir_all(&sandbox).map_err(|error| error.to_string());
+        result.and(cleanup)
     }
 }

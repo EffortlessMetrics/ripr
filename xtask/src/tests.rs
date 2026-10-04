@@ -6158,7 +6158,8 @@ fn evidence_quality_benchmark_corpus_value() -> Result<Value, String> {
 fn evidence_quality_benchmark_violations(corpus: &Value) -> Vec<String> {
     let mut violations = Vec::new();
     super::validate_evidence_quality_benchmark_corpus_value(
-        Path::new("fixtures/evidence-quality-benchmark/corpus.json"),
+        &Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../fixtures/evidence-quality-benchmark/corpus.json"),
         corpus,
         &mut violations,
     );
@@ -6258,7 +6259,7 @@ fn evidence_quality_benchmark_reports_contract_drift() {
     assert!(report.contains("is missing capability_scope object"));
     assert!(report.contains("is missing calibration_scope object"));
     assert!(report.contains("is missing audit_expectations object"));
-    assert!(report.contains("case bad is duplicated"));
+    assert!(report.contains("cases collection has duplicate id bad"));
     assert!(report.contains("unsupported evidence_class unknown"));
     assert!(report.contains("unsupported case_kind surprise"));
     assert!(report.contains("unsupported maturity_scope global"));
@@ -6855,7 +6856,7 @@ fn perl_packet_contract_migration_corpus_path() -> Result<PathBuf, String> {
     Ok(repo_root.join("fixtures/perl_packet_contract_migration/corpus.json"))
 }
 
-fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), String> {
+pub(crate) fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), String> {
     fs::create_dir_all(destination).map_err(|err| err.to_string())?;
     for entry in fs::read_dir(source).map_err(|err| err.to_string())? {
         let entry = entry.map_err(|err| err.to_string())?;

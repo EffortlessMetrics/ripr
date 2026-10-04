@@ -1,0 +1,175 @@
+{
+  "kind": "historical_exact_family_binary_observation",
+  "producer_head": "0e57b1e27f25559ec3b1a133b71a56cf558017b3",
+  "source_candidate": "1a3672db4b624338aeeaaecc3beed62e347a5d03",
+  "source_candidate_tested": false,
+  "limits": {
+    "source_bytes": 16777216,
+    "output_cache_receipts_bytes": 8388608,
+    "total_bytes": 25165824,
+    "free_floor_bytes": 3221225472,
+    "seconds_per_command": 120
+  },
+  "observations": [
+    {
+      "variant": "corrected",
+      "root": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/workspace",
+      "inputs_before": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/corrected-before-inputs.json",
+        "bytes": 42092,
+        "sha256": "0994c790789c674587a788c7e447e22b2e99335a46420f87d5805fa91541cdf9"
+      },
+      "identity_before": {
+        "executable": {
+          "path": "/workspace/shared/targets/ripr/debug/ripr",
+          "bytes": 158797088,
+          "sha256": "e97de9e05cab34ac55c875c0d8654c8de45cb7191a3151f27344febc71c806e0"
+        },
+        "producer_receipt": {
+          "path": "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/qualification-9fb-final/phase-receipt.json",
+          "bytes": 13307,
+          "sha256": "f5065917c7ff760f89451687e62a32b78531f6091c7578d2b7a1be50580433bc"
+        }
+      },
+      "patch_before": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/portable-benchmark-proposal/regex-word-boundary-empty/patches/production.patch",
+        "bytes": 1612,
+        "sha256": "37e041abb479743a22a83b2f0e615dbebc8b8a4c000038c281a8af48c0fe5cc8"
+      },
+      "timed_out": false,
+      "resource_stop": "AssertionError({'source_bytes': 11124736, 'output_cache_receipts_bytes': 8413184, 'total_bytes': 19537920, 'free_bytes': 4906299392})",
+      "started_utc": "2026-10-03T09:23:13Z",
+      "argv": [
+        "/workspace/shared/targets/ripr/debug/ripr",
+        "check",
+        "--root",
+        "/workspace/shared/ripr-regex-case-evidence/ripr-observation/workspace",
+        "--diff",
+        "/workspace/shared/ripr-regex-case-evidence/portable-benchmark-proposal/regex-word-boundary-empty/patches/production.patch",
+        "--format",
+        "json"
+      ],
+      "pid": 34,
+      "exit_code": -15,
+      "elapsed_seconds": 1.962,
+      "stdout": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/corrected.stdout.json",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/corrected.stderr",
+        "bytes": 68,
+        "sha256": "87970ffa90588e27619bd54439e7893f1783c4f019c43ea18869dcfe868c1345"
+      },
+      "inputs_after": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/corrected-after-inputs.json",
+        "bytes": 42092,
+        "sha256": "0994c790789c674587a788c7e447e22b2e99335a46420f87d5805fa91541cdf9"
+      },
+      "identity_after": {
+        "executable": {
+          "path": "/workspace/shared/targets/ripr/debug/ripr",
+          "bytes": 158797088,
+          "sha256": "e97de9e05cab34ac55c875c0d8654c8de45cb7191a3151f27344febc71c806e0"
+        },
+        "producer_receipt": {
+          "path": "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/qualification-9fb-final/phase-receipt.json",
+          "bytes": 13307,
+          "sha256": "f5065917c7ff760f89451687e62a32b78531f6091c7578d2b7a1be50580433bc"
+        }
+      },
+      "patch_after": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/portable-benchmark-proposal/regex-word-boundary-empty/patches/production.patch",
+        "bytes": 1612,
+        "sha256": "37e041abb479743a22a83b2f0e615dbebc8b8a4c000038c281a8af48c0fe5cc8"
+      },
+      "parsed_json": false,
+      "json_error": "Expecting value: line 1 column 1 (char 0)"
+    }
+  ],
+  "lock": {
+    "path": "/workspace/shared/cloud-cargo.lock",
+    "mode": "rb/exclusive/nonblocking",
+    "pid": 2,
+    "acquired_utc": "2026-10-03T09:23:12Z",
+    "released_utc": "2026-10-03T09:23:15Z"
+  },
+  "admission_usage": {
+    "source_bytes": 0,
+    "output_cache_receipts_bytes": 16384,
+    "total_bytes": 16384,
+    "free_bytes": 4925984768
+  },
+  "identity_before": {
+    "executable": {
+      "path": "/workspace/shared/targets/ripr/debug/ripr",
+      "bytes": 158797088,
+      "sha256": "e97de9e05cab34ac55c875c0d8654c8de45cb7191a3151f27344febc71c806e0"
+    },
+    "producer_receipt": {
+      "path": "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/qualification-9fb-final/phase-receipt.json",
+      "bytes": 13307,
+      "sha256": "f5065917c7ff760f89451687e62a32b78531f6091c7578d2b7a1be50580433bc"
+    }
+  },
+  "compiler_artifact": {
+    "reason": "compiler-artifact",
+    "package_id": "path+file:///workspace/shared/ripr-family-admission-cloud-qa/crates/ripr#0.11.0",
+    "manifest_path": "/workspace/shared/ripr-family-admission-cloud-qa/crates/ripr/Cargo.toml",
+    "target": {
+      "kind": [
+        "bin"
+      ],
+      "crate_types": [
+        "bin"
+      ],
+      "name": "ripr",
+      "src_path": "/workspace/shared/ripr-family-admission-cloud-qa/crates/ripr/src/main.rs",
+      "edition": "2024",
+      "doc": true,
+      "doctest": false,
+      "test": true
+    },
+    "profile": {
+      "opt_level": "0",
+      "debuginfo": "line-tables-only",
+      "debug_assertions": true,
+      "overflow_checks": true,
+      "test": false
+    },
+    "features": [
+      "default",
+      "lang-python",
+      "lang-rust",
+      "lang-typescript"
+    ],
+    "filenames": [
+      "/workspace/shared/targets/ripr/debug/ripr"
+    ],
+    "executable": "/workspace/shared/targets/ripr/debug/ripr",
+    "fresh": false
+  },
+  "patch": {
+    "path": "/workspace/shared/ripr-regex-case-evidence/portable-benchmark-proposal/regex-word-boundary-empty/patches/production.patch",
+    "bytes": 1612,
+    "sha256": "37e041abb479743a22a83b2f0e615dbebc8b8a4c000038c281a8af48c0fe5cc8"
+  },
+  "environment": {
+    "RIPR_CACHE_DIR": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache"
+  },
+  "status": "STOPPED",
+  "error": "AssertionError({'source_bytes': 11124736, 'output_cache_receipts_bytes': 8622080, 'total_bytes': 19746816, 'free_bytes': 4906254336})",
+  "terminal_usage": {
+    "source_bytes": 11124736,
+    "output_cache_receipts_bytes": 8622080,
+    "total_bytes": 19746816,
+    "free_bytes": 4906254336
+  },
+  "peak_observed_usage": {
+    "source_bytes": 11124736,
+    "output_cache_receipts_bytes": 8622080,
+    "total_bytes": 19746816,
+    "free_bytes": 4906254336
+  }
+}

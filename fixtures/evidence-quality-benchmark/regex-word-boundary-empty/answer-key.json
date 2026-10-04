@@ -1,0 +1,90 @@
+{
+  "case_id": "regex-word-boundary-empty",
+  "claim": "HIR is_match_empty records whether a successful match can have zero length in its surrounding context. Unicode and ASCII word boundaries can match an empty substring in a nonempty haystack; whether they accept an entirely empty haystack is a different question. Corrected positive boundary assertions express this claim; the original negative boundary assertions contradict it. The weak variant is only a removal control and receives no validity or adequacy label.",
+  "test_id": "hir::translate::tests::analysis_is_match_empty",
+  "package": "regex-syntax",
+  "package_version": "0.6.25",
+  "library_target": "regex_syntax",
+  "package_manifest_path": "regex-syntax/Cargo.toml",
+  "library_source_path": "regex-syntax/src/lib.rs",
+  "test_source_path": "regex-syntax/src/hir/translate.rs",
+  "basis": [
+    {
+      "url": "https://github.com/rust-lang/regex/issues/859",
+      "artifact": {
+        "path": "regex-word-boundary-empty/basis/upstream-issue-859.json",
+        "bytes": 1429,
+        "sha256": "18cc3fc2bfe0e0a47653fd201484966ffbe4a7618ef68a463ea57d21734ec6df"
+      },
+      "kind": "source_document"
+    },
+    {
+      "url": "https://github.com/rust-lang/regex/commit/88a2a62d861d189faae539990f63cb9cf195bd8c",
+      "artifact": {
+        "path": "regex-word-boundary-empty/basis/upstream-fixed-commit.json",
+        "bytes": 8086,
+        "sha256": "c0cbd405fac29d27978cc7f1923db870f878f0eda6392b9617bd4c29c6d37893"
+      },
+      "kind": "source_document"
+    },
+    {
+      "url": "https://github.com/rust-lang/regex/issues/859",
+      "artifact": {
+        "path": "regex-word-boundary-empty/basis/independent-matcher-capture.json",
+        "bytes": 10962,
+        "sha256": "9bca8c0bd60fcdb98f3ca80a61fad617926bbcc08d104f7cd8431d46cace7356"
+      },
+      "kind": "separate_matcher_semantic_witness",
+      "native_test_variant": "corrected",
+      "package": "regex",
+      "package_version": "1.5.5",
+      "library_target": "regex",
+      "package_manifest_path": "Cargo.toml",
+      "library_source_path": "src/lib.rs"
+    }
+  ],
+  "sources": {
+    "fixed": {
+      "path": "regex-word-boundary-empty/sources/fixed.rs.txt",
+      "bytes": 82841,
+      "sha256": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15"
+    },
+    "broken": {
+      "path": "regex-word-boundary-empty/sources/broken.rs.txt",
+      "bytes": 82549,
+      "sha256": "325dc1e42eb8fb9daeb7a8a5e7f967fdee745a7a7c5e26c20dec0b6c66109ad7"
+    }
+  },
+  "tests": {
+    "corrected": {
+      "path": "regex-word-boundary-empty/tests/corrected.rs.txt",
+      "bytes": 109272,
+      "sha256": "de10ee2928001567f80c6ab602de0e280a8e3a1e615cf73def91d2dcc4f9f199"
+    },
+    "original": {
+      "path": "regex-word-boundary-empty/tests/original.rs.txt",
+      "bytes": 109140,
+      "sha256": "cee557e068927ef028fdd0c8b673b948aa52397ed7bd5500f1a38a51bc29ec55"
+    },
+    "weak": {
+      "path": "regex-word-boundary-empty/tests/weak.rs.txt",
+      "bytes": 109179,
+      "sha256": "9150ff57bf007f523ef1dc8f4c9680ea2edfd3fe55fca47f83b36b1b5834e169"
+    }
+  },
+  "boundary_assertions": [
+    {
+      "corrected": "assert!(t(r\"\\b\").is_match_empty());",
+      "original": "assert!(!t(r\"\\b\").is_match_empty());"
+    },
+    {
+      "corrected": "assert!(t(r\"(?-u)\\b\").is_match_empty());",
+      "original": "assert!(!t(r\"(?-u)\\b\").is_match_empty());"
+    }
+  ],
+  "failure_lines": {
+    "broken_corrected": 3154,
+    "fixed_original": 3160
+  },
+  "production_source_path": "regex-syntax/src/hir/mod.rs"
+}

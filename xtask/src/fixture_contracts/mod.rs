@@ -16,11 +16,13 @@
 use super::*;
 use sha2::{Digest, Sha256};
 
+mod benchmark_oracles;
 mod editor_validators;
 mod gap_validators;
 mod general_validators;
 mod installed_journey;
 mod report_validators;
+mod retained_files;
 mod upstream_python;
 
 pub(crate) use editor_validators::*;
@@ -32,7 +34,7 @@ pub(crate) use report_validators::*;
 pub(crate) fn check_fixture_contracts() -> Result<(), String> {
     let fixtures_dir = Path::new("fixtures");
     if !fixtures_dir.exists() {
-        return finish_policy_report(
+        return finish_policy_report_with_disclosures(
             PolicyReportSpec {
                 report_file: "fixture-contracts.md",
                 check: "check-fixture-contracts",
@@ -47,13 +49,14 @@ pub(crate) fn check_fixture_contracts() -> Result<(), String> {
                 exception_template: None,
             },
             &[],
+            &[benchmark_oracles::unavailable_disclosure()],
         );
     }
 
     let mut violations = Vec::new();
     validate_evidence_record_contract_fixture_corpus(&mut violations)?;
     validate_lane1_evidence_quality_failure_fixture_corpus(&mut violations)?;
-    validate_evidence_quality_benchmark_fixture_corpus(&mut violations)?;
+    let benchmark_disclosure = validate_evidence_quality_benchmark_fixture_corpus(&mut violations)?;
     validate_editor_gap_cockpit_fixture_corpus(&mut violations)?;
     validate_editor_first_run_usability_fixture_corpus(&mut violations)?;
     validate_editor_first_pr_bridge_fixture_corpus(&mut violations)?;
@@ -134,7 +137,7 @@ pub(crate) fn check_fixture_contracts() -> Result<(), String> {
         }
     }
 
-    finish_policy_report(
+    finish_policy_report_with_disclosures(
         PolicyReportSpec {
             report_file: "fixture-contracts.md",
             check: "check-fixture-contracts",
@@ -150,6 +153,7 @@ pub(crate) fn check_fixture_contracts() -> Result<(), String> {
             exception_template: None,
         },
         &violations,
+        &[benchmark_disclosure],
     )
 }
 

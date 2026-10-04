@@ -1,0 +1,441 @@
+{
+  "head": "68770f7cbc382425fdd2d0c1d02f1b198466d788",
+  "tree": "307af00404a907dae69a9e7ad02c7de4003985e7",
+  "status": "NATIVE_POLICY_PROJECTION_COMPLETE",
+  "error": null,
+  "resource_stop": null,
+  "source_clean": true,
+  "artifacts": {
+    "ripr": {
+      "head": "68770f7cbc382425fdd2d0c1d02f1b198466d788",
+      "tree": "307af00404a907dae69a9e7ad02c7de4003985e7",
+      "compiler_artifact": {
+        "reason": "compiler-artifact",
+        "package_id": "path+file:///workspace/shared/ripr-family-admission-cloud-qa/crates/ripr#0.11.0",
+        "manifest_path": "/workspace/shared/ripr-family-admission-cloud-qa/crates/ripr/Cargo.toml",
+        "target": {
+          "kind": [
+            "bin"
+          ],
+          "crate_types": [
+            "bin"
+          ],
+          "name": "ripr",
+          "src_path": "/workspace/shared/ripr-family-admission-cloud-qa/crates/ripr/src/main.rs",
+          "edition": "2024",
+          "doc": true,
+          "doctest": false,
+          "test": true
+        },
+        "profile": {
+          "opt_level": "0",
+          "debuginfo": "line-tables-only",
+          "debug_assertions": true,
+          "overflow_checks": true,
+          "test": false
+        },
+        "features": [
+          "default",
+          "lang-python",
+          "lang-rust",
+          "lang-typescript"
+        ],
+        "filenames": [
+          "/workspace/shared/targets/ripr/debug/ripr"
+        ],
+        "executable": "/workspace/shared/targets/ripr/debug/ripr",
+        "fresh": false
+      },
+      "executed_path": "/workspace/shared/targets/ripr/debug/ripr",
+      "files": [
+        {
+          "path": "/workspace/shared/targets/ripr/debug/ripr",
+          "sha256": "3ae247fffbfeb234b21c5fbb10a51ac86ffbd14dffdb0fdaabeec0b2dd2384f1",
+          "metadata": {
+            "size": 158795648,
+            "mode": 493,
+            "uid": 1000,
+            "gid": 1000,
+            "mtime_ns": 1791020731103039990,
+            "atime_ns": 1791020731992480184,
+            "nlink": 2,
+            "xattrs": {}
+          }
+        }
+      ]
+    },
+    "xtask": {
+      "head": "68770f7cbc382425fdd2d0c1d02f1b198466d788",
+      "tree": "307af00404a907dae69a9e7ad02c7de4003985e7",
+      "compiler_artifact": {
+        "reason": "compiler-artifact",
+        "package_id": "path+file:///workspace/shared/ripr-family-admission-cloud-qa/xtask#0.1.0",
+        "manifest_path": "/workspace/shared/ripr-family-admission-cloud-qa/xtask/Cargo.toml",
+        "target": {
+          "kind": [
+            "bin"
+          ],
+          "crate_types": [
+            "bin"
+          ],
+          "name": "xtask",
+          "src_path": "/workspace/shared/ripr-family-admission-cloud-qa/xtask/src/main.rs",
+          "edition": "2024",
+          "doc": true,
+          "doctest": false,
+          "test": true
+        },
+        "profile": {
+          "opt_level": "0",
+          "debuginfo": "line-tables-only",
+          "debug_assertions": true,
+          "overflow_checks": true,
+          "test": false
+        },
+        "features": [],
+        "filenames": [
+          "/workspace/shared/targets/ripr/debug/xtask"
+        ],
+        "executable": "/workspace/shared/targets/ripr/debug/xtask",
+        "fresh": false
+      },
+      "executed_path": "/workspace/shared/targets/ripr/debug/xtask",
+      "files": [
+        {
+          "path": "/workspace/shared/targets/ripr/debug/xtask",
+          "sha256": "ee597eafee2887173140b15c73abb002b7ee3d2a97fd33781aa4a30051421e2b",
+          "metadata": {
+            "size": 224012928,
+            "mode": 493,
+            "uid": 1000,
+            "gid": 1000,
+            "mtime_ns": 1791020819648445412,
+            "atime_ns": 1791020820137829483,
+            "nlink": 2,
+            "xattrs": {}
+          }
+        }
+      ]
+    }
+  },
+  "retention": [
+    {
+      "name": "ripr",
+      "status": "RESTORE_VERIFIED"
+    },
+    {
+      "name": "xtask",
+      "status": "RESTORE_VERIFIED"
+    }
+  ],
+  "stages": [
+    {
+      "name": "policy-xtask-build",
+      "args": [
+        "cargo",
+        "build",
+        "-p",
+        "xtask",
+        "--bin",
+        "xtask",
+        "--message-format=json"
+      ],
+      "exit": 0,
+      "free_before": 4899237888,
+      "free_after": 4898963456,
+      "minimum_free": 4780466176,
+      "log_sha256": "f2c823db9127a316c5cab444b4d6e0ae6ab90d88c7dbf7763bb83b844d0eb9d2"
+    },
+    {
+      "name": "goldens",
+      "args": [
+        "/workspace/shared/targets/ripr/debug/xtask",
+        "goldens",
+        "check"
+      ],
+      "exit": 0,
+      "free_before": 4898951168,
+      "free_after": 4899393536,
+      "minimum_free": 4692602880,
+      "log_sha256": "f619327eda8c21dc3eae6e637470598f8efa036f6a8c59eb70a68e3e7841b16f"
+    },
+    {
+      "name": "honesty",
+      "args": [
+        "/workspace/shared/targets/ripr/debug/xtask",
+        "check-evidence-promotion-honesty"
+      ],
+      "exit": 0,
+      "free_before": 4899393536,
+      "free_after": 4899385344,
+      "minimum_free": 4899393536,
+      "log_sha256": "022c304765dca9ee1162bb57da151e213b7b90f14f1ae0d5e7df6ec6d2f4bae5"
+    },
+    {
+      "name": "output-contracts",
+      "args": [
+        "/workspace/shared/targets/ripr/debug/xtask",
+        "check-output-contracts"
+      ],
+      "exit": 0,
+      "free_before": 4899385344,
+      "free_after": 4899377152,
+      "minimum_free": 4899385344,
+      "log_sha256": "873e1dfbde5220d33dc679398899d1e0269496eef3a16eb90725fb7b253b0ae8"
+    },
+    {
+      "name": "traceability",
+      "args": [
+        "/workspace/shared/targets/ripr/debug/xtask",
+        "check-traceability"
+      ],
+      "exit": 0,
+      "free_before": 4899377152,
+      "free_after": 4899373056,
+      "minimum_free": 4899377152,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "spec-format",
+      "args": [
+        "/workspace/shared/targets/ripr/debug/xtask",
+        "check-spec-format"
+      ],
+      "exit": 0,
+      "free_before": 4899373056,
+      "free_after": 4899364864,
+      "minimum_free": 4899373056,
+      "log_sha256": "6c5e6b5b8432bc957711b12947fff70882e92ed6135b5d9460f5ced21f2385fa"
+    },
+    {
+      "name": "source-role",
+      "args": [
+        "/workspace/shared/targets/ripr/debug/xtask",
+        "check-rust-source-role-authority"
+      ],
+      "exit": 0,
+      "free_before": 4899364864,
+      "free_after": 4899356672,
+      "minimum_free": 4899364864,
+      "log_sha256": "595d595fe275b043e78c884b54d31f1c172ad09dac9a837e5d90a075e0143980"
+    },
+    {
+      "name": "fixture-contracts",
+      "args": [
+        "/workspace/shared/targets/ripr/debug/xtask",
+        "check-fixture-contracts"
+      ],
+      "exit": 0,
+      "free_before": 4899356672,
+      "free_after": 4899348480,
+      "minimum_free": 4899356672,
+      "log_sha256": "76405854c83b912757cde97e67e31846b0ddf327616f157de5acf30525616634"
+    },
+    {
+      "name": "check-fast",
+      "args": [
+        "/workspace/shared/targets/ripr/debug/xtask",
+        "check-fast"
+      ],
+      "exit": 0,
+      "free_before": 4899348480,
+      "free_after": 4899303424,
+      "minimum_free": 4700909568,
+      "log_sha256": "6e05809ebd6eed41227930bac695fc984d4536d8636ac1e03c523e4aabe2772e"
+    },
+    {
+      "name": "precommit",
+      "args": [
+        "/workspace/shared/targets/ripr/debug/xtask",
+        "precommit"
+      ],
+      "exit": 0,
+      "free_before": 4899303424,
+      "free_after": 4898992128,
+      "minimum_free": 4899049472,
+      "log_sha256": "709b86f7295d0b0531ab27bd5fab851220f9ed872073d1be2af3e01e9caa2f4e"
+    },
+    {
+      "name": "committed-whitespace",
+      "args": [
+        "git",
+        "diff",
+        "--check",
+        "b14bba3a98e099b877eabd30cf4bb8037b858fac",
+        "HEAD"
+      ],
+      "exit": 0,
+      "free_before": 4898992128,
+      "free_after": 4898988032,
+      "minimum_free": 4898992128,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "lib-build",
+      "args": [
+        "cargo",
+        "build",
+        "-p",
+        "ripr",
+        "--lib",
+        "--message-format=json"
+      ],
+      "exit": 0,
+      "free_before": 4896915456,
+      "free_after": 4896698368,
+      "minimum_free": 4690345984,
+      "log_sha256": "2ad3c300a79630a124efc8c5a6965d6e64c480654c9588e57b162cc53f13adb2"
+    },
+    {
+      "name": "ripr-build",
+      "args": [
+        "cargo",
+        "build",
+        "-p",
+        "ripr",
+        "--bin",
+        "ripr",
+        "--message-format=json"
+      ],
+      "exit": 0,
+      "free_before": 4896694272,
+      "free_after": 4896460800,
+      "minimum_free": 4896694272,
+      "log_sha256": "9436898efbbdb47370f56d3fc267a942e9a34d1aed6ad88703b51c761a980ede"
+    },
+    {
+      "name": "xtask-build",
+      "args": [
+        "cargo",
+        "build",
+        "-p",
+        "xtask",
+        "--bin",
+        "xtask",
+        "--message-format=json"
+      ],
+      "exit": 0,
+      "free_before": 4896452608,
+      "free_after": 4896301056,
+      "minimum_free": 4777779200,
+      "log_sha256": "920da45f7e21dea34ce4c827b45db26427b7b2914a5ad0c7ceef013955ca9d9b"
+    },
+    {
+      "name": "family-cli",
+      "args": [
+        "python3",
+        "/workspace/shared/ripr-admission-gap-qa/replay-surfaces.py",
+        "/workspace/shared/targets/ripr/debug/ripr",
+        "source-wording",
+        "--source-root",
+        "/workspace/shared/ripr-family-admission-cloud-qa",
+        "--output-root",
+        "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/qualification-value-wording-final/cli",
+        "--expect-qualified",
+        "--require-version-head"
+      ],
+      "exit": 0,
+      "free_before": 4896301056,
+      "free_after": 4895711232,
+      "minimum_free": 4895739904,
+      "log_sha256": "14974e09304436fc5a891312f6bf6fe6f4b7672428398ef771385cec871b184f"
+    },
+    {
+      "name": "helper-cli",
+      "args": [
+        "python3",
+        "/workspace/shared/ripr-admission-gap-qa/replay-helper-surfaces.py",
+        "/workspace/shared/targets/ripr/debug/ripr",
+        "--source-root",
+        "/workspace/shared/ripr-family-admission-cloud-qa",
+        "--output-root",
+        "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/qualification-value-wording-final/helper-cli",
+        "--require-version-head"
+      ],
+      "exit": 0,
+      "free_before": 4895711232,
+      "free_after": 4894892032,
+      "minimum_free": 4895260672,
+      "log_sha256": "b20f153cd3f089964d3219630e920b760445b7d3ee3085aeb98e2d1a9d6c3e0f"
+    },
+    {
+      "name": "pairing-cli",
+      "args": [
+        "python3",
+        "/workspace/shared/ripr-admission-gap-qa/integrated/pairing-async/replay-qualified.py",
+        "/workspace/shared/targets/ripr/debug/ripr",
+        "--source-root",
+        "/workspace/shared/ripr-family-admission-cloud-qa",
+        "--output-root",
+        "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/qualification-value-wording-final/pairing-cli"
+      ],
+      "exit": 0,
+      "free_before": 4894892032,
+      "free_after": 4894425088,
+      "minimum_free": 4894486528,
+      "log_sha256": "f8896da1d7c669ca7928af79b4270c8614fc3a321d88375598c359b5779528ed"
+    },
+    {
+      "name": "upstream-return",
+      "args": [
+        "python3",
+        "/workspace/shared/ripr-admission-gap-qa/integrated/replay-upstream-return.py",
+        "source-wording-68770f7c",
+        "/workspace/shared/targets/ripr/debug/ripr"
+      ],
+      "exit": 0,
+      "free_before": 4894425088,
+      "free_after": 4893749248,
+      "minimum_free": 4893982720,
+      "log_sha256": "a053f3882acee36736faf41804379bfc31d1fbe22fa2887cfc6aa909fc4715c2"
+    },
+    {
+      "name": "upstream-error",
+      "args": [
+        "python3",
+        "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/replay-upstream-error-wording.py",
+        "/workspace/shared/targets/ripr/debug/ripr"
+      ],
+      "exit": 0,
+      "free_before": 4893749248,
+      "free_after": 4893388800,
+      "minimum_free": 4893749248,
+      "log_sha256": "25d0fdbd7f06f446df813de54b8a00797e8e8c65c913ece4ae7958c3a0f5bb26"
+    },
+    {
+      "name": "three-case-cli",
+      "args": [
+        "python3",
+        "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/replay-empty-repaired.py",
+        "/workspace/shared/targets/ripr/debug/ripr",
+        "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/qualification-value-wording-final/three-case",
+        "68770f7cbc382425fdd2d0c1d02f1b198466d788"
+      ],
+      "exit": 0,
+      "free_before": 4893388800,
+      "free_after": 4893253632,
+      "minimum_free": 4893388800,
+      "log_sha256": "5a8f899a1c4383d8ab45be23b64a3903d63f8b94168cbc77160679e317bbc168"
+    },
+    {
+      "name": "source-value-wording-cli",
+      "args": [
+        "python3",
+        "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/value-wording/replay-qualified.py",
+        "/workspace/shared/targets/ripr/debug/ripr",
+        "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/qualification-value-wording-final/wording-cli",
+        "68770f7cbc382425fdd2d0c1d02f1b198466d788"
+      ],
+      "exit": 0,
+      "free_before": 4893249536,
+      "free_after": 4892901376,
+      "minimum_free": 4893249536,
+      "log_sha256": "8678ebacc18f0ccecd5446dff0c965df8e6b04aa45994f8c09275a2c3e1ee2dd"
+    }
+  ],
+  "free_bytes": 4797394944,
+  "original_batch_start_bytes": 4905881600,
+  "final_phase_start_bytes": 4901089280,
+  "stop_below": 3295268864,
+  "dependency": "Current change is source-value presentation only atop qualified0e57; cache/classifier and previous runtime proofs retain their original identities. bc7 affected native proof and generated-only successor are distinct."
+}

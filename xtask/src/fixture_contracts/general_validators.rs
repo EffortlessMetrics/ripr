@@ -394,7 +394,7 @@ fn validate_lane1_evidence_quality_failure_case(
 
 pub(crate) fn validate_evidence_quality_benchmark_fixture_corpus(
     violations: &mut Vec<String>,
-) -> Result<(), String> {
+) -> Result<PolicyDisclosure, String> {
     validate_evidence_quality_benchmark_fixture_corpus_at(
         Path::new(EVIDENCE_QUALITY_BENCHMARK_CORPUS),
         violations,
@@ -404,31 +404,32 @@ pub(crate) fn validate_evidence_quality_benchmark_fixture_corpus(
 pub(crate) fn validate_evidence_quality_benchmark_fixture_corpus_at(
     path: &Path,
     violations: &mut Vec<String>,
-) -> Result<(), String> {
+) -> Result<PolicyDisclosure, String> {
     if !path.exists() {
         violations.push(format!(
             "Lane 1 evidence-quality benchmark corpus is missing {}",
             normalize_path(path)
         ));
-        return Ok(());
+        return Ok(benchmark_oracles::unavailable_disclosure());
     }
 
     let corpus = match read_json_value(path) {
         Ok(value) => value,
         Err(err) => {
             violations.push(err);
-            return Ok(());
+            return Ok(benchmark_oracles::unavailable_disclosure());
         }
     };
-    validate_evidence_quality_benchmark_corpus_value(path, &corpus, violations);
-    Ok(())
+    Ok(validate_evidence_quality_benchmark_corpus_value(
+        path, &corpus, violations,
+    ))
 }
 
 pub(crate) fn validate_evidence_quality_benchmark_corpus_value(
     path: &Path,
     corpus: &Value,
     violations: &mut Vec<String>,
-) {
+) -> PolicyDisclosure {
     let normalized = normalize_path(path);
     if json_string_field(corpus, "kind").as_deref()
         != Some("lane1_evidence_quality_benchmark_corpus")
@@ -476,19 +477,21 @@ pub(crate) fn validate_evidence_quality_benchmark_corpus_value(
 
     let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
         violations.push(format!("{normalized} is missing cases array"));
-        return;
+        return benchmark_oracles::unavailable_disclosure();
     };
 
+    let mut semantic_oracles = benchmark_oracles::Summary::default();
     let mut seen_ids = BTreeSet::new();
     let mut seen_classes = BTreeSet::new();
     let mut seen_kinds = BTreeSet::new();
     let mut has_runtime_only_guard = false;
     let mut has_line_movement_guard = false;
     for case in cases {
+        semantic_oracles.observe(path.parent().unwrap_or(Path::new(".")), case, violations);
         let case_id = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
         if !seen_ids.insert(case_id.clone()) {
             violations.push(format!(
-                "Lane 1 evidence-quality benchmark case {case_id} is duplicated"
+                "Lane 1 evidence-quality benchmark cases collection has duplicate id {case_id}"
             ));
         }
         validate_evidence_quality_benchmark_case(
@@ -535,6 +538,12 @@ pub(crate) fn validate_evidence_quality_benchmark_corpus_value(
                 .to_string(),
         );
     }
+    benchmark_oracles::append_controls_disclosure(
+        path.parent().unwrap_or(Path::new(".")),
+        corpus,
+        semantic_oracles.disclosure(),
+        violations,
+    )
 }
 
 fn validate_evidence_quality_benchmark_case(

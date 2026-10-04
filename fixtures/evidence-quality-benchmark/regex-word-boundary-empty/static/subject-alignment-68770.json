@@ -1,0 +1,339 @@
+{
+  "status": "READ_ONLY_SUBJECT_ALIGNMENT; no new runtime or compilation",
+  "observed_utc": "2026-10-03T10:01:43Z",
+  "producing_head": "68770f7cbc382425fdd2d0c1d02f1b198466d788",
+  "raw_json": {
+    "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-corrected.stdout.json",
+    "bytes": 15583,
+    "sha256": "659c706a088fecde651ba82698d9d708ea3157f3a4133a8b40f8994362bba3d3"
+  },
+  "reported_probe": {
+    "id": "probe:regex-syntax_src_hir_mod.rs:call_deletion:5ca77ad5",
+    "family": "call_deletion",
+    "delta": "effect",
+    "file": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/workspace/regex-syntax/src/hir/mod.rs",
+    "line": 343,
+    "expression": "info.set_match_empty(true)"
+  },
+  "reported_delta": "effect",
+  "reported_source_currentness": "candidate_current",
+  "reported_recommended_next_step": "",
+  "reported_suggested_next_action": "",
+  "historical_diff": {
+    "path": "/workspace/shared/ripr-regex-case-evidence/portable-benchmark-proposal/regex-word-boundary-empty/patches/production.patch",
+    "bytes": 1612,
+    "sha256": "37e041abb479743a22a83b2f0e615dbebc8b8a4c000038c281a8af48c0fe5cc8"
+  },
+  "native_comparison": {
+    "fixed": "info.set_match_empty(true)",
+    "broken": "info.set_match_empty(word_boundary.is_negated())",
+    "meaning": "Historical fixed/broken comparison only"
+  },
+  "probe_counterfactual": {
+    "family": "call_deletion",
+    "required_oracle_from_source": "assertion that notices removed call behavior",
+    "stimulus": "Omit info.set_match_empty(true) in fixed Hir::word_boundary",
+    "source_derived_effect": "HirInfo::new starts bools=0 and bit 8 records is_match_empty; omission leaves all boundary kinds false. Historical broken keeps negated boundary kinds true.",
+    "truth_table_source_inference": [
+      {
+        "boundary": "Unicode / ASCII non-negated",
+        "fixed": true,
+        "historical_broken": false,
+        "call_omitted": false
+      },
+      {
+        "boundary": "UnicodeNegate / AsciiNegate",
+        "fixed": true,
+        "historical_broken": true,
+        "call_omitted": false
+      }
+    ],
+    "runtime_equivalence": "NOT_ESTABLISHED; source shows the two counterfactuals differ",
+    "matching_call_omitted_binary_retained": false
+  },
+  "base_candidate_provenance": {
+    "observed": "JSON identifies candidate_current, effect family, line343 and current expression. It does not serialize Probe.before/after or required_oracles.",
+    "source_mapping": "probes/diff.rs builds current-side call probe from added line; nearby_removed_line retains adjacent matching old call as before provenance. Family/delta remain CallDeletion/Effect. This internal mapping is source-derived, not an additional captured runtime field."
+  },
+  "reported_tests": [
+    {
+      "reported_name": "class_canonicalize_bytes",
+      "source_derived_full_test_id": "hir::tests::class_canonicalize_bytes",
+      "source": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/case-proposal/upstream/fixed/regex-syntax/src/hir/mod.rs",
+        "bytes": 82841,
+        "sha256": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15"
+      },
+      "start_line": 1679,
+      "end_line": 1714,
+      "attributes": "\n    #[test]",
+      "body_sha256": "95f6ce804925e02a1a1d5961790a14e282f5d61c9bd88c4e5fe5a31a162c96b0",
+      "body": "    fn class_canonicalize_bytes() {\n        let cls = bclass(&[(b'a', b'c'), (b'x', b'z')]);\n        let expected = vec![(b'a', b'c'), (b'x', b'z')];\n        assert_eq!(expected, branges(&cls));\n\n        let cls = bclass(&[(b'x', b'z'), (b'a', b'c')]);\n        let expected = vec![(b'a', b'c'), (b'x', b'z')];\n        assert_eq!(expected, branges(&cls));\n\n        let cls = bclass(&[(b'x', b'z'), (b'w', b'y')]);\n        let expected = vec![(b'w', b'z')];\n        assert_eq!(expected, branges(&cls));\n\n        let cls = bclass(&[\n            (b'c', b'f'),\n            (b'a', b'g'),\n            (b'd', b'j'),\n            (b'a', b'c'),\n            (b'm', b'p'),\n            (b'l', b's'),\n        ]);\n        let expected = vec![(b'a', b'j'), (b'l', b's')];\n        assert_eq!(expected, branges(&cls));\n\n        let cls = bclass(&[(b'x', b'z'), (b'u', b'w')]);\n        let expected = vec![(b'u', b'z')];\n        assert_eq!(expected, branges(&cls));\n\n        let cls = bclass(&[(b'\\x00', b'\\xFF'), (b'\\x00', b'\\xFF')]);\n        let expected = vec![(b'\\x00', b'\\xFF')];\n        assert_eq!(expected, branges(&cls));\n\n        let cls = bclass(&[(b'a', b'a'), (b'b', b'b')]);\n        let expected = vec![(b'a', b'b')];\n        assert_eq!(expected, branges(&cls));\n    }\n",
+      "default_feature_compatible": true,
+      "subject_discovery": "NOT_RUN for these names; identity from module source",
+      "calls_changed_word_boundary_or_is_match_empty_in_body": false,
+      "reported_relation": "same_test_file",
+      "reported_oracle": "assert_eq!(expected, branges(&cls));"
+    },
+    {
+      "reported_name": "class_canonicalize_unicode",
+      "source_derived_full_test_id": "hir::tests::class_canonicalize_unicode",
+      "source": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/case-proposal/upstream/fixed/regex-syntax/src/hir/mod.rs",
+        "bytes": 82841,
+        "sha256": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15"
+      },
+      "start_line": 1641,
+      "end_line": 1676,
+      "attributes": "\n    #[test]",
+      "body_sha256": "f13d8ceb179bb11d24ba3a6a30a4196005621fad9628ac3dfb739ddc4fddab49",
+      "body": "    fn class_canonicalize_unicode() {\n        let cls = uclass(&[('a', 'c'), ('x', 'z')]);\n        let expected = vec![('a', 'c'), ('x', 'z')];\n        assert_eq!(expected, uranges(&cls));\n\n        let cls = uclass(&[('x', 'z'), ('a', 'c')]);\n        let expected = vec![('a', 'c'), ('x', 'z')];\n        assert_eq!(expected, uranges(&cls));\n\n        let cls = uclass(&[('x', 'z'), ('w', 'y')]);\n        let expected = vec![('w', 'z')];\n        assert_eq!(expected, uranges(&cls));\n\n        let cls = uclass(&[\n            ('c', 'f'),\n            ('a', 'g'),\n            ('d', 'j'),\n            ('a', 'c'),\n            ('m', 'p'),\n            ('l', 's'),\n        ]);\n        let expected = vec![('a', 'j'), ('l', 's')];\n        assert_eq!(expected, uranges(&cls));\n\n        let cls = uclass(&[('x', 'z'), ('u', 'w')]);\n        let expected = vec![('u', 'z')];\n        assert_eq!(expected, uranges(&cls));\n\n        let cls = uclass(&[('\\x00', '\\u{10FFFF}'), ('\\x00', '\\u{10FFFF}')]);\n        let expected = vec![('\\x00', '\\u{10FFFF}')];\n        assert_eq!(expected, uranges(&cls));\n\n        let cls = uclass(&[('a', 'a'), ('b', 'b')]);\n        let expected = vec![('a', 'b')];\n        assert_eq!(expected, uranges(&cls));\n    }\n",
+      "default_feature_compatible": true,
+      "subject_discovery": "NOT_RUN for these names; identity from module source",
+      "calls_changed_word_boundary_or_is_match_empty_in_body": false,
+      "reported_relation": "same_test_file",
+      "reported_oracle": "assert_eq!(expected, uranges(&cls));"
+    },
+    {
+      "reported_name": "class_case_fold_bytes",
+      "source_derived_full_test_id": "hir::tests::class_case_fold_bytes",
+      "source": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/case-proposal/upstream/fixed/regex-syntax/src/hir/mod.rs",
+        "bytes": 82841,
+        "sha256": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15"
+      },
+      "start_line": 1807,
+      "end_line": 1846,
+      "attributes": "\n    #[test]",
+      "body_sha256": "fce5f5cf02d9791fe995e595f9aa8985c2b950e693209db810810f75569bf7d9",
+      "body": "    fn class_case_fold_bytes() {\n        let cls = bclass(&[\n            (b'C', b'F'),\n            (b'A', b'G'),\n            (b'D', b'J'),\n            (b'A', b'C'),\n            (b'M', b'P'),\n            (b'L', b'S'),\n            (b'c', b'f'),\n        ]);\n        let expected =\n            bclass(&[(b'A', b'J'), (b'L', b'S'), (b'a', b'j'), (b'l', b's')]);\n        assert_eq!(expected, bcasefold(&cls));\n\n        let cls = bclass(&[(b'A', b'Z')]);\n        let expected = bclass(&[(b'A', b'Z'), (b'a', b'z')]);\n        assert_eq!(expected, bcasefold(&cls));\n\n        let cls = bclass(&[(b'a', b'z')]);\n        let expected = bclass(&[(b'A', b'Z'), (b'a', b'z')]);\n        assert_eq!(expected, bcasefold(&cls));\n\n        let cls = bclass(&[(b'A', b'A'), (b'_', b'_')]);\n        let expected = bclass(&[(b'A', b'A'), (b'_', b'_'), (b'a', b'a')]);\n        assert_eq!(expected, bcasefold(&cls));\n\n        let cls = bclass(&[(b'A', b'A'), (b'=', b'=')]);\n        let expected = bclass(&[(b'=', b'='), (b'A', b'A'), (b'a', b'a')]);\n        assert_eq!(expected, bcasefold(&cls));\n\n        let cls = bclass(&[(b'\\x00', b'\\x10')]);\n        assert_eq!(cls, bcasefold(&cls));\n\n        let cls = bclass(&[(b'k', b'k')]);\n        let expected = bclass(&[(b'K', b'K'), (b'k', b'k')]);\n        assert_eq!(expected, bcasefold(&cls));\n\n        let cls = bclass(&[(b'@', b'@')]);\n        assert_eq!(cls, bcasefold(&cls));\n    }\n",
+      "default_feature_compatible": true,
+      "subject_discovery": "NOT_RUN for these names; identity from module source",
+      "calls_changed_word_boundary_or_is_match_empty_in_body": false,
+      "reported_relation": "same_test_file",
+      "reported_oracle": "assert_eq!(expected, bcasefold(&cls));"
+    },
+    {
+      "reported_name": "class_case_fold_unicode",
+      "source_derived_full_test_id": "hir::tests::class_case_fold_unicode",
+      "source": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/case-proposal/upstream/fixed/regex-syntax/src/hir/mod.rs",
+        "bytes": 82841,
+        "sha256": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15"
+      },
+      "start_line": 1718,
+      "end_line": 1773,
+      "attributes": "\n    #[test]\n    #[cfg(feature = \"unicode-case\")]",
+      "body_sha256": "5efd5243d462355336065bf504d2394c30829b3fed4f5bc0f595e0e45cc4a4b3",
+      "body": "    fn class_case_fold_unicode() {\n        let cls = uclass(&[\n            ('C', 'F'),\n            ('A', 'G'),\n            ('D', 'J'),\n            ('A', 'C'),\n            ('M', 'P'),\n            ('L', 'S'),\n            ('c', 'f'),\n        ]);\n        let expected = uclass(&[\n            ('A', 'J'),\n            ('L', 'S'),\n            ('a', 'j'),\n            ('l', 's'),\n            ('\\u{17F}', '\\u{17F}'),\n        ]);\n        assert_eq!(expected, ucasefold(&cls));\n\n        let cls = uclass(&[('A', 'Z')]);\n        let expected = uclass(&[\n            ('A', 'Z'),\n            ('a', 'z'),\n            ('\\u{17F}', '\\u{17F}'),\n            ('\\u{212A}', '\\u{212A}'),\n        ]);\n        assert_eq!(expected, ucasefold(&cls));\n\n        let cls = uclass(&[('a', 'z')]);\n        let expected = uclass(&[\n            ('A', 'Z'),\n            ('a', 'z'),\n            ('\\u{17F}', '\\u{17F}'),\n            ('\\u{212A}', '\\u{212A}'),\n        ]);\n        assert_eq!(expected, ucasefold(&cls));\n\n        let cls = uclass(&[('A', 'A'), ('_', '_')]);\n        let expected = uclass(&[('A', 'A'), ('_', '_'), ('a', 'a')]);\n        assert_eq!(expected, ucasefold(&cls));\n\n        let cls = uclass(&[('A', 'A'), ('=', '=')]);\n        let expected = uclass(&[('=', '='), ('A', 'A'), ('a', 'a')]);\n        assert_eq!(expected, ucasefold(&cls));\n\n        let cls = uclass(&[('\\x00', '\\x10')]);\n        assert_eq!(cls, ucasefold(&cls));\n\n        let cls = uclass(&[('k', 'k')]);\n        let expected =\n            uclass(&[('K', 'K'), ('k', 'k'), ('\\u{212A}', '\\u{212A}')]);\n        assert_eq!(expected, ucasefold(&cls));\n\n        let cls = uclass(&[('@', '@')]);\n        assert_eq!(cls, ucasefold(&cls));\n    }\n",
+      "default_feature_compatible": true,
+      "subject_discovery": "NOT_RUN for these names; identity from module source",
+      "calls_changed_word_boundary_or_is_match_empty_in_body": false,
+      "reported_relation": "same_test_file",
+      "reported_oracle": "assert_eq!(expected, ucasefold(&cls));"
+    },
+    {
+      "reported_name": "class_case_fold_unicode_disabled",
+      "source_derived_full_test_id": "hir::tests::class_case_fold_unicode_disabled",
+      "source": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/case-proposal/upstream/fixed/regex-syntax/src/hir/mod.rs",
+        "bytes": 82841,
+        "sha256": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15"
+      },
+      "start_line": 1777,
+      "end_line": 1788,
+      "attributes": "\n    #[test]\n    #[cfg(not(feature = \"unicode-case\"))]",
+      "body_sha256": "90dc6cd38cc17432de7b7bcaf53e1553ec3a82f492bdd8bf3ac3f0eead314768",
+      "body": "    fn class_case_fold_unicode_disabled() {\n        let mut cls = uclass(&[\n            ('C', 'F'),\n            ('A', 'G'),\n            ('D', 'J'),\n            ('A', 'C'),\n            ('M', 'P'),\n            ('L', 'S'),\n            ('c', 'f'),\n        ]);\n        assert!(cls.try_case_fold_simple().is_err());\n    }\n",
+      "default_feature_compatible": false,
+      "subject_discovery": "NOT_RUN for these names; identity from module source",
+      "calls_changed_word_boundary_or_is_match_empty_in_body": false,
+      "reported_relation": "same_test_file",
+      "reported_oracle": "assert!(cls.try_case_fold_simple().is_err());"
+    },
+    {
+      "reported_name": "class_case_fold_unicode_disabled_panics",
+      "source_derived_full_test_id": "hir::tests::class_case_fold_unicode_disabled_panics",
+      "source": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/case-proposal/upstream/fixed/regex-syntax/src/hir/mod.rs",
+        "bytes": 82841,
+        "sha256": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15"
+      },
+      "start_line": 1793,
+      "end_line": 1804,
+      "attributes": "\n    #[test]\n    #[should_panic]\n    #[cfg(not(feature = \"unicode-case\"))]",
+      "body_sha256": "e86ee7b895166fb4b2f88beda422d02a515b5f50b58263c5f3d8bc89703905fb",
+      "body": "    fn class_case_fold_unicode_disabled_panics() {\n        let mut cls = uclass(&[\n            ('C', 'F'),\n            ('A', 'G'),\n            ('D', 'J'),\n            ('A', 'C'),\n            ('M', 'P'),\n            ('L', 'S'),\n            ('c', 'f'),\n        ]);\n        cls.case_fold_simple();\n    }\n",
+      "default_feature_compatible": false,
+      "subject_discovery": "NOT_RUN for these names; identity from module source",
+      "calls_changed_word_boundary_or_is_match_empty_in_body": false,
+      "reported_relation": "same_test_file",
+      "reported_oracle": ""
+    },
+    {
+      "reported_name": "class_difference_bytes",
+      "source_derived_full_test_id": "hir::tests::class_difference_bytes",
+      "source": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/case-proposal/upstream/fixed/regex-syntax/src/hir/mod.rs",
+        "bytes": 82841,
+        "sha256": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15"
+      },
+      "start_line": 2169,
+      "end_line": 2229,
+      "attributes": "\n    #[test]",
+      "body_sha256": "e758b5e12ea1fa29dc9c5b21157d312a5261a96db88e64413c14943f3c5fe27a",
+      "body": "    fn class_difference_bytes() {\n        let cls1 = bclass(&[(b'a', b'a')]);\n        let cls2 = bclass(&[(b'a', b'a')]);\n        let expected = bclass(&[]);\n        assert_eq!(expected, bdifference(&cls1, &cls2));\n\n        let cls1 = bclass(&[(b'a', b'a')]);\n        let cls2 = bclass(&[]);\n        let expected = bclass(&[(b'a', b'a')]);\n        assert_eq!(expected, bdifference(&cls1, &cls2));\n\n        let cls1 = bclass(&[]);\n        let cls2 = bclass(&[(b'a', b'a')]);\n        let expected = bclass(&[]);\n        assert_eq!(expected, bdifference(&cls1, &cls2));\n\n        let cls1 = bclass(&[(b'a', b'z')]);\n        let cls2 = bclass(&[(b'a', b'a')]);\n        let expected = bclass(&[(b'b', b'z')]);\n        assert_eq!(expected, bdifference(&cls1, &cls2));\n\n        let cls1 = bclass(&[(b'a', b'z')]);\n        let cls2 = bclass(&[(b'z', b'z')]);\n        let expected = bclass(&[(b'a', b'y')]);\n        assert_eq!(expected, bdifference(&cls1, &cls2));\n\n        let cls1 = bclass(&[(b'a', b'z')]);\n        let cls2 = bclass(&[(b'm', b'm')]);\n        let expected = bclass(&[(b'a', b'l'), (b'n', b'z')]);\n        assert_eq!(expected, bdifference(&cls1, &cls2));\n\n        let cls1 = bclass(&[(b'a', b'c'), (b'g', b'i'), (b'r', b't')]);\n        let cls2 = bclass(&[(b'a', b'z')]);\n        let expected = bclass(&[]);\n        assert_eq!(expected, bdifference(&cls1, &cls2));\n\n        let cls1 = bclass(&[(b'a', b'c'), (b'g', b'i'), (b'r', b't')]);\n        let cls2 = bclass(&[(b'd', b'v')]);\n        let expected = bclass(&[(b'a', b'c')]);\n        assert_eq!(expected, bdifference(&cls1, &cls2));\n\n        let cls1 = bclass(&[(b'a', b'c'), (b'g', b'i'), (b'r', b't')]);\n        let cls2 = bclass(&[(b'b', b'g'), (b's', b'u')]);\n        let expected = bclass(&[(b'a', b'a'), (b'h', b'i'), (b'r', b'r')]);\n        assert_eq!(expected, bdifference(&cls1, &cls2));\n\n        let cls1 = bclass(&[(b'a', b'c'), (b'g', b'i'), (b'r', b't')]);\n        let cls2 = bclass(&[(b'b', b'd'), (b'e', b'g'), (b's', b'u')]);\n        let expected = bclass(&[(b'a', b'a'), (b'h', b'i'), (b'r', b'r')]);\n        assert_eq!(expected, bdifference(&cls1, &cls2));\n\n        let cls1 = bclass(&[(b'x', b'z')]);\n        let cls2 = bclass(&[(b'a', b'c'), (b'e', b'g'), (b's', b'u')]);\n        let expected = bclass(&[(b'x', b'z')]);\n        assert_eq!(expected, bdifference(&cls1, &cls2));\n\n        let cls1 = bclass(&[(b'a', b'z')]);\n        let cls2 = bclass(&[(b'a', b'c'), (b'e', b'g'), (b's', b'u')]);\n        let expected = bclass(&[(b'd', b'd'), (b'h', b'r'), (b'v', b'z')]);\n        assert_eq!(expected, bdifference(&cls1, &cls2));\n    }\n",
+      "default_feature_compatible": true,
+      "subject_discovery": "NOT_RUN for these names; identity from module source",
+      "calls_changed_word_boundary_or_is_match_empty_in_body": false,
+      "reported_relation": "same_test_file",
+      "reported_oracle": "assert_eq!(expected, bdifference(&cls1, &cls2));"
+    },
+    {
+      "reported_name": "class_difference_unicode",
+      "source_derived_full_test_id": "hir::tests::class_difference_unicode",
+      "source": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/case-proposal/upstream/fixed/regex-syntax/src/hir/mod.rs",
+        "bytes": 82841,
+        "sha256": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15"
+      },
+      "start_line": 2106,
+      "end_line": 2166,
+      "attributes": "\n    #[test]",
+      "body_sha256": "6c8a614d6e206ae86112f1e4d049753d91c8611ffaf8a0959c3bd73f34181b63",
+      "body": "    fn class_difference_unicode() {\n        let cls1 = uclass(&[('a', 'a')]);\n        let cls2 = uclass(&[('a', 'a')]);\n        let expected = uclass(&[]);\n        assert_eq!(expected, udifference(&cls1, &cls2));\n\n        let cls1 = uclass(&[('a', 'a')]);\n        let cls2 = uclass(&[]);\n        let expected = uclass(&[('a', 'a')]);\n        assert_eq!(expected, udifference(&cls1, &cls2));\n\n        let cls1 = uclass(&[]);\n        let cls2 = uclass(&[('a', 'a')]);\n        let expected = uclass(&[]);\n        assert_eq!(expected, udifference(&cls1, &cls2));\n\n        let cls1 = uclass(&[('a', 'z')]);\n        let cls2 = uclass(&[('a', 'a')]);\n        let expected = uclass(&[('b', 'z')]);\n        assert_eq!(expected, udifference(&cls1, &cls2));\n\n        let cls1 = uclass(&[('a', 'z')]);\n        let cls2 = uclass(&[('z', 'z')]);\n        let expected = uclass(&[('a', 'y')]);\n        assert_eq!(expected, udifference(&cls1, &cls2));\n\n        let cls1 = uclass(&[('a', 'z')]);\n        let cls2 = uclass(&[('m', 'm')]);\n        let expected = uclass(&[('a', 'l'), ('n', 'z')]);\n        assert_eq!(expected, udifference(&cls1, &cls2));\n\n        let cls1 = uclass(&[('a', 'c'), ('g', 'i'), ('r', 't')]);\n        let cls2 = uclass(&[('a', 'z')]);\n        let expected = uclass(&[]);\n        assert_eq!(expected, udifference(&cls1, &cls2));\n\n        let cls1 = uclass(&[('a', 'c'), ('g', 'i'), ('r', 't')]);\n        let cls2 = uclass(&[('d', 'v')]);\n        let expected = uclass(&[('a', 'c')]);\n        assert_eq!(expected, udifference(&cls1, &cls2));\n\n        let cls1 = uclass(&[('a', 'c'), ('g', 'i'), ('r', 't')]);\n        let cls2 = uclass(&[('b', 'g'), ('s', 'u')]);\n        let expected = uclass(&[('a', 'a'), ('h', 'i'), ('r', 'r')]);\n        assert_eq!(expected, udifference(&cls1, &cls2));\n\n        let cls1 = uclass(&[('a', 'c'), ('g', 'i'), ('r', 't')]);\n        let cls2 = uclass(&[('b', 'd'), ('e', 'g'), ('s', 'u')]);\n        let expected = uclass(&[('a', 'a'), ('h', 'i'), ('r', 'r')]);\n        assert_eq!(expected, udifference(&cls1, &cls2));\n\n        let cls1 = uclass(&[('x', 'z')]);\n        let cls2 = uclass(&[('a', 'c'), ('e', 'g'), ('s', 'u')]);\n        let expected = uclass(&[('x', 'z')]);\n        assert_eq!(expected, udifference(&cls1, &cls2));\n\n        let cls1 = uclass(&[('a', 'z')]);\n        let cls2 = uclass(&[('a', 'c'), ('e', 'g'), ('s', 'u')]);\n        let expected = uclass(&[('d', 'd'), ('h', 'r'), ('v', 'z')]);\n        assert_eq!(expected, udifference(&cls1, &cls2));\n    }\n",
+      "default_feature_compatible": true,
+      "subject_discovery": "NOT_RUN for these names; identity from module source",
+      "calls_changed_word_boundary_or_is_match_empty_in_body": false,
+      "reported_relation": "same_test_file",
+      "reported_oracle": "assert_eq!(expected, udifference(&cls1, &cls2));"
+    }
+  ],
+  "projection_limit": {
+    "owner": "classify/reveal.rs::finalize_related_tests/pack_unique_tests_first",
+    "behavior": "Related assertion records are packed to eight before Finding is constructed; output/json/report.rs then uses that already-packed vector length as related_tests_total.",
+    "consequence": "The eight printed rows and related_tests_total=8 do not establish the complete internal selection or strongest oracle identity. Absence of analysis_is_match_empty in this projection is not proof it never participated.",
+    "other_authorities": [
+      "classifier/evidence.rs passes complete context.related_tests to reach and reveal before packing",
+      "classify/related_tests.rs owns file/name/call association and ordering",
+      "classify/reveal.rs owns effect-observer credit; whole-object equality can confirm an effect family without token match",
+      "classify/reach.rs has proximity-only gating; a hidden non-proximity relation can affect reach before projection"
+    ]
+  },
+  "retained_library_runners": [
+    {
+      "variant": "fixed_corrected",
+      "production_source_sha256": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15",
+      "test_source_sha256": "de10ee2928001567f80c6ab602de0e280a8e3a1e615cf73def91d2dcc4f9f199",
+      "artifact": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/witnesses/34ecc19c42dcd9b3abc08be2792514a4032a6dc56a0f25fd2b135491ed957e3a.bin",
+        "bytes": 17152856,
+        "sha256": "34ecc19c42dcd9b3abc08be2792514a4032a6dc56a0f25fd2b135491ed957e3a"
+      },
+      "features": [
+        "default",
+        "unicode",
+        "unicode-age",
+        "unicode-bool",
+        "unicode-case",
+        "unicode-gencat",
+        "unicode-perl",
+        "unicode-script",
+        "unicode-segment"
+      ],
+      "profile": {
+        "opt_level": "0",
+        "debuginfo": 2,
+        "debug_assertions": true,
+        "overflow_checks": true,
+        "test": true
+      },
+      "compiled_subject": "Complete regex-syntax library test target; 322 tests implied by one executed plus 321 filtered in retained exact-subject run",
+      "selected_eight_subject_list_captured": false,
+      "call_deletion_stimulus_present": false
+    },
+    {
+      "variant": "broken_corrected",
+      "production_source_sha256": "325dc1e42eb8fb9daeb7a8a5e7f967fdee745a7a7c5e26c20dec0b6c66109ad7",
+      "test_source_sha256": "de10ee2928001567f80c6ab602de0e280a8e3a1e615cf73def91d2dcc4f9f199",
+      "artifact": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/witnesses/460fb6f322189d60821ea1cf32c2b917a5e6614aef10c0b0fb872bd41a0974f2.bin",
+        "bytes": 17153704,
+        "sha256": "460fb6f322189d60821ea1cf32c2b917a5e6614aef10c0b0fb872bd41a0974f2"
+      },
+      "features": [
+        "default",
+        "unicode",
+        "unicode-age",
+        "unicode-bool",
+        "unicode-case",
+        "unicode-gencat",
+        "unicode-perl",
+        "unicode-script",
+        "unicode-segment"
+      ],
+      "profile": {
+        "opt_level": "0",
+        "debuginfo": 2,
+        "debug_assertions": true,
+        "overflow_checks": true,
+        "test": true
+      },
+      "compiled_subject": "Complete regex-syntax library test target; 322 tests implied by one executed plus 321 filtered in retained exact-subject run",
+      "selected_eight_subject_list_captured": false,
+      "call_deletion_stimulus_present": false
+    }
+  ],
+  "replay_proposal": {
+    "sixteen_test_deletion_replay": "NOT_SUPPORTED by retained runners: mismatched stimulus and two cfg-disabled names",
+    "historical_only_alternative": "If separately requested, list both retained default-feature images, then run the six source-active reported tests against fixed/broken (12 exact one-test runs). This only addresses discrimination of the historical argument change, never call deletion. No runtime started.",
+    "deletion_specific_requirement": "A newly admitted exact source mutation omitting the setter, matching compile/features, named-subject discovery and direct artifact behavior would be needed. New compilation is not currently authorized."
+  },
+  "claim_separation": {
+    "invalid_semantic_oracle": "Independently accepted original wrong-sign oracle invalid for the retained historical claim",
+    "missed_regression_selection": "Only absence from the reported bounded list is observed; complete internal selection unresolved",
+    "verified_false_exposure": "NOT_ESTABLISHED; neither target-aligned deletion runtime nor full internal witness provenance has been captured"
+  },
+  "source_owners": {
+    "crates/ripr/src/analysis/probes/diff.rs": {
+      "path": "/workspace/shared/ripr-family-admission-cloud-qa/crates/ripr/src/analysis/probes/diff.rs",
+      "bytes": 94078,
+      "sha256": "0b4f3f55cb986da817bf9f9d8089f28d1acc5f19ad0bf84361e3a69df6a0638f"
+    },
+    "crates/ripr/src/analysis/probes/family.rs": {
+      "path": "/workspace/shared/ripr-family-admission-cloud-qa/crates/ripr/src/analysis/probes/family.rs",
+      "bytes": 3120,
+      "sha256": "6983b5bd82b872cc22b3fad159f61c18df666c40050e458b851e52a10cca9203"
+    },
+    "crates/ripr/src/analysis/probes/expectations.rs": {
+      "path": "/workspace/shared/ripr-family-admission-cloud-qa/crates/ripr/src/analysis/probes/expectations.rs",
+      "bytes": 5538,
+      "sha256": "ad7bad64ec7349cff63bf863e38f0400769304fbee754db5b2e68baa87c2d7f0"
+    },
+    "crates/ripr/src/analysis/classify/related_tests.rs": {
+      "path": "/workspace/shared/ripr-family-admission-cloud-qa/crates/ripr/src/analysis/classify/related_tests.rs",
+      "bytes": 240998,
+      "sha256": "d942965ab5edfc892610d245e7c8d2e05e0504d4bc1dd92a9efb6d443b815e78"
+    },
+    "crates/ripr/src/analysis/classify/reveal.rs": {
+      "path": "/workspace/shared/ripr-family-admission-cloud-qa/crates/ripr/src/analysis/classify/reveal.rs",
+      "bytes": 221996,
+      "sha256": "24ce5942236c2f7c9169b29a670b39254cbf5aa0c69b71e6ad0784da58683436"
+    },
+    "crates/ripr/src/analysis/classify/reach.rs": {
+      "path": "/workspace/shared/ripr-family-admission-cloud-qa/crates/ripr/src/analysis/classify/reach.rs",
+      "bytes": 18107,
+      "sha256": "d4843d07e4fd27b740e3522b25189c892edafa8c89e266fe7a537b7a27f998d4"
+    },
+    "crates/ripr/src/analysis/classifier/evidence.rs": {
+      "path": "/workspace/shared/ripr-family-admission-cloud-qa/crates/ripr/src/analysis/classifier/evidence.rs",
+      "bytes": 30708,
+      "sha256": "80c4f6976b75380d839ecea438a3f0fdee376af56dcf0701c2132f506f990865"
+    },
+    "crates/ripr/src/output/json/report.rs": {
+      "path": "/workspace/shared/ripr-family-admission-cloud-qa/crates/ripr/src/output/json/report.rs",
+      "bytes": 61890,
+      "sha256": "df74cfdab800aa61eafd9f057770393cff1d53c51ced40c416f4f998d44aeda1"
+    }
+  }
+}

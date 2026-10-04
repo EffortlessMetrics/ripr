@@ -1,0 +1,179 @@
+{
+  "kind": "retained_native_capture",
+  "case_id": "regex-word-boundary-empty",
+  "observation": {
+    "variant": "fixed_weak",
+    "phase": "completed",
+    "timed_out": false,
+    "compile_failed": false,
+    "process_failed": false,
+    "source_sha256": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15",
+    "source_sha256_after": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15",
+    "test_sha256": "9150ff57bf007f523ef1dc8f4c9680ea2edfd3fe55fca47f83b36b1b5834e169",
+    "test_sha256_after": "9150ff57bf007f523ef1dc8f4c9680ea2edfd3fe55fca47f83b36b1b5834e169",
+    "lock_sha256": "9cbfc6b8b6b2c132365dd31fc3b66d6f6caf964fdb7214a28e2435fa7367ab2d",
+    "lock_sha256_after": "9cbfc6b8b6b2c132365dd31fc3b66d6f6caf964fdb7214a28e2435fa7367ab2d",
+    "counts": {
+      "intended": 1,
+      "discovered": 1,
+      "selected": 1,
+      "executed": 1,
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    },
+    "test_ids": [
+      "hir::translate::tests::analysis_is_match_empty"
+    ],
+    "exit_code": 0,
+    "runner": {
+      "version": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+      "compiler_version": "rustc 1.95.0 (59807616e 2026-04-14)",
+      "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+      "target_dir": "/workspace/shared/ripr-regex-case-evidence/native-experiment/target",
+      "build_dir": "/workspace/shared/ripr-regex-case-evidence/native-experiment/build",
+      "artifact_sha256": "b03fbf008d18cf0cec84ef2ef23ac2470cfe1f9bd394c2120a1ba5bc2956823c",
+      "executable": "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+      "executable_sha256": "841072d1d92f9e841d9ba5b0814182a0adf064acf4527cd120967b7bc49dcb66",
+      "argv": [
+        "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "--manifest-path",
+        "Cargo.toml",
+        "-p",
+        "regex-syntax",
+        "--lib",
+        "hir::translate::tests::analysis_is_match_empty",
+        "--",
+        "--exact"
+      ]
+    },
+    "stdout": {
+      "path": "regex-word-boundary-empty/outputs/fixed_weak.cargo.stdout",
+      "bytes": 173,
+      "sha256": "aa06c2b318e421c03becbbf1896887a3d1c4067812fe97842463c7a4f5f8d946"
+    },
+    "stderr": {
+      "path": "regex-word-boundary-empty/outputs/fixed_weak.cargo.stderr",
+      "bytes": 1120,
+      "sha256": "f65e10c46ab0385b2ad42593d50d625e5ab64794a8b8ab3b5c3ff8b9fb0c2e75"
+    }
+  },
+  "compiler_artifact": {
+    "reason": "compiler-artifact",
+    "package_id": "path+file:///workspace/shared/ripr-regex-case-evidence/native-experiment/workspace/regex-syntax#0.6.25",
+    "manifest_path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace/regex-syntax/Cargo.toml",
+    "target": {
+      "kind": [
+        "lib"
+      ],
+      "crate_types": [
+        "lib"
+      ],
+      "name": "regex_syntax",
+      "src_path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace/regex-syntax/src/lib.rs",
+      "edition": "2018",
+      "doc": true,
+      "doctest": true,
+      "test": true
+    },
+    "profile": {
+      "opt_level": "0",
+      "debuginfo": 2,
+      "debug_assertions": true,
+      "overflow_checks": true,
+      "test": true
+    },
+    "features": [
+      "default",
+      "unicode",
+      "unicode-age",
+      "unicode-bool",
+      "unicode-case",
+      "unicode-gencat",
+      "unicode-perl",
+      "unicode-script",
+      "unicode-segment"
+    ],
+    "filenames": [
+      "/workspace/shared/ripr-regex-case-evidence/native-experiment/build/debug/deps/regex_syntax-01ddbc8b65b6541b"
+    ],
+    "executable": "/workspace/shared/ripr-regex-case-evidence/native-experiment/build/debug/deps/regex_syntax-01ddbc8b65b6541b",
+    "fresh": false
+  },
+  "artifact": {
+    "compiled_path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/build/debug/deps/regex_syntax-01ddbc8b65b6541b",
+    "bytes": 17152240,
+    "sha256": "b03fbf008d18cf0cec84ef2ef23ac2470cfe1f9bd394c2120a1ba5bc2956823c",
+    "retained": {
+      "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/witnesses/b03fbf008d18cf0cec84ef2ef23ac2470cfe1f9bd394c2120a1ba5bc2956823c.bin",
+      "bytes": 17152240,
+      "sha256": "b03fbf008d18cf0cec84ef2ef23ac2470cfe1f9bd394c2120a1ba5bc2956823c"
+    },
+    "custody": {
+      "status": "external",
+      "locator": "/workspace/shared/ripr-regex-case-evidence/native-experiment/witnesses/b03fbf008d18cf0cec84ef2ef23ac2470cfe1f9bd394c2120a1ba5bc2956823c.bin"
+    }
+  },
+  "discovery": {
+    "phase": "completed",
+    "timed_out": false,
+    "process_failed": false,
+    "exit_code": 0,
+    "argv": [
+      "/workspace/shared/ripr-regex-case-evidence/native-experiment/witnesses/b03fbf008d18cf0cec84ef2ef23ac2470cfe1f9bd394c2120a1ba5bc2956823c.bin",
+      "hir::translate::tests::analysis_is_match_empty",
+      "--exact",
+      "--list"
+    ],
+    "stdout": {
+      "path": "regex-word-boundary-empty/outputs/fixed_weak.listing.stdout",
+      "bytes": 75,
+      "sha256": "034aaad39cdbff3a11adbd4e49566db4af8d83d2019dfd428bd2118f89b858cf"
+    },
+    "stderr": {
+      "path": "regex-word-boundary-empty/outputs/fixed_weak.listing.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "artifact_execution": {
+    "phase": "completed",
+    "timed_out": false,
+    "process_failed": false,
+    "exit_code": 0,
+    "argv": [
+      "/workspace/shared/ripr-regex-case-evidence/native-experiment/witnesses/b03fbf008d18cf0cec84ef2ef23ac2470cfe1f9bd394c2120a1ba5bc2956823c.bin",
+      "hir::translate::tests::analysis_is_match_empty",
+      "--exact"
+    ],
+    "stdout": {
+      "path": "regex-word-boundary-empty/outputs/fixed_weak.frozen.stdout",
+      "bytes": 173,
+      "sha256": "aa06c2b318e421c03becbbf1896887a3d1c4067812fe97842463c7a4f5f8d946"
+    },
+    "stderr": {
+      "path": "regex-word-boundary-empty/outputs/fixed_weak.frozen.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "executable_sha256": "b03fbf008d18cf0cec84ef2ef23ac2470cfe1f9bd394c2120a1ba5bc2956823c"
+  },
+  "full_workspace_inputs_before": {
+    "path": "regex-word-boundary-empty/inputs/fixed_weak-before.json",
+    "bytes": 42092,
+    "sha256": "d796cd8166f482a304b07b44ee7dde8db0f7a940d749831af4705d9aa2c102ff"
+  },
+  "full_workspace_inputs_after": {
+    "path": "regex-word-boundary-empty/inputs/fixed_weak-after.json",
+    "bytes": 42092,
+    "sha256": "d796cd8166f482a304b07b44ee7dde8db0f7a940d749831af4705d9aa2c102ff"
+  },
+  "retained_verification": {
+    "path": "regex-word-boundary-empty/verification/fixed_weak.json",
+    "bytes": 750,
+    "sha256": "f23b1ab094136eace823dfc39b63a3c8bc5337ceb9662a3665d2621581d50ac0"
+  }
+}

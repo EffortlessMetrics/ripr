@@ -23,6 +23,12 @@ fixtures/*/diff.patch whitespace=-blank-at-eol
 # Trailing whitespace in them is source content and must not be rewritten.
 metrics/rust-judged-behavior-panel/diffs/*.diff -whitespace
 
+# SPEC-0035 retains the upstream matcher, native output, and patches verbatim.
+# Their recorded digests include original line endings and intentional blanks.
+fixtures/evidence-quality-benchmark/regex-word-boundary-empty/basis/matcher-original.rs.txt -text -whitespace
+fixtures/evidence-quality-benchmark/regex-word-boundary-empty/outputs/*.stdout -text -whitespace
+fixtures/evidence-quality-benchmark/regex-word-boundary-empty/patches/*.patch -text whitespace=-blank-at-eol
+
 # Exact Git commit object used only by the custody boundary fixture. Its signed
 # header contains significant space-only continuation lines; never normalize it.
 xtask/src/reports/release/candidate_harness/live_head/fixtures/last-integrated.commit -text -whitespace
