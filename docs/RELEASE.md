@@ -218,6 +218,12 @@ byte lengths and require ordinary files. Initial archive/executable capture and
 archive decompression retain their separate, currently unbounded memory surface;
 the reread bound is not a total package/install memory or storage budget.
 
+The [0.11 preparation packet at observed d7c3](handoffs/2026-10-04-0.11-candidate-preparation-d7c3.md)
+retains the complete Git range, current PR snapshot, proposed engineering
+dispositions and missing acceptance/execution inputs for #2766/#2768/#3807.
+It is inactive review input: no candidate, accepted record-set digest, pin,
+admission generation or qualification is established by that packet.
+
 For `0.11.0`, the Rust gap-repair support claim remains `usable alpha`.
 Fixture, installed-package, packaged-editor, bounded test-only transaction, and
 before/after receipt paths are proved when a valid route exists. The governed
