@@ -36,8 +36,14 @@ pub(crate) struct RepairFixSite {
 /// 1. candidate actionability — the shared `#3281` predicate
 ///    [`Finding::is_candidate_actionable`];
 /// 2. an established discriminator — the canonical gap names a non-empty
-///    normalized discriminator, activation names no missing discriminator,
-///    and `missing` names no `Missing discriminator value:` entry;
+///    normalized discriminator and no producer-named missing discriminator
+///    exists. A producer that names its missing discriminators refuses as
+///    `missing_discriminator`; a finding whose canonical gap was withheld
+///    behind the finding's own typed static limitation refuses as
+///    `static_limitation`; only a producer that names no missing
+///    discriminator and populates no canonical gap at all for the language
+///    refuses as `discriminator_not_populated_for_language`, so one document
+///    cannot contradict its own `discriminator_availability` block (#5268);
 /// 3. an established fix site — a strong, high-confidence directly-related
 ///    test, on a path the shared edit-cage test-surface predicate accepts.
 ///
@@ -47,6 +53,7 @@ pub(crate) struct RepairReadiness {
     pub(crate) ready: bool,
     pub(crate) fix_site: Option<RepairFixSite>,
     /// First failing gate (`not_candidate_actionable`, `missing_discriminator`,
+    /// `discriminator_not_populated_for_language`, `static_limitation`,
     /// `fix_site_not_established`, `fix_site_not_test_surface`); `None` only
     /// when every gate is established.
     pub(crate) ineligibility: Option<&'static str>,
@@ -61,20 +68,38 @@ impl RepairReadiness {
                 ineligibility: Some("not_candidate_actionable"),
             };
         }
-        let discriminator_missing = finding
-            .canonical_gap
-            .as_ref()
-            .is_none_or(|gap| gap.normalized_discriminator.trim().is_empty())
-            || !finding.activation.missing_discriminators.is_empty()
-            || finding
-                .missing
-                .iter()
-                .any(|entry| entry.starts_with(crate::domain::MISSING_DISCRIMINATOR_VALUE_PREFIX));
-        if discriminator_missing {
+        let producer_named_missing_discriminator =
+            !finding.activation.missing_discriminators.is_empty()
+                || finding.missing.iter().any(|entry| {
+                    entry.starts_with(crate::domain::MISSING_DISCRIMINATOR_VALUE_PREFIX)
+                });
+        if producer_named_missing_discriminator {
             return Self {
                 ready: false,
                 fix_site: None,
                 ineligibility: Some("missing_discriminator"),
+            };
+        }
+        let discriminator_unpopulated = finding
+            .canonical_gap
+            .as_ref()
+            .is_none_or(|gap| gap.normalized_discriminator.trim().is_empty());
+        if discriminator_unpopulated {
+            // The refusal must name the actual producer condition: a finding
+            // the producer withheld behind its own typed static limitation
+            // (Python omits the canonical gap exactly then) refuses as
+            // `static_limitation`; only a language producer that does not
+            // populate canonical gaps at all refuses as
+            // `discriminator_not_populated_for_language` (#5268).
+            let ineligibility = if finding.static_limit_kind.is_some() {
+                "static_limitation"
+            } else {
+                "discriminator_not_populated_for_language"
+            };
+            return Self {
+                ready: false,
+                fix_site: None,
+                ineligibility: Some(ineligibility),
             };
         }
         // The gate contract is "a strong, high-confidence directly-related
@@ -127,6 +152,12 @@ impl RepairReadiness {
             }
             Some("missing_discriminator") => {
                 "the producer did not establish a discriminator for the changed behavior (no normalized discriminator, or a producer-named missing discriminator)"
+            }
+            Some("discriminator_not_populated_for_language") => {
+                "the producer named no missing discriminator but has not populated a normalized discriminator for this language's findings yet, so the discriminator gate cannot be established from available producer facts; repair stays unavailable until the language producer populates canonical gaps (#5268)"
+            }
+            Some("static_limitation") => {
+                "the producer withheld this finding's canonical gap behind a typed static limitation on the finding itself; the limitation, not the language, explains why no normalized discriminator is established"
             }
             Some("fix_site_not_established") => {
                 "no strong, high-confidence directly-related test establishes an exact fix site"
@@ -606,10 +637,29 @@ mod tests {
         no_discriminator.canonical_gap = None;
         let item = GapItem::from_finding(&no_discriminator)?;
         if item.repair_readiness.ready
+            || item.repair_readiness.ineligibility
+                != Some("discriminator_not_populated_for_language")
+        {
+            return Err(format!(
+                "a finding without a canonical gap must refuse repair as an unpopulated language producer fact: {:?}",
+                item.repair_readiness.ineligibility
+            ));
+        }
+
+        let mut named_missing = finding()?;
+        named_missing.activation.missing_discriminators.push(
+            crate::domain::MissingDiscriminatorFact {
+                value: "total == 10000".to_string(),
+                reason: "boundary not asserted".to_string(),
+                flow_sink: None,
+            },
+        );
+        let item = GapItem::from_finding(&named_missing)?;
+        if item.repair_readiness.ready
             || item.repair_readiness.ineligibility != Some("missing_discriminator")
         {
             return Err(format!(
-                "a finding without a canonical gap must not be repair-ready: {:?}",
+                "a producer-named missing discriminator must stay the typed refusal: {:?}",
                 item.repair_readiness.ineligibility
             ));
         }
@@ -637,6 +687,91 @@ mod tests {
             return Err(format!(
                 "a finding without a strong directly-related test must not be repair-ready: {:?}",
                 item.repair_readiness.ineligibility
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unpopulated_language_discriminator_reason_agrees_with_its_own_availability_block()
+    -> Result<(), String> {
+        // #5268: when the producer named no missing discriminator but never
+        // populated a normalized discriminator either (every Rust finding
+        // today), one served document must not contradict itself: the
+        // readiness refusal names the unpopulated producer condition instead
+        // of claiming the producer failed to establish a discriminator.
+        let mut unpopulated = finding()?;
+        unpopulated.canonical_gap = None;
+        unpopulated.missing = Vec::new();
+        unpopulated.class = crate::domain::ExposureClass::Exposed;
+        let item = GapItem::from_finding(&unpopulated)?;
+        let document = item.document("snapshot:sha256:abc");
+        let reason = document
+            .pointer("/item/readiness/reason")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "readiness lost its reason".to_string())?;
+        if document
+            .pointer("/item/readiness/repair_packet_ready")
+            .and_then(Value::as_bool)
+            != Some(false)
+        {
+            return Err(format!(
+                "an unpopulated discriminator must stay fail-closed: {document}"
+            ));
+        }
+        let availability = document
+            .pointer("/item/discriminator_availability/missing_discriminators")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "availability block lost its missing discriminators".to_string())?;
+        if !availability.is_empty() {
+            return Err(format!(
+                "the mismatch control needs an availability block with nothing missing: {availability:?}"
+            ));
+        }
+        if !reason.contains("normalized discriminator") || !reason.contains("not populated") {
+            return Err(format!(
+                "the readiness reason must name the unpopulated producer condition, not a contradiction: {reason}"
+            ));
+        }
+        if reason.contains("did not establish a discriminator") {
+            return Err(format!(
+                "the readiness reason must not claim the producer failed to establish a discriminator while the same document shows nothing missing: {reason}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn static_limited_python_finding_refuses_as_static_limitation_not_language_gap()
+    -> Result<(), String> {
+        // A Python producer withholds the canonical gap exactly when the
+        // finding carries its own typed static limitation
+        // (`analysis/language/python/classify.rs` gates the gap on
+        // `static_limit.is_none()`), so such a finding must refuse as
+        // `static_limitation` — the limitation, not language-wide
+        // non-population, explains the missing fact.
+        let mut limited = finding()?;
+        limited.canonical_gap = None;
+        limited.missing = Vec::new();
+        limited.language = Some(crate::domain::LanguageId::Python);
+        limited.static_limit_kind = Some(crate::domain::StaticLimitKind::UnsupportedSyntax);
+        let item = GapItem::from_finding(&limited)?;
+        if item.repair_readiness.ready
+            || item.repair_readiness.ineligibility != Some("static_limitation")
+        {
+            return Err(format!(
+                "a static-limited finding must refuse as static_limitation, not as a language-wide gap: {:?}",
+                item.repair_readiness.ineligibility
+            ));
+        }
+        let document = item.document("snapshot:sha256:abc");
+        let reason = document
+            .pointer("/item/readiness/reason")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "readiness lost its reason".to_string())?;
+        if !reason.contains("static limitation") || reason.contains("not populated") {
+            return Err(format!(
+                "the static-limited refusal must name the finding's limitation, not the language: {reason}"
             ));
         }
         Ok(())

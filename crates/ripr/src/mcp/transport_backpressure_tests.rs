@@ -121,7 +121,7 @@ async fn actual_sdk_held_stdout_preserves_serial_request_admission() -> Result<(
     let admitted = Arc::new(Notify::new());
     let transport = ObservedTransport {
         inner: BoundedTransport {
-            reader: FrameReader::new(source),
+            reader: Arc::new(Mutex::new(FrameReader::new(source))),
             writer: Arc::new(Mutex::new(FrameWriter::new(GatedWriter {
                 inner: sink,
                 gate: gate.clone(),
@@ -213,7 +213,7 @@ const TWO_REQUESTS: &[u8] = b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/l
 
 fn direct_transport<W: AsyncWrite + Unpin>(writer: W) -> BoundedTransport<&'static [u8], W> {
     BoundedTransport {
-        reader: FrameReader::new(TWO_REQUESTS),
+        reader: Arc::new(Mutex::new(FrameReader::new(TWO_REQUESTS))),
         writer: Arc::new(Mutex::new(FrameWriter::new(writer))),
         failure: Arc::new(TransportFailure::default()),
         admission: Arc::new(Admission::default()),

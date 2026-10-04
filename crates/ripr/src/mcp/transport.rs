@@ -76,7 +76,9 @@ fn record_failure(failure: &Failure, reason: &'static str) {
     failure.wake.notify_one();
 }
 struct BoundedTransport<R, W> {
-    reader: FrameReader<R>,
+    /// Shared across handshake attempts so bytes already buffered from a
+    /// pipelined frame survive a retried handshake (#5267).
+    reader: Arc<Mutex<FrameReader<R>>>,
     writer: Arc<Mutex<FrameWriter<W>>>,
     failure: Failure,
     admission: Arc<Admission>,
@@ -189,7 +191,10 @@ impl<R: AsyncRead + Unpin + Send, W: AsyncWrite + Unpin + Send + 'static> Transp
             }
             let read = tokio::select! {
                 _ = self.failure.wake.notified() => return None,
-                read = self.reader.read_frame() => read,
+                read = async {
+                    let mut reader = self.reader.lock().await;
+                    reader.read_frame().await
+                } => read,
             };
             let frame = match read {
                 Ok(FrameRead::Eof) => return None,
@@ -272,49 +277,62 @@ where
     W: AsyncWrite + Unpin + Send + 'static,
 {
     let failure: Failure = Arc::new(TransportFailure::default());
-    let transport = BoundedTransport {
-        reader: FrameReader::new(reader),
-        writer: Arc::new(Mutex::new(FrameWriter::new(writer))),
-        failure: failure.clone(),
-        admission: Arc::new(Admission::default()),
-        pending_protocol_error: None,
-        writer_needs_drain: false,
-    };
-    let server = McpServer::new(status, analysis_root)
-        .map_err(|_error| "MCP status projection failed".to_owned())?;
-    let service = match server.serve(transport).await {
-        Ok(service) => service,
-        Err(error) => {
-            let reason = failure
-                .reason
-                .lock()
-                .map_err(|_error| "MCP transport status unavailable".to_string())?
-                .take();
-            return match reason {
-                Some(reason) => Err(reason.to_string()),
-                None if matches!(
-                    error,
-                    rmcp::service::ServerInitializeError::ConnectionClosed(_)
-                ) =>
-                {
-                    Ok(())
+    let writer = Arc::new(Mutex::new(FrameWriter::new(writer)));
+    let reader = Arc::new(Mutex::new(FrameReader::new(reader)));
+    let admission = Arc::new(Admission::default());
+    // A pre-initialize message the SDK refuses (a request without its
+    // required `_meta`, or a stray notification) ends one handshake attempt
+    // with the typed error already on the wire. ADR 0022's contract is
+    // recovery with Invalid Request, not process death (#5267), so the
+    // handshake restarts on the same connection; each attempt consumes at
+    // least one frame, so the loop always makes progress toward a real
+    // initialize, a valid-meta request, or stdin EOF.
+    loop {
+        let server = McpServer::new(status.clone(), analysis_root.clone())
+            .map_err(|_error| "MCP status projection failed".to_owned())?;
+        let transport = BoundedTransport {
+            reader: reader.clone(),
+            writer: writer.clone(),
+            failure: failure.clone(),
+            admission: admission.clone(),
+            pending_protocol_error: None,
+            writer_needs_drain: false,
+        };
+        let service = match server.serve(transport).await {
+            Ok(service) => service,
+            Err(error) => {
+                let reason = failure
+                    .reason
+                    .lock()
+                    .map_err(|_error| "MCP transport status unavailable".to_string())?
+                    .take();
+                if let Some(reason) = reason {
+                    return Err(reason.to_string());
                 }
-                None => Err("MCP SDK startup failed".to_string()),
-            };
-        }
-    };
-    service
-        .waiting()
-        .await
-        .map_err(|_error| "MCP SDK service failed".to_string())?;
-    let error = failure
-        .reason
-        .lock()
-        .map_err(|_error| "MCP transport status unavailable".to_string())?
-        .take();
-    match error {
-        Some(error) => Err(error.to_string()),
-        None => Ok(()),
+                match error {
+                    // stdin EOF before initialize is a normal client exit.
+                    rmcp::service::ServerInitializeError::ConnectionClosed(_) => return Ok(()),
+                    // The violating message is answered; the session lives.
+                    rmcp::service::ServerInitializeError::ExpectedInitializeRequest(_) => {
+                        continue;
+                    }
+                    _ => return Err("MCP SDK startup failed".to_string()),
+                }
+            }
+        };
+        service
+            .waiting()
+            .await
+            .map_err(|_error| "MCP SDK service failed".to_string())?;
+        let error = failure
+            .reason
+            .lock()
+            .map_err(|_error| "MCP transport status unavailable".to_string())?
+            .take();
+        return match error {
+            Some(error) => Err(error.to_string()),
+            None => Ok(()),
+        };
     }
 }
 

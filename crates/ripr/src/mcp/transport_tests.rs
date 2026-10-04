@@ -1,6 +1,54 @@
 use super::*;
 use serde_json::{Value, json};
+use std::sync::Mutex as StdMutex;
 use tokio::io::AsyncWriteExt;
+
+/// In-memory sink that keeps the wire bytes readable after `serve` returns,
+/// so a test can assert the exact frames the session produced.
+#[derive(Clone, Default)]
+struct SharedOutput(Arc<StdMutex<Vec<u8>>>);
+
+impl tokio::io::AsyncWrite for SharedOutput {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        match self.0.lock() {
+            Ok(mut output) => {
+                output.extend_from_slice(buf);
+                std::task::Poll::Ready(Ok(buf.len()))
+            }
+            Err(_poisoned) => {
+                std::task::Poll::Ready(Err(std::io::Error::other("shared output unavailable")))
+            }
+        }
+    }
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+}
+
+fn wire_frames(output: &SharedOutput) -> Result<Vec<Value>, String> {
+    let bytes = output
+        .0
+        .lock()
+        .map_err(|_poisoned| "output poisoned".to_string())?;
+    bytes
+        .split(|byte| *byte == b'\n')
+        .filter(|frame| !frame.is_empty())
+        .map(|frame| serde_json::from_slice(frame).map_err(|error| error.to_string()))
+        .collect()
+}
 
 async fn read_frame<R: AsyncRead + Unpin>(
     reader: &mut FrameReader<R>,
@@ -23,6 +71,95 @@ async fn empty_or_syntax_invalid_eof_before_initialize_is_normal() -> Result<(),
 }
 
 #[tokio::test]
+async fn repeated_preinitialize_violations_recover_with_invalid_request_and_stay_alive()
+-> Result<(), String> {
+    // #5267: a request sent before `initialize` that lacks the SDK's required
+    // `_meta` fields must be answered with its typed Invalid Request error and
+    // must never terminate the session — every violation, not only the first.
+    // After the violations a normal initialize still completes on the same
+    // connection, and stdin EOF then ends the session cleanly.
+    let tools_list = |id: u64| format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"tools/list"}}"#);
+    let initialize = r#"{"jsonrpc":"2.0","id":9,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"control","version":"1"}}}"#;
+    let input = format!("{}\n{}\n{initialize}\n", tools_list(1), tools_list(2));
+    let output = SharedOutput::default();
+    serve(
+        std::io::Cursor::new(input.into_bytes()),
+        output.clone(),
+        WorkspaceStatus::resolve_with_root(None).0,
+        None,
+    )
+    .await?;
+    let frames = wire_frames(&output)?;
+    if frames.len() != 3 {
+        return Err(format!(
+            "two pre-init violations plus one initialize must produce exactly three frames: {frames:?}"
+        ));
+    }
+    for (index, id) in [(0usize, 1u64), (1, 2)] {
+        let frame = &frames[index];
+        if frame.get("id") != Some(&json!(id)) {
+            return Err(format!("violation reply lost its correlated id: {frame}"));
+        }
+        if frame.pointer("/error/code").and_then(Value::as_i64) != Some(-32602) {
+            return Err(format!(
+                "pre-init violation must answer Invalid Request: {frame}"
+            ));
+        }
+    }
+    let initialized = &frames[2];
+    if initialized.get("id") != Some(&json!(9)) || initialized.get("error").is_some() {
+        return Err(format!(
+            "initialize must still complete after repeated pre-init violations: {initialized}"
+        ));
+    }
+    if initialized
+        .pointer("/result/serverInfo/name")
+        .and_then(Value::as_str)
+        != Some("ripr")
+    {
+        return Err(format!("initialize result drifted: {initialized}"));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn preinitialize_notification_recovers_without_a_reply_frame() -> Result<(), String> {
+    // The handshake refuses any pre-initialize message that is not an
+    // `initialize` request, notifications included. A notification owes no
+    // reply frame, so recovery must consume it silently and answer the next
+    // real `initialize` on the same connection (#5267 review).
+    let notification = r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#;
+    let initialize = r#"{"jsonrpc":"2.0","id":7,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"control","version":"1"}}}"#;
+    let input = format!("{notification}\n{initialize}\n");
+    let output = SharedOutput::default();
+    serve(
+        std::io::Cursor::new(input.into_bytes()),
+        output.clone(),
+        WorkspaceStatus::resolve_with_root(None).0,
+        None,
+    )
+    .await?;
+    let frames = wire_frames(&output)?;
+    if frames.len() != 1 {
+        return Err(format!(
+            "a pre-init notification must produce no reply frame, leaving only the initialize result: {frames:?}"
+        ));
+    }
+    let frame = &frames[0];
+    if frame.get("id") != Some(&json!(7))
+        || frame
+            .pointer("/result/serverInfo/name")
+            .and_then(Value::as_str)
+            != Some("ripr")
+    {
+        return Err(format!(
+            "the session must continue into a normal initialize after a refused pre-init notification: {frame}"
+        ));
+    }
+    Ok(())
+}
+
+#[tokio::test]
 async fn fatal_output_limit_wakes_receive_while_input_remains_open() -> Result<(), String> {
     use std::{
         future::{Future, poll_fn},
@@ -30,7 +167,7 @@ async fn fatal_output_limit_wakes_receive_while_input_remains_open() -> Result<(
     };
     let (held_input, reader) = tokio::io::duplex(64);
     let mut transport = BoundedTransport {
-        reader: FrameReader::new(reader),
+        reader: Arc::new(Mutex::new(FrameReader::new(reader))),
         writer: Arc::new(Mutex::new(FrameWriter::new(Vec::<u8>::new()))),
         failure: Arc::new(TransportFailure::default()),
         admission: Arc::new(Admission::default()),
@@ -72,7 +209,7 @@ async fn sdk_syntax_ignore_and_typed_shape_error_recover_next_request() -> Resul
     let input = b"{not json}\ntrue\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{},\"clientInfo\":{\"name\":\"control\",\"version\":\"1\"}}}\n";
     let writer = Arc::new(Mutex::new(FrameWriter::new(Vec::<u8>::new())));
     let mut transport = BoundedTransport {
-        reader: FrameReader::new(input.as_slice()),
+        reader: Arc::new(Mutex::new(FrameReader::new(input.as_slice()))),
         writer: writer.clone(),
         failure: Arc::new(TransportFailure::default()),
         admission: Arc::new(Admission::default()),
@@ -132,7 +269,7 @@ async fn consumed_protocol_error_survives_receive_cancellation_behind_busy_write
     let writer = Arc::new(Mutex::new(FrameWriter::new(Vec::<u8>::new())));
     let held = writer.lock().await;
     let mut transport = BoundedTransport {
-        reader: FrameReader::new(input.as_slice()),
+        reader: Arc::new(Mutex::new(FrameReader::new(input.as_slice()))),
         writer: writer.clone(),
         failure: Arc::new(TransportFailure::default()),
         admission: Arc::new(Admission::default()),

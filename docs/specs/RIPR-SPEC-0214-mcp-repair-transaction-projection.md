@@ -10,6 +10,10 @@ Linked issues:
 
 - #3090 (this slice: `ripr_prepare_repair`, `ripr_get_repair_attempt`,
   `ripr_get_receipt_status`, and the repair-attempt / receipt resources)
+- #5268 (the discriminator gate names the unpopulated language-producer
+  state instead of contradicting the same document's
+  `discriminator_availability` block; populating canonical gaps for Rust
+  findings stays the producer follow-up)
 - #5199 (terminal receipt completeness and open-gap projection repair)
 - #3087 (parent standard MCP server epic)
 - #3088 (transport/discovery/read-only boundary slice; this slice keeps its
@@ -68,8 +72,23 @@ read-only and without execution authority (ADR 0022):
   discriminator), and an established fix site (a strong-oracle,
   high-confidence directly-related test on a shared edit-cage test-surface
   path). The first failing gate is the typed reason (`not_candidate_actionable`,
-  `missing_discriminator`, `fix_site_not_established`,
-  `fix_site_not_test_surface`).
+  `missing_discriminator`,
+  `discriminator_not_populated_for_language`, `static_limitation`,
+  `fix_site_not_established`,
+  `fix_site_not_test_surface`). A producer that names its missing
+  discriminators (activation `missing_discriminators`, or a
+  `Missing discriminator value:` entry in `missing`) refuses as
+  `missing_discriminator`. A finding whose canonical gap the producer
+  withheld behind the finding's own typed static limitation refuses as
+  `static_limitation` — the per-finding limitation, not the language,
+  explains the missing fact (Python omits the canonical gap exactly when a
+  static limit is present). A producer that names no missing discriminator
+  and populates no canonical gap at all — a language producer that does not
+  populate canonical gaps yet, today every Rust finding — refuses as
+  `discriminator_not_populated_for_language`, naming the unpopulated
+  producer condition so one document cannot contradict its own
+  `discriminator_availability` block (#5268); the readiness reason and the
+  `ripr_prepare_repair` ineligibility are the same evaluation.
 - When every gate is established, the tool creates one session repair
   transaction with a deterministic, root-bound `repair-attempt-` identity
   (the first 24 hex digits of a SHA-256 over schema version, snapshot id,
@@ -148,6 +167,16 @@ read-only and without execution authority (ADR 0022):
   the evidence supersedes the prior transaction; session receipt status
   stays `awaiting_edit`; unknown and canonically invalid durable attempts
   fail closed in a temporary store.
+- #5268 honesty controls: a finding with no canonical gap and no
+  producer-named missing discriminator refuses as
+  `discriminator_not_populated_for_language` in both the gap document's
+  readiness block (which agrees with its own `discriminator_availability`
+  block) and the negative `ripr_prepare_repair` document, while a
+  producer-named missing discriminator keeps the `missing_discriminator`
+  refusal and a finding whose gap the producer withheld behind its own
+  typed static limitation refuses as `static_limitation`, never as a
+  language-wide gap. Flipping a refusal back to a contradiction or a
+  misattribution must fail these controls.
 - Vocabulary and projection controls: the receipt-status mapping over the
   shared receipt reading and subordinate presence lifecycle. Producer-backed
   controls cover complete improved, changed, regressed and unchanged, typed
