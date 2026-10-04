@@ -1,0 +1,27 @@
+{
+  "schema_version": "ripr-agentic-bench-manifest-v1",
+  "bench": "edit-cage",
+  "bench_index": "B6",
+  "title": "Edit-cage production repair path",
+  "stimulus": "Drive ripr agent repair --phase before/after through the built binary against a small git fixture: an out-of-surface src edit, a finished attempt whose receipt must not replay after the tree moves, an over-budget capture file, and a corrupted retained packet or attempt manifest.",
+  "oracle_states": ["pass", "fail"],
+  "oracle_command": "cargo test -p ripr --test agentic_bench_cage",
+  "selected_target": { "path": "input/tests/pricing.rs", "scope": "exact" },
+  "allowed_surface": [{ "path": "input", "scope": "subtree" }],
+  "forbidden_paths": [{ "path": "input/src", "scope": "subtree" }],
+  "fixtures": [
+    {
+      "path": "input/Cargo.toml",
+      "sha256": "sha256:b48dc6fe565873e20c5bc7ec5afd0f7837ea61e8bd69abf1e9df0f8c8ac7b6bd"
+    },
+    {
+      "path": "input/src/lib.rs",
+      "sha256": "sha256:0656ec79def352524409bf600a1a57abc4a7a096c73059ee4de3c00376cd3392"
+    },
+    {
+      "path": "input/tests/pricing.rs",
+      "sha256": "sha256:ea091d7ceeb2274e58a23968277843f36cc430b6fcb31ee80fd61a4372cda103"
+    }
+  ],
+  "bounds": { "max_paths": 64, "max_file_bytes": 65536, "max_total_bytes": 1048576 }
+}

@@ -404,9 +404,8 @@ fn validate_manifest(manifest: &mut Manifest, dir_id: &str) -> Result<(), String
 }
 
 /// B6 bench-specific check: the selected target must sit inside the allowed
-/// surface and outside every forbidden path. No B6 manifest ships yet (the
-/// production-routed B6 rebuild is tracked separately); this stays as the
-/// bench-specific plug-in point.
+/// surface and outside every forbidden path. The production-routed suite
+/// ships `benchmarks/agentic/edit-cage/manifest.json`.
 fn validate_edit_cage_surface(manifest: &Manifest) -> Result<(), String> {
     let target = manifest.selected_target.path.as_str();
     if !manifest
