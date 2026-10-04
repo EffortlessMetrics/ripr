@@ -870,6 +870,23 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
         && !format.is_repo_scope()
     {
         output.no_scope_provided = true;
+        // A default base that resolves to HEAD's own commit (for example
+        // `origin/HEAD` tracking the checked-out branch in a clone of a
+        // feature branch) leaves nothing to compare. These two resolutions
+        // run after the diff was loaded, so they are later observations, not
+        // the analyzed snapshot; the hint states them as such and names the
+        // repair.
+        if let Some(base) = output.base.as_deref() {
+            let root = &limited_check_input.root;
+            let timeout = limited_check_input.git_timeout;
+            if let Some(hedge) = default_base_is_head_hedge(
+                base,
+                analysis::resolve_base_commit(root, Some(base), timeout).as_deref(),
+                analysis::resolve_base_commit(root, Some("HEAD"), timeout).as_deref(),
+            ) {
+                eprintln!("{hedge}");
+            }
+        }
     }
     // #2425: when --diff was explicitly provided but produced zero findings
     // on a diff-scoped format, disclose on stderr why the result is empty.
@@ -939,6 +956,23 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
         sink.commit_success();
     }
     Ok(())
+}
+
+/// The stderr warning for an empty default-base result when the default base
+/// and HEAD each resolve to the same commit after analysis. It states those
+/// two later observations only; it does not attribute the analyzed range.
+/// `None` unless both commits resolved and are equal.
+fn default_base_is_head_hedge(
+    base: &str,
+    base_commit: Option<&str>,
+    head_commit: Option<&str>,
+) -> Option<String> {
+    match (base_commit, head_commit) {
+        (Some(base_commit), Some(head_commit)) if base_commit == head_commit => Some(format!(
+            "ripr: after analysis, the default base `{base}` and HEAD each resolved to the same commit. This empty result alone is not a clean pass. Pass `--base <ref>` for the branch your change should be compared against (for example `--base origin/main`)."
+        )),
+        _ => None,
+    }
 }
 
 /// The stderr hedge for an explicit `--diff` run that produced zero findings
@@ -1298,6 +1332,26 @@ mod tests {
             .analysis_outcome
             .ok_or_else(|| "diff pipeline must project an analysis outcome".to_string())?;
         Ok((output.findings.len(), outcome))
+    }
+
+    #[test]
+    fn default_base_equal_to_head_is_named_and_distinct_commits_stay_silent() {
+        let hedge = default_base_is_head_hedge("origin/feat", Some("abc"), Some("abc"));
+        assert!(
+            hedge
+                .as_deref()
+                .is_some_and(|text| text.contains("`origin/feat`")
+                    && text.contains("each resolved to the same commit")
+                    && text.contains("--base")),
+            "{hedge:?}"
+        );
+        assert_eq!(
+            default_base_is_head_hedge("origin/main", Some("abc"), Some("def")),
+            None
+        );
+        // An unresolved side is never asserted equal.
+        assert_eq!(default_base_is_head_hedge("main", None, None), None);
+        assert_eq!(default_base_is_head_hedge("main", Some("abc"), None), None);
     }
 
     #[test]

@@ -582,3 +582,40 @@ fn unreadable_config_is_a_loud_error_not_a_default() -> Result<(), String> {
     }
     Ok(())
 }
+
+/// A clone of a feature branch has `origin/HEAD` tracking that branch, so the
+/// default base is the checked-out commit and the range is empty by
+/// construction. The run must say so and name `--base`, not read as clean.
+// `file://` clone URLs are POSIX-shaped; Windows needs `file:///C:/...`.
+#[cfg(unix)]
+#[test]
+fn default_base_equal_to_head_is_called_out() -> Result<(), String> {
+    let scratch = Scratch::new("basehead")?;
+    let source = plain(&scratch, "source")?;
+    let clone = scratch.path.join("clone");
+    let url = format!("file://{}", source.display());
+    let clone_arg = clone.to_string_lossy().into_owned();
+    git(
+        &scratch.path,
+        &["clone", "-q", "-b", "feat", &url, &clone_arg],
+    )?;
+    let ran = ripr(&clone, &["check"], &[])?;
+    assert_sane(&ran, "default base equals HEAD")?;
+    if ran.code != Some(0) {
+        return Err(format!(
+            "expected an empty check to exit 0, got {:?}\n{}",
+            ran.code, ran.stderr
+        ));
+    }
+    if !ran.stderr.contains("each resolved to the same commit") || !ran.stderr.contains("--base") {
+        return Err(format!(
+            "expected the base-equals-HEAD warning\n{}",
+            ran.stderr
+        ));
+    }
+    // The same repository compared against a real base still finds the change.
+    assert_found_change(
+        &ripr(&clone, &["check", "--base", "origin/main"], &[])?,
+        "explicit base",
+    )
+}

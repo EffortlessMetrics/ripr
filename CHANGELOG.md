@@ -11,6 +11,12 @@ are scoped or reviewed.
 
 ### Fixed
 
+- CLI: `ripr check` warns on stderr, on the no-scope empty-result path, when
+  the default base and HEAD each resolve to the same commit after analysis (for
+  example `origin/HEAD` tracking the checked-out branch in a clone of a feature
+  branch). An explicit `--base`, `--diff`, `--candidate-tree` or `--worktree`
+  skips it. The empty result alone is not a clean pass, and the warning names
+  `--base <ref>`. The stdout note and JSON are unchanged.
 - `ripr check`: the uncommitted-changes note no longer offers `--worktree`
   as the remedy for untracked files, which the flag never sees. The tracked
   wording now says "staged and unstaged tracked edits" (matching
