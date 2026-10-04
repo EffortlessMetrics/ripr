@@ -65,6 +65,7 @@ pub(crate) fn run_pr_evidence(args: &[String]) -> Result<(), String> {
     }
     let mut options = parse_options(args)?;
     let repo = repo_root()?;
+    ensure_root_inside_invocation_repo(&repo, &options.root)?;
     if !options.base_explicit {
         // #3952 / RIPR-SPEC-0084: resolve the repository's default branch
         // through the diff loader's authority instead of assuming
@@ -132,7 +133,9 @@ Options:
   --base <rev>   PR base revision. When omitted, resolved like `ripr check`:
                  origin/HEAD, then origin/main, origin/master, main, master.
   --head <rev>   PR head revision. Defaults to HEAD.
-  --root <path>  Workspace root label. Defaults to current directory.
+  --root <path>  Workspace to analyze, inside the repository of the current
+                 directory (Git history and outputs stay there). Defaults to
+                 the current directory.
   --check        Verify the existing PR evidence packet is contract-valid.
 
 Outputs:
@@ -395,6 +398,41 @@ fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, St
     };
     let output = check_workspace(input)?;
     render_check(&output, &OutputFormat::Json)
+}
+
+/// `pr-evidence` reads Git history and writes `target/ripr/pr/` from the
+/// invocation directory, and analyzes the `--root` workspace with that diff.
+/// A `--root` outside the invocation repository would pair one repository's
+/// diff with another's source and stamp the packet with the selected root,
+/// so a clean-looking packet could describe a change it never read. Refuse
+/// a missing, file-typed, or foreign root before any Git read or write.
+fn ensure_root_inside_invocation_repo(repo: &Path, root: &str) -> Result<(), String> {
+    let root_path = command_root_path(repo, root);
+    if !root_path.is_dir() {
+        return Err(format!(
+            "pr-evidence root {root} is not a directory; pass `--root` naming an existing \
+             directory inside the repository you run `ripr pr-evidence` from"
+        ));
+    }
+    let same_directory = match (fs::canonicalize(repo), fs::canonicalize(&root_path)) {
+        (Ok(repo), Ok(root)) => repo == root,
+        _ => false,
+    };
+    if same_directory {
+        return Ok(());
+    }
+    let toplevel =
+        |dir: &Path| crate::git::discovered_work_tree_toplevel(dir, PR_EVIDENCE_GIT_DEADLINE);
+    match (toplevel(repo), toplevel(&root_path)) {
+        (Some(invocation), Some(selected)) if invocation == selected => Ok(()),
+        _ => Err(format!(
+            "pr-evidence root {root} is not inside the Git work tree of the current directory \
+             ({}); pr-evidence reads history and writes target/ripr/pr/ from the current \
+             directory, so run it from the repository that contains the root \
+             (for example `cd <repository> && ripr pr-evidence --root <member>`)",
+            repo.display()
+        )),
+    }
 }
 
 fn command_root_path(repo: &Path, root: &str) -> PathBuf {

@@ -317,6 +317,30 @@ fn git_command(root: &Path, args: &[&str]) -> Command {
     command
 }
 
+/// The work-tree top level Git discovers from `dir` itself, canonicalized.
+///
+/// Inherited repository selectors (`GIT_DIR`, `GIT_WORK_TREE`,
+/// `GIT_COMMON_DIR`, `GIT_INDEX_FILE`, as a hook or wrapper exports them)
+/// would answer for that repository instead of `dir`, so two unrelated
+/// directories could report the same top level. They are removed here, as in
+/// [`probe_work_tree_root`]. `None` when Git finds no work tree, refuses the
+/// directory, or cannot run.
+pub(crate) fn discovered_work_tree_toplevel(dir: &Path, timeout: Duration) -> Option<PathBuf> {
+    let args = ["rev-parse", "--show-toplevel"];
+    let mut command = git_command(dir, &args);
+    command
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_COMMON_DIR")
+        .env_remove("GIT_INDEX_FILE");
+    let describe = format!("git top-level probe in {}", dir.display());
+    let output = collect_output_with_deadline_and_limit(command, timeout, 64 * 1024, &describe)
+        .ok()
+        .filter(|output| output.status.success())?;
+    let top = String::from_utf8(output.stdout).ok()?;
+    std::fs::canonicalize(top.trim_end_matches(['\r', '\n'])).ok()
+}
+
 /// What Git established about a directory that contains a `.git` entry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum WorkTreeRootProbe {

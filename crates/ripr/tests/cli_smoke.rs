@@ -20699,6 +20699,94 @@ fn no_origin_master_repo(label: &str, initial_branch: &str) -> Result<PathBuf, S
     Ok(root)
 }
 
+/// `pr-evidence` reads Git history and writes from the invocation directory.
+/// A `--root` naming another repository, a missing directory, or a file used
+/// to pair the invocation repository's diff with the selected root's source
+/// and stamp a clean packet with the selected root. Each must refuse before
+/// any packet is written in either tree.
+#[test]
+fn pr_evidence_refuses_root_outside_invocation_repository() -> Result<(), String> {
+    let selected = no_origin_master_repo("pr-evidence-foreign-selected", "master")?;
+    let invocation = no_origin_master_repo("pr-evidence-foreign-invocation", "master")?;
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let missing = selected.join("missing-member");
+    let file_root = selected.join("Cargo.toml");
+    let mut failures = Vec::new();
+    for (label, root, expected) in [
+        (
+            "foreign repository",
+            &selected,
+            "is not inside the Git work tree",
+        ),
+        ("missing directory", &missing, "is not a directory"),
+        ("file", &file_root, "is not a directory"),
+    ] {
+        let root_arg = root.to_string_lossy().into_owned();
+        let output = run_command(
+            bin,
+            Some(&invocation),
+            &[
+                "pr-evidence",
+                "--root",
+                &root_arg,
+                "--base",
+                "master",
+                "--head",
+                "HEAD",
+            ],
+        )
+        .map_err(|err| format!("spawn ripr pr-evidence: {err}"))?;
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let written =
+            invocation.join("target/ripr/pr").exists() || selected.join("target/ripr/pr").exists();
+        if output.status.code() != Some(2) || !stderr.contains(expected) || written {
+            failures.push(format!(
+                "{label} root must refuse with `{expected}` and write nothing; status {:?}, written {written}, stderr:\n{stderr}",
+                output.status.code()
+            ));
+        }
+    }
+    // An inherited repository selector (as a Git hook exports) must not make
+    // both top-level probes answer for the invocation repository.
+    let selected_arg = selected.to_string_lossy().into_owned();
+    let git_dir = invocation.join(".git").to_string_lossy().into_owned();
+    let work_tree = invocation.to_string_lossy().into_owned();
+    let output = run_command_with_env(
+        bin,
+        &invocation,
+        &[
+            "pr-evidence",
+            "--root",
+            &selected_arg,
+            "--base",
+            "master",
+            "--head",
+            "HEAD",
+        ],
+        &[("GIT_DIR", &git_dir), ("GIT_WORK_TREE", &work_tree)],
+    )
+    .map_err(|err| format!("spawn ripr pr-evidence with GIT_DIR: {err}"))?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let written =
+        invocation.join("target/ripr/pr").exists() || selected.join("target/ripr/pr").exists();
+    if output.status.code() != Some(2)
+        || !stderr.contains("is not inside the Git work tree")
+        || written
+    {
+        failures.push(format!(
+            "foreign root under inherited GIT_DIR/GIT_WORK_TREE must still refuse; status {:?}, written {written}, stderr:\n{stderr}",
+            output.status.code()
+        ));
+    }
+    ignore_remove_dir_all(&selected);
+    ignore_remove_dir_all(&invocation);
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("\n\n"))
+    }
+}
+
 fn json_string_at(path: &Path, pointer: &str) -> Result<serde_json::Value, String> {
     let text =
         std::fs::read_to_string(path).map_err(|err| format!("read {}: {err}", path.display()))?;

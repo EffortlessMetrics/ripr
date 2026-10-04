@@ -306,9 +306,16 @@ fn run_git_deadline(
             root.display()
         )));
     }
+    // Fixture repositories are always their own temp tree: an inherited
+    // hook/wrapper repository selector must not redirect fixture setup into
+    // the outer repository.
     let mut child = Command::new("git")
         .args(args)
         .current_dir(root)
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_COMMON_DIR")
+        .env_remove("GIT_INDEX_FILE")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
