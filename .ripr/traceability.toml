@@ -7986,6 +7986,10 @@ tests = [
   "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_test_calls_outer_which_calls_owner_then_witness_is_captured",
   "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_no_path_to_owner_then_witness_is_none",
   "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_two_witnesses_then_first_by_file_line_is_selected",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_same_named_method_on_other_type_then_corroborated_witness_is_named",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_type_named_away_from_the_call_then_the_test_is_not_corroborated",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_type_only_in_constructor_argument_then_the_receiver_is_not_that_type",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_cross_type_same_named_call_then_the_caller_still_reaches",
   "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::witness_pointer_uses_may_language_and_no_coverage_claim",
   "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::witness_pointer_normalizes_backslashes_in_path",
   "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::witness_pointer_reports_plural_other_tests",
@@ -8003,6 +8007,7 @@ fixtures = [
   "fixtures/benches_harness_evidence",
   "fixtures/rust_transitive_reach_positive",
   "fixtures/rust_transitive_reach_test_helper_chain",
+  "fixtures/rust_transitive_reach_same_name_other_type",
   "fixtures/rust_transitive_reach_negative",
 ]
 code = [

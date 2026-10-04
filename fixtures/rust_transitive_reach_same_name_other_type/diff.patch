@@ -1,0 +1,13 @@
+diff --git a/src/queue.rs b/src/queue.rs
+index 0000000..1111111 100644
+--- a/src/queue.rs
++++ b/src/queue.rs
+@@ -8,7 +8,7 @@ impl Queue {
+     pub(crate) fn full_build(site: &Site) -> Queue {
+         let mut queue = Queue { jobs: Vec::new() };
+         for lang in &site.langs {
+-            if !lang.feeds {
++            if lang.feeds == false {
+                 continue;
+             }
+             queue.jobs.push(format!("{}/atom.xml", lang.code));
