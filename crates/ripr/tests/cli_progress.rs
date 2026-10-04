@@ -188,13 +188,6 @@ fn check_github_stdout_is_unchanged_by_progress() -> Result<(), String> {
     machine_format_stdout_is_unchanged("github")
 }
 
-#[test]
-fn check_markdown_stdout_is_unchanged_by_progress() -> Result<(), String> {
-    // Published traceability still names this symbol. `ripr check` has no
-    // `--format markdown`; the discriminator uses the github machine format.
-    machine_format_stdout_is_unchanged("github")
-}
-
 fn machine_format_stdout_is_unchanged(format: &str) -> Result<(), String> {
     let loud = run_check(&["--format", format])?;
     let quiet = run_check(&["--format", format, "--quiet"])?;

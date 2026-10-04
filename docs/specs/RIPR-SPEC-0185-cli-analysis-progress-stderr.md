@@ -159,7 +159,6 @@ second stage vocabulary.
 - `crates/ripr/tests/cli_progress.rs::check_quiet_keeps_json_stdout_byte_identical_and_drops_progress`
 - `crates/ripr/tests/cli_progress.rs::check_sarif_stdout_is_unchanged_by_progress`
 - `crates/ripr/tests/cli_progress.rs::check_github_stdout_is_unchanged_by_progress`
-- `crates/ripr/tests/cli_progress.rs::check_markdown_stdout_is_unchanged_by_progress`
 - `crates/ripr/tests/cli_progress.rs::check_worktree_projects_worktree_scope_on_stderr`
 - `crates/ripr/tests/cli_progress.rs::check_progress_failure_emits_failed_not_completed`
 - `crates/ripr/tests/cli_progress.rs::check_quiet_failure_keeps_errors_and_drops_progress`
