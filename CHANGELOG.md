@@ -19,6 +19,15 @@ are scoped or reviewed.
 
 ### Fixed
 
+- `ripr pilot`, repo exposure and the editor no longer report a seam as
+  `ungripped` (the top-ranked gap, "No detected test grip") when ripr only
+  failed to trace the path to it. A seam with no related test now reads
+  `opaque`, with the limit and a witness named in its reach evidence, when a
+  test may reach it through an unresolved helper chain, macro, or trait
+  dispatch (`to_string()` running `Display::fmt`). At semver `280ebcb6edac`
+  `ungripped` falls from 505 seams to 1, and all 12 seams the mutation spot
+  check (#5295) found caught by real mutants now read `opaque`. A seam no
+  test path reaches stays `ungripped` (RIPR-SPEC-0230, #5411).
 - Preview-language refusals (parse budget, read caps, walk cap) no longer
   downgrade a diff that touches none of that language. A Rust-only change in a
   repository with an unrelated, deeply nested Python fixture (found trialing

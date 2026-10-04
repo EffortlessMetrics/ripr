@@ -1214,6 +1214,14 @@ owner = "product-analysis"
 standalone_reason = "Issue #4999 records the write-side classified-cache publication bound: borrowed ClassifiedSeam serialization through a bounded atomic writer, an encoded-byte ceiling on both the single-entry and sharded paths with record count only as a secondary cap, an explicit skip when one record cannot fit, and generation-atomic replacement that leaves the previous valid cache or a miss. This is a store-path bound, not a process-RSS guarantee and not the load/decode sibling (#5124). Renumbered from RIPR-SPEC-0218 after #5370 landed that id, and from RIPR-SPEC-0220 after #5366 landed the vscode shared-attempt status under that id. Open #5416 occupies 0221."
 
 [[artifact]]
+id = "RIPR-SPEC-0230"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0230-seam-reach-unknown-not-ungripped.md"
+status = "proposed"
+owner = "product-analysis"
+standalone_reason = "Issue #5411 records the seam side of the unknown-not-a-gap rule: a repo seam with no related test reads reach opaque, and classifies opaque instead of ungripped, when a bounded transitive or macro witness or trait dispatch from a type test-reached code names leaves the no-reach negative unestablished. The ripr check side is #5416; crediting the reach is #5334."
+
+[[artifact]]
 id = "RIPR-SPEC-0221"
 kind = "spec"
 path = "docs/specs/RIPR-SPEC-0221-agent-surface-benchmark.md"

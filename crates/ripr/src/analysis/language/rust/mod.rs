@@ -847,7 +847,7 @@ fn apply_rust_no_static_path_limit(
 
     if let Some(witness) = transitive_reach.transitive_witness(&owner_name) {
         replace_witnessed_no_path_infection_summary(finding);
-        finding.static_limit_kind = Some(transitive_reach_limit_kind(&witness.test_file));
+        finding.static_limit_kind = Some(classify::transitive_reach_limit_kind(&witness.test_file));
         finding
             .stop_reasons
             .push(StopReason::TransitiveReachUnresolved);
@@ -865,7 +865,7 @@ fn apply_rust_no_static_path_limit(
             ));
     } else if let Some(witness) = transitive_reach.macro_reach_witness(&owner_name) {
         replace_witnessed_no_path_infection_summary(finding);
-        finding.static_limit_kind = Some(macro_reach_limit_kind(&witness.macro_host));
+        finding.static_limit_kind = Some(classify::macro_reach_limit_kind(&witness.macro_host));
         finding.stop_reasons.push(StopReason::MacroReachUnresolved);
         finding
             .evidence
@@ -942,22 +942,6 @@ fn is_cargo_binary_invocation(body: &str) -> bool {
             || compact.contains(".output(")
             || compact.contains(".status("));
     has_cargo_bin_env || has_assert_cmd_binary
-}
-
-fn transitive_reach_limit_kind(test_file: &Path) -> StaticLimitKind {
-    if rust_index::is_test_file(test_file) {
-        StaticLimitKind::RustIntegrationPublicApiPathUnresolved
-    } else {
-        StaticLimitKind::RustTransitiveReachUnresolved
-    }
-}
-
-fn macro_reach_limit_kind(macro_host: &str) -> StaticLimitKind {
-    if macro_host == classify::MACRO_WITNESS_TEST_BODY_HOST {
-        StaticLimitKind::RustMacroWrappedTestCallUnresolved
-    } else {
-        StaticLimitKind::RustMacroReachUnresolved
-    }
 }
 
 fn replace_witnessed_no_path_infection_summary(finding: &mut Finding) {
@@ -2179,11 +2163,10 @@ mod tests {
         diff_index_file_limit_from_env, enforce_changed_rust_line_limit,
         enforce_repo_index_file_limit, is_binary_source_path, is_cargo_binary_invocation,
         is_generated_rust_file, is_generated_rust_file_with_patterns,
-        limitations_for_absent_changed_files, macro_reach_limit_kind,
-        partial_diff_budgets_from_env, partition_canonical_form,
-        replace_witnessed_no_path_infection_summary, repo_index_file_limit_from_env,
-        select_partial_diff_partition, select_partial_diff_partition_with_identity,
-        selection_with_open_files, sha256_hex, transitive_reach_limit_kind,
+        limitations_for_absent_changed_files, partial_diff_budgets_from_env,
+        partition_canonical_form, replace_witnessed_no_path_infection_summary,
+        repo_index_file_limit_from_env, select_partial_diff_partition,
+        select_partial_diff_partition_with_identity, selection_with_open_files, sha256_hex,
     };
     use crate::analysis::cancellation;
     use crate::analysis::diff::{ChangedFile, ChangedLine};
@@ -4953,18 +4936,6 @@ fn absent_delimiter_boundary_returns_head() {
     }
 
     #[test]
-    fn transitive_reach_limit_kind_names_integration_test_path() {
-        assert_eq!(
-            transitive_reach_limit_kind(Path::new("tests/version_req.rs")),
-            StaticLimitKind::RustIntegrationPublicApiPathUnresolved
-        );
-        assert_eq!(
-            transitive_reach_limit_kind(Path::new("src/lib.rs")),
-            StaticLimitKind::RustTransitiveReachUnresolved
-        );
-    }
-
-    #[test]
     fn cargo_binary_invocation_shape_is_conservative_and_deterministic() {
         assert!(is_cargo_binary_invocation(
             r#"let output = Command::new(env!("CARGO_BIN_EXE_worker"))
@@ -5007,18 +4978,6 @@ fn absent_delimiter_boundary_returns_head() {
         assert!(super::find_subprocess_binary_test(&index, Path::new("src/lib.rs")).is_none());
         index.test_at_mut(0).file = PathBuf::from("src/lib.rs");
         assert!(super::find_subprocess_binary_test(&index, Path::new("src/main.rs")).is_none());
-    }
-
-    #[test]
-    fn macro_reach_limit_kind_names_direct_test_body_macro_path() {
-        assert_eq!(
-            macro_reach_limit_kind(crate::analysis::classify::MACRO_WITNESS_TEST_BODY_HOST),
-            StaticLimitKind::RustMacroWrappedTestCallUnresolved
-        );
-        assert_eq!(
-            macro_reach_limit_kind("outer"),
-            StaticLimitKind::RustMacroReachUnresolved
-        );
     }
 
     fn changed_file(path: &str, added: usize, removed: usize) -> ChangedFile {

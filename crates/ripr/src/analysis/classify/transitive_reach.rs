@@ -17,8 +17,9 @@
 //! - If no candidate transitive path is found the finding is left exactly as-is.
 
 use crate::analysis::facts::{CallFact, FunctionSummary, RustIndex, TestFact};
+use crate::domain::StaticLimitKind;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 /// Maximum call-hop depth for the transitive walk.
@@ -279,6 +280,77 @@ impl<'a> TransitiveReachIndex<'a> {
             entry_symbol,
             other_test_count,
         })
+    }
+}
+
+impl<'a> TransitiveReachIndex<'a> {
+    /// Production functions a test may run: every non-macro name a test
+    /// calls, and every production function those reach in at most
+    /// `MAX_TRANSITIVE_DEPTH - 1` further hops, matched by name the same way
+    /// as [`Self::transitive_witness`]. Pilot's trait-dispatch reach check
+    /// (#5411) reads it to ask whether any test-reached code names a type.
+    pub(in crate::analysis) fn test_reached_functions(&self) -> Vec<&'a FunctionSummary> {
+        let graph = self.graph();
+        let calls = graph.all_tests.iter().flat_map(|test| test.calls.iter());
+        self.functions_reached_from(calls, MAX_TRANSITIVE_DEPTH)
+    }
+
+    /// Production functions `calls` may run within `depth` hops, matched by
+    /// name, sorted by name. Macro invocations and names with no in-crate
+    /// function stop their branch, as in the transitive walk.
+    pub(in crate::analysis) fn functions_reached_from<'c>(
+        &self,
+        calls: impl IntoIterator<Item = &'c CallFact>,
+        depth: usize,
+    ) -> Vec<&'a FunctionSummary> {
+        let graph = self.graph();
+        let mut seen: HashSet<&'a str> = HashSet::new();
+        let mut frontier: Vec<&'a str> = Vec::new();
+        for call in calls {
+            if is_macro_call(&call.name) {
+                continue;
+            }
+            if let Some((&name, _)) = graph.by_name.get_key_value(call.name.as_str())
+                && seen.insert(name)
+            {
+                frontier.push(name);
+            }
+        }
+        let mut reached: Vec<&'a str> = frontier.clone();
+        for _ in 1..depth {
+            let mut next = Vec::new();
+            for name in frontier {
+                for function in graph.by_name.get(name).into_iter().flatten() {
+                    for call in calls_of(function) {
+                        if is_macro_call(&call.name) {
+                            continue;
+                        }
+                        if let Some((&callee, _)) = graph.by_name.get_key_value(call.name.as_str())
+                            && seen.insert(callee)
+                        {
+                            next.push(callee);
+                        }
+                    }
+                }
+            }
+            if next.is_empty() {
+                break;
+            }
+            reached.extend(next.iter().copied());
+            frontier = next;
+        }
+        reached.sort_unstable();
+        reached
+            .into_iter()
+            .flat_map(|name| graph.by_name.get(name).into_iter().flatten().copied())
+            .collect()
+    }
+
+    /// Every production function, for checks that scan impl owners.
+    pub(in crate::analysis) fn production_functions(
+        &self,
+    ) -> impl Iterator<Item = &'a FunctionSummary> + '_ {
+        self.graph().by_name.values().flatten().copied()
     }
 }
 
@@ -919,6 +991,27 @@ fn calls_of(f: &FunctionSummary) -> &[CallFact] {
 /// bang; we check containment to fail closed.
 fn is_macro_call(name: &str) -> bool {
     name.contains('!')
+}
+
+/// The `static_limit_kind` a transitive witness names (RIPR-SPEC-0118): an
+/// integration-test origin is a public-API path, anything else a helper
+/// chain.
+pub(in crate::analysis) fn transitive_reach_limit_kind(test_file: &Path) -> StaticLimitKind {
+    if crate::analysis::rust_index::is_test_file(test_file) {
+        StaticLimitKind::RustIntegrationPublicApiPathUnresolved
+    } else {
+        StaticLimitKind::RustTransitiveReachUnresolved
+    }
+}
+
+/// The `static_limit_kind` a macro witness names: a macro in the test body
+/// itself, or one on the path toward the owner.
+pub(in crate::analysis) fn macro_reach_limit_kind(macro_host: &str) -> StaticLimitKind {
+    if macro_host == MACRO_WITNESS_TEST_BODY_HOST {
+        StaticLimitKind::RustMacroWrappedTestCallUnresolved
+    } else {
+        StaticLimitKind::RustMacroReachUnresolved
+    }
 }
 
 /// The human/JSON message emitted as a stop-reason when the transitive
@@ -1713,6 +1806,30 @@ mod tests {
         assert!(!reaching.contains("b2"));
         assert!(!reaching.contains("m1"));
         assert!(reaching.contains("dup"));
+    }
+
+    #[test]
+    fn transitive_reach_limit_kind_names_integration_test_path() {
+        assert_eq!(
+            transitive_reach_limit_kind(Path::new("tests/version_req.rs")),
+            StaticLimitKind::RustIntegrationPublicApiPathUnresolved
+        );
+        assert_eq!(
+            transitive_reach_limit_kind(Path::new("src/lib.rs")),
+            StaticLimitKind::RustTransitiveReachUnresolved
+        );
+    }
+
+    #[test]
+    fn macro_reach_limit_kind_names_direct_test_body_macro_path() {
+        assert_eq!(
+            macro_reach_limit_kind(MACRO_WITNESS_TEST_BODY_HOST),
+            StaticLimitKind::RustMacroWrappedTestCallUnresolved
+        );
+        assert_eq!(
+            macro_reach_limit_kind("outer"),
+            StaticLimitKind::RustMacroReachUnresolved
+        );
     }
 
     #[test]
