@@ -60,6 +60,11 @@ name = "ripr"
 path = "src/main.rs"
 
 [dependencies]
+# #5287: OS advisory file locks serialize concurrent after-phase manifest
+# commits. Only fs2's safe API is used (`FileExt::try_lock_exclusive` /
+# `unlock`); no `unsafe fn` surface reaches first-party code, keeping the
+# crate's `unsafe_code = "forbid"` posture.
+fs2 = "0.4"
 oxc_allocator = { version = "0.130", optional = true }
 oxc_ast = { version = "0.130", optional = true }
 oxc_parser = { version = "0.130", optional = true }
