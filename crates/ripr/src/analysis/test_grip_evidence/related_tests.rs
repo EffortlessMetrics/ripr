@@ -71,16 +71,7 @@ impl OwnerContext {
             .map(fixture_names_for_owner_file)
             .unwrap_or_default();
         let impl_type = owner_fn.and_then(|owner| impl_self_type_name(&owner.id.0));
-        let same_name_count = if name.is_empty() {
-            0
-        } else {
-            context
-                .index
-                .functions()
-                .iter()
-                .filter(|function| function.name == name)
-                .count()
-        };
+        let same_name_count = context.function_name_count(&name);
         Self {
             name,
             name_lower,
