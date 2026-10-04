@@ -13,6 +13,8 @@ on:
 permissions:
   contents: read
 
+cache-mode: none
+
 concurrency:
   group: python-wheelhouse-qualification-${{ inputs.candidate_sha }}
   cancel-in-progress: false

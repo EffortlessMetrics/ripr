@@ -2770,43 +2770,84 @@ mod tests {
 
     // --- preview_language_enable_suggestions tests ---
 
-    /// When TypeScript files are detected in a directory that has no ripr.toml
-    /// (so the config defaults to `["rust"]`) AND the `lang-typescript` feature
-    /// was compiled in, we expect a suggestion line containing the copy-paste
-    /// TOML block.
+    // Claim each suggestion fixture atomically, and own cleanup before any
+    // subsequent operation can return an error or unwind an assertion.
+    struct OwnedPreviewEnablementFixture(PathBuf);
+
+    impl OwnedPreviewEnablementFixture {
+        fn claim(label: &str) -> Result<Self, String> {
+            let root = unique_command_test_dir(label);
+            std::fs::create_dir(&root).map_err(|err| format!("claim fixture: {err}"))?;
+            Ok(Self(root))
+        }
+    }
+
+    impl Drop for OwnedPreviewEnablementFixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn write_admitted_preview_config(root: &Path, enabled: &[LanguageId]) -> Result<(), String> {
+        let names = enabled
+            .iter()
+            .map(|id| format!("\"{}\"", id.as_str()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        std::fs::write(
+            root.join(CONFIG_FILE_NAME),
+            format!("[languages]\nenabled = [{names}]\n"),
+        )
+        .map_err(|err| format!("write admitted config: {err}"))?;
+        let canonical = std::fs::canonicalize(root.join(CONFIG_FILE_NAME))
+            .map_err(|err| format!("canonicalize admitted config: {err}"))?;
+        let loaded = load_for_root(root)?;
+        assert_eq!(loaded.source_path.as_deref(), Some(canonical.as_path()));
+        assert_eq!(loaded.languages().enabled(), enabled);
+        Ok(())
+    }
+
+    /// A root that owns its defaults must get a TypeScript enablement tip
+    /// when the adapter is compiled. Rust-enabled builds retain the no-config
+    /// default and Rust-plus-TypeScript snippet; TypeScript-only builds use an
+    /// explicitly admitted empty baseline instead of unavailable Rust.
     #[cfg(feature = "lang-typescript")]
     #[test]
     fn doctor_suggests_typescript_when_detected_and_not_enabled() -> Result<(), String> {
-        let dir = unique_command_test_dir("suggest-ts-detected");
-        std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
-        // Keep the no-config fixture independent of the host repository policy.
+        let fixture = OwnedPreviewEnablementFixture::claim("suggest-ts-detected")?;
+        let dir = &fixture.0;
         std::fs::create_dir(dir.join(".git"))
             .map_err(|err| format!("create repository boundary: {err}"))?;
-        // Drop a .ts file so TypeScript is detected.
         std::fs::write(dir.join("index.ts"), "export const x = 1;\n")
             .map_err(|err| format!("write ts: {err}"))?;
-        // No ripr.toml → defaults to enabled = ["rust"] only.
-        let suggestions = preview_language_enable_suggestions(&dir);
-        let before = enable_before_first_command_line(&dir);
-        let _ = std::fs::remove_dir_all(&dir);
-        assert!(
-            !suggestions.is_empty(),
-            "expected a suggestion when TS detected and not enabled"
+        assert_eq!(detect_languages(dir), vec![LanguageId::TypeScript]);
+        // Preserve the original isolated no-config/default-Rust evidence.
+        let defaults = load_for_root(dir)?;
+        assert!(defaults.source_path.is_none());
+        assert_eq!(defaults.languages().enabled(), &[LanguageId::Rust]);
+        let rust_available = LanguageId::Rust.is_available();
+        if !rust_available {
+            write_admitted_preview_config(dir, &[])?;
+        }
+        let suggestions = preview_language_enable_suggestions(dir);
+        let before = enable_before_first_command_line(dir);
+        assert_eq!(suggestions.len(), 1, "one TypeScript tip: {suggestions:?}");
+        assert_eq!(
+            before.as_deref(),
+            Some(
+                "- Before that: enable typescript in ripr.toml (see the Tip above); until then `ripr check` skips those files"
+            )
         );
+        let expected = if rust_available {
+            r#"enabled = ["rust", "typescript"]"#
+        } else {
+            r#"enabled = ["typescript"]"#
+        };
         assert!(
-            before
-                .as_deref()
-                .is_some_and(|line| line.contains("enable typescript in ripr.toml")),
-            "the first command must name the enable step; got {before:?}"
-        );
-        let joined = suggestions.join("\n");
-        assert!(
-            joined.contains("typescript"),
-            "suggestion must name the language; got:\n{joined}"
-        );
-        assert!(
-            joined.contains(r#"enabled = ["rust", "typescript"]"#),
-            "suggestion must contain copy-paste TOML block; got:\n{joined}"
+            suggestions[0].starts_with("- Tip: typescript files detected")
+                && suggestions[0].contains(expected),
+            "suggestion must contain the admitted copy-paste TOML block; got:\n{}",
+            suggestions[0]
         );
         Ok(())
     }
@@ -2818,23 +2859,34 @@ mod tests {
     #[cfg(all(feature = "lang-typescript", feature = "lang-python"))]
     #[test]
     fn doctor_enable_tip_keeps_already_enabled_languages() -> Result<(), String> {
-        let dir = unique_command_test_dir("suggest-mixed-keeps-enabled");
-        std::fs::create_dir_all(dir.join("src")).map_err(|err| format!("create dir: {err}"))?;
+        let fixture = OwnedPreviewEnablementFixture::claim("suggest-mixed-keeps-enabled")?;
+        let dir = &fixture.0;
+        std::fs::create_dir(dir.join("src")).map_err(|err| format!("create dir: {err}"))?;
         std::fs::write(dir.join("src/index.ts"), "export const x = 1;\n")
             .map_err(|err| format!("write ts: {err}"))?;
         std::fs::write(dir.join("src/calc.py"), "def a():\n    return 1\n")
             .map_err(|err| format!("write py: {err}"))?;
-        std::fs::write(
-            dir.join("ripr.toml"),
-            "[languages]\nenabled = [\"rust\", \"python\"]\n",
-        )
-        .map_err(|err| format!("write ripr.toml: {err}"))?;
-        let suggestions = preview_language_enable_suggestions(&dir);
-        let before = enable_before_first_command_line(&dir);
-        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            detect_languages(dir),
+            vec![LanguageId::TypeScript, LanguageId::Python]
+        );
+        let rust_available = LanguageId::Rust.is_available();
+        let enabled = if rust_available {
+            vec![LanguageId::Rust, LanguageId::Python]
+        } else {
+            vec![LanguageId::Python]
+        };
+        write_admitted_preview_config(dir, &enabled)?;
+        let suggestions = preview_language_enable_suggestions(dir);
+        let before = enable_before_first_command_line(dir);
         assert_eq!(suggestions.len(), 1, "one combined tip: {suggestions:?}");
+        let expected = if rust_available {
+            r#"enabled = ["rust", "python", "typescript"]"#
+        } else {
+            r#"enabled = ["python", "typescript"]"#
+        };
         assert!(
-            suggestions[0].contains(r#"enabled = ["rust", "python", "typescript"]"#),
+            suggestions[0].contains(expected),
             "the snippet must keep python enabled; got:\n{}",
             suggestions[0]
         );
@@ -2854,16 +2906,69 @@ mod tests {
     #[cfg(feature = "lang-typescript")]
     #[test]
     fn doctor_enable_tip_maps_javascript_to_the_typescript_entry() -> Result<(), String> {
-        let dir = unique_command_test_dir("suggest-javascript-only");
+        let fixture = OwnedPreviewEnablementFixture::claim("suggest-javascript-only")?;
+        let parent = &fixture.0;
+        let dir = parent.join("workspace");
         std::fs::create_dir_all(dir.join("src")).map_err(|err| format!("create dir: {err}"))?;
         std::fs::write(dir.join("src/index.js"), "export const x = 1;\n")
             .map_err(|err| format!("write js: {err}"))?;
+        assert_eq!(detect_languages(&dir), vec![LanguageId::JavaScript]);
+
+        // No local config must honor an admitted ancestor, including the
+        // TypeScript entry that covers JavaScript. Own that ancestor rather
+        // than borrowing the policy above Cargo's checkout-local temp root.
+        std::fs::write(
+            parent.join(CONFIG_FILE_NAME),
+            "[languages]\nenabled = [\"typescript\"]\n",
+        )
+        .map_err(|err| format!("write parent config: {err}"))?;
+        let parent_config = std::fs::canonicalize(parent.join(CONFIG_FILE_NAME))
+            .map_err(|err| format!("canonicalize parent config: {err}"))?;
+        let inherited = load_for_root(&dir)?;
+        assert_eq!(
+            inherited.source_path.as_deref(),
+            Some(parent_config.as_path())
+        );
+        assert_eq!(inherited.languages().enabled(), &[LanguageId::TypeScript]);
+        assert!(preview_language_enable_suggestions(&dir).is_empty());
+        assert_eq!(enable_before_first_command_line(&dir), None);
+
+        // Use an explicitly admitted disabled state. Rust-enabled builds keep
+        // the original Rust-plus-TypeScript snippet; TypeScript-only builds
+        // must not smuggle an unavailable Rust entry into a typed config.
+        let rust_available = LanguageId::Rust.is_available();
+        let baseline = if rust_available {
+            "[languages]\nenabled = [\"rust\"]\n"
+        } else {
+            "[languages]\nenabled = []\n"
+        };
+        let baseline_enabled = if rust_available {
+            vec![LanguageId::Rust]
+        } else {
+            Vec::new()
+        };
+        std::fs::write(dir.join(CONFIG_FILE_NAME), baseline)
+            .map_err(|err| format!("write disabled config: {err}"))?;
+        let local_config = std::fs::canonicalize(dir.join(CONFIG_FILE_NAME))
+            .map_err(|err| format!("canonicalize local config: {err}"))?;
+        let disabled = load_for_root(&dir)?;
+        assert_eq!(
+            disabled.source_path.as_deref(),
+            Some(local_config.as_path())
+        );
+        assert_eq!(disabled.languages().enabled(), baseline_enabled.as_slice());
+
         let suggestions = preview_language_enable_suggestions(&dir);
         let before = enable_before_first_command_line(&dir);
         assert_eq!(suggestions.len(), 1, "one tip: {suggestions:?}");
+        let expected_snippet = if rust_available {
+            "[languages]\nenabled = [\"rust\", \"typescript\"]"
+        } else {
+            "[languages]\nenabled = [\"typescript\"]"
+        };
         assert!(
             suggestions[0].starts_with("- Tip: javascript files detected")
-                && suggestions[0].contains(r#"enabled = ["rust", "typescript"]"#)
+                && suggestions[0].contains("the `typescript` entry also analyzes JavaScript")
                 && !suggestions[0].contains(r#""javascript""#),
             "the snippet must name the typescript entry; got:\n{}",
             suggestions[0]
@@ -2874,23 +2979,36 @@ mod tests {
                 "- Before that: enable typescript in ripr.toml (see the Tip above); until then `ripr check` skips those files"
             )
         );
-        // The printed snippet must load, and after it the tip goes away.
-        std::fs::write(
-            dir.join("ripr.toml"),
-            "[languages]\nenabled = [\"rust\", \"typescript\"]\n",
-        )
-        .map_err(|err| format!("write ripr.toml: {err}"))?;
-        let loaded = load_for_root(&dir).map(|config| config.languages().enabled().to_vec());
+        // Load the actual rendered snippet rather than a hand-written facsimile.
+        let rendered_config = suggestions[0]
+            .split_once("\n\n  ")
+            .map(|(_, snippet)| snippet.replace("\n  ", "\n"))
+            .ok_or_else(|| "the tip must contain an indented TOML snippet".to_string())?;
+        assert_eq!(rendered_config, expected_snippet);
+        std::fs::write(dir.join(CONFIG_FILE_NAME), format!("{rendered_config}\n"))
+            .map_err(|err| format!("write rendered config: {err}"))?;
+        let loaded = load_for_root(&dir)?;
+        let mut expected_enabled = baseline_enabled;
+        expected_enabled.push(LanguageId::TypeScript);
+        assert_eq!(loaded.source_path.as_deref(), Some(local_config.as_path()));
+        assert_eq!(loaded.languages().enabled(), expected_enabled.as_slice());
         let after = preview_language_enable_suggestions(&dir);
-        let after_before = enable_before_first_command_line(&dir);
-        let _ = std::fs::remove_dir_all(&dir);
-        assert_eq!(
-            loaded,
-            Ok(vec![LanguageId::Rust, LanguageId::TypeScript]),
-            "the suggested snippet must load"
-        );
         assert!(after.is_empty(), "typescript covers javascript: {after:?}");
-        assert_eq!(after_before, None);
+        assert_eq!(enable_before_first_command_line(&dir), None);
+
+        // The scanner label is deliberately not a valid config entry. Verify
+        // that invalid input remains a loader error, never an enablement tip.
+        std::fs::write(
+            dir.join(CONFIG_FILE_NAME),
+            "[languages]\nenabled = [\"javascript\"]\n",
+        )
+        .map_err(|err| format!("write invalid scanner entry: {err}"))?;
+        let error = load_for_root(&dir)
+            .err()
+            .ok_or_else(|| "javascript must remain an invalid enabled entry".to_string())?;
+        assert!(error.contains("unknown language `javascript`"), "{error}");
+        assert!(preview_language_enable_suggestions(&dir).is_empty());
+        assert_eq!(enable_before_first_command_line(&dir), None);
         Ok(())
     }
 
@@ -2916,22 +3034,23 @@ mod tests {
     #[cfg(feature = "lang-typescript")]
     #[test]
     fn doctor_no_suggestion_when_typescript_already_enabled() -> Result<(), String> {
-        let dir = unique_command_test_dir("suggest-ts-already-enabled");
-        std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
+        let fixture = OwnedPreviewEnablementFixture::claim("suggest-ts-already-enabled")?;
+        let dir = &fixture.0;
         std::fs::write(dir.join("index.ts"), "export const x = 1;\n")
             .map_err(|err| format!("write ts: {err}"))?;
-        // ripr.toml explicitly enables typescript.
-        std::fs::write(
-            dir.join("ripr.toml"),
-            "[languages]\nenabled = [\"rust\", \"typescript\"]\n",
-        )
-        .map_err(|err| format!("write ripr.toml: {err}"))?;
-        let suggestions = preview_language_enable_suggestions(&dir);
-        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(detect_languages(dir), vec![LanguageId::TypeScript]);
+        let enabled = if LanguageId::Rust.is_available() {
+            vec![LanguageId::Rust, LanguageId::TypeScript]
+        } else {
+            vec![LanguageId::TypeScript]
+        };
+        write_admitted_preview_config(dir, &enabled)?;
+        let suggestions = preview_language_enable_suggestions(dir);
         assert!(
             suggestions.is_empty(),
             "expected no suggestions when typescript already enabled; got: {suggestions:?}"
         );
+        assert_eq!(enable_before_first_command_line(dir), None);
         Ok(())
     }
 
@@ -2962,17 +3081,25 @@ mod tests {
     #[cfg(not(feature = "lang-typescript"))]
     #[test]
     fn doctor_no_suggestion_when_typescript_adapter_not_compiled() -> Result<(), String> {
-        let dir = unique_command_test_dir("suggest-ts-not-compiled");
-        std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
+        let fixture = OwnedPreviewEnablementFixture::claim("suggest-ts-not-compiled")?;
+        let dir = &fixture.0;
         std::fs::write(dir.join("index.ts"), "export const x = 1;\n")
             .map_err(|err| format!("write ts: {err}"))?;
-        // No ripr.toml → defaults to enabled = ["rust"] only.
-        let suggestions = preview_language_enable_suggestions(&dir);
-        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(detect_languages(dir), vec![LanguageId::TypeScript]);
+        // A valid disabled config makes the missing-adapter gate observable;
+        // an inherited config-load error must not masquerade as this refusal.
+        let enabled = if LanguageId::Rust.is_available() {
+            vec![LanguageId::Rust]
+        } else {
+            Vec::new()
+        };
+        write_admitted_preview_config(dir, &enabled)?;
+        let suggestions = preview_language_enable_suggestions(dir);
         assert!(
             suggestions.is_empty(),
             "expected no suggestions when lang-typescript feature is not compiled; got: {suggestions:?}"
         );
+        assert_eq!(enable_before_first_command_line(dir), None);
         Ok(())
     }
 }
