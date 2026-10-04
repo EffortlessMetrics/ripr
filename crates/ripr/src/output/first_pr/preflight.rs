@@ -1,3 +1,4 @@
+use crate::agent::loop_commands::shell_arg;
 use crate::config::{CONFIG_FILE_NAME, detect_python_project};
 use serde_json::{Value, json};
 use std::path::Path;
@@ -151,7 +152,10 @@ pub(super) fn first_pr_preflight(root: &Path, options: &FirstPrOptions) -> First
             &options.head,
             Some(format!(
                 "Check --head `{}` or fetch the branch, then rerun `ripr first-pr --root {} --base {} --head {}`.",
-                options.head, options.root, options.base, options.head
+                options.head,
+                shell_arg(&options.command_root()),
+                shell_arg(&options.base),
+                shell_arg(&options.head)
             )),
         );
     }
@@ -320,7 +324,9 @@ fn preflight_diff_check(root: &Path, options: &FirstPrOptions, checks: &mut Vec<
                 format!("No file diff was found for `{range}`."),
                 Some(format!(
                     "Choose a head with changes or rerun after committing PR work: `ripr first-pr --root {} --base {} --head {}`.",
-                    options.root, options.base, options.head
+                    shell_arg(&options.command_root()),
+                    shell_arg(&options.base),
+                    shell_arg(&options.head)
                 )),
             ));
         }
@@ -342,7 +348,9 @@ fn preflight_diff_check(root: &Path, options: &FirstPrOptions, checks: &mut Vec<
                 ),
                 Some(format!(
                     "Check --base and --head, then rerun `ripr first-pr --root {} --base {} --head {}`.",
-                    options.root, options.base, options.head
+                    shell_arg(&options.command_root()),
+                    shell_arg(&options.base),
+                    shell_arg(&options.head)
                 )),
             ));
         }

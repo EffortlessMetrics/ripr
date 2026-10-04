@@ -1080,6 +1080,186 @@ fn generated_first_pr_artifact_commands_run_from_a_foreign_working_directory()
     Ok(())
 }
 
+/// The preflight recovery commands `first-pr` prints when the head or base ref
+/// is missing or the range has no diff interpolate the selected root and the
+/// refs. A root with spaces or non-ASCII characters must stay one argument,
+/// and a ref such as `topic;touch injected-marker` must stay one argument
+/// instead of running a second command. Each printed rerun command is pasted
+/// from a foreign directory holding a decoy checkout under the same relative
+/// name: it must name the selected root and leave nothing behind in the
+/// foreign directory, the decoy or a marker file.
+#[cfg(unix)]
+#[test]
+fn generated_first_pr_preflight_recovery_commands_quote_root_and_refs() -> Result<(), Box<dyn Error>>
+{
+    for tool in ["bash", "git"] {
+        if !replay::tool_available(tool) {
+            if std::env::var_os("GITHUB_ACTIONS").is_some() {
+                return Err(format!("`{tool}` is not on PATH under GitHub Actions").into());
+            }
+            eprintln!(
+                "SKIPPED generated_first_pr_preflight_recovery_commands_quote_root_and_refs: `{tool}` is not on PATH"
+            );
+            return Ok(());
+        }
+    }
+    let base = replay::unique_temp_dir("first-pr-preflight-quoting")?;
+    let parent = base.join("sélected parent");
+    let repo = parent.join("repo root");
+    let foreign = base.join("foreign cwd");
+    let decoy = foreign.join("repo root");
+    replay::write_pr_fixture(&repo)?;
+    replay::write_pr_fixture(&decoy)?;
+    let canonical_repo = repo.canonicalize()?;
+    // A local `origin` lets the fetch half of the missing-base hint execute.
+    replay::git(&repo, &["remote", "add", "origin", "."])?;
+    let unsafe_ref = "topic;touch injected-marker";
+
+    // (label, base ref, head ref, id of the preflight check that recovers)
+    let cases = [
+        ("missing head", "origin/trunk", unsafe_ref, "git_head"),
+        (
+            "missing base",
+            "origin/x;touch injected-marker",
+            "HEAD",
+            "git_base",
+        ),
+        (
+            "option-shaped base",
+            "origin/--upload-pack=touch injected-marker",
+            "HEAD",
+            "git_base",
+        ),
+        ("no diff", "HEAD", "HEAD", "git_diff"),
+    ];
+    for (label, base_ref, head_ref, check_id) in cases {
+        let output = replay::ripr(
+            &parent,
+            &[
+                "first-pr",
+                "--root",
+                "repo root",
+                "--base",
+                base_ref,
+                "--head",
+                head_ref,
+            ],
+        )?;
+        assert!(
+            output.status.success(),
+            "{label}: first-pr failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let packet: serde_json::Value = serde_json::from_str(&fs::read_to_string(
+            repo.join("target/ripr/reports/start-here.json"),
+        )?)?;
+        let recovery = recovery_texts(&packet, check_id);
+        assert!(
+            !recovery.is_empty(),
+            "{label}: no `{check_id}` recovery command in {packet}"
+        );
+        for text in recovery {
+            // The refs and root must appear shell-quoted wherever they occur.
+            for hostile in [
+                unsafe_ref,
+                "origin/x;touch injected-marker",
+                "origin/--upload-pack=touch injected-marker",
+            ] {
+                for (at, _) in text.match_indices(hostile) {
+                    let quoted = at > 0
+                        && text[..at].ends_with('\'')
+                        && text[at + hostile.len()..].starts_with('\'');
+                    let in_prose =
+                        text[..at].ends_with('`') && text[at + hostile.len()..].starts_with('`');
+                    assert!(quoted || in_prose, "{label}: unquoted ref in `{text}`");
+                }
+            }
+            // The fetch half of a missing-base hint is a real git command:
+            // run it against a local `origin` so an option-shaped branch that
+            // git would read as `--upload-pack` executes the marker command.
+            if let Some(fetch) = text
+                .split("; then rerun")
+                .next()
+                .filter(|fetch| fetch.starts_with("git fetch origin "))
+            {
+                assert!(
+                    fetch.starts_with("git fetch origin -- "),
+                    "{label}: fetch does not end option parsing before the branch: {fetch}"
+                );
+                replay::bash(
+                    &foreign,
+                    &format!(
+                        "git -C '{}' {}",
+                        canonical_repo.display(),
+                        &fetch["git ".len()..]
+                    ),
+                    &[],
+                )?;
+                assert!(
+                    !foreign.join("injected-marker").exists()
+                        && !repo.join("injected-marker").exists(),
+                    "{label}: fetch hint executed an injected command: {fetch}"
+                );
+            }
+            let rerun = text
+                .split('`')
+                .find(|segment| segment.starts_with("ripr first-pr "))
+                .ok_or_else(|| format!("{label}: no `ripr first-pr` rerun in `{text}`"))?;
+            assert!(
+                rerun.contains(&format!("--root '{}'", canonical_repo.display())),
+                "{label}: rerun does not bind the quoted root: {rerun}"
+            );
+            let run = replay::bash(&foreign, rerun, &[])?;
+            let stdout = String::from_utf8_lossy(&run.stdout);
+            let stderr = String::from_utf8_lossy(&run.stderr);
+            assert!(
+                run.status.success(),
+                "{label}: rerun failed from a foreign directory: {rerun}\nstdout={stdout}\nstderr={stderr}"
+            );
+            assert!(
+                stdout.contains(&canonical_repo.display().to_string()),
+                "{label}: rerun did not analyze the selected root: {stdout}"
+            );
+            assert!(
+                !stderr.contains("command not found"),
+                "{label}: rerun executed an injected command: {stderr}"
+            );
+            assert!(
+                !foreign.join("injected-marker").exists()
+                    && !foreign.join("target").exists()
+                    && !decoy.join("target").exists()
+                    && !decoy.join("injected-marker").exists()
+                    && !repo.join("injected-marker").exists(),
+                "{label}: rerun read or wrote outside the selected root: {rerun}"
+            );
+        }
+    }
+    fs::remove_dir_all(base)?;
+    Ok(())
+}
+
+/// Every `next_command` string the packet carries on the named check.
+fn recovery_texts(packet: &serde_json::Value, check_id: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut stack = vec![packet];
+    while let Some(value) = stack.pop() {
+        match value {
+            serde_json::Value::Object(map) => {
+                if map.get("id").and_then(|id| id.as_str()) == Some(check_id)
+                    && let Some(command) = map.get("next_command").and_then(|c| c.as_str())
+                {
+                    found.push(command.to_string());
+                }
+                stack.extend(map.values());
+            }
+            serde_json::Value::Array(items) => stack.extend(items.iter()),
+            _ => {}
+        }
+    }
+    found
+}
+
 /// Review comments and `::warning` annotations are placed on the PR head's
 /// lines, so the generated workflow must analyze the PR head. On a
 /// `pull_request` event `actions/checkout` defaults to `refs/pull/N/merge`;
