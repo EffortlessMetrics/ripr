@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import { RiprConfig } from '../../src/config';
 import {
   ManifestBytesFetcher,
+  ManifestFetchError,
   ManifestFetchOutcome,
   ManifestPlacementRequest,
   downloadServer,
@@ -715,15 +716,20 @@ suite('Downloader Manifest Placement', () => {
       server.route('/releases/download/v2.0.0/ripr-server-manifest-v2.0.0.json', { status: 404 });
       server.route('/releases/download/v2.0.0-rc.1/ripr-server-manifest-v2.0.0.json', { status: 200, body: Buffer.from('{}') });
 
+      const stableUrl = `${server.base}/releases/download/v2.0.0/ripr-server-manifest-v2.0.0.json`;
       await assert.rejects(
         resolveServerManifestPlacement(placementRequest(server)),
-        /Stable server manifest is absent .* and no admitted RC fallback placement is available for 2\.0\.0-rc\.1\./
+        (error: unknown) => error instanceof ManifestFetchError
+          && error.statusCode === 404
+          && error.redirected === false
+          && error.message === `GET ${stableUrl} failed with HTTP 404.`
       );
 
       const paths = server.requests.map((request) => request.path);
-      assert.ok(
-        !paths.includes('/releases/download/v2.0.0-rc.1/ripr-server-manifest-v2.0.0.json'),
-        'a generation without an admitted descriptor has no fallback row'
+      assert.deepStrictEqual(
+        paths,
+        ['/releases/download/v2.0.0/ripr-server-manifest-v2.0.0.json'],
+        'without the admitted digest, direct stable absence must not fetch any fallback or archive'
       );
     } finally {
       await server.stop();

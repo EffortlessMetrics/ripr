@@ -1501,9 +1501,7 @@ fn vscode_package_admitted(
     let vsix_path = extension_dir.join("dist").join(&vsix_name);
     let packaged = read_vsix_catalog(&vsix_path)?;
     verify_packaged_catalog_against_admission(&packaged, &admission_value)?;
-    let inventory = read_vsix_inventory(&vsix_path)?;
-    check_vsix_inventory(&inventory, VSIX_MAX_ENTRIES, VSIX_MAX_UNCOMPRESSED_BYTES)
-        .map_err(|err| format!("packaged VSIX {} {err}", vsix_path.display()))?;
+    let (inventory, _inventory_summary) = verify_packaged_vsix_inventory(&vsix_path)?;
     let (inventory_uncompressed, inventory_compressed) = vsix_size_totals(&inventory)
         .map_err(|err| format!("packaged VSIX {} {err}", vsix_path.display()))?;
     let vsix_sha256 = sha256_file(&vsix_path)?;
@@ -1575,16 +1573,17 @@ fn admit_distribution_catalog(
 }
 
 /// Reads the built VSIX and applies the production inventory bounds. Returns
-/// the one-line summary `vscode-package` prints.
-fn verify_packaged_vsix_inventory(vsix_path: &Path) -> Result<String, String> {
+/// the validated entries for the package receipt and the compatibility summary.
+fn verify_packaged_vsix_inventory(vsix_path: &Path) -> Result<(Vec<VsixEntry>, String), String> {
     let inventory = read_vsix_inventory(vsix_path)?;
     check_vsix_inventory(&inventory, VSIX_MAX_ENTRIES, VSIX_MAX_UNCOMPRESSED_BYTES)
         .map_err(|err| format!("packaged VSIX {} {err}", vsix_path.display()))?;
-    Ok(format!(
+    let summary = format!(
         "VSIX inventory: {} entries, {} bytes unpacked",
         inventory.len(),
         vsix_size_totals(&inventory)?.0
-    ))
+    );
+    Ok((inventory, summary))
 }
 
 /// Upper bounds on the packaged VSIX. The 0.11 extension packs about 410

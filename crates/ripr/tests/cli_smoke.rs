@@ -635,19 +635,12 @@ fn normalize_newlines(value: &str) -> String {
     value.replace("\r\n", "\n")
 }
 
-/// Issue #3872: CLI-rendered command redirects anchor at the resolved --root
-/// — the child process working directory, which is the workspace root for
-/// `run_ripr_in_workspace`. Project that machine prefix to `<cwd>/` before
-/// comparing so the fixture pins the anchored shape, never a machine
-/// directory (same placeholder rule as the lib-test projections).
+/// Issue #3872: CLI-rendered command redirects anchor inside the fixture's
+/// process working directory. Make that owned root explicit so isolated
+/// fixtures retain their boundary instead of inheriting the source workspace.
+/// Project that machine prefix to `<cwd>/` before comparing; the existing
+/// fixture pins the anchored command shape and the rest of the output.
 fn assert_anchored_stdout_matches_fixture(
-    output: &Output,
-    fixture_path: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    assert_anchored_stdout_matches_fixture_at(output, fixture_path, &workspace_root())
-}
-
-fn assert_anchored_stdout_matches_fixture_at(
     output: &Output,
     fixture_path: &str,
     anchor_root: &Path,
@@ -674,6 +667,14 @@ fn assert_anchored_stdout_matches_fixture_at(
         "stdout drifted from {fixture_path}"
     );
     Ok(())
+}
+
+fn assert_anchored_stdout_matches_fixture_at(
+    output: &Output,
+    fixture_path: &str,
+    anchor_root: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    assert_anchored_stdout_matches_fixture(output, fixture_path, anchor_root)
 }
 
 fn write_bound_repo_exposure_fixture(

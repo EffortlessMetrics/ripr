@@ -195,8 +195,7 @@ use super::{
     ripr_swarm_read_optional_json, ripr_swarm_readiness_from_values, ripr_swarm_readiness_json,
     ripr_swarm_readiness_markdown, ripr_swarm_readiness_next_actions, ripr_swarm_readiness_summary,
     routed_rust_event_route, routed_rust_ready_event_contract_violations,
-    routed_rust_workflow_contract_violations,
-    routed_rust_workflow_contract_violations_with_reusable, run_ci_full_evidence_gates,
+    routed_rust_workflow_contract_violations, run_ci_full_evidence_gates,
     run_repo_badge_artifact_command, sarif_policy_report_json, sarif_policy_report_markdown,
     select_vscode_test_server, should_scan_static_language_path, should_skip_path,
     sorted_allowlist_content, sorted_capability_blocks_content, sorted_command_catalog_content,
@@ -48661,7 +48660,7 @@ fn vsix_inventory_rejects_workspace_build_output_sentinel() -> Result<(), String
             super::VSIX_MAX_UNCOMPRESSED_BYTES,
         )?;
         // The production path `vscode-package` runs after `vsce package`.
-        let summary = super::verify_packaged_vsix_inventory(&clean)?;
+        let (_entries, summary) = super::verify_packaged_vsix_inventory(&clean)?;
         assert!(
             summary.starts_with(&format!("VSIX inventory: {} entries, ", approved.len())),
             "{summary}"
@@ -48811,130 +48810,6 @@ fn vscode_package_args_parse_catalog_staging() -> Result<(), String> {
         };
         assert!(error.contains("Usage"), "{error}");
     }
-    Ok(())
-}
-
-fn write_packaging_test_vsix(
-    path: &std::path::Path,
-    members: &[(&str, &str)],
-) -> Result<(), String> {
-    let file = fs::File::create(path)
-        .map_err(|err| format!("failed to create {}: {err}", path.display()))?;
-    let mut writer = zip::ZipWriter::new(file);
-    let options = zip::write::SimpleFileOptions::default();
-    for (name, body) in members {
-        writer
-            .start_file(*name, options)
-            .map_err(|err| format!("failed to stage {name}: {err}"))?;
-        std::io::Write::write_all(&mut writer, body.as_bytes())
-            .map_err(|err| format!("failed to write {name}: {err}"))?;
-    }
-    writer
-        .finish()
-        .map_err(|err| format!("failed to seal {}: {err}", path.display()))?;
-    Ok(())
-}
-
-fn vsix_entry(name: &str, size: u64) -> super::VsixEntry {
-    super::VsixEntry {
-        name: name.to_string(),
-        size,
-        compressed_size: size / 4,
-    }
-}
-
-#[test]
-fn vsix_inventory_rejects_workspace_build_output_sentinel() -> Result<(), String> {
-    with_temp_cwd("vsix-inventory-sentinel", |root| {
-        let approved = [
-            ("[Content_Types].xml", "<Types/>"),
-            ("extension.vsixmanifest", "<PackageManifest/>"),
-            ("extension/package.json", "{}"),
-            ("extension/distribution.json", "{\"schema\":2}"),
-            ("extension/out/src/client.js", "exports.x = 1;"),
-            // A dependency's own `target/` directory is not workspace output.
-            (
-                "extension/node_modules/dep/target/index.js",
-                "module.exports = 1;",
-            ),
-        ];
-        let clean = root.join("clean.vsix");
-        write_packaging_test_vsix(&clean, &approved)?;
-        let entries = super::read_vsix_inventory(&clean)?;
-        assert_eq!(entries.len(), approved.len());
-        super::check_vsix_inventory(
-            &entries,
-            super::VSIX_MAX_ENTRIES,
-            super::VSIX_MAX_UNCOMPRESSED_BYTES,
-        )?;
-
-        let sentinel = "extension/target/debug/ripr-1775-sentinel.bin";
-        let mut polluted_members = approved.to_vec();
-        polluted_members.push((sentinel, "cargo build output"));
-        let polluted = root.join("polluted.vsix");
-        write_packaging_test_vsix(&polluted, &polluted_members)?;
-        let entries = super::read_vsix_inventory(&polluted)?;
-        let Err(error) = super::check_vsix_inventory(
-            &entries,
-            super::VSIX_MAX_ENTRIES,
-            super::VSIX_MAX_UNCOMPRESSED_BYTES,
-        ) else {
-            return Err("a packaged editors/vscode/target sentinel must be rejected".to_string());
-        };
-        assert!(error.contains(sentinel), "{error}");
-        assert!(error.contains("1 workspace build-output"), "{error}");
-        Ok(())
-    })
-}
-
-#[test]
-fn vsix_inventory_rejects_cargo_artifacts_outside_target() -> Result<(), String> {
-    for name in [
-        "extension/out/libripr-0123.rlib",
-        "extension/out/libripr-0123.rmeta",
-        "extension/build/.fingerprint/ripr-0123/lib-ripr",
-        "extension/build/incremental/ripr-0123/s-abc/query-cache.bin",
-    ] {
-        let entries = vec![
-            vsix_entry("extension/package.json", 2),
-            vsix_entry(name, 10),
-        ];
-        let Err(error) = super::check_vsix_inventory(&entries, 10, 1_000) else {
-            return Err(format!("{name} must be rejected as build output"));
-        };
-        assert!(error.contains(name), "{error}");
-    }
-    Ok(())
-}
-
-#[test]
-fn vsix_inventory_bounds_entry_count_and_unpacked_size() -> Result<(), String> {
-    let three = vec![
-        vsix_entry("extension/package.json", 10),
-        vsix_entry("extension/out/a.js", 10),
-        vsix_entry("extension/out/b.js", 10),
-    ];
-    super::check_vsix_inventory(&three, 3, 30)?;
-    let Err(count) = super::check_vsix_inventory(&three, 2, 30) else {
-        return Err("an entry count above the bound must be rejected".to_string());
-    };
-    assert!(
-        count.contains("3 entries, above the 2-entry bound"),
-        "{count}"
-    );
-    let Err(size) = super::check_vsix_inventory(&three, 3, 29) else {
-        return Err("an unpacked size above the bound must be rejected".to_string());
-    };
-    assert!(size.contains("30 bytes, above the 29-byte bound"), "{size}");
-    // The production bounds sit between the observed 0.11 package (about 410
-    // entries, 3 MiB) and the #1775 defect (2,805 entries, about 2.3 GB).
-    const { assert!(super::VSIX_MAX_ENTRIES > 410 && super::VSIX_MAX_ENTRIES < 2_805) };
-    const {
-        assert!(
-            super::VSIX_MAX_UNCOMPRESSED_BYTES > 3 * 1024 * 1024
-                && super::VSIX_MAX_UNCOMPRESSED_BYTES < 2_300 * 1024 * 1024
-        )
-    };
     Ok(())
 }
 
@@ -52796,6 +52671,33 @@ fn review_comments_cross_check_oracle_rejects_contract_drift() -> Result<(), Str
     Ok(())
 }
 
+/// Extracts the run-block lines of each `- name: <step>` whose name matches
+/// `step_name`, stopping at the next step (`- ` at the same indent).
+fn routed_rust_step_run_blocks(workflow: &str, step_name: &str) -> Vec<Vec<String>> {
+    let marker = format!("- name: {step_name}");
+    let mut blocks = Vec::new();
+    let mut current: Option<Vec<String>> = None;
+    for line in workflow.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("- name: ") {
+            if let Some(block) = current.take() {
+                blocks.push(block);
+            }
+            if trimmed == marker {
+                current = Some(Vec::new());
+            }
+            continue;
+        }
+        if let Some(block) = current.as_mut() {
+            block.push(line.to_string());
+        }
+    }
+    if let Some(block) = current.take() {
+        blocks.push(block);
+    }
+    blocks
+}
+
 /// Returns an error unless `lines` mention `cargo xtask precommit` exactly
 /// once as a bare invocation line. A commented-out (`# cargo xtask
 /// precommit`) or otherwise decorated mention does not count as an
@@ -52824,14 +52726,9 @@ fn require_single_bare_precommit_line(lines: &[String], context: &str) -> Result
     Ok(())
 }
 
-/// The routed Rust lanes must delegate the required gate table to the shared
-/// reusable workflow, not inline a lane-only gate command where it could drift
-/// from `.github/workflows/rust-gates.yml`. The reusable workflow enumerates
-/// each gate as its own named per-producer step; the per-step shape (exact
-/// command, unconditional, ordered, outcome-reported) is owned by
-/// `xtask/tests/rust_gate_workflow_contract.rs`. `cargo xtask precommit` and
-/// `cargo xtask check-agent-skills` stay inline only in the docs-gate job,
-/// which `routed_rust_docs_gate_runs_full_precommit_table` covers.
+/// The public routed workflow enumerates the full required gate table in one
+/// GitHub-hosted `Required Rust gates` step. Its recorded commands must remain
+/// unshielded, including the full precommit invocation and lane-only gates.
 #[test]
 fn routed_rust_required_lanes_run_full_precommit_table() -> Result<(), String> {
     let workflow = routed_rust_workflow_text()?;

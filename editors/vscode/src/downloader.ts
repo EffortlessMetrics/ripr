@@ -638,6 +638,9 @@ export function placementArchiveUrl(manifestUrl: string, assetUrl: string): stri
     throw new Error('Archive subject URL must not carry a query or fragment.');
   }
   const subject = decodeURIComponent(parsed.pathname.slice(parsed.pathname.lastIndexOf('/') + 1));
+  if (subject.length === 0) {
+    throw new Error(`Server manifest asset URL ${assetUrl} does not name an archive file.`);
+  }
   const base = manifestUrl.slice(0, manifestUrl.lastIndexOf('/'));
   const resolved = assetUrlForSubject(base, subject);
   return admitInitialRequestTarget(resolved, fetchPolicyFor(manifestUrl));

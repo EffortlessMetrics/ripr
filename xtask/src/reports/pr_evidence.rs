@@ -1154,7 +1154,7 @@ fn pr_evidence_error_packet(
         "warnings": [
             {
                 "kind": "tool_error",
-                "message": bounded_tool_error_message(error),
+                "message": first_line(error),
                 "path": null
             }
         ],
@@ -1167,19 +1167,10 @@ fn pr_evidence_error_packet(
     })
 }
 
+/// Keep the legacy diagnostic entry point on the live packet path while using
+/// the bounded UTF-8-safe formatter and its explicit truncation marker.
 fn first_line(text: &str) -> String {
-    let mut diagnostic = text
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .take(8)
-        .collect::<Vec<_>>()
-        .join("\n");
-    if diagnostic.is_empty() {
-        diagnostic = "RIPR PR evidence generation did not complete.".to_string();
-    }
-    diagnostic.truncate(4096);
-    diagnostic
+    bounded_tool_error_message(text)
 }
 
 /// Mirrors `targeted_mutation_route` in `crates/ripr/src/app/pr_evidence.rs`
@@ -2122,6 +2113,33 @@ mod tests {
             !message.contains(&"x".repeat(9000)),
             "packet dumped unlimited child output"
         );
+        assert_eq!(packet["status"], "error");
+    }
+
+    #[test]
+    fn error_packet_preserves_utf8_and_bounds_extra_diagnostic_lines() {
+        let unicode = "€".repeat(TOOL_ERROR_MAX_CHARS + 1);
+        let packet = pr_evidence_error_packet(&options(), &[], &unicode);
+        let message = packet["warnings"][0]["message"]
+            .as_str()
+            .unwrap_or_default();
+        assert_eq!(
+            message,
+            format!("{}{TRUNCATED_MARKER}", "€".repeat(TOOL_ERROR_MAX_CHARS)),
+            "UTF-8 diagnostics must remain complete characters and mark truncation"
+        );
+
+        let lines = (0..=TOOL_ERROR_MAX_LINES)
+            .map(|index| format!("diagnostic line {index}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let packet = pr_evidence_error_packet(&options(), &[], &lines);
+        let message = packet["warnings"][0]["message"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(message.contains(&format!("diagnostic line {}", TOOL_ERROR_MAX_LINES - 1)));
+        assert!(!message.contains(&format!("diagnostic line {TOOL_ERROR_MAX_LINES}")));
+        assert!(message.ends_with(TRUNCATED_MARKER));
         assert_eq!(packet["status"], "error");
     }
 
