@@ -1882,6 +1882,80 @@ fn validate_orchestration_attempt_receipts_fixture_corpus_at(
     Ok(())
 }
 
+pub(crate) fn validate_issue_lifecycle_attempts_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/issue_lifecycle_attempts");
+    for required in ["SPEC.md", "corpus.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "issue lifecycle attempts fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    let spec_path = root.join("SPEC.md");
+    if spec_path.exists() {
+        let body = read_text_lossy(&spec_path)?;
+        if !body.contains("RIPR-SPEC-0218") {
+            violations.push(
+                "issue lifecycle attempts SPEC.md must name its RIPR-SPEC-0218 decision"
+                    .to_string(),
+            );
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !body.contains(heading) {
+                violations.push(format!(
+                    "issue lifecycle attempts SPEC.md must contain the `{heading}` section"
+                ));
+            }
+        }
+    }
+    validate_issue_lifecycle_attempts_fixture_corpus_at(&root.join("corpus.json"), violations)
+}
+
+fn validate_issue_lifecycle_attempts_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "issue lifecycle attempts corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+    let body = read_text_lossy(path)?;
+    let corpus = match crate::issue_lifecycle_attempt::load_issue_lifecycle_fixture_corpus(&body) {
+        Ok(corpus) => corpus,
+        Err(error) => {
+            violations.push(format!(
+                "issue lifecycle attempts corpus is invalid: {error}"
+            ));
+            return Ok(());
+        }
+    };
+    let missing = crate::issue_lifecycle_attempt::missing_issue_lifecycle_required_scenarios(
+        corpus.scenarios.iter().map(|scenario| scenario.id.as_str()),
+    );
+    for id in missing {
+        violations.push(format!(
+            "issue lifecycle attempts corpus is missing required scenario {id}"
+        ));
+    }
+    let (_scorecard, failures) = crate::reports::assess_issue_lifecycle_fixture_corpus(
+        &corpus,
+        "fixtures/issue_lifecycle_attempts/corpus.json",
+    );
+    for failure in &failures {
+        violations.push(format!(
+            "issue lifecycle attempts corpus drifted: {failure}"
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_blind_journey_execute_fixture_corpus(
     violations: &mut Vec<String>,
 ) -> Result<(), String> {

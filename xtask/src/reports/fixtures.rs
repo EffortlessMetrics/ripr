@@ -417,6 +417,7 @@ pub(crate) fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "finding-alignment-dogfood"
                     | "gap-decision-ledger"
                     | "intervention-study"
+                    | "issue_lifecycle_attempts"
                     | "github_unanalyzed_states"
                     | "orchestration_attempt_receipts"
                     | "perl_lsp_facts_exporter"

@@ -15,6 +15,7 @@ mod first_pr;
 mod fixtures;
 mod index;
 mod issue_intake;
+mod issue_lifecycle;
 mod lsp;
 mod lsp_performance;
 mod merge_queue;
@@ -116,6 +117,9 @@ pub(crate) use fixtures::{
 };
 pub(crate) use index::{reports, reports_index};
 pub(crate) use issue_intake::issue_intake;
+pub(crate) use issue_lifecycle::{
+    assess_issue_lifecycle_fixture_corpus, issue_lifecycle_scorecard_report,
+};
 pub(crate) use lsp::lsp_cockpit_report;
 pub(crate) use lsp_performance::lsp_performance_report;
 pub(crate) use merge_queue::merge_queue;

@@ -11984,3 +11984,62 @@ outputs = [
 metrics = [
   "unit_test_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0218"
+name = "Issue lifecycle attempt extension contract and scorecard projection"
+spec = "docs/specs/RIPR-SPEC-0218-issue-lifecycle-attempt-extension.md"
+tests = [
+  "xtask/src/issue_lifecycle_attempt.rs::tests::complete_lifecycle_row_counts_as_completed",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::schema_drift_rejects_the_row",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::altered_row_bytes_reject_the_digest_binding",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::blank_base_attempt_identity_rejects_the_row",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::empty_shared_facts_reject_the_row",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::unknown_shared_fact_family_rejects_the_row",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::open_intake_questions_cap_at_needs_evidence",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::spec_required_blocks_one_pr_qualification",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::unsuppressed_unchanged_progress_blocks_completion",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::merge_without_current_head_proof_stays_pending_closeout",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::incomplete_closeout_state_blocks_completed_without_merge",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::uncovered_burn_down_rows_keep_a_merge_partially_landed",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::uncovered_burn_down_rows_block_completed_without_merge",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::stale_current_main_receipt_forces_stale",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::first_established_downgrade_wins_across_closeout_gates",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::spec_required_without_acceptance_blocks_completed",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::negative_dispositions_pass_through_and_stay_visible",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::completed_closeout_requires_a_recorded_reason",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::zero_byte_intake_evidence_rejects_the_row",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::synthetic_flag_does_not_change_row_assessment",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::fixture_corpus_loader_rejects_duplicates_and_drifted_schemas",
+  "xtask/src/issue_lifecycle_attempt.rs::tests::missing_required_scenarios_are_reported",
+  "xtask/src/reports/issue_lifecycle.rs::tests::empty_corpus_reports_no_success_rate",
+  "xtask/src/reports/issue_lifecycle.rs::tests::synthetic_rows_never_enter_real_denominators",
+  "xtask/src/reports/issue_lifecycle.rs::tests::completed_row_enters_the_implementation_success_rate",
+  "xtask/src/reports/issue_lifecycle.rs::tests::negative_dispositions_never_count_as_implementation_success",
+  "xtask/src/reports/issue_lifecycle.rs::tests::duplicate_observations_of_one_lifecycle_deduplicate",
+  "xtask/src/reports/issue_lifecycle.rs::tests::conflicting_duplicate_observations_reject_both",
+  "xtask/src/reports/issue_lifecycle.rs::tests::reordered_inputs_preserve_the_corpus_identity",
+  "xtask/src/reports/issue_lifecycle.rs::tests::json_and_markdown_derive_from_one_dto_deterministically",
+  "xtask/src/reports/issue_lifecycle.rs::tests::parse_captured_accepts_at_most_one_path",
+  "xtask/src/reports/issue_lifecycle.rs::tests::digest_corrupted_duplicate_conflicts_in_either_input_order",
+]
+fixtures = [
+  "fixtures/issue_lifecycle_attempts",
+]
+code = [
+  "xtask/src/issue_lifecycle_attempt.rs",
+  "xtask/src/reports/issue_lifecycle.rs",
+  "xtask/src/fixture_contracts/general_validators.rs",
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+]
+outputs = [
+  "fixtures/issue_lifecycle_attempts/corpus.json",
+]
+metrics = [
+  "issue_lifecycle_fixture_scenarios",
+  "issue_lifecycle_scorecard_synthetic_lifecycles",
+  "issue_lifecycle_scorecard_rejected_rows",
+  "issue_lifecycle_scorecard_real_lifecycles",
+  "issue_lifecycle_scorecard_implementation_success_rate_state",
+]

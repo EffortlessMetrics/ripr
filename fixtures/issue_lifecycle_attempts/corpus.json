@@ -1,0 +1,1758 @@
+{
+ "schema_version": "issue_lifecycle_fixture_corpus.v1",
+ "scenarios": [
+  {
+   "id": "one_pr_bug_no_new_spec",
+   "expected": {
+    "countable": true,
+    "disposition": "qualified_one_pr",
+    "reason_contains": []
+   },
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "lifecycle-one-pr-bug",
+    "observation_key": "observation-one-pr-bug",
+    "synthetic": true,
+    "disposition": "qualified_one_pr",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-lifecycle-one-pr-bug",
+      "shared_facts": [
+       "context",
+       "execution"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "issue-snapshot:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "issue_ref": "operator/target#1234",
+     "comments_ref": "issue-comments:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "labels_ref": "issue-labels:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "narrow_bug"
+    },
+    "context": {
+     "current_main": "main-sha",
+     "relevant_prs": [
+      "pr-lifecycle-one-pr-bug"
+     ],
+     "portfolio": "campaign-sample",
+     "selected_work": "issue-sample",
+     "claim_ids": [
+      "claim-lifecycle-one-pr-bug"
+     ]
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "intake-packet:sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+       "bytes": 1024
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "narrow accepted-contract bug; no new spec",
+     "root_disposition": "root-accepted"
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": null
+    },
+    "plan": {
+     "plan_id": "plan-lifecycle-one-pr-bug",
+     "work_items": [
+      "work-item-lifecycle-one-pr-bug"
+     ],
+     "dependencies": [],
+     "acceptance_coverage": [
+      "acceptance-row-sample"
+     ]
+    },
+    "claim_events": [
+     {
+      "claim_id": "claim-lifecycle-one-pr-bug",
+      "event": "claimed",
+      "detail": "durable exclusive writer claim"
+     }
+    ],
+    "execution_refs": {
+     "pr": null,
+     "review": null,
+     "checks": [],
+     "verification": null,
+     "merge": null,
+     "current_main": "main-sha"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "closed",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "not_started",
+     "reason": null,
+     "remaining_limitations": [
+      "sample limitation"
+     ],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "sample limitation"
+    ],
+    "non_claims": [
+     "sample non-claim"
+    ],
+    "row_digest": "28cc1a50fcd17e02305c51b2f22a3e555f703da45a330ad97d63ad798d041364"
+   }
+  },
+  {
+   "id": "public_contract_requires_independent_challenge",
+   "expected": {
+    "countable": true,
+    "disposition": "qualified_spec_required",
+    "reason_contains": []
+   },
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "lifecycle-public-contract",
+    "observation_key": "observation-public-contract",
+    "synthetic": true,
+    "disposition": "qualified_spec_required",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-lifecycle-public-contract",
+      "shared_facts": [
+       "context",
+       "execution"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "issue-snapshot:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "issue_ref": "operator/target#1234",
+     "comments_ref": "issue-comments:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "labels_ref": "issue-labels:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "public_contract"
+    },
+    "context": {
+     "current_main": "main-sha",
+     "relevant_prs": [
+      "pr-lifecycle-public-contract"
+     ],
+     "portfolio": "campaign-sample",
+     "selected_work": "issue-sample",
+     "claim_ids": [
+      "claim-lifecycle-public-contract"
+     ]
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "intake-packet:sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+       "bytes": 1024
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": true,
+     "decision_rationale": "public output contract change; independent challenge required",
+     "root_disposition": "root-accepted-challenge"
+    },
+    "contract_artifacts": {
+     "proposal": "proposal-draft:sha256:2222222222222222222222222222222222222222222222222222222222222222",
+     "spec": "spec-draft:sha256:3333333333333333333333333333333333333333333333333333333333333333",
+     "adr": null,
+     "challenge": "challenge:sha256:4444444444444444444444444444444444444444444444444444444444444444",
+     "amendments": [
+      "amendment:sha256:5555555555555555555555555555555555555555555555555555555555555555"
+     ],
+     "acceptance": null
+    },
+    "plan": {
+     "plan_id": "plan-lifecycle-public-contract",
+     "work_items": [
+      "work-item-lifecycle-public-contract"
+     ],
+     "dependencies": [],
+     "acceptance_coverage": [
+      "acceptance-row-sample"
+     ]
+    },
+    "claim_events": [
+     {
+      "claim_id": "claim-lifecycle-public-contract",
+      "event": "claimed",
+      "detail": "durable exclusive writer claim"
+     }
+    ],
+    "execution_refs": {
+     "pr": null,
+     "review": null,
+     "checks": [],
+     "verification": null,
+     "merge": null,
+     "current_main": "main-sha"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "closed",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "not_started",
+     "reason": null,
+     "remaining_limitations": [
+      "sample limitation"
+     ],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "sample limitation"
+    ],
+    "non_claims": [
+     "sample non-claim"
+    ],
+    "row_digest": "7ae33a56524b1e6ae8db0cfc46cb77fdba259800677238f34516de2d9ebdbe7d"
+   }
+  },
+  {
+   "id": "architecture_ambiguity_returns_root_decision",
+   "expected": {
+    "countable": true,
+    "disposition": "root_decision_required",
+    "reason_contains": []
+   },
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "lifecycle-architecture",
+    "observation_key": "observation-architecture",
+    "synthetic": true,
+    "disposition": "root_decision_required",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-lifecycle-architecture",
+      "shared_facts": [
+       "context",
+       "execution"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "issue-snapshot:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "issue_ref": "operator/target#1234",
+     "comments_ref": "issue-comments:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "labels_ref": "issue-labels:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "architecture_ambiguity"
+    },
+    "context": {
+     "current_main": "main-sha",
+     "relevant_prs": [
+      "pr-lifecycle-architecture"
+     ],
+     "portfolio": "campaign-sample",
+     "selected_work": "issue-sample",
+     "claim_ids": [
+      "claim-lifecycle-architecture"
+     ]
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "intake-packet:sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+       "bytes": 1024
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": true,
+     "decision_rationale": "authority boundary ambiguity; root must decide before any contract",
+     "root_disposition": null
+    },
+    "contract_artifacts": {
+     "proposal": "proposal-draft:sha256:6666666666666666666666666666666666666666666666666666666666666666",
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": null
+    },
+    "plan": {
+     "plan_id": "plan-lifecycle-architecture",
+     "work_items": [
+      "work-item-lifecycle-architecture"
+     ],
+     "dependencies": [],
+     "acceptance_coverage": [
+      "acceptance-row-sample"
+     ]
+    },
+    "claim_events": [
+     {
+      "claim_id": "claim-lifecycle-architecture",
+      "event": "claimed",
+      "detail": "durable exclusive writer claim"
+     }
+    ],
+    "execution_refs": {
+     "pr": null,
+     "review": null,
+     "checks": [],
+     "verification": null,
+     "merge": null,
+     "current_main": "main-sha"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "closed",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "not_started",
+     "reason": null,
+     "remaining_limitations": [
+      "sample limitation"
+     ],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "sample limitation"
+    ],
+    "non_claims": [
+     "sample non-claim"
+    ],
+    "row_digest": "3022fa01e441911a312c557791bdd4b9b5fafcf8ff9c5143228787dd5c8e0860"
+   }
+  },
+  {
+   "id": "duplicate_case",
+   "expected": {
+    "countable": true,
+    "disposition": "duplicate",
+    "reason_contains": []
+   },
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "lifecycle-duplicate",
+    "observation_key": "observation-duplicate",
+    "synthetic": true,
+    "disposition": "duplicate",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-lifecycle-duplicate",
+      "shared_facts": [
+       "context",
+       "execution"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "issue-snapshot:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "issue_ref": "operator/target#1234",
+     "comments_ref": "issue-comments:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "labels_ref": "issue-labels:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "duplicate_candidate"
+    },
+    "context": {
+     "current_main": "main-sha",
+     "relevant_prs": [
+      "pr-lifecycle-duplicate"
+     ],
+     "portfolio": "campaign-sample",
+     "selected_work": "issue-sample",
+     "claim_ids": [
+      "claim-lifecycle-duplicate"
+     ]
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "intake-packet:sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+       "bytes": 1024
+      },
+      {
+       "identity": "duplicate-analysis:sha256:7777777777777777777777777777777777777777777777777777777777777777",
+       "bytes": 512
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "narrow accepted-contract bug; no new spec",
+     "root_disposition": "root-accepted"
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": null
+    },
+    "plan": {
+     "plan_id": "plan-lifecycle-duplicate",
+     "work_items": [
+      "work-item-lifecycle-duplicate"
+     ],
+     "dependencies": [],
+     "acceptance_coverage": [
+      "acceptance-row-sample"
+     ]
+    },
+    "claim_events": [
+     {
+      "claim_id": "claim-lifecycle-duplicate",
+      "event": "claimed",
+      "detail": "durable exclusive writer claim"
+     }
+    ],
+    "execution_refs": {
+     "pr": null,
+     "review": null,
+     "checks": [],
+     "verification": null,
+     "merge": null,
+     "current_main": "main-sha"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "closed",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "not_started",
+     "reason": null,
+     "remaining_limitations": [
+      "sample limitation"
+     ],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "sample limitation"
+    ],
+    "non_claims": [
+     "sample non-claim"
+    ],
+    "row_digest": "781a0106ede4b59d3cf4267667cfe1e127262f76bd7cac3fd7438e67e8992c56"
+   }
+  },
+  {
+   "id": "already_satisfied_case",
+   "expected": {
+    "countable": true,
+    "disposition": "already_satisfied",
+    "reason_contains": []
+   },
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "lifecycle-already-satisfied",
+    "observation_key": "observation-already-satisfied",
+    "synthetic": true,
+    "disposition": "already_satisfied",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-lifecycle-already-satisfied",
+      "shared_facts": [
+       "context",
+       "execution"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "issue-snapshot:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "issue_ref": "operator/target#1234",
+     "comments_ref": "issue-comments:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "labels_ref": "issue-labels:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "already_satisfied_candidate"
+    },
+    "context": {
+     "current_main": "main-sha",
+     "relevant_prs": [
+      "pr-lifecycle-already-satisfied"
+     ],
+     "portfolio": "campaign-sample",
+     "selected_work": "issue-sample",
+     "claim_ids": [
+      "claim-lifecycle-already-satisfied"
+     ]
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "intake-packet:sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+       "bytes": 1024
+      },
+      {
+       "identity": "satisfied-analysis:sha256:8888888888888888888888888888888888888888888888888888888888888888",
+       "bytes": 512
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "narrow accepted-contract bug; no new spec",
+     "root_disposition": "root-accepted"
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": null
+    },
+    "plan": {
+     "plan_id": "plan-lifecycle-already-satisfied",
+     "work_items": [
+      "work-item-lifecycle-already-satisfied"
+     ],
+     "dependencies": [],
+     "acceptance_coverage": [
+      "acceptance-row-sample"
+     ]
+    },
+    "claim_events": [
+     {
+      "claim_id": "claim-lifecycle-already-satisfied",
+      "event": "claimed",
+      "detail": "durable exclusive writer claim"
+     }
+    ],
+    "execution_refs": {
+     "pr": null,
+     "review": null,
+     "checks": [],
+     "verification": null,
+     "merge": null,
+     "current_main": "main-sha"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "closed",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "not_started",
+     "reason": null,
+     "remaining_limitations": [
+      "sample limitation"
+     ],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "sample limitation"
+    ],
+    "non_claims": [
+     "sample non-claim"
+    ],
+    "row_digest": "3ab01532755beff0f1531f6484c991029582d86f3fa6785f40e5cdb017c2e49a"
+   }
+  },
+  {
+   "id": "overlapping_open_pr_blocks_pickup",
+   "expected": {
+    "countable": true,
+    "disposition": "blocked",
+    "reason_contains": []
+   },
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "lifecycle-overlap",
+    "observation_key": "observation-overlap",
+    "synthetic": true,
+    "disposition": "blocked",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-lifecycle-overlap",
+      "shared_facts": [
+       "context",
+       "execution"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "issue-snapshot:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "issue_ref": "operator/target#1234",
+     "comments_ref": "issue-comments:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "labels_ref": "issue-labels:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "overlapping_claim"
+    },
+    "context": {
+     "current_main": "main-sha",
+     "relevant_prs": [
+      "pr-overlapping-open"
+     ],
+     "portfolio": "campaign-sample",
+     "selected_work": "issue-sample",
+     "claim_ids": [
+      "claim-lifecycle-overlap"
+     ]
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "intake-packet:sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+       "bytes": 1024
+      },
+      {
+       "identity": "overlap-analysis:sha256:9999999999999999999999999999999999999999999999999999999999999999",
+       "bytes": 768
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "narrow accepted-contract bug; no new spec",
+     "root_disposition": "root-accepted"
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": null
+    },
+    "plan": {
+     "plan_id": "plan-lifecycle-overlap",
+     "work_items": [
+      "work-item-lifecycle-overlap"
+     ],
+     "dependencies": [],
+     "acceptance_coverage": [
+      "acceptance-row-sample"
+     ]
+    },
+    "claim_events": [
+     {
+      "claim_id": "claim-lifecycle-overlap",
+      "event": "claimed",
+      "detail": "durable exclusive writer claim"
+     },
+     {
+      "claim_id": "claim-overlapping-open",
+      "event": "collision",
+      "detail": "an overlapping open PR holds the selected work"
+     }
+    ],
+    "execution_refs": {
+     "pr": null,
+     "review": null,
+     "checks": [],
+     "verification": null,
+     "merge": null,
+     "current_main": "main-sha"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "closed",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "not_started",
+     "reason": null,
+     "remaining_limitations": [
+      "sample limitation"
+     ],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "sample limitation"
+    ],
+    "non_claims": [
+     "sample non-claim"
+    ],
+    "row_digest": "77087735436221759204ea3cc999132d0248f0585da5fc185b8319b684ba392f"
+   }
+  },
+  {
+   "id": "needs_evidence_case",
+   "expected": {
+    "countable": true,
+    "disposition": "needs_evidence",
+    "reason_contains": []
+   },
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "lifecycle-needs-evidence",
+    "observation_key": "observation-needs-evidence",
+    "synthetic": true,
+    "disposition": "needs_evidence",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-lifecycle-needs-evidence",
+      "shared_facts": [
+       "context",
+       "execution"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "issue-snapshot:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "issue_ref": "operator/target#1234",
+     "comments_ref": "issue-comments:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "labels_ref": "issue-labels:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "missing_evidence",
+     "issue_family": "unknown"
+    },
+    "context": {
+     "current_main": "main-sha",
+     "relevant_prs": [
+      "pr-lifecycle-needs-evidence"
+     ],
+     "portfolio": "campaign-sample",
+     "selected_work": "issue-sample",
+     "claim_ids": [
+      "claim-lifecycle-needs-evidence"
+     ]
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "intake-packet:sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+       "bytes": 1024
+      }
+     ],
+     "missing_evidence_questions": [
+      "what is the exact failing command and its expected output?"
+     ]
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "narrow accepted-contract bug; no new spec",
+     "root_disposition": "root-accepted"
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": null
+    },
+    "plan": {
+     "plan_id": "plan-lifecycle-needs-evidence",
+     "work_items": [
+      "work-item-lifecycle-needs-evidence"
+     ],
+     "dependencies": [],
+     "acceptance_coverage": [
+      "acceptance-row-sample"
+     ]
+    },
+    "claim_events": [
+     {
+      "claim_id": "claim-lifecycle-needs-evidence",
+      "event": "claimed",
+      "detail": "durable exclusive writer claim"
+     }
+    ],
+    "execution_refs": {
+     "pr": null,
+     "review": null,
+     "checks": [],
+     "verification": null,
+     "merge": null,
+     "current_main": "main-sha"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "closed",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "not_started",
+     "reason": null,
+     "remaining_limitations": [
+      "sample limitation"
+     ],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "sample limitation"
+    ],
+    "non_claims": [
+     "sample non-claim"
+    ],
+    "row_digest": "ca488969b2e652f1f7d8dccd59c3d5f6a8a942867840efd749e584f678c6b65e"
+   }
+  },
+  {
+   "id": "partially_landed_umbrella_uncovered_rows",
+   "expected": {
+    "countable": true,
+    "disposition": "partially_landed",
+    "reason_contains": [
+     "uncovered"
+    ]
+   },
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "lifecycle-partially-landed",
+    "observation_key": "observation-partially-landed",
+    "synthetic": true,
+    "disposition": "completed",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-lifecycle-partially-landed",
+      "shared_facts": [
+       "context",
+       "execution",
+       "verification",
+       "cleanup"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "issue-snapshot:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "issue_ref": "operator/target#1234",
+     "comments_ref": "issue-comments:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "labels_ref": "issue-labels:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "umbrella"
+    },
+    "context": {
+     "current_main": "main-sha",
+     "relevant_prs": [
+      "pr-lifecycle-partially-landed"
+     ],
+     "portfolio": "campaign-sample",
+     "selected_work": "issue-sample",
+     "claim_ids": [
+      "claim-lifecycle-partially-landed"
+     ]
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "intake-packet:sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+       "bytes": 1024
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "narrow accepted-contract bug; no new spec",
+     "root_disposition": "root-accepted"
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": "contract-acceptance:sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "plan": {
+     "plan_id": "plan-lifecycle-partially-landed",
+     "work_items": [
+      "work-item-lifecycle-partially-landed"
+     ],
+     "dependencies": [],
+     "acceptance_coverage": [
+      "acceptance-row-sample"
+     ]
+    },
+    "claim_events": [
+     {
+      "claim_id": "claim-lifecycle-partially-landed",
+      "event": "claimed",
+      "detail": "durable exclusive writer claim"
+     }
+    ],
+    "execution_refs": {
+     "pr": "pr-lifecycle-partially-landed",
+     "review": "review-lifecycle-partially-landed",
+     "checks": [
+      "ci-lifecycle-partially-landed"
+     ],
+     "verification": "verification-lifecycle-partially-landed",
+     "merge": "merge-lifecycle-partially-landed",
+     "current_main": "main-sha"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "in_progress",
+     "uncovered_rows": [
+      "acceptance row: cli flag wiring"
+     ],
+     "contradicted_rows": [],
+     "deferred_rows": [
+      "acceptance row: documentation follow-up"
+     ]
+    },
+    "closeout": {
+     "state": "completed",
+     "reason": "merge landed; umbrella rows remain",
+     "remaining_limitations": [
+      "one acceptance row stays uncovered"
+     ],
+     "current_head_verification": "current-head-verification:sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "limitations": [
+     "sample limitation"
+    ],
+    "non_claims": [
+     "sample non-claim"
+    ],
+    "row_digest": "fc001e40ba3065b5c0e0bcc83d5f2aa26d1e4d92809046651b4f92aecb3ab1bc"
+   }
+  },
+  {
+   "id": "verification_failed_after_merge_candidate",
+   "expected": {
+    "countable": true,
+    "disposition": "verification_failed",
+    "reason_contains": []
+   },
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "lifecycle-verification-failed",
+    "observation_key": "observation-verification-failed",
+    "synthetic": true,
+    "disposition": "verification_failed",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-lifecycle-verification-failed",
+      "shared_facts": [
+       "context",
+       "execution",
+       "verification",
+       "cleanup"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "issue-snapshot:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "issue_ref": "operator/target#1234",
+     "comments_ref": "issue-comments:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "labels_ref": "issue-labels:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "narrow_bug"
+    },
+    "context": {
+     "current_main": "main-sha",
+     "relevant_prs": [
+      "pr-lifecycle-verification-failed"
+     ],
+     "portfolio": "campaign-sample",
+     "selected_work": "issue-sample",
+     "claim_ids": [
+      "claim-lifecycle-verification-failed"
+     ]
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "intake-packet:sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+       "bytes": 1024
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "narrow accepted-contract bug; no new spec",
+     "root_disposition": "root-accepted"
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": "contract-acceptance:sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "plan": {
+     "plan_id": "plan-lifecycle-verification-failed",
+     "work_items": [
+      "work-item-lifecycle-verification-failed"
+     ],
+     "dependencies": [],
+     "acceptance_coverage": [
+      "acceptance-row-sample"
+     ]
+    },
+    "claim_events": [
+     {
+      "claim_id": "claim-lifecycle-verification-failed",
+      "event": "claimed",
+      "detail": "durable exclusive writer claim"
+     }
+    ],
+    "execution_refs": {
+     "pr": "pr-lifecycle-verification-failed",
+     "review": "review-lifecycle-verification-failed",
+     "checks": [
+      "ci-lifecycle-verification-failed"
+     ],
+     "verification": "verification-lifecycle-verification-failed",
+     "merge": "merge-lifecycle-verification-failed",
+     "current_main": "main-sha"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "in_progress",
+     "uncovered_rows": [],
+     "contradicted_rows": [
+      "verification contradiction: golden drift on rerun"
+     ],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "pending",
+     "reason": "verification failed at the merged head",
+     "remaining_limitations": [
+      "merged head fails independent verification"
+     ],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "sample limitation"
+    ],
+    "non_claims": [
+     "sample non-claim"
+    ],
+    "row_digest": "584d04c6811254b98261b94ecbb52315b199c01467e482f5cdb1cf48e06237bb"
+   }
+  },
+  {
+   "id": "merged_pending_current_head_closeout",
+   "expected": {
+    "countable": true,
+    "disposition": "merged_pending_closeout",
+    "reason_contains": [
+     "current-head"
+    ]
+   },
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "lifecycle-merged-pending",
+    "observation_key": "observation-merged-pending",
+    "synthetic": true,
+    "disposition": "completed",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-lifecycle-merged-pending",
+      "shared_facts": [
+       "context",
+       "execution",
+       "verification",
+       "cleanup"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "issue-snapshot:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "issue_ref": "operator/target#1234",
+     "comments_ref": "issue-comments:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "labels_ref": "issue-labels:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "narrow_bug"
+    },
+    "context": {
+     "current_main": "main-sha",
+     "relevant_prs": [
+      "pr-lifecycle-merged-pending"
+     ],
+     "portfolio": "campaign-sample",
+     "selected_work": "issue-sample",
+     "claim_ids": [
+      "claim-lifecycle-merged-pending"
+     ]
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "intake-packet:sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+       "bytes": 1024
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "narrow accepted-contract bug; no new spec",
+     "root_disposition": "root-accepted"
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": "contract-acceptance:sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "plan": {
+     "plan_id": "plan-lifecycle-merged-pending",
+     "work_items": [
+      "work-item-lifecycle-merged-pending"
+     ],
+     "dependencies": [],
+     "acceptance_coverage": [
+      "acceptance-row-sample"
+     ]
+    },
+    "claim_events": [
+     {
+      "claim_id": "claim-lifecycle-merged-pending",
+      "event": "claimed",
+      "detail": "durable exclusive writer claim"
+     }
+    ],
+    "execution_refs": {
+     "pr": "pr-lifecycle-merged-pending",
+     "review": "review-lifecycle-merged-pending",
+     "checks": [
+      "ci-lifecycle-merged-pending"
+     ],
+     "verification": "verification-lifecycle-merged-pending",
+     "merge": "merge-lifecycle-merged-pending",
+     "current_main": "main-sha"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "closed",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "completed",
+     "reason": "merge landed; closeout proof pending",
+     "remaining_limitations": [
+      "current-head verification not yet receipted"
+     ],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "sample limitation"
+    ],
+    "non_claims": [
+     "sample non-claim"
+    ],
+    "row_digest": "e3b559c6440a8b7578128c75102cf570b63d3f82891c6f9fe3f7e65acaa1fe0c"
+   }
+  },
+  {
+   "id": "stale_main_verification_receipt",
+   "expected": {
+    "countable": true,
+    "disposition": "stale",
+    "reason_contains": [
+     "stale"
+    ]
+   },
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "lifecycle-stale",
+    "observation_key": "observation-stale",
+    "synthetic": true,
+    "disposition": "completed",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-lifecycle-stale",
+      "shared_facts": [
+       "context",
+       "execution",
+       "verification",
+       "cleanup"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "issue-snapshot:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "issue_ref": "operator/target#1234",
+     "comments_ref": "issue-comments:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "labels_ref": "issue-labels:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "narrow_bug"
+    },
+    "context": {
+     "current_main": "main-sha",
+     "relevant_prs": [
+      "pr-lifecycle-stale"
+     ],
+     "portfolio": "campaign-sample",
+     "selected_work": "issue-sample",
+     "claim_ids": [
+      "claim-lifecycle-stale"
+     ]
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "intake-packet:sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+       "bytes": 1024
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "narrow accepted-contract bug; no new spec",
+     "root_disposition": "root-accepted"
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": "contract-acceptance:sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "plan": {
+     "plan_id": "plan-lifecycle-stale",
+     "work_items": [
+      "work-item-lifecycle-stale"
+     ],
+     "dependencies": [],
+     "acceptance_coverage": [
+      "acceptance-row-sample"
+     ]
+    },
+    "claim_events": [
+     {
+      "claim_id": "claim-lifecycle-stale",
+      "event": "claimed",
+      "detail": "durable exclusive writer claim"
+     }
+    ],
+    "execution_refs": {
+     "pr": "pr-lifecycle-stale",
+     "review": "review-lifecycle-stale",
+     "checks": [
+      "ci-lifecycle-stale"
+     ],
+     "verification": "verification-lifecycle-stale",
+     "merge": "merge-lifecycle-stale",
+     "current_main": "older-main-sha"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "closed",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "completed",
+     "reason": "acceptance covered at the recorded main",
+     "remaining_limitations": [
+      "verification receipt binds an older main"
+     ],
+     "current_head_verification": "current-head-verification:sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "limitations": [
+     "sample limitation"
+    ],
+    "non_claims": [
+     "sample non-claim"
+    ],
+    "row_digest": "491438ba6f418fd5e624698c6b8186054e57656d25949761ee3aba6af4394ff3"
+   }
+  },
+  {
+   "id": "unchanged_progress_update_suppressed",
+   "expected": {
+    "countable": true,
+    "disposition": "merged_pending_closeout",
+    "reason_contains": []
+   },
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "lifecycle-unchanged-progress",
+    "observation_key": "observation-unchanged-progress",
+    "synthetic": true,
+    "disposition": "merged_pending_closeout",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-lifecycle-unchanged-progress",
+      "shared_facts": [
+       "context",
+       "execution",
+       "verification",
+       "cleanup"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "issue-snapshot:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "issue_ref": "operator/target#1234",
+     "comments_ref": "issue-comments:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "labels_ref": "issue-labels:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "narrow_bug"
+    },
+    "context": {
+     "current_main": "main-sha",
+     "relevant_prs": [
+      "pr-lifecycle-unchanged-progress"
+     ],
+     "portfolio": "campaign-sample",
+     "selected_work": "issue-sample",
+     "claim_ids": [
+      "claim-lifecycle-unchanged-progress"
+     ]
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "intake-packet:sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+       "bytes": 1024
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "narrow accepted-contract bug; no new spec",
+     "root_disposition": "root-accepted"
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": "contract-acceptance:sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "plan": {
+     "plan_id": "plan-lifecycle-unchanged-progress",
+     "work_items": [
+      "work-item-lifecycle-unchanged-progress"
+     ],
+     "dependencies": [],
+     "acceptance_coverage": [
+      "acceptance-row-sample"
+     ]
+    },
+    "claim_events": [
+     {
+      "claim_id": "claim-lifecycle-unchanged-progress",
+      "event": "claimed",
+      "detail": "durable exclusive writer claim"
+     }
+    ],
+    "execution_refs": {
+     "pr": "pr-lifecycle-unchanged-progress",
+     "review": "review-lifecycle-unchanged-progress",
+     "checks": [
+      "ci-lifecycle-unchanged-progress"
+     ],
+     "verification": "verification-lifecycle-unchanged-progress",
+     "merge": "merge-lifecycle-unchanged-progress",
+     "current_main": "main-sha"
+    },
+    "progress": {
+     "mutation_plan": "progress-plan:sha256:9999999999999999999999999999999999999999999999999999999999999999",
+     "before_digest": "digest-before:sha256:9999999999999999999999999999999999999999999999999999999999999999",
+     "after_digest": "digest-before:sha256:9999999999999999999999999999999999999999999999999999999999999999",
+     "suppressed_unchanged": true
+    },
+    "burn_down": {
+     "state": "closed",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "pending",
+     "reason": "merged; progress update unchanged and suppressed",
+     "remaining_limitations": [
+      "current-head verification not yet receipted"
+     ],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "sample limitation"
+    ],
+    "non_claims": [
+     "sample non-claim"
+    ],
+    "row_digest": "622aaad475ccd530a078ff47a85520f91dc7ded77fcc57a1b58cf4fa64ddb47d"
+   }
+  },
+  {
+   "id": "closed_not_planned_without_implementation_success",
+   "expected": {
+    "countable": true,
+    "disposition": "closed_not_planned",
+    "reason_contains": []
+   },
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "lifecycle-not-planned",
+    "observation_key": "observation-not-planned",
+    "synthetic": true,
+    "disposition": "closed_not_planned",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-lifecycle-not-planned",
+      "shared_facts": [
+       "context",
+       "execution"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "issue-snapshot:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "issue_ref": "operator/target#1234",
+     "comments_ref": "issue-comments:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "labels_ref": "issue-labels:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "out_of_scope"
+    },
+    "context": {
+     "current_main": "main-sha",
+     "relevant_prs": [
+      "pr-lifecycle-not-planned"
+     ],
+     "portfolio": "campaign-sample",
+     "selected_work": "issue-sample",
+     "claim_ids": [
+      "claim-lifecycle-not-planned"
+     ]
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "intake-packet:sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+       "bytes": 1024
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "root declined; no implementation is planned",
+     "root_disposition": "root-closed-not-planned"
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": null
+    },
+    "plan": {
+     "plan_id": "plan-lifecycle-not-planned",
+     "work_items": [
+      "work-item-lifecycle-not-planned"
+     ],
+     "dependencies": [],
+     "acceptance_coverage": [
+      "acceptance-row-sample"
+     ]
+    },
+    "claim_events": [
+     {
+      "claim_id": "claim-lifecycle-not-planned",
+      "event": "claimed",
+      "detail": "durable exclusive writer claim"
+     }
+    ],
+    "execution_refs": {
+     "pr": null,
+     "review": null,
+     "checks": [],
+     "verification": null,
+     "merge": null,
+     "current_main": "main-sha"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "closed",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "not_started",
+     "reason": null,
+     "remaining_limitations": [
+      "sample limitation"
+     ],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "sample limitation"
+    ],
+    "non_claims": [
+     "sample non-claim"
+    ],
+    "row_digest": "574ffc71d86cf731e1133da611d8997d64ca7b81f39b7c5dff6d8f6db540f486"
+   }
+  },
+  {
+   "id": "malformed_zero_byte_intake_evidence",
+   "expected": {
+    "countable": false,
+    "disposition": null,
+    "reason_contains": [
+     "malformed"
+    ]
+   },
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "lifecycle-malformed",
+    "observation_key": "observation-malformed",
+    "synthetic": true,
+    "disposition": "qualified_one_pr",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-lifecycle-malformed",
+      "shared_facts": [
+       "context",
+       "execution"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "issue-snapshot:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "issue_ref": "operator/target#1234",
+     "comments_ref": "issue-comments:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "labels_ref": "issue-labels:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "narrow_bug"
+    },
+    "context": {
+     "current_main": "main-sha",
+     "relevant_prs": [
+      "pr-lifecycle-malformed"
+     ],
+     "portfolio": "campaign-sample",
+     "selected_work": "issue-sample",
+     "claim_ids": [
+      "claim-lifecycle-malformed"
+     ]
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "intake-packet:sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+       "bytes": 1024
+      },
+      {
+       "identity": "malformed-packet:sha256:0000000000000000000000000000000000000000000000000000000000000000",
+       "bytes": 0
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "narrow accepted-contract bug; no new spec",
+     "root_disposition": "root-accepted"
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": null
+    },
+    "plan": {
+     "plan_id": "plan-lifecycle-malformed",
+     "work_items": [
+      "work-item-lifecycle-malformed"
+     ],
+     "dependencies": [],
+     "acceptance_coverage": [
+      "acceptance-row-sample"
+     ]
+    },
+    "claim_events": [
+     {
+      "claim_id": "claim-lifecycle-malformed",
+      "event": "claimed",
+      "detail": "durable exclusive writer claim"
+     }
+    ],
+    "execution_refs": {
+     "pr": null,
+     "review": null,
+     "checks": [],
+     "verification": null,
+     "merge": null,
+     "current_main": "main-sha"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "closed",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "not_started",
+     "reason": null,
+     "remaining_limitations": [
+      "sample limitation"
+     ],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "sample limitation"
+    ],
+    "non_claims": [
+     "sample non-claim"
+    ],
+    "row_digest": "5838d9d6c59cb9072f2b56350a114ad39f4993137440ea2190f801c2661f42b0"
+   }
+  }
+ ]
+}
