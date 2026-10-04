@@ -2,7 +2,7 @@
   "schema_version": "ripr_verdict_corpus.v1",
   "kind": "ripr_verdict_corpus",
   "spec": "RIPR-SPEC-0219",
-  "corpus_version": "2026-10-04.5",
+  "corpus_version": "2026-10-04.7",
   "description": "Hand-labeled Rust verdict corpus: one-line edits in pinned real crates, plus small authored crates that fill cells the real crates leave empty, each labeled with what the crate's own tests actually discriminate, so ripr's verdicts can be scored as false actionable, false exposed, false silent, abstained, or ideal.",
   "label_method": "For each case the edit was applied to the full pinned checkout (for an authored subject, the whole crate is retained), the crate's own test command was run to confirm the edit keeps tests green (behavior_preserving_rewrite) or to record whether it breaks them (behavior_change, where the edit is its own single mutant), and each listed mutant of the edited expression was applied on top and the same test command run. A mutant counts as detected (`tests_failed`) when the test command fails after compiling. Each mutant was reviewed by hand for equivalence before its outcome counted. Truth is derived from the count of mutants with tests_failed: all is discriminated, none is not_discriminated, otherwise partially_discriminated.",
   "verdict_projection": "Only candidate_current findings on the anchor file and line count, plus, when the anchor is a plain `let name = init;` or `let mut name = init;`, candidate_current findings in the anchor file whose binding_predicate_relation evidence names that binding with init as its new initializer (the RIPR-SPEC-0157 retarget). exposed is credited; a named static_limit_kind or a no_static_path, infection_unknown, propagation_unknown or static_unknown class is limited; any other class (weakly_exposed, reachable_unrevealed) is a gap. A gap on the line outranks credit, and credit outranks a limit. No anchored finding is silent. The per-finding reading mirrors crates/ripr/src/output/human/triage.rs; the line-level precedence is this corpus's own policy.",
@@ -661,6 +661,737 @@
         {
           "path": "src/lib.rs",
           "sha256": "53f26e973bc9ea2673d7956adb14fa67c5b6cf2e013edcb0ec2c1c566a50efd3"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0225-1",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0225 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "5df0952c4bce8c75cca537b01d41d08361003244997e8e2db9b2db4642248f1f"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "b10f854b1fe1ad3eb7e2ae36e498cff52eed0485aeeacd8effcc084f4f4323ec"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0225-2",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0225 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "c466573fe1cd7743e47719bc64e2ac1abf0cf337401648875b453e44feb461bf"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "f40dc6d0f127df993ebbd9e9dd0a0cb679644cae6f747d310612077c06d48a9c"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0225-3",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0225 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "d0cce4b9defb87564152be1b55d11d409fe26c683dc05d46f51a873b79505138"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "c7773c555d9868daf949fb57e00ad3310377dcdd56bd51c66cf56eac65767688"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0225-4",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0225 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "cfd4be49ed8a3acae9cc7120dd9b130b62551c5818a0d56fb1b93ee0c70f885c"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "1da4b239a464de70b1a10c157d6078671ca533598b8f13f406c6c8a96b6dfea9"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0225-5",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0225 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "6633e9e639963c6b8f0e5b68c30eeb73767326d50e51bc3b8a14e61a548282a6"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "1f788b812ad868065c4d6c5f6f1ee58c372ea808631b1ff1debb6b1a63d79f7a"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0225-6",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0225 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "86c89d702618f75bace018e97187579488efbe79e97b37cace7b4027c195bf45"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "f25074e647c79be91460e5fa14babb59f6e7d177b50ec983c266997258866d49"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0225-7",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0225 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "daa0c0ca40287387d463a3c9f9781eb9fd542f9a3dc0b6186547391d93edd001"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "a9d7eced86e464983608dac5a8a7a9206d06c5260a3974b7e147329f25866939"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0225-8",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0225 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "06fe231952985aace84757e38c2657bee59c9e7bc4e5f7eefa4cab6e0a36ac0f"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "25452a8e6cb4726cf5cc9cd0041221db25d56fce1f365c2683a90bf746ed045a"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0225-9",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0225 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "bb672397578cebc00d6b873a864caba0736271e8d1d32d702080297034f10b7e"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "6224dabe9cb3a88254e6c8d5bd48360a190c03f53d131311b1e031202407a38e"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0225-10",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0225 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "c6f92b4ab69af3f06620c9bf9716f9a5ae1b5796e5eb538ef241b7b8486b6c1a"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "e71b08491640ec5e3dbc71f7d48f69865c97d6268e424485f97ba599dc4006d6"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0225-11",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0225 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "7267e68ec63f4d82007c54b633f8dbbbfce476add17c6992963cf0e889f28c3c"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "459d30984b2380e1fa7f9ef990caa97656eaa7d4545f955b88dbb1e7fa50a003"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0225-12",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0225 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "69f2dab4da773d7fe32d17c27b903c28963edf1676a2a49c3375a409a53f2f45"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "c230802644ba7f7bed44ff1f4400a4ee3a2e6ca5ef448a0452d30d834e0066ed"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0225-13",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0225 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "f38b8b80cb3fc0113d1366230ed40c5423ed631b00ddbbf0e4beb753e0234428"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "eebca2938dc066f4778dc27d8f3e02dd40127b09470c6bfb7339aafb735f9a6b"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0225-14",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0225 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "8fa6b7dbf9993b1de03a45b4c699bc144fde336a5da664e9a27a8d7b284d9c72"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "3e207e0e3ce1c07b3b03b2054cd2e40202fca4be48e4c9c694f28ff65c027117"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0225-15",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0225 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "48e78fc15efaaa8f94a3536ad863d040f5ba474d9a20d0fadb0102f52878b11a"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "fb8a45263f3a9532ff1fae08d52a9f9f67f6a48159bb0b8ea9c03c0a2e0203dd"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0225-16a",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0225 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "b942ba70d28fab19ee8f29dceefce1017ff4bffc2ea240717f50a4680b647ffc"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "b7fb3d99e34d47b03965b1e1f52ac2242d2d6470eff834d92faef88aa4e1480a"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0225-16b",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0225 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "bcfdbdc8a2b8f3aed9a9301e4f71280b568a41789d42faa21b2b5984d16b8ced"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "7e456576f490bbb8fa026adfd291715f7df5006dcd4f0c6e65fd94835b3a686b"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0226-1",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0226 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "55071a7b3792fd44e15b83359831cfada09680d1ce9dbdd97cb9df607d52d3f8"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "5ede017e71f81157dad730b989ddc3be051e89898802d485059f107947760427"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0226-2",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0226 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "79889dd7f7913da367a2ccd366c1f6d70b4ea7f0539b4b07549ea23c2141b5f3"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "2fc05495992bc8392fe0dc220236bf29ebc0d54e04c9983d22ac5b49af887dbf"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0226-2c",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0226 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "cb30f0a4dac31575dedc406fd3f2466044407e40cccf0373454bdb654b87606c"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "75956138dacc5bcfcaa3917bec33f59ed68f0579ba013cfb0d2fb289fe0e4a4d"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0226-3",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0226 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "0202d3802032b928ade6b798898c201c7e54f09f3b9da16557b2757662e90d22"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "d0becde0b11058b399071a191538a51054f312c4bf523c1702f1d838f460037f"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0226-4",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0226 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "72eddc639ba5f7098dc450ecf4a47d4156be6c0565489c621ade08b3c2463416"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "c92c297a4466846f90f268fc6107b236610b370e9ca3d58676bfa1dc95cf82d7"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0227-1",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0227 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "11a83a44308201251b3c9f463cbd36d103541a71f2feb28832e7995b7f793af7"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "c12052d781fd414ba8e98552ddaee145515807eab8e338422e87df5f3659fe39"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0227-2",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0227 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "de770da8e1ad728bddfe2524b65b1a19b7cab2da12d2db3a225d5080e132cf62"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "bf9e0019ef33d735609cec5b8f20598f3a5e307817d854e74fe9ff5e6464c9b1"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0227-3",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0227 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "c1dd34009545724c448e7531d22634a94bc9d7e7caaa88410a9ce0b7c14076e9"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "3616f4a1e516ee81d2d445a25ee552be77d15be223e93448269929fe7b4b5109"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0227-4",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0227 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "9d0c43a714b5df772a77dc0a91ee361b0850646ece1ba1fb5387aed7be736a4d"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "ec886f71f2f660856ca5f64c4077ecc9679a832f4ffbccf1e522bff65594537a"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0227-5",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0227 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "7b5b250172eabeb1e4c0b98502af6bf9e0cc5cefb8272113edfd31aab40f67e5"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "eea84e6c7a6399e16c21872b3f76cef52018d96d4713df1aa7b3288d14f52cae"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0227-6",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0227 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "12f5aea0a0933bf2423e1306bc21fb83c5174b6d43add4bad74b169a0401a10e"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "4be727e6d8f9aecee6a1818e70a1e12f0f7997e3a0f2a6f1295c7aa48f4eb4c4"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0227-7",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0227 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "de2073ea1d2d2f16aeee17edb87bfcd67e20ed52d256babd597661c81598bf62"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "6340959280aad8771c61806466e55f81cbfe5fb17c0aa9e2b40db7c826b1eec3"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0227-8",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0227 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "c905eef200d4a233d38a7e6625fc66fe0ebc7a8cda97e7771d3055c03c99652e"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "0251ffa612fd6a53d2e2637fd5a25c4b98282b3cf78d8001144b74b6076ad7ef"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0227-9",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0227 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "a4dbcb913818b0ddf27c649be1718bccc3c18e3730210e88e15b9935b2d45266"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "c430c17b0bf726f5e6640eda087e931f7a105436987e17dce7ad25939ffd9784"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0228-1",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0228 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "fdacd46a020c2b1b56fb712bd724328215b9a66cfd1e859e8792e09e53a1d16c"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "b34d359fe08d7950255c43d2464dbf66127288e7228d84be7366029508ab97ec"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0228-2",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0228 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "10ac2a8eec0a479951194cfed2b81258e25f5893f6c33321b11590fa8eef866d"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "24e3d912b620d43107c4d12ef6d21fda38f4af82bb311143ae053d22f19fa04b"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0228-3",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0228 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "a44a5651b09276d57e58590cdc258bf8e50e54e83eceefa3b3b272cc2a367795"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "949063e96b7ba072f0094c19bde4282aa533b128fbebb3295397c02985c2985e"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0228-4",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0228 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "4d5b4a7527d319bf01b7372c57fcbea63ec741658f397baced06968d265081e5"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "674e82122a8906090d749f0411277c265e36d3774ac8d17536e90e347b159276"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0228-5",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0228 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "e2eb0164bd250d024552b44e16ffe02e567e8a979b33d685457bf84fae83f26d"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "3af61ca11215f90e4d768e38923a658d936140a415b4c5a44048f5c77a333498"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0228-6",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0228 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "06c92e03263a1e7dc5fa650a8134a47ba28de1924f04d3b13f3c8f863fd12ab2"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "0c879ca60f694e6069e064a87195ad439d8a723a763d52481054a55d8c63b1dc"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0228-6b",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0228 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "f8bb9ba435f058d18ae92a91f21aa4eb044d0e96e6131fd75cf494164353b9c9"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "e9e960de42529c2097e21849bdc598d1ca3b7bc1bcdb4790be268b355d8ccbcc"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0228-7",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0228 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "dc81f23bc8b7f595d9d11bb03534c8530773cf573eca1c70d10d057bf5c1a45f"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "873c7e0dbdf1a894c051a39dadd3117aab327caea10f4a1773f7aeabf658ef7c"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0228-8",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0228 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "91b832bded736f09fa7d30d56433166608eaf7ef934a07c11112664ff534eaf9"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "bd25e68393c9c7c1ab43c5f6dab1c52f7c921ba9442cf1530a6d6504f244c801"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0228-9",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0228 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "cf55fa9e2506ae7b3880b462b2fa25f977ac9bd53996ade89ae70eeda31fad48"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "91b16731fdbcbf920044813015d4c53286e01480ca4a112f2f5e02d9943cf113"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0227-12",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0227 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "a4dbcb913818b0ddf27c649be1718bccc3c18e3730210e88e15b9935b2d45266"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "1ee7508b66b3fe9a960010b6aa69506685a173d623277ccd0ef306a9e5716889"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-spec0227-13",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for RIPR-SPEC-0227 acceptance examples",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "a4dbcb913818b0ddf27c649be1718bccc3c18e3730210e88e15b9935b2d45266"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "9de9776303d3c4e7876c7c911fe038881200b2146e2b88240f331e0f8b4900a3"
         }
       ]
     }
@@ -5741,6 +6472,2106 @@
         "ripr_commit": "b0c6ef6",
         "full_checkout_verdict": "silent",
         "full_checkout_classifications": [],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0225-wv-literal-derived",
+      "subject_id": "authored-spec0225-1",
+      "diff": "cases/spec0225-wv-literal-derived.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 11
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction_whole_value",
+      "test_shape": "assert_eq_owner_call_vs_struct_literal",
+      "hard_case": "Measured defect: RIPR-SPEC-0225 expects exposed; ripr reads weakly_exposed with a FieldValue missing discriminator although the whole-value literal names the field.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "retries: n + 2,",
+            "outcome": "tests_failed",
+            "failing_test": "tests::builds_config",
+            "equivalence_review": "not equivalent: build(3) yields retries 5 instead of 4"
+          },
+          {
+            "replacement": "retries: n,",
+            "outcome": "tests_failed",
+            "failing_test": "tests::builds_config",
+            "equivalence_review": "not equivalent: build(3) yields retries 3 instead of 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "assert_eq! compares build(3) with a literal naming retries: 4; Config derives PartialEq. Spec cells: RIPR-SPEC-0225 example 1.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0225-wv-manual-eq-ignores-field",
+      "subject_id": "authored-spec0225-2",
+      "diff": "cases/spec0225-wv-manual-eq-ignores-field.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 17
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction_manual_eq",
+      "test_shape": "assert_eq_literal_manual_partialeq_ignores_field",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "retries: n + 2,",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 5 instead of 4"
+          },
+          {
+            "replacement": "retries: n,",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 3 instead of 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The manual PartialEq compares only name, so any retries value passes. Spec cells: RIPR-SPEC-0225 example 2.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0225-wv-ok-wrapped-literal",
+      "subject_id": "authored-spec0225-3",
+      "diff": "cases/spec0225-wv-ok-wrapped-literal.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 12
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction_whole_value",
+      "test_shape": "assert_eq_ok_wrapped_struct_literal",
+      "hard_case": "Measured defect: RIPR-SPEC-0225 expects exposed; ripr reads weakly_exposed with a FieldValue missing discriminator although the whole-value literal names the field.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "retries: n + 2,",
+            "outcome": "tests_failed",
+            "failing_test": "tests::parses_config",
+            "equivalence_review": "not equivalent: build(3) yields retries 5 instead of 4"
+          },
+          {
+            "replacement": "retries: n,",
+            "outcome": "tests_failed",
+            "failing_test": "tests::parses_config",
+            "equivalence_review": "not equivalent: build(3) yields retries 3 instead of 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "parse(\"3\") is compared with Ok(Config { retries: 4, .. }) under derived equality. Spec cells: RIPR-SPEC-0225 example 3.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0225-wv-let-binding-literal",
+      "subject_id": "authored-spec0225-4",
+      "diff": "cases/spec0225-wv-let-binding-literal.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 11
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction_whole_value",
+      "test_shape": "let_binding_owner_call_vs_struct_literal",
+      "hard_case": "Measured defect: RIPR-SPEC-0225 expects exposed; ripr reads weakly_exposed with a FieldValue missing discriminator although the whole-value literal names the field.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "retries: n + 2,",
+            "outcome": "tests_failed",
+            "failing_test": "tests::builds_config",
+            "equivalence_review": "not equivalent: build(3) yields retries 5 instead of 4"
+          },
+          {
+            "replacement": "retries: n,",
+            "outcome": "tests_failed",
+            "failing_test": "tests::builds_config",
+            "equivalence_review": "not equivalent: build(3) yields retries 3 instead of 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "The immutable binding c holds build(3) and is compared with a literal naming retries: 4. Spec cells: RIPR-SPEC-0225 example 4.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0225-wv-expected-binding",
+      "subject_id": "authored-spec0225-5",
+      "diff": "cases/spec0225-wv-expected-binding.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 11
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction_whole_value",
+      "test_shape": "expected_value_in_separate_binding",
+      "hard_case": "Runtime truth is discriminated while RIPR-SPEC-0225 expects weakly_exposed (observation_unverified). The spec withholds static credit for this shape, so ripr reads weakly_exposed and the report scores it false_actionable: a wrong actionable gap against discriminated truth.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "retries: n + 2,",
+            "outcome": "tests_failed",
+            "failing_test": "tests::builds_config",
+            "equivalence_review": "not equivalent: build(3) yields retries 5 instead of 4"
+          },
+          {
+            "replacement": "retries: n,",
+            "outcome": "tests_failed",
+            "failing_test": "tests::builds_config",
+            "equivalence_review": "not equivalent: build(3) yields retries 3 instead of 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "e holds retries: 4 and derived equality compares every field, so wrong retries fails. Spec cells: RIPR-SPEC-0225 example 5.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0225-wv-expected-helper",
+      "subject_id": "authored-spec0225-6",
+      "diff": "cases/spec0225-wv-expected-helper.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 11
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction_whole_value",
+      "test_shape": "expected_value_from_test_helper",
+      "hard_case": "Runtime truth is discriminated while RIPR-SPEC-0225 expects weakly_exposed. The spec withholds static credit for this shape, so ripr reads weakly_exposed and the report scores it false_actionable: a wrong actionable gap against discriminated truth.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "retries: n + 2,",
+            "outcome": "tests_failed",
+            "failing_test": "tests::builds_config",
+            "equivalence_review": "not equivalent: build(3) yields retries 5 instead of 4"
+          },
+          {
+            "replacement": "retries: n,",
+            "outcome": "tests_failed",
+            "failing_test": "tests::builds_config",
+            "equivalence_review": "not equivalent: build(3) yields retries 3 instead of 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "expected() returns retries: 4 and derived equality compares every field. Spec cells: RIPR-SPEC-0225 example 6.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0225-wv-functional-update-default",
+      "subject_id": "authored-spec0225-7",
+      "diff": "cases/spec0225-wv-functional-update-default.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 17
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction_functional_update",
+      "test_shape": "struct_literal_with_default_base",
+      "hard_case": "Runtime truth is discriminated while RIPR-SPEC-0225 expects not exposed. The spec withholds static credit for this shape, so ripr reads weakly_exposed and the report scores it false_actionable: a wrong actionable gap against discriminated truth. To keep the test passing the Default impl is manual and supplies retries: 4, so the functional-update base still pins retries at runtime.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "retries: n + 2,",
+            "outcome": "tests_failed",
+            "failing_test": "tests::builds_config",
+            "equivalence_review": "not equivalent: build(3) yields retries 5 instead of 4"
+          },
+          {
+            "replacement": "retries: n,",
+            "outcome": "tests_failed",
+            "failing_test": "tests::builds_config",
+            "equivalence_review": "not equivalent: build(3) yields retries 3 instead of 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "The manual Default supplies retries: 4 through ..Config::default(), and derived equality compares it. Spec cells: RIPR-SPEC-0225 example 7.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0225-wv-non-owner-call",
+      "subject_id": "authored-spec0225-8",
+      "diff": "cases/spec0225-wv-non-owner-call.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 11
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction_non_owner",
+      "test_shape": "assert_eq_on_non_owner_call",
+      "hard_case": "build(3) is called and discarded so the test is related to the owner.",
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "retries: n + 2,",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 5 instead of 4"
+          },
+          {
+            "replacement": "retries: n,",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 3 instead of 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The test calls build(3) but discards it and only compares other(), which does not call build. Spec cells: RIPR-SPEC-0225 example 8.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0225-wv-sibling-field-read",
+      "subject_id": "authored-spec0225-9",
+      "diff": "cases/spec0225-wv-sibling-field-read.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 11
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction_sibling_read",
+      "test_shape": "sibling_field_read",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "retries: n + 2,",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 5 instead of 4"
+          },
+          {
+            "replacement": "retries: n,",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 3 instead of 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The test reads only c.name, so retries is never observed. Spec cells: RIPR-SPEC-0225 example 9, RIPR-SPEC-0005.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0225-wv-assert-ne-literal",
+      "subject_id": "authored-spec0225-10",
+      "diff": "cases/spec0225-wv-assert-ne-literal.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 11
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction_whole_value",
+      "test_shape": "assert_ne_vs_struct_literal",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "retries: n + 2,",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 5 instead of 4"
+          },
+          {
+            "replacement": "retries: n,",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 3 instead of 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "assert_ne! against retries: 9 passes for any retries other than 9, including both mutants. Spec cells: RIPR-SPEC-0225 example 10.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0225-wv-field-type-manual-eq",
+      "subject_id": "authored-spec0225-11",
+      "diff": "cases/spec0225-wv-field-type-manual-eq.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 20
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction_manual_eq",
+      "test_shape": "field_type_manual_partialeq_always_true",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "retries: Retries(n + 2),",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 5 instead of 4"
+          },
+          {
+            "replacement": "retries: Retries(n),",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 3 instead of 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "Retries has an always-true PartialEq, so the retries field never affects Config equality. Spec cells: RIPR-SPEC-0225 example 11.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0225-wv-expected-reads-result-field",
+      "subject_id": "authored-spec0225-12",
+      "diff": "cases/spec0225-wv-expected-reads-result-field.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 11
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction_tautology",
+      "test_shape": "expected_literal_reads_owner_result_field",
+      "hard_case": "Measured defect: ripr reads exposed (FieldValue cleared because the assertion reads c.retries on the owner result) but the expected literal copies the owner's own value, so the comparison is a tautology and no mutant fails; RIPR-SPEC-0225 rule 2 expects not exposed.",
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "retries: n + 2,",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 5 instead of 4"
+          },
+          {
+            "replacement": "retries: n,",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 3 instead of 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The literal copies c.retries from the result, so the comparison holds for any retries value. Spec cells: RIPR-SPEC-0225 example 12.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "credited",
+        "full_checkout_classifications": [
+          "exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0225-wv-let-mut-overwrite",
+      "subject_id": "authored-spec0225-13",
+      "diff": "cases/spec0225-wv-let-mut-overwrite.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 11
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction_overwrite",
+      "test_shape": "let_mut_field_overwritten_before_assert",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "retries: n + 2,",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 5 instead of 4"
+          },
+          {
+            "replacement": "retries: n,",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 3 instead of 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The test overwrites c.retries with 4 before the comparison, erasing the owner value. Spec cells: RIPR-SPEC-0225 example 13.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0225-wv-wrapper-manual-eq",
+      "subject_id": "authored-spec0225-14",
+      "diff": "cases/spec0225-wv-wrapper-manual-eq.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 22
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction_manual_eq",
+      "test_shape": "wrapper_enum_manual_partialeq_always_true",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "retries: n + 2,",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 5 instead of 4"
+          },
+          {
+            "replacement": "retries: n,",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 3 instead of 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "Wrapped has an always-true PartialEq, so the wrapped Config is never compared. Spec cells: RIPR-SPEC-0225 example 14.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0225-wv-expected-via-field-binding",
+      "subject_id": "authored-spec0225-15",
+      "diff": "cases/spec0225-wv-expected-via-field-binding.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 11
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction_tautology",
+      "test_shape": "expected_literal_via_result_field_binding",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "retries: n + 2,",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 5 instead of 4"
+          },
+          {
+            "replacement": "retries: n,",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 3 instead of 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "r is copied from c.retries, so the comparison holds for any retries value. Spec cells: RIPR-SPEC-0225 example 15.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0225-wv-nested-manual-eq",
+      "subject_id": "authored-spec0225-16a",
+      "diff": "cases/spec0225-wv-nested-manual-eq.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 25
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction_manual_eq",
+      "test_shape": "nested_field_type_manual_partialeq",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "retries: Retries { n: Count(n + 2) },",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 5 instead of 4"
+          },
+          {
+            "replacement": "retries: Retries { n: Count(n) },",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: build(3) yields retries 3 instead of 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "Count has an always-true PartialEq, so the nested retries value never affects equality. Spec cells: RIPR-SPEC-0225 example 16 (manual Count impl).",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0225-wv-nested-derived-eq",
+      "subject_id": "authored-spec0225-16b",
+      "diff": "cases/spec0225-wv-nested-derived-eq.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 19
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction_whole_value",
+      "test_shape": "nested_derived_struct_literal",
+      "hard_case": "Measured defect: RIPR-SPEC-0225 expects exposed; ripr reads weakly_exposed with a FieldValue missing discriminator although the whole-value literal names the field.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "retries: Retries { n: Count(n + 2) },",
+            "outcome": "tests_failed",
+            "failing_test": "tests::builds_config",
+            "equivalence_review": "not equivalent: build(3) yields retries 5 instead of 4"
+          },
+          {
+            "replacement": "retries: Retries { n: Count(n) },",
+            "outcome": "tests_failed",
+            "failing_test": "tests::builds_config",
+            "equivalence_review": "not equivalent: build(3) yields retries 3 instead of 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "Count, Retries and Config all derive PartialEq, so Count(4) is compared by value. Spec cells: RIPR-SPEC-0225 example 16 (derived Count).",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0226-gate-split-boundary-agreement",
+      "subject_id": "authored-spec0226-1",
+      "diff": "cases/spec0226-gate-split-boundary-agreement.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 3
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "split_boundary_call_and_far_assert",
+      "hard_case": "RIPR-SPEC-0226 expects the predicate weakly_exposed and the return value exposed, both relating {boundary, far}. ripr relates the same set to both findings and reads return_value exposed, but reads the predicate propagation_unknown, not weakly_exposed. Its discriminate text names same_test_pairing_missing, which is the right reason.",
+      "truth": {
+        "state": "partially_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "pub fn gate(input: u32) -> bool { input > 10 }",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: gate(10) turns false"
+          },
+          {
+            "replacement": "pub fn gate(input: u32) -> bool { input < 10 }",
+            "outcome": "tests_failed",
+            "failing_test": "tests::far",
+            "equivalence_review": "not equivalent: the comparison is inverted, so gate(100) turns false"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "far asserts gate(100) is true, which catches the inverted comparison; boundary calls gate(10) and gate(9) without asserting, so moving the edge back to input > 10 survives. Spec cells: RIPR-SPEC-0226 example 1, RIPR-SPEC-0186.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "credited",
+        "full_checkout_classifications": [
+          "exposed",
+          "propagation_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0226-ledger-push-exact-history",
+      "subject_id": "authored-spec0226-2",
+      "diff": "cases/spec0226-ledger-push-exact-history.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 10
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "side_effect_push",
+      "test_shape": "default_receiver_exact_collection_assert",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.history.push(amount + 1);",
+            "outcome": "tests_failed",
+            "failing_test": "tests::record_appends_the_amount",
+            "equivalence_review": "not equivalent: the history holds 6"
+          },
+          {
+            "replacement": "let _ = amount;",
+            "outcome": "tests_failed",
+            "failing_test": "tests::record_appends_the_amount",
+            "equivalence_review": "not equivalent: the history stays empty"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "record_appends_the_amount builds the ledger with default(), records 5 and asserts history == vec![5], so a wrong pushed value and a deleted push both fail. Spec cells: RIPR-SPEC-0226 example 2, RIPR-SPEC-0001.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "credited",
+        "full_checkout_classifications": [
+          "exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0226-journal-push-seeded-contains",
+      "subject_id": "authored-spec0226-2c",
+      "diff": "cases/spec0226-journal-push-seeded-contains.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 10
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "side_effect_push",
+      "test_shape": "seeded_receiver_contains_assert",
+      "hard_case": "Both findings read weakly_exposed on the relational oracle, consistent with the truth. RIPR-SPEC-0226 rule 4 also wants the call_deletion text to say the deletion is not established by the side-effect oracle; ripr gives only the generic relational-oracle text.",
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.entries.push(amount + 1);",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: the journal records 6"
+          },
+          {
+            "replacement": "let _ = amount;",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: nothing is recorded"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "note_keeps_a_seeded_entry pushes 5 before note(5) and asserts only contains(&5), so the seeded entry satisfies the assertion whatever note pushes, and when it pushes nothing. Spec cells: RIPR-SPEC-0226 example 2 (control).",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0226-parse-x-map-err-into",
+      "subject_id": "authored-spec0226-3",
+      "diff": "cases/spec0226-parse-x-map-err-into.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 32
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "error_wrapper_conversion",
+      "test_shape": "matches_exact_converted_variant",
+      "hard_case": "Rules 1 and 2 hold: each of the three findings names the test in reach with related_tests_total 1 and no repeated entry; call_deletion lists it at medium strength and error_path/return_value at strong, which rule 3 allows. Truth is discriminated, but all three read weakly_exposed: error_path and return_value carry wrapper_error_binding_unresolved, whose text describes Box<dyn Error> although the wrapper converts to a concrete enum. Minimal equivalent of the real-repo parse_summary shape.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "try_parse_x(raw).map_err(|_| ParseXError::EmptySource)",
+            "outcome": "tests_failed",
+            "failing_test": "tests::try_parse_x_pins_malformed_source",
+            "equivalence_review": "not equivalent: malformed input reports EmptySource"
+          },
+          {
+            "replacement": "Ok(try_parse_x(raw).unwrap_or(0))",
+            "outcome": "tests_failed",
+            "failing_test": "tests::try_parse_x_pins_malformed_source",
+            "equivalence_review": "not equivalent: malformed input parses as Ok(0)"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "try_parse_x_pins_malformed_source matches Err(ParseXError::MalformedSource) on parse_x(\"zz\"), so a different converted variant or an Ok both fail. Spec cells: RIPR-SPEC-0226 example 3, RIPR-SPEC-0219.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0226-bump-guarded-return",
+      "subject_id": "authored-spec0226-4",
+      "diff": "cases/spec0226-bump-guarded-return.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 4
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "guarded_early_return",
+      "test_shape": "single_far_input_exact_assert",
+      "hard_case": "Rule 4 holds: the predicate is weakly_exposed, not no_static_path, and both findings relate {t}. ripr reads return_value weakly_exposed (observation_unverified) although t's exact assert_eq! kills the x + 2 mutant.",
+      "truth": {
+        "state": "partially_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "if a >= b { return x + 1 }",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: bump(1, 1, x) returns x + 1"
+          },
+          {
+            "replacement": "if a < b { return x + 1 }",
+            "outcome": "tests_failed",
+            "failing_test": "tests::t",
+            "equivalence_review": "not equivalent: bump(2, 1, 7) returns 7"
+          },
+          {
+            "replacement": "if a > b { return x + 2 }",
+            "outcome": "tests_failed",
+            "failing_test": "tests::t",
+            "equivalence_review": "not equivalent: bump(2, 1, 7) returns 9"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "t asserts bump(2, 1, 7) == 8, which catches an inverted guard and a wrong bump amount, but 2 versus 1 is not the edge, so a >= b survives. Spec cells: RIPR-SPEC-0226 example 4, RIPR-SPEC-0186.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0227-check-guard-same-test-flip",
+      "subject_id": "authored-spec0227-1",
+      "diff": "cases/spec0227-check-guard-same-test-flip.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 10
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_side_flip",
+      "test_shape": "same_test_is_err_and_is_ok_at_edge",
+      "hard_case": "Spec expects predicate exposed (rule 3, proposed). ripr reads all three findings weakly_exposed ('Only broad error oracle found') against a discriminated truth: the false gap the spec describes.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "if len > 256 { return Err(E::TooLong); }",
+            "outcome": "tests_failed",
+            "failing_test": "tests::pair_boundary",
+            "equivalence_review": "not equivalent: check_pair(256) returns Ok(256)"
+          },
+          {
+            "replacement": "if len >= 255 { return Err(E::TooLong); }",
+            "outcome": "tests_failed",
+            "failing_test": "tests::pair_boundary",
+            "equivalence_review": "not equivalent: check_pair(255) returns Err(TooLong)"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "pair_boundary asserts check_pair(256).is_err() and check_pair(255).is_ok(), so either edge shift flips a side the test observes. Spec cells: RIPR-SPEC-0227 example 1, RIPR-SPEC-0186.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0227-check-guard-edge-is-err-only",
+      "subject_id": "authored-spec0227-2",
+      "diff": "cases/spec0227-check-guard-edge-is-err-only.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 10
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_side_flip",
+      "test_shape": "single_is_err_at_edge",
+      "hard_case": "Spec expects predicate exposed, judging only the changed-from mutant; runtime truth is partial because len >= 255 survives. ripr reads weakly_exposed, which fits the partial truth.",
+      "truth": {
+        "state": "partially_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "if len > 256 { return Err(E::TooLong); }",
+            "outcome": "tests_failed",
+            "failing_test": "tests::edge_is_refused",
+            "equivalence_review": "not equivalent: check_edge(256) returns Ok(256)"
+          },
+          {
+            "replacement": "if len >= 255 { return Err(E::TooLong); }",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: check_edge(255) returns Err(TooLong)"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "edge_is_refused asserts check_edge(256).is_err(), which catches len > 256 but not len >= 255, since 255 is never called. Spec cells: RIPR-SPEC-0227 example 2, RIPR-SPEC-0186.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0227-check-guard-far-is-err",
+      "subject_id": "authored-spec0227-3",
+      "diff": "cases/spec0227-check-guard-far-is-err.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 10
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_side_flip",
+      "test_shape": "far_input_is_err",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "if len > 256 { return Err(E::TooLong); }",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: check_far(256) returns Ok(256)"
+          },
+          {
+            "replacement": "if len >= 255 { return Err(E::TooLong); }",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: check_far(255) returns Err(TooLong)"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "far_is_refused only checks 300, which is Err under either edge, so neither shift is noticed. Spec cells: RIPR-SPEC-0227 example 3.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0227-check-guard-split-tests",
+      "subject_id": "authored-spec0227-4",
+      "diff": "cases/spec0227-check-guard-split-tests.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 10
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_side_flip",
+      "test_shape": "edge_call_and_far_is_err_in_separate_tests",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "if len > 256 { return Err(E::TooLong); }",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: check_split(256) returns Ok(256)"
+          },
+          {
+            "replacement": "if len >= 255 { return Err(E::TooLong); }",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: check_split(255) returns Err(TooLong)"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "split_touches_the_edge calls check_split(256) without observing it and split_refuses_far checks only 300, so neither shift is noticed. Spec cells: RIPR-SPEC-0227 example 4, RIPR-SPEC-0186.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0227-check-variant-is-err",
+      "subject_id": "authored-spec0227-5",
+      "diff": "cases/spec0227-check-variant-is-err.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 11
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "error_variant",
+      "test_shape": "far_input_is_err",
+      "hard_case": null,
+      "truth": {
+        "state": "partially_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "return Err(E::Bad);",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: too-long input reports Bad"
+          },
+          {
+            "replacement": "return Ok(0);",
+            "outcome": "tests_failed",
+            "failing_test": "tests::is_err_on_far_input",
+            "equivalence_review": "not equivalent: too-long input is accepted as Ok(0)"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "is_err_on_far_input notices an Ok but not a different error variant. Spec cells: RIPR-SPEC-0227 example 5, RIPR-SPEC-0107.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0227-check-variant-should-panic",
+      "subject_id": "authored-spec0227-6",
+      "diff": "cases/spec0227-check-variant-should-panic.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 11
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "error_variant",
+      "test_shape": "should_panic_unwrap",
+      "hard_case": "ripr reads weakly_exposed via the unwrap() smoke_only oracle, not via should_panic as a result-side oracle; the class matches the spec.",
+      "truth": {
+        "state": "partially_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "return Err(E::Bad);",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: too-long input reports Bad"
+          },
+          {
+            "replacement": "return Ok(0);",
+            "outcome": "tests_failed",
+            "failing_test": "tests::unwrap_panics_on_far_input",
+            "equivalence_review": "not equivalent: too-long input is accepted as Ok(0)"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "unwrap_panics_on_far_input panics on any Err, so it notices an Ok but not a different variant. Spec cells: RIPR-SPEC-0227 example 6.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0227-check-variant-bare-unwrap-err",
+      "subject_id": "authored-spec0227-7",
+      "diff": "cases/spec0227-check-variant-bare-unwrap-err.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 11
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "error_variant",
+      "test_shape": "bare_unwrap_err_binding",
+      "hard_case": "Spec expects weakly_exposed (decision 2). ripr reads both findings reachable_unrevealed ('No assertion found on related tests'): it does not read a bare unwrap_err() as an oracle, although the test kills the Ok(0) mutant.",
+      "truth": {
+        "state": "partially_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "return Err(E::Bad);",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: too-long input reports Bad"
+          },
+          {
+            "replacement": "return Ok(0);",
+            "outcome": "tests_failed",
+            "failing_test": "tests::unwrap_err_on_far_input",
+            "equivalence_review": "not equivalent: too-long input is accepted as Ok(0)"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "unwrap_err_on_far_input panics when the result is Ok, so it notices an Ok but not a different variant. Spec cells: RIPR-SPEC-0227 example 7.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "reachable_unrevealed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0227-check-ok-value-is-ok",
+      "subject_id": "authored-spec0227-8",
+      "diff": "cases/spec0227-check-ok-value-is-ok.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 13
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "ok_value",
+      "test_shape": "is_ok_only",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "Ok(len + 1)",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: check_ok(3) returns Ok(4)"
+          },
+          {
+            "replacement": "Ok(0)",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: check_ok(3) returns Ok(0)"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "short_input_is_ok asserts only is_ok(), so no wrong Ok value is noticed. Spec cells: RIPR-SPEC-0227 example 8, RIPR-SPEC-0001.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0227-total-question-mark-is-err",
+      "subject_id": "authored-spec0227-9",
+      "diff": "cases/spec0227-total-question-mark-is-err.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 16
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "question_mark_propagation",
+      "test_shape": "is_err_on_reached_err",
+      "hard_case": "The spec's change (unwrap_or(0) to ?) is not behavior-preserving, so the case rewrites the ? line as (digit(c))? and uses the unwrap_or forms as mutants. Truth is discriminated and RIPR-SPEC-0227 rule 3b expects exposed, because a result-side oracle sees the side flip on total(\"x\"); ripr reads weakly_exposed (the RIPR-SPEC-0107 reading). An earlier rewrite, digit(c).map_err(E::from)?, drew a wrapper_error_binding_unresolved limit, so the plain-paren form was kept.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "let d = digit(c).unwrap_or(0);",
+            "outcome": "tests_failed",
+            "failing_test": "tests::non_digit_is_refused",
+            "equivalence_review": "not equivalent: total(\"x\") returns Ok(0)"
+          },
+          {
+            "replacement": "let d = digit(c).unwrap_or(1);",
+            "outcome": "tests_failed",
+            "failing_test": "tests::non_digit_is_refused",
+            "equivalence_review": "not equivalent: total(\"x\") returns Ok(1)"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "non_digit_is_refused asserts total(\"x\").is_err(); without the ? the non-digit is swallowed and total returns Ok, so the test fails. Spec cells: RIPR-SPEC-0227 example 9 (rule 3b positive case), RIPR-SPEC-0107.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0228-field-write-direct-read",
+      "subject_id": "authored-spec0228-1",
+      "diff": "cases/spec0228-field-write-direct-read.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 12
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_compound_assign",
+      "test_shape": "owner_call_then_assert_eq_field",
+      "hard_case": "ripr reads static_unknown (static_probe_unknown, no static_limit_kind); RIPR-SPEC-0228 example 1 expects exposed via a field_construction probe. Unlike accounts-balance-add (new line is a plain `=`), the anchor line keeps the compound `+=` form.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.count += 2;",
+            "outcome": "tests_failed",
+            "equivalence_review": "not equivalent: count becomes 2, not 1",
+            "failing_test": "tests::tick_adds_one"
+          },
+          {
+            "replacement": "self.count += 0;",
+            "outcome": "tests_failed",
+            "equivalence_review": "not equivalent: count stays 0",
+            "failing_test": "tests::tick_adds_one"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "tick_adds_one calls tick() once and asserts count == 1, so both wrong increments fail it. Spec cells: RIPR-SPEC-0228 example 1.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "static_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0228-field-write-getter-read",
+      "subject_id": "authored-spec0228-2",
+      "diff": "cases/spec0228-field-write-getter-read.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 12
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_compound_assign",
+      "test_shape": "owner_call_then_assert_eq_getter",
+      "hard_case": "ripr reads static_unknown; spec example 2 expects exposed through a resolved inherent getter. ripr also relates other_starts_at_zero, a same-crate test that reads other() and never calls advance().",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.count += 2;",
+            "outcome": "tests_failed",
+            "equivalence_review": "not equivalent: count() returns 2",
+            "failing_test": "tests::advance_reads_back_through_the_getter"
+          },
+          {
+            "replacement": "self.count += 0;",
+            "outcome": "tests_failed",
+            "equivalence_review": "not equivalent: count() returns 0",
+            "failing_test": "tests::advance_reads_back_through_the_getter"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "count() returns self.count directly, and the test asserts count() == 1 after advance(). Spec cells: RIPR-SPEC-0228 example 2.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "static_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0228-field-write-misnamed-getter",
+      "subject_id": "authored-spec0228-3",
+      "diff": "cases/spec0228-field-write-misnamed-getter.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 12
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_compound_assign",
+      "test_shape": "owner_call_then_assert_eq_misnamed_getter",
+      "hard_case": "ripr reads static_unknown; spec example 3 expects not exposed.",
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.count += 2;",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: count becomes 2 (visible via raw()), but count() returns self.other"
+          },
+          {
+            "replacement": "self.count += 0;",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: count stays 0, but no test reads it"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "count() returns self.other, so the test never sees the changed field. Spec cells: RIPR-SPEC-0228 example 3.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "static_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0228-field-write-sibling-read",
+      "subject_id": "authored-spec0228-4",
+      "diff": "cases/spec0228-field-write-sibling-read.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 12
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_compound_assign",
+      "test_shape": "owner_call_then_assert_eq_sibling_field",
+      "hard_case": "ripr reads static_unknown with no FieldValue missing discriminator; spec example 4 expects weakly_exposed with a FieldValue missing discriminator for count.",
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.count += 2;",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: count becomes 2, but the test reads only label"
+          },
+          {
+            "replacement": "self.count += 0;",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: count stays 0, but the test reads only label"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "raise_keeps_the_label asserts only label, a sibling field. Spec cells: RIPR-SPEC-0228 example 4.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "static_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0228-field-write-no-read",
+      "subject_id": "authored-spec0228-5",
+      "diff": "cases/spec0228-field-write-no-read.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 12
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_compound_assign",
+      "test_shape": "owner_call_no_assertion",
+      "hard_case": "ripr reads static_unknown with oracle_kind unknown; spec example 5 expects reachable_unrevealed.",
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.count += 2;",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: count becomes 2, but nothing reads it"
+          },
+          {
+            "replacement": "self.count += 0;",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: count stays 0, but nothing reads it"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "beat_runs calls beat() and asserts nothing. Spec cells: RIPR-SPEC-0228 example 5.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "static_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0228-field-write-enum-variant",
+      "subject_id": "authored-spec0228-6",
+      "diff": "cases/spec0228-field-write-enum-variant.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 18
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_enum_variant_assign",
+      "test_shape": "owner_call_then_assert_eq_variant",
+      "hard_case": "ripr reads static_unknown; spec example 6 expects exposed. The rewrite wraps the variant in parentheses (rustc warns unused_parens).",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.state = JobState::Idle;",
+            "outcome": "tests_failed",
+            "equivalence_review": "not equivalent: state is Idle, not Done",
+            "failing_test": "tests::finish_marks_done"
+          },
+          {
+            "replacement": "self.state = JobState::Running;",
+            "outcome": "tests_failed",
+            "equivalence_review": "not equivalent: state stays Running",
+            "failing_test": "tests::finish_marks_done"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "finish_marks_done asserts state == Done after finish(). Spec cells: RIPR-SPEC-0228 example 6.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "static_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0228-field-write-enum-other-field",
+      "subject_id": "authored-spec0228-6b",
+      "diff": "cases/spec0228-field-write-enum-other-field.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 19
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_enum_variant_assign",
+      "test_shape": "owner_call_then_assert_eq_other_field_variant",
+      "hard_case": "ripr reads static_unknown; spec example 6 (second control) expects not exposed.",
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.state = TaskState::Idle;",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: state is Idle, but the test reads only mode"
+          },
+          {
+            "replacement": "self.state = TaskState::Running;",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: state stays Running, but the test reads only mode"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "complete_leaves_the_mode_idle asserts mode == Idle, a different field from the written state. Spec cells: RIPR-SPEC-0228 example 6 (second control).",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "static_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0228-deref-mut-param-write",
+      "subject_id": "authored-spec0228-7",
+      "diff": "cases/spec0228-deref-mut-param-write.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 2
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "deref_mut_param_assign",
+      "test_shape": "free_fn_mut_ref_then_assert_eq",
+      "hard_case": "ripr reads static_unknown with no static_limit_kind; spec example 7 expects static_unknown with the proposed rust_mut_reference_alias_unresolved. Class agrees, the named limit is missing. ripr emits two findings on line 2: one for the new and one for the removed expression.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "*p = v + 1;",
+            "outcome": "tests_failed",
+            "equivalence_review": "not equivalent: x becomes 6",
+            "failing_test": "tests::store_writes_through_the_reference"
+          },
+          {
+            "replacement": "*p = 0;",
+            "outcome": "tests_failed",
+            "equivalence_review": "not equivalent: x stays 0",
+            "failing_test": "tests::store_writes_through_the_reference"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "store_writes_through_the_reference passes &mut x, then asserts x == 5. Spec cells: RIPR-SPEC-0228 example 7.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "static_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0228-field-collection-push",
+      "subject_id": "authored-spec0228-8",
+      "diff": "cases/spec0228-field-collection-push.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 11
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_collection_push",
+      "test_shape": "owner_call_then_assert_eq_vec_field",
+      "hard_case": "ripr reads exposed (call_deletion and side_effect), matching spec example 8.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.items.push(x + 1);",
+            "outcome": "tests_failed",
+            "equivalence_review": "not equivalent: items is [5]",
+            "failing_test": "tests::add_pushes_the_item"
+          },
+          {
+            "replacement": "self.items.push(0);",
+            "outcome": "tests_failed",
+            "equivalence_review": "not equivalent: items is [0]",
+            "failing_test": "tests::add_pushes_the_item"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "add_pushes_the_item asserts items == vec![4] after add(4). Spec cells: RIPR-SPEC-0228 example 8, RIPR-SPEC-0094.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "credited",
+        "full_checkout_classifications": [
+          "exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0228-field-write-reset-between",
+      "subject_id": "authored-spec0228-9",
+      "diff": "cases/spec0228-field-write-reset-between.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 11
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_compound_assign",
+      "test_shape": "owner_call_reset_then_assert_eq",
+      "hard_case": "ripr reads static_unknown; spec example 9 expects not exposed.",
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.count += 2;",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: count becomes 2 before reset() zeroes it"
+          },
+          {
+            "replacement": "self.count += 0;",
+            "outcome": "tests_passed",
+            "equivalence_review": "not equivalent: count stays 0; reset() hides the difference"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The test calls reset() between drive() and the read, so count is always 0. Spec cells: RIPR-SPEC-0228 example 9.",
+      "labeling_observation": {
+        "ripr_commit": "7b3deeb",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "static_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0227-total-question-mark-ok-input",
+      "subject_id": "authored-spec0227-12",
+      "diff": "cases/spec0227-total-question-mark-ok-input.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 16
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "question_mark_propagation",
+      "test_shape": "is_ok_on_ok_input",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "let d = digit(c).unwrap_or(0);",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: total(\"x\") returns Ok(0) instead of Err(Bad)"
+          },
+          {
+            "replacement": "let d = digit(c).unwrap_or(1);",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: total(\"x\") returns Ok(1) instead of Err(Bad)"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "digit_is_accepted asserts total(\"7\").is_ok(); digit('7') is Ok, so the unwrap_or mutants return Ok(7) like the original and the test passes. Spec cells: RIPR-SPEC-0227 example 12 (rule 3b negative control: condition 2 fails, both versions return Ok).",
+      "labeling_observation": {
+        "ripr_commit": "a9d36dc71",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "spec0227-total-question-mark-earlier-err",
+      "subject_id": "authored-spec0227-13",
+      "diff": "cases/spec0227-total-question-mark-earlier-err.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 24
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "question_mark_propagation",
+      "test_shape": "is_err_on_earlier_err",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "let d = digit(c).unwrap_or(0);",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: total(\"1.\") returns Ok(1) instead of Err(Bad)"
+          },
+          {
+            "replacement": "let d = digit(c).unwrap_or(1);",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: total(\"1.\") returns Ok(2) instead of Err(Bad)"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "letter_is_refused asserts total(\"x\").is_err(), but no_letters(s)? already returns Err(Bad) for \"x\" before the digit loop, so the unwrap_or mutants never run on that input and the test passes. Spec cells: RIPR-SPEC-0227 example 13 (rule 3b negative control: condition 2 fails, an earlier ? already returns Err).",
+      "labeling_observation": {
+        "ripr_commit": "a9d36dc71",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
         "excerpt_parity": "matched"
       }
     }

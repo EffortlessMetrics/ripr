@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 7d9a93f..eded029 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -10,7 +10,7 @@ pub fn check_ok(len: usize) -> Result<usize, E> {
+     if len >= 256 {
+         return Err(E::TooLong);
+     }
+-    Ok(len)
++    Ok(0 + len)
+ }
+ 
+ #[cfg(test)]

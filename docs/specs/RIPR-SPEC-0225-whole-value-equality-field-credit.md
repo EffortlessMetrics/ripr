@@ -232,7 +232,10 @@ The diff changes `retries: n + 2` to `retries: n + 1` in `build`; `Config` deriv
 - Existing: `fixtures/observation_verified_field_construction`,
   `fixtures/observation_unverified_field_construction`,
   `fixtures/rust_field_construction_token_coincidence`.
-- Planned: one fixture or verdict-corpus case per acceptance example.
+- Verdict corpus: 17 cases `spec0225-*` in
+  `fixtures/rust-verdict-corpus/corpus.json`, one per buildable acceptance
+  example, each naming its example in its reasoning and labeled with runtime
+  mutant truth.
 - Planned: oracle classifier unit tests for braces outside struct-literal
   operands.
 

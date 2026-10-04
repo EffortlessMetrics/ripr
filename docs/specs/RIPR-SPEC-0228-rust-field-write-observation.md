@@ -229,7 +229,10 @@ changes `self.count += 2` to `self.count += 1`.
 - Existing: `fixtures/python_field_assignment_shape` (parity reference),
   `fixtures/observation_verified_side_effect`,
   `fixtures/observation_unverified_side_effect`.
-- Planned: one fixture or verdict-corpus case per acceptance example.
+- Verdict corpus: 10 cases `spec0228-*` in
+  `fixtures/rust-verdict-corpus/corpus.json`, one per buildable acceptance
+  example, each naming its example in its reasoning and labeled with runtime
+  mutant truth.
 - Planned: probe extraction unit tests for `=` and `op=` on field paths.
 
 ## Implementation Mapping

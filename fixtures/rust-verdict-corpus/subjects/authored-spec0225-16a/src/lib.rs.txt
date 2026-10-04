@@ -1,0 +1,38 @@
+//! RIPR-SPEC-0225 acceptance example 16a.
+
+#[derive(Debug, Clone, Copy)]
+pub struct Count(pub u32);
+
+impl PartialEq for Count {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Retries {
+    pub n: Count,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Config {
+    pub retries: Retries,
+    pub name: String,
+}
+
+pub fn build(n: u32) -> Config {
+    Config {
+        retries: Retries { n: Count(n + 1) },
+        name: "x".into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builds_config() {
+        assert_eq!(build(3), Config { retries: Retries { n: Count(4) }, name: "x".into() });
+    }
+}

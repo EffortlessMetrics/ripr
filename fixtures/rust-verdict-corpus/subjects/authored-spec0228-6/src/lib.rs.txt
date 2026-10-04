@@ -1,0 +1,32 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobState {
+    Idle,
+    Running,
+    Done,
+}
+
+pub struct Job {
+    pub state: JobState,
+}
+
+impl Job {
+    pub fn new() -> Self {
+        Job { state: JobState::Running }
+    }
+
+    pub fn finish(&mut self) {
+        self.state = JobState::Done;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finish_marks_done() {
+        let mut c = Job::new();
+        c.finish();
+        assert_eq!(c.state, JobState::Done);
+    }
+}

@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index fed257e..bfe4d65 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -9,7 +9,7 @@ impl Pulse {
+     }
+ 
+     pub fn beat(&mut self) {
+-        self.count += 1;
++        self.count += 2 - 1;
+     }
+ }
+ 

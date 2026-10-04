@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index f0c1e43..d236856 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -16,7 +16,7 @@ impl Task {
+     }
+ 
+     pub fn complete(&mut self) {
+-        self.state = TaskState::Done;
++        self.state = (TaskState::Done);
+     }
+ }
+ 

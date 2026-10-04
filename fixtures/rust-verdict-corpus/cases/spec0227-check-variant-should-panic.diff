@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index cc639e2..0b12dc3 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -8,7 +8,7 @@ pub enum E {
+ 
+ pub fn check_panics(len: usize) -> Result<usize, E> {
+     if len >= 256 {
+-        return Err(E::TooLong);
++        return Err(E::TooLong)
+     }
+     Ok(len)
+ }

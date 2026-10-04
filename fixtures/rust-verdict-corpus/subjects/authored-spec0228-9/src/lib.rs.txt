@@ -1,0 +1,30 @@
+pub struct Odometer {
+    pub count: u32,
+}
+
+impl Odometer {
+    pub fn new() -> Self {
+        Odometer { count: 0 }
+    }
+
+    pub fn drive(&mut self) {
+        self.count += 1;
+    }
+
+    pub fn reset(&mut self) {
+        self.count = 0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reset_after_drive_clears_the_count() {
+        let mut c = Odometer::new();
+        c.drive();
+        c.reset();
+        assert_eq!(c.count, 0);
+    }
+}

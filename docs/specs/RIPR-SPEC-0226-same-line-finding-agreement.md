@@ -188,9 +188,12 @@ rejected alternative. Any can be reversed later without touching the rest.
 
 - Existing: `fixtures/split_test_boundary_oracle`,
   `fixtures/error_variant_wrapper_callee_only_pin`.
+- Verdict corpus: 5 cases `spec0226-*` in
+  `fixtures/rust-verdict-corpus/corpus.json`, one per buildable acceptance
+  example, each naming its example in its reasoning and labeled with runtime
+  mutant truth.
 - Planned: a goldens-wide contradiction check in `xtask` reusing the
   verdict-corpus contradiction codes.
-- Planned: a fixture or verdict-corpus case for acceptance example 2.
 
 ## Implementation Mapping
 

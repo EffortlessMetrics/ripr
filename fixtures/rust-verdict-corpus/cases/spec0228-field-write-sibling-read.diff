@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 37e7c32..214547d 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -9,7 +9,7 @@ impl Badge {
+     }
+ 
+     pub fn raise(&mut self) {
+-        self.count += 1;
++        self.count += 2 - 1;
+     }
+ }
+ 

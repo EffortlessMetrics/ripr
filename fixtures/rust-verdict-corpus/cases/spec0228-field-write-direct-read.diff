@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index c2b570d..04cfa88 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -9,7 +9,7 @@ impl Tally {
+     }
+ 
+     pub fn tick(&mut self) {
+-        self.count += 1;
++        self.count += 2 - 1;
+     }
+ }
+ 

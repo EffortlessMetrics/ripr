@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index e70bfeb..3a21ebc 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -9,7 +9,7 @@ pub struct Config {
+ pub fn parse(s: &str) -> Result<Config, String> {
+     let n: u32 = s.parse().map_err(|_| String::from("bad"))?;
+     Ok(Config {
+-        retries: n + 1,
++        retries: 1 + n,
+         name: "x".into(),
+     })
+ }

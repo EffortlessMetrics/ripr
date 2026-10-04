@@ -1,0 +1,11 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index a2278d6..b2f6e95 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,5 +1,5 @@
+ pub fn store(p: &mut u32, v: u32) {
+-    *p = v;
++    *p = 0 + v;
+ }
+ 
+ #[cfg(test)]

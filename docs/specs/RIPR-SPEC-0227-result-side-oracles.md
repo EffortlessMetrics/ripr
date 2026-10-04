@@ -277,7 +277,11 @@ Source: `check` as in Problem.
 
 - Existing: `fixtures/weak_error_oracle`, `fixtures/unwrap_err_generic_is_err`,
   `fixtures/strong_error_oracle`.
-- Planned: one fixture or verdict-corpus case per acceptance example.
+- Verdict corpus: 11 cases `spec0227-*` in
+  `fixtures/rust-verdict-corpus/corpus.json` for acceptance examples 1-9, 12
+  and 13, each naming its example in its reasoning and labeled with runtime
+  mutant truth. Examples 10 and 11 are covered by the existing cases
+  `checkout-withdraw-sibling-variant` and `accounts-parse-too-long-variant`.
 - Planned: oracle-scan unit tests for bare `unwrap_err()` and `should_panic`.
 
 ## Implementation Mapping

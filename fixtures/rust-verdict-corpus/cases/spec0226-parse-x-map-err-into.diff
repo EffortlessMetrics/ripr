@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index e35ed82..9f336f5 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -29,7 +29,7 @@ fn try_parse_x(raw: &str) -> Result<u32, RawError> {
+ }
+ 
+ pub fn parse_x(raw: &str) -> Result<u32, ParseXError> {
+-    try_parse_x(raw).map_err(Into::into)
++    (try_parse_x(raw)).map_err(Into::into)
+ }
+ 
+ #[cfg(test)]

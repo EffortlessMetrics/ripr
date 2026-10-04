@@ -1,0 +1,27 @@
+//! A length guard whose edge and far inputs sit in different tests.
+
+#[derive(Debug, PartialEq)]
+pub enum E {
+    TooLong,
+    Bad,
+}
+
+pub fn check_split(len: usize) -> Result<usize, E> {
+    if len >= 256 { return Err(E::TooLong); }
+    Ok(len)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::check_split;
+
+    #[test]
+    fn split_touches_the_edge() {
+        let _ = check_split(256);
+    }
+
+    #[test]
+    fn split_refuses_far() {
+        assert!(check_split(300).is_err());
+    }
+}
