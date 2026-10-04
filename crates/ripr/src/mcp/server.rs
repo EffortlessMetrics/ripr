@@ -146,11 +146,11 @@ impl McpServer {
         &self,
         arguments: Option<serde_json::Map<String, Value>>,
     ) -> Result<CallToolResponse, ErrorData> {
-        reject_unknown_arguments(&arguments, &["gap_id", "snapshot_id"])?;
-        let gap_id = required_string_argument(&arguments, "gap_id")?;
+        reject_unknown_arguments(&arguments, &["canonical_id", "snapshot_id"])?;
+        let canonical_id = required_string_argument(&arguments, "canonical_id")?;
         let requested = optional_string_argument(&arguments, "snapshot_id")?;
         let session = self.session.lock().await;
-        match session.get_gap(&gap_id, requested.as_deref()) {
+        match session.get_gap(&canonical_id, requested.as_deref()) {
             Ok(document) => self.bounded_tool_result(
                 document,
                 gaps::GAP_SCHEMA_VERSION,
@@ -164,11 +164,15 @@ impl McpServer {
         &self,
         arguments: Option<serde_json::Map<String, Value>>,
     ) -> Result<CallToolResponse, ErrorData> {
-        reject_unknown_arguments(&arguments, &["gap_id", "snapshot_id"])?;
-        let gap_id = required_string_argument(&arguments, "gap_id")?;
+        reject_unknown_arguments(&arguments, &["canonical_id", "snapshot_id"])?;
+        let canonical_id = required_string_argument(&arguments, "canonical_id")?;
         let requested = optional_string_argument(&arguments, "snapshot_id")?;
         let mut session = self.session.lock().await;
-        match session.prepare_repair(&gap_id, requested.as_deref(), self.root_identity.as_deref()) {
+        match session.prepare_repair(
+            &canonical_id,
+            requested.as_deref(),
+            self.root_identity.as_deref(),
+        ) {
             Ok(document) => self.bounded_tool_result(
                 document,
                 repair::REPAIR_PACKET_SCHEMA_VERSION,
@@ -265,12 +269,12 @@ impl McpServer {
         &self,
         arguments: Option<serde_json::Map<String, Value>>,
     ) -> Result<CallToolResponse, ErrorData> {
-        reject_unknown_arguments(&arguments, &["gap_id", "snapshot_id"])?;
-        let gap_id = required_string_argument(&arguments, "gap_id")?;
+        reject_unknown_arguments(&arguments, &["canonical_id", "snapshot_id"])?;
+        let canonical_id = required_string_argument(&arguments, "canonical_id")?;
         let requested = optional_string_argument(&arguments, "snapshot_id")?;
         let session = self.session.lock().await;
         match session.repair_card_document(
-            &gap_id,
+            &canonical_id,
             requested.as_deref(),
             self.analysis_root.as_deref(),
         ) {
@@ -545,9 +549,9 @@ impl ServerHandler for McpServer {
                 )),
             };
         }
-        if let Some(gap_id) = gaps::gap_resource_id(&request.uri) {
+        if let Some(canonical_id) = gaps::gap_resource_id(&request.uri) {
             let session = self.session.lock().await;
-            return match session.get_gap(gap_id, None) {
+            return match session.get_gap(canonical_id, None) {
                 Ok(document) => self.resource_result(document, &request.uri),
                 Err(failure) => Err(resource_failure("gap", &failure, None)),
             };

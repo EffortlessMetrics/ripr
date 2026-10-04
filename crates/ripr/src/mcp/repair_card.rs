@@ -1,6 +1,6 @@
 //! MCP RepairCard projection (#4668, RIPR-SPEC-0215).
 //!
-//! `ripr_get_repair_card` / `ripr://repair-card/{canonical_item_id}` project
+//! `ripr_get_repair_card` / `ripr://repair-card/{canonical_id}` project
 //! the same versioned [`crate::domain::RepairCardV1`] the CLI
 //! `ripr agent card` handoff (#4667) and the standard-LSP projection
 //! (RIPR-SPEC-0198) consume, for one canonical item of the committed
@@ -46,9 +46,9 @@ pub(crate) const REPAIR_CARD_SCHEMA_VERSION: &str = "ripr-mcp-repair-card-v1";
 /// descriptor, the dispatch, and the help text cannot drift apart.
 pub(crate) const GET_REPAIR_CARD_TOOL_NAME: &str = "ripr_get_repair_card";
 
-/// `ripr://repair-card/{canonical_item_id}` — the resource template routes
-/// canonical item ids exactly like `ripr://gap/{canonical_item_id}`.
-pub(crate) const REPAIR_CARD_TEMPLATE: &str = "ripr://repair-card/{canonical_item_id}";
+/// `ripr://repair-card/{canonical_id}` — the resource template routes
+/// canonical item ids exactly like `ripr://gap/{canonical_id}`.
+pub(crate) const REPAIR_CARD_TEMPLATE: &str = "ripr://repair-card/{canonical_id}";
 
 /// Typed failure codes this slice adds to the shared wire vocabulary. The
 /// spellings are the [`AgentCardRefusalKind`] wire spellings the CLI
@@ -182,16 +182,16 @@ pub(crate) fn bind_snapshot_card_producers(
 /// a sibling owner never credits this seam with another seam's item.
 fn item_bound_by_seam<'a>(snapshot: &'a Snapshot, entry: &ClassifiedSeam) -> Option<&'a GapItem> {
     let readiness = repair_packet_eligibility(entry).readiness;
-    let gap_id = readiness.canonical_gap_id.as_deref()?;
+    let canonical_id = readiness.canonical_gap_id.as_deref()?;
     let item = snapshot
         .items
         .iter()
-        .find(|item| item.canonical_id == gap_id)?;
+        .find(|item| item.canonical_id == canonical_id)?;
     let owner_names_seam = snapshot.findings.iter().any(|finding| {
         finding
             .canonical_gap
             .as_ref()
-            .is_some_and(|gap| gap.id == gap_id && gap.owner == entry.seam.owner())
+            .is_some_and(|gap| gap.id == canonical_id && gap.owner == entry.seam.owner())
     });
     owner_names_seam.then_some(item)
 }
@@ -231,22 +231,22 @@ fn agent_card_failure(error: AgentCardError) -> AttemptFailure {
 }
 
 impl WorkspaceSession {
-    /// `ripr_get_repair_card` / `ripr://repair-card/{canonical_item_id}`:
+    /// `ripr_get_repair_card` / `ripr://repair-card/{canonical_id}`:
     /// the same versioned repair card the CLI and standard-LSP handoffs
     /// project, bound to the committed snapshot and one canonical item. Read
     /// paths fail closed with the typed vocabulary; no fact is re-derived or
     /// upgraded, and a producer refusal never ships a weakened card.
     pub(crate) fn repair_card_document(
         &self,
-        gap_id: &str,
+        canonical_id: &str,
         requested: Option<&str>,
         root: Option<&Path>,
     ) -> Result<Value, AttemptFailure> {
         let snapshot = self.active_snapshot(requested)?;
-        let Some(item) = snapshot.item(gap_id) else {
+        let Some(item) = snapshot.item(canonical_id) else {
             return Err(AttemptFailure::new(
                 CODE_ITEM_NOT_FOUND,
-                format!("no canonical item {gap_id} exists in the current snapshot"),
+                format!("no canonical item {canonical_id} exists in the current snapshot"),
                 "list the current canonical ids with ripr_list_gaps, then retry",
             ));
         };
@@ -646,7 +646,7 @@ mod tests {
         let entry = weakly_gripped_entry();
         // The finding carries the seam's own producer gap identity, so the
         // shared owner-discriminated matcher binds the witness.
-        let gap_id = repair_packet_eligibility(&entry)
+        let canonical_id = repair_packet_eligibility(&entry)
             .readiness
             .canonical_gap_id
             .clone()
@@ -657,16 +657,17 @@ mod tests {
             .take()
             .ok_or_else(|| "fixture finding lost its gap".to_string())?;
         finding.canonical_gap = Some(FindingCanonicalGap {
-            id: gap_id.clone(),
+            id: canonical_id.clone(),
             owner: entry.seam.owner().to_string(),
             ..base
         });
-        let session = session_with_finding_and_binding(finding, binding_for(&entry, &gap_id))?;
+        let session =
+            session_with_finding_and_binding(finding, binding_for(&entry, &canonical_id))?;
         // The durable attempt store read needs a real directory; an empty
         // temp root inventories as zero attempts.
         let root = temp_root()?;
         std::fs::create_dir_all(&root).map_err(|error| format!("create temp root: {error}"))?;
-        let read = session.repair_card_document(&gap_id, None, Some(&root));
+        let read = session.repair_card_document(&canonical_id, None, Some(&root));
         std::fs::remove_dir_all(&root).map_err(|error| format!("clean temp root: {error}"))?;
         let document = read.map_err(|failure| failure.detail)?;
         if document.pointer("/schema_version").and_then(Value::as_str)
@@ -809,7 +810,7 @@ mod tests {
     #[test]
     fn item_binding_owner_discriminates_at_bind_time() -> Result<(), String> {
         let entry = weakly_gripped_entry();
-        let gap_id = repair_packet_eligibility(&entry)
+        let canonical_id = repair_packet_eligibility(&entry)
             .readiness
             .canonical_gap_id
             .clone()
@@ -822,14 +823,14 @@ mod tests {
             .canonical_gap
             .as_mut()
             .ok_or_else(|| "fixture finding must name a canonical gap".to_string())?;
-        gap.id = gap_id.clone();
+        gap.id = canonical_id.clone();
         gap.owner = owner;
         let matched_output = output(std::slice::from_ref(&finding))?;
         let snapshot = Snapshot::from_output(&matched_output, Some("root:sha256:a"))
             .map_err(|failure| failure.detail)?;
         let bound = item_bound_by_seam(&snapshot, &entry)
             .ok_or_else(|| "owner-matching seam must bind its item at bind time".to_string())?;
-        if bound.canonical_id != gap_id {
+        if bound.canonical_id != canonical_id {
             return Err(format!("bound the wrong item: {}", bound.canonical_id));
         }
         // Negative: a finding that names the same gap with a different owner
@@ -840,7 +841,7 @@ mod tests {
             .canonical_gap
             .as_mut()
             .ok_or_else(|| "fixture finding must name a canonical gap".to_string())?;
-        other_gap.id = gap_id;
+        other_gap.id = canonical_id;
         other_gap.owner = "checkout".to_string();
         let other_output = output(std::slice::from_ref(&other))?;
         let other_snapshot = Snapshot::from_output(&other_output, Some("root:sha256:a"))

@@ -792,7 +792,7 @@ fn gap_tools_fail_closed_before_the_first_refresh() -> Result<(), String> {
             "params": {
                 "_meta": current_meta(),
                 "name": "ripr_get_gap",
-                "arguments": { "gap_id": "gap:any" }
+                "arguments": { "canonical_id": "gap:any" }
             }
         }))?,
         line(json!({
@@ -802,7 +802,7 @@ fn gap_tools_fail_closed_before_the_first_refresh() -> Result<(), String> {
             "params": {
                 "_meta": current_meta(),
                 "name": "ripr_prepare_repair",
-                "arguments": { "gap_id": "gap:any" }
+                "arguments": { "canonical_id": "gap:any" }
             }
         }))?,
         line(json!({
@@ -832,7 +832,7 @@ fn gap_tools_fail_closed_before_the_first_refresh() -> Result<(), String> {
             "params": {
                 "_meta": current_meta(),
                 "name": "ripr_get_repair_card",
-                "arguments": { "gap_id": "gap:any" }
+                "arguments": { "canonical_id": "gap:any" }
             }
         }))?,
         line(json!({
@@ -873,10 +873,10 @@ fn gap_tools_fail_closed_before_the_first_refresh() -> Result<(), String> {
         .collect::<Vec<_>>();
     for expected in [
         "ripr://snapshot/{snapshot_id}",
-        "ripr://gap/{canonical_item_id}",
+        "ripr://gap/{canonical_id}",
         "ripr://repair-attempt/{attempt_id}",
         "ripr://receipt/{receipt_id}",
-        "ripr://repair-card/{canonical_item_id}",
+        "ripr://repair-card/{canonical_id}",
     ] {
         if !template_uris.contains(&expected) {
             return Err(format!(

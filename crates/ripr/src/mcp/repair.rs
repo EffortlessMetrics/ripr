@@ -633,16 +633,16 @@ impl WorkspaceSession {
     /// field and never a misleading transaction.
     pub(crate) fn prepare_repair(
         &mut self,
-        gap_id: &str,
+        canonical_id: &str,
         requested: Option<&str>,
         root_identity: Option<&str>,
     ) -> Result<Value, AttemptFailure> {
         let snapshot = self.active_snapshot(requested)?;
         let snapshot_id = snapshot.snapshot_id.clone();
-        let Some(item) = snapshot.item(gap_id) else {
+        let Some(item) = snapshot.item(canonical_id) else {
             return Err(AttemptFailure::new(
                 CODE_ITEM_NOT_FOUND,
-                format!("no canonical item {gap_id} exists in the current snapshot"),
+                format!("no canonical item {canonical_id} exists in the current snapshot"),
                 "list the current canonical ids with ripr_list_gaps, then retry",
             ));
         };

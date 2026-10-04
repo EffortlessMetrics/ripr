@@ -62,17 +62,17 @@ a time through the tool or the resource.
 | Tool (no arguments) | `ripr_workspace_status` |
 | Tool (no arguments) | `ripr_refresh` |
 | Tool (`snapshot_id?`) | `ripr_list_gaps` |
-| Tool (`gap_id`, `snapshot_id?`) | `ripr_get_gap` |
-| Tool (`gap_id`, `snapshot_id?`) | `ripr_prepare_repair` |
+| Tool (`canonical_id`, `snapshot_id?`) | `ripr_get_gap` |
+| Tool (`canonical_id`, `snapshot_id?`) | `ripr_prepare_repair` |
 | Tool (`attempt_id`) | `ripr_get_repair_attempt` |
 | Tool (`receipt_id`) | `ripr_get_receipt_status` |
-| Tool (`gap_id`, `snapshot_id?`) | `ripr_get_repair_card` |
+| Tool (`canonical_id`, `snapshot_id?`) | `ripr_get_repair_card` |
 | Resource (`application/json`) | `ripr://workspace/status` |
 | Resource template | `ripr://snapshot/{snapshot_id}` |
-| Resource template | `ripr://gap/{canonical_item_id}` |
+| Resource template | `ripr://gap/{canonical_id}` |
 | Resource template | `ripr://repair-attempt/{attempt_id}` |
 | Resource template | `ripr://receipt/{receipt_id}` |
-| Resource template | `ripr://repair-card/{canonical_item_id}` |
+| Resource template | `ripr://repair-card/{canonical_id}` |
 
 `ripr_workspace_status` and `ripr://workspace/status` return the same JSON
 document, schema `ripr-mcp-workspace-status-v1`. It wraps:
@@ -125,7 +125,7 @@ with reasons and the continuation route (`ripr_get_gap`). Pass `snapshot_id`
 to bind the read to a specific snapshot: a mismatched identity fails closed
 with `stale_snapshot` and the current identity.
 
-`ripr_get_gap` (and the equivalent resource `ripr://gap/{canonical_item_id}`)
+`ripr_get_gap` (and the equivalent resource `ripr://gap/{canonical_id}`)
 returns one canonical item's complete bounded evidence bound to its snapshot
 identity: identity and location, the changed behavior (expression,
 before/after, delta kind, probe family), causal attribution (canonical gap
@@ -142,7 +142,7 @@ then the repair-attempt link names that transaction instead of staying an
 explicit `null`. A missing field stays a typed state; MCP never fills it
 from prose.
 
-`ripr_prepare_repair` (`gap_id`, optional `snapshot_id`) evaluates those
+`ripr_prepare_repair` (`canonical_id`, optional `snapshot_id`) evaluates those
 readiness facts for one canonical item and, only when every gate is
 established, creates — or replays — one bounded in-memory repair transaction
 bound to the current snapshot, the item, and the root identity. The packet
@@ -223,7 +223,7 @@ canonical item index (identities and locations, not evidence), and the stored
 bounded-selection summary.
 
 `ripr_get_repair_card` (and the equivalent resource
-`ripr://repair-card/{canonical_item_id}`) projects the bounded repair card
+`ripr://repair-card/{canonical_id}`) projects the bounded repair card
 for one canonical item: the same versioned `repair_card.v1` document `ripr
 agent card` and the standard language server project, assembled by the shared
 application authority from the committed snapshot — the adapter never

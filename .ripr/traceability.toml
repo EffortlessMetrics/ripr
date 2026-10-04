@@ -11739,6 +11739,8 @@ tests = [
   "crates/ripr/src/mcp/server_tests.rs::sdk_server_declares_snapshot_and_gap_resource_templates",
   "crates/ripr/src/mcp/server_tests.rs::list_gaps_before_any_refresh_is_a_typed_no_snapshot_failure",
   "crates/ripr/src/mcp/server_tests.rs::get_gap_rejects_bad_arguments_at_the_dispatch_edge",
+  "crates/ripr/src/mcp/server_tests.rs::get_gap_accepts_canonical_id_at_the_dispatch_edge",
+  "crates/ripr/src/mcp/server_tests.rs::gap_resource_templates_spell_the_identity_canonical_id",
   "crates/ripr/src/mcp/server.rs::tests",
   "crates/ripr/src/mcp/transport.rs::tests",
   "crates/ripr/tests/mcp_sdk.rs",

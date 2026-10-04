@@ -400,11 +400,11 @@ impl WorkspaceSession {
                 .collect::<Vec<_>>(),
             "continuation": {
                 "tool": "ripr_get_gap",
-                "resource_template": "ripr://gap/{canonical_item_id}",
+                "resource_template": "ripr://gap/{canonical_id}",
             },
             "claim_boundary": "Bounded working-set projection over one completed snapshot. Selection is the shared CLI/LSP budget authority; omitted identities and reasons are disclosed, never silently truncated, and no business-risk ranking is inferred.",
             "limitations": [
-                "summaries do not contain evidence detail; read one item with ripr_get_gap or ripr://gap/{canonical_item_id}",
+                "summaries do not contain evidence detail; read one item with ripr_get_gap or ripr://gap/{canonical_id}",
                 "the list is deterministic for its snapshot identity; a refresh replaces the snapshot and its identities",
             ],
         });
@@ -414,14 +414,14 @@ impl WorkspaceSession {
     /// One canonical item's complete bounded evidence.
     pub(crate) fn get_gap(
         &self,
-        gap_id: &str,
+        canonical_id: &str,
         requested: Option<&str>,
     ) -> Result<Value, AttemptFailure> {
         let snapshot = self.active_snapshot(requested)?;
-        let Some(item) = snapshot.item(gap_id) else {
+        let Some(item) = snapshot.item(canonical_id) else {
             return Err(AttemptFailure::new(
                 CODE_ITEM_NOT_FOUND,
-                format!("no canonical item {gap_id} exists in the current snapshot"),
+                format!("no canonical item {canonical_id} exists in the current snapshot"),
                 "list the current canonical ids with ripr_list_gaps, then retry",
             ));
         };
@@ -483,11 +483,11 @@ impl WorkspaceSession {
             },
             "continuation": {
                 "list_tool": "ripr_list_gaps",
-                "item_resource_template": "ripr://gap/{canonical_item_id}",
+                "item_resource_template": "ripr://gap/{canonical_id}",
             },
             "claim_boundary": "Bounded snapshot evidence for one completed analysis. The outcome is typed producer state; a later refresh supersedes this snapshot and its identity.",
             "limitations": [
-                "item entries are identities and locations, not evidence; read one item through ripr_get_gap or ripr://gap/{canonical_item_id}",
+                "item entries are identities and locations, not evidence; read one item through ripr_get_gap or ripr://gap/{canonical_id}",
             ],
         });
         bounded_document(document)

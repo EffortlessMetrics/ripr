@@ -52,7 +52,7 @@ official SDK transport:
 - Tools `ripr_workspace_status`, `ripr_refresh`, `ripr_list_gaps`,
   `ripr_get_gap`; static resource `ripr://workspace/status`; resource
   templates `ripr://snapshot/{snapshot_id}` and
-  `ripr://gap/{canonical_item_id}`. Tool names and templates follow the
+  `ripr://gap/{canonical_id}`. Tool names and templates follow the
   registry established in #3088's slice.
 - Pre-initialize typed-shape violations recover on the wire (#5267): a
   request that arrives before `initialize` and lacks the SDK's required
@@ -105,7 +105,7 @@ official SDK transport:
   adapter never re-runs ranking, never truncates silently, and infers no
   business risk. Overflow is disclosed with reasons and the
   `ripr_get_gap` continuation route.
-- `ripr_get_gap` and `ripr://gap/{canonical_item_id}` return one canonical
+- `ripr_get_gap` and `ripr://gap/{canonical_id}` return one canonical
   item's complete bounded evidence bound to its snapshot identity:
   identity/location, changed behavior (expression, before/after, delta
   kind, probe family), causal attribution (canonical gap owner, behavior
@@ -191,7 +191,7 @@ official SDK transport:
    report), `ripr_list_gaps` (bounded working set with disclosed
    omissions), and `ripr_get_gap` (one complete item), or reads
    `ripr://workspace/status`, `ripr://snapshot/{snapshot_id}`, and
-   `ripr://gap/{canonical_item_id}` — no report-file, clipboard, log, or
+   `ripr://gap/{canonical_id}` — no report-file, clipboard, log, or
    LSP-protocol archaeology involved.
 2. Before any refresh, list/get/snapshot reads fail closed with typed
    `no_snapshot`; during an attempt they report `analysis_in_flight`; a

@@ -168,7 +168,7 @@ shared RIPR authority:
 - `ripr_list_gaps` serves the snapshot's stored shared diagnostic-budget
   selection (`lsp::diagnostic_budget`); the adapter never re-ranks and
   discloses every omitted identity and reason.
-- `ripr_get_gap` and `ripr://gap/{canonical_item_id}` serve one canonical
+- `ripr_get_gap` and `ripr://gap/{canonical_id}` serve one canonical
   item's complete bounded evidence. Readiness is always a hard negative
   (`repair_packet_ready: false`); bounded repair surfaces, CommandSpec
   routes, and repair-attempt resources belong to #3090, and the
@@ -217,7 +217,7 @@ The repair-transaction slice was extended by #4668 (RIPR-SPEC-0215) with
 the repair card — still without moving any authority into the transport.
 The server remains a bounded adapter over shared RIPR authority:
 
-- `ripr_get_repair_card` / `ripr://repair-card/{canonical_item_id}` project
+- `ripr_get_repair_card` / `ripr://repair-card/{canonical_id}` project
   the same versioned `repair_card.v1` the CLI `ripr agent card` handoff and
   the standard-LSP projection consume, assembled by the shared
   `app::repair_card_handoff::assemble_repair_card` authority. The adapter

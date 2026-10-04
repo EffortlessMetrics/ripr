@@ -5,7 +5,7 @@
 //! snapshot is committed; MCP never re-runs classification, ranking, or
 //! evidence production. List responses carry only the small summary document;
 //! the complete bounded evidence document is served lazily by
-//! `ripr_get_gap` / `ripr://gap/{canonical_item_id}`.
+//! `ripr_get_gap` / `ripr://gap/{canonical_id}`.
 
 use crate::domain::Finding;
 use serde_json::{Value, json};
@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 pub(crate) const GAP_LIST_SCHEMA_VERSION: &str = "ripr-mcp-gap-list-v1";
 pub(crate) const GAP_SCHEMA_VERSION: &str = "ripr-mcp-gap-v1";
 
-/// `ripr_get_gap` / `ripr://gap/{canonical_item_id}` never authorizes an
+/// `ripr_get_gap` / `ripr://gap/{canonical_id}` never authorizes an
 /// edit by itself: the readiness block reports the producer repair-readiness
 /// facts projected at snapshot commit time, and `ripr_prepare_repair` (#3090)
 /// is the only route that binds a repair transaction — and only when every
