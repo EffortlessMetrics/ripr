@@ -476,7 +476,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "targeted-rerun-benchmark --root <path> --changed-test <path> [--samples <n>] [--timeout-ms <n>]",
         "agentic-bench [--bench <id>]",
         "seam-inventory-scaling-benchmark [--sizes <n,n,n>] [--samples <n>] [--timeout-ms <n>] [--keep-workspaces]",
-        "mutation-spot-check --repo <name>=<checkout> [--mutants-out <name>=<dir>] [--run-mutants] [--jobs <n>] [--mutant-timeout-secs <n>] [--examples <n>] [--ripr <binary>]",
+        "mutation-spot-check --repo <name>=<checkout> [--mutants-out <name>=<dir>] [--run-mutants] [--mutants-arg <name>=<arg>] [--jobs <n>] [--mutant-timeout-secs <n>] [--examples <n>] [--ripr <binary>]",
         "dx-scoreboard [--boards <list>] [--repo <id>] [--include-heavy] [--corpus-dir <dir>] [--clone] [--ripr-bin <path>] [--ingest <file>] [--baseline <report.json>] [--gate] [--timeout-ms <n>]",
         "scale-cliff-benchmark [--sizes <n,n,n>] [--repo <path> --base <rev>] [--mode <draft|deep|instant>] [--commands <check,pilot>] [--index-cap <n|product>] [--timeout-ms <n>] [--keep-workspaces]",
         "rust-corpus check|list|fetch|smoke [--manifest <path>] [--tier fast|full|targets] [--repo <id>] [--root <dir>] [--allow-network] [--ripr <bin>] [--timeout-secs <n>]",
@@ -1184,7 +1184,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "Times cold repo-seams-json and repo-exposure-json inventory runs on deterministic generated workspaces across file counts; the cost curve backs the seam-inventory construction-cap issues (#1887/#4996/#4997).",
         ),
         command_entry(
-            "mutation-spot-check --repo <name>=<checkout> [--mutants-out <name>=<dir>] [--run-mutants] [--jobs <n>] [--mutant-timeout-secs <n>] [--examples <n>] [--ripr <binary>]",
+            "mutation-spot-check --repo <name>=<checkout> [--mutants-out <name>=<dir>] [--run-mutants] [--mutants-arg <name>=<arg>] [--jobs <n>] [--mutant-timeout-secs <n>] [--examples <n>] [--ripr <binary>]",
             "report_only",
             "target/ripr/reports/mutation-spot-check.{json,md}",
             false,
@@ -1197,7 +1197,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "target/ripr/reports/dx-scoreboard.{json,md}",
             false,
             true,
-            "Measures the developer-experience scoreboards (speed, ci, trust, paste, first_run, agent) declared in benchmarks/dx_scoreboard/scoreboards.toml against a pinned real-repository corpus, merges --ingest results, and with --gate exits nonzero when a metric regresses past its margin against a baseline report.",
+            "Measures the developer-experience scoreboards (speed, ci, trust, paste, first_run, agent, corpus) declared in benchmarks/dx_scoreboard/scoreboards.toml against a pinned real-repository corpus, merges --ingest results, and with --gate exits nonzero when a metric regresses past its margin against a baseline report.",
         ),
         command_entry(
             "scale-cliff-benchmark [--sizes <n,n,n>] [--repo <path> --base <rev>] [--mode <draft|deep|instant>] [--commands <check,pilot>] [--index-cap <n|product>] [--timeout-ms <n>] [--keep-workspaces]",

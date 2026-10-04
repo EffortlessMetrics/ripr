@@ -32,6 +32,7 @@
 .github/workflows/routed-rust.yml|43|Source routed Rust workflow proves pull requests on GitHub-hosted runners only; the normalized verdict is decided by the typed ci-routed-rust-result command rather than in shell, so the run blocks only gather inputs.
 .github/workflows/rust-gates.yml|30|Reusable Rust gate implementation preserves scratch tempfail fallback, required proof, bounded PR evidence, and failure-only ordinary artifacts.
 .github/workflows/scratch-gc.yml|3|Scheduled scratch-GC lane reuses the existing inline cleanup (age-gated find + sccache trim + disk report + hard-fail guard) on a timer so disk recovery does not depend on PR traffic (#1028).
+.github/workflows/rust-corpus.yml|4|Shared Rust corpus lane: one-command build, fetch and smoke steps, then one folded cargo xtask dx-scoreboard gate command.
 .github/workflows/security.yml|1|Security workflow installs cargo-deny as a normal binary, then runs the standard cargo-deny command without requiring Docker.
 .github/workflows/server-archive-qualification.yml|90|Exact measured largest run block after preserving curl transport status, bounded rate-limit tokens, response digests, and strict public ruleset shape diagnostics; credential-free, artifact-only qualification delegates packaging and manifest generation to Rust xtask commands.
 .github/workflows/source-of-truth.yml|15|Advisory source-of-truth workflow runs two xtask doc checks, publishes the bounded spec maintenance digest, and annotates an instrument failure as a failed advisory observation (#3467).

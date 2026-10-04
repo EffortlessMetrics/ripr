@@ -40,7 +40,8 @@ that pin; install from another directory or with `cargo +stable install ripr`.
 The installed binary still analyzes the pinned repository. Cargo may name an
 older ripr that supports your compiler; that release predates this guide.
 
-This source package is **0.11.0 development, pending publication**. The latest
+This source package identifies **0.11.0-alpha.2 source development**; the version
+does not establish publication or release acceptance. The latest
 GitHub release is [0.10.0](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.10.0).
 `cargo install ripr` installs the published package, not this checkout.
 Use the [versioned release instructions](https://github.com/EffortlessMetrics/ripr/blob/v0.10.0/README.md)

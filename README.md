@@ -60,7 +60,7 @@ mutants, and it does not prove that a test would fail.
 
 ## The first useful run
 
-Install the published CLI, then run it in a Rust repository on a branch with
+Install the published CLI (the prebuilt archive below is faster and needs no Rust), then run it in a Rust repository on a branch with
 committed changes. The 0.10 release resolves its default base by trying
 `origin/HEAD`, then `origin/main`, `origin/master`, `main`, and `master`; use
 `--base REF` to choose another existing branch or commit:
@@ -69,6 +69,23 @@ committed changes. The 0.10 release resolves its default base by trying
 cargo install ripr
 ripr check
 ```
+
+Faster, with no Rust toolchain: download the prebuilt 0.10.0
+archive (about a second here, against about two minutes to compile). This
+example is Linux x86-64; the release also has macOS and Windows archives
+([asset list](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.10.0)):
+
+```bash
+v=0.10.0; t=x86_64-unknown-linux-gnu; f=ripr-server-v$v-$t.tar.gz
+b=https://github.com/EffortlessMetrics/ripr/releases/download/v$v
+curl -fsSLO $b/$f && curl -fsSLO $b/$f.sha256
+echo "$(cat $f.sha256)  $f" | sha256sum -c - && tar xzf $f   # puts ./ripr here; move it onto your PATH
+```
+
+When a published package contains the binstall metadata in this checkout and
+its matching release archive exists, `cargo binstall ripr` downloads that
+archive. If the asset is unavailable, it compiles from source, like
+`cargo install`. This source merge publishes neither a package nor an archive.
 
 Read the changed behavior, the related tests, and the recommended next test.
 No configuration file is required. `ripr check` is advisory: it exits 0 whether
@@ -83,7 +100,7 @@ including uncommitted edits in a development build, and diagnosing setup.
 `cargo install ripr` installs the latest published release,
 [0.10.0](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.10.0), whose
 [versioned instructions](https://github.com/EffortlessMetrics/ripr/blob/v0.10.0/README.md)
-describe that workflow. This page documents **0.11 development**. The output
+describe that workflow. This page documents **0.11.0-alpha.2 source development**. The output
 shown above, `--worktree`, and the repair steps below need a development build:
 
 ```bash

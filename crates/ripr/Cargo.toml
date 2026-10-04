@@ -32,6 +32,25 @@ include = [
   "build.rs"
 ]
 
+# cargo-binstall reads this to download the release server archive instead of
+# compiling. The URL shape is the asset name `cargo xtask release-server-archive`
+# writes; `release_server/binstall_metadata.rs` fails if the two drift. The URL
+# is spelled out rather than built from `{ repo }` because the workspace
+# repository value ends in a slash. Archives hold `ripr` (`ripr.exe` on
+# Windows) at the archive root. A version published without a matching release
+# asset 404s and binstall falls back to `cargo install`. QuickInstall, a
+# third-party prebuilt-binary service binstall tries by default, is disabled so
+# the only prebuilt artifact is the release archive above.
+[package.metadata.binstall]
+disabled-strategies = ["quick-install"]
+pkg-url = "https://github.com/EffortlessMetrics/ripr/releases/download/v{ version }/ripr-server-v{ version }-{ target }.tar.gz"
+pkg-fmt = "tgz"
+bin-dir = "{ bin }{ binary-ext }"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-url = "https://github.com/EffortlessMetrics/ripr/releases/download/v{ version }/ripr-server-v{ version }-{ target }.zip"
+pkg-fmt = "zip"
+
 [lib]
 name = "ripr"
 path = "src/lib.rs"

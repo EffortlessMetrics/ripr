@@ -760,8 +760,27 @@ fn run_pipeline_for_diff_text(
                 candidate_line_count += result
                     .candidate_line_count
                     .max(candidate_lines_from_findings(&result.findings));
+                let produced_findings = !result.findings.is_empty();
                 findings.extend(result.findings);
-                limitations.extend(result.limitations);
+                // A preview adapter indexes its whole language across the
+                // workspace even when the diff touches none of it. Its
+                // refusals (parse budget, read caps, walk cap) then concern
+                // files this diff cannot depend on, and must not downgrade a
+                // diff in another language to a partial result. The Rust
+                // adapter ran above and is unaffected. An adapter that did
+                // produce findings consumed its workspace index (a Bun bridge
+                // profile reports Rust-line findings from TypeScript tests),
+                // so its limitations still qualify those findings.
+                let adapter_language = match language {
+                    LanguageId::JavaScript => LanguageId::TypeScript,
+                    other => *other,
+                };
+                let diff_touches_language = preview_changed_files
+                    .iter()
+                    .any(|file| route(&file.path) == Some(adapter_language));
+                if diff_touches_language || produced_findings {
+                    limitations.extend(result.limitations);
+                }
                 if result.changed_files_by_language.is_empty() {
                     changed_files_by_language.push((*language, result.changed_files));
                 } else {

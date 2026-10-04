@@ -197,7 +197,7 @@ regression_pct = 0
 regression_floor = 0.02
 runner_dependent = false
 source = "file:fixtures/rust-verdict-corpus/expected/report.json#false_verdict_rate"
-pending_reason = "the hand-checked verdict corpus report lands with #5318"
+pending_reason = "fixtures/rust-verdict-corpus/expected/report.json is missing; restore it from main; `cargo xtask verdict-corpus check` reports any drift"
 
 [[metric]]
 id = "trust.verdict_corpus_false_actionable"
@@ -210,7 +210,7 @@ regression_pct = 0
 regression_floor = 0.02
 runner_dependent = false
 source = "file:fixtures/rust-verdict-corpus/expected/report.json#false_actionable_rate"
-pending_reason = "the hand-checked verdict corpus report lands with #5318"
+pending_reason = "fixtures/rust-verdict-corpus/expected/report.json is missing; restore it from main; `cargo xtask verdict-corpus check` reports any drift"
 
 [[metric]]
 id = "trust.verdict_corpus_abstention"
@@ -223,7 +223,7 @@ regression_pct = 0
 regression_floor = 0.02
 runner_dependent = false
 source = "file:fixtures/rust-verdict-corpus/expected/report.json#abstention_rate"
-pending_reason = "the hand-checked verdict corpus report lands with #5318"
+pending_reason = "fixtures/rust-verdict-corpus/expected/report.json is missing; restore it from main; `cargo xtask verdict-corpus check` reports any drift"
 
 [[metric]]
 id = "trust.verdict_corpus_false_silent"
@@ -236,7 +236,7 @@ regression_pct = 0
 regression_floor = 0
 runner_dependent = false
 source = "file:fixtures/rust-verdict-corpus/expected/report.json#false_silent_rate"
-pending_reason = "the hand-checked verdict corpus report lands with #5318"
+pending_reason = "fixtures/rust-verdict-corpus/expected/report.json is missing; restore it from main; `cargo xtask verdict-corpus check` reports any drift"
 
 [[metric]]
 id = "trust.verdict_corpus_false_exposed"
@@ -249,7 +249,7 @@ regression_pct = 0
 regression_floor = 0
 runner_dependent = false
 source = "file:fixtures/rust-verdict-corpus/expected/report.json#false_exposed_rate"
-pending_reason = "the hand-checked verdict corpus report lands with #5318"
+pending_reason = "fixtures/rust-verdict-corpus/expected/report.json is missing; restore it from main; `cargo xtask verdict-corpus check` reports any drift"
 
 [[metric]]
 id = "trust.discriminator_claim_agreement"
@@ -498,3 +498,123 @@ regression_pct = 0
 regression_floor = 0
 runner_dependent = false
 source = "ingest:agent-as-user"
+
+[[metric]]
+id = "agent.stub_calls"
+board = "agent"
+title = "`ripr agent stub` calls the agent made on `check`'s suggestion"
+unit = "calls"
+direction = "higher_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "ingest:agent-as-user"
+# Context for the row below, not a bar: any count meets the zero target, and
+# a change is listed for review instead of gating.
+review_on_change = true
+
+[[metric]]
+id = "agent.stub_calls_producing_stub"
+board = "agent"
+title = "Of those stub calls, ones that produced a stub instead of a refusal"
+unit = "calls"
+direction = "higher_is_better"
+target = 1
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "ingest:agent-as-user"
+# A suggested route that is always refused is a dead end (#5471). A raw
+# count moves with how often the agent tries the route, so a change is listed
+# for review instead of gating; a share of calls would gate cleanly.
+review_on_change = true
+
+# From `ripr agent stub` on corpus gaps (the "gap to ready-to-run test"
+# evaluation), ingested as `ripr-dx-scoreboard-input-v1` with source
+# `agent-stub`.
+
+[[metric]]
+id = "agent.stub_compile_rate"
+board = "agent"
+title = "Distinct generated stubs that compile and fail at their own ripr todo"
+unit = "ratio"
+direction = "higher_is_better"
+target = 1.0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "ingest:agent-stub"
+
+[[metric]]
+id = "agent.stub_coverage"
+board = "agent"
+title = "Gap locations that get a working stub instead of a named refusal"
+unit = "ratio"
+direction = "higher_is_better"
+target = 0.5
+regression_pct = 0
+regression_floor = 0.05
+runner_dependent = false
+source = "ingest:agent-stub"
+
+[[metric]]
+id = "agent.stub_observer_required_refusals"
+board = "agent"
+title = "Gap locations refused because the stub needs an observer ripr cannot name"
+unit = "locations"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "ingest:agent-stub"
+
+[[metric]]
+id = "agent.stub_seconds"
+board = "agent"
+title = "One `ripr agent stub` call on a corpus repository"
+unit = "s"
+direction = "lower_is_better"
+target = 10
+regression_pct = 25
+regression_floor = 5
+runner_dependent = true
+per_repo = true
+source = "ingest:agent-stub"
+# 35 s to 11 min on large repositories at 245e133, because each call
+# rebuilds the seam inventory (#5459); not measured until the stub
+# evaluation reports per-call seconds per repository.
+
+# --------------------------------------------------------------- corpus ----
+#
+# The shared Rust corpus (`benchmarks/rust_corpus/manifest.json`) run by
+# `cargo xtask rust-corpus smoke` and ingested from its receipt. The
+# `.github/workflows/rust-corpus.yml` lane gates these against
+# `metrics/dx-scoreboard/corpus-<tier>-baseline.json`.
+
+[[metric]]
+id = "corpus.not_analyzed"
+board = "corpus"
+title = "Pinned repository whose diff-scoped `ripr check` did not reach `analyzed`"
+unit = "repos"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+per_repo = true
+source = "ingest:rust-corpus-smoke"
+
+[[metric]]
+id = "corpus.check_ms"
+board = "corpus"
+title = "Diff-scoped `ripr check` on a pinned real change"
+unit = "ms"
+direction = "lower_is_better"
+target = 5000
+regression_pct = 25
+regression_floor = 500
+runner_dependent = true
+per_repo = true
+source = "ingest:rust-corpus-smoke"

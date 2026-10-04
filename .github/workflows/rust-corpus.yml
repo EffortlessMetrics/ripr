@@ -1,0 +1,70 @@
+name: Rust Corpus
+
+# Runs ripr on the pinned shared Rust corpus
+# (benchmarks/rust_corpus/manifest.json): the fast tier on demand, the full
+# tier nightly. Advisory. The gate fails this lane when a repository that
+# analyzed in the committed baseline now fails closed, times out, breaks, or
+# could not be fetched. Wall time compares only against a same-runner
+# baseline. Network use (cloning the pinned repositories) stays inside this
+# workflow; the default PR path never fetches the corpus.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "Corpus tier to run"
+        type: choice
+        options: [fast, full]
+        default: fast
+  schedule:
+    - cron: "43 6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-corpus-${{ github.ref }}-${{ inputs.tier || 'full' }}
+  cancel-in-progress: true
+
+jobs:
+  corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TIER: ${{ inputs.tier || 'full' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build ripr
+        run: cargo build --release -p ripr --bin ripr
+
+      - name: Fetch the pinned corpus
+        run: cargo xtask rust-corpus fetch --allow-network --tier "$TIER"
+
+      - name: Run ripr check on each pinned change
+        run: cargo xtask rust-corpus smoke --tier "$TIER" --ripr target/release/ripr
+
+      - name: Compare with the baseline
+        run: >-
+          cargo xtask dx-scoreboard --boards corpus
+          --ingest target/ripr/reports/rust-corpus-smoke.json
+          --baseline "metrics/dx-scoreboard/corpus-$TIER-baseline.json"
+          --gate
+
+      - name: Upload corpus reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rust-corpus-${{ env.TIER }}
+          path: |
+            target/ripr/reports/rust-corpus-smoke.*
+            target/ripr/reports/dx-scoreboard.*
+          if-no-files-found: warn

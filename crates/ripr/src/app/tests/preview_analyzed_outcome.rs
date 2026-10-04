@@ -391,3 +391,84 @@ fn mixed_typescript_diff_counts_only_accepted_files_and_discloses_the_skipped() 
     proof?;
     cleanup
 }
+
+/// Real-repo finding (bat): a Rust-only change was reported as partial
+/// because an unrelated, deeply nested Python fixture exceeded the Python
+/// parse budget. A refusal in a language the diff does not touch must not
+/// degrade the outcome; the same refusal must still surface when the diff
+/// does touch Python.
+#[cfg(feature = "lang-python")]
+fn limitation_kinds_for_diff(name: &str, changed: &[&str]) -> Result<Vec<String>, String> {
+    let root = temp_root(name)?;
+    fs::create_dir_all(root.join("src")).map_err(|error| format!("create src: {error}"))?;
+    write(
+        &root.join("src/lib.rs"),
+        "pub fn discount(amount: u32) -> u32 {\n    if amount > 10 { amount - 1 } else { amount }\n}\n",
+    )?;
+    let nested = format!("x = {}1{}\n", "(".repeat(200), ")".repeat(200));
+    write(&root.join("fixture.py"), &nested)?;
+    let diff = root.join("change.diff");
+    let text = changed
+        .iter()
+        .map(|path| {
+            let body = if path.ends_with(".rs") {
+                "+pub fn discount(amount: u32) -> u32 {\n"
+            } else {
+                "+x = 1\n"
+            };
+            format!(
+                "diff --git a/{path} b/{path}\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1 @@\n{body}"
+            )
+        })
+        .collect::<String>();
+    write(&diff, &text)?;
+    let config =
+        crate::config::tests_only_parse("[languages]\nenabled = [\"rust\", \"python\"]\n")?;
+    let output = crate::app::check_workspace_with_config(
+        crate::CheckInput {
+            root,
+            base: None,
+            diff_file: Some(diff),
+            mode: crate::Mode::Draft,
+            format: crate::OutputFormat::Json,
+            include_unchanged_tests: false,
+            perl_facts_path: None,
+            suppression_policy: None,
+            git_timeout: None,
+            git_candidate: None,
+        },
+        &config,
+    )?;
+    let json = crate::render_check(&output, &crate::OutputFormat::Json)?;
+    let value: Value = serde_json::from_str(&json).map_err(|error| format!("parse: {error}"))?;
+    let outcome = value
+        .get("analysis_outcome")
+        .ok_or_else(|| format!("missing analysis_outcome: {json}"))?;
+    let limitations = outcome
+        .pointer("/outcome/limitations")
+        .and_then(Value::as_array)
+        .ok_or_else(|| format!("missing limitations: {outcome}"))?;
+    Ok(limitations
+        .iter()
+        .filter_map(|entry| entry.get("kind").and_then(Value::as_str).map(str::to_owned))
+        .collect())
+}
+
+#[cfg(feature = "lang-python")]
+#[test]
+fn unrelated_python_refusal_does_not_degrade_a_rust_only_diff() -> Result<(), String> {
+    let rust_only = limitation_kinds_for_diff("python-refusal-rust-only", &["src/lib.rs"])?;
+    assert!(
+        rust_only.is_empty(),
+        "a Python file the diff does not touch must not add limitations: {rust_only:?}"
+    );
+    let touches_python =
+        limitation_kinds_for_diff("python-refusal-touched", &["src/lib.rs", "fixture.py"])?;
+    assert!(
+        touches_python
+            .iter()
+            .any(|kind| kind == "language_scope_unsupported"),
+        "the refusal must remain when the diff touches Python: {touches_python:?}"
+    );
+    Ok(())
+}

@@ -1,0 +1,45 @@
+name: Wrong or misleading finding
+description: ripr reported a gap that is not one, stayed quiet on a real one, or gave a confusing next step.
+title: "finding: "
+labels: ["finding-quality"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: ripr version
+      description: Output of `ripr --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What went wrong
+      options:
+        - Reported a gap that is not a gap (false positive)
+        - Missed a gap a test would not catch (false negative)
+        - Classification label does not match the evidence
+        - Next step is unclear or impossible to follow
+        - Crash, hang, or very slow run
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Smallest change that reproduces it
+      description: The command you ran and, if you can share it, the diff and the test involved. A public repository and commit is ideal.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: What ripr printed
+      description: Paste the finding if there was one. For a missed gap there may be none; paste the command you ran instead. `ripr check --json` is welcome when you can share it.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true

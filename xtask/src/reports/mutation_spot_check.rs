@@ -44,7 +44,44 @@ const EXPOSURE_TIMEOUT: Duration = Duration::from_mins(15);
 const CALIBRATE_TIMEOUT: Duration = Duration::from_mins(5);
 const MUTANTS_TIMEOUT: Duration = Duration::from_hours(4);
 const SCRATCH: &str = "target/ripr/reports/mutation-spot-check";
-const USAGE: &str = "usage: cargo xtask mutation-spot-check --repo <name>=<checkout> [--repo ...] [--mutants-out <name>=<mutants.out dir>] [--run-mutants] [--jobs <n>] [--mutant-timeout-secs <n>] [--examples <n>] [--ripr <binary>]";
+/// cargo-mutants options the harness sets itself, that would mutate a tree
+/// other than the analyzed checkout, or that stop cargo-mutants from writing
+/// outcomes. `--mutants-arg` is for selecting mutants.
+const HARNESS_OWNED_MUTANTS_ARGS: &[&str] = &[
+    "--dir",
+    "-d",
+    "--output",
+    "-o",
+    "--jobs",
+    "-j",
+    "--timeout",
+    "-t",
+    // cargo-mutants ignores the multiplier when --timeout is given, and the
+    // harness always gives it, so the receipt would record a no-op.
+    "--timeout-multiplier",
+    "--manifest-path",
+    "--shuffle",
+    "--no-shuffle",
+    "--in-place",
+    "--list",
+    "--list-files",
+    "--check",
+    "--json",
+    "--completions",
+    "--emit-schema",
+    "--version",
+    "-V",
+];
+const USAGE: &str = "usage: cargo xtask mutation-spot-check --repo <name>=<checkout> [--repo ...] [--mutants-out <name>=<mutants.out dir>] [--run-mutants] [--mutants-arg <name>=<arg>] [--jobs <n>] [--mutant-timeout-secs <n>] [--examples <n>] [--ripr <binary>]";
+
+fn harness_owned_mutants_arg(arg: &str) -> bool {
+    HARNESS_OWNED_MUTANTS_ARGS.iter().any(|owned| {
+        arg == *owned
+            || arg.strip_prefix(owned).is_some_and(|rest| {
+                rest.starts_with('=') || (!owned.starts_with("--") && !rest.is_empty())
+            })
+    })
+}
 
 pub(crate) fn mutation_spot_check(args: &[String]) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
@@ -86,6 +123,7 @@ pub(crate) fn mutation_spot_check(args: &[String]) -> Result<(), String> {
 struct Options {
     repos: Vec<(String, PathBuf)>,
     mutants_out: BTreeMap<String, PathBuf>,
+    mutants_args: BTreeMap<String, Vec<String>>,
     run_mutants: bool,
     jobs: usize,
     mutant_timeout_secs: u64,
@@ -97,6 +135,7 @@ fn parse_options(args: &[String]) -> Result<Options, String> {
     let mut options = Options {
         repos: Vec::new(),
         mutants_out: BTreeMap::new(),
+        mutants_args: BTreeMap::new(),
         run_mutants: false,
         jobs: DEFAULT_JOBS,
         mutant_timeout_secs: DEFAULT_MUTANT_TIMEOUT_SECS,
@@ -118,6 +157,26 @@ fn parse_options(args: &[String]) -> Result<Options, String> {
                 } else if options.mutants_out.insert(name.clone(), path).is_some() {
                     return Err(format!("duplicate --mutants-out name `{name}`"));
                 }
+            }
+            "--mutants-arg" => {
+                index += 1;
+                let value = required_arg(args, index, flag)?;
+                let Some((name, arg)) = value
+                    .split_once('=')
+                    .filter(|(name, arg)| !name.trim().is_empty() && !arg.trim().is_empty())
+                else {
+                    return Err(format!("--mutants-arg expects <name>=<arg>, got `{value}`"));
+                };
+                if harness_owned_mutants_arg(arg) {
+                    return Err(format!(
+                        "--mutants-arg `{arg}` would override how the harness runs cargo-mutants; use the spot-check options (--jobs, --mutant-timeout-secs) or select mutants with --file, --re, --exclude, --package or --workspace"
+                    ));
+                }
+                options
+                    .mutants_args
+                    .entry(name.trim().to_string())
+                    .or_default()
+                    .push(arg.to_string());
             }
             "--run-mutants" => options.run_mutants = true,
             "--jobs" => {
@@ -153,6 +212,16 @@ fn parse_options(args: &[String]) -> Result<Options, String> {
     for name in options.mutants_out.keys() {
         if !options.repos.iter().any(|(repo, _)| repo == name) {
             return Err(format!("--mutants-out `{name}` names no --repo"));
+        }
+    }
+    for name in options.mutants_args.keys() {
+        if !options.repos.iter().any(|(repo, _)| repo == name) {
+            return Err(format!("--mutants-arg `{name}` names no --repo"));
+        }
+        if options.mutants_out.contains_key(name) || !options.run_mutants {
+            return Err(format!(
+                "--mutants-arg `{name}` only applies when --run-mutants produces that repo's outcomes"
+            ));
         }
     }
     Ok(options)
@@ -198,6 +267,7 @@ struct RepoRun {
     revision: String,
     diffs_checked: usize,
     exposure_run_status: Option<String>,
+    cargo_mutants_args: Vec<String>,
     cargo_mutants_version: Option<String>,
     metrics: Value,
     pairs: Vec<Pair>,
@@ -293,6 +363,11 @@ fn spot_check_repo(
             .get("run_status")
             .and_then(Value::as_str)
             .map(str::to_string),
+        cargo_mutants_args: if options.mutants_out.contains_key(name) {
+            Vec::new()
+        } else {
+            options.mutants_args.get(name).cloned().unwrap_or_default()
+        },
         cargo_mutants_version: outcomes
             .get("cargo_mutants_version")
             .and_then(Value::as_str)
@@ -485,7 +560,17 @@ fn run_cargo_mutants(
             "--timeout".to_string(),
             options.mutant_timeout_secs.to_string(),
             "--no-shuffle".to_string(),
-        ],
+        ]
+        .into_iter()
+        .chain(
+            options
+                .mutants_args
+                .get(name)
+                .into_iter()
+                .flatten()
+                .cloned(),
+        )
+        .collect::<Vec<_>>(),
         checkout,
         &[
             ("TMPDIR", &temp_dir),
@@ -763,6 +848,7 @@ fn build_report(repos: &[RepoRun], examples: usize) -> Value {
             "revision": repo.revision,
             "mutant_diffs_checked_against_revision": repo.diffs_checked,
             "exposure_run_status": repo.exposure_run_status,
+            "cargo_mutants_args": repo.cargo_mutants_args,
             "cargo_mutants_version": repo.cargo_mutants_version,
             "calibration_metrics": repo.metrics,
             "pairings": pairing_counts(&repo.pairs),
@@ -825,6 +911,28 @@ fn spot_check_markdown(report: &Value) -> String {
                 .and_then(Value::as_u64)
                 .unwrap_or(0),
         ));
+    }
+    for repo in report
+        .get("repos")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let sampled = repo
+            .get("cargo_mutants_args")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(|arg| format!("`{arg}`"))
+            .collect::<Vec<_>>();
+        if !sampled.is_empty() {
+            out.push_str(&format!(
+                "\n{} ran cargo-mutants with {}.\n",
+                repo.get("name").and_then(Value::as_str).unwrap_or(""),
+                sampled.join(" ")
+            ));
+        }
     }
     out.push_str("\n## Scored verdicts (seam-precise joins)\n\n| Verdict family | Seams | Mutants | Agree | Overclaim | False gap | Agreement |\n| --- | --- | --- | --- | --- | --- | --- |\n");
     if let Some(families) = report.get("scored_families").and_then(Value::as_object) {
@@ -958,6 +1066,89 @@ mod tests {
     }
 
     #[test]
+    fn mutants_args_pass_through_only_to_a_run_this_harness_starts() -> Result<(), String> {
+        let args = |extra: &[&str]| -> Vec<String> {
+            ["--repo", "hex=/tmp/hex"]
+                .iter()
+                .chain(extra)
+                .map(|arg| arg.to_string())
+                .collect()
+        };
+        let options = parse_options(&args(&[
+            "--run-mutants",
+            "--mutants-arg",
+            "hex=--file=src/lib.rs",
+            "--mutants-arg",
+            "hex=--re=decode",
+            "--mutants-arg",
+            "hex=--jobserver=false",
+            "--mutants-arg",
+            "hex=-Dx.diff",
+        ]))?;
+        assert_eq!(
+            options.mutants_args.get("hex"),
+            Some(&vec![
+                "--file=src/lib.rs".to_string(),
+                "--re=decode".to_string(),
+                "--jobserver=false".to_string(),
+                "-Dx.diff".to_string()
+            ])
+        );
+        for (extra, expected) in [
+            (
+                vec!["--mutants-arg", "hex=--re=x"],
+                "only applies when --run-mutants",
+            ),
+            (
+                vec!["--run-mutants", "--mutants-arg", "other=--re=x"],
+                "names no --repo",
+            ),
+            (
+                vec!["--run-mutants", "--mutants-arg", "hex="],
+                "expects <name>=<arg>",
+            ),
+            (
+                vec!["--run-mutants", "--mutants-arg", "hex= "],
+                "expects <name>=<arg>",
+            ),
+            (
+                vec!["--run-mutants", "--mutants-arg", "hex=--in-place"],
+                "would override how the harness runs",
+            ),
+            (
+                vec!["--run-mutants", "--mutants-arg", "hex=--output=/tmp/x"],
+                "would override how the harness runs",
+            ),
+            (
+                vec!["--run-mutants", "--mutants-arg", "hex=-j8"],
+                "would override how the harness runs",
+            ),
+            (
+                vec!["--run-mutants", "--mutants-arg", "hex=-t5"],
+                "would override how the harness runs",
+            ),
+            (
+                vec![
+                    "--run-mutants",
+                    "--mutants-arg",
+                    "hex=--timeout-multiplier=2",
+                ],
+                "would override how the harness runs",
+            ),
+            (
+                vec!["--run-mutants", "--mutants-arg", "hex=--list-files"],
+                "would override how the harness runs",
+            ),
+        ] {
+            let Err(err) = parse_options(&args(&extra)) else {
+                return Err(format!("{extra:?} should be refused"));
+            };
+            assert!(err.contains(expected), "{err}");
+        }
+        Ok(())
+    }
+
+    #[test]
     fn original_operator_reads_replace_and_delete_names() {
         assert_eq!(
             original_operator("src/a.rs:3:9: replace > with >= in f"),
@@ -1082,6 +1273,7 @@ mod tests {
             revision: "abc".to_string(),
             diffs_checked: 4,
             exposure_run_status: None,
+            cargo_mutants_args: Vec::new(),
             cargo_mutants_version: Some("27.1.0".to_string()),
             metrics: Value::Null,
             pairs: classify_matches(&calibration, &exposure, &mutants),
@@ -1107,6 +1299,15 @@ mod tests {
             "s1"
         );
         assert!(report["disagreement_examples"].get("overclaim").is_none());
-        assert!(spot_check_markdown(&report).contains("**false_gap** demo `src/a.rs:3`"));
+        let markdown = spot_check_markdown(&report);
+        assert!(markdown.contains("**false_gap** demo `src/a.rs:3`"));
+        assert!(!markdown.contains("ran cargo-mutants with"));
+
+        let mut report = report;
+        report["repos"][0]["cargo_mutants_args"] = json!(["--re=decode", "--workspace"]);
+        assert!(
+            spot_check_markdown(&report)
+                .contains("demo ran cargo-mutants with `--re=decode` `--workspace`.")
+        );
     }
 }
