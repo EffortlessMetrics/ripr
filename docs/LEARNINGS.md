@@ -3,6 +3,15 @@
 This log captures repo knowledge that should survive individual PRs and chat
 sessions. It is intentionally short and actionable.
 
+## 2026-10-03: Windows `where` is not a PATH probe (#5103)
+
+`where prove` searches the process current directory first. Doctor's Perl
+runner line printed "prove available on PATH" for a checkout `prove.cmd` that
+was never on PATH. Walk PATH entries only; skip empty and `.` components (cwd
+aliases). Keep a repo-local `prove.cmd` control that must stay missing, and a
+PATH `prove` control that must still count. Do not spawn `which`/`where` from
+the checkout cwd, and do not treat a cwd file as the displayed exporter path.
+
 ## 2026-10-03: source-subject stamps must not trim path identity (#5128)
 
 `subject_relative_path` used to `trim()` a named file and then reject leftover

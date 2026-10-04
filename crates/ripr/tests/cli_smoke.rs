@@ -10303,7 +10303,6 @@ fn perl_doctor_workspace_with_exporter_stub(
     label: &str,
     perllsp_body: &str,
 ) -> Result<(PathBuf, PathBuf), String> {
-    use std::os::unix::fs::PermissionsExt;
     let root = unique_temp_workspace(label);
     std::fs::create_dir_all(root.join("lib")).map_err(|err| err.to_string())?;
     std::fs::write(
@@ -10315,22 +10314,107 @@ fn perl_doctor_workspace_with_exporter_stub(
         .map_err(|err| err.to_string())?;
     std::fs::write(root.join("lib/Pricing.pm"), "package Pricing;\n1;\n")
         .map_err(|err| err.to_string())?;
+    // #5103: a checkout-local exporter must not steal PATH resolution or
+    // the displayed bin path.
+    write_probe_stub(
+        &root.join("perllsp"),
+        "#!/bin/sh\necho 'cwd-hijack 0.0.0'\nexit 0\n",
+        "@echo off\r\necho cwd-hijack 0.0.0\r\nexit /b 0\r\n",
+    )?;
     let shim_dir = root.join("exporter-shims");
     std::fs::create_dir_all(&shim_dir).map_err(|err| err.to_string())?;
-    for (name, body) in [
-        ("perl-ripr-facts", "#!/bin/sh\nexit 127\n"),
-        ("perllsp", perllsp_body),
-    ] {
-        let path = shim_dir.join(name);
-        std::fs::write(&path, body).map_err(|err| format!("write {name} stub: {err}"))?;
-        let mut permissions = std::fs::metadata(&path)
-            .map_err(|err| format!("stat {name} stub: {err}"))?
+    write_probe_stub(
+        &shim_dir.join("perl-ripr-facts"),
+        "#!/bin/sh\nexit 127\n",
+        "@echo off\r\nexit /b 127\r\n",
+    )?;
+    write_probe_stub(&shim_dir.join("perllsp"), perllsp_body, perllsp_body)?;
+    Ok((root, shim_dir))
+}
+
+fn write_probe_stub(path: &Path, unix_body: &str, windows_body: &str) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = windows_body;
+        std::fs::write(path, unix_body)
+            .map_err(|err| format!("write {}: {err}", path.display()))?;
+        let mut permissions = std::fs::metadata(path)
+            .map_err(|err| format!("stat {}: {err}", path.display()))?
             .permissions();
         permissions.set_mode(0o755);
-        std::fs::set_permissions(&path, permissions)
-            .map_err(|err| format!("chmod {name} stub: {err}"))?;
+        std::fs::set_permissions(path, permissions)
+            .map_err(|err| format!("chmod {}: {err}", path.display()))?;
     }
-    Ok((root, shim_dir))
+    #[cfg(windows)]
+    {
+        let _ = unix_body;
+        std::fs::write(path, windows_body)
+            .map_err(|err| format!("write {}: {err}", path.display()))?;
+    }
+    Ok(())
+}
+
+fn mixed_perl_doctor_workspace(label: &str) -> Result<PathBuf, String> {
+    let root = unique_temp_workspace(label);
+    std::fs::create_dir_all(root.join("lib")).map_err(|err| err.to_string())?;
+    std::fs::create_dir_all(root.join("t")).map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("Makefile.PL"),
+        "use ExtUtils::MakeMaker;\nWriteMakefile(NAME => 'Pricing');\n",
+    )
+    .map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"mixed-perl\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("lib/Pricing.pm"),
+        "package Pricing;\nuse strict;\nsub discount { return 0; }\n1;\n",
+    )
+    .map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("t/pricing.t"),
+        "use Test::More;\nok(1, 'placeholder');\ndone_testing();\n",
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(root)
+}
+
+fn plant_cwd_prove_decoys(root: &Path) -> Result<(), String> {
+    write_probe_stub(
+        &root.join("prove.cmd"),
+        "#!/bin/sh\necho 'cwd prove.cmd hijack'\nexit 0\n",
+        "@echo off\r\necho cwd prove.cmd hijack\r\nexit /b 0\r\n",
+    )?;
+    write_probe_stub(
+        &root.join("prove"),
+        "#!/bin/sh\necho 'cwd prove hijack'\nexit 0\n",
+        "@echo off\r\necho cwd prove hijack\r\nexit /b 0\r\n",
+    )
+}
+
+fn prove_path_stub_name() -> &'static str {
+    if cfg!(windows) { "prove.cmd" } else { "prove" }
+}
+
+fn doctor_perl_stdout_with_path(
+    root: &Path,
+    search_path: &std::ffi::OsString,
+) -> Result<String, String> {
+    let root_str = root.display().to_string();
+    let search_path = search_path
+        .to_str()
+        .ok_or_else(|| "search PATH is not UTF-8".to_string())?;
+    let output = run_command_with_env(
+        env!("CARGO_BIN_EXE_ripr"),
+        root,
+        &["doctor", "--root", &root_str],
+        &[("PATH", search_path)],
+    )
+    .map_err(|err| format!("run doctor: {err}"))?;
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 #[cfg(unix)]
@@ -10412,6 +10496,10 @@ fn doctor_reports_ripr_facts_capable_exporter_as_compatible() -> Result<(), Stri
         "ripr-facts-capable exporter must be reported compatible: {exporter_line}\n{stdout}"
     );
     assert!(
+        !exporter_line.contains("cwd-hijack") && !stdout.contains("cwd-hijack"),
+        "checkout-local perllsp must not be the displayed exporter:\n{stdout}"
+    );
+    assert!(
         !stdout.contains("not a compatible exporter"),
         "compatible control must not be reported incompatible:\n{stdout}"
     );
@@ -10433,6 +10521,69 @@ fn doctor_omits_perl_preview_when_no_perl_markers() -> Result<(), String> {
     );
 
     ignore_remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn doctor_does_not_treat_a_repo_local_prove_cmd_as_path_prove() -> Result<(), String> {
+    // #5103: Windows `where` searches cwd first. A checkout prove.cmd (and a
+    // Unix cwd `prove` decoy) must not print "prove available on PATH".
+    let root = mixed_perl_doctor_workspace("doctor-perl-cwd-prove")?;
+    plant_cwd_prove_decoys(&root)?;
+    let empty_bin = root.join("empty-bin");
+    std::fs::create_dir_all(&empty_bin).map_err(|err| format!("mkdir empty-bin: {err}"))?;
+    let stdout = doctor_perl_stdout_with_path(&root, &empty_bin.into_os_string())?;
+    assert!(
+        stdout.contains("perl: prove NOT found on PATH"),
+        "repo-local prove.cmd must not read as PATH prove:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("perl: prove available on PATH"),
+        "repo-local prove.cmd must not read as available:\n{stdout}"
+    );
+    let runners = stdout
+        .lines()
+        .find(|line| line.trim_start().starts_with("runners:"))
+        .unwrap_or("");
+    assert!(
+        runners.contains("none found on PATH") || !runners.contains("prove"),
+        "runners must not name a cwd prove: {runners}\n{stdout}"
+    );
+    ignore_remove_dir_all(&root);
+    Ok(())
+}
+
+#[test]
+fn doctor_reports_a_real_path_prove_despite_a_repo_local_prove_cmd() -> Result<(), String> {
+    // Discriminating control: the same cwd decoys, plus a PATH stub named the
+    // way this host actually resolves `prove`.
+    let root = mixed_perl_doctor_workspace("doctor-perl-path-prove")?;
+    plant_cwd_prove_decoys(&root)?;
+    let shim_dir = root.join("path-bin");
+    std::fs::create_dir_all(&shim_dir).map_err(|err| format!("mkdir path-bin: {err}"))?;
+    write_probe_stub(
+        &shim_dir.join(prove_path_stub_name()),
+        "#!/bin/sh\necho 'path prove'\nexit 0\n",
+        "@echo off\r\necho path prove\r\nexit /b 0\r\n",
+    )?;
+    let stdout = doctor_perl_stdout_with_path(&root, &shim_dir.into_os_string())?;
+    assert!(
+        stdout.contains("perl: prove available on PATH"),
+        "PATH prove must still count:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("perl: prove NOT found on PATH"),
+        "PATH prove must not be reported missing:\n{stdout}"
+    );
+    let runners = stdout
+        .lines()
+        .find(|line| line.trim_start().starts_with("runners:"))
+        .unwrap_or("");
+    assert!(
+        runners.contains("prove"),
+        "runners must name PATH prove: {runners}\n{stdout}"
+    );
+    ignore_remove_dir_all(&root);
     Ok(())
 }
 

@@ -12,6 +12,7 @@ use crate::cli::suggest::unknown_argument;
 use crate::config::{CONFIG_FILE_NAME, DEFAULT_LSP_SEAM_DIAGNOSTICS, RiprConfig, load_for_root};
 use crate::domain::{LanguageId, LanguageStatus};
 use crate::output;
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 pub(in crate::cli) fn doctor(args: &[String]) -> Result<(), String> {
@@ -918,12 +919,8 @@ fn detected_test_surface_lines(root: &Path) -> Vec<String> {
                             id.unavailable_adapter_recovery()
                         ));
                     }
-                    // Report runner availability.
-                    if which("prove") {
-                        lines.push("perl: prove available on PATH".to_string());
-                    } else {
-                        lines.push("perl: prove NOT found on PATH".to_string());
-                    }
+                    // Report runner availability from PATH, never the checkout cwd.
+                    lines.push(perl_prove_path_line());
                     // Report exact first command.
                     if id.is_available() {
                         lines.push("perl: first command: ripr check --perl-facts <packet.json> --diff <diff.patch> --json".to_string());
@@ -1031,26 +1028,142 @@ fn detect_perl_framework(root: &Path) -> &'static str {
     "not detected"
 }
 
-/// Check if a binary is available on PATH.
-fn which(bin: &str) -> bool {
+/// Perl test runners doctor may name. Availability is PATH-only (#5103).
+const PERL_PATH_RUNNERS: [&str; 4] = ["prove", "yath", "carton", "dzil"];
+
+fn perl_prove_path_line() -> String {
+    if path_command("prove").is_some() {
+        "perl: prove available on PATH".to_string()
+    } else {
+        "perl: prove NOT found on PATH".to_string()
+    }
+}
+
+fn perl_runners_line() -> String {
+    let runners: Vec<&str> = PERL_PATH_RUNNERS
+        .into_iter()
+        .filter(|name| path_command(name).is_some())
+        .collect();
+    if runners.is_empty() {
+        "none found on PATH".to_string()
+    } else {
+        runners.join(", ")
+    }
+}
+
+/// Resolve a doctor probe name to a program.
+///
+/// Bare names (`prove`, `perllsp`) come from PATH only. Windows `where`
+/// searches the process cwd first, so a repo-local `prove.cmd` must not
+/// count. Names that already contain a path separator are explicit paths
+/// (the opted-in `[perl].executable`).
+fn doctor_program(candidate: &str) -> Option<PathBuf> {
+    if program_name_is_explicit_path(candidate) {
+        Some(PathBuf::from(candidate))
+    } else {
+        path_command(candidate)
+    }
+}
+
+fn program_name_is_explicit_path(name: &str) -> bool {
+    !name.is_empty() && (name.contains('/') || name.contains('\\'))
+}
+
+/// True when `name` is a file on PATH. Does not search the process cwd.
+fn path_command(name: &str) -> Option<PathBuf> {
+    let pathext = std::env::var("PATHEXT").ok();
+    path_command_in(
+        name,
+        std::env::var_os("PATH").unwrap_or_default(),
+        pathext.as_deref(),
+        cfg!(windows),
+        &path_command_exists,
+    )
+}
+
+fn path_command_exists(path: &Path) -> bool {
+    let Ok(meta) = path.metadata() else {
+        return false;
+    };
+    if !meta.is_file() {
+        return false;
+    }
     #[cfg(unix)]
     {
-        std::process::Command::new("which")
-            .arg(bin)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .is_ok_and(|s| s.success())
+        use std::os::unix::fs::PermissionsExt;
+        meta.permissions().mode() & 0o111 != 0
     }
     #[cfg(not(unix))]
     {
-        std::process::Command::new("where")
-            .arg(bin)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .is_ok_and(|s| s.success())
+        true
     }
+}
+
+/// PATH-only lookup. Empty and `.` PATH entries are cwd aliases (`where` and
+/// Windows empty PATH components); they are skipped so a checkout `prove.cmd`
+/// cannot read as "available on PATH". Pure over its inputs so the Windows
+/// cwd-first branch is testable on any host (#5103).
+fn path_command_in(
+    name: &str,
+    path: impl AsRef<OsStr>,
+    pathext: Option<&str>,
+    windows: bool,
+    is_present: &dyn Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    if name.is_empty() || program_name_is_explicit_path(name) {
+        return None;
+    }
+    std::env::split_paths(path.as_ref()).find_map(|dir| {
+        if is_cwd_path_entry(&dir) {
+            return None;
+        }
+        path_command_candidates(&dir, name, pathext, windows)
+            .into_iter()
+            .find(|candidate| is_present(candidate))
+    })
+}
+
+fn is_cwd_path_entry(dir: &Path) -> bool {
+    // Empty and `.` are cwd aliases (`where` / Windows empty PATH components).
+    // `./` equals `.` via Path components on every host. `.\\` equals `.` on
+    // Windows, but Unix Path treats `.\\` as a Normal filename, so keep the
+    // token for host-independent Windows PATH strings (#5103).
+    dir.as_os_str().is_empty() || dir == Path::new(".") || dir == Path::new(".\\")
+}
+
+fn path_command_candidates(
+    dir: &Path,
+    name: &str,
+    pathext: Option<&str>,
+    windows: bool,
+) -> Vec<PathBuf> {
+    if !windows {
+        return vec![dir.join(name)];
+    }
+    // PATHEXT suffixes first, then the extensionless name as a fallback. An
+    // extensionless `perllsp` must not hide `perllsp.bat` from exporter spawn.
+    let mut candidates = Vec::new();
+    let exts = pathext.unwrap_or(".COM;.EXE;.BAT;.CMD");
+    for ext in exts.split(';') {
+        let ext = ext.trim();
+        if ext.is_empty() || ext == "." {
+            continue;
+        }
+        let ext = if ext.starts_with('.') {
+            ext.to_ascii_lowercase()
+        } else {
+            format!(".{}", ext.to_ascii_lowercase())
+        };
+        let candidate = dir.join(format!("{name}{ext}"));
+        if !candidates.contains(&candidate) {
+            candidates.push(candidate);
+        }
+    }
+    let bare = dir.join(name);
+    if !candidates.contains(&bare) {
+        candidates.push(bare);
+    }
+    candidates
 }
 
 /// Rich Perl preview for the doctor (Campaign 31 item 5). Reports everything a
@@ -1124,26 +1237,7 @@ fn report_perl_preview(root: &Path) {
     let frameworks = detect_perl_frameworks(root);
     println!("  frameworks: {frameworks}");
 
-    // Runner availability: prove/yath/carton/dzil.
-    let mut runners: Vec<&str> = Vec::new();
-    if which("prove") {
-        runners.push("prove");
-    }
-    if which("yath") {
-        runners.push("yath");
-    }
-    if which("carton") {
-        runners.push("carton");
-    }
-    if which("dzil") {
-        runners.push("dzil");
-    }
-    let runners_str = if runners.is_empty() {
-        "none found on PATH".to_string()
-    } else {
-        runners.join(", ")
-    };
-    println!("  runners: {runners_str}");
+    println!("  runners: {}", perl_runners_line());
 
     // Exact next command: branch on whether the adapter is compiled in,
     // whether managed mode is configured, and whether a COMPATIBLE exporter
@@ -1220,7 +1314,11 @@ fn probe_perl_exporter(root: &Path) -> PerlExporterProbe {
     };
     let mut first_incompatible = None;
     for candidate in &candidates {
-        let Some(version) = run_exporter_probe(candidate, &["--version"], timeout)
+        let Some(program) = doctor_program(candidate) else {
+            continue;
+        };
+        let bin = program.display().to_string();
+        let Some(version) = run_exporter_probe(&program, &["--version"], timeout)
             .filter(|output| output.status.success())
             .map(|output| {
                 String::from_utf8_lossy(&output.stdout)
@@ -1238,11 +1336,7 @@ fn probe_perl_exporter(root: &Path) -> PerlExporterProbe {
         } else {
             version
         };
-        let bin = which(candidate)
-            .then(|| resolve_binary_path(candidate))
-            .flatten()
-            .unwrap_or_else(|| candidate.clone());
-        if exporter_accepts_ripr_facts(candidate, timeout) {
+        if exporter_accepts_ripr_facts(&program, timeout) {
             return PerlExporterProbe::Compatible { bin, version };
         }
         first_incompatible.get_or_insert(PerlExporterProbe::Incompatible { bin, version });
@@ -1251,7 +1345,7 @@ fn probe_perl_exporter(root: &Path) -> PerlExporterProbe {
 }
 
 /// Whether `candidate ripr-facts --help` succeeds and documents `--schema`.
-fn exporter_accepts_ripr_facts(candidate: &str, timeout: std::time::Duration) -> bool {
+fn exporter_accepts_ripr_facts(candidate: &Path, timeout: std::time::Duration) -> bool {
     run_exporter_probe(candidate, &["ripr-facts", "--help"], timeout).is_some_and(|output| {
         output.status.success()
             && (String::from_utf8_lossy(&output.stdout).contains("--schema")
@@ -1263,7 +1357,7 @@ fn exporter_accepts_ripr_facts(candidate: &str, timeout: std::time::Duration) ->
 /// null stdin. `None` when the binary cannot be spawned, times out, or
 /// exceeds the capture limit.
 fn run_exporter_probe(
-    candidate: &str,
+    candidate: &Path,
     args: &[&str],
     timeout: std::time::Duration,
 ) -> Option<std::process::Output> {
@@ -1273,7 +1367,7 @@ fn run_exporter_probe(
         command,
         timeout,
         PERL_EXPORTER_PROBE_OUTPUT_LIMIT,
-        &format!("Perl fact exporter probe `{candidate}`"),
+        &format!("Perl fact exporter probe `{}`", candidate.display()),
     )
     .ok()
 }
@@ -1301,24 +1395,6 @@ fn perl_exporter_lines(exporter: &PerlExporterProbe) -> Vec<String> {
             crate::domain::PERL_FACT_EXPORTER
         )],
     }
-}
-
-/// Best-effort resolution of a PATH binary to an absolute path for display.
-/// Falls back to the name itself if resolution is unavailable.
-fn resolve_binary_path(bin: &str) -> Option<String> {
-    // `which`/`where` already proved existence; re-run capturing stdout.
-    let lookup = if cfg!(unix) { "which" } else { "where" };
-    std::process::Command::new(lookup)
-        .arg(bin)
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| {
-            String::from_utf8_lossy(&o.stdout)
-                .lines()
-                .next()
-                .map(|s| s.trim().to_string())
-        })
 }
 
 /// Detect CPAN-style project markers beyond .pm/.pl/.t files: Makefile.PL,
@@ -1871,6 +1947,129 @@ mod tests {
         assert_eq!(dir_size_bytes(&root), size_before + 3);
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())
+    }
+
+    fn joined_path(dirs: &[&str]) -> Result<std::ffi::OsString, String> {
+        std::env::join_paths(dirs.iter().copied().map(Path::new))
+            .map_err(|err| format!("join PATH: {err}"))
+    }
+
+    fn windows_pathext() -> &'static str {
+        ".COM;.EXE;.BAT;.CMD"
+    }
+
+    #[test]
+    fn path_command_in_ignores_a_repo_local_prove_cmd() -> Result<(), String> {
+        // Windows `where prove` searches the process cwd first, so a checkout
+        // `prove.cmd` would otherwise read as "prove available on PATH" (#5103).
+        let cwd_cmd = PathBuf::from("").join("prove.cmd");
+        let path = joined_path(&["", "."])?;
+        let found = path_command_in(
+            "prove",
+            &path,
+            Some(windows_pathext()),
+            true,
+            &|candidate| candidate == cwd_cmd || candidate == Path::new(".").join("prove.cmd"),
+        );
+        assert_eq!(
+            found, None,
+            "cwd prove.cmd must not count as PATH: {found:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn path_command_in_prefers_path_prove_over_repo_local_prove_cmd() -> Result<(), String> {
+        let cwd_cmd = PathBuf::from("").join("prove.cmd");
+        let path_dir = PathBuf::from("strawberry-bin");
+        let path_cmd = path_dir.join("prove.cmd");
+        let path = joined_path(&["", path_dir.to_str().ok_or("path dir utf-8")?])?;
+        let found = path_command_in(
+            "prove",
+            &path,
+            Some(windows_pathext()),
+            true,
+            &|candidate| candidate == cwd_cmd || candidate == path_cmd.as_path(),
+        );
+        assert_eq!(found, Some(path_cmd), "PATH prove.cmd must win: {found:?}");
+        Ok(())
+    }
+
+    #[test]
+    fn path_command_in_windows_prefers_pathext_over_extensionless() -> Result<(), String> {
+        let path_dir = PathBuf::from("bin");
+        let bare = path_dir.join("prove");
+        let cmd = path_dir.join("prove.cmd");
+        let path = joined_path(&[path_dir.to_str().ok_or("path dir utf-8")?])?;
+        let found = path_command_in("prove", &path, Some(".CMD"), true, &|candidate| {
+            candidate == bare.as_path() || candidate == cmd.as_path()
+        });
+        assert_eq!(
+            found,
+            Some(cmd),
+            "Windows PATHEXT prove.cmd must beat extensionless prove: {found:?}"
+        );
+        let bare_only = path_command_in("prove", &path, Some(".CMD"), true, &|candidate| {
+            candidate == bare.as_path()
+        });
+        assert_eq!(
+            bare_only,
+            Some(bare),
+            "extensionless PATH prove remains a fallback: {bare_only:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn is_cwd_path_entry_treats_empty_dot_and_backslash_dot_as_cwd() {
+        assert!(is_cwd_path_entry(Path::new("")));
+        assert!(is_cwd_path_entry(Path::new(".")));
+        assert!(is_cwd_path_entry(Path::new("./")));
+        assert!(is_cwd_path_entry(Path::new(".\\")));
+        assert!(!is_cwd_path_entry(Path::new("bin")));
+        assert!(!is_cwd_path_entry(Path::new("strawberry-bin")));
+    }
+
+    #[test]
+    fn path_command_in_unix_prove_cmd_is_not_a_prove_binary() -> Result<(), String> {
+        let path_dir = PathBuf::from("bin");
+        let decoy = path_dir.join("prove.cmd");
+        let prove = path_dir.join("prove");
+        let path = joined_path(&[path_dir.to_str().ok_or("path dir utf-8")?])?;
+        let from_cmd = path_command_in("prove", &path, None, false, &|candidate| {
+            candidate == decoy.as_path()
+        });
+        assert_eq!(
+            from_cmd, None,
+            "Unix prove.cmd is not `prove`: {from_cmd:?}"
+        );
+        let from_prove = path_command_in("prove", &path, None, false, &|candidate| {
+            candidate == prove.as_path()
+        });
+        assert_eq!(
+            from_prove,
+            Some(prove),
+            "Unix PATH prove must resolve: {from_prove:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn doctor_program_keeps_explicit_paths_and_skips_bare_names_off_path() {
+        assert_eq!(
+            doctor_program("/opt/perl/bin/perllsp"),
+            Some(PathBuf::from("/opt/perl/bin/perllsp"))
+        );
+        assert_eq!(
+            doctor_program(r"fixture-bin\perllsp"),
+            Some(PathBuf::from(r"fixture-bin\perllsp"))
+        );
+        assert_eq!(doctor_program(""), None);
+        // A bare name is PATH-only; this process PATH is not under test here.
+        assert!(program_name_is_explicit_path("/usr/bin/prove"));
+        assert!(program_name_is_explicit_path(r"tools\prove.cmd"));
+        assert!(!program_name_is_explicit_path("prove"));
+        assert!(!program_name_is_explicit_path("prove.cmd"));
     }
 
     #[test]
