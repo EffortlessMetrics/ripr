@@ -44,10 +44,15 @@ pub(crate) fn render_check_with_config_and_progress(
     match format {
         OutputFormat::Human => Ok(human::render_bounded_with_config(output, config)),
         OutputFormat::HumanFull => Ok(human::render_full_with_config(output, config)),
-        OutputFormat::Json => Ok(stamp_check_json(
-            json::render_with_config(output, config),
-            &output.root,
-        )),
+        OutputFormat::Json => {
+            // Fail-closed budget resolution (#5203): an unparseable
+            // `RIPR_CHECK_FINDINGS_BYTES` aborts the run, never rendering.
+            let findings_budget = json::check_findings_byte_budget()?;
+            Ok(stamp_check_json(
+                json::render_with_config(output, config, findings_budget),
+                &output.root,
+            ))
+        }
         OutputFormat::Github => Ok(github::render_with_config(output, config)),
         OutputFormat::Sarif => {
             let suppressions = load_suppressions(output, config)?;
@@ -183,6 +188,16 @@ pub(crate) fn render_check_with_config_and_progress(
             },
         ),
     }
+}
+
+/// Unbounded JSON render for in-process consumers (#5203, Codex P1 on #5271).
+///
+/// `pr-evidence` runs its check in-process and routes from the full finding
+/// set; the findings-array byte budget protects external document consumers
+/// (agents, editors, CI logs), so it must not truncate a JSON string that
+/// never leaves the process. Same stamping as the `Json` arm, budget `None`.
+pub(crate) fn render_check_json_unbounded(output: &CheckOutput, config: &RiprConfig) -> String {
+    stamp_check_json(json::render_with_config(output, config, None), &output.root)
 }
 
 /// #4544: stamp the check JSON with the content digests of every file a gap

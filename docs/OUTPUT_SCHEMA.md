@@ -1981,6 +1981,71 @@ enforcement beyond `expires` (review-after deadlines, required-active
 ledgers) belongs to the gate exception policy (#1442), not check
 suppression.
 
+### `run_limitations` (top-level additive, #5203)
+
+`ripr check --format json` caps the rendered `findings` array at
+`RIPR_CHECK_FINDINGS_BYTES` emitted array bytes (payloads plus separators),
+default 1,000,000. Findings render in deterministic pipeline order; once the
+emitted bytes exceed the budget, the rest is disclosed rather than rendered.
+The first finding always renders, so a nonempty analysis never yields an empty
+prefix. Set the variable to `0` to remove the cap (unbounded); any positive
+integer sets the budget explicitly. An unparseable value fails the run
+(fail-closed), naming the variable and the repair. Does not bump
+`schema_version` (additive optional member).
+
+When the budget engages, the document carries one `run_limitations[]` entry and
+is never complete:
+
+- `category` / `run_status` — always `"limited_findings_bound"` for machine
+  filtering (the `limited_*` family).
+- `basis` — always `"check_findings_byte_budget"`.
+- `downstream_consumable` — always `false`.
+- `message` — `rendered <R> of <T> findings within the findings-array byte
+  budget (...)`, naming the applied setting and the `=0` full-set repair.
+- `repair_route` — always `"output/check-findings-budget"`.
+
+`summary` keeps full analysis counts (`summary.findings` is the analyzed
+total, `rendered + omitted == total`); `finding_alignment` covers the rendered
+prefix only, so alignment rows always resolve inside the document; per-finding
+`canonical_gap_group_size` counts the analyzed group (a total, like
+`related_tests_total`). The gate refuses a bounded document at the pr-guidance,
+gap-ledger, and baseline positions with a `config_error` naming
+`limited_findings_bound` and the budget repair. Gap ledgers generated from a
+bounded check document (`reports gap-ledger --check-output`) propagate
+`run_limitations[]` unchanged, so the gate refuses the generated ledger like
+the bounded check itself. `pr-evidence` renders its internal check input
+unbounded: routing counts the full finding set regardless of the external
+budget, since that JSON never leaves the process. The run exit code is
+unchanged (analysis completed); consumers must read `run_limitations[]`
+before treating `findings[]` as the full set. When the limitation is
+present, `summary.findings` can exceed `findings.len()`; consumers that
+require equal counts must disable the bound (`=0`) or handle the limited
+output.
+
+Example (budget engaged after the first of 61 findings):
+
+```json
+"summary": {"findings": 61, ...},
+"findings": [
+  {"id": "probe:src_lib.rs:call_deletion:184d39d1", ...}
+],
+"run_limitations": [
+  {
+    "category": "limited_findings_bound",
+    "run_status": "limited_findings_bound",
+    "basis": "check_findings_byte_budget",
+    "downstream_consumable": false,
+    "message": "rendered 1 of 61 findings within the findings-array byte budget (RIPR_CHECK_FINDINGS_BYTES=1; raise it or set =0 for the full set)",
+    "repair_route": "output/check-findings-budget"
+  }
+]
+```
+
+Scope: the budget applies to the JSON check renderer only. SARIF, GitHub, and
+human formats render from the same full `CheckOutput` through their own
+existing bounds; per-finding caps (`related_tests`, `observed_values`) are
+unchanged and compose underneath (the budget counts already-capped payloads).
+
 ## Enums
 
 `classification` values:

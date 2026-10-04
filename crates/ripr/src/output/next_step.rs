@@ -283,7 +283,7 @@ mod tests {
         );
 
         // JSON surface
-        let json_out = json_render_with_config(&output, &config);
+        let json_out = json_render_with_config(&output, &config, None);
         assert!(
             json_out.contains("the repair packet is complete and delegatable (advisory)"),
             "JSON surface must contain reconciled next-step.\nExpected: {expected}\nJSON output: {json_out}"
@@ -378,7 +378,7 @@ mod tests {
         );
 
         // JSON surface
-        let json_out = json_render_with_config(&output, &config);
+        let json_out = json_render_with_config(&output, &config, None);
         assert!(
             json_out.contains("no actionable repair packet is emitted"),
             "JSON surface must preserve blocked-case disclosure for incomplete packet.\nJSON output: {json_out}"

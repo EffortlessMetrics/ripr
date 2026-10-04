@@ -11,6 +11,16 @@ are scoped or reviewed.
 
 ### Added
 
+- `ripr check --format json` caps the rendered `findings` array at
+  `RIPR_CHECK_FINDINGS_BYTES` emitted bytes (default 1,000,000; `0` removes
+  the cap). A bounded document renders the deterministic first-finding prefix
+  with full `summary` counts and a `run_limitations[]` entry
+  (`limited_findings_bound`, `downstream_consumable: false`) so it never
+  presents as complete; the gate refuses bounded inputs with a `config_error`
+  naming the budget repair (#5203). Gap ledgers generated from a bounded
+  check document propagate `run_limitations[]` so the gate refuses them like
+  the bounded check itself, and `pr-evidence` renders its internal check
+  input unbounded so routing counts the full finding set.
 - `ripr help --json` now projects a typed per-command `exit` object for the
   0/2/3 process contract (`schema_version` 2). Orchestrators can branch on
   `check` findings still completing with 0, `gate evaluate` `config_error`=2

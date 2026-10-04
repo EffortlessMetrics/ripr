@@ -52,6 +52,10 @@ pub(crate) struct GapDecisionLedgerReport {
     inputs: GapDecisionLedgerInputs,
     summary: GapDecisionLedgerSummary,
     analysis_outcome: Option<Value>,
+    /// The source document's `run_limitations[]`, propagated so a ledger
+    /// derived from a bounded run never presents as complete (#5203). The
+    /// gate reads the same position on the ledger it reads on check output.
+    run_limitations: Option<Value>,
     /// The analysis input's `source_subject` stamp and root, kept so a writer
     /// can derive the ledger stamp from them (#4544). Never rendered.
     input_source_subject: Option<Value>,
@@ -424,6 +428,7 @@ pub(crate) fn build_gap_decision_ledger_report(
 ) -> GapDecisionLedgerReport {
     let mut warnings = Vec::new();
     let mut analysis_outcome = None;
+    let mut run_limitations = None;
     let mut input_source_subject = None;
     let mut input_root = None;
     let mut records = match input.records_json {
@@ -432,6 +437,15 @@ pub(crate) fn build_gap_decision_ledger_report(
             analysis_outcome = source_value
                 .as_ref()
                 .and_then(|value| value.get("analysis_outcome").cloned());
+            // #5203: propagate the producer's run-state disclosure (for
+            // example `limited_findings_bound`) so a ledger built from a
+            // bounded check document stays visibly bounded. Without this the
+            // gate would evaluate the rendered prefix as a complete
+            // denominator. Any source kind may carry the entry; only
+            // presence propagates.
+            run_limitations = source_value
+                .as_ref()
+                .and_then(|value| value.get("run_limitations").cloned());
             // #4544: the ledger's stamp is derived from the stamp the analysis
             // output (or an earlier ledger) carries, never from the workspace
             // as it is when this ledger is written.
@@ -493,6 +507,7 @@ pub(crate) fn build_gap_decision_ledger_report(
         },
         summary,
         analysis_outcome,
+        run_limitations,
         input_source_subject,
         input_root,
         source_subject: None,
@@ -528,6 +543,8 @@ pub(crate) fn render_gap_decision_ledger_json(
         #[serde(skip_serializing_if = "Option::is_none")]
         analysis_outcome: Option<&'a Value>,
         #[serde(skip_serializing_if = "Option::is_none")]
+        run_limitations: Option<&'a Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         source_subject: Option<&'a GapSourceSubject>,
         #[serde(skip_serializing_if = "Option::is_none")]
         source_subject_unavailable: Option<&'a str>,
@@ -546,6 +563,7 @@ pub(crate) fn render_gap_decision_ledger_json(
         inputs: &report.inputs,
         summary: &report.summary,
         analysis_outcome: report.analysis_outcome.as_ref(),
+        run_limitations: report.run_limitations.as_ref(),
         source_subject: report.source_subject.as_ref(),
         source_subject_unavailable: report.source_subject_unavailable,
         records: &records,
@@ -687,6 +705,25 @@ pub(crate) fn render_gap_decision_ledger_markdown(report: &GapDecisionLedgerRepo
             md_inline(&complete),
             md_inline(kind)
         ));
+    }
+    // #5203: a ledger derived from a bounded run says so in the human
+    // surface too, naming each propagated run state.
+    if let Some(limitations) = report.run_limitations.as_ref().and_then(Value::as_array) {
+        let states = limitations
+            .iter()
+            .filter_map(|entry| {
+                entry
+                    .get("run_status")
+                    .and_then(Value::as_str)
+                    .or_else(|| entry.get("category").and_then(Value::as_str))
+            })
+            .collect::<Vec<_>>();
+        if !states.is_empty() {
+            out.push_str(&format!(
+                "Run limitations (propagated from the source run): `{}`\n\n",
+                md_inline(&states.join(", "))
+            ));
+        }
     }
 
     out.push_str("## Summary\n\n");
