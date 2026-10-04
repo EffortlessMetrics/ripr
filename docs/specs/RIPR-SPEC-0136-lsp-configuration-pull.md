@@ -131,7 +131,13 @@ negotiated `configuration_mode`, a per-field source map
 (`pulled` | `initialization` | `repo` | `default`) for the governed keys
 (six per the #2303 amendment, seven per the #1972 amendment), and the last
 pull state, epoch, failure, and
-recovery route. All status fields are additive and snake_case.
+recovery route. A present initialization or pushed key reports
+`initialization` only when the value was successfully applied. A
+recognized key with the wrong JSON type or an unknown literal is ignored
+without aborting the session; the disclosed source is the effective
+fallback (`repo` or `default`), and the server emits one
+`window/logMessage` warning naming the key and the reason (#5092). All
+status fields are additive and snake_case.
 
 A pull is a pure LSP round-trip: it never launches analysis, git, network
 beyond the LSP connection, or edits. Applying changed effective settings
@@ -366,6 +372,12 @@ then the recorded outcome stays superseded (first-cancel-wins).
   — the no-reschedule guard.
 - `crates/ripr/src/lsp/config.rs::tests::session_value_sources_disclose_per_field_origin`
   — per-field source disclosure.
+- `crates/ripr/src/lsp/config.rs::tests::malformed_initialization_option_does_not_claim_initialization_source`,
+  `valid_initialization_check_mode_still_claims_initialization_source`,
+  and `malformed_initialization_option_discloses_repo_fallback_source`
+  — a present-but-ignored initialization value discloses the effective
+  fallback and one bounded warning; a valid value still reports
+  `initialization` (#5092).
 - `crates/ripr/src/lsp/tests.rs::initialization_only_mode_discloses_transport_and_value_sources`
   and `pull_mode_is_pending_until_the_first_pull_resolves` — status
   disclosure and startup-window honesty.

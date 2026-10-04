@@ -178,7 +178,13 @@ impl LspAnalysisConfig {
     /// Per-field source disclosure for the seven governed session keys
     /// (`pulled` | `initialization` | `repo` | `default`), surfaced in the
     /// analysis status payload so defaults never masquerade as accepted
-    /// requested settings (#2031).
+    /// requested settings (#2031, #5092).
+    ///
+    /// `initialization` is reported only when the key is present in the
+    /// retained initialization/push layer *and* the value was successfully
+    /// applied. A recognized key with the wrong JSON type or an unknown
+    /// literal is ignored (the session stays up); the disclosed source is
+    /// the effective fallback (`repo` or `default`).
     ///
     /// Known limitation: `seam_diagnostics` is attributed `repo` whenever a
     /// `ripr.toml` was loaded, because the repository default and the
@@ -189,8 +195,55 @@ impl LspAnalysisConfig {
     pub(super) fn session_value_sources(&self) -> serde_json::Map<String, Value> {
         let session = self.session_options.as_ref().and_then(Value::as_object);
         let pulled = self.pulled_options.as_ref().and_then(Value::as_object);
+        let mut sources = serde_json::Map::new();
+        for (payload_key, option_key, repo_explicit) in self.session_source_entries() {
+            let source = if pulled.is_some_and(|options| options.contains_key(option_key)) {
+                "pulled"
+            } else if session.is_some_and(|options| {
+                options
+                    .get(option_key)
+                    .is_some_and(|value| session_option_value_is_valid(option_key, value))
+            }) {
+                "initialization"
+            } else if repo_explicit {
+                "repo"
+            } else {
+                "default"
+            };
+            sources.insert(payload_key.to_string(), Value::String(source.to_string()));
+        }
+        sources
+    }
+
+    /// One bounded `window/logMessage` warning per recognized initialization
+    /// or pushed key that was present but ignored (#5092). Callers emit these
+    /// strings; this owner only names the rejected key, the reason, and the
+    /// effective fallback source. The session is not aborted.
+    pub(super) fn ignored_initialization_option_warnings(&self) -> Vec<String> {
+        let Some(session) = self.session_options.as_ref().and_then(Value::as_object) else {
+            return Vec::new();
+        };
+        let sources = self.session_value_sources();
+        let mut warnings = Vec::new();
+        for (payload_key, option_key, _) in self.session_source_entries() {
+            let Some(value) = session.get(option_key) else {
+                continue;
+            };
+            if session_option_value_is_valid(option_key, value) {
+                continue;
+            }
+            let fallback = sources
+                .get(payload_key)
+                .and_then(Value::as_str)
+                .unwrap_or("default");
+            warnings.push(ignored_initialization_option_warning(option_key, fallback));
+        }
+        warnings
+    }
+
+    fn session_source_entries(&self) -> [(&str, &str, bool); 7] {
         let repo_config = self.repo_config();
-        let entries: [(&str, &str, bool); 7] = [
+        [
             ("base_ref", "baseRef", false),
             (
                 "check_mode",
@@ -215,21 +268,7 @@ impl LspAnalysisConfig {
             ),
             ("git_timeout_ms", "gitTimeoutMs", false),
             ("refresh_deadline_ms", "refreshDeadlineMs", false),
-        ];
-        let mut sources = serde_json::Map::new();
-        for (payload_key, option_key, repo_explicit) in entries {
-            let source = if pulled.is_some_and(|options| options.contains_key(option_key)) {
-                "pulled"
-            } else if session.is_some_and(|options| options.contains_key(option_key)) {
-                "initialization"
-            } else if repo_explicit {
-                "repo"
-            } else {
-                "default"
-            };
-            sources.insert(payload_key.to_string(), Value::String(source.to_string()));
-        }
-        sources
+        ]
     }
 
     pub(super) fn with_changed_session_options(&self, settings: &Value) -> Option<Self> {
@@ -363,19 +402,46 @@ fn apply_session_options(config: &mut LspAnalysisConfig, options: &serde_json::M
         config.diagnostic_profile = profile;
     }
 
-    // Lenient (#2303): a malformed initialization/pushed value is ignored and
-    // the current deadline (30s default) stays in effect; the pull path
-    // validates the same key fail-closed in `validate_pulled_value`.
+    // Lenient (#2303, #5092): a malformed initialization/pushed value is
+    // ignored and the current deadline (30s default) stays in effect. The
+    // pull path validates the same key fail-closed in `validate_pulled_value`.
+    // Source disclosure and `ignored_initialization_option_warnings` name
+    // the ignore so a default cannot masquerade as an accepted setting.
     if let Some(git_timeout_ms) = options.get("gitTimeoutMs").and_then(Value::as_u64) {
         config.git_timeout = Duration::from_millis(git_timeout_ms);
     }
 
-    // Lenient (#1972): a malformed initialization/pushed value is ignored and
-    // the current physical deadline (600s default) stays in effect; the pull
-    // path validates the same key fail-closed in `validate_pulled_value`.
+    // Lenient (#1972, #5092): a malformed initialization/pushed value is
+    // ignored and the current physical deadline (600s default) stays in
+    // effect; the pull path validates the same key fail-closed in
+    // `validate_pulled_value`.
     if let Some(refresh_deadline_ms) = options.get("refreshDeadlineMs").and_then(Value::as_u64) {
         config.refresh_deadline = Duration::from_millis(refresh_deadline_ms);
     }
+}
+
+/// Type/literal check shared by the lenient initialization path and the
+/// fail-closed pull path. Presence of a supported key is not an accepted
+/// requested setting (#5092, #2031).
+fn session_option_value_is_valid(key: &str, value: &Value) -> bool {
+    match key {
+        "baseRef" => value.as_str().is_some(),
+        "checkMode" => value
+            .as_str()
+            .is_some_and(|literal| parse_mode(literal).is_some()),
+        "includeUnchangedTests" | "seamDiagnostics" => value.as_bool().is_some(),
+        "diagnosticProfile" => value
+            .as_str()
+            .is_some_and(|literal| LspDiagnosticProfile::parse(literal).is_ok()),
+        "gitTimeoutMs" | "refreshDeadlineMs" => value.as_u64().is_some(),
+        _ => true,
+    }
+}
+
+fn ignored_initialization_option_warning(key: &str, source: &str) -> String {
+    format!(
+        "ripr: ignoring malformed initializationOption '{key}' (invalid type or literal); using {source} value instead"
+    )
 }
 
 fn supported_session_options(
@@ -452,20 +518,7 @@ fn validate_pulled_value(key: &str, value: &Value) -> Result<(), String> {
             "workspace/configuration value for `{key}` exceeds the {MAX_PULLED_VALUE_BYTES}-byte pulled-value bound"
         ));
     }
-    let valid = match key {
-        "baseRef" => value.as_str().is_some(),
-        "checkMode" => value
-            .as_str()
-            .is_some_and(|literal| parse_mode(literal).is_some()),
-        "includeUnchangedTests" | "seamDiagnostics" => value.as_bool().is_some(),
-        "diagnosticProfile" => value
-            .as_str()
-            .is_some_and(|literal| LspDiagnosticProfile::parse(literal).is_ok()),
-        "gitTimeoutMs" => value.as_u64().is_some(),
-        "refreshDeadlineMs" => value.as_u64().is_some(),
-        _ => true,
-    };
-    if valid {
+    if session_option_value_is_valid(key, value) {
         return Ok(());
     }
     Err(format!(
@@ -551,6 +604,13 @@ mod tests {
         let params = params_with(json!({"diagnosticProfile": "unknown"}));
         let config = config_from_params(&params, RiprConfig::default());
         assert_eq!(config.diagnostic_profile, LspDiagnosticProfile::Actionable);
+        assert_eq!(
+            config
+                .session_value_sources()
+                .get("diagnostic_profile")
+                .and_then(Value::as_str),
+            Some("default")
+        );
     }
 
     #[test]
@@ -588,6 +648,13 @@ diagnostic_profile = "quiet"
         // Falls back to the default rather than misinterpreting a
         // string as truthy.
         assert!(config.enable_seam_diagnostics);
+        assert_eq!(
+            config
+                .session_value_sources()
+                .get("seam_diagnostics")
+                .and_then(Value::as_str),
+            Some("default")
+        );
     }
 
     #[test]
@@ -950,6 +1017,116 @@ diagnostic_profile = "full"
     }
 
     #[test]
+    fn malformed_initialization_option_does_not_claim_initialization_source() -> Result<(), String>
+    {
+        // #5092: map membership is not an accepted requested setting. A
+        // wrong-cased `checkMode` stays the default and must disclose the
+        // fallback source, not `initialization`.
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"checkMode": "Deep"})),
+        );
+        if config.mode != Mode::Draft {
+            return Err(format!(
+                "malformed checkMode must keep the draft default, got {:?}",
+                config.mode
+            ));
+        }
+        let sources = config.session_value_sources();
+        match sources.get("check_mode").and_then(Value::as_str) {
+            Some("initialization") => {
+                return Err(
+                    "a silently ignored checkMode must not disclose source initialization"
+                        .to_string(),
+                );
+            }
+            Some("default") => {}
+            other => {
+                return Err(format!(
+                    "ignored checkMode must disclose the default fallback, got {other:?}"
+                ));
+            }
+        }
+        let warnings = config.ignored_initialization_option_warnings();
+        let expected = ignored_initialization_option_warning("checkMode", "default");
+        if warnings != [expected.clone()] {
+            return Err(format!(
+                "expected one bounded warning {expected:?}, got {warnings:?}"
+            ));
+        }
+        if warnings.iter().any(|warning| warning.contains("Deep")) {
+            return Err(
+                "the bounded warning must name the key and reason without echoing the rejected value"
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn valid_initialization_check_mode_still_claims_initialization_source() -> Result<(), String> {
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"checkMode": "deep"})),
+        );
+        if config.mode != Mode::Deep {
+            return Err(format!(
+                "valid checkMode deep must apply, got {:?}",
+                config.mode
+            ));
+        }
+        let sources = config.session_value_sources();
+        if sources.get("check_mode").and_then(Value::as_str) != Some("initialization") {
+            return Err(format!(
+                "applied checkMode must disclose initialization, got {:?}",
+                sources.get("check_mode")
+            ));
+        }
+        if !config.ignored_initialization_option_warnings().is_empty() {
+            return Err(format!(
+                "an applied checkMode must not emit an ignore warning, got {:?}",
+                config.ignored_initialization_option_warnings()
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn malformed_initialization_option_discloses_repo_fallback_source() -> Result<(), String> {
+        let repo_config = crate::config::tests_only_parse(
+            r#"
+[analysis]
+mode = "fast"
+"#,
+        )?;
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            repo_config,
+            Some(&json!({"checkMode": "Deep"})),
+        );
+        if config.mode != Mode::Fast {
+            return Err(format!(
+                "ignored checkMode must keep the repository mode, got {:?}",
+                config.mode
+            ));
+        }
+        let sources = config.session_value_sources();
+        if sources.get("check_mode").and_then(Value::as_str) != Some("repo") {
+            return Err(format!(
+                "ignored checkMode with a repository value must disclose repo, got {:?}",
+                sources.get("check_mode")
+            ));
+        }
+        let warnings = config.ignored_initialization_option_warnings();
+        let expected = ignored_initialization_option_warning("checkMode", "repo");
+        if warnings != [expected.clone()] {
+            return Err(format!(
+                "expected repo-fallback warning {expected:?}, got {warnings:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
     fn git_timeout_ms_applies_from_initialization_options() -> Result<(), String> {
         // #2303: a valid `gitTimeoutMs` session value sets the cooperative
         // per-invocation git deadline, and `check_input` is the one place
@@ -1006,6 +1183,17 @@ diagnostic_profile = "full"
                 "a malformed value must keep the 30s default, got {:?}",
                 config.git_timeout
             ));
+        }
+        if config
+            .session_value_sources()
+            .get("git_timeout_ms")
+            .and_then(Value::as_str)
+            != Some("default")
+        {
+            return Err(
+                "a silently ignored gitTimeoutMs must disclose default, not initialization"
+                    .to_string(),
+            );
         }
         Ok(())
     }
@@ -1125,6 +1313,17 @@ diagnostic_profile = "full"
                 "a malformed value must keep the 600s default, got {:?}",
                 config.refresh_deadline
             ));
+        }
+        if config
+            .session_value_sources()
+            .get("refresh_deadline_ms")
+            .and_then(Value::as_str)
+            != Some("default")
+        {
+            return Err(
+                "a silently ignored refreshDeadlineMs must disclose default, not initialization"
+                    .to_string(),
+            );
         }
         Ok(())
     }

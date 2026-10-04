@@ -11,6 +11,11 @@ are scoped or reviewed.
 
 ### Fixed
 
+- LSP: `session_value_sources` reports `initialization` only for applied
+  initialization options. A malformed value such as `checkMode: "Deep"` keeps
+  the session up, discloses the `repo` or `default` fallback, and emits one
+  `window/logMessage` warning naming the rejected key (#5092).
+
 - Source-subject stamps keep whitespace-bearing path identity, so a check JSON
   stamp for ` leading.py` does not collapse onto `leading.py`, omit a Git-quoted
   tab path, or treat a correct whitespace stamp as malformed. Parent, root, and
