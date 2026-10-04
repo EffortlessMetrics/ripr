@@ -153,8 +153,8 @@ pub(crate) fn fixture_git_ok_with_deadline(
         }
         // The timeout is the retryable/reconcilable outcome; every other
         // runner error propagates untouched.
-        Err(error) if crate::git::is_git_invocation_timeout(&error) => error,
-        Err(error) => return Err(error),
+        Err(error) if error.is_git_invocation_timeout() => error,
+        Err(error) => return Err(error.into()),
     };
 
     // Reconcile a timed-out commit: HEAD moved past the pre-commit
@@ -168,9 +168,9 @@ pub(crate) fn fixture_git_ok_with_deadline(
                 if landed {
                     return Ok(());
                 }
-                return Err(first);
+                return Err(first.into());
             }
-            Err(_) => return Err(first),
+            Err(_) => return Err(first.into()),
         }
     }
 
@@ -181,7 +181,7 @@ pub(crate) fn fixture_git_ok_with_deadline(
         _ => false,
     };
     if !retryable {
-        return Err(first);
+        return Err(first.into());
     }
     match crate::git::run_git_output_with_deadline_and_limit_isolated(
         root,
@@ -195,10 +195,8 @@ pub(crate) fn fixture_git_ok_with_deadline(
             root.display(),
             String::from_utf8_lossy(&output.stderr).trim()
         )),
-        Err(error) if crate::git::is_git_invocation_timeout(&error) => {
-            Err(format!("retry timed out: {error}"))
-        }
-        Err(error) => Err(error),
+        Err(error) if error.is_git_invocation_timeout() => Err(format!("retry timed out: {error}")),
+        Err(error) => Err(error.into()),
     }
 }
 

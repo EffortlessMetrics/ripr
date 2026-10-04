@@ -126,7 +126,8 @@ fn failed(detail: String) -> SubjectError {
 
 fn git(root: &Path, args: &[&str], deadline: Option<Duration>) -> Result<String, SubjectError> {
     let named = |detail: String| SubjectError::ExecutionFailed { detail };
-    let output = crate::git::run_git_output_with_deadline(root, args, deadline).map_err(named)?;
+    let output = crate::git::run_git_output_with_deadline(root, args, deadline)
+        .map_err(|error| named(error.to_string()))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let detail = stderr.lines().next().unwrap_or("unknown git error").trim();
@@ -773,7 +774,7 @@ mod tests {
         .err()
         .ok_or("worktree mode must fail closed on a subject")?;
         assert!(
-            error.contains("git candidate subject"),
+            error.to_string().contains("git candidate subject"),
             "worktree rejection must name the subject: {error}"
         );
         let repo_error = crate::analysis::run_repo_analysis_with_oracle_policy(

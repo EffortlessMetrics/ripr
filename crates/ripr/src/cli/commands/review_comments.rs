@@ -375,14 +375,14 @@ pub(in crate::cli) fn review_comments(args: &[String]) -> Result<(), String> {
 
 fn review_comments_with_diff_loader(
     args: &[String],
-    load_diff: impl Fn(&Path, &str, &str) -> Result<String, String>,
+    load_diff: impl Fn(&Path, &str, &str) -> Result<String, crate::core_error::CoreError>,
 ) -> Result<(), String> {
     review_comments_with_diff_loader_at(args, load_diff, Instant::now)
 }
 
 fn review_comments_with_diff_loader_at(
     args: &[String],
-    load_diff: impl Fn(&Path, &str, &str) -> Result<String, String>,
+    load_diff: impl Fn(&Path, &str, &str) -> Result<String, crate::core_error::CoreError>,
     now: impl Fn() -> Instant + Send + Sync + 'static,
 ) -> Result<(), String> {
     review_comments_with_admission(
@@ -397,7 +397,7 @@ fn review_comments_with_diff_loader_at(
 #[cfg(test)]
 fn review_comments_with_diff_loader_at_with_ceiling(
     args: &[String],
-    load_diff: impl Fn(&Path, &str, &str) -> Result<String, String>,
+    load_diff: impl Fn(&Path, &str, &str) -> Result<String, crate::core_error::CoreError>,
     now: impl Fn() -> Instant + Send + Sync + 'static,
     ceiling: GuidancePayloadCeiling,
 ) -> Result<(), String> {
@@ -412,7 +412,7 @@ fn review_comments_with_diff_loader_at_with_ceiling(
 
 fn review_comments_with_admission(
     args: &[String],
-    load_diff: impl Fn(&Path, &str, &str) -> Result<String, String>,
+    load_diff: impl Fn(&Path, &str, &str) -> Result<String, crate::core_error::CoreError>,
     now: impl Fn() -> Instant + Send + Sync + 'static,
     load_ceiling: impl FnOnce() -> Result<GuidancePayloadCeiling, String>,
     attribute_owners: impl FnOnce(
@@ -580,14 +580,19 @@ fn review_comments_with_admission(
         load_diff(&input.root, &options.base, &options.head)
     })
     .map_err(|error| {
-        if crate::git::is_git_invocation_timeout(&error)
-            || (analysis::cancellation::is_cancellation_error(&error)
+        if error.is_git_invocation_timeout()
+            || (analysis::cancellation::is_cancellation_error(&error.to_string())
                 && cancellation.abort_kind()
                     == Some(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded))
         {
             record_review_comments_timeout(&mut receipt, &receipt_path, "diff_discovery")
         } else {
-            record_review_comments_error(&mut receipt, &receipt_path, "diff_discovery", error)
+            record_review_comments_error(
+                &mut receipt,
+                &receipt_path,
+                "diff_discovery",
+                error.into(),
+            )
         }
     })?;
     if analysis::working_tree_has_tracked_changes(&input.root) {
@@ -892,13 +897,17 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
 /// and head are verified like `ripr check` verifies its base, and the range
 /// uses the pinned diff presentation, so ambient `color.diff` or
 /// `diff.submodule` config cannot empty or widen the changed-line set.
-fn load_review_comments_diff(root: &Path, base: &str, head: &str) -> Result<String, String> {
+fn load_review_comments_diff(
+    root: &Path,
+    base: &str,
+    head: &str,
+) -> Result<String, crate::core_error::CoreError> {
     let base = analysis::resolve_effective_base(
         root,
         Some(base),
         analysis::cancellation::remaining_budget(),
     )?;
-    analysis::load_diff_range_with_deadline(
+    analysis::load_diff_range_with_deadline_core(
         root,
         &base,
         head,
@@ -1201,17 +1210,19 @@ mod tests {
             return Err("an unresolvable base must fail".to_string());
         };
         assert!(
-            err.contains("the base `no-such-base` does not resolve to a commit")
-                && !err.contains("ambiguous argument"),
+            err.to_string()
+                .contains("the base `no-such-base` does not resolve to a commit")
+                && !err.to_string().contains("ambiguous argument"),
             "base failure must be named by ripr, got: {err}"
         );
         let Err(err) = load_review_comments_diff(&root, "HEAD~1", "no-such-head") else {
             return Err("an unresolvable head must fail".to_string());
         };
         assert!(
-            err.contains("the head `no-such-head` does not resolve to a commit")
-                && err.contains("--head <ref>")
-                && !err.contains("ambiguous argument"),
+            err.to_string()
+                .contains("the head `no-such-head` does not resolve to a commit")
+                && err.to_string().contains("--head <ref>")
+                && !err.to_string().contains("ambiguous argument"),
             "head failure must be named by ripr, got: {err}"
         );
         remove_fixture_tree(&root)
@@ -1228,7 +1239,7 @@ mod tests {
             &args(&[
                 "--root", &root_arg, "--base", "main", "--head", "HEAD", "--out", &out_arg,
             ]),
-            |_root, _base, _head| Err("synthetic diff failure".to_string()),
+            |_root, _base, _head| Err("synthetic diff failure".into()),
         );
 
         assert_eq!(result, Err("synthetic diff failure".to_string()));
@@ -1505,7 +1516,7 @@ mod tests {
                 "--out",
                 &out.display().to_string(),
             ]),
-            |_root, _base, _head| Err("gap-ledger path should not load git diff".to_string()),
+            |_root, _base, _head| Err("gap-ledger path should not load git diff".into()),
         )?;
 
         let rendered_json = std::fs::read_to_string(&out)
@@ -1553,7 +1564,7 @@ mod tests {
                 "--out",
                 &out.display().to_string(),
             ]),
-            |_root, _base, _head| Err("gap-ledger path should not load git diff".to_string()),
+            |_root, _base, _head| Err("gap-ledger path should not load git diff".into()),
         ) {
             Ok(()) => return Err("missing gap ledger should fail before diff loading".to_string()),
             Err(err) => err,
@@ -1587,7 +1598,7 @@ mod tests {
                 "--out",
                 &out.display().to_string(),
             ]),
-            |_root, _base, _head| Err("gap-ledger path should not load git diff".to_string()),
+            |_root, _base, _head| Err("gap-ledger path should not load git diff".into()),
         ) {
             Ok(()) => {
                 return Err("malformed gap ledger should fail before diff loading".to_string());
@@ -1739,7 +1750,7 @@ mod tests {
                 "--out",
                 &out.display().to_string(),
             ]),
-            |_, _, _| Err("source failure before the next deadline observation".to_string()),
+            |_, _, _| Err("source failure before the next deadline observation".into()),
             move || {
                 if owned_calls.fetch_add(1, Ordering::SeqCst) == 0 {
                     started
@@ -1859,7 +1870,7 @@ mod tests {
                 "--out",
                 &out.display().to_string(),
             ]),
-            |_root, _base, _head| Err("diff loader must not run".to_string()),
+            |_root, _base, _head| Err("diff loader must not run".into()),
             move || {
                 let call = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 if call == 0 {

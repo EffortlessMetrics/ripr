@@ -6685,7 +6685,7 @@ mod tests {
         run_git_within(&root, &args, Duration::from_mins(1))
             .map_err(|err| format!("control: {err}"))?;
         match run_git_within(&root, &args, Duration::ZERO) {
-            Err(err) if crate::git::is_git_invocation_timeout(&err) => Ok(()),
+            Err(err) if err.starts_with("git_invocation_timeout:") => Ok(()),
             other => Err(format!("zero deadline must be refused, got {other:?}")),
         }
     }

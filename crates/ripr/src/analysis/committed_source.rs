@@ -21,6 +21,7 @@
 //! workers) do not see it, so every overlay-aware read site runs on the
 //! pipeline thread.
 
+use crate::core_error::CoreError;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
@@ -235,7 +236,7 @@ pub(crate) fn read_source_bytes(root: &Path, relative: &Path) -> std::io::Result
 pub(crate) fn probe(
     root: &Path,
     git_timeout: Option<Duration>,
-) -> Result<Option<CommittedSourceOverlay>, String> {
+) -> Result<Option<CommittedSourceOverlay>, CoreError> {
     // `None` is the caller's "no deadline" (`--git-timeout 0`), as for the
     // diff loader; output stays bounded either way.
     let deadline = git_timeout;
@@ -333,7 +334,7 @@ fn is_regular_file_mode(mode: &str) -> bool {
     mode == "100644" || mode == "100755"
 }
 
-fn git_bytes(root: &Path, args: &[&str], deadline: Option<Duration>) -> Result<Vec<u8>, String> {
+fn git_bytes(root: &Path, args: &[&str], deadline: Option<Duration>) -> Result<Vec<u8>, CoreError> {
     let describe = args.iter().take(2).copied().collect::<Vec<_>>().join(" ");
     let output = crate::git::run_git_output_with_optional_deadline_and_limit(
         root,
@@ -341,14 +342,17 @@ fn git_bytes(root: &Path, args: &[&str], deadline: Option<Duration>) -> Result<V
         deadline,
         MAX_GIT_OUTPUT_BYTES,
     )
-    .map_err(|error| format!("committed-source probe: `git {describe}` failed: {error}"))?;
+    .map_err(|error| {
+        error.with_context(format!("committed-source probe: `git {describe}` failed"))
+    })?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let detail = stderr.lines().next().unwrap_or("unknown git error").trim();
         return Err(format!(
             "committed-source probe: `git {describe}` exited with {}: {detail}",
             output.status
-        ));
+        )
+        .into());
     }
     Ok(output.stdout)
 }

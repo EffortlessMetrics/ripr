@@ -21410,3 +21410,384 @@ fn line_hover_does_not_relist_a_finding_with_a_published_diagnostic() -> Result<
     }
     Ok(())
 }
+
+#[test]
+#[serial]
+fn typed_worktree_timeout_recovers_origins_and_consumed_sources_for_open_paths()
+-> Result<(), String> {
+    let fixture = boundary_gap_git_fixture_root("typed-timeout-open-paths")?;
+    let root = fixture.path();
+    let companion_path = Path::new("src/open_companion.rs");
+    let companion_bytes = b"pub fn index_only_marker() -> u8 { 7 }\n";
+    std::fs::write(root.join(companion_path), companion_bytes)
+        .map_err(|error| error.to_string())?;
+    run_lsp_scope_git(root, &["add", "src/open_companion.rs"])?;
+    run_lsp_scope_git(
+        root,
+        &[
+            "-c",
+            "user.email=ripr-test@example.com",
+            "-c",
+            "user.name=ripr-test",
+            "-c",
+            "commit.gpgSign=false",
+            "commit",
+            "-qm",
+            "tracked open-path control",
+        ],
+    )?;
+    let companion_digest = content_digest(companion_bytes);
+    let lib = root.join("src/lib.rs");
+    let baseline = std::fs::read_to_string(&lib).map_err(|error| error.to_string())?;
+    let edited = baseline.replace(">=", ">");
+    assert_ne!(
+        edited, baseline,
+        "the fixture must contain a changed boundary"
+    );
+    std::fs::write(&lib, &edited).map_err(|error| error.to_string())?;
+    let config = boundary_gap_lsp_config(crate::config::RiprConfig::default());
+    let expected_digest = content_digest(edited.as_bytes());
+    let overlay_error = crate::analysis::committed_source::probe(root, Some(Duration::ZERO))
+        .err()
+        .ok_or("zero deadline unexpectedly completed the committed-source probe")?;
+    assert!(overlay_error.is_git_invocation_timeout(), "{overlay_error}");
+    assert!(
+        overlay_error
+            .to_string()
+            .starts_with("committed-source probe:")
+    );
+    for open_paths in [
+        std::collections::BTreeSet::new(),
+        std::collections::BTreeSet::from([companion_path.to_path_buf()]),
+    ] {
+        let mut input = config.check_input(root);
+        input.base = Some("HEAD".into());
+        input.git_timeout = Some(Duration::ZERO);
+        let result = crate::app::check_workspace_worktree_with_sources_open_rust_paths_and_progress(
+            input.clone(),
+            config.repo_config(),
+            &open_paths,
+            None,
+        );
+        let error = match result {
+            Err(error) => error,
+            Ok(_) => return Err("zero deadline unexpectedly completed analysis".into()),
+        };
+        assert!(error.is_git_invocation_timeout(), "{error}");
+        input.git_timeout = Some(Duration::from_secs(30));
+        let (output, origins, consumed_sources) =
+            crate::app::check_workspace_worktree_with_sources_open_rust_paths_and_progress(
+                input,
+                config.repo_config(),
+                &open_paths,
+                None,
+            )?;
+        let tracked = output
+            .findings
+            .iter()
+            .filter(|finding| finding.probe.location.file.ends_with("src/lib.rs"))
+            .collect::<Vec<_>>();
+        assert!(
+            !tracked.is_empty(),
+            "the recovered analysis must read the changed Rust subject"
+        );
+        for finding in tracked {
+            assert!(
+                origins.for_finding(finding).is_some(),
+                "missing retained Rust origin"
+            );
+        }
+        assert_eq!(
+            consumed_sources.digest(Path::new("src/lib.rs")),
+            Some(expected_digest.clone())
+        );
+        let expected_companion = (!open_paths.is_empty()).then(|| companion_digest.clone());
+        assert_eq!(
+            consumed_sources.digest(companion_path),
+            expected_companion,
+            "unchanged tracked companion must distinguish open-path propagation"
+        );
+        assert!(
+            output
+                .findings
+                .iter()
+                .all(|finding| { !finding.probe.location.file.ends_with(companion_path) }),
+            "the unchanged companion must remain an index-only input"
+        );
+        let projected = super::diagnostics::workspace_diagnostics_with_config_and_open_rust_paths(
+            root,
+            &config,
+            true,
+            &open_paths,
+        )?;
+        assert_eq!(
+            projected
+                .snapshot
+                .rust_consumed_sources
+                .digest(companion_path),
+            expected_companion,
+            "the current LSP tuple route must retain the companion commitment"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[serial]
+fn unresolvable_base_refresh_keeps_the_no_snapshot_error_route() -> Result<(), String> {
+    let fixture = boundary_gap_git_fixture_root("unresolvable-base-refresh")?;
+    let root = fixture.path();
+    let lib = root.join("src/lib.rs");
+    let baseline = std::fs::read_to_string(&lib).map_err(|error| error.to_string())?;
+    let edited = baseline.replace(">=", ">");
+    assert_ne!(
+        edited, baseline,
+        "the fixture must contain a changed boundary"
+    );
+    std::fs::write(&lib, edited).map_err(|error| error.to_string())?;
+
+    let mut config = boundary_gap_lsp_config(crate::config::RiprConfig::default());
+    config.git_timeout = Duration::from_secs(30);
+    let healthy = workspace_diagnostics_with_config(root, &config, true)?;
+    assert!(
+        !healthy.snapshot.findings.is_empty(),
+        "the valid base must analyze the nonempty changed subject"
+    );
+
+    config.base_ref = Some("ripr-err1-no-such-base".to_string());
+    let error = match workspace_diagnostics_with_config(root, &config, true) {
+        Err(error) => error,
+        Ok(_) => return Err("an unresolvable base must not produce a snapshot".to_string()),
+    };
+    assert!(
+        error.contains("the base `ripr-err1-no-such-base` does not resolve to a commit"),
+        "the error must identify the unresolvable base, got: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+#[serial]
+fn framed_lsp_zero_git_timeout_commits_limited_once_and_recovers() -> Result<(), String> {
+    work_done_progress_runtime()?.block_on(async {
+        let fixture = boundary_gap_git_fixture_root("framed-typed-git-timeout")?;
+        let root = fixture.path();
+        let lib = root.join("src/lib.rs");
+        let baseline = std::fs::read_to_string(&lib).map_err(|error| error.to_string())?;
+        let edited = baseline.replace(">=", ">");
+        assert_ne!(
+            edited, baseline,
+            "the recovered fixture must contain a changed boundary"
+        );
+        std::fs::write(&lib, edited).map_err(|error| error.to_string())?;
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+        let (mut client_read, mut client_write) = tokio::io::split(client_io);
+        let (server_read, server_write) = tokio::io::split(server_io);
+        let (service, socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let mut server_task = tokio::spawn(async move {
+            Server::new(server_read, server_write, socket)
+                .serve(service)
+                .await;
+        });
+        let root_uri = file_uri_for_path(root)?;
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": {
+                    "processId": null, "rootUri": root_uri.as_str(),
+                    "initializationOptions": {
+                        "baseRef": "HEAD", "checkMode": "instant",
+                        "diagnosticProfile": "full", "gitTimeoutMs": 0
+                    },
+                    "capabilities": {"window": {"workDoneProgress": true}}
+                }
+            }),
+        )
+        .await?;
+        let initialized = read_lsp_response(&mut client_read, 1).await?;
+        assert!(initialized.get("error").is_none(), "{initialized}");
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0", "method": "initialized", "params": {}
+            }),
+        )
+        .await?;
+        let limited = run_wire_refresh_collecting(&mut client_read, &mut client_write, 2).await?;
+        let statuses = analysis_status_params(&limited);
+        let status = statuses
+            .last()
+            .ok_or("the timeout committed no analysis status")?;
+        assert_eq!(status["run_status"], "limited");
+        let components = status["components"]
+            .as_array()
+            .ok_or("missing component outcomes")?;
+        let diff = components
+            .iter()
+            .find(|outcome| outcome["component"] == "diff")
+            .ok_or("the timeout committed no diff outcome")?;
+        assert_eq!(diff["state"], "failed");
+        assert_eq!(diff["kind"], "git_invocation_timeout");
+        assert_eq!(diff["findings_trustworthy"], false);
+        assert!(
+            !diff["snapshot_identity"].is_null(),
+            "the failure must belong to a committed snapshot"
+        );
+        assert_eq!(diff["recovery"], "retry ripr.refreshDiagnostics");
+        let ends = limited
+            .iter()
+            .filter(|message| {
+                message["method"] == "$/progress" && message["params"]["value"]["kind"] == "end"
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ends.len(),
+            1,
+            "one accepted limited refresh must end exactly once"
+        );
+        assert_eq!(
+            ends[0]["params"]["value"]["message"],
+            "analysis completed with limited evidence"
+        );
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0", "id": 3, "method": "workspace/executeCommand",
+                "params": {"command": COLLECT_WORKSPACE_STATUS_COMMAND, "arguments": []}
+            }),
+        )
+        .await?;
+        let workspace_status = read_lsp_response(&mut client_read, 3).await?;
+        assert_eq!(workspace_status["result"]["diagnostics"]["findings"], 0);
+        assert_eq!(workspace_status["result"]["run_status"], "limited");
+
+        // The real configuration notification restores the normal deadline.
+        // It owns one automatic refresh; await that run instead of adding
+        // another explicit request that could create a second progress token.
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0", "method": "workspace/didChangeConfiguration",
+                "params": {"settings": {"ripr": {"gitTimeoutMs": 30000}}}
+            }),
+        )
+        .await?;
+        let mut recovered = Vec::new();
+        tokio::time::timeout(Duration::from_mins(1), async {
+            loop {
+                let message = read_lsp_message(&mut client_read).await?;
+                if message["method"] == "window/workDoneProgress/create" {
+                    let id = message
+                        .get("id")
+                        .cloned()
+                        .ok_or("create request carried no id")?;
+                    write_lsp_message(
+                        &mut client_write,
+                        serde_json::json!({
+                            "jsonrpc": "2.0", "id": id, "result": null
+                        }),
+                    )
+                    .await?;
+                    continue;
+                }
+                let ended = message["method"] == "$/progress"
+                    && message["params"]["value"]["kind"] == "end";
+                recovered.push(message);
+                if ended {
+                    return Ok::<(), String>(());
+                }
+            }
+        })
+        .await
+        .map_err(|error| format!("normal-timeout recovery did not finish: {error}"))??;
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0", "id": 4, "method": "workspace/executeCommand",
+                "params": {"command": COLLECT_WORKSPACE_STATUS_COMMAND, "arguments": []}
+            }),
+        )
+        .await?;
+        let recovered_status = read_lsp_response(&mut client_read, 4).await?;
+        assert_eq!(recovered_status["result"]["run_status"], "seams_deferred");
+        assert!(
+            recovered_status["result"]["diagnostics"]["findings"]
+                .as_u64()
+                .is_some_and(|count| count > 0),
+            "recovery must analyze the nonempty changed subject"
+        );
+        let recovered_ends = recovered
+            .iter()
+            .filter(|message| {
+                message["method"] == "$/progress" && message["params"]["value"]["kind"] == "end"
+            })
+            .count();
+        assert_eq!(recovered_ends, 1);
+        // Configuration changes request Interactive analysis. A separate
+        // explicit request is required to establish a full recovered run.
+        let full = run_wire_refresh_collecting(&mut client_read, &mut client_write, 5).await?;
+        let full_statuses = analysis_status_params(&full);
+        let full_status = full_statuses
+            .last()
+            .ok_or("explicit recovery committed no status")?;
+        assert_eq!(full_status["run_status"], "full");
+        let full_ends = full
+            .iter()
+            .filter(|message| {
+                message["method"] == "$/progress" && message["params"]["value"]["kind"] == "end"
+            })
+            .count();
+        assert_eq!(
+            full_ends, 1,
+            "one explicit full refresh must end exactly once"
+        );
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0", "id": 6, "method": "workspace/executeCommand",
+                "params": {"command": COLLECT_WORKSPACE_STATUS_COMMAND, "arguments": []}
+            }),
+        )
+        .await?;
+        let full_workspace_status = read_lsp_response(&mut client_read, 6).await?;
+        assert_eq!(full_workspace_status["result"]["run_status"], "full");
+        assert!(
+            full_workspace_status["result"]["diagnostics"]["findings"]
+                .as_u64()
+                .is_some_and(|count| count > 0),
+            "full recovery must analyze the changed subject"
+        );
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0", "id": 7, "method": "shutdown", "params": null
+            }),
+        )
+        .await?;
+        let shutdown = read_lsp_response(&mut client_read, 7).await?;
+        assert!(shutdown.get("error").is_none(), "{shutdown}");
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0", "method": "exit", "params": null
+            }),
+        )
+        .await?;
+        client_write
+            .shutdown()
+            .await
+            .map_err(|error| error.to_string())?;
+        match tokio::time::timeout(Duration::from_secs(2), &mut server_task).await {
+            Ok(result) => {
+                result.map_err(|error| error.to_string())?;
+            }
+            Err(_) => {
+                server_task.abort();
+                let _ = server_task.await;
+                return Err("LSP server did not stop after exit".into());
+            }
+        }
+        Ok(())
+    })
+}

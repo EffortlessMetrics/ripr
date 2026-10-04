@@ -72,6 +72,12 @@ are scoped or reviewed.
   `diagnosticProfile` key and `[lsp] diagnostic_profile = "full"` in
   `ripr.toml`, and labels `ripr.diagnosticProfile` as the VS Code setting,
   instead of telling every client to set the VS Code-only name (#5094).
+- Git invocation timeout is a crate-internal typed `CoreError` variant. Semantic
+  consumers match the variant (including through structured context) instead of
+  the `git_invocation_timeout` Display prefix. Public wording, LSP
+  `git_invocation_timeout` kind (#2811), exit mapping, and process cleanup are
+  unchanged.
+
 - Rust finding output preserves the matched related-test/oracle count before
   bounded packing. JSON, SARIF, and human totals agree while retained rows and
   exposure classification remain unchanged. (#5146)

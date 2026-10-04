@@ -282,7 +282,7 @@ fn resolve_revision(root: &Path, revision: &str, deadline: Option<Duration>) -> 
             &["rev-parse", "--verify", &object],
             Some(deadline),
         ),
-        None => Err("revision resolution budget exhausted (not spawned)".to_string()),
+        None => Err("revision resolution budget exhausted (not spawned)".into()),
     };
     output
         .ok()

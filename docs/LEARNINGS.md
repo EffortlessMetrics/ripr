@@ -39,6 +39,28 @@ whose follow fails with a non-`NotFound` error (symlink into an unreadable
 directory) is unreadable, not a non-directory. Do not give MissingRoot's
 Directory re-classify arm the missing-path sentence.
 
+## 2026-10-03: typed timeouts must survive the current consumer path (#4859)
+
+Git timeout classification belongs to the crate-internal `CoreError` variant;
+`Message` never acquires that meaning from its Display text. Structured context
+preserves the family until the public String boundary. The current worktree
+check returns output, Rust diagnostic origins, and consumed source commitments
+and observes producer progress. Carry the typed error through that tuple route
+and its open-path variant; replacing it with an older check adapter discards
+landed behavior. Committed-source reads retain the typed family through context.
+
+Control placement matters: wrapped timeout and lookalike Message tests invoke
+the production LSP error decision before the renderer. The framed server control
+uses numeric `gitTimeoutMs = 0` with explicit base `HEAD`, then restores the normal
+deadline and requires a nonempty recovery. Preserve spawned-timeout repair
+guidance: `--git-timeout SECS` or `RIPR_GIT_TIMEOUT=<seconds>` for CLI runs
+(`0 disables it`), and the editor session `gitTimeoutMs` initialization option.
+Editor zero remains the explicit fail-fast stimulus in the framed control.
+Fixed root-probe guidance has its own escape hatch; bounded cat-file session
+deadlines, cancellation Display, and terminate/reap behavior remain independent
+compatibility obligations. Source inspection and a patch
+application receipt establish bytes, not compilation or behavioral execution.
+
 ## 2026-10-02: property macro spelling is not execution provenance (#4789)
 
 The #4835 overlay indexed token-tree functions as tests and accepted

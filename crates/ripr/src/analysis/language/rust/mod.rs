@@ -93,7 +93,7 @@ const DIFF_CHANGED_RUST_LINE_LIMIT_ENV: &str = "RIPR_MAX_DIFF_CHANGED_RUST_LINES
 pub(crate) const DIFF_SCOPE_OVERSIZED_PREFIX: &str = "diff_scope_oversized";
 
 /// True when `error` is the named diff-scope guard error (#2299). Matchable
-/// in the style of `git::is_git_invocation_timeout`: only the raw,
+/// by its existing String-family boundary: only the raw,
 /// unwrapped guard error matches — a wrapped error (for example
 /// `workspace analysis failed: ...`) does not. The exact tag must be followed
 /// immediately by its colon delimiter; lookalike names are different errors.

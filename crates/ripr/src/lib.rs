@@ -55,6 +55,9 @@
 // deliberately carry the contract.
 mod analysis_outcome;
 mod atomic_file;
+// Crate-internal typed error authority (#4859). Git invocation timeout is
+// the first migrated family; later slices extend this enum.
+mod core_error;
 // Bounded reads for user-named CLI file and stdin inputs (#4480).
 mod bounded_input;
 // Commit record parser shared with build.rs; the crate only unit-tests it.

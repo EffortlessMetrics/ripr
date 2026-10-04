@@ -6,14 +6,15 @@
 //! unified and the process-policy allowlist has a single canonical entry
 //! point.
 //!
-//! #2303: every entry point accepts an optional cooperative deadline. When a
-//! deadline is set, the child is polled on a short interval; a git invocation
-//! that exceeds the deadline is terminated and reaped, and the caller gets a
-//! named, matchable error with the [`GIT_INVOCATION_TIMEOUT_PREFIX`] prefix.
-//! The poll loop also checks cooperative analysis cancellation each tick, so
-//! a hung git invocation honors an LSP refresh supersede instead of pinning
-//! the refresh worker. `None` keeps the invocation unbounded (the CLI
-//! behavior — byte-identical to the pre-#2303 path).
+//! #2303 / #4859: every entry point accepts an optional cooperative deadline.
+//! When a deadline is set, the child is polled on a short interval; a git
+//! invocation that exceeds the deadline is terminated and reaped, and the
+//! caller gets a typed [`crate::core_error::CoreError::GitInvocationTimeout`].
+//! Display keeps the public `git_invocation_timeout:` wording. The poll loop
+//! also checks cooperative analysis cancellation each tick, so a hung git
+//! invocation honors an LSP refresh supersede instead of pinning the refresh
+//! worker. `None` keeps the invocation unbounded (the CLI behavior —
+//! byte-identical to the pre-#2303 path).
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -21,6 +22,7 @@ use std::process::{Command, Output, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+use crate::core_error::CoreError;
 use crate::process_owner::OwnedProcess;
 
 /// Grace period for draining stdout/stderr after a timed process-tree kill.
@@ -30,14 +32,11 @@ use crate::process_owner::OwnedProcess;
 /// LSP worker indefinitely while still allowing normal output to finish.
 const POST_KILL_DRAIN_GRACE: Duration = Duration::from_secs(5);
 
-/// Named, matchable prefix for git invocation timeout errors (#2303). The
-/// LSP refresh path matches this prefix to convert a diff-load timeout into
-/// a committed limited snapshot instead of a dropped refresh.
-pub(crate) const GIT_INVOCATION_TIMEOUT_PREFIX: &str = "git_invocation_timeout";
+/// Public Display / LSP kind token; semantic consumers use CoreError.
+pub(crate) const GIT_INVOCATION_TIMEOUT_PREFIX: &str =
+    crate::core_error::GIT_INVOCATION_TIMEOUT_KIND;
 
-const GIT_TIMEOUT_REPAIR_GUIDANCE: &str = " Repair route: raise or disable the git deadline (0 disables it) — \
-     --git-timeout SECS or RIPR_GIT_TIMEOUT=<seconds> for CLI runs, the \
-     gitTimeoutMs initialization option for editor sessions — then re-run.";
+pub(crate) use crate::core_error::GIT_TIMEOUT_REPAIR_GUIDANCE;
 
 /// Cause and repair when the git program itself is missing (#4735).
 ///
@@ -46,15 +45,6 @@ const GIT_TIMEOUT_REPAIR_GUIDANCE: &str = " Repair route: raise or disable the g
 /// run a command that also needs git.
 pub(crate) const GIT_NOT_FOUND_ON_PATH_MESSAGE: &str =
     "git was not found on PATH; install git, or pass a saved diff with `--diff PATH` / `--diff -`";
-
-/// True when `error` is the named git invocation timeout error (#2303).
-/// Matchable in the style of `analysis::cancellation::is_cancellation_error`:
-/// require the exact raw tag and its colon delimiter, without wrapper text.
-pub(crate) fn is_git_invocation_timeout(error: &str) -> bool {
-    error
-        .strip_prefix(GIT_INVOCATION_TIMEOUT_PREFIX)
-        .is_some_and(|suffix| suffix.starts_with(':'))
-}
 
 /// True when `error` is the named missing-git spawn failure (#4735).
 pub(crate) fn is_git_not_found_on_path(error: &str) -> bool {
@@ -73,28 +63,28 @@ const POLL_INTERVAL: Duration = Duration::from_millis(50);
 /// stdout: <first 500 chars>
 /// stderr: <trimmed>
 /// ```
-pub(crate) fn run_git(root: &Path, args: &[&str]) -> Result<String, String> {
+pub(crate) fn run_git(root: &Path, args: &[&str]) -> Result<String, CoreError> {
     let output = run_git_output_with_deadline(root, args, None)?;
     if output.status.success() {
         String::from_utf8(output.stdout)
             .map(|value| value.trim().to_string())
             .map_err(|err| {
-                format!(
+                CoreError::message(format!(
                     "git -C {} {:?} produced non-UTF-8 output: {err}",
                     root.display(),
                     args
-                )
+                ))
             })
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        Err(format!(
+        Err(CoreError::message(format!(
             "git -C {} {:?} failed\nstdout: {}\nstderr: {}",
             root.display(),
             args,
             stdout.trim(),
             stderr.trim()
-        ))
+        )))
     }
 }
 
@@ -112,15 +102,15 @@ fn trimmed_stdout(output: &std::process::Output) -> Result<String, String> {
 ///
 /// `Err` is reserved for invocation-level failures: spawn failure, wait
 /// failure, cooperative cancellation, a zero deadline (rejected before
-/// spawning), or deadline expiry (named [`GIT_INVOCATION_TIMEOUT_PREFIX`]
-/// error, child terminated and reaped). A non-zero exit status is `Ok` so
+/// spawning), or deadline expiry (typed [`CoreError::GitInvocationTimeout`],
+/// child terminated and reaped). A non-zero exit status is `Ok` so
 /// callers that probe (`rev-parse --verify --quiet`, `symbolic-ref --quiet`)
 /// keep their own status handling.
 pub(crate) fn run_git_output_with_deadline(
     root: &Path,
     args: &[&str],
     timeout: Option<Duration>,
-) -> Result<Output, String> {
+) -> Result<Output, CoreError> {
     let describe = format!("git -C {} {:?}", root.display(), args);
     let command = git_command(root, args);
     // `current_dir(root)`, not `git -C <root>`: for a missing/unusable root
@@ -373,7 +363,9 @@ pub(crate) fn probe_work_tree_root(root: &Path) -> Result<WorkTreeRootProbe, Str
         &describe,
     ) {
         Ok(output) => output,
-        Err(error) if is_git_not_found_on_path(&error) => return Ok(WorkTreeRootProbe::Unverified),
+        Err(error) if is_git_not_found_on_path(&error.to_string()) => {
+            return Ok(WorkTreeRootProbe::Unverified);
+        }
         Err(error) => return Err(work_tree_root_probe_error(error)),
     };
     if !output.status.success() {
@@ -388,17 +380,16 @@ pub(crate) fn probe_work_tree_root(root: &Path) -> Result<WorkTreeRootProbe, Str
     Ok(classify_work_tree_root_stdout(&output.stdout))
 }
 
-fn work_tree_root_probe_error(error: String) -> String {
-    // This probe has a fixed deadline. Its check/cache callers name their own
-    // explicit-root escape hatches; configurable diff-load advice cannot help.
-    // Match the raw timeout tag and exact suffix so cleanup failures (which
-    // may quote a suppressed timeout) and arbitrary path bytes remain intact.
-    if is_git_invocation_timeout(&error)
-        && let Some(cause) = error.strip_suffix(GIT_TIMEOUT_REPAIR_GUIDANCE)
-    {
+fn work_tree_root_probe_error(error: CoreError) -> String {
+    // The fixed probe deadline cannot be changed by diff-load knobs. Keep
+    // cleanup failures and lookalike messages intact; only typed timeouts
+    // lose the configurable repair suffix at this Display boundary.
+    let is_timeout = error.is_git_invocation_timeout();
+    let rendered = error.to_string();
+    if is_timeout && let Some(cause) = rendered.strip_suffix(GIT_TIMEOUT_REPAIR_GUIDANCE) {
         return cause.to_string();
     }
-    error
+    rendered
 }
 
 fn classify_work_tree_root_stdout(stdout: &[u8]) -> WorkTreeRootProbe {
@@ -425,7 +416,7 @@ pub(crate) fn run_git_output_with_deadline_and_env(
     args: &[&str],
     envs: &[(&str, &std::ffi::OsStr)],
     timeout: Option<Duration>,
-) -> Result<Output, String> {
+) -> Result<Output, CoreError> {
     let describe = format!("git -C {} {:?}", root.display(), args);
     let mut command = git_command(root, args);
     for (key, value) in envs {
@@ -446,9 +437,11 @@ pub(crate) fn run_git_output_with_deadline_and_limit(
     args: &[&str],
     timeout: Duration,
     max_output_bytes: usize,
-) -> Result<Output, String> {
+) -> Result<Output, CoreError> {
     if max_output_bytes == 0 {
-        return Err("git output limit must be greater than zero".to_string());
+        return Err(CoreError::message(
+            "git output limit must be greater than zero",
+        ));
     }
     let describe = format!("git -C {} {:?}", root.display(), args);
     collect_output_with_deadline_and_limit(
@@ -465,9 +458,11 @@ pub(crate) fn run_git_output_with_deadline_and_limit_isolated(
     args: &[&str],
     timeout: Duration,
     max_output_bytes: usize,
-) -> Result<Output, String> {
+) -> Result<Output, CoreError> {
     if max_output_bytes == 0 {
-        return Err("git output limit must be greater than zero".to_string());
+        return Err(CoreError::message(
+            "git output limit must be greater than zero",
+        ));
     }
     let describe = format!("isolated git -C {} {:?}", root.display(), args);
     let mut command = git_command(root, args);
@@ -493,7 +488,7 @@ pub(crate) fn collect_output_with_deadline_and_limit(
     timeout: Duration,
     max_output_bytes: usize,
     describe: &str,
-) -> Result<Output, String> {
+) -> Result<Output, CoreError> {
     collect_output_with_optional_deadline_and_limit(
         command,
         Some(timeout),
@@ -510,9 +505,11 @@ pub(crate) fn run_git_output_with_optional_deadline_and_limit(
     args: &[&str],
     timeout: Option<Duration>,
     max_output_bytes: usize,
-) -> Result<Output, String> {
+) -> Result<Output, CoreError> {
     if max_output_bytes == 0 {
-        return Err("git output limit must be greater than zero".to_string());
+        return Err(CoreError::message(
+            "git output limit must be greater than zero",
+        ));
     }
     let describe = format!("git -C {} {:?}", root.display(), args);
     collect_output_with_optional_deadline_and_limit(
@@ -528,11 +525,9 @@ fn collect_output_with_optional_deadline_and_limit(
     timeout: Option<Duration>,
     max_output_bytes: usize,
     describe: &str,
-) -> Result<Output, String> {
+) -> Result<Output, CoreError> {
     if timeout.is_some_and(|timeout| timeout.is_zero()) {
-        return Err(format!(
-            "{GIT_INVOCATION_TIMEOUT_PREFIX}: {describe} was given a zero deadline (not spawned)"
-        ));
+        return Err(CoreError::git_invocation_timeout(describe, 0, false));
     }
     command
         .stdin(Stdio::null())
@@ -561,17 +556,23 @@ fn collect_output_with_optional_deadline_and_limit(
     let stderr = stderr_result?;
 
     match wait {
-        ChildWait::Exited(_) if stdout.exceeded || stderr.exceeded => Err(format!(
-            "git_output_limit_exceeded: {describe} exceeded the {max_output_bytes}-byte per-stream capture limit"
-        )),
+        ChildWait::Exited(_) if stdout.exceeded || stderr.exceeded => {
+            Err(CoreError::message(format!(
+                "git_output_limit_exceeded: {describe} exceeded the {max_output_bytes}-byte per-stream capture limit"
+            )))
+        }
         ChildWait::Exited(status) => Ok(Output {
             status,
             stdout: stdout.bytes,
             stderr: stderr.bytes,
         }),
-        ChildWait::TimedOut(message) | ChildWait::Cancelled(message) => Err(message),
-        ChildWait::WaitFailed(err) => Err(format!("failed while waiting on {describe}: {err}")),
-        ChildWait::CleanupFailed(message) => Err(message),
+        ChildWait::TimedOut(error) => Err(error),
+        ChildWait::Cancelled(message) | ChildWait::CleanupFailed(message) => {
+            Err(CoreError::message(message))
+        }
+        ChildWait::WaitFailed(err) => Err(CoreError::message(format!(
+            "failed while waiting on {describe}: {err}"
+        ))),
     }
 }
 
@@ -722,7 +723,7 @@ const CAT_FILE_BATCH_STDERR_BYTES: usize = 8 * 1024;
 impl CatFileBatch {
     /// Spawn `git cat-file --batch` in `root`. `budget` is the single
     /// overall deadline for the whole session, enforced incrementally.
-    pub(crate) fn spawn(root: &Path, budget: Duration) -> Result<Self, String> {
+    pub(crate) fn spawn(root: &Path, budget: Duration) -> Result<Self, CoreError> {
         let describe = format!("git -C {} cat-file --batch", root.display());
         let mut command = git_command(root, &["cat-file", "--batch"]);
         command
@@ -774,27 +775,29 @@ impl CatFileBatch {
     /// terminate-then-classify contract (`ChildWait` docs): a failed
     /// termination is reported as an incomplete cleanup naming the
     /// suppressed outcome, never as the outcome itself.
-    fn abort(&mut self, trigger: &str, pending: String) -> String {
+    fn abort(&mut self, trigger: &str, pending: impl Into<CoreError>) -> CoreError {
+        let pending = pending.into();
         match self.child.terminate_tree() {
             Ok(()) => pending,
             Err(cleanup) => format!(
                 "{trigger} of {} did not complete tree cleanup; the child may still be \
                  running: {cleanup} (suppressed wait outcome: {pending})",
                 self.describe
-            ),
+            )
+            .into(),
         }
     }
 
-    /// Map a stream-read failure onto the session error text: a read that
-    /// outlived the remaining budget becomes the named
-    /// `git_invocation_timeout` classification (raw prefix preserved so
-    /// `is_git_invocation_timeout` keeps matching), anything else is the
-    /// stream's own message.
-    fn classify_read_error(&mut self, error: CatFileBatchReadError) -> String {
+    /// Preserve a deadline expiry as the typed timeout through the session.
+    /// Other stream failures keep their existing Display message.
+    fn classify_read_error(&mut self, error: CatFileBatchReadError) -> CoreError {
         match error {
             CatFileBatchReadError::TimedOut => {
-                let message =
-                    git_invocation_timeout_message(&self.describe, self.budget.as_millis());
+                let message = CoreError::git_invocation_timeout(
+                    &self.describe,
+                    self.budget.as_millis(),
+                    true,
+                );
                 self.abort("timeout", message)
             }
             CatFileBatchReadError::Failed(message) => self.abort("stream failure", message),
@@ -804,7 +807,7 @@ impl CatFileBatch {
     /// Queue one blob request and read its response header. Returns the
     /// announced blob size in bytes, or `None` when git reports the object
     /// missing (the caller fails closed naming the identity).
-    pub(crate) fn request_blob(&mut self, object: &str) -> Result<Option<u64>, String> {
+    pub(crate) fn request_blob(&mut self, object: &str) -> Result<Option<u64>, CoreError> {
         if let Err(cancelled) = crate::analysis::cancellation::checkpoint() {
             return Err(self.abort("cancellation", cancelled));
         }
@@ -851,7 +854,7 @@ impl CatFileBatch {
     /// Read exactly `buf.len()` bytes of the current blob's content. Chunks
     /// of `buf` sized by the caller bound resident memory; the overall
     /// session deadline is enforced between chunk reads.
-    pub(crate) fn read_blob_bytes(&mut self, buf: &mut [u8]) -> Result<(), String> {
+    pub(crate) fn read_blob_bytes(&mut self, buf: &mut [u8]) -> Result<(), CoreError> {
         if let Err(cancelled) = crate::analysis::cancellation::checkpoint() {
             return Err(self.abort("cancellation", cancelled));
         }
@@ -862,7 +865,7 @@ impl CatFileBatch {
 
     /// Consume one blob's trailing newline and fail closed on a corrupt
     /// stream framing.
-    pub(crate) fn end_blob(&mut self) -> Result<(), String> {
+    pub(crate) fn end_blob(&mut self) -> Result<(), CoreError> {
         let mut newline = [0_u8; 1];
         let deadline = self.deadline();
         let read = self.stdout.read_exact(&mut newline, deadline);
@@ -878,7 +881,7 @@ impl CatFileBatch {
     /// Close stdin (EOF tells git no more requests are coming) and wait for
     /// the child to exit under whatever budget remains. Surfaces the bounded
     /// stderr capture when the child exits non-zero.
-    pub(crate) fn finish(mut self) -> Result<(), String> {
+    pub(crate) fn finish(mut self) -> Result<(), CoreError> {
         // Budget first: dropping stdin partially moves `self`, after which
         // no whole-`self` method may run — both values are computed here and
         // only field accesses remain below.
@@ -902,15 +905,19 @@ impl CatFileBatch {
                 // past the overall deadline. Field accesses only — stdin is
                 // already dropped, so no whole-`self` method may run.
                 if Instant::now() >= deadline {
-                    let message =
-                        git_invocation_timeout_message(&self.describe, self.budget.as_millis());
+                    let message = CoreError::git_invocation_timeout(
+                        &self.describe,
+                        self.budget.as_millis(),
+                        true,
+                    );
                     return Err(match self.child.terminate_tree() {
                         Ok(()) => message,
                         Err(cleanup) => format!(
                             "timeout of {} did not complete tree cleanup; the child may still \
                              be running: {cleanup} (suppressed wait outcome: {message})",
                             self.describe
-                        ),
+                        )
+                        .into(),
                     });
                 }
                 Ok(())
@@ -920,18 +927,17 @@ impl CatFileBatch {
                     .map(|output| String::from_utf8_lossy(&output.bytes).trim().to_string())
                     .unwrap_or_default();
                 if detail.is_empty() {
-                    Err(format!("git cat-file --batch exited with {status}"))
+                    Err(format!("git cat-file --batch exited with {status}").into())
                 } else {
-                    Err(format!(
-                        "git cat-file --batch exited with {status}: {detail}"
-                    ))
+                    Err(format!("git cat-file --batch exited with {status}: {detail}").into())
                 }
             }
-            ChildWait::TimedOut(message) | ChildWait::Cancelled(message) => Err(message),
+            ChildWait::TimedOut(error) => Err(error),
+            ChildWait::Cancelled(message) => Err(message.into()),
             ChildWait::WaitFailed(err) => {
-                Err(format!("failed while waiting on {}: {err}", self.describe))
+                Err(format!("failed while waiting on {}: {err}", self.describe).into())
             }
-            ChildWait::CleanupFailed(message) => Err(message),
+            ChildWait::CleanupFailed(message) => Err(message.into()),
         }
     }
 }
@@ -1101,13 +1107,11 @@ fn collect_output_with_deadline(
     mut command: Command,
     timeout: Option<Duration>,
     describe: &str,
-) -> Result<Output, String> {
+) -> Result<Output, CoreError> {
     if let Some(deadline) = timeout
         && deadline.is_zero()
     {
-        return Err(format!(
-            "{GIT_INVOCATION_TIMEOUT_PREFIX}: {describe} was given a zero deadline (not spawned)"
-        ));
+        return Err(CoreError::git_invocation_timeout(describe, 0, false));
     }
     command
         .stdin(Stdio::null())
@@ -1135,9 +1139,13 @@ fn collect_output_with_deadline(
             stdout,
             stderr,
         }),
-        ChildWait::TimedOut(message) | ChildWait::Cancelled(message) => Err(message),
-        ChildWait::WaitFailed(err) => Err(format!("failed while waiting on {describe}: {err}")),
-        ChildWait::CleanupFailed(message) => Err(message),
+        ChildWait::TimedOut(error) => Err(error),
+        ChildWait::Cancelled(message) | ChildWait::CleanupFailed(message) => {
+            Err(CoreError::message(message))
+        }
+        ChildWait::WaitFailed(err) => Err(CoreError::message(format!(
+            "failed while waiting on {describe}: {err}"
+        ))),
     }
 }
 
@@ -1152,7 +1160,7 @@ fn collect_output_with_deadline(
 /// outcome instead of implying that termination completed.
 pub(crate) enum ChildWait {
     Exited(std::process::ExitStatus),
-    TimedOut(String),
+    TimedOut(CoreError),
     Cancelled(String),
     WaitFailed(String),
     CleanupFailed(String),
@@ -1165,22 +1173,12 @@ impl ChildWait {
     fn summary(&self) -> String {
         match self {
             Self::Exited(status) => format!("child exited with {status}"),
-            Self::TimedOut(message)
-            | Self::Cancelled(message)
-            | Self::WaitFailed(message)
-            | Self::CleanupFailed(message) => message.clone(),
+            Self::TimedOut(error) => error.to_string(),
+            Self::Cancelled(message) | Self::WaitFailed(message) | Self::CleanupFailed(message) => {
+                message.clone()
+            }
         }
     }
-}
-
-/// The named, matchable timeout classification shared by the polling
-/// collector and the streaming batch session (#2303, #5015). Kept as one
-/// constructor so both paths emit byte-identical repair guidance.
-fn git_invocation_timeout_message(describe: &str, timeout_ms: u128) -> String {
-    format!(
-        "{GIT_INVOCATION_TIMEOUT_PREFIX}: {describe} exceeded the {timeout_ms}ms deadline \
-         (process terminated).{GIT_TIMEOUT_REPAIR_GUIDANCE}"
-    )
 }
 
 /// Poll `child` with `try_wait` on a short interval up to the optional
@@ -1219,7 +1217,9 @@ pub(crate) fn poll_child(
                     return terminate_then_classify(
                         describe,
                         "timeout",
-                        ChildWait::TimedOut(git_invocation_timeout_message(describe, timeout_ms)),
+                        ChildWait::TimedOut(CoreError::git_invocation_timeout(
+                            describe, timeout_ms, true,
+                        )),
                         || child.terminate_tree(),
                     );
                 }
@@ -1322,21 +1322,25 @@ mod tests {
 
     #[test]
     fn work_tree_root_timeout_omits_inapplicable_deadline_guidance() {
-        let shared = git_invocation_timeout_message("git root probe in /fixture", 5_000);
+        let shared = CoreError::git_invocation_timeout("git root probe in /fixture", 5_000, true);
         let projected = work_tree_root_probe_error(shared.clone());
-        assert!(is_git_invocation_timeout(&projected));
+        assert!(projected.starts_with("git_invocation_timeout:"));
         assert!(projected.contains("exceeded the 5000ms deadline (process terminated)"));
         for ineffective in ["--git-timeout", "RIPR_GIT_TIMEOUT", "gitTimeoutMs"] {
-            assert!(shared.contains(ineffective));
+            assert!(shared.to_string().contains(ineffective));
             assert!(!projected.contains(ineffective), "{projected}");
         }
         for preserved in [
+            shared.to_string(),
             "analysis_cancelled: superseded root probe".to_string(),
             "git output exceeded the 8192 byte limit".to_string(),
             "failed to run git: Permission denied".to_string(),
             format!("timeout did not complete tree cleanup (suppressed wait outcome: {shared})"),
         ] {
-            assert_eq!(work_tree_root_probe_error(preserved.clone()), preserved);
+            assert_eq!(
+                work_tree_root_probe_error(preserved.clone().into()),
+                preserved
+            );
         }
     }
 
@@ -1414,13 +1418,16 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
     }
 
     #[test]
-    fn git_timeout_tag_requires_exact_raw_error_prefix() {
+    fn rendered_timeout_tags_do_not_create_typed_timeouts() {
         for error in [
             "git_invocation_timeout: git command exceeded its deadline",
             "git_invocation_timeout:	git command exceeded its deadline",
             "git_invocation_timeout:\ngit command exceeded its deadline",
         ] {
-            assert!(is_git_invocation_timeout(error), "missed {error:?}");
+            assert!(
+                !CoreError::message(error).is_git_invocation_timeout(),
+                "misclassified {error:?}"
+            );
         }
         for error in [
             "git_invocation_timeout",
@@ -1438,7 +1445,10 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
             "review_guidance_oversized: a different guard",
             "analysis cancelled: DeadlineExceeded",
         ] {
-            assert!(!is_git_invocation_timeout(error), "misclassified {error:?}");
+            assert!(
+                !CoreError::message(error).is_git_invocation_timeout(),
+                "misclassified {error:?}"
+            );
         }
     }
 
@@ -1575,10 +1585,10 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
         match result {
             Err(message) => {
                 assert!(
-                    message.starts_with(
+                    message.to_string().starts_with(
                         "failed to run git: clone or move the repository to a shorter path; the \
                          workspace root is "
-                    ) && message.contains("(MAX_PATH)"),
+                    ) && message.to_string().contains("(MAX_PATH)"),
                     "{message}"
                 );
                 Ok(())
@@ -1689,7 +1699,7 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
         assert_eq!(message, GIT_NOT_FOUND_ON_PATH_MESSAGE);
         assert!(is_git_not_found_on_path(&message));
         assert!(
-            !message.contains("core.quotePath") && !message.contains('['),
+            !message.to_string().contains("core.quotePath") && !message.to_string().contains('['),
             "the git argv must not reach the user: {message}"
         );
 
@@ -1751,12 +1761,14 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
         let _ = std::fs::remove_dir_all(&empty_path);
         match result {
             Err(message) => {
-                if message != GIT_NOT_FOUND_ON_PATH_MESSAGE {
+                if message.to_string() != GIT_NOT_FOUND_ON_PATH_MESSAGE {
                     return Err(format!(
                         "empty PATH must name the missing git binary, got: {message}"
                     ));
                 }
-                if message.contains("core.quotePath") || message.contains('[') {
+                if message.to_string().contains("core.quotePath")
+                    || message.to_string().contains('[')
+                {
                     return Err(format!("git argv leaked: {message}"));
                 }
                 Ok(())
@@ -1867,9 +1879,14 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
             poll_child(child, Some(Duration::from_millis(50)), "hang-reap-proof")
         };
         let arm_ok = match (&wait, cancelled) {
-            (ChildWait::TimedOut(message), false) => message.contains("exceeded the 50ms deadline"),
+            (ChildWait::TimedOut(error), false) => {
+                error.is_git_invocation_timeout()
+                    && error.to_string().contains("exceeded the 50ms deadline")
+            }
             (ChildWait::Cancelled(message), true) => {
-                is_cancellation_error(message) && !is_git_invocation_timeout(message)
+                is_cancellation_error(message)
+                    && !message.to_string().starts_with("git_invocation_timeout:")
+                    && !CoreError::message(message).is_git_invocation_timeout()
             }
             _ => false,
         };
@@ -1890,8 +1907,10 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
                 "hung child wait took the wrong arm for cancelled={cancelled}: {}",
                 match wait {
                     ChildWait::Exited(status) => format!("exited: {status}"),
-                    ChildWait::TimedOut(message) | ChildWait::Cancelled(message) => message,
-                    ChildWait::WaitFailed(error) | ChildWait::CleanupFailed(error) => error,
+                    ChildWait::TimedOut(error) => error.to_string(),
+                    ChildWait::Cancelled(message)
+                    | ChildWait::WaitFailed(message)
+                    | ChildWait::CleanupFailed(message) => message,
                 }
             ));
         }
@@ -1914,7 +1933,7 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
         let wait = terminate_then_classify(
             "stub child",
             "timeout",
-            ChildWait::TimedOut("stub: exceeded the deadline".to_string()),
+            ChildWait::TimedOut(CoreError::message("stub: exceeded the deadline")),
             || Err("incomplete tree cleanup: refused termination request".to_string()),
         );
         let ChildWait::CleanupFailed(message) = &wait else {
@@ -1923,12 +1942,12 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
                 wait.summary()
             ));
         };
-        if !message.contains("incomplete tree cleanup") {
+        if !message.to_string().contains("incomplete tree cleanup") {
             return Err(format!(
                 "CleanupFailed should carry the incomplete-cleanup evidence: {message}"
             ));
         }
-        if !message.contains("stub: exceeded the deadline") {
+        if !message.to_string().contains("stub: exceeded the deadline") {
             return Err(format!(
                 "CleanupFailed should record the suppressed wait outcome: {message}"
             ));
@@ -1980,7 +1999,7 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
             Err(msg) => msg,
             Ok(_) => return Err("expected error for nonexistent git ref".to_string()),
         };
-        if !err.contains("failed") {
+        if !err.to_string().contains("failed") {
             return Err(format!("error should contain 'failed': {err}"));
         }
         Ok(())
@@ -1999,10 +2018,10 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
             Err(err) => err,
             Ok(_) => return Err("a hung invocation must fail, not collect output".to_string()),
         };
-        if !is_git_invocation_timeout(&err) {
+        if !err.is_git_invocation_timeout() {
             return Err(format!("expected the named timeout error, got: {err}"));
         }
-        if !err.contains("exceeded the 50ms deadline") {
+        if !err.to_string().contains("exceeded the 50ms deadline") {
             return Err(format!(
                 "timeout error should name the deadline, got: {err}"
             ));
@@ -2013,17 +2032,19 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
         // same shared wait also serves the editor sidecar, whose deadline is
         // configured by `gitTimeoutMs`, so the route names that knob too
         // (#4946 review).
-        if !err.contains("--git-timeout") || !err.contains("RIPR_GIT_TIMEOUT") {
+        if !err.to_string().contains("--git-timeout")
+            || !err.to_string().contains("RIPR_GIT_TIMEOUT")
+        {
             return Err(format!(
                 "timeout error should name the deadline knobs, got: {err}"
             ));
         }
-        if !err.contains("0 disables it") {
+        if !err.to_string().contains("0 disables it") {
             return Err(format!(
                 "timeout error should name the 0-disables escape, got: {err}"
             ));
         }
-        if !err.contains("gitTimeoutMs") {
+        if !err.to_string().contains("gitTimeoutMs") {
             return Err(format!(
                 "timeout error should name the editor-session deadline knob, got: {err}"
             ));
@@ -2149,10 +2170,10 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
                 return Err("a descendant-holding invocation must fail with a timeout".to_string());
             }
         };
-        if !is_git_invocation_timeout(&err) {
+        if !err.is_git_invocation_timeout() {
             return Err(format!("expected the named timeout error, got: {err}"));
         }
-        if !err.contains("exceeded the 20000ms deadline") {
+        if !err.to_string().contains("exceeded the 20000ms deadline") {
             return Err(format!(
                 "timeout error should name the deadline, got: {err}"
             ));
@@ -2205,10 +2226,10 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
             Err(err) => err,
             Ok(_) => return Err("a zero deadline must fail before spawning".to_string()),
         };
-        if !is_git_invocation_timeout(&err) {
+        if !err.is_git_invocation_timeout() {
             return Err(format!("expected the named timeout error, got: {err}"));
         }
-        if !err.contains("zero deadline (not spawned)") {
+        if !err.to_string().contains("zero deadline (not spawned)") {
             return Err(format!(
                 "zero-deadline error should say pre-spawn, got: {err}"
             ));
@@ -2234,10 +2255,11 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
             Err(err) => err,
             Ok(_) => return Err("a cancelled invocation must fail".to_string()),
         };
-        if !is_cancellation_error(&err) {
+        if !is_cancellation_error(&err.to_string()) {
             return Err(format!("expected the cancellation error, got: {err}"));
         }
-        if is_git_invocation_timeout(&err) {
+        if err.is_git_invocation_timeout() || err.to_string().starts_with("git_invocation_timeout:")
+        {
             return Err(format!(
                 "cancellation must win over the deadline, got: {err}"
             ));
@@ -2377,7 +2399,7 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
             run_git_output_with_deadline_and_limit(missing, &["status"], Duration::from_secs(1), 0)
                 .err()
                 .ok_or_else(|| "zero output limit unexpectedly spawned Git".to_string())?;
-        if error != "git output limit must be greater than zero" {
+        if error.to_string() != "git output limit must be greater than zero" {
             return Err(format!("unexpected zero-limit error: {error}"));
         }
         Ok(())
@@ -2394,7 +2416,7 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
         )
         .err()
         .ok_or_else(|| "one-byte Git output limit unexpectedly succeeded".to_string())?;
-        if !error.starts_with("git_output_limit_exceeded:") {
+        if !error.to_string().starts_with("git_output_limit_exceeded:") {
             return Err(format!("unexpected output-limit error: {error}"));
         }
         Ok(())
@@ -2479,7 +2501,11 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
         let mut content = [0_u8; 5];
         let outcome = stream.read_exact(&mut content, deadline);
         match outcome {
-            Err(CatFileBatchReadError::Failed(message)) if message.contains("ended") => Ok(()),
+            Err(CatFileBatchReadError::Failed(message))
+                if message.to_string().contains("ended") =>
+            {
+                Ok(())
+            }
             other => Err(format!("truncated blob must fail closed, got {other:?}")),
         }
     }
@@ -2644,7 +2670,7 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
                 return Err("a zero-budget session unexpectedly waited successfully".to_string());
             }
         };
-        if !is_git_invocation_timeout(&error) || !error.contains("0ms") {
+        if !error.is_git_invocation_timeout() || !error.to_string().contains("0ms") {
             return Err(format!(
                 "zero budget must classify as the named timeout: {error}"
             ));
