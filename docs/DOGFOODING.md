@@ -31,6 +31,37 @@ Bun UB cross-language witness receipts live under
 ArrayBuffer TypeScript preview receipts without running Bun or producing repair
 packets.
 
+## First-Run Walk
+
+`cargo xtask first-run` replays a new developer's first hour on pinned crates
+ripr has not been tuned on (`semver 1.0.23`, `fastrand 2.3.0`,
+`bytesize 1.3.0`). Cargo fetches the sources, so the walk adds no network
+client. Each crate is cloned from a local `origin` onto a feature branch that
+carries one recorded boundary edit. The edit must match exactly once on its
+recorded line, so version drift fails the walk instead of changing the subject.
+
+```bash
+cargo xtask first-run --install-published       # install ripr from crates.io, then walk
+cargo xtask first-run --ripr path/to/ripr       # walk a built binary (a release candidate)
+```
+
+Per crate it times `ripr doctor`, `ripr check`, `ripr check --format json`,
+`ripr pilot --root .`, the `ripr explain` command `check` printed (run as
+printed), `ripr init --ci github`, and a second `ripr doctor`. The report is
+written to `target/ripr/first-run/first-run.{json,md}`. A previous walk's directory is replaced; an `--out` the walk did not create is
+refused. `--ripr` defaults to the `ripr` on `PATH`.
+
+The walk observes and does not gate. It flags friction: a nonzero exit, stderr
+beyond progress lines, output over a read budget, no next step after `check`, a
+step over its time budget, and a generated workflow that is over 1,500 lines or
+compiles ripr from source on every run. It records the static verdict class each
+release produces for each edit, so a verdict change between releases is visible.
+Whether a verdict is correct is a separate question for a hand-labeled corpus,
+not this walk.
+
+Run it against the published release and the release candidate, and compare the
+two JSON files. It needs registry access and Git.
+
 ## Dogfooding Rules
 
 - Prefer sample diffs and fixtures over broad repository scans.

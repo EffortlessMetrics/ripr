@@ -41,6 +41,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CiBudget(args) => super::reports::ci_budget(&args),
         XtaskCommand::MergeQueue(args) => super::reports::merge_queue(&args),
         XtaskCommand::PerlMigrationRefresh(args) => super::reports::perl_migration_refresh(&args),
+        XtaskCommand::FirstRun(args) => super::first_run::run(&args),
         XtaskCommand::ModuleHealth(args) => super::reports::module_health(&args),
         XtaskCommand::WindowsAdvisorySummary(args) => super::windows_advisory::run(&args),
         XtaskCommand::WindowsAdvisoryIsolatedSummary(args) => {

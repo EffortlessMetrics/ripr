@@ -34,6 +34,7 @@ mod driver;
 mod evidence_audit;
 mod evidence_promotion;
 mod evidence_quality;
+mod first_run;
 mod fixture_contracts;
 // #4544: one definition of the gap `source_subject` contract, shared with the
 // ripr crate's LSP validator without widening ripr's public API.
