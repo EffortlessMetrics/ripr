@@ -5656,6 +5656,65 @@ language = "rust"
     }
 
     #[test]
+    fn policy_suppression_health_rejects_missing_root_without_writing() -> Result<(), String> {
+        let dir = unique_command_test_dir("suppression-health-no-root");
+        let out = dir.join("suppression-health.json");
+        let out_md = dir.join("suppression-health.md");
+        let missing = dir.join("does-not-exist");
+
+        let err = policy(&args(&[
+            "suppression-health",
+            "--root",
+            &missing.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))
+        .err()
+        .ok_or_else(|| "missing --root must fail".to_string())?;
+
+        assert!(err.contains("cannot be read"), "{err}");
+        assert!(err.contains("does-not-exist"), "{err}");
+        assert!(
+            !out.exists() && !out_md.exists(),
+            "no report may be written"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn policy_suppression_health_rejects_file_root_without_writing() -> Result<(), String> {
+        let dir = unique_command_test_dir("suppression-health-file-root");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create suppression dir: {err}"))?;
+        let root_file = dir.join("root-file");
+        std::fs::write(&root_file, "not a directory")
+            .map_err(|err| format!("write root file: {err}"))?;
+        let out = dir.join("suppression-health.json");
+        let out_md = dir.join("suppression-health.md");
+
+        let result = policy(&args(&[
+            "suppression-health",
+            "--root",
+            &root_file.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]));
+        let reports_written = out.exists() || out_md.exists();
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove suppression dir: {err}"))?;
+
+        let err = result
+            .err()
+            .ok_or_else(|| "file --root must fail".to_string())?;
+        assert!(err.contains("is not a directory"), "{err}");
+        assert!(err.contains("root-file"), "{err}");
+        assert!(!reports_written, "no report may be written");
+        Ok(())
+    }
+
+    #[test]
     fn pr_evidence_ledger_parses_option_surface() {
         assert_eq!(
             parse_pr_evidence_ledger_options(&args(&[

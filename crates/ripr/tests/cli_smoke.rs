@@ -19624,6 +19624,37 @@ fn impacted_evidence_unknown_arg_fails_clearly() {
     );
 }
 
+#[test]
+fn impacted_evidence_refuses_missing_pr_evidence_and_writes_nothing() -> Result<(), String> {
+    struct Scratch(PathBuf);
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            ignore_remove_dir_all(&self.0);
+        }
+    }
+    let dir = unique_temp_workspace("impacted-missing");
+    std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+    let _cleanup = Scratch(dir.clone());
+    let output = run_command(
+        env!("CARGO_BIN_EXE_ripr"),
+        Some(&dir),
+        &["impacted-evidence", "--pr-evidence", "missing.json"],
+    )
+    .map_err(|err| err.to_string())?;
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "missing evidence must be an operational failure:\n{stderr}"
+    );
+    assert!(stderr.contains("missing.json"), "{stderr}");
+    assert!(
+        !dir.join("target").exists(),
+        "nothing may be written into the cwd"
+    );
+    Ok(())
+}
+
 // ── ripr plus (binary-first RIPR+ repo receipt, composition-only) ──
 
 #[test]

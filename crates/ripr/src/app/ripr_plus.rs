@@ -253,7 +253,14 @@ fn render_gap_ledger_repo_badge_json(gap_ledger: &Path) -> Result<String, String
         &text,
         output::badge::BadgeKind::Ripr,
         policy,
-    )?;
+    )
+    .map_err(|err| {
+        format!(
+            "plus --gap-ledger {} is not a gap decision ledger: {err}. \
+             Pass the ledger written by `ripr gap-ledger` (default target/ripr/reports/gap-decision-ledger.json).",
+            gap_ledger.display()
+        )
+    })?;
     output::badge::attach_public_projection(&mut summary, &gap_ledger.display().to_string());
     Ok(output::badge::render_native_json(&summary))
 }
@@ -982,6 +989,43 @@ mod tests {
         .map_err(|err| format!("receipt is not JSON: {err}"))?;
         assert_eq!(receipt["status"], "indeterminate");
         assert_eq!(receipt["machine_readable_cause"], "evaluation_error");
+        Ok(())
+    }
+
+    /// A readable file that is not a gap ledger must fail with the exit code,
+    /// the written receipt, and a message naming the file and the fix agreeing.
+    #[test]
+    fn unrecognized_gap_ledger_fails_and_receipt_is_indeterminate() -> Result<(), String> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| format!("clock failed: {err}"))?
+            .as_nanos();
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-plus-foreign-ledger-{}-{nanos}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&repo).map_err(|err| format!("mkdir {}: {err}", repo.display()))?;
+        let ledger = repo.join("foreign.json");
+        fs::write(&ledger, r#"{"foo":1}"#).map_err(|err| format!("write ledger: {err}"))?;
+        let options = RiprPlusOptions {
+            repo_exposure_summary: None,
+            gap_ledger: Some(ledger),
+            check: false,
+        };
+        let result = compose_and_write_receipt(&repo, &options, "deadbeef");
+        let written = fs::read_to_string(repo.join(RIPR_PLUS_JSON));
+        let _ = fs::remove_dir_all(&repo);
+        match result {
+            Err(msg)
+                if msg.contains("foreign.json") && msg.contains("not a gap decision ledger") => {}
+            other => return Err(format!("expected unrecognized-ledger error, got {other:?}")),
+        }
+        let receipt: Value = serde_json::from_str(
+            &written.map_err(|err| format!("receipt was not written: {err}"))?,
+        )
+        .map_err(|err| format!("receipt is not JSON: {err}"))?;
+        assert_eq!(receipt["status"], "indeterminate");
+        assert_ne!(receipt["zero_unresolved_established"], true);
         Ok(())
     }
 

@@ -42,7 +42,8 @@ pub(crate) fn run_impacted_evidence(args: &[String]) -> Result<(), String> {
     }
     let options = parse_options(args)?;
     let repo = repo_root()?;
-    let packet = impacted_evidence_packet(&repo, &options);
+    let input = require_pr_evidence(&repo, &options.pr_evidence)?;
+    let packet = packet_from_input(&options, &input);
     let json_text = serde_json::to_string_pretty(&packet)
         .map_err(|err| format!("serialize impacted evidence: {err}"))?;
     let markdown = render_impacted_evidence_markdown(&packet);
@@ -117,8 +118,12 @@ Outputs:
   target/xtask/impacted-evidence/latest.md
 ";
 
+#[cfg(test)]
 fn impacted_evidence_packet(repo: &Path, options: &ImpactedEvidenceOptions) -> Value {
-    let input = load_pr_evidence(repo, &options.pr_evidence);
+    packet_from_input(options, &load_pr_evidence(repo, &options.pr_evidence))
+}
+
+fn packet_from_input(options: &ImpactedEvidenceOptions, input: &PrEvidenceInput) -> Value {
     let ripr_severe_gap = input
         .value
         .as_ref()
@@ -279,6 +284,27 @@ impl PrEvidenceInput {
     }
 }
 
+/// Refuses to route mutation from labels alone. A missing or non-JSON PR
+/// evidence file would otherwise yield `fast_only`, which reads as "no mutation
+/// needed" when the real state is "evidence not seen". Fails before any output
+/// is written so a stale `latest.*` cannot be mistaken for this run.
+/// Returns the loaded input so the packet is built from the exact bytes that
+/// were validated.
+fn require_pr_evidence(repo: &Path, relative: &str) -> Result<PrEvidenceInput, String> {
+    let input = load_pr_evidence(repo, relative);
+    match &input.state {
+        InputState::Present => Ok(input),
+        InputState::Missing => Err(format!(
+            "impacted-evidence: PR evidence {relative} is missing or unreadable; refusing to route mutation from labels alone. \
+             Run `ripr pr-evidence` first or pass --pr-evidence <path>."
+        )),
+        InputState::Invalid(err) => Err(format!(
+            "impacted-evidence: PR evidence {relative} is not valid JSON ({err}); \
+             regenerate it with `ripr pr-evidence` or pass --pr-evidence <path>."
+        )),
+    }
+}
+
 fn load_pr_evidence(repo: &Path, relative: &str) -> PrEvidenceInput {
     let path = repo.join(relative);
     let Ok(text) = fs::read_to_string(&path) else {
@@ -318,6 +344,15 @@ fn render_impacted_evidence_markdown(packet: &Value) -> String {
     let mut out = String::new();
     out.push_str("# Impacted Evidence\n\n");
     out.push_str("## Routing\n\n");
+    out.push_str(&format!(
+        "- status: {}\n",
+        code_span(
+            packet
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+        )
+    ));
     out.push_str(&format!(
         "- mutation_mode: {}\n",
         code_span(&summary_string(summary, "mutation_mode", "unknown"))
@@ -655,5 +690,45 @@ mod tests {
         );
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
+    }
+
+    #[test]
+    fn missing_or_invalid_pr_evidence_is_refused_with_an_actionable_message() -> Result<(), String>
+    {
+        let repo = env::temp_dir().join(format!(
+            "ripr-impacted-evidence-refuse-{}",
+            std::process::id()
+        ));
+        if repo.exists() {
+            fs::remove_dir_all(&repo).map_err(|err| format!("remove {}: {err}", repo.display()))?;
+        }
+        fs::create_dir_all(&repo).map_err(|err| format!("create {}: {err}", repo.display()))?;
+
+        let missing = require_pr_evidence(&repo, "nope.json")
+            .err()
+            .ok_or_else(|| "missing evidence must be refused".to_string())?;
+        assert!(
+            missing.contains("nope.json") && missing.contains("missing"),
+            "{missing}"
+        );
+        assert!(missing.contains("ripr pr-evidence"), "{missing}");
+
+        fs::write(repo.join("bad.json"), "not json")
+            .map_err(|err| format!("write bad.json: {err}"))?;
+        let invalid = require_pr_evidence(&repo, "bad.json")
+            .err()
+            .ok_or_else(|| "invalid evidence must be refused".to_string())?;
+        assert!(invalid.contains("not valid JSON"), "{invalid}");
+
+        fs::write(repo.join("ok.json"), "{}").map_err(|err| format!("write ok.json: {err}"))?;
+        require_pr_evidence(&repo, "ok.json")?;
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn markdown_states_packet_status() {
+        let packet = json!({"status": "incomplete", "summary": {}, "inputs": {}});
+        assert!(render_impacted_evidence_markdown(&packet).contains("- status: `incomplete`"));
     }
 }
