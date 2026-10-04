@@ -1,26 +1,26 @@
 {
   "schema_version": "ripr_verdict_corpus_report.v1",
   "spec": "RIPR-SPEC-0219",
-  "corpus_version": "2026-10-04.2",
-  "cases_total": 32,
+  "corpus_version": "2026-10-04.3",
+  "cases_total": 34,
   "by_truth": {
     "discriminated": 20,
-    "not_discriminated": 4,
+    "not_discriminated": 6,
     "partially_discriminated": 8
   },
   "by_outcome": {
-    "abstained": 18,
+    "abstained": 19,
     "false_actionable": 10,
-    "ideal": 4
+    "ideal": 5
   },
   "by_observed_verdict": {
-    "gap": 14,
-    "limited": 18
+    "gap": 15,
+    "limited": 19
   },
   "false_verdict_rate": {
     "numerator": 10,
-    "denominator": 32,
-    "rate": "0.3125"
+    "denominator": 34,
+    "rate": "0.2941"
   },
   "false_actionable_rate": {
     "numerator": 10,
@@ -29,28 +29,28 @@
   },
   "false_exposed_rate": {
     "numerator": 0,
-    "denominator": 12,
+    "denominator": 14,
     "rate": "0.0000"
   },
   "false_silent_rate": {
     "numerator": 0,
-    "denominator": 12,
+    "denominator": 14,
     "rate": "0.0000"
   },
   "ideal_rate": {
-    "numerator": 4,
-    "denominator": 32,
-    "rate": "0.1250"
+    "numerator": 5,
+    "denominator": 34,
+    "rate": "0.1471"
   },
   "abstention_rate": {
-    "numerator": 18,
-    "denominator": 32,
-    "rate": "0.5625"
+    "numerator": 19,
+    "denominator": 34,
+    "rate": "0.5588"
   },
   "contradiction_rate": {
     "numerator": 4,
-    "denominator": 39,
-    "rate": "0.1026"
+    "denominator": 42,
+    "rate": "0.0952"
   },
   "contradictions_by_code": {
     "no_static_path_with_related_tests": 2,
@@ -609,6 +609,41 @@
         "weakly_exposed"
       ],
       "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "atuin-ai-history-output-capability",
+      "subject_id": "atuin-90f590b9",
+      "anchor": "crates/atuin-ai/src/context.rs:40",
+      "behavior_family": "predicate",
+      "test_shape": "no_test_reaches_owner",
+      "hard_case": true,
+      "truth": "not_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "infection_unknown",
+        "weakly_exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "atuin-otel-traces-suffix-not",
+      "subject_id": "atuin-90f590b9",
+      "anchor": "crates/atuin/src/logs/otel/enabled.rs:62",
+      "behavior_family": "predicate",
+      "test_shape": "no_test_reaches_owner",
+      "hard_case": true,
+      "truth": "not_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "infection_unknown"
+      ],
+      "outcome": "abstained",
       "contradictions": []
     }
   ],

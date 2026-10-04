@@ -2,7 +2,7 @@
   "schema_version": "ripr_verdict_corpus.v1",
   "kind": "ripr_verdict_corpus",
   "spec": "RIPR-SPEC-0219",
-  "corpus_version": "2026-10-04.2",
+  "corpus_version": "2026-10-04.3",
   "description": "Hand-labeled Rust verdict corpus: one-line edits in pinned real crates, each labeled with what the crate's own tests actually discriminate, so ripr's verdicts can be scored as false actionable, false exposed, false silent, abstained, or ideal.",
   "label_method": "For each case the edit was applied to the full pinned checkout, the crate's own test command was run to confirm the edit keeps tests green (behavior_preserving_rewrite) or breaks them (behavior_change), and each listed mutant of the edited expression was applied on top and the same test command run. A mutant counts as detected (`tests_failed`) when the test command fails after compiling. Each mutant was reviewed by hand for equivalence before its outcome counted. Truth is derived from the count of mutants with tests_failed: all is discriminated, none is not_discriminated, otherwise partially_discriminated.",
   "verdict_projection": "Only candidate_current findings on the anchor file and line count. exposed is credited; a named static_limit_kind or a no_static_path, infection_unknown, propagation_unknown or static_unknown class is limited; any other class (weakly_exposed, reachable_unrevealed) is a gap. A gap on the line outranks credit, and credit outranks a limit. No anchored finding is silent. The per-finding reading mirrors crates/ripr/src/output/human/triage.rs; the line-level precedence is this corpus's own policy.",
@@ -398,6 +398,52 @@
         {
           "path": "src/lib.rs",
           "sha256": "dbbee90724d9ed59185d0882c46bfbcaa6ffff4755d29663ee8acc9c542057c1"
+        }
+      ]
+    },
+    {
+      "subject_id": "atuin-90f590b9",
+      "upstream": "https://github.com/atuinsh/atuin",
+      "commit": "90f590b9235556363ffb5b2c66728f8af3c27afe",
+      "version_label": "main@90f590b9",
+      "license": "MIT",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "de39a5994d52926dabe574e660a3c881b4c274168b06a30eb1555488545cfe44"
+        },
+        {
+          "path": "LICENSE",
+          "sha256": "f87d1042ef858e746db8429f69a0cdd9dc73a28595dc738e5cbeb97ad8586d64"
+        },
+        {
+          "path": "crates/atuin/Cargo.toml",
+          "sha256": "050517e7a36267ec0ba4ce5596b8bdab054b4f1d2b4012ee76279dc513b6e449"
+        },
+        {
+          "path": "crates/atuin-ai/Cargo.toml",
+          "sha256": "ca8756dae4001bb6255e70429710b45b669363499e7d8a0aa3b5052abeb72346"
+        },
+        {
+          "path": "crates/atuin-ai/src/context.rs",
+          "sha256": "e2f27522b75b4b621eee747ae13f806036bd057593df9edd67bcdb44489ea853"
+        },
+        {
+          "path": "crates/atuin-ai/src/context_window.rs",
+          "sha256": "cec012cad88da95b7a9733f717ca3f8a3c9a7767bb63ab4946bd3a8141efd259"
+        },
+        {
+          "path": "crates/atuin/src/command/client/daemon.rs",
+          "sha256": "6c131e529929a0ecb57495f8c00853c993a2b569eabe47308ca7fed7a7570710"
+        },
+        {
+          "path": "crates/atuin/src/logs/mod.rs",
+          "sha256": "6251052bccff6dac50fdd280895903bc1e092f6c913fbe1cfe67c7f7e8b9cd49"
+        },
+        {
+          "path": "crates/atuin/src/logs/otel/enabled.rs",
+          "sha256": "5ebc7b6d5667b07adfb602e6fab555cae12e295fb463505339de133d7e314cc5"
         }
       ]
     }
@@ -1931,6 +1977,111 @@
         "full_checkout_verdict": "gap",
         "full_checkout_classifications": [
           "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "atuin-ai-history-output-capability",
+      "subject_id": "atuin-90f590b9",
+      "diff": "cases/atuin-ai-history-output-capability.diff",
+      "anchor": {
+        "file": "crates/atuin-ai/src/context.rs",
+        "line": 40
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate",
+      "test_shape": "no_test_reaches_owner",
+      "hard_case": "repo mode grades this seam strongly_gripped, yet all three mutants leave 1,258 tests green; diff mode's gap rests on related tests linked only by the shared token 'context'.",
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test -p atuin-ai -p atuin",
+        "toolchain": "rustc 1.97.0 (2d8144b78 2026-07-07), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "daemon_enabled || cfg!(feature = \"daemon\")",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent in the test build: `-p atuin-ai -p atuin` (like --workspace) unifies atuin's default `daemon` feature onto atuin-ai (fingerprint features [daemon, default, tree-sitter]), so cfg! is true, the original returns daemon_enabled and this mutant returns true; it differs whenever settings.daemon.enabled is false. (With cfg! false, under plain `-p atuin-ai`, it returns daemon_enabled instead of false, also non-equivalent.)"
+          },
+          {
+            "replacement": "true",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent in the test build (cfg! true): returns true when daemon_enabled is false, advertising client_v1_atuin_output with no daemon."
+          },
+          {
+            "replacement": "false",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent in the test build (cfg! true): returns false when daemon_enabled is true, dropping the atuin_output capability. It IS equivalent under plain `cargo test -p atuin-ai` (no daemon feature: the original is constant false), so that build cannot be used as truth for this mutant."
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "No test reaches history_output_capability_available: its only callers are capability_strings, reached from AppContext::capabilities_as_strings (built only in commands/inline.rs, the interactive entry) and ChatRequest::new (only when AiApp has io; every TUI test uses AiApp::headless with io None). All three mutants pass 1,258 tests in the daemon-enabled build, so the line is not discriminated. Diff-mode ripr does not credit it: weakly_exposed (return_value) plus infection_unknown (predicate), a gap, which is the ideal verdict. But the gap rests on related tests in context_window.rs linked only by relation_reason weak_token_substring (the shared 'context' token); ripr itself says no test is seen calling the function. Repo mode's strongly_gripped is not reproduced in diff mode.",
+      "labeling_observation": {
+        "ripr_commit": "7a6d4b7a5",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "infection_unknown",
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "atuin-otel-traces-suffix-not",
+      "subject_id": "atuin-90f590b9",
+      "diff": "cases/atuin-otel-traces-suffix-not.diff",
+      "anchor": {
+        "file": "crates/atuin/src/logs/otel/enabled.rs",
+        "line": 62
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate",
+      "test_shape": "no_test_reaches_owner",
+      "hard_case": "the spot-check's --workspace miss ran on code behind the non-default profiling-traced feature, which was not compiled; truth here comes from a build with the feature on.",
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test -p atuin --features profiling-traced",
+        "toolchain": "rustc 1.97.0 (2d8144b78 2026-07-07), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "if otel_url.path().ends_with(\"/v1/traces\") == true {",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent with --features profiling-traced: ATUIN_OTEL=http://host:4318 exports to http://host:4318/ instead of .../v1/traces, and a URL already ending in /v1/traces gets /v1/traces/v1/traces. Equivalent (dead code) in the spot-check's --workspace build: enabled.rs is behind #[cfg(feature = \"profiling-traced\")], a non-default feature no workspace member enables, so the file is not compiled there."
+          },
+          {
+            "replacement": "if true {",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent with --features profiling-traced: a URL already ending in /v1/traces gets the suffix twice."
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The spot-check's missed outcome is uninformative: under --workspace default features enabled.rs is not compiled, so the mutant is dead code there. With --features profiling-traced the file compiles, but no test sets ATUIN_OTEL or calls OtelCtx::try_enable (LogCtx::try_enable is only called from command dispatch), so both non-equivalent mutants pass and the line is not discriminated. Diff-mode ripr reports infection_unknown (limited), with two daemon.rs tests linked only by a shared name token and observe/discriminate = no. An acceptable abstention; a gap would be ideal. Repo mode's strongly_gripped is not reproduced in diff mode.",
+      "labeling_observation": {
+        "ripr_commit": "7a6d4b7a5",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "infection_unknown"
         ],
         "excerpt_parity": "matched"
       }

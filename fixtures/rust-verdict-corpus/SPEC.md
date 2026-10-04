@@ -5,7 +5,7 @@ Spec: RIPR-SPEC-0219
 ## Given
 
 Pinned excerpts of real Rust crates (serde, regex-syntax, semver, hex,
-itoa, bytesize, rusqlite, strsim; semver and bytesize at two pins) under
+itoa, bytesize, rusqlite, strsim, atuin; semver and bytesize at two pins) under
 `subjects/`, byte-identical to their upstream commits
 with license files (Rust sources stored as `.rs.txt`), and one-line edits
 under `cases/`. Each case is labeled

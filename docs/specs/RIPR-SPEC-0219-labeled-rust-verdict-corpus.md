@@ -83,8 +83,10 @@ Each mutant carries a written equivalence review and the test that failed.
 A mutant that is equivalent in the pinned build cannot carry truth: its
 passing tests show nothing about a missing discriminator. A reported miss
 that turns out equivalent is replaced by a non-equivalent mutant of the same
-expression, or the line is left out. Each case records the toolchain its
-truth ran under.
+expression, or the line is left out. Truth runs in a build that compiles
+the anchored line and enables the features its behavior depends on; a mutant
+in code a feature gate leaves out is not evidence. Each case records the
+toolchain and test command its truth ran under.
 Truth derives from how many mutants failed the tests: all is `discriminated`, none is
 `not_discriminated`, otherwise `partially_discriminated`.
 

@@ -1,16 +1,16 @@
 # Rust verdict corpus report
 
-Spec: RIPR-SPEC-0219. Corpus version: 2026-10-04.2. Cases: 32.
+Spec: RIPR-SPEC-0219. Corpus version: 2026-10-04.3. Cases: 34.
 
 | Rate | Count | Rate |
 | --- | --- | --- |
-| False verdicts (all cases) | 10/32 | 0.3125 |
+| False verdicts (all cases) | 10/34 | 0.2941 |
 | False actionable (of discriminated) | 10/20 | 0.5000 |
-| False exposed (of not fully discriminated) | 0/12 | 0.0000 |
-| False silent (of not fully discriminated) | 0/12 | 0.0000 |
-| Ideal verdict | 4/32 | 0.1250 |
-| Abstained (limited or silent where acceptable) | 18/32 | 0.5625 |
-| Findings with a contradiction | 4/39 | 0.1026 |
+| False exposed (of not fully discriminated) | 0/14 | 0.0000 |
+| False silent (of not fully discriminated) | 0/14 | 0.0000 |
+| Ideal verdict | 5/34 | 0.1471 |
+| Abstained (limited or silent where acceptable) | 19/34 | 0.5588 |
+| Findings with a contradiction | 4/42 | 0.0952 |
 
 | Case | Truth | Ideal | Observed | Classes | Outcome | Changed since labeling | Contradictions |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -46,6 +46,8 @@ Spec: RIPR-SPEC-0219. Corpus version: 2026-10-04.2. Cases: 32.
 | `bytesize-as-kb-div` | not_discriminated | gap | limited | no_static_path | abstained | no | no_static_path_with_related_tests |
 | `bytesize-as-mib-div` | not_discriminated | gap | limited | no_static_path | abstained | no | no_static_path_with_related_tests |
 | `strsim-jaro-winkler-threshold-shift` | partially_discriminated | gap | gap | weakly_exposed | ideal | no | none |
+| `atuin-ai-history-output-capability` | not_discriminated | gap | gap | infection_unknown, weakly_exposed | ideal | no | none |
+| `atuin-otel-traces-suffix-not` | not_discriminated | gap | limited | infection_unknown | abstained | no | none |
 
 Non-claims:
 
