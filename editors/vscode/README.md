@@ -137,7 +137,7 @@ The development extension also exposes the following commands:
 - `ripr: Write Targeted Test - Open Best Related Test`
 - `ripr: Open Settings`
 - `ripr: Copy Top Repair Packet`
-- `ripr: Copy Verify Command`
+- `ripr: Copy Verify Command (Top Repair Packet)`
 - `ripr: Copy Receipt Command (Top Repair Packet)`
 - `ripr: Open Report`
 - `ripr: Show Top Limitation`

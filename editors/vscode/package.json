@@ -354,7 +354,7 @@
       },
       {
         "command": "ripr.copyTopVerifyCommand",
-        "title": "ripr: Copy Verify Command"
+        "title": "ripr: Copy Verify Command (Top Repair Packet)"
       },
       {
         "command": "ripr.copyTopReceiptCommand",
