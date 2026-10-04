@@ -1288,14 +1288,11 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config(
     changed_files: &[PathBuf],
     changed_owner_names: &[String],
 ) -> Result<ScopedClassifiedSeamInventory, String> {
-    inventory_diff_scoped_classified_seams_inner(
+    inventory_diff_scoped_classified_seams_at_with_config_and_lines(
         root,
         config,
         changed_files,
         changed_owner_names,
-        !no_impact_fast_path_disabled(),
-        None,
-        None,
         None,
     )
 }
