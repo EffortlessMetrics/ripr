@@ -116,7 +116,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(it.size_hint().1, Some(it.remaining));",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],

@@ -532,6 +532,7 @@ mod tests {
             oracle: Some("expect(result).toBe(50)".to_string()),
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         });
         finding.missing.push(
             "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: blocked"
@@ -620,6 +621,7 @@ mod tests {
             oracle: Some("expect(login('alice')).toBeGreaterThan(4)".to_string()),
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         });
 
         let Some(actionability) = preview_actionability_for(&finding) else {

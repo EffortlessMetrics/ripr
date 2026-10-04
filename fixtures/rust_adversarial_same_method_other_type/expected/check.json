@@ -90,7 +90,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(it.size_hint().1, Some(3));",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "combinations_inexact_size_hints",
@@ -100,7 +102,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(it.size_hint().0, 3);",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "combinations_inexact_size_hints",
@@ -110,7 +114,9 @@
           "oracle_kind": "smoke_only",
           "oracle": "assert!(it.size_hint().1.is_some());",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "weak_assertion",
+          "why": "assertion too weak to tell the old behavior from the new"
         },
         {
           "name": "combinations_inexact_size_hints",
@@ -120,7 +126,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(it.size_hint(), (3, Some(3)));",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "combinations_inexact_size_hints",
@@ -130,7 +138,9 @@
           "oracle_kind": "relational_check",
           "oracle": "assert!(it.size_hint().1 == Some(3));",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "weak_assertion",
+          "why": "assertion too weak to tell the old behavior from the new"
         }
       ],
       "stop_reasons": [],
@@ -222,7 +232,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(it.size_hint().1, Some(3));",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "combinations_inexact_size_hints",
@@ -232,7 +244,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(it.size_hint().0, 3);",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "combinations_inexact_size_hints",
@@ -242,7 +256,9 @@
           "oracle_kind": "smoke_only",
           "oracle": "assert!(it.size_hint().1.is_some());",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "weak_assertion",
+          "why": "assertion too weak to tell the old behavior from the new"
         },
         {
           "name": "combinations_inexact_size_hints",
@@ -252,7 +268,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(it.size_hint(), (3, Some(3)));",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "combinations_inexact_size_hints",
@@ -262,7 +280,9 @@
           "oracle_kind": "relational_check",
           "oracle": "assert!(it.size_hint().1 == Some(3));",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "weak_assertion",
+          "why": "assertion too weak to tell the old behavior from the new"
         }
       ],
       "stop_reasons": [],

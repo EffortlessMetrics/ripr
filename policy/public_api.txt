@@ -321,6 +321,7 @@ pub use ripr::domain::ProbeFamily
 pub use ripr::domain::ProbeId
 pub use ripr::domain::REQUIRED_TAXONOMY_KINDS
 pub use ripr::domain::RelatedTest
+pub use ripr::domain::RelatedTestMiss
 pub use ripr::domain::RelationConfidence
 pub use ripr::domain::RelationReason
 pub use ripr::domain::REPAIR_CARD_BUDGET_VERSION

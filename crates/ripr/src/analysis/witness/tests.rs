@@ -110,6 +110,7 @@ impl FindingSpec {
             oracle_strength: strength,
             relation_confidence: reason.map(RelationReason::confidence),
             relation_reason: reason,
+            miss: None,
         });
         self
     }

@@ -200,3 +200,14 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+## Pending — match_arm_type_token_blind (8)
+
+Reason:
+RIPR-SPEC-0224: related tests ripr examined stay listed and each names why it misses the change (#5344); verdicts unchanged
+
+Command:
+`cargo xtask goldens bless match_arm_type_token_blind --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

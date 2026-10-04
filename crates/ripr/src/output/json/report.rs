@@ -795,7 +795,12 @@ fn finding_json_with_config_and_counts(
         .take(related_rendered)
         .enumerate()
     {
-        related_test_json(out, test, indent + 2);
+        related_test_json(
+            out,
+            test,
+            &finding.activation.missing_discriminators,
+            indent + 2,
+        );
         if idx + 1 != related_rendered {
             out.push(',');
         }
@@ -1549,7 +1554,12 @@ fn typescript_repair_packet_json(record: &crate::output::gap_decision_ledger::Ga
     })
 }
 
-pub(super) fn related_test_json(out: &mut String, test: &RelatedTest, indent: usize) {
+pub(super) fn related_test_json(
+    out: &mut String,
+    test: &RelatedTest,
+    missing_discriminators: &[MissingDiscriminatorFact],
+    indent: usize,
+) {
     let sp = "  ".repeat(indent);
     out.push_str(&format!("{sp}{{\n"));
     field(out, indent + 1, "name", &test.name, true);
@@ -1578,6 +1588,11 @@ pub(super) fn related_test_json(out: &mut String, test: &RelatedTest, indent: us
     // Additive optional fields: relation_reason and relation_confidence.
     // Present only on Rust diff-check findings; absent (omitted) on Python /
     // TypeScript preview findings and on legacy callers that set None.
+    // #5344: `miss` and `why` say why this test would not notice the change;
+    // both are omitted when the analyzer established no miss.
+    let why =
+        crate::output::related_test_miss::related_test_miss_reason(test, missing_discriminators);
+    let has_miss = test.miss.is_some();
     let has_reason = test.relation_reason.is_some();
     let has_confidence = test.relation_confidence.is_some();
     field(
@@ -1585,7 +1600,7 @@ pub(super) fn related_test_json(out: &mut String, test: &RelatedTest, indent: us
         indent + 1,
         "oracle",
         test.oracle.as_deref().unwrap_or(""),
-        has_reason || has_confidence,
+        has_reason || has_confidence || has_miss,
     );
     if let Some(reason) = test.relation_reason {
         field(
@@ -1593,7 +1608,7 @@ pub(super) fn related_test_json(out: &mut String, test: &RelatedTest, indent: us
             indent + 1,
             "relation_reason",
             reason.as_str(),
-            has_confidence,
+            has_confidence || has_miss,
         );
     }
     if let Some(confidence) = test.relation_confidence {
@@ -1602,8 +1617,14 @@ pub(super) fn related_test_json(out: &mut String, test: &RelatedTest, indent: us
             indent + 1,
             "relation_confidence",
             confidence.as_str(),
-            false,
+            has_miss,
         );
+    }
+    if let Some(miss) = test.miss {
+        field(out, indent + 1, "miss", miss.as_str(), why.is_some());
+        if let Some(why) = &why {
+            field(out, indent + 1, "why", why, false);
+        }
     }
     out.push_str(&format!("{sp}}}"));
 }
@@ -1864,6 +1885,7 @@ mod evidence_path_separator_tests {
                 oracle_strength: OracleStrength::Strong,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             }],
             recommended_next_step: None,
             language: None,

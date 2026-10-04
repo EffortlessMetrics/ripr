@@ -15,7 +15,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: amount >= discount_threshold
   Missing discriminator: No strong discriminator was detected
-  Related test: tests/pricing.rs:4 boundary_matches_expected
+  Related test: tests/pricing.rs:4 boundary_matches_expected (assertion too weak to tell the old behavior from the new)
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
   Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach discounted_total: boundary_matches_expected

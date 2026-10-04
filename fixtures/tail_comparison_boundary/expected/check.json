@@ -151,7 +151,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(shipping(2), 800);",
           "relation_reason": "helper_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "missing_input",
+          "why": "no test input reaches `items == 10`"
         },
         {
           "name": "big_order_ships_free",
@@ -161,7 +163,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(shipping(20), 0);",
           "relation_reason": "owner_named_test",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "no_call_path",
+          "why": "no call to the changed code found; linked by name only"
         },
         {
           "name": "five_items_earn_a_gift",
@@ -171,7 +175,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(earns_gift(5), true);",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "no_call_path",
+          "why": "no call to the changed code found; linked by name only"
         },
         {
           "name": "five_items_earn_a_gift",
@@ -181,7 +187,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(earns_gift(4), false);",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "no_call_path",
+          "why": "no call to the changed code found; linked by name only"
         }
       ],
       "stop_reasons": [],
@@ -324,7 +332,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(shipping(2), 800);",
           "relation_reason": "helper_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "big_order_ships_free",
@@ -334,7 +344,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(shipping(20), 0);",
           "relation_reason": "owner_named_test",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "no_call_path",
+          "why": "no call to the changed code found; linked by name only"
         },
         {
           "name": "five_items_earn_a_gift",
@@ -344,7 +356,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(earns_gift(5), true);",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "no_call_path",
+          "why": "no call to the changed code found; linked by name only"
         },
         {
           "name": "five_items_earn_a_gift",
@@ -354,7 +368,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(earns_gift(4), false);",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "no_call_path",
+          "why": "no call to the changed code found; linked by name only"
         }
       ],
       "stop_reasons": [],

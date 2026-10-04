@@ -1756,6 +1756,7 @@ mod tests {
                 oracle_strength,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             }],
             recommended_next_step: None,
             language: Some(LanguageId::TypeScript),

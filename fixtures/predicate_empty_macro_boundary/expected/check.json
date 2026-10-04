@@ -102,7 +102,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(discounted_total(90, 100), 90);",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "missing_input",
+          "why": "no test input reaches `amount == discount_threshold`"
         }
       ],
       "stop_reasons": [],

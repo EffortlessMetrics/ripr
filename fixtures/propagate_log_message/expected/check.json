@@ -68,7 +68,9 @@
           "oracle_kind": "unknown",
           "oracle": "",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "no_assertion",
+          "why": "has no assertion"
         }
       ],
       "stop_reasons": ["proc_macro_opaque"],
@@ -138,7 +140,9 @@
           "oracle_kind": "unknown",
           "oracle": "",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "no_assertion",
+          "why": "has no assertion"
         }
       ],
       "stop_reasons": ["proc_macro_opaque"],

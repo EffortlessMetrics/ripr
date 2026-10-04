@@ -69,7 +69,7 @@ fn consulted_gaps(
         .collect::<Vec<_>>();
     let related_files = findings
         .iter()
-        .flat_map(|finding| finding.related_tests.iter())
+        .flat_map(|finding| finding.oracle_related_tests())
         .map(|test| repo_relative(&test.file, workspace_root))
         .collect::<BTreeSet<_>>();
 
@@ -486,6 +486,7 @@ mod tests {
                     oracle_strength: crate::domain::OracleStrength::None,
                     relation_reason: None,
                     relation_confidence: None,
+                    miss: None,
                 })
                 .into_iter()
                 .collect(),

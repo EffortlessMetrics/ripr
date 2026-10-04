@@ -373,7 +373,7 @@ fn limits() -> Vec<String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::{perl_preview_card, perl_preview_card_json, perl_preview_card_json_value};
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap,
@@ -668,6 +668,7 @@ mod tests {
                 oracle_strength: OracleStrength::Weak,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             }],
             recommended_next_step: Some("Add a focused Perl assertion.".to_string()),
             language: Some(LanguageId::Perl),

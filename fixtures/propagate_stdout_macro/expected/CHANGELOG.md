@@ -213,3 +213,14 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+## Pending — propagate_stdout_macro (7)
+
+Reason:
+RIPR-SPEC-0224: related tests ripr examined stay listed and each names why it misses the change (#5344); verdicts unchanged
+
+Command:
+`cargo xtask goldens bless propagate_stdout_macro --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

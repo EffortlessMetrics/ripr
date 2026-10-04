@@ -100,6 +100,7 @@ mod tests {
             oracle_strength,
             relation_confidence: relation_reason.map(RelationReason::confidence),
             relation_reason,
+            miss: None,
         }
     }
 

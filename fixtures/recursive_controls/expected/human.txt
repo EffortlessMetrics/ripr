@@ -15,7 +15,7 @@ Start here:
   Why weak: a related test reaches this change, but no test input tells the old and new behavior apart
   Changed behavior: if final_label == "other" {
   Missing discriminator: final_label == "other"
-  Related test: tests/classify.rs:4 cycle_label_is_blank
+  Related test: tests/classify.rs:4 cycle_label_is_blank (no test input reaches `final_label == "other"`)
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
   Evidence: reach yes · infection weak · propagation yes · observation yes · discriminator missing
     - reach yes: Related tests appear to reach classify_cycle: cycle_label_is_blank

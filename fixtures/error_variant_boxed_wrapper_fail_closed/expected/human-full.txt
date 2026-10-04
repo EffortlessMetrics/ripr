@@ -34,11 +34,11 @@ error.downcast_ref::<ChecksumError>(),
 Some(ChecksumError::MalformedPayload)
 ) {
 return Err("checksum witness pinned the malformed-payload sibling".into());
-}
+}; misses: assertion does not mention the changed expression
   - related test tests/errors.rs:4 checksum_summary_pins_wrong_sibling_variant uses strong exact value oracle: matches!(
         error.downcast_ref::<ChecksumError>(),
         Some(ChecksumError::MalformedPayload)
-    )
+    ); misses: assertion does not mention the changed expression
   - source function argument value payload = "payload?" at line 5
   - source enum variant value ChecksumError::MalformedPayload at line 8
   - source enum variant value ChecksumError::MalformedPayload at line 8
@@ -88,11 +88,11 @@ error.downcast_ref::<ChecksumError>(),
 Some(ChecksumError::MalformedPayload)
 ) {
 return Err("checksum witness pinned the malformed-payload sibling".into());
-}
+}; misses: assertion does not mention the changed expression
   - related test tests/errors.rs:4 checksum_summary_pins_wrong_sibling_variant uses strong exact value oracle: matches!(
         error.downcast_ref::<ChecksumError>(),
         Some(ChecksumError::MalformedPayload)
-    )
+    ); misses: assertion does not mention the changed expression
   - source function argument value payload = "payload?" at line 5
   - source enum variant value ChecksumError::MalformedPayload at line 8
   - source enum variant value ChecksumError::MalformedPayload at line 8
@@ -142,11 +142,11 @@ error.downcast_ref::<ParseSummaryError>(),
 Some(ParseSummaryError::MalformedSource)
 ) {
 return Err("render witness pinned the parse-summary variant instead".into());
-}
+}; misses: assertion does not mention the changed expression
   - related test tests/errors.rs:18 render_summary_observes_other_enum_variant uses strong exact value oracle: matches!(
         error.downcast_ref::<ParseSummaryError>(),
         Some(ParseSummaryError::MalformedSource)
-    )
+    ); misses: assertion does not mention the changed expression
   - source function argument value raw = "zhex" at line 19
   - source enum variant value ParseSummaryError::MalformedSource at line 22
   - source enum variant value ParseSummaryError::MalformedSource at line 22
@@ -196,11 +196,11 @@ error.downcast_ref::<ParseSummaryError>(),
 Some(ParseSummaryError::MalformedSource)
 ) {
 return Err("render witness pinned the parse-summary variant instead".into());
-}
+}; misses: assertion does not mention the changed expression
   - related test tests/errors.rs:18 render_summary_observes_other_enum_variant uses strong exact value oracle: matches!(
         error.downcast_ref::<ParseSummaryError>(),
         Some(ParseSummaryError::MalformedSource)
-    )
+    ); misses: assertion does not mention the changed expression
   - source function argument value raw = "zhex" at line 19
   - source enum variant value ParseSummaryError::MalformedSource at line 22
   - source enum variant value ParseSummaryError::MalformedSource at line 22

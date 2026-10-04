@@ -3549,6 +3549,7 @@ mod tests {
             oracle_strength,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         }
     }
 

@@ -129,7 +129,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(discounted_total(50, 100), 50);",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "missing_input",
+          "why": "no test input reaches `amount == discount_threshold`"
         },
         {
           "name": "far_above_threshold_discounts",
@@ -139,7 +141,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(discounted_total(10_000, 100), 9_990);",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "missing_input",
+          "why": "no test input reaches `amount == discount_threshold`"
         }
       ],
       "stop_reasons": [],

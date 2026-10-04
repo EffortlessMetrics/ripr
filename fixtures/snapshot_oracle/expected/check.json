@@ -78,7 +78,9 @@
           "oracle_kind": "snapshot",
           "oracle": "insta::assert_snapshot!(rendered);",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "missing_input",
+          "why": "no test input reaches `code == 299`"
         }
       ],
       "stop_reasons": [],

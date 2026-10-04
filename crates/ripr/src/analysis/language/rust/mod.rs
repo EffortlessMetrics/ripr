@@ -823,10 +823,11 @@ fn apply_probe_and_oracle_limits(
 }
 
 /// Whether [`apply_rust_no_static_path_limit`] searches for a witness: a
-/// `no_static_path` finding with no related test and no limitation yet.
+/// `no_static_path` finding with no related test that supplied an oracle row
+/// (examined misses are evidence only, #5344) and no limitation yet.
 fn needs_no_static_path_limit(finding: &Finding) -> bool {
     finding.class == ExposureClass::NoStaticPath
-        && finding.related_tests.is_empty()
+        && finding.oracle_related_tests().next().is_none()
         && finding.static_limit_kind.is_none()
 }
 
@@ -6878,6 +6879,7 @@ fn absent_delimiter_boundary_returns_head() {
             oracle_strength: OracleStrength::None,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         }];
 
         let rust_owner = FunctionSummary {

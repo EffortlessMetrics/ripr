@@ -29,7 +29,7 @@ Evidence
   - observation no: No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)
   - discriminator no: No statically established assertion can discriminate the changed behavior; execution or macro binding is unestablished (rust_assertion_context_unestablished)
   - local flow reaches returned value: input * 3 (line 2)
-  - related test tests/weight_tests.rs:4 checks_weight uses none unknown oracle
+  - related test tests/weight_tests.rs:4 checks_weight uses none unknown oracle; misses: assertion not credited: ripr could not establish that it runs as the standard macro
   - source assertion argument value 12 at line 5
   - source function argument value input = 4 at line 5
 

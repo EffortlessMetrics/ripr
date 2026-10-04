@@ -109,7 +109,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(classify_bound(\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \"), \"blank\");",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "missing_input",
+          "why": "no test input reaches `final_state == \"text\"`"
         },
         {
           "name": "bound_long_word_is_word",
@@ -119,7 +121,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(classify_bound(\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"), \"word\");",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "missing_input",
+          "why": "no test input reaches `final_state == \"text\"`"
         }
       ],
       "stop_reasons": [],
@@ -230,7 +234,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(classify_trim(\"ab \"), \"word\");",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "missing_input",
+          "why": "no test input reaches `final_state == \"text\"`"
         },
         {
           "name": "trimmed_word_is_word",
@@ -240,7 +246,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(classify_trim(\"ab\"), \"word\");",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "missing_input",
+          "why": "no test input reaches `final_state == \"text\"`"
         }
       ],
       "stop_reasons": [],
@@ -351,7 +359,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(classify_computed(\" \"), \"blank\");",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "missing_input",
+          "why": "no test input reaches `final_state == \"text\"`"
         },
         {
           "name": "computed_word_is_word",
@@ -361,7 +371,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(classify_computed(\"ab\"), \"word\");",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "missing_input",
+          "why": "no test input reaches `final_state == \"text\"`"
         }
       ],
       "stop_reasons": [],
@@ -472,7 +484,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(classify_bare(\" \"), \"blank\");",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "missing_input",
+          "why": "no test input reaches `final_state == \"text\"`"
         },
         {
           "name": "bare_word_is_word",
@@ -482,7 +496,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(classify_bare(\"ab\"), \"word\");",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "missing_input",
+          "why": "no test input reaches `final_state == \"text\"`"
         }
       ],
       "stop_reasons": [],

@@ -77,6 +77,14 @@ probe_family|predicate|Probe family value.
 probe_family|return_value|Probe family value.
 probe_family|side_effect|Probe family value.
 probe_family|static_unknown|Probe family value.
+related_test_miss|assertion_not_credited|Related test has an assertion ripr could not establish runs as the standard macro.
+related_test_miss|assertion_not_observing|Related test asserts, but no assertion observes the changed value.
+related_test_miss|missing_exact_assertion|Related test observes the behavior, but no assertion pins the exact error variant or field value.
+related_test_miss|missing_input|Related test observes the behavior, but no input reaches the predicate boundary value.
+related_test_miss|no_assertion|Related test has no assertion ripr recognizes.
+related_test_miss|no_call_path|Related test is linked by name or location only; no call to the changed code.
+related_test_miss|observation_unconfirmed|Related test's oracle text never names the changed expression.
+related_test_miss|weak_assertion|Related test's oracle is weak or smoke-only.
 repair_card_budget_version|repair-card-budget-v1|Current repair card detail/budget version.
 repair_card_schema_version|repair_card.v1|Current repair card schema version.
 schema_version|0.2|Current check JSON schema version.

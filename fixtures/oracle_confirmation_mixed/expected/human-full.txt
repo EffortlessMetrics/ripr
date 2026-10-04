@@ -29,9 +29,9 @@ Evidence
   - observation yes: A related test observes a value or effect near the changed behavior
   - discriminator weak: Strongest oracle does not confirm observation of the changed expression; a weaker assertion cannot supply its confirmation (oracle_confirmation_mixed)
   - local flow reaches call effect: record_effect(rows) (line 2)
-  - related test src/lib.rs:12 calls_owner_without_observing_effect uses none unknown oracle
-  - related test src/lib.rs:17 unrelated_exact_oracle uses strong exact value oracle: assert_eq!(store, expected);
-  - related test src/lib.rs:17 unrelated_exact_oracle uses weak relational check oracle: assert!(label.contains("record_effect"));
+  - related test src/lib.rs:12 calls_owner_without_observing_effect uses none unknown oracle; misses: has no assertion
+  - related test src/lib.rs:17 unrelated_exact_oracle uses strong exact value oracle: assert_eq!(store, expected); misses: assertion does not mention the changed expression
+  - related test src/lib.rs:17 unrelated_exact_oracle uses weak relational check oracle: assert!(label.contains("record_effect")); misses: assertion too weak to tell the old behavior from the new
   - source assertion argument value "record_effect" at line 22
 
 Weakness

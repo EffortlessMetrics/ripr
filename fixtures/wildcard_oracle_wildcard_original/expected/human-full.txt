@@ -29,7 +29,7 @@ Evidence
   - observation yes: A related test observes a value or effect near the changed behavior
   - discriminator weak: Only relational oracle found; it may not discriminate the changed value exactly
   - local flow reaches returned value: value + 1 (line 2)
-  - related test src/lib.rs:8 observes_score uses weak relational check oracle: assert!(matches!(value, _));
+  - related test src/lib.rs:8 observes_score uses weak relational check oracle: assert!(matches!(value, _)); misses: assertion too weak to tell the old behavior from the new
   - source function argument value value = 1 at line 9
 
 Weakness

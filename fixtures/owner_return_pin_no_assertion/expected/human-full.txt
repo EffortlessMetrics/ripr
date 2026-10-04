@@ -29,7 +29,7 @@ Evidence
   - observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect
   - discriminator no: No assertion found on related tests
   - local flow reaches returned value: input * 3 (line 2)
-  - related test tests/weight_tests.rs:4 checks_weight uses none unknown oracle
+  - related test tests/weight_tests.rs:4 checks_weight uses none unknown oracle; misses: has no assertion
   - source function argument value input = 4 at line 5
 
 Weakness

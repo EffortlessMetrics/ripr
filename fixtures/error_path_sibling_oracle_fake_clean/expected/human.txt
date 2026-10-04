@@ -15,7 +15,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return Err(ParseError::TooLong);
   Missing discriminator (1 of 2): ParseError::TooLong
-  Related test: tests/validation.rs:8 valid_input_returns_valid
+  Related test: tests/validation.rs:8 valid_input_returns_valid (no assertion pins `ParseError::TooLong`)
   Next step: Assert the exact error variant or payload instead of only is_err().
   Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach validate_or_default: valid_input_returns_valid

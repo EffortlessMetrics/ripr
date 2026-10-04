@@ -15,7 +15,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: if code <= 299 {
   Missing discriminator (1 of 2): code == 299
-  Related test: tests/rendering.rs:4 renders_error_status_snapshot
+  Related test: tests/rendering.rs:4 renders_error_status_snapshot (no test input reaches `code == 299`)
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
   Evidence: reach yes · infection weak · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach render_status: renders_error_status_snapshot

@@ -344,3 +344,14 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+## Pending — boundary_gap_multiline_assert (10)
+
+Reason:
+RIPR-SPEC-0224: related tests ripr examined stay listed and each names why it misses the change (#5344); verdicts unchanged
+
+Command:
+`cargo xtask goldens bless boundary_gap_multiline_assert --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

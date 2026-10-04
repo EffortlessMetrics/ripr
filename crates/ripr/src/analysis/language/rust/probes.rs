@@ -27,7 +27,7 @@ pub(super) fn apply_rust_value_propagation_limit(
 ) {
     if finding.class != ExposureClass::StaticUnknown
         || finding.static_limit_kind.is_some()
-        || finding.related_tests.is_empty()
+        || finding.oracle_related_tests().next().is_none()
     {
         return;
     }
@@ -535,6 +535,7 @@ mod tests {
                 oracle_strength: OracleStrength::None,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             }],
             recommended_next_step: None,
             language: None,

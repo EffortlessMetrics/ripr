@@ -73,8 +73,11 @@ impl DiagnosticWitness {
         // The analyzer's suggested repair test, when it is one of the
         // related tests, is the fix site: `check`, `explain` and the repair
         // card already name it, so every surface points at the same test.
-        let best_test =
-            suggested_related_test(finding).or_else(|| best_related_test(&finding.related_tests));
+        // Tests listed only as examined misses (#5344) supplied no oracle and
+        // are never a fix site: a fix site claims "this test runs the change
+        // and has this oracle".
+        let best_test = suggested_related_test(finding)
+            .or_else(|| best_related_test(finding.oracle_related_tests()));
         // `observed_values` is finding-wide and does not identify the
         // selected related test.  Do not guess an assertion location by
         // matching text; the test's own line remains the only producer-owned
@@ -165,7 +168,7 @@ fn suggested_related_test(finding: &Finding) -> Option<&RelatedTest> {
     let name = evidence("suggested_test_name: ")?;
     // The file, when the producer names one, disambiguates same-named tests.
     let file = evidence("suggested_test_file: ");
-    let mut matches = finding.related_tests.iter().filter(|test| {
+    let mut matches = finding.oracle_related_tests().filter(|test| {
         test.name == name
             && file.is_none_or(|file| test.file.to_string_lossy().replace('\\', "/") == file)
     });
@@ -174,8 +177,10 @@ fn suggested_related_test(finding: &Finding) -> Option<&RelatedTest> {
     matches.next().is_none().then_some(first)
 }
 
-fn best_related_test(related_tests: &[RelatedTest]) -> Option<&RelatedTest> {
-    related_tests.iter().max_by(|left, right| {
+fn best_related_test<'a>(
+    related_tests: impl Iterator<Item = &'a RelatedTest>,
+) -> Option<&'a RelatedTest> {
+    related_tests.max_by(|left, right| {
         left.oracle_strength
             .rank()
             .cmp(&right.oracle_strength.rank())
@@ -257,6 +262,7 @@ mod tests {
                 oracle_strength: OracleStrength::Weak,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             },
             RelatedTest {
                 name: "rejects_boundary_in_other_fixture".to_string(),
@@ -267,6 +273,7 @@ mod tests {
                 oracle_strength: OracleStrength::Weak,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             },
         ];
 
@@ -316,6 +323,7 @@ mod tests {
             oracle_strength: OracleStrength::Strong,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         };
         let mut finding = sample_finding();
         finding.class = ExposureClass::WeaklyExposed;
@@ -352,6 +360,40 @@ mod tests {
         assert_eq!(fix_test(&finding), ranked);
     }
 
+    /// #5344 review: a test listed only because ripr examined it (none of its
+    /// assertions matched the change) is not a fix site, even when it is the
+    /// only related test or the suggested one.
+    #[test]
+    fn an_examined_miss_is_never_the_fix_site() -> Result<(), String> {
+        let miss = RelatedTest {
+            name: "check_runs".to_string(),
+            file: PathBuf::from("tests/run.rs"),
+            line: 4,
+            oracle: Some("assert_eq!(names.len(), 2);".to_string()),
+            oracle_kind: OracleKind::Unknown,
+            oracle_strength: OracleStrength::None,
+            relation_reason: None,
+            relation_confidence: None,
+            miss: Some(crate::domain::RelatedTestMiss::AssertionNotObserving),
+        };
+        let mut finding = sample_finding();
+        finding.class = ExposureClass::ReachableUnrevealed;
+        finding.related_tests = vec![miss];
+        finding.evidence = vec!["suggested_test_name: check_runs".to_string()];
+        let witness = DiagnosticWitness::from_finding(&finding)
+            .ok_or("a reachable_unrevealed finding builds a witness")?;
+        assert!(witness.fix_site.is_none(), "{:?}", witness.fix_site);
+        assert!(
+            witness
+                .limitations
+                .iter()
+                .any(|limitation| limitation.kind == "fix_site_unavailable"),
+            "{:?}",
+            witness.limitations
+        );
+        Ok(())
+    }
+
     #[test]
     fn fix_site_matches_the_suggested_test_by_file_and_name() {
         let related = |file: &str, line: usize| RelatedTest {
@@ -363,6 +405,7 @@ mod tests {
             oracle_strength: OracleStrength::Strong,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         };
         let mut finding = sample_finding();
         finding.class = ExposureClass::WeaklyExposed;

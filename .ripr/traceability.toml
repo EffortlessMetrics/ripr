@@ -12064,6 +12064,27 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0224"
+name = "Examined-test miss evidence"
+spec = "docs/specs/RIPR-SPEC-0224-examined-test-miss-evidence.md"
+tests = [
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::reveal_evidence_lists_a_test_whose_assertions_do_not_match_as_a_miss",
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::a_matched_test_ranks_ahead_of_an_examined_miss_and_keeps_its_window_slot",
+  "crates/ripr/src/output/related_test_miss.rs::tests",
+]
+code = [
+  "crates/ripr/src/domain/probe.rs",
+  "crates/ripr/src/analysis/classify/reveal.rs",
+  "crates/ripr/src/analysis/classifier/finding.rs",
+  "crates/ripr/src/output/related_test_miss.rs",
+  "crates/ripr/src/output/human/explain.rs",
+]
+outputs = []
+metrics = [
+  "unit_test_pass_rate",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0218"
 name = "Issue lifecycle attempt extension contract and scorecard projection"
 spec = "docs/specs/RIPR-SPEC-0218-issue-lifecycle-attempt-extension.md"

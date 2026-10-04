@@ -15,7 +15,7 @@ Start here:
   Why weak: a related test reaches this change, but no test input tells the old and new behavior apart
   Changed behavior: items >= 10
   Missing discriminator: items == 10
-  Related test (1 of 4): tests/orders.rs:9 small_order_pays_shipping
+  Related test (1 of 4): tests/orders.rs:9 small_order_pays_shipping (no test input reaches `items == 10`)
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
   Evidence: reach yes · infection weak · propagation yes · observation yes · discriminator missing
     - reach yes: Related tests appear to reach ships_free: small_order_pays_shipping, big_order_ships_free, five_items_earn_a_gift

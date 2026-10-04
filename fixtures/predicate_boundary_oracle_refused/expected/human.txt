@@ -15,7 +15,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: amount >= discount_threshold
   Missing discriminator: Discriminator unconfirmed: no admitted discriminating oracle is paired with the owner's boundary call (same_test_pairing_missing); a boundary input and a separate exact oracle do…
-  Related test (1 of 2): src/lib.rs:13 boundary
+  Related test (1 of 2): src/lib.rs:13 boundary (assertion not credited: ripr could not establish that it runs as the standard macro)
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
   Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach discounted_total: boundary, far

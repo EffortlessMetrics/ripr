@@ -15,7 +15,7 @@ Start here:
   Why unknown: the path from the changed behavior to an observable sink is not statically clear
   Changed behavior: println!("amount is {}", amount * 9);
   Analyzer limit: No clear propagation path from changed behavior to an observable sink
-  Related test: tests/report_tests.rs:4 report_does_not_panic
+  Related test: tests/report_tests.rs:4 report_does_not_panic (has no assertion)
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
   Evidence: reach yes · infection yes · propagation unknown · observation no · discriminator no
     - reach yes: Related tests appear to reach report: report_does_not_panic

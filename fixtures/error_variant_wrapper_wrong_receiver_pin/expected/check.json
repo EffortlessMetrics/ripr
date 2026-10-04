@@ -29,7 +29,7 @@
         "observe": {"state":"no","confidence":"medium","summary":"Related tests were found, but no assertion appears to observe the changed value, error, field, or effect"},
         "discriminate": {"state":"no","confidence":"medium","summary":"No assertion found on related tests"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach parse_summary: parse_summary_callee_witness_pins_variant, parse_summary_other_receiver_pins_same_variant", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence call effect: try_parse_summary(raw).map_err(Into::into)", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches call effect: try_parse_summary(raw).map_err(Into::into) (line 27)", "source enum variant value ParseSummaryError::MalformedSource at line 6", "source enum variant value ParseSummaryError::MalformedSource at line 6", "source function argument value raw = \"@bad;\" at line 15", "source enum variant value ParseSummaryError::MalformedSource at line 16", "source enum variant value ParseSummaryError::MalformedSource at line 16"],
+      "evidence_path": ["reach yes: Related tests appear to reach parse_summary: parse_summary_callee_witness_pins_variant, parse_summary_other_receiver_pins_same_variant", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence call effect: try_parse_summary(raw).map_err(Into::into)", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches call effect: try_parse_summary(raw).map_err(Into::into) (line 27)", "related test tests/errors.rs:4 parse_summary_callee_witness_pins_variant uses none unknown oracle: if !matches!(result, Err(ParseSummaryError::MalformedSource)) {\nreturn Err(\"callee pin should observe ParseSummaryError::MalformedSource\".into());\n}", "related test tests/errors.rs:13 parse_summary_other_receiver_pins_same_variant uses none unknown oracle: if !matches!(result, Err(ParseSummaryError::MalformedSource)) {\nreturn Err(\"other receiver pin should observe ParseSummaryError::MalformedSource\".into());\n}", "source enum variant value ParseSummaryError::MalformedSource at line 6", "source enum variant value ParseSummaryError::MalformedSource at line 6", "source function argument value raw = \"@bad;\" at line 15", "source enum variant value ParseSummaryError::MalformedSource at line 16", "source enum variant value ParseSummaryError::MalformedSource at line 16"],
       "flow_sinks": [
         {"kind":"call_effect","text":"try_parse_summary(raw).map_err(Into::into)","line":27}
       ],
@@ -104,8 +104,32 @@
       ],
       "missing_discriminators": [
       ],
-      "related_tests_total": 0,
+      "related_tests_total": 2,
       "related_tests": [
+        {
+          "name": "parse_summary_callee_witness_pins_variant",
+          "file": "tests/errors.rs",
+          "line": 4,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "if !matches!(result, Err(ParseSummaryError::MalformedSource)) {\nreturn Err(\"callee pin should observe ParseSummaryError::MalformedSource\".into());\n}",
+          "relation_reason": "owner_named_test",
+          "relation_confidence": "medium",
+          "miss": "assertion_not_observing",
+          "why": "asserts, but not on the changed value"
+        },
+        {
+          "name": "parse_summary_other_receiver_pins_same_variant",
+          "file": "tests/errors.rs",
+          "line": 13,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "if !matches!(result, Err(ParseSummaryError::MalformedSource)) {\nreturn Err(\"other receiver pin should observe ParseSummaryError::MalformedSource\".into());\n}",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low",
+          "miss": "assertion_not_observing",
+          "why": "asserts, but not on the changed value"
+        }
       ],
       "stop_reasons": [],
       "oracle_kind": "unknown",
@@ -220,7 +244,9 @@
           "oracle_kind": "exact_error_variant",
           "oracle": "if !matches!(result, Err(ParseSummaryError::MalformedSource)) {\nreturn Err(\"callee pin should observe ParseSummaryError::MalformedSource\".into());\n}",
           "relation_reason": "owner_named_test",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "parse_summary_callee_witness_pins_variant",
@@ -230,7 +256,9 @@
           "oracle_kind": "exact_error_variant",
           "oracle": "matches!(result, Err(ParseSummaryError::MalformedSource))",
           "relation_reason": "owner_named_test",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "parse_summary_other_receiver_pins_same_variant",
@@ -240,7 +268,9 @@
           "oracle_kind": "exact_error_variant",
           "oracle": "if !matches!(result, Err(ParseSummaryError::MalformedSource)) {\nreturn Err(\"other receiver pin should observe ParseSummaryError::MalformedSource\".into());\n}",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "parse_summary_other_receiver_pins_same_variant",
@@ -250,7 +280,9 @@
           "oracle_kind": "exact_error_variant",
           "oracle": "matches!(result, Err(ParseSummaryError::MalformedSource))",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],

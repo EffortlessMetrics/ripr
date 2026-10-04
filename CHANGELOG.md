@@ -198,6 +198,17 @@ are scoped or reviewed.
   new before phase. Retained typed packet routes remain available only for a
   current after continuation; a restart display never supplies typed command
   authority. Retained receipts and freshness refusals are unchanged (#5413).
+- Gap findings name every related test ripr examined and say why each one
+  misses the change: no call path, no assertion, an assertion that does not
+  observe the changed value, an assertion ripr could not credit, a weak
+  assertion, a missing boundary input, or an assertion that never names the
+  changed expression. A finding no longer says "Related tests were found", or
+  reports `reach: yes`, while listing none (#5344, #5329). JSON, the context
+  packet and MCP carry `related_tests[].miss` and `why`; LSP hover shows the
+  reason and diagnostics link the examined tests. `ripr explain` adds a "Why
+  this verdict" section: each examined test with the assertion it was judged
+  by, what a test would need to change the verdict, and what each stop reason
+  means (#5356). No verdict changes.
 
 ### Changed
 

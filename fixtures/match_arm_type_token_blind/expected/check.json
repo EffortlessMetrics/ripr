@@ -78,7 +78,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(classify(Mode::Warm), 1);",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],

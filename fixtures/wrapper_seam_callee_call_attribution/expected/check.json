@@ -29,7 +29,7 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
        },
-      "evidence_path": ["reach yes: Related tests exercise the wrapper seam's converted callee (the changed owner is not invoked by them): calls_callee_before_shadow_binding, observes_callee_outcome", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation weak: No complete owner-bound propagation witness found for error variant: try_parse_summary(raw).map_err(|error| error.to_string().into())", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches error variant: try_parse_summary(raw).map_err(|error| error.to_string().into()) (line 14)", "related test tests/attribution.rs:4 observes_callee_outcome uses strong exact value oracle: assert_eq!(parsed.map(|n| n), Ok(3));", "source assertion argument value 3 at line 6", "source assertion argument value 3 at line 15", "source assertion argument value 5 at line 18"],
+      "evidence_path": ["reach yes: Related tests exercise the wrapper seam's converted callee (the changed owner is not invoked by them): calls_callee_before_shadow_binding, observes_callee_outcome", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation weak: No complete owner-bound propagation witness found for error variant: try_parse_summary(raw).map_err(|error| error.to_string().into())", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches error variant: try_parse_summary(raw).map_err(|error| error.to_string().into()) (line 14)", "related test tests/attribution.rs:4 observes_callee_outcome uses strong exact value oracle: assert_eq!(parsed.map(|n| n), Ok(3));", "related test tests/attribution.rs:13 calls_callee_before_shadow_binding uses none unknown oracle: assert_eq!(parsed.map(|n| n), Ok(3));", "source assertion argument value 3 at line 6", "source assertion argument value 3 at line 15", "source assertion argument value 5 at line 18"],
       "flow_sinks": [
         {"kind":"error_variant","text":"try_parse_summary(raw).map_err(|error| error.to_string().into())","line":14}
       ],
@@ -80,7 +80,7 @@
       ],
       "missing_discriminators": [
       ],
-      "related_tests_total": 1,
+      "related_tests_total": 2,
       "related_tests": [
         {
           "name": "observes_callee_outcome",
@@ -90,7 +90,21 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(parsed.map(|n| n), Ok(3));",
           "relation_reason": "seam_callee_call",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
+        },
+        {
+          "name": "calls_callee_before_shadow_binding",
+          "file": "tests/attribution.rs",
+          "line": 13,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "assert_eq!(parsed.map(|n| n), Ok(3));",
+          "relation_reason": "seam_callee_call",
+          "relation_confidence": "medium",
+          "miss": "assertion_not_observing",
+          "why": "asserts, but not on the changed value"
         }
       ],
       "stop_reasons": [],
@@ -190,7 +204,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(parsed.map(|n| n), Ok(3));",
           "relation_reason": "seam_callee_call",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "calls_callee_before_shadow_binding",
@@ -200,7 +216,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(ignored, Ok(5));",
           "relation_reason": "seam_callee_call",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "observes_callee_outcome",
@@ -210,7 +228,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(parsed.map(|n| n), Ok(3));",
           "relation_reason": "seam_callee_call",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],

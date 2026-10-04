@@ -15,7 +15,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: (true, false) =>
   Missing discriminator: No strong discriminator was detected
-  Related test (1 of 3): tests/projection.rs:5 request_only_projection_observes_join
+  Related test (1 of 3): tests/projection.rs:5 request_only_projection_observes_join (assertion does not mention the changed expression)
   Next step: Strengthen the related assertion so it discriminates the changed behavior.
   Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach terminalize_proof: request_only_projection_observes_join

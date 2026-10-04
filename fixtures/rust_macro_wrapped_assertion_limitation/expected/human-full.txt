@@ -29,7 +29,7 @@ Evidence
   - observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect
   - discriminator no: No assertion found on related tests
   - local flow reaches returned value: a - b (line 3)
-  - related test tests/it.rs:8 test_inner_with_custom_assertion_macro uses none unknown oracle
+  - related test tests/it.rs:8 test_inner_with_custom_assertion_macro uses none unknown oracle; misses: has no assertion
   - source function argument value a = 10 at line 9
   - source function argument value b = 3 at line 9
 
@@ -83,7 +83,7 @@ Evidence
   - observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect
   - discriminator no: No assertion found on related tests
   - local flow reaches returned value: a - b (line 3)
-  - related test tests/it.rs:8 test_inner_with_custom_assertion_macro uses none unknown oracle
+  - related test tests/it.rs:8 test_inner_with_custom_assertion_macro uses none unknown oracle; misses: has no assertion
   - source function argument value a = 10 at line 9
   - source function argument value b = 3 at line 9
 

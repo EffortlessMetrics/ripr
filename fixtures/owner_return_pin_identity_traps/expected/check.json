@@ -99,7 +99,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(decode(8), 9);",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "negative_input_exits_early",
@@ -109,7 +111,9 @@
           "oracle_kind": "exact_error_variant",
           "oracle": "assert_eq!(checked_half(-4), Err(HalfError::Negative));",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],
@@ -290,7 +294,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(reader.next_word(), 7);",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],
@@ -370,7 +376,9 @@
           "oracle_kind": "exact_error_variant",
           "oracle": "assert_eq!(checked_half(-4), Err(HalfError::Negative));",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],
@@ -450,7 +458,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(scaled(3), 30);",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],

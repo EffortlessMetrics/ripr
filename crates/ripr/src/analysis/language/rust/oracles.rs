@@ -303,12 +303,11 @@ pub(super) fn apply_unresolved_property_macro_limit(
 
 pub(super) fn apply_rust_macro_wrapped_assertion_limit(finding: &mut Finding, index: &RustIndex) {
     if !(finding.class == ExposureClass::ReachableUnrevealed
-        && !finding.related_tests.is_empty()
+        && finding.oracle_related_tests().next().is_some()
         && finding.static_limit_kind.is_none()
         && finding.ripr.reveal.observe.state == crate::domain::StageState::No
         && finding
-            .related_tests
-            .iter()
+            .oracle_related_tests()
             .all(|related| related.oracle.is_none()))
     {
         return;
@@ -398,8 +397,7 @@ fn find_unresolved_assertion_macro_witness(
         .chain(index.files().values().flat_map(|file| file.tests.iter()))
     {
         if !finding
-            .related_tests
-            .iter()
+            .oracle_related_tests()
             .any(|related| related.name == test.name && related.file == test.file)
         {
             continue;
@@ -740,6 +738,7 @@ mod tests {
                 oracle_strength: OracleStrength::None,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             }],
             recommended_next_step: None,
             language: None,
