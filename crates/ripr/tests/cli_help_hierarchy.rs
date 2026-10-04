@@ -543,6 +543,58 @@ fn check_and_diff_help_state_the_real_base_default() -> Result<(), String> {
     Ok(())
 }
 
+/// #5211 direction B: `check --help` keeps every format but chooses one
+/// per task, so a newcomer maps their job to a format without re-reading
+/// the group list. Each task below must keep exactly its recommended path.
+#[test]
+fn check_help_chooses_one_format_per_task() -> Result<(), String> {
+    let check = normalized(&rendered_help(&["check", "--help"])?);
+    for needle in [
+        "Choose by task:",
+        "eye review -> human",
+        "every finding with drill-in commands -> human-full",
+        "machine consumer (jq, CI scripts) -> json",
+        "file annotations in Actions logs -> github",
+        "code scanning upload -> sarif",
+        "README badge -> repo-badge-shields (repo ledger)",
+        "PR/CI status badge -> badge-shields (diff)",
+        "whole-repo inventory -> repo-exposure-json",
+        "agent repair evidence -> agent-seam-packets-json",
+    ] {
+        assert_contains("check help (`ripr check --help`)", &check, needle)?;
+    }
+    // The chooser orients before the group list it summarizes.
+    let chooser = check
+        .find("Choose by task:")
+        .ok_or("chooser missing from check help")?;
+    let groups = check
+        .find("Analysis (diff-scoped):")
+        .ok_or("format groups missing from check help")?;
+    if chooser > groups {
+        return Err("the task chooser must precede the format groups".to_string());
+    }
+    // BADGE_ADOPTION.md rule 1: README badges are repo-scoped. The README
+    // mapping must name only the repo format; the diff format belongs to
+    // the PR/CI mapping.
+    let readme = check
+        .find("README badge ->")
+        .ok_or("README mapping missing from the chooser")?;
+    let pr = check
+        .find("PR/CI status badge ->")
+        .ok_or("PR/CI mapping missing from the chooser")?;
+    if readme > pr {
+        return Err("the README mapping must precede the PR/CI mapping".to_string());
+    }
+    let readme_span = &check[readme..pr];
+    if !readme_span.contains("repo-badge-shields") {
+        return Err("the README mapping must recommend repo-badge-shields".to_string());
+    }
+    if readme_span.contains("badge-shields (diff)") {
+        return Err("the README mapping must not include the diff format".to_string());
+    }
+    Ok(())
+}
+
 /// Validate the command cell of each task row, not mentions elsewhere in the
 /// document. The result prose can change without changing the command's job.
 fn assert_doc_command_routes(doc: &str) -> Result<(), String> {

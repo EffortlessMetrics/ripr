@@ -20,6 +20,11 @@ are scoped or reviewed.
   get `invalid params` (#5209).
 ### Added
 
+- `ripr check --help` now chooses one `--format` per task (eye review,
+  drill-in listing, machine JSON, Actions annotations, code scanning,
+  README badge, PR/CI badge, repo inventory, agent packets) above the
+  full group list, so a newcomer maps their job to a format without
+  re-reading the 22 values (#5211).
 - `ripr check --format json` caps the rendered `findings` array at
   `RIPR_CHECK_FINDINGS_BYTES` emitted bytes (default 1,000,000; `0` removes
   the cap). A bounded document renders the deterministic first-finding prefix
