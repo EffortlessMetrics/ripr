@@ -1041,6 +1041,34 @@
       ]
     },
     {
+      "id": "rust_error_path_operand_error_lexeme",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/error_path_operand_error_lexeme",
+      "vector": "operand_error_lexeme_does_not_observe_changed_error",
+      "probe_family": "error_path",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "weakly_exposed"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
       "id": "rust_error_path_diagnostic_raw",
       "language": "rust",
       "tier": "pure",

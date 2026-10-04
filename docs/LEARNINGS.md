@@ -3,6 +3,22 @@
 This log captures repo knowledge that should survive individual PRs and chat
 sessions. It is intentionally short and actionable.
 
+## 2026-10-04: Operand-position error lexemes are not error observers (#5255)
+
+`assert_eq!((rdr.len(), error_count), (10, 0))` observes a successful length
+and a test-local zero, not an error path. `assertion_observes_error` must not
+treat a leading, middle, or undelimited `error`/`err` segment in a compound
+identifier as an error observer (`error_count`, `nonerror`). Trailing tokens
+still count (`Err`, `unwrap_err`, `last_error`, `ParseError`). Diagnostic
+stripping from #4748 is unchanged.
+
+Pin the operand twin beside the message twin: `error_path_operand_error_lexeme`
+must stay `weakly_exposed`, matching `error_path_diagnostic_error`. Existing
+`error_path_diagnostic_*` goldens stay green. Sibling ErrorPath confirmation
+sites (diagnostic operand stripping, guarded owner-result matches, exact-variant
+pins, Python's typed-oracle gate) do not scan identifier lexemes. Do not reopen
+#4748.
+
 ## 2026-10-04: Initialize-session `ping` is the method name, not `params._meta` (#6022)
 
 Pinned `rmcp` 3.5.0 answers pre-init `ping` in the handshake loop (any
@@ -201,6 +217,8 @@ original oracle text for rendering. The `error_path_diagnostic_*` fixtures pin
 absent, neutral, raw, escaped, formatted and typed-diagnostic controls in the
 RIPR-SPEC-0108 honesty corpus. Genuine typed and guarded Result oracles retain
 their producer-owned evidence; this is not general Rust name/dataflow resolution.
+Operand-position identifier residual (`error_count`) is #5255; do not reopen
+this diagnostic-operand claim for that mechanism.
 
 ## 2026-09-29: Absent worktree files are not `no_static_path` (#4586)
 

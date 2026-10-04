@@ -7168,6 +7168,7 @@ id = "RIPR-SPEC-0108"
 name = "evidence-promotion honesty meta-gate"
 spec = "docs/specs/RIPR-SPEC-0108-evidence-promotion-honesty-meta-gate.md"
 tests = [
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::error_path_operand_error_lexeme_does_not_confirm_observation",
   "xtask/src/tests.rs::evidence_promotion_human_oracle_line_matches_real_rust_evidence",
   "xtask/src/tests.rs::evidence_promotion_human_oracle_line_rejects_diagnostic_overrides",
   "xtask/src/tests.rs::evidence_promotion_semantic_assertions_retain_related_test_identity",
@@ -7224,6 +7225,7 @@ fixtures = [
   "fixtures/wildcard_oracle_guarded_original",
   "fixtures/wildcard_oracle_guarded_wrong",
   "fixtures/benches_harness_evidence",
+  "fixtures/error_path_operand_error_lexeme",
   "fixtures/evidence-promotion-honesty-corpus",
   "fixtures/evidence-promotion-honesty-corpus/patches/semver-matches-greater.diff",
   "fixtures/evidence-promotion-honesty-corpus/reports/scope-clean-complete-empty-may-be-clean.json",
@@ -7269,6 +7271,7 @@ fixtures = [
   "fixtures/typescript_adversarial_mocked_barrel",
 ]
 code = [
+  "crates/ripr/src/analysis/classify/reveal.rs",
   "xtask/src/main.rs",
   "xtask/src/command.rs",
   "xtask/src/dispatch.rs",
