@@ -48,6 +48,7 @@ pub fn qualify_legacy_ripr_plus_receipt(
 }
 mod selector;
 pub(crate) mod temp_diff;
+pub(crate) mod test_stub;
 pub(crate) mod verification_execution;
 
 pub use crate::output::format::OutputFormat;

@@ -620,6 +620,14 @@ const CATALOG: &[CommandCatalogEntry] = &[
         DiscoveryPosture::Advanced,
     ),
     nested(
+        "cmd:agent.stub",
+        "agent stub",
+        CommandClass::Advanced,
+        CommandDispatch::Agent,
+        AGENT,
+        DiscoveryPosture::Advanced,
+    ),
+    nested(
         "cmd:agent.verify",
         "agent verify",
         CommandClass::Advanced,

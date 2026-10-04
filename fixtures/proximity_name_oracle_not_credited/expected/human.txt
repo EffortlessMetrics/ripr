@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/proximity_name_oracle_not_credited/input --diff fixtures/proximity_name_oracle_not_credited/diff.patch --mode fast probe:src_lib.rs:error_path:e01f0ca9
   ripr context --root fixtures/proximity_name_oracle_not_credited/input --diff fixtures/proximity_name_oracle_not_credited/diff.patch --mode fast --at probe:src_lib.rs:error_path:e01f0ca9
+Write a test for it:
+  ripr agent stub --root fixtures/proximity_name_oracle_not_credited/input --at src/lib.rs:9
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

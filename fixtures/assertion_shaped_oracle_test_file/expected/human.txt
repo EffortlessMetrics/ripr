@@ -27,6 +27,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/assertion_shaped_oracle_test_file/input --diff fixtures/assertion_shaped_oracle_test_file/diff.patch --mode fast probe:src_fragment_checks.rs:predicate:41d9e03a
   ripr context --root fixtures/assertion_shaped_oracle_test_file/input --diff fixtures/assertion_shaped_oracle_test_file/diff.patch --mode fast --at probe:src_fragment_checks.rs:predicate:41d9e03a
+Write a test for it:
+  ripr agent stub --root fixtures/assertion_shaped_oracle_test_file/input --at src/fragment_checks.rs:8
 
 More:
   Full evidence: rerun with --format human-full

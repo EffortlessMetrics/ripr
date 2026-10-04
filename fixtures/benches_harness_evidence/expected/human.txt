@@ -27,6 +27,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/benches_harness_evidence/input --diff fixtures/benches_harness_evidence/diff.patch --mode fast probe:src_lib.rs:predicate:9b2a72c1
   ripr context --root fixtures/benches_harness_evidence/input --diff fixtures/benches_harness_evidence/diff.patch --mode fast --at probe:src_lib.rs:predicate:9b2a72c1
+Write a test for it:
+  ripr agent stub --root fixtures/benches_harness_evidence/input --at src/lib.rs:2
 
 More:
   Full evidence: rerun with --format human-full

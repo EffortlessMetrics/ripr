@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/predicate_boundary_oracle_refused/input --diff fixtures/predicate_boundary_oracle_refused/diff.patch --mode fast probe:src_lib.rs:predicate:c80557eb
   ripr context --root fixtures/predicate_boundary_oracle_refused/input --diff fixtures/predicate_boundary_oracle_refused/diff.patch --mode fast --at probe:src_lib.rs:predicate:c80557eb
+Write a test for it:
+  ripr agent stub --root fixtures/predicate_boundary_oracle_refused/input --at src/lib.rs:2
 
 More:
   Full evidence: rerun with --format human-full

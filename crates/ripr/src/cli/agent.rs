@@ -10,6 +10,7 @@ pub(super) enum AgentCommand {
     BriefHelp,
     PacketHelp,
     CardHelp,
+    StubHelp,
     VerifyHelp,
     VerifyExecuteHelp,
     ReceiptHelp,
@@ -20,6 +21,7 @@ pub(super) enum AgentCommand {
     Brief(AgentBriefOptions),
     Packet(AgentPacketOptions),
     Card(AgentCardOptions),
+    Stub(AgentStubOptions),
     Verify(AgentVerifyOptions),
     VerifyExecute(AgentVerifyExecuteOptions),
     Receipt(AgentReceiptOptions),
@@ -63,6 +65,15 @@ pub(super) struct AgentCardOptions {
     /// Emit the versioned `RepairCardV1` JSON document instead of the compact
     /// human summary. The card is the default handoff; the JSON document is
     /// the machine-readable form of the same typed fields.
+    pub(super) json: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct AgentStubOptions {
+    pub(super) root: PathBuf,
+    pub(super) selector: crate::app::test_stub::TestStubSelector,
+    /// Apply the stub to the working tree instead of only printing it.
+    pub(super) write: bool,
     pub(super) json: bool,
 }
 
@@ -193,6 +204,7 @@ pub(super) fn parse_agent_args(args: &[String]) -> Result<AgentCommand, String> 
         Some("brief") => parse_agent_brief_command(&args[1..]),
         Some("packet") => parse_agent_packet_command(&args[1..]),
         Some("card") => parse_agent_card_command(&args[1..]),
+        Some("stub") => parse_agent_stub_command(&args[1..]),
         Some("verify") => parse_agent_verify_command(&args[1..]),
         Some("verify-execute") => parse_agent_verify_execute_command(&args[1..]),
         Some("receipt") => parse_agent_receipt_command(&args[1..]),
@@ -200,7 +212,7 @@ pub(super) fn parse_agent_args(args: &[String]) -> Result<AgentCommand, String> 
         Some("review-summary") => parse_agent_review_summary_command(&args[1..]),
         Some("repair") => parse_agent_repair_command(&args[1..]),
         Some(other) => Err(format!(
-            "unknown agent subcommand {other:?}; expected `start`, `brief`, `packet`, `card`, `verify`, `verify-execute`, `receipt`, `status`, `review-summary`, or `repair`"
+            "unknown agent subcommand {other:?}; expected `start`, `brief`, `packet`, `card`, `stub`, `verify`, `verify-execute`, `receipt`, `status`, `review-summary`, or `repair`"
         )),
     }
 }
@@ -791,6 +803,62 @@ pub(super) fn parse_agent_card_options(args: &[String]) -> Result<AgentCardOptio
     })
 }
 
+fn parse_agent_stub_command(args: &[String]) -> Result<AgentCommand, String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        return Ok(AgentCommand::StubHelp);
+    }
+    parse_agent_stub_options(args).map(AgentCommand::Stub)
+}
+
+pub(super) fn parse_agent_stub_options(args: &[String]) -> Result<AgentStubOptions, String> {
+    use crate::app::test_stub::TestStubSelector;
+    let mut root = PathBuf::from(".");
+    let mut selector: Option<TestStubSelector> = None;
+    let mut write = false;
+    let mut json = false;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = PathBuf::from(expect_value(args, i, "--root")?);
+            }
+            "--seam-id" | "--at" => {
+                let flag = args[i].clone();
+                i += 1;
+                if selector.is_some() {
+                    return Err("agent stub takes one of --seam-id or --at".to_string());
+                }
+                let value = expect_value(args, i, &flag)?;
+                if value.trim().is_empty() {
+                    return Err(format!("agent stub {flag} requires a non-empty value"));
+                }
+                selector = Some(if flag == "--at" {
+                    TestStubSelector::parse_at(value)?
+                } else {
+                    TestStubSelector::SeamId(value.to_string())
+                });
+            }
+            "--write" => write = true,
+            "--json" => json = true,
+            other => return Err(unknown_argument("agent stub", other)),
+        }
+        i += 1;
+    }
+
+    let selector = selector.ok_or_else(|| {
+        "agent stub requires --seam-id ID or --at FILE:LINE (the location `ripr check` prints)"
+            .to_string()
+    })?;
+    Ok(AgentStubOptions {
+        root,
+        selector,
+        write,
+        json,
+    })
+}
+
 pub(super) fn parse_agent_verify_options(args: &[String]) -> Result<AgentVerifyOptions, String> {
     let mut root = PathBuf::from(".");
     let mut before: Option<PathBuf> = None;
@@ -1221,7 +1289,7 @@ mod tests {
         assert_eq!(
             parse_agent_args(&args(&["other"])),
             Err(
-                "unknown agent subcommand \"other\"; expected `start`, `brief`, `packet`, `card`, `verify`, `verify-execute`, `receipt`, `status`, `review-summary`, or `repair`"
+                "unknown agent subcommand \"other\"; expected `start`, `brief`, `packet`, `card`, `stub`, `verify`, `verify-execute`, `receipt`, `status`, `review-summary`, or `repair`"
                     .to_string()
             )
         );

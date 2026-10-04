@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/owner_return_pin_identity_traps/input --diff fixtures/owner_return_pin_identity_traps/diff.patch --mode fast probe:src_lib.rs:return_value:22c1d265
   ripr context --root fixtures/owner_return_pin_identity_traps/input --diff fixtures/owner_return_pin_identity_traps/diff.patch --mode fast --at probe:src_lib.rs:return_value:22c1d265
+Write a test for it:
+  ripr agent stub --root fixtures/owner_return_pin_identity_traps/input --at src/lib.rs:21
 
 Hidden:
   3 lower-priority finding(s) omitted; 2 base-side evidence, not candidate edit targets.

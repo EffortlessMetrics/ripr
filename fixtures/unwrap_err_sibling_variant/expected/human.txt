@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/unwrap_err_sibling_variant/input --diff fixtures/unwrap_err_sibling_variant/diff.patch --mode fast probe:src_lib.rs:return_value:e88897cd
   ripr context --root fixtures/unwrap_err_sibling_variant/input --diff fixtures/unwrap_err_sibling_variant/diff.patch --mode fast --at probe:src_lib.rs:return_value:e88897cd
+Write a test for it:
+  ripr agent stub --root fixtures/unwrap_err_sibling_variant/input --at src/lib.rs:11
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

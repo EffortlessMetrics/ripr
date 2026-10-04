@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/opaque_fixture_builder/input --diff fixtures/opaque_fixture_builder/diff.patch --mode fast probe:src_lib.rs:predicate:e177493b
   ripr context --root fixtures/opaque_fixture_builder/input --diff fixtures/opaque_fixture_builder/diff.patch --mode fast --at probe:src_lib.rs:predicate:e177493b
+Write a test for it:
+  ripr agent stub --root fixtures/opaque_fixture_builder/input --at src/lib.rs:2
 
 More:
   Full evidence: rerun with --format human-full

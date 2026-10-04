@@ -8,6 +8,7 @@ pub(crate) struct FindingNavigation {
     explain_prefix: String,
     context_prefix: String,
     list_prefix: String,
+    stub_prefix: String,
 }
 
 impl FindingNavigation {
@@ -16,6 +17,7 @@ impl FindingNavigation {
             explain_prefix: "ripr explain".to_string(),
             context_prefix: "ripr context".to_string(),
             list_prefix: "ripr check".to_string(),
+            stub_prefix: "ripr agent stub".to_string(),
         }
     }
 
@@ -25,6 +27,16 @@ impl FindingNavigation {
 
     pub(crate) fn context_command(&self, selector: &str) -> String {
         format!("{} --at {}", self.context_prefix, shell_arg(selector))
+    }
+
+    /// The one-step `ripr agent stub` route from a finding location to a
+    /// runnable test (#5355). It reads the working tree at the same root.
+    pub(crate) fn stub_command(&self, file: &str, line: usize) -> String {
+        format!(
+            "{} --at {}",
+            self.stub_prefix,
+            shell_arg(&format!("{file}:{line}"))
+        )
     }
 
     /// The `ripr check --json` command that lists finding ids for the same
@@ -74,6 +86,10 @@ pub(crate) fn finding_navigation_with_worktree(
         explain_prefix: format!("ripr explain {args}"),
         context_prefix: format!("ripr context {args}"),
         list_prefix: format!("ripr check {list_args}"),
+        stub_prefix: format!(
+            "ripr agent stub --root {}",
+            shell_arg(&input.root.display().to_string())
+        ),
     }
 }
 

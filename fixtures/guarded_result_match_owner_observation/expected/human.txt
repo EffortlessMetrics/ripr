@@ -24,6 +24,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/guarded_result_match_owner_observation/input --diff fixtures/guarded_result_match_owner_observation/diff.patch --mode fast probe:src_lib.rs:return_value:6daabbf3
   ripr context --root fixtures/guarded_result_match_owner_observation/input --diff fixtures/guarded_result_match_owner_observation/diff.patch --mode fast --at probe:src_lib.rs:return_value:6daabbf3
+Write a test for it:
+  ripr agent stub --root fixtures/guarded_result_match_owner_observation/input --at src/lib.rs:46
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

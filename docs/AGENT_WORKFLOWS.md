@@ -286,6 +286,19 @@ packet` remains the full-detail compatibility route. See
 [LLM_OPERATOR_GUIDE.md](LLM_OPERATOR_GUIDE.md) and the
 [Output Schema](OUTPUT_SCHEMA.md) § "Repair card".
 
+To go from one `ripr check` finding to a test in one step, run
+`ripr agent stub --root . --at FILE:LINE` with the location the finding
+prints (or `--seam-id ID`). It prints a compiling `#[test]` placed in the
+owner file's inline `#[cfg(test)]` module, a new inline module, or the
+proposed `tests/` file, calling the changed function with its real receiver
+and arguments and a boundary input when the changed comparison names one. The
+expected value is a labelled `todo!()`, so the test fails until it is
+written. `--write` applies it; `--json` emits the `rust_test_stub` document.
+Its `run_command` runs only that test through the owning package's
+`--manifest-path`, and is `null` when no Cargo package owns the file. A
+`--at` path that matches files with gaps in several crates is refused; pass
+the full path or the seam ID.
+
 No `.ripr/goals/active.toml`, current-writer file, stage file or agent-liveness
 record selects ordinary work. Keep status changes evidence-bound and update an
 existing owned reconciliation comment rather than repeatedly appending copies.

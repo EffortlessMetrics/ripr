@@ -27,6 +27,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/rust_transitive_reach_test_helper_chain/input --diff fixtures/rust_transitive_reach_test_helper_chain/diff.patch --mode fast probe:src_eval.rs:predicate:f66d616d
   ripr context --root fixtures/rust_transitive_reach_test_helper_chain/input --diff fixtures/rust_transitive_reach_test_helper_chain/diff.patch --mode fast --at probe:src_eval.rs:predicate:f66d616d
+Write a test for it:
+  ripr agent stub --root fixtures/rust_transitive_reach_test_helper_chain/input --at src/eval.rs:3
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

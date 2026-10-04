@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/infect_wildcard_discard/input --diff fixtures/infect_wildcard_discard/diff.patch --mode fast probe:src_lib.rs:return_value:d0b06139
   ripr context --root fixtures/infect_wildcard_discard/input --diff fixtures/infect_wildcard_discard/diff.patch --mode fast --at probe:src_lib.rs:return_value:d0b06139
+Write a test for it:
+  ripr agent stub --root fixtures/infect_wildcard_discard/input --at src/lib.rs:3
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

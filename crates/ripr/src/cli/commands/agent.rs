@@ -66,6 +66,9 @@ pub(in crate::cli) fn agent(args: &[String]) -> Result<(), CommandError> {
         // and maps them to the decision exit code 3; operational failures
         // stay exit 2.
         AgentCommand::Card(options) => super::agent_card::run_agent_card(options),
+        // A named stub refusal is a decision (exit 3); a failed read or
+        // analysis stays exit 2.
+        AgentCommand::Stub(options) => super::agent_stub::run_agent_stub(options),
         // A deliberate named refusal (drifted analysis inputs, no movement)
         // maps to exit code 3, as it does inside `repair --phase after`.
         // Stdout stays empty on every refusal: the release negative corpus
@@ -92,6 +95,7 @@ pub(in crate::cli) fn agent(args: &[String]) -> Result<(), CommandError> {
         | AgentCommand::BriefHelp
         | AgentCommand::PacketHelp
         | AgentCommand::CardHelp
+        | AgentCommand::StubHelp
         | AgentCommand::VerifyHelp
         | AgentCommand::VerifyExecuteHelp
         | AgentCommand::ReceiptHelp
@@ -1910,7 +1914,7 @@ mod tests {
         assert_eq!(
             agent(&args(&["unknown"])),
             Err(CommandError::Failure(
-                "unknown agent subcommand \"unknown\"; expected `start`, `brief`, `packet`, `card`, `verify`, `verify-execute`, `receipt`, `status`, `review-summary`, or `repair`"
+                "unknown agent subcommand \"unknown\"; expected `start`, `brief`, `packet`, `card`, `stub`, `verify`, `verify-execute`, `receipt`, `status`, `review-summary`, or `repair`"
                     .to_string()
             ))
         );

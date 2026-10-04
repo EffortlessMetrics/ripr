@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/error_path_sibling_oracle_fake_clean/input --diff fixtures/error_path_sibling_oracle_fake_clean/diff.patch --mode fast probe:src_lib.rs:error_path:162493bf
   ripr context --root fixtures/error_path_sibling_oracle_fake_clean/input --diff fixtures/error_path_sibling_oracle_fake_clean/diff.patch --mode fast --at probe:src_lib.rs:error_path:162493bf
+Write a test for it:
+  ripr agent stub --root fixtures/error_path_sibling_oracle_fake_clean/input --at src/lib.rs:10
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

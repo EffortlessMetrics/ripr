@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/rust_field_construction_token_coincidence/input --diff fixtures/rust_field_construction_token_coincidence/diff.patch --mode fast probe:src_lib.rs:return_value:8ed284d1
   ripr context --root fixtures/rust_field_construction_token_coincidence/input --diff fixtures/rust_field_construction_token_coincidence/diff.patch --mode fast --at probe:src_lib.rs:return_value:8ed284d1
+Write a test for it:
+  ripr agent stub --root fixtures/rust_field_construction_token_coincidence/input --at src/lib.rs:9
 
 Hidden:
   All 1 omitted finding(s) are base-side evidence, not candidate edit targets.

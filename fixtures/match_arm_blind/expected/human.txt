@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/match_arm_blind/input --diff fixtures/match_arm_blind/diff.patch --mode fast probe:src_lib.rs:match_arm:bb59fbfe
   ripr context --root fixtures/match_arm_blind/input --diff fixtures/match_arm_blind/diff.patch --mode fast --at probe:src_lib.rs:match_arm:bb59fbfe
+Write a test for it:
+  ripr agent stub --root fixtures/match_arm_blind/input --at src/lib.rs:4
 
 More:
   Full evidence: rerun with --format human-full

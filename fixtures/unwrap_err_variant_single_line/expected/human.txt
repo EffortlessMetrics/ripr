@@ -23,6 +23,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/unwrap_err_variant_single_line/input --diff fixtures/unwrap_err_variant_single_line/diff.patch --mode fast probe:src_lib.rs:error_path:e4b7f445
   ripr context --root fixtures/unwrap_err_variant_single_line/input --diff fixtures/unwrap_err_variant_single_line/diff.patch --mode fast --at probe:src_lib.rs:error_path:e4b7f445
+Write a test for it:
+  ripr agent stub --root fixtures/unwrap_err_variant_single_line/input --at src/lib.rs:12
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

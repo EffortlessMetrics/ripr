@@ -22,6 +22,8 @@ pub(crate) mod agent_card;
 mod agent_dispatch;
 #[path = "commands/agent_gap_packet.rs"]
 mod agent_gap_packet;
+#[path = "commands/agent_stub.rs"]
+pub(crate) mod agent_stub;
 #[path = "commands/cache.rs"]
 mod cache_command;
 #[path = "commands/config.rs"]

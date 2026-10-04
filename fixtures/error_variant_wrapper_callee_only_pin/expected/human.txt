@@ -28,6 +28,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/error_variant_wrapper_callee_only_pin/input --diff fixtures/error_variant_wrapper_callee_only_pin/diff.patch --mode fast probe:src_lib.rs:error_path:edac60ec
   ripr context --root fixtures/error_variant_wrapper_callee_only_pin/input --diff fixtures/error_variant_wrapper_callee_only_pin/diff.patch --mode fast --at probe:src_lib.rs:error_path:edac60ec
+Write a test for it:
+  ripr agent stub --root fixtures/error_variant_wrapper_callee_only_pin/input --at src/lib.rs:26
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

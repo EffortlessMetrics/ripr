@@ -46,6 +46,7 @@ const REGISTERED_COMMAND_PATHS: &[&str] = &[
     "agent review-summary",
     "agent start",
     "agent status",
+    "agent stub",
     "agent verify",
     "agent verify-execute",
     "annotations",
@@ -113,6 +114,7 @@ const REGISTERED_COMMAND_PATHS: &[&str] = &[
 pub(super) fn help_text_for(command: &str) -> Option<&'static str> {
     let help_text = match command {
         "agent card" => AGENT_CARD_HELP,
+        "agent stub" => AGENT_STUB_HELP,
         "agent brief" => AGENT_BRIEF_HELP,
         "agent packet" => AGENT_PACKET_HELP,
         "agent repair" => AGENT_REPAIR_HELP,
@@ -303,6 +305,10 @@ pub(super) fn print_agent_packet_help() {
 
 pub(super) fn print_agent_card_help() {
     println!("{AGENT_CARD_HELP}");
+}
+
+pub(super) fn print_agent_stub_help() {
+    println!("{AGENT_STUB_HELP}");
 }
 
 pub(super) fn print_agent_verify_help() {
@@ -997,6 +1003,7 @@ mod tests {
             &["parse_agent_packet_options"],
         ),
         ("agent card", AGENT_PARSER_RS, &["parse_agent_card_options"]),
+        ("agent stub", AGENT_PARSER_RS, &["parse_agent_stub_options"]),
         (
             "agent repair",
             AGENT_PARSER_RS,

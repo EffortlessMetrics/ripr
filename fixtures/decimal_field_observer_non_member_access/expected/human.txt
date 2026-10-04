@@ -24,6 +24,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/decimal_field_observer_non_member_access/input --diff fixtures/decimal_field_observer_non_member_access/diff.patch --mode fast probe:src_lib.rs:return_value:4b922ba9
   ripr context --root fixtures/decimal_field_observer_non_member_access/input --diff fixtures/decimal_field_observer_non_member_access/diff.patch --mode fast --at probe:src_lib.rs:return_value:4b922ba9
+Write a test for it:
+  ripr agent stub --root fixtures/decimal_field_observer_non_member_access/input --at src/lib.rs:7
 
 Hidden:
   All 1 omitted finding(s) are base-side evidence, not candidate edit targets.

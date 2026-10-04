@@ -27,6 +27,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/property_macro_unrelated_package/input --diff fixtures/property_macro_unrelated_package/diff.patch --mode fast probe:crates_a_src_lib.rs:predicate:bdf7ae04
   ripr context --root fixtures/property_macro_unrelated_package/input --diff fixtures/property_macro_unrelated_package/diff.patch --mode fast --at probe:crates_a_src_lib.rs:predicate:bdf7ae04
+Write a test for it:
+  ripr agent stub --root fixtures/property_macro_unrelated_package/input --at crates/a/src/lib.rs:2
 
 More:
   Full evidence: rerun with --format human-full

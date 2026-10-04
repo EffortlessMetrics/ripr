@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/rust_adversarial_same_method_other_type/input --diff fixtures/rust_adversarial_same_method_other_type/diff.patch --mode fast probe:src_lib.rs:return_value:c861ec7a
   ripr context --root fixtures/rust_adversarial_same_method_other_type/input --diff fixtures/rust_adversarial_same_method_other_type/diff.patch --mode fast --at probe:src_lib.rs:return_value:c861ec7a
+Write a test for it:
+  ripr agent stub --root fixtures/rust_adversarial_same_method_other_type/input --at src/lib.rs:22
 
 Hidden:
   All 1 omitted finding(s) are base-side evidence, not candidate edit targets.

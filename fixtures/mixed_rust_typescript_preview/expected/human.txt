@@ -27,6 +27,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/mixed_rust_typescript_preview/input --diff fixtures/mixed_rust_typescript_preview/diff.patch --mode fast probe:src_lib.rs:predicate:c80557eb
   ripr context --root fixtures/mixed_rust_typescript_preview/input --diff fixtures/mixed_rust_typescript_preview/diff.patch --mode fast --at probe:src_lib.rs:predicate:c80557eb
+Write a test for it:
+  ripr agent stub --root fixtures/mixed_rust_typescript_preview/input --at src/lib.rs:2
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output (TypeScript preview: 1).

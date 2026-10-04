@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/observation_verified_field_construction/input --diff fixtures/observation_verified_field_construction/diff.patch --mode fast probe:src_lib.rs:return_value:8ed284d1
   ripr context --root fixtures/observation_verified_field_construction/input --diff fixtures/observation_verified_field_construction/diff.patch --mode fast --at probe:src_lib.rs:return_value:8ed284d1
+Write a test for it:
+  ripr agent stub --root fixtures/observation_verified_field_construction/input --at src/lib.rs:9
 
 Hidden:
   All 1 omitted finding(s) are base-side evidence, not candidate edit targets.

@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/scanner_controls/input --diff fixtures/scanner_controls/diff.patch --mode fast probe:src_lib.rs:predicate:f4ed635d
   ripr context --root fixtures/scanner_controls/input --diff fixtures/scanner_controls/diff.patch --mode fast --at probe:src_lib.rs:predicate:f4ed635d
+Write a test for it:
+  ripr agent stub --root fixtures/scanner_controls/input --at src/lib.rs:16
 
 Hidden:
   3 lower-priority finding(s) omitted from default human output.

@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/observation_unverified_side_effect/input --diff fixtures/observation_unverified_side_effect/diff.patch --mode fast probe:src_lib.rs:return_value:880ed6e6
   ripr context --root fixtures/observation_unverified_side_effect/input --diff fixtures/observation_unverified_side_effect/diff.patch --mode fast --at probe:src_lib.rs:return_value:880ed6e6
+Write a test for it:
+  ripr agent stub --root fixtures/observation_unverified_side_effect/input --at src/lib.rs:11
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

@@ -1,6 +1,6 @@
 use crate::app::{CheckOutput, FindingDrillIn};
 use crate::config::RiprConfig;
-use crate::domain::{ExposureClass, Finding, LanguageId};
+use crate::domain::{ExposureClass, Finding, LanguageId, ProbeFamily};
 use crate::output::path::display_path;
 use crate::output::preview_actionability::preview_actionability_for;
 use crate::output::python_repair_card::python_repair_card;
@@ -237,6 +237,34 @@ pub(crate) fn render_human_triage(
                 navigation.explain_command(&finding.id),
                 navigation.context_command(&finding.id),
             ] {
+                out.push_str(&format!("  {command}\n"));
+                super::push_powershell_variant(out, "  ", &command);
+            }
+            // #5355: a Rust gap gets the one-step route to a runnable test.
+            if finding.class != ExposureClass::Exposed
+                && matches!(
+                    finding.probe.family,
+                    ProbeFamily::Predicate
+                        | ProbeFamily::ReturnValue
+                        | ProbeFamily::ErrorPath
+                        | ProbeFamily::MatchArm
+                )
+                && finding
+                    .probe
+                    .location
+                    .file
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    == Some("rs")
+            {
+                // `--at` resolves against `--root`, so name the file
+                // relative to it, not as the checkout-relative display path.
+                let location = &finding.probe.location.file;
+                let relative = location.strip_prefix(&output.root).unwrap_or(location);
+                let file = display_path(relative);
+                let command = navigation
+                    .stub_command(file.trim_start_matches("./"), finding.probe.location.line);
+                out.push_str("Write a test for it:\n");
                 out.push_str(&format!("  {command}\n"));
                 super::push_powershell_variant(out, "  ", &command);
             }

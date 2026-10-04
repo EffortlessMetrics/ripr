@@ -27,6 +27,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/rust_macro_reach_limitation/input --diff fixtures/rust_macro_reach_limitation/diff.patch --mode fast probe:src_internal.rs:predicate:114f2322
   ripr context --root fixtures/rust_macro_reach_limitation/input --diff fixtures/rust_macro_reach_limitation/diff.patch --mode fast --at probe:src_internal.rs:predicate:114f2322
+Write a test for it:
+  ripr agent stub --root fixtures/rust_macro_reach_limitation/input --at src/internal.rs:2
 
 Hidden:
   All 1 omitted finding(s) are base-side evidence, not candidate edit targets.

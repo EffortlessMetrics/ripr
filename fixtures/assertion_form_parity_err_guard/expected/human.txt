@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/assertion_form_parity_err_guard/input --diff fixtures/assertion_form_parity_err_guard/diff.patch --mode fast probe:src_lib.rs:predicate:c80557eb
   ripr context --root fixtures/assertion_form_parity_err_guard/input --diff fixtures/assertion_form_parity_err_guard/diff.patch --mode fast --at probe:src_lib.rs:predicate:c80557eb
+Write a test for it:
+  ripr agent stub --root fixtures/assertion_form_parity_err_guard/input --at src/lib.rs:2
 
 Hidden:
   2 lower-priority finding(s) omitted from default human output.

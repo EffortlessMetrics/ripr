@@ -27,6 +27,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/binding_predicate_two_uses/input --diff fixtures/binding_predicate_two_uses/diff.patch --mode fast probe:src_lib.rs:predicate:dda2cb0b
   ripr context --root fixtures/binding_predicate_two_uses/input --diff fixtures/binding_predicate_two_uses/diff.patch --mode fast --at probe:src_lib.rs:predicate:dda2cb0b
+Write a test for it:
+  ripr agent stub --root fixtures/binding_predicate_two_uses/input --at src/lib.rs:3
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

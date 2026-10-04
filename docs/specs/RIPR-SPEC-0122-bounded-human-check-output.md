@@ -203,6 +203,15 @@ The selected finding's `Next step` is never truncated, because the guidance
 ends with its remedy (#4323). Text within the digest line budget stays on one
 line; longer guidance wraps onto four-space continuation lines.
 
+After the drill-in commands, a selected Rust finding that is not `exposed` and
+whose probe family is `predicate`, `return_value`, `error_path`, or
+`match_arm` gets one more block, `Write a test for it:`, naming
+`ripr agent stub --root <root> --at <file>:<line>` (#5355). That command
+resolves the finding location to the gap in the same function and prints a
+compiling test stub, or a named refusal. The line is a route, not a claim
+that a stub exists: side-effect, call-deletion, field-construction, and
+static-unknown families never get it, because the stub producer refuses them.
+
 ### Triage states
 
 | State | Meaning |

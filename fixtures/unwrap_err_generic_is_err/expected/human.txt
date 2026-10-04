@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/unwrap_err_generic_is_err/input --diff fixtures/unwrap_err_generic_is_err/diff.patch --mode fast probe:src_lib.rs:error_path:6b37a3bc
   ripr context --root fixtures/unwrap_err_generic_is_err/input --diff fixtures/unwrap_err_generic_is_err/diff.patch --mode fast --at probe:src_lib.rs:error_path:6b37a3bc
+Write a test for it:
+  ripr agent stub --root fixtures/unwrap_err_generic_is_err/input --at src/lib.rs:17
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

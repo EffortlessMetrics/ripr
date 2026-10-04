@@ -87,6 +87,12 @@ verify-execute` declining a packet (the refusal JSON document is on stdout)
   renders nothing to it (RIPR-SPEC-0134). The named cause is on stderr.
   Other verify rejections (unreadable or invalid artifacts, lineage or
   metadata mismatches) exit `2`.
+- **Agent stub refusal**: `ripr agent stub` found the gap but will not write
+  a stub for it (a side-effect or call-presence change, an async, unsafe, or
+  generic owner, no return value, an out-of-line or ambiguous test module),
+  or the selector names no reported gap. The named reason is on stderr, with
+  a `rust_test_stub` `state: refused` envelope under `--json`; stdout stays
+  empty. A failed read, analysis, or `--write` stays exit `2`.
 - **Typed agent card refusal**: `ripr agent card` reached a deliberate named
   refusal of the default handoff — the seam id names no seam
   (`seam_not_found`: re-list seams or correct the id), the seam's grip class

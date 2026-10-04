@@ -27,6 +27,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/owner_return_pin_cfg_false_module/input --diff fixtures/owner_return_pin_cfg_false_module/diff.patch --mode fast probe:src_lib.rs:return_value:6ea804bb
   ripr context --root fixtures/owner_return_pin_cfg_false_module/input --diff fixtures/owner_return_pin_cfg_false_module/diff.patch --mode fast --at probe:src_lib.rs:return_value:6ea804bb
+Write a test for it:
+  ripr agent stub --root fixtures/owner_return_pin_cfg_false_module/input --at src/lib.rs:2
 
 More:
   Full evidence: rerun with --format human-full

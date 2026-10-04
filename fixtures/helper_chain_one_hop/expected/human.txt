@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/helper_chain_one_hop/input --diff fixtures/helper_chain_one_hop/diff.patch --mode fast probe:src_lib.rs:predicate:ac178c7f
   ripr context --root fixtures/helper_chain_one_hop/input --diff fixtures/helper_chain_one_hop/diff.patch --mode fast --at probe:src_lib.rs:predicate:ac178c7f
+Write a test for it:
+  ripr agent stub --root fixtures/helper_chain_one_hop/input --at src/lib.rs:2
 
 More:
   Full evidence: rerun with --format human-full

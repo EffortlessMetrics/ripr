@@ -901,6 +901,13 @@ const KNOWN_GAPS: &[KnownGap] = &[
     },
     KnownGap {
         source: "relative-root:check",
+        command: "ripr agent stub --root",
+        shells: GapShells::Every,
+        explains: WRONG_ROOT,
+        reason: "the `check` drill-in repeats a typed relative --root, so pasting from another directory targets another repository",
+    },
+    KnownGap {
+        source: "relative-root:check",
         command: "ripr context --root",
         shells: GapShells::Every,
         explains: WRONG_ROOT,
@@ -979,14 +986,40 @@ fn judge_call(
             cwd.display()
         ));
     }
-    for arg in &call.args {
+    // `ripr agent stub --at FILE:LINE` names a file relative to its own
+    // --root (ripr joins the two), not to the shell's directory.
+    let stub_location = (call.program == "ripr"
+        && call.args.first().map(String::as_str) == Some("agent")
+        && call.args.get(1).map(String::as_str) == Some("stub"))
+    .then(|| {
+        let at = call.args.iter().position(|arg| arg == "--at")?;
+        let root_value = call
+            .args
+            .iter()
+            .position(|arg| arg == "--root")
+            .and_then(|index| call.args.get(index + 1))?;
+        Some((at + 1, resolve(cwd, root_value)))
+    })
+    .flatten();
+    for (index, arg) in call.args.iter().enumerate() {
         if !arg.contains(MARK_HEAD) && !arg.contains(MARK_TAIL) {
             continue;
         }
         if known_ids.contains(arg) {
             continue;
         }
-        let path = resolve(cwd, arg);
+        let path = match &stub_location {
+            Some((at, stub_root)) if *at == index => {
+                let file = arg
+                    .rsplit_once(':')
+                    .filter(|(_, line)| {
+                        !line.is_empty() && line.bytes().all(|b| b.is_ascii_digit())
+                    })
+                    .map_or(arg.as_str(), |(file, _)| file);
+                resolve(stub_root, file)
+            }
+            _ => resolve(cwd, arg),
+        };
         if path.starts_with(&root) {
             continue;
         }

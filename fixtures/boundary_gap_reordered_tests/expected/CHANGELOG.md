@@ -333,3 +333,14 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+## Pending — boundary_gap_reordered_tests (9)
+
+Reason:
+RIPR-SPEC-0122: check names the one-step ripr agent stub route for Rust value gaps (#5355)
+
+Command:
+`cargo xtask goldens bless boundary_gap_reordered_tests --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

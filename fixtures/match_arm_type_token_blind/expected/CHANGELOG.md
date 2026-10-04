@@ -189,3 +189,14 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+## Pending — match_arm_type_token_blind (7)
+
+Reason:
+RIPR-SPEC-0122: check names the one-step ripr agent stub route for Rust value gaps (#5355)
+
+Command:
+`cargo xtask goldens bless match_arm_type_token_blind --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

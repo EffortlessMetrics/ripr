@@ -1079,7 +1079,7 @@ fn production_owner_module_paths_in(
     paths
 }
 
-fn module_attributes_require_test(module: &ast::Module) -> bool {
+pub(super) fn module_attributes_require_test(module: &ast::Module) -> bool {
     cfg_predicates::attributes_require_test(
         module.attrs().map(|attr| attr.syntax().text().to_string()),
     )

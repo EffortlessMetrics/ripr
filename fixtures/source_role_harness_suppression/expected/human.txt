@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/source_role_harness_suppression/input --diff fixtures/source_role_harness_suppression/diff.patch --mode fast probe:src_lib.rs:predicate:34000fd8
   ripr context --root fixtures/source_role_harness_suppression/input --diff fixtures/source_role_harness_suppression/diff.patch --mode fast --at probe:src_lib.rs:predicate:34000fd8
+Write a test for it:
+  ripr agent stub --root fixtures/source_role_harness_suppression/input --at src/lib.rs:2
 
 More:
   Full evidence: rerun with --format human-full

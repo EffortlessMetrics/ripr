@@ -28,6 +28,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/wrapper_seam_callee_call_attribution/input --diff fixtures/wrapper_seam_callee_call_attribution/diff.patch --mode fast probe:src_lib.rs:error_path:463e8297
   ripr context --root fixtures/wrapper_seam_callee_call_attribution/input --diff fixtures/wrapper_seam_callee_call_attribution/diff.patch --mode fast --at probe:src_lib.rs:error_path:463e8297
+Write a test for it:
+  ripr agent stub --root fixtures/wrapper_seam_callee_call_attribution/input --at src/lib.rs:14
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

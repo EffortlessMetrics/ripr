@@ -27,6 +27,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/guarded_result_match_fail_closed/input --diff fixtures/guarded_result_match_fail_closed/diff.patch --mode fast probe:src_lib.rs:error_path:09b3885a
   ripr context --root fixtures/guarded_result_match_fail_closed/input --diff fixtures/guarded_result_match_fail_closed/diff.patch --mode fast --at probe:src_lib.rs:error_path:09b3885a
+Write a test for it:
+  ripr agent stub --root fixtures/guarded_result_match_fail_closed/input --at src/lib.rs:62
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

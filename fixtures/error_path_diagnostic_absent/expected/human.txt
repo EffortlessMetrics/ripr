@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/error_path_diagnostic_absent/input --diff fixtures/error_path_diagnostic_absent/diff.patch --mode fast probe:src_lib.rs:error_path:fedbf836
   ripr context --root fixtures/error_path_diagnostic_absent/input --diff fixtures/error_path_diagnostic_absent/diff.patch --mode fast --at probe:src_lib.rs:error_path:fedbf836
+Write a test for it:
+  ripr agent stub --root fixtures/error_path_diagnostic_absent/input --at src/lib.rs:5
 
 Hidden:
   All 1 omitted finding(s) are base-side evidence, not candidate edit targets.

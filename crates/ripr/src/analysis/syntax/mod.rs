@@ -1,4 +1,5 @@
 mod adapter;
+pub(crate) mod fn_signature;
 pub(crate) mod lexical;
 mod module_tree;
 mod nesting;

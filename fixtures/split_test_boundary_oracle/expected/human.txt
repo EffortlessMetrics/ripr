@@ -25,6 +25,8 @@ Start here:
 Next: drill into the top finding:
   ripr explain --root fixtures/split_test_boundary_oracle/input --diff fixtures/split_test_boundary_oracle/diff.patch --mode fast probe:src_lib.rs:predicate:fa1d51d0
   ripr context --root fixtures/split_test_boundary_oracle/input --diff fixtures/split_test_boundary_oracle/diff.patch --mode fast --at probe:src_lib.rs:predicate:fa1d51d0
+Write a test for it:
+  ripr agent stub --root fixtures/split_test_boundary_oracle/input --at src/lib.rs:2
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
