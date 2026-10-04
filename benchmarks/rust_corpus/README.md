@@ -63,8 +63,8 @@ whether the verdicts are correct, and it does not measure memory.
 
 | Tier | Selects | Repos | Checked out |
 |------|---------|------:|------------:|
-| fast | `tier = fast` | 20 | ~98 MB |
-| full | every repo | 31 | ~403 MB |
+| fast | `tier = fast` | 23 | ~118 MB |
+| full | every repo | 34 | ~423 MB |
 | targets | `roles` contains `integration_target` | 6 | n/a |
 
 Use `fast` for pull-request and quick local runs, and `full` for nightly and
@@ -109,6 +109,9 @@ pinned only once.
 | cargo-mutants | fast | good | binary | 20k | target | binary_crate, snapshot_tests |
 | fd | fast | good | binary | 9k | target | binary_crate, small_crate |
 | bat | fast | good | binary | 18k | target | binary_crate, build_rs |
+| nextest | fast | good | binary | 124k |  | nextest_only, binary_crate, snapshot_tests, custom_test_harness, workspace |
+| winreg | fast | common | library | 4k |  | windows_only, ffi, small_crate |
+| html5ever | fast | legacy | library | 26k |  | external_test_data, custom_test_harness, workspace |
 
 The manifest's `why` field explains each entry, and `profile.style` names the
 style it represents. Its `probe` block records lexical counts at the pin:
@@ -124,10 +127,14 @@ large_workspace, wasm_target, async_no_std, and loom_model_tests.
 
 ## Known gaps
 
-`known_gaps` in the manifest lists what the corpus does not yet represent: a
-nextest-only test configuration, a cfg(windows)-dominant crate, and tests
-that live in another repository. Python subjects stay in
-`fixtures/python-eval-sweep/manifest.json`.
+`known_gaps` in the manifest is empty as of corpus_version `2026-10-04.5`.
+The three gaps the first version listed now have subjects: nextest
+(`nextest_only`), winreg (`windows_only`), and html5ever
+(`external_test_data`). The pinned fetch is shallow and does not initialise
+submodules, so html5ever's html5lib-tests and xml5lib-tests data is absent by
+design. winreg raises `compile_error!` off Windows, so on a Linux host its
+tests cannot be built or run; ripr still reads them statically. Python
+subjects stay in `fixtures/python-eval-sweep/manifest.json`.
 
 ## Changing the corpus
 

@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "kind": "ripr_rust_corpus_manifest",
-  "corpus_version": "2026-10-04.4",
+  "corpus_version": "2026-10-04.5",
   "description": "Pinned real-world Rust repositories shared by ripr evaluation work (scoreboards, verdict checks, CPU/memory/size measurements, mutation spot-checks, first-run tests). Each entry pins one upstream commit and its first parent so every subject has both a whole-repo state and a real upstream diff.",
   "selection_rule": "For each repository, the pinned commit is the most recent first-parent commit on the default branch (fetched 2026-10-04; archived repositories therefore pin their last qualifying change) whose diff against its first parent changes 1 to 12 non-test .rs files and 6 to 400 Rust lines, preferring behavior fixes over chores. Each repo also records a profile class (good, legacy or common) and the style it represents; the class is a maintainer judgment backed by the probe counts, not a measurement. base_sha is that commit's first parent, so `git diff base_sha sha` is the change a reviewer actually saw.",
   "limits": [
@@ -159,6 +159,21 @@
       "id": "wasm_target",
       "description": "wasm32 code with wasm-bindgen tests.",
       "full_only": true
+    },
+    {
+      "id": "nextest_only",
+      "description": "Test targets that only run under cargo-nextest: they read NEXTEST_* variables or need setup scripts from .config/nextest.toml.",
+      "full_only": false
+    },
+    {
+      "id": "windows_only",
+      "description": "Crate that refuses to build off Windows (compile_error! or whole-crate cfg(windows)), so host analysis sees code it cannot compile or test.",
+      "full_only": false
+    },
+    {
+      "id": "external_test_data",
+      "description": "Test oracles loaded from another repository (a git submodule) that the shallow pinned fetch does not include.",
+      "full_only": false
     }
   ],
   "profile_classes": {
@@ -166,11 +181,7 @@
     "legacy": "Long-lived code with older idioms, large modules, or thin tests; ripr should stay honest and fail closed rather than guess.",
     "common": "Ordinary team or community code of the kind most users have; ripr should be useful here without tuning."
   },
-  "known_gaps": [
-    "no repository that runs tests through cargo-nextest-only configuration",
-    "no Windows-only or cfg(windows)-dominant crate",
-    "no crate whose tests live exclusively in a separate tests crate of another repository"
-  ],
+  "known_gaps": [],
   "repos": [
     {
       "id": "serde",
@@ -1434,6 +1445,128 @@
         "harness_false_targets": 0,
         "checkout_mb": 12,
         "extern_crate_files": 0,
+        "files_over_3000_lines": 1
+      }
+    },
+    {
+      "id": "nextest",
+      "url": "https://github.com/nextest-rs/nextest",
+      "tier": "fast",
+      "crate_kind": "binary",
+      "license": "MIT OR Apache-2.0",
+      "sha": "d643f8969ccedd15cefb6521817b118868dc800f",
+      "base_sha": "3f941f85ae869fa7f4a97497a70cec39b4f69c28",
+      "change": {
+        "subject": "[nextest-runner] add RunFailureStep (#3630)",
+        "committed": "2026-09-30",
+        "rust_files_changed": 2,
+        "rust_lines_changed": 56
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "good",
+        "style": "Actively maintained test-runner workspace whose own suite depends on nextest features."
+      },
+      "stresses": [
+        "nextest_only",
+        "binary_crate",
+        "snapshot_tests",
+        "custom_test_harness",
+        "workspace"
+      ],
+      "why": "cargo-nextest itself. The integration-tests crate reads NEXTEST_WORKSPACE_ROOT, NEXTEST_PROFILE and NEXTEST_BIN_EXE_* and expects them (integration-tests/src/env.rs), and .config/nextest.toml declares an experimental setup script and per-test overrides, so `cargo test` cannot run that suite. Tests whose runner contract lives outside libtest.",
+      "probe": {
+        "rust_files": 249,
+        "rust_lines": 123726,
+        "cargo_manifests": 19,
+        "build_rs": 4,
+        "proc_macro_crates": 2,
+        "no_std_files": 0,
+        "harness_false_targets": 2,
+        "checkout_mb": 17,
+        "extern_crate_files": 2,
+        "files_over_3000_lines": 7
+      }
+    },
+    {
+      "id": "winreg",
+      "url": "https://github.com/gentoo90/winreg-rs",
+      "tier": "fast",
+      "crate_kind": "library",
+      "license": "MIT",
+      "sha": "f0440749e8d000821cbc1940dcb3c69e00c9f33f",
+      "base_sha": "4574febe779ebe502c0617e8618c14f9e8dee3ce",
+      "change": {
+        "subject": "Upgrade `windows-sys` to version 0.59 (and MSRV to 1.60)",
+        "committed": "2025-01-12",
+        "rust_files_changed": 1,
+        "rust_lines_changed": 10
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "common",
+        "style": "Small, ordinary Windows API binding crate maintained by one author, with integration tests in tests/ only."
+      },
+      "stresses": [
+        "windows_only",
+        "ffi",
+        "small_crate"
+      ],
+      "why": "Windows registry bindings over windows-sys. lib.rs raises compile_error! on every non-Windows target, so on a Linux host the whole crate is cfg(windows) code that cannot be compiled or tested; the honest result there is unknown, not exposed.",
+      "probe": {
+        "rust_files": 25,
+        "rust_lines": 3791,
+        "cargo_manifests": 1,
+        "build_rs": 0,
+        "proc_macro_crates": 0,
+        "no_std_files": 0,
+        "harness_false_targets": 0,
+        "checkout_mb": 1,
+        "extern_crate_files": 1,
+        "files_over_3000_lines": 0
+      }
+    },
+    {
+      "id": "html5ever",
+      "url": "https://github.com/servo/html5ever",
+      "tier": "fast",
+      "crate_kind": "library",
+      "license": "MIT OR Apache-2.0",
+      "sha": "c553a2113a1c056b07cbae9eb976376bd201670d",
+      "base_sha": "a193ea7f2492d1e51eb32955a09c241345348dba",
+      "change": {
+        "subject": "Preserve non-NBSP UTF-8 bytes during HTML serialization (#784)",
+        "committed": "2026-09-13",
+        "rust_files_changed": 2,
+        "rust_lines_changed": 6
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "legacy",
+        "style": "Long-lived Servo parser workspace with older idioms (extern crate in 18 files) and data-driven harness = false test targets."
+      },
+      "stresses": [
+        "external_test_data",
+        "custom_test_harness",
+        "workspace"
+      ],
+      "why": "HTML and XML parser whose tokenizer and tree-builder tests (rcdom's five harness = false targets; nine across the workspace) are generated at run time from the html5lib-tests and xml5lib-tests git submodules. The shallow pinned fetch does not include submodules, so the oracles for most parser behavior live in another repository and are absent.",
+      "probe": {
+        "rust_files": 77,
+        "rust_lines": 25578,
+        "cargo_manifests": 10,
+        "build_rs": 1,
+        "proc_macro_crates": 0,
+        "no_std_files": 0,
+        "harness_false_targets": 9,
+        "checkout_mb": 2,
+        "extern_crate_files": 18,
         "files_over_3000_lines": 1
       }
     }

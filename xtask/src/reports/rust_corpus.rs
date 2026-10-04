@@ -845,9 +845,10 @@ fn materialize(repo: &RepoEntry, dir: &Path, timeout: Duration) -> Result<bool, 
         return Ok(true);
     }
     // Only a directory this command could have created may be replaced: an
-    // empty one, or a git checkout whose origin is this repo's URL. Anything
-    // else under --root (a user's own clone, notes, another project) is left
-    // alone and the fetch for this repo is refused.
+    // empty one, or a checkout carrying the OWNER_MARKER file that a verified
+    // fetch writes into .git. A same-URL clone without the marker is not
+    // ours. Anything else under --root (a user's own clone, notes, another
+    // project) is left alone and the fetch for this repo is refused.
     if dir.exists() && !is_replaceable_checkout(dir) {
         return Err(format!(
             "{} exists and is neither empty nor a checkout created by rust-corpus fetch; \
@@ -1218,12 +1219,21 @@ mod tests {
 
     #[test]
     fn profile_class_missing_from_fast_tier_is_rejected() -> Result<(), String> {
-        // atuin, rstest, prost, and rusqlite are the fast-tier `common` repos;
-        // reclassifying all four leaves the fast tier without ordinary code.
+        // Reclassifying every fast-tier `common` repo leaves the fast tier
+        // without ordinary code. The set is read from the manifest so adding
+        // a fast `common` repo does not silently turn this into a no-op.
         let mut value = committed_manifest()?;
-        for id in ["atuin", "rstest", "prost", "rusqlite"] {
-            repo_mut(&mut value, id)?["profile"]["class"] = json!("good");
+        let repos = value["repos"]
+            .as_array_mut()
+            .ok_or("manifest repos must be an array")?;
+        let mut reclassified = 0;
+        for repo in repos.iter_mut() {
+            if repo["tier"] == "fast" && repo["profile"]["class"] == "common" {
+                repo["profile"]["class"] = json!("good");
+                reclassified += 1;
+            }
         }
+        assert!(reclassified > 0, "fixture needs a fast-tier common repo");
         let err = problems_for(&value)?;
         assert!(
             err.contains("profile class `common` has no repo in the fast tier"),
