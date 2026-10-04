@@ -7,7 +7,10 @@
 //! repository supplied with `--repo` and `--base`. Every run is cold, bounded
 //! by `--timeout-ms`, and classified as `pass`, `timeout`,
 //! `refused_oversized` (the diff-index file cap), or `fail`, so a cliff shows
-//! up as a status change instead of a missing row.
+//! up as a status change instead of a missing row. A `fail` sample is a
+//! measurement error (`failed`), not `cliff_observed`. A refused or timed-out
+//! sample names the next flag to try. With `--repo`, the receipt records the
+//! target repository's HEAD and the resolved `--base`, not the xtask checkout.
 //!
 //! The child is the release binary: debug-build timings are not
 //! representative of what users run. Peak RSS comes from GNU `time -v` when it
@@ -16,13 +19,13 @@
 //!
 //! Claims are limited to the recorded revision, runner class and corpus.
 
-use crate::run::{capture_output_in_dir, capture_output_with_timeout, run, run_output};
+use crate::run::{capture_output_in_dir, capture_output_with_timeout, run};
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const SCHEMA_VERSION: &str = "ripr-scale-cliff-benchmark-v1";
+const SCHEMA_VERSION: &str = "ripr-scale-cliff-benchmark-v2";
 const DEFAULT_SIZES: &str = "250,1000,4000";
 const DEFAULT_TIMEOUT_MS: u64 = 600_000;
 const MAX_SIZE: usize = 100_000;
@@ -103,9 +106,9 @@ pub(crate) fn scale_cliff_benchmark(args: &[String]) -> Result<(), String> {
     if !options.keep_workspaces {
         let _ = fs::remove_dir_all(&scratch);
     }
-    let targets = result?;
+    let (targets, identity) = result?;
 
-    let report = build_report(&options, &targets, &binary);
+    let report = build_report(&options, &targets, &binary, &identity);
     let json_text = serde_json::to_string_pretty(&report)
         .map_err(|err| format!("serialize scale cliff benchmark: {err}"))?;
     crate::write_report("scale-cliff-benchmark.json", &format!("{json_text}\n"))?;
@@ -128,15 +131,13 @@ fn collect_targets(
     binary: &Path,
     scratch: &Path,
     options: &Options,
-) -> Result<Vec<TargetReport>, String> {
+) -> Result<(Vec<TargetReport>, MeasuredIdentity), String> {
+    let mut identity = measured_identity(options);
     let mut targets = Vec::new();
     if let Some((repo, base)) = &options.repo {
-        targets.push(Target {
-            label: repo.display().to_string(),
-            files: None,
-            root: repo.clone(),
-            base: base.clone(),
-        });
+        let (target, captured) = bind_repo_target(repo, base);
+        identity = captured;
+        targets.push(target);
     } else {
         for files in &options.sizes {
             let root = generate_workspace(scratch, *files)?;
@@ -173,7 +174,15 @@ fn collect_targets(
             samples,
         });
     }
-    Ok(reports)
+    if let Some((repo, _)) = &options.repo
+        && identity_drifted(repo, &identity)
+        && let Some(report) = reports.last_mut()
+    {
+        report.samples.push(head_drift_sample(
+            options.commands.first().copied().unwrap_or(Command::Check),
+        ));
+    }
+    Ok((reports, identity))
 }
 
 /// One source file per module, three small functions and two inline tests
@@ -491,16 +500,21 @@ fn parse_commands(value: &str) -> Result<Vec<Command>, String> {
     Ok(commands)
 }
 
-fn build_report(options: &Options, targets: &[TargetReport], binary: &Path) -> Value {
-    let complete = targets
-        .iter()
-        .all(|target| target.samples.iter().all(|sample| sample.status == "pass"));
+fn build_report(
+    options: &Options,
+    targets: &[TargetReport],
+    binary: &Path,
+    identity: &MeasuredIdentity,
+) -> Value {
+    let revision = identity.revision.as_str();
+    let base_revision = identity.base_revision.as_deref();
     json!({
         "schema_version": SCHEMA_VERSION,
         "tool": "ripr",
         "report": "scale-cliff-benchmark",
-        "status": if complete { "pass" } else { "cliff_observed" },
-        "revision": git_revision(),
+        "status": report_status(targets),
+        "revision": revision,
+        "base_revision": base_revision,
         "runner_class": runner_class(),
         "analyzer_version": analyzer_version(binary),
         "binary": "release",
@@ -508,7 +522,13 @@ fn build_report(options: &Options, targets: &[TargetReport], binary: &Path) -> V
         "index_cap": options.index_cap.as_deref().unwrap_or("product"),
         "timeout_ms": options.timeout_ms,
         "corpus": match &options.repo {
-            Some((repo, base)) => json!({"kind": "repo", "path": repo.display().to_string(), "base": base}),
+            Some((repo, base)) => json!({
+                "kind": "repo",
+                "path": repo.display().to_string(),
+                "base": base,
+                "revision": revision,
+                "base_revision": base_revision,
+            }),
             None => json!({"kind": "synthetic", "sizes": options.sizes, "generator": "N modules, 3 fns and 2 inline tests each; one-file change in m0"}),
         },
         "targets": targets.iter().map(|target| json!({
@@ -521,14 +541,102 @@ fn build_report(options: &Options, targets: &[TargetReport], binary: &Path) -> V
                 "peak_rss_kib": sample.peak_rss_kib,
                 "findings": sample.findings,
                 "detail": sample.detail,
+                "hint": next_step_hint(&sample.status),
             })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "scaling_exponent": {
             "check": scaling_exponent(targets, "check"),
             "pilot": scaling_exponent(targets, "pilot"),
         },
-        "claim_boundary": "One cold run per target and command on the recorded revision, runner class and corpus. A synthetic corpus has a trivial call graph, so it bounds file-count cost only; call-graph-driven cost (name-colliding Rust code) needs a real repository via --repo. Peak RSS is null where GNU time is unavailable. Not a gate and not universal latency."
+        "claim_boundary": "One cold run per target and command on the recorded revision, runner class and corpus. With --repo, revision and base_revision are captured from the target repository before sampling and the resolved base SHA is what check receives; a HEAD move during the run is failed, not a cliff. A fail sample is status failed, not a size cliff; timeout and refused_oversized name the next flag. A synthetic corpus has a trivial call graph, so it bounds file-count cost only; call-graph-driven cost (name-colliding Rust code) needs a real repository via --repo. Peak RSS is null where GNU time is unavailable. Not a gate and not universal latency."
     })
+}
+
+/// Top-level status is `failed` when any sample is a plain failure. A size
+/// cliff (`timeout` / `refused_oversized`) is `cliff_observed` only when every
+/// non-pass sample is one of those cliffs. Unknown sample statuses fail closed.
+fn report_status(targets: &[TargetReport]) -> &'static str {
+    let mut saw_fail = false;
+    let mut saw_cliff = false;
+    for sample in targets.iter().flat_map(|target| &target.samples) {
+        match sample.status.as_str() {
+            "pass" => {}
+            "timeout" | "refused_oversized" => saw_cliff = true,
+            _ => saw_fail = true,
+        }
+    }
+    if saw_fail {
+        "failed"
+    } else if saw_cliff {
+        "cliff_observed"
+    } else {
+        "pass"
+    }
+}
+
+fn next_step_hint(status: &str) -> Option<&'static str> {
+    match status {
+        "timeout" => Some("raise `--timeout-ms`"),
+        "refused_oversized" => Some("rerun with `--index-cap <n>`"),
+        _ => None,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct MeasuredIdentity {
+    revision: String,
+    base_revision: Option<String>,
+}
+
+fn measured_identity(options: &Options) -> MeasuredIdentity {
+    match &options.repo {
+        Some((path, base)) => bind_repo_target(path, base).1,
+        None => MeasuredIdentity {
+            revision: git_revision(),
+            base_revision: None,
+        },
+    }
+}
+
+/// Resolve the target HEAD and `--base` before any sample so a moving ref
+/// cannot rename the receipt after the fact. `check` receives the captured
+/// base SHA, not `HEAD~1`.
+fn bind_repo_target(repo: &Path, base: &str) -> (Target, MeasuredIdentity) {
+    let identity = MeasuredIdentity {
+        revision: git_revision_in(repo, "HEAD"),
+        base_revision: Some(git_revision_in(repo, base)),
+    };
+    let check_base = match identity.base_revision.as_deref() {
+        Some("unavailable") | None => base.to_string(),
+        Some(sha) => sha.to_string(),
+    };
+    (
+        Target {
+            label: repo.display().to_string(),
+            files: None,
+            root: repo.to_path_buf(),
+            base: check_base,
+        },
+        identity,
+    )
+}
+
+fn identity_drifted(repo: &Path, captured: &MeasuredIdentity) -> bool {
+    git_revision_in(repo, "HEAD") != captured.revision
+}
+
+fn head_drift_sample(command: Command) -> Sample {
+    Sample {
+        command: command.name(),
+        status: "fail".to_string(),
+        duration_ms: 0,
+        peak_rss_kib: None,
+        findings: None,
+        detail: Some(
+            "target HEAD moved during the run; recorded revision is the pre-sample capture"
+                .to_string(),
+        ),
+    }
 }
 
 fn benchmark_markdown(report: &Value) -> String {
@@ -542,21 +650,28 @@ fn benchmark_markdown(report: &Value) -> String {
                 let rss = sample["peak_rss_kib"]
                     .as_u64()
                     .map_or_else(|| "n/a".to_string(), |kib| format!("{} MiB", kib / 1024));
+                let hint = sample["hint"].as_str().unwrap_or("");
                 rows.push_str(&format!(
-                    "| {} | {} | {} | {} ms | {} |\n",
+                    "| {} | {} | {} | {} ms | {} | {} |\n",
                     target["label"].as_str().unwrap_or("?"),
                     sample["command"].as_str().unwrap_or("?"),
                     sample["status"].as_str().unwrap_or("?"),
                     sample["duration_ms"],
                     rss,
+                    hint,
                 ));
             }
         }
     }
+    let base_line = report["base_revision"]
+        .as_str()
+        .map(|base| format!("Base: `{base}`\n"))
+        .unwrap_or_default();
     format!(
-        "# Scale Cliff Benchmark\n\nStatus: `{}`\n\nRevision: `{}`\nRunner: `{}`\nAnalyzer: `{}`\nMode: `{}`; index cap: `{}`; timeout: {} ms\n\n| Target | Command | Status | Wall | Peak RSS |\n| --- | --- | --- | ---: | ---: |\n{}\nScaling exponent (log-log, smallest to largest passing size): check {}, pilot {}.\n\nClaim boundary: {}\n",
+        "# Scale Cliff Benchmark\n\nStatus: `{}`\n\nRevision: `{}`\n{}Runner: `{}`\nAnalyzer: `{}`\nMode: `{}`; index cap: `{}`; timeout: {} ms\n\n| Target | Command | Status | Wall | Peak RSS | Next |\n| --- | --- | --- | ---: | ---: | --- |\n{}\nScaling exponent (log-log, smallest to largest passing size): check {}, pilot {}.\n\nClaim boundary: {}\n",
         report["status"].as_str().unwrap_or("unknown"),
         report["revision"].as_str().unwrap_or("unavailable"),
+        base_line,
         report["runner_class"].as_str().unwrap_or("unknown"),
         report["analyzer_version"].as_str().unwrap_or("unknown"),
         report["mode"].as_str().unwrap_or("unknown"),
@@ -570,9 +685,18 @@ fn benchmark_markdown(report: &Value) -> String {
 }
 
 fn git_revision() -> String {
-    run_output("git", &["rev-parse", "HEAD"])
+    std::env::current_dir()
+        .map(|cwd| git_revision_in(&cwd, "HEAD"))
+        .unwrap_or_else(|_| "unavailable".to_string())
+}
+
+fn git_revision_in(root: &Path, rev: &str) -> String {
+    let spec = format!("{rev}^{{commit}}");
+    let args = ["rev-parse".to_string(), "--verify".to_string(), spec];
+    capture_output_in_dir("git", &args, root, "scale cliff revision")
         .ok()
-        .map(|output| output.trim().to_string())
+        .filter(|output| output.status.success())
+        .map(|output| output.stdout.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "unavailable".to_string())
 }
@@ -677,16 +801,12 @@ mod tests {
 
     #[test]
     fn exponent_ignores_a_target_that_did_not_pass() {
-        let mut slow = passing(400, 4000);
-        slow.samples[0].status = "timeout".to_string();
+        let slow = with_status(passing(400, 4000), "timeout");
         assert_eq!(scaling_exponent(&[passing(100, 1000), slow], "check"), None);
     }
 
-    #[test]
-    fn report_marks_a_non_pass_target_as_a_cliff() {
-        let mut slow = passing(400, 4000);
-        slow.samples[0].status = "timeout".to_string();
-        let options = Options {
+    fn draft_options() -> Options {
+        Options {
             sizes: vec![100, 400],
             repo: None,
             mode: "draft".to_string(),
@@ -694,10 +814,239 @@ mod tests {
             index_cap: None,
             timeout_ms: 1000,
             keep_workspaces: false,
-        };
-        let report = build_report(&options, &[passing(100, 1000), slow], Path::new("ripr"));
+        }
+    }
+
+    fn with_status(mut target: TargetReport, status: &str) -> TargetReport {
+        target.samples[0].status = status.to_string();
+        target
+    }
+
+    fn report(options: &Options, targets: &[TargetReport]) -> Value {
+        build_report(
+            options,
+            targets,
+            Path::new("ripr"),
+            &measured_identity(options),
+        )
+    }
+
+    #[test]
+    fn report_marks_a_non_pass_target_as_a_cliff() {
+        let slow = with_status(passing(400, 4000), "timeout");
+        let report = report(&draft_options(), &[passing(100, 1000), slow]);
         assert_eq!(report["status"], "cliff_observed");
         assert_eq!(report["index_cap"], "product");
+    }
+
+    #[test]
+    fn all_passing_samples_are_pass_and_synthetic_identity_is_the_checkout() {
+        let report = report(&draft_options(), &[passing(100, 1000), passing(400, 4000)]);
+        assert_eq!(report["status"], "pass");
+        assert_eq!(report["revision"], git_revision());
+        assert!(report["base_revision"].is_null());
+        assert_eq!(report["schema_version"], SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn a_failed_sample_is_failed_not_a_cliff() {
+        let failed = with_status(passing(100, 10), "fail");
+        let report = report(&draft_options(), &[failed]);
+        assert_eq!(report["status"], "failed");
+    }
+
+    #[test]
+    fn a_failed_sample_beats_a_timeout_for_top_level_status() {
+        let failed = with_status(passing(100, 10), "fail");
+        let timed_out = with_status(passing(400, 4000), "timeout");
+        let report = report(&draft_options(), &[failed, timed_out]);
+        assert_eq!(report["status"], "failed");
+    }
+
+    #[test]
+    fn refused_oversized_is_a_cliff_not_a_failure() {
+        let refused = with_status(passing(400, 4000), "refused_oversized");
+        let report = report(&draft_options(), &[refused]);
+        assert_eq!(report["status"], "cliff_observed");
+    }
+
+    #[test]
+    fn timeout_and_refused_samples_name_the_next_flag() {
+        let timed_out = with_status(passing(100, 10), "timeout");
+        let refused = with_status(passing(400, 20), "refused_oversized");
+        let report = report(&draft_options(), &[timed_out, refused]);
+        assert_eq!(
+            report["targets"][0]["samples"][0]["hint"],
+            "raise `--timeout-ms`"
+        );
+        assert_eq!(
+            report["targets"][1]["samples"][0]["hint"],
+            "rerun with `--index-cap <n>`"
+        );
+        assert!(report["targets"][0]["samples"][0]["detail"].is_null());
+    }
+
+    #[test]
+    fn pass_and_fail_samples_carry_no_next_flag() {
+        let failed = with_status(passing(400, 20), "fail");
+        let report = report(&draft_options(), &[passing(100, 10), failed]);
+        assert!(report["targets"][0]["samples"][0]["hint"].is_null());
+        assert!(report["targets"][1]["samples"][0]["hint"].is_null());
+        assert_eq!(report["status"], "failed");
+    }
+
+    struct TempRepo {
+        root: PathBuf,
+    }
+
+    impl TempRepo {
+        fn create(label: &str) -> Result<Self, String> {
+            let stamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or_default();
+            let root = std::env::temp_dir().join(format!("ripr-scale-cliff-{label}-{stamp}"));
+            fs::create_dir_all(&root).map_err(|err| format!("create fixture repo: {err}"))?;
+            Ok(Self { root })
+        }
+
+        fn commit(&self, contents: &str, message: &str) -> Result<String, String> {
+            fs::write(self.root.join("note"), contents)
+                .map_err(|err| format!("write fixture: {err}"))?;
+            if !self.root.join(".git").exists() {
+                git(&self.root, &["init", "-q", "-b", "main"])?;
+                git(&self.root, &["add", "-A"])?;
+            }
+            git(&self.root, &["commit", "-q", "-am", message])?;
+            self.rev("HEAD")
+        }
+
+        fn rev(&self, spec: &str) -> Result<String, String> {
+            let output = capture_output_in_dir(
+                "git",
+                &["rev-parse".into(), spec.into()],
+                &self.root,
+                "fixture rev-parse",
+            )?;
+            if !output.status.success() {
+                return Err(format!(
+                    "fixture rev-parse {spec} failed: {}",
+                    output.stderr
+                ));
+            }
+            Ok(output.stdout.trim().to_string())
+        }
+    }
+
+    impl Drop for TempRepo {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[test]
+    fn repo_receipt_records_target_head_and_resolved_base() -> Result<(), String> {
+        let repo = TempRepo::create("rev")?;
+        let base = repo.commit("one", "base")?;
+        let head = repo.commit("two", "change")?;
+        assert_ne!(
+            head,
+            git_revision(),
+            "fixture HEAD must differ from the xtask checkout"
+        );
+        assert_ne!(head, base);
+
+        let mut options = draft_options();
+        options.repo = Some((repo.root.clone(), "HEAD~1".to_string()));
+        let report = report(&options, &[passing(100, 10)]);
+        assert_eq!(report["revision"], head);
+        assert_eq!(report["base_revision"], base);
+        assert_eq!(report["corpus"]["revision"], head);
+        assert_eq!(report["corpus"]["base_revision"], base);
+        assert_eq!(report["corpus"]["base"], "HEAD~1");
+        Ok(())
+    }
+
+    #[test]
+    fn missing_repo_base_records_unavailable_not_the_xtask_checkout() -> Result<(), String> {
+        let repo = TempRepo::create("missing-base")?;
+        let head = repo.commit("one", "base")?;
+        let mut options = draft_options();
+        options.repo = Some((repo.root.clone(), "no-such-rev".to_string()));
+        let report = report(&options, &[with_status(passing(100, 10), "fail")]);
+        assert_eq!(report["revision"], head);
+        assert_eq!(report["base_revision"], "unavailable");
+        assert_eq!(report["status"], "failed");
+        assert_ne!(report["revision"], git_revision());
+        Ok(())
+    }
+
+    #[test]
+    fn bind_repo_target_passes_the_captured_base_sha_not_the_moving_ref() -> Result<(), String> {
+        let repo = TempRepo::create("bind-base")?;
+        let base = repo.commit("one", "base")?;
+        let head = repo.commit("two", "change")?;
+        let (target, identity) = bind_repo_target(&repo.root, "HEAD~1");
+        assert_eq!(target.base, base);
+        assert_eq!(identity.revision, head);
+        assert_eq!(identity.base_revision.as_deref(), Some(base.as_str()));
+        repo.commit("three", "later")?;
+        assert_ne!(repo.rev("HEAD~1")?, base);
+        assert_eq!(target.base, base);
+        assert!(identity_drifted(&repo.root, &identity));
+        Ok(())
+    }
+
+    #[test]
+    fn report_keeps_the_pre_sample_identity_after_head_moves() -> Result<(), String> {
+        let repo = TempRepo::create("captured-id")?;
+        let base = repo.commit("one", "base")?;
+        let head = repo.commit("two", "change")?;
+        let mut options = draft_options();
+        options.repo = Some((repo.root.clone(), "HEAD~1".to_string()));
+        let identity = measured_identity(&options);
+        repo.commit("three", "later")?;
+        let report = build_report(&options, &[passing(100, 10)], Path::new("ripr"), &identity);
+        assert_eq!(report["revision"], head);
+        assert_eq!(report["base_revision"], base);
+        assert_ne!(report["revision"], git_revision_in(&repo.root, "HEAD"));
+        Ok(())
+    }
+
+    #[test]
+    fn head_drift_is_a_plain_failure_not_a_cliff() {
+        let sample = head_drift_sample(Command::Check);
+        assert_eq!(sample.status, "fail");
+        assert!(
+            sample
+                .detail
+                .as_deref()
+                .is_some_and(|detail| { detail.contains("target HEAD moved during the run") })
+        );
+        let report = report(
+            &draft_options(),
+            &[TargetReport {
+                label: "repo".to_string(),
+                files: None,
+                samples: vec![sample],
+            }],
+        );
+        assert_eq!(report["status"], "failed");
+    }
+
+    #[test]
+    fn markdown_names_failed_status_target_base_and_next_flag() {
+        let failed = with_status(passing(100, 10), "fail");
+        let timed_out = with_status(passing(400, 20), "timeout");
+        let mut options = draft_options();
+        options.repo = Some((PathBuf::from("/tmp/not-a-real-repo"), "HEAD~1".to_string()));
+        let report = report(&options, &[failed, timed_out]);
+        let markdown = benchmark_markdown(&report);
+        assert!(markdown.contains("Status: `failed`"));
+        assert!(markdown.contains("Base: `unavailable`"));
+        assert!(markdown.contains("| Next |"));
+        assert!(markdown.contains("raise `--timeout-ms`"));
+        assert!(!markdown.contains("cliff_observed"));
     }
 
     #[test]
