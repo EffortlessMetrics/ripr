@@ -3878,6 +3878,7 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
                 serde_json::from_slice(&original).map_err(|err| err.to_string())?;
             let seams = edited
                 .get_mut("classified_seams")
+                .and_then(|body| body.get_mut("seams"))
                 .and_then(|value| value.as_array_mut())
                 .ok_or("missing seams")?;
             let summary = seams
