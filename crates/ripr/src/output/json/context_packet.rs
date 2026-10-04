@@ -93,7 +93,7 @@ pub(crate) fn render_context_packet_dto(packet: &ContextPacket) -> String {
     let related_test_count = packet.related_tests.len();
     out.push_str("  \"related_tests\": [\n");
     for (idx, test) in packet.related_tests.iter().enumerate() {
-        related_test_json(&mut out, test, 2);
+        related_test_json(&mut out, test, &packet.missing_discriminators, 2);
         if idx + 1 != related_test_count {
             out.push(',');
         }
@@ -295,6 +295,7 @@ mod tests {
             oracle_strength: OracleStrength::Strong,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         }
     }
 

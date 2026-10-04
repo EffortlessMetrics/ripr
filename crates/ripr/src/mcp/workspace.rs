@@ -1090,6 +1090,70 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_identity_binds_same_length_evidence_with_the_original_digest() -> Result<(), String>
+    {
+        let mut before = output(AnalysisOutcomeKind::CompleteWithFindings, 1, Vec::new())?;
+        let mut finding = gaps::test_finding()?;
+        finding.recommended_next_step = Some("assert boundary a".to_string());
+        before.findings.push(finding);
+        let before_snapshot =
+            Snapshot::from_output(&before, Some("root:sha256:test")).map_err(|f| f.detail)?;
+
+        let mut after = output(AnalysisOutcomeKind::CompleteWithFindings, 1, Vec::new())?;
+        let mut finding = gaps::test_finding()?;
+        finding.recommended_next_step = Some("assert boundary b".to_string());
+        after.findings.push(finding);
+        let after_snapshot =
+            Snapshot::from_output(&after, Some("root:sha256:test")).map_err(|f| f.detail)?;
+
+        let before_id = before_snapshot.snapshot_id.clone();
+        let after_id = after_snapshot.snapshot_id.clone();
+        let mut lengths = Vec::new();
+        for snapshot in [before_snapshot, after_snapshot] {
+            assert_eq!(
+                snapshot.items.len(),
+                1,
+                "the snapshot must contain evidence"
+            );
+            let mut original_items = snapshot
+                .findings
+                .iter()
+                .map(GapItem::from_finding)
+                .collect::<Result<Vec<_>, _>>()?;
+            for item in &mut original_items {
+                let bytes = serde_json::to_vec(&item.evidence_core).map_err(|e| e.to_string())?;
+                item.evidence_bytes = bytes.len();
+                item.evidence_sha256 = sha256_hex(&bytes);
+                lengths.push(bytes.len());
+            }
+            let original_id = snapshot_identity(&snapshot.outcome, &original_items)?;
+            assert_eq!(snapshot.snapshot_id, original_id);
+
+            let session = WorkspaceSession {
+                in_flight: false,
+                last_good: Some(Arc::new(snapshot)),
+                last_failure: None,
+                repairs: std::collections::BTreeMap::new(),
+                superseded_attempts: std::collections::BTreeMap::new(),
+            };
+            let item = original_items
+                .first()
+                .ok_or_else(|| "the original item oracle must not be empty".to_string())?;
+            let document = session
+                .get_gap(&item.canonical_id, Some(&original_id))
+                .map_err(|f| f.detail)?;
+            assert_eq!(document, item.document(&original_id));
+        }
+        assert_eq!(lengths.len(), 2);
+        assert_eq!(
+            lengths[0], lengths[1],
+            "the changed evidence has equal length"
+        );
+        assert_ne!(before_id, after_id);
+        Ok(())
+    }
+
+    #[test]
     fn reserved_failure_vocabulary_stays_named() -> Result<(), String> {
         for code in RESERVED_FAILURE_CODES {
             if code.is_empty() || code.contains(' ') {

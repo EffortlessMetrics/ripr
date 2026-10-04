@@ -526,7 +526,9 @@
           "oracle_kind": "exact_value",
           "oracle": "if !matches!(\nerror.downcast_ref::<ParseSummaryError>(),\nSome(ParseSummaryError::MalformedSource)\n) {\nreturn Err(\"boxed variant must preserve ParseSummaryError::MalformedSource\".into());\n}",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "parse_summary_boxed_variant_propagates_malformed_source",
@@ -536,7 +538,9 @@
           "oracle_kind": "exact_value",
           "oracle": "matches!(\n        error.downcast_ref::<ParseSummaryError>(),\n        Some(ParseSummaryError::MalformedSource)\n    )",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "parse_summary_fails_closed_on_malformed_source",
@@ -546,7 +550,9 @@
           "oracle_kind": "exact_error_variant",
           "oracle": "if !matches!(result, Err(ParseSummaryError::MalformedSource)) {\nreturn Err(\"malformed source should produce ParseSummaryError::MalformedSource\".into());\n}",
           "relation_reason": "owner_named_test",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "no_call_path",
+          "why": "no call to the changed code found; linked by name only"
         },
         {
           "name": "parse_summary_fails_closed_on_malformed_source",
@@ -556,7 +562,9 @@
           "oracle_kind": "exact_error_variant",
           "oracle": "matches!(result, Err(ParseSummaryError::MalformedSource))",
           "relation_reason": "owner_named_test",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "no_call_path",
+          "why": "no call to the changed code found; linked by name only"
         }
       ],
       "stop_reasons": [],
@@ -680,7 +688,9 @@
           "oracle_kind": "exact_value",
           "oracle": "if !matches!(\nerror.downcast_ref::<ParseSummaryError>(),\nSome(ParseSummaryError::MalformedSource)\n) {\nreturn Err(\"boxed variant must preserve ParseSummaryError::MalformedSource\".into());\n}",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "parse_summary_boxed_variant_propagates_malformed_source",
@@ -690,7 +700,9 @@
           "oracle_kind": "exact_value",
           "oracle": "matches!(\n        error.downcast_ref::<ParseSummaryError>(),\n        Some(ParseSummaryError::MalformedSource)\n    )",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "parse_summary_fails_closed_on_malformed_source",
@@ -700,7 +712,9 @@
           "oracle_kind": "exact_error_variant",
           "oracle": "if !matches!(result, Err(ParseSummaryError::MalformedSource)) {\nreturn Err(\"malformed source should produce ParseSummaryError::MalformedSource\".into());\n}",
           "relation_reason": "owner_named_test",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "no_call_path",
+          "why": "no call to the changed code found; linked by name only"
         }
       ],
       "stop_reasons": [],
@@ -801,7 +815,9 @@
           "oracle_kind": "exact_value",
           "oracle": "if !matches!(\nerror.downcast_ref::<ChecksumError>(),\nSome(ChecksumError::MalformedPayload)\n) {\nreturn Err(\"checksum witness pinned the malformed-payload sibling\".into());\n}",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "checksum_summary_pins_wrong_sibling_variant",
@@ -811,7 +827,9 @@
           "oracle_kind": "exact_value",
           "oracle": "matches!(\n        error.downcast_ref::<ChecksumError>(),\n        Some(ChecksumError::MalformedPayload)\n    )",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],
@@ -912,7 +930,9 @@
           "oracle_kind": "exact_value",
           "oracle": "if !matches!(\nerror.downcast_ref::<ChecksumError>(),\nSome(ChecksumError::MalformedPayload)\n) {\nreturn Err(\"checksum witness pinned the malformed-payload sibling\".into());\n}",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "checksum_summary_pins_wrong_sibling_variant",
@@ -922,7 +942,9 @@
           "oracle_kind": "exact_value",
           "oracle": "matches!(\n        error.downcast_ref::<ChecksumError>(),\n        Some(ChecksumError::MalformedPayload)\n    )",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],
@@ -1023,7 +1045,9 @@
           "oracle_kind": "exact_value",
           "oracle": "if !matches!(\nerror.downcast_ref::<ParseSummaryError>(),\nSome(ParseSummaryError::MalformedSource)\n) {\nreturn Err(\"render witness pinned the parse-summary variant instead\".into());\n}",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "render_summary_observes_other_enum_variant",
@@ -1033,7 +1057,9 @@
           "oracle_kind": "exact_value",
           "oracle": "matches!(\n        error.downcast_ref::<ParseSummaryError>(),\n        Some(ParseSummaryError::MalformedSource)\n    )",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],
@@ -1134,7 +1160,9 @@
           "oracle_kind": "exact_value",
           "oracle": "if !matches!(\nerror.downcast_ref::<ParseSummaryError>(),\nSome(ParseSummaryError::MalformedSource)\n) {\nreturn Err(\"render witness pinned the parse-summary variant instead\".into());\n}",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "render_summary_observes_other_enum_variant",
@@ -1144,7 +1172,9 @@
           "oracle_kind": "exact_value",
           "oracle": "matches!(\n        error.downcast_ref::<ParseSummaryError>(),\n        Some(ParseSummaryError::MalformedSource)\n    )",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],
@@ -1222,7 +1252,9 @@
           "oracle_kind": "broad_error",
           "oracle": "assert!(result.is_err());",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "weak_assertion",
+          "why": "assertion too weak to tell the old behavior from the new"
         }
       ],
       "stop_reasons": [],
@@ -1300,7 +1332,9 @@
           "oracle_kind": "broad_error",
           "oracle": "assert!(result.is_err());",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "weak_assertion",
+          "why": "assertion too weak to tell the old behavior from the new"
         }
       ],
       "stop_reasons": [],
@@ -1401,7 +1435,9 @@
           "oracle_kind": "exact_value",
           "oracle": "if !matches!(\nerror.downcast_ref::<GlyphError>(),\nSome(GlyphError::MalformedGlyph)\n) {\nreturn Err(\"glyph variant witness requires the typed conversion\".into());\n}",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "glyph_summary_downcast_witness_on_stringified_wrapper",
@@ -1411,7 +1447,9 @@
           "oracle_kind": "exact_value",
           "oracle": "matches!(\n        error.downcast_ref::<GlyphError>(),\n        Some(GlyphError::MalformedGlyph)\n    )",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],
@@ -1512,7 +1550,9 @@
           "oracle_kind": "exact_value",
           "oracle": "if !matches!(\nerror.downcast_ref::<GlyphError>(),\nSome(GlyphError::MalformedGlyph)\n) {\nreturn Err(\"glyph variant witness requires the typed conversion\".into());\n}",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "glyph_summary_downcast_witness_on_stringified_wrapper",
@@ -1522,7 +1562,9 @@
           "oracle_kind": "exact_value",
           "oracle": "matches!(\n        error.downcast_ref::<GlyphError>(),\n        Some(GlyphError::MalformedGlyph)\n    )",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],
@@ -1611,7 +1653,9 @@
           "oracle_kind": "exact_value",
           "oracle": "matches!(\n        error.downcast_ref::<ThemeError>(),\n        Some(ThemeError::DuplicateTheme)\n    );",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],
@@ -1700,7 +1744,9 @@
           "oracle_kind": "exact_value",
           "oracle": "matches!(\n        error.downcast_ref::<ThemeError>(),\n        Some(ThemeError::DuplicateTheme)\n    );",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],

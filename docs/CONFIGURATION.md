@@ -558,7 +558,7 @@ The extension contributes these command IDs and palette titles:
 | `ripr.openRelatedTest` | ripr: Write Targeted Test - Open Best Related Test |
 | `ripr.openSettings` | ripr: Open Settings |
 | `ripr.copyTopRepairPacket` | ripr: Copy Top Repair Packet |
-| `ripr.copyTopVerifyCommand` | ripr: Copy Verify Command |
+| `ripr.copyTopVerifyCommand` | ripr: Copy Verify Command (Top Repair Packet) |
 | `ripr.copyTopReceiptCommand` | ripr: Copy Receipt Command (Top Repair Packet) |
 | `ripr.openReport` | ripr: Open Report |
 | `ripr.showTopLimitation` | ripr: Show Top Limitation |

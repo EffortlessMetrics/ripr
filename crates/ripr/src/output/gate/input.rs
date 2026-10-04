@@ -70,6 +70,16 @@ pub(super) fn read_gap_ledger_impl(
     // producer run is not a valid gate input — fail closed rather than gating
     // on a partial denominator.
     if let Ok(value) = serde_json::from_str::<Value>(&text) {
+        // #5203: a ledger built from a findings-bounded run hides omitted
+        // findings — fail closed rather than gating on a bounded denominator.
+        // Checked before the older limited states so a bounded document names
+        // its own budget repair.
+        if let Some(bound_error) =
+            super::findings_bound_input_error(&value, path, "gap decision ledger input")
+        {
+            config_errors.push(format!("required {bound_error}"));
+            return Some(Vec::new());
+        }
         if super::discloses_limited_partial_scope(&value) {
             config_errors.push(format!(
                 "required gap decision ledger input {} discloses a {} analysis run \
@@ -248,6 +258,16 @@ pub(super) fn read_baseline_impl(
     let resolved = resolve_root_path(&input.root, path);
     match read_json_value_with_display(&resolved, path) {
         Ok(value) => {
+            // #5203: a baseline built from a findings-bounded run is a
+            // bounded denominator — fail closed instead of diffing against
+            // it. Checked before the older limited states so a bounded
+            // document names its own budget repair.
+            if let Some(bound_error) =
+                super::findings_bound_input_error(&value, path, "baseline input")
+            {
+                config_errors.push(bound_error);
+                return BaselineIndex::default();
+            }
             // RIPR-PROP-0019 decision 5: a baseline built from a
             // `limited_partial_scope` run is a partial denominator, never a
             // valid gate baseline — fail closed instead of diffing against it.

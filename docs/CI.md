@@ -61,7 +61,10 @@ workflow behavior documented in [Current Workflows](#current-workflows).
   - no-cancel preserves a running expensive job and allows only one pending
     replacement;
   - synchronize-cancel favors the latest commit and may abandon near-complete
-    work.
+    work;
+  - Ready-cancel (current `routed-rust.yml`, #4986) runs the PR qualification
+    only on Draft -> Ready and cancels only when a second Ready transition
+    replaces it.
 - Any switch to or from `cancel-in-progress` must document the affected
   workflows, rollback path, cost tradeoff, and review impact.
 - Cheap metadata-only workflows may use `cancel-in-progress: true`, but only as
@@ -267,7 +270,7 @@ implement and validate the lane-selection logic.
 
 | Label | Effect |
 | --- | --- |
-| `full-ci` | Run required, advisory, and release-like lanes. Demotes `ripr-waive` for this PR. Expected to cost more. |
+| `full-ci` | Run required, advisory, and release-like lanes. Demotes `ripr-waive` for this PR. Expected to cost more. For Routed Rust Small, read at the next Draft -> Ready transition. |
 | `release-check` | Run the currently wired release-surface proof without opting into every `full-ci` lane: package list, publish dry-run, unlocked install resolution, and release-readiness. |
 | `vscode` | Run the existing hosted editor compile, admitted VSIX package, and editor-host test job without opting into the other `full-ci` jobs. |
 | `coverage` | Run coverage lanes and upload coverage artifacts. |
@@ -557,32 +560,46 @@ docs-only pull request:
   docs gate; the Rust proof is not applicable
 ```
 
-Label events are not an implicit full-gate refresh:
+The Ready-only event rule applies to `routed-rust.yml` and its
+`Ripr Rust Small Result` context (#4986). Other public required checks retain
+their own triggers, including the `rust` job in `ci.yml`. Labels and Draft
+iteration do not allocate this routed gate:
 
 ```text
-opened / reopened / synchronize / push to main / workflow_dispatch:
-  launch the required Rust or docs gate (unchanged)
+opened / reopened / synchronize (Draft or Ready):
+  no Routed Rust Small run; cheap feedback only
 
-labeled full-ci:
-  launch the required gate with advisory reports and success artifacts
+ready_for_review (Draft -> Ready):
+  the sole pull-request qualification request; validates the exact Ready head
 
-labeled windows-ci, coverage, release-check, or any other non-full-ci label:
-  do not launch rust-gates; post Ripr Rust Small Ignored Label Event;
-  leave the previous exact-head Ripr Rust Small Result in place
+labeled / unlabeled (any label):
+  no Routed Rust Small run; labels never create or refresh the required context
 
-unlabeled (including windows-ci or full-ci removal):
-  do not start Routed Rust Small; the previous exact-head result remains
+push to main / workflow_dispatch:
+  launch under their own authorities, unchanged
 ```
 
 `windows-ci` continues to opt into `.github/workflows/windows-advisory.yml` only.
-Removing that label does not imply Windows proof and must not spend a required
-Rust run. `full-ci` unlabeled does not re-run the gate to turn advisories off;
-the next opened/synchronize/reopened proof observes the current labels.
-The public source route keeps `cancel-in-progress: false`; proof-event isolation remains explicit. Unrelated `labeled` events use a
-distinct `Routed Rust Small-<pr>-label-ignore` concurrency group so they cannot
-replace a pending synchronize proof. An ignored labeled run is cheap, does not
-post the protected result context, and cannot manufacture a green required
-check for untested or previously failed code.
+`cancel-in-progress` is `github.event_name == 'pull_request'` and the concurrency
+group is qualified by `github.event_name`, so a second Ready transition replaces
+the prior admission attempt while independent main and manual work cannot replace
+each other. No run posts a pseudo-result, so a Draft PR with no required check
+blocks rather than inheriting stale proof. The result job keeps its static
+`Ripr Rust Small Result` name on every run. One gap is not enforced: a
+`workflow_dispatch` of `routed-rust.yml` on a PR branch also posts that context
+on the branch head, without the `pull_request`-scoped PR-evidence steps.
+Do not dispatch on PR branches; #5394 tracks enforcing this.
+
+What this means for authors and agents:
+
+- Open PRs as Draft (`gh pr create --draft`), then mark them Ready. A PR opened
+  directly as Ready never receives a `ready_for_review` event and never gets
+  the required check.
+- A push after Ready leaves the new head without the required check. Convert
+  to Draft and mark Ready again once the push is final. If the PR had
+  auto-merge armed, check that it is still armed after the toggle.
+- For this routed lane, labels such as `full-ci` take effect at the next Ready
+  transition. The public `ci.yml` job retains its own label-triggered rules.
 
 The source repository proves its own pull requests on GitHub-hosted runners.
 Self-hosted runner capacity is `ripr-swarm` authority, so the source route
@@ -647,9 +664,11 @@ only the lane-only gates enumerated (`check-evidence-promotion-honesty`,
 for docs-only pull requests. It keeps advisory evidence artifacts
 non-blocking and uploads the normal `target/ripr` report packet when present.
 
-The legacy `CI` workflow (`.github/workflows/ci.yml`) no longer runs the
-workspace test suite; the routed `Ripr Rust Small` lane owns ordinary
-merge-safety, and its runner contract is in
+The public `CI` workflow (`.github/workflows/ci.yml`) retains its `rust` job.
+On pushes, manual dispatches, and pull requests labeled `release-check` or
+`full-ci`, that job runs workspace formatting, check, Clippy and nextest,
+plus its existing repository-policy and evidence steps. The routed lane
+provides its own typed receipt/aggregate path; its runner contract is in
 [PRODUCT_GATE_PLAN.md](ci/PRODUCT_GATE_PLAN.md) (#3825). The legacy workflow's
 `Perl and release proof` job runs on pushes to `main` or `master`, manual
 dispatches, and pull requests labeled `release-check` or `full-ci`, and keeps
@@ -941,24 +960,28 @@ no required check to retry (#4937; incidents #4528/#4537 ~9 hours dark,
 #4923 ~35 minutes).
 `.github/workflows/pr-staleness-watchdog.yml` runs every 30 minutes, finds open
 same-repo, non-draft PR heads with no `Ripr Rust Small Result` check run on the
-head SHA, and dispatches `routed-rust.yml` on the head branch — the same manual
-remedy used during the incidents — capped at 5 dispatches per sweep. The
-required check, not run existence, is the discriminator: an unrelated `labeled`
-event produces a same-workflow run whose result job renames itself to the
-non-required `Ripr Rust Small Ignored Label Event` (`routed-rust.yml:228`; two
-of the three runs on #4923's opened head). The next sweep's required-check
-check dedupes; its racy window after a dispatch is bounded by the cap plus the
-30-minute cadence. No PR comments are posted: the
-dispatched run itself delivers the required `Ripr Rust Small Result` check,
-and each sweep's summary table is the audit trail. The alert-only alternative
-(report the dark head instead of dispatching; zero duplicate-gate risk by
-construction) was deferred, not rejected:
-
-```text
-# To flip to alert-only (issue #4937 option ii): replace the dispatch step in
-# .github/workflows/pr-staleness-watchdog.yml with a summary-only report and
-# drop the `actions: write` permission.
-```
+head SHA, and reports them (step-summary row plus a workflow warning). It is
+alert-only (#4986; issue #4937 option ii): it never dispatches
+`routed-rust.yml` and holds no `actions: write` permission. With Ready-only
+admission, a Ready head without the required check is either a dropped
+Ready-triggered delivery or a push made after Ready, and the watchdog cannot
+tell the two apart. A head mutated after Ready has revoked its own admission
+and must not be qualified by a lighter branch-head dispatch (which skips the
+`pull_request`-scoped PR-evidence steps). The remedy for every reported head
+is the same: convert the PR to Draft and mark it Ready for review again, which
+runs the full Ready-triggered qualification on the exact head and also
+recovers a dropped delivery. The required check, not run existence, is the
+discriminator: any `Ripr Rust Small Result` check run on the head SHA is a
+real qualification attempt on that exact head. That check run is created only
+when the `result` job starts, after every implementation job (up to 120
+minutes), so before calling a head dark the watchdog also lists
+`routed-rust.yml` runs with `event=pull_request` on that SHA. A queued or
+in-progress run is reported as in flight. Re-toggling Draft -> Ready on such a
+head would cancel the real run, so the watchdog never recommends it. This uses
+`actions: read` only. Drafts and fork heads are
+skipped. No PR comments are posted; each sweep's summary table is the audit
+trail. `xtask/tests/pr_readiness_workflow_contract.rs` pins the alert-only
+shape (no dispatch command, no `actions: write`) and the in-flight check.
 
 ### Self-Hosted Runner Placement
 
@@ -1993,9 +2016,11 @@ Use the existing `vscode` label for a selected source editor candidate. The
 commands. Rust, MSRV and release-check conditions are unchanged; the label is
 not an integrated release qualification or publication decision.
 
-In Routed Rust, opened/synchronize/reopened, `full-ci` label additions, pushes
-and manual dispatches retain the existing typed receipt/aggregate path. Other
-label additions and removals use a separate concurrency group, skip proof
-selection, and never post `Ripr Rust Small Result`, including as a skipped job.
-Their cheap ignored-event summary proves no Rust subject. Existing proof for an
-exact head remains its own evidence and cannot be replaced by a label event.
+In Routed Rust, Draft -> Ready, protected-branch pushes and manual dispatches
+retain the public source hosted route and typed receipt/aggregate path.
+Opened, synchronize, reopened and label events do not trigger this workflow;
+a new PR head needs a new Draft -> Ready transition for this context. Those
+non-triggering events cannot replace an in-progress routed proof. A second
+Ready transition may cancel the previous admission attempt; completed receipts
+remain evidence only for the exact subject and tree they name. The public
+`ci.yml` required jobs retain their separate triggers and protected authority.

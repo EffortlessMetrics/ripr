@@ -15,7 +15,7 @@ Start here:
   Why unrevealed: a related test reaches this change, but no assertion observes the changed behavior
   Changed behavior: if a >= b {
   Missing discriminator (1 of 4): a == b
-  Related test: tests/it.rs:8 test_inner_with_custom_assertion_macro
+  Related test: tests/it.rs:8 test_inner_with_custom_assertion_macro (has no assertion)
   Next step: Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.
   Evidence: reach yes · infection weak · propagation yes · observation no · discriminator no
     - reach yes: Related tests appear to reach inner: test_inner_with_custom_assertion_macro

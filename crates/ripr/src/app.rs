@@ -326,6 +326,13 @@ pub(crate) fn render_check_with_config(
     output::render::render_check_with_config(output, format, config)
 }
 
+/// Unbounded JSON render for in-process consumers (#5203): the internal
+/// `pr-evidence` input carries the full finding set regardless of
+/// `RIPR_CHECK_FINDINGS_BYTES`. Infallible: no budget parsing, no failure.
+pub(crate) fn render_check_json_unbounded(output: &CheckOutput) -> String {
+    output::render::render_check_json_unbounded(output, &RiprConfig::default())
+}
+
 /// Renders with navigation while reporting repo-scope progress boundaries to
 /// `progress` for the full-repo audit-path formats (#4945).
 pub(crate) fn render_check_with_config_and_navigation_and_progress(

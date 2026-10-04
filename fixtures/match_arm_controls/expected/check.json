@@ -88,7 +88,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(classify_computed(\"word\"), \"word\");",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "missing_input",
+          "why": "no test input reaches `final_label == \"beta\"`"
         }
       ],
       "stop_reasons": [],
@@ -178,7 +180,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(classify_guard(\"word\"), \"word\");",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "missing_input",
+          "why": "no test input reaches `final_label == \"beta\"`"
         }
       ],
       "stop_reasons": [],
@@ -268,7 +272,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(classify_bare(\"word\"), \"word\");",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "missing_input",
+          "why": "no test input reaches `final_label == \"beta\"`"
         }
       ],
       "stop_reasons": [],
@@ -358,7 +364,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(classify_char('a'), \"word\");",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "missing_input",
+          "why": "no test input reaches `final_label == \"beta\"`"
         }
       ],
       "stop_reasons": [],

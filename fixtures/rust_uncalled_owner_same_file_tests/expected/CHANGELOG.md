@@ -160,3 +160,14 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+## Pending — rust_uncalled_owner_same_file_tests (14)
+
+Reason:
+RIPR-SPEC-0231: related tests ripr examined stay listed and each names why it misses the change (#5344); verdicts unchanged
+
+Command:
+`cargo xtask goldens bless rust_uncalled_owner_same_file_tests --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

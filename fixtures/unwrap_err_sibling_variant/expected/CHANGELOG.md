@@ -308,3 +308,26 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+## Pending — unwrap_err_sibling_variant (27)
+
+Reason:
+RIPR-SPEC-0231: related tests ripr examined stay listed and each names why it misses the change (#5344); verdicts unchanged
+
+Command:
+`cargo xtask goldens bless unwrap_err_sibling_variant --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — unwrap_err_sibling_variant (28)
+
+Reason:
+RIPR-SPEC-0231: exact-head review fixes; examined misses never displace oracle rows, error-variant and field gaps name the missing assertion (#5344)
+
+Command:
+`cargo xtask goldens bless unwrap_err_sibling_variant --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

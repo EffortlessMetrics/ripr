@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 1282397..d2d989a 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -42,7 +42,7 @@ pub fn discounted_cents(price_cents: u64, tier: Tier) -> u64 {
+ 
+ /// Whether an order subtotal ships for free.
+ pub fn free_shipping(subtotal_cents: u64) -> bool {
+-    subtotal_cents >= FREE_SHIPPING_CENTS
++    subtotal_cents > FREE_SHIPPING_CENTS - 1
+ }
+ 
+ /// Shipping fee for an order subtotal.

@@ -283,7 +283,11 @@ pub(crate) struct CachedSeamLimitInfo {
 /// Source/swarm semantic union: typed unresolved-boundary and guard guidance,
 /// identity/single-oracle delta confirmation, and owner/changed-line scope
 /// must cold-recompute instead of serving pre-union classifications.
-pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.31";
+/// `1.31`: a seam with no related test reads reach `opaque`, not `no`, when
+/// a transitive, macro or trait-dispatch path is unresolved (#5411).
+/// Fresh composed generation: both parents used the preceding number for
+/// different semantics; invalidate both plus examined-test miss metadata.
+pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.32";
 /// `0.2` → `0.3`: same semantic transition as the outer cache (#3273 /
 /// #3286) — sharded entries derive from the same facts and cannot bypass
 /// the outer generation bump.
@@ -353,7 +357,10 @@ pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.31";
 /// Source/swarm semantic union: typed unresolved-boundary and guard guidance,
 /// identity/single-oracle delta confirmation, and owner/changed-line scope
 /// must cold-recompute instead of serving pre-union classifications.
-const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.37";
+/// `0.37`: same unresolved-reach transition as full `1.31` (#5411).
+/// Fresh composed generation: both parents used the preceding number for
+/// different semantics; invalidate both plus examined-test miss metadata.
+const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.38";
 
 /// Compact-classified seam cache schema. This cache stores the same
 /// `ClassifiedSeam` envelope shape as the full repo exposure cache, but
@@ -425,7 +432,10 @@ const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.37";
 /// Source/swarm semantic union: typed unresolved-boundary and guard guidance,
 /// identity/single-oracle delta confirmation, and owner/changed-line scope
 /// must cold-recompute instead of serving pre-union classifications.
-pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.37";
+/// `0.37`: same unresolved-reach transition as full `1.31` (#5411).
+/// Fresh composed generation: both parents used the preceding number for
+/// different semantics; invalidate both plus examined-test miss metadata.
+pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.38";
 
 /// Compact class-count cache used by repo badge rendering. It keys off
 /// the same workspace state as the full fact cache, but stores only
@@ -553,7 +563,10 @@ pub(crate) const COUNT_CACHE_SCHEMA_VERSION: &str = "0.2";
 /// fabricate property-body functions/tests. Published 1.16 facts must miss.
 /// `1.18`: parser raw oracle scans exclude opaque property bodies (#5131).
 /// Published `1.17` favorable discarded-oracle facts cannot replay.
-pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "1.18";
+/// `1.20`: unguarded wildcard pattern assertions are weak, not exact strong
+/// oracles (#5397). Predecessor strong wildcard facts must not replay. The
+/// concurrent assertion-admission candidate #5359 uses generation `1.19`.
+pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "1.20";
 
 /// Keep the best-effort classified-seam cache from turning a successful live
 /// analysis into an unbounded post-analysis stall on large repos. Larger live
@@ -3645,7 +3658,7 @@ mod tests {
         // 1.12 -> 1.13: impl_context records the function's impl self type (#4558).
         // 1.13 -> 1.14: `FunctionFact` gains the parser's item container
         // (#4478); a warm pre-bump hit would read every owner as `Unknown`.
-        assert_eq!(FILE_FACT_CACHE_SCHEMA_VERSION, "1.18");
+        assert_eq!(FILE_FACT_CACHE_SCHEMA_VERSION, "1.20");
         // 1.4 -> 1.5: metadata-sourced harness validation (#3634) flips
         // verdicts for workspaces the manifest emulation approximated.
         // 1.5 -> 1.6: the #3636 reachability authority excludes
@@ -3692,7 +3705,9 @@ mod tests {
         // probes the token rule left unconfirmed.
         // 1.22 -> 1.23: integrate shared return-oracle admission after #4748.
         // 1.29 -> 1.30: related-test table body (memory/size, no evidence change).
-        assert_eq!(CACHE_SCHEMA_VERSION, "1.31");
+        // 1.30 -> 1.31: unresolved seam reach reads opaque (#5411).
+        // Fresh composed generation invalidates both parent semantic generations.
+        assert_eq!(CACHE_SCHEMA_VERSION, "1.32");
         // 0.12 -> 0.13 through 0.14 / 0.15 / 0.16 / 0.17 / 0.18: same
         // #3731 semantic transition as the outer classified-seam cache,
         // for the sharded and compact envelopes.
@@ -3716,8 +3731,10 @@ mod tests {
         // same semantic transition as the outer cache.
         // 0.28 -> 0.29: same combined semantic transition as the outer cache.
         // 0.35 -> 0.36: same related-test table body as the outer cache.
-        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.37");
-        assert_eq!(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.37");
+        // 0.36 -> 0.37: same unresolved-reach transition as the outer cache.
+        // Fresh composed generation invalidates both parent semantic generations.
+        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.38");
+        assert_eq!(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.38");
     }
 
     #[test]

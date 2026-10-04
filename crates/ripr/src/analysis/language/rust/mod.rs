@@ -823,10 +823,11 @@ fn apply_probe_and_oracle_limits(
 }
 
 /// Whether [`apply_rust_no_static_path_limit`] searches for a witness: a
-/// `no_static_path` finding with no related test and no limitation yet.
+/// `no_static_path` finding with no related test that supplied an oracle row
+/// (examined misses are evidence only, #5344) and no limitation yet.
 fn needs_no_static_path_limit(finding: &Finding) -> bool {
     finding.class == ExposureClass::NoStaticPath
-        && finding.related_tests.is_empty()
+        && finding.oracle_related_tests().next().is_none()
         && finding.static_limit_kind.is_none()
 }
 
@@ -847,7 +848,7 @@ fn apply_rust_no_static_path_limit(
 
     if let Some(witness) = transitive_reach.transitive_witness(&owner_name) {
         replace_witnessed_no_path_infection_summary(finding);
-        finding.static_limit_kind = Some(transitive_reach_limit_kind(&witness.test_file));
+        finding.static_limit_kind = Some(classify::transitive_reach_limit_kind(&witness.test_file));
         finding
             .stop_reasons
             .push(StopReason::TransitiveReachUnresolved);
@@ -865,7 +866,7 @@ fn apply_rust_no_static_path_limit(
             ));
     } else if let Some(witness) = transitive_reach.macro_reach_witness(&owner_name) {
         replace_witnessed_no_path_infection_summary(finding);
-        finding.static_limit_kind = Some(macro_reach_limit_kind(&witness.macro_host));
+        finding.static_limit_kind = Some(classify::macro_reach_limit_kind(&witness.macro_host));
         finding.stop_reasons.push(StopReason::MacroReachUnresolved);
         finding
             .evidence
@@ -942,22 +943,6 @@ fn is_cargo_binary_invocation(body: &str) -> bool {
             || compact.contains(".output(")
             || compact.contains(".status("));
     has_cargo_bin_env || has_assert_cmd_binary
-}
-
-fn transitive_reach_limit_kind(test_file: &Path) -> StaticLimitKind {
-    if rust_index::is_test_file(test_file) {
-        StaticLimitKind::RustIntegrationPublicApiPathUnresolved
-    } else {
-        StaticLimitKind::RustTransitiveReachUnresolved
-    }
-}
-
-fn macro_reach_limit_kind(macro_host: &str) -> StaticLimitKind {
-    if macro_host == classify::MACRO_WITNESS_TEST_BODY_HOST {
-        StaticLimitKind::RustMacroWrappedTestCallUnresolved
-    } else {
-        StaticLimitKind::RustMacroReachUnresolved
-    }
 }
 
 fn replace_witnessed_no_path_infection_summary(finding: &mut Finding) {
@@ -2179,11 +2164,10 @@ mod tests {
         diff_index_file_limit_from_env, enforce_changed_rust_line_limit,
         enforce_repo_index_file_limit, is_binary_source_path, is_cargo_binary_invocation,
         is_generated_rust_file, is_generated_rust_file_with_patterns,
-        limitations_for_absent_changed_files, macro_reach_limit_kind,
-        partial_diff_budgets_from_env, partition_canonical_form,
-        replace_witnessed_no_path_infection_summary, repo_index_file_limit_from_env,
-        select_partial_diff_partition, select_partial_diff_partition_with_identity,
-        selection_with_open_files, sha256_hex, transitive_reach_limit_kind,
+        limitations_for_absent_changed_files, partial_diff_budgets_from_env,
+        partition_canonical_form, replace_witnessed_no_path_infection_summary,
+        repo_index_file_limit_from_env, select_partial_diff_partition,
+        select_partial_diff_partition_with_identity, selection_with_open_files, sha256_hex,
     };
     use crate::analysis::cancellation;
     use crate::analysis::diff::{ChangedFile, ChangedLine};
@@ -3171,7 +3155,8 @@ mod tests {
     }
 
     /// #5320: an owner whose caller closure exceeds the limit names the
-    /// unsearched reach only when the main index finds no witness itself. A
+    /// unsearched reach only when the main index finds no witness itself,
+    /// and (#5450) the closure stops before parsing past the limit. A
     /// test in the changed package that reaches the owner through a helper
     /// is a searched result and keeps its named witness; without that test
     /// the finding carries the over-limit note.
@@ -3193,6 +3178,33 @@ mod tests {
             plain.contains(unsearched),
             "fixture premise: the closure is over the forced limit: {plain}"
         );
+        // #5450: the closure stops at the first caller level that would pass
+        // the limit, before parsing it, so no withheld file is indexed.
+        assert_eq!(
+            dependent_scope::observed_reach_parses(),
+            0,
+            "an over-limit closure must not parse its caller levels"
+        );
+        let searched = dependent_scope::with_forced_reach_limit(100, || {
+            scoped_findings(&root, DependentScopeMode::NameAdmitted)
+        })?;
+        let full_parses = dependent_scope::observed_reach_parses();
+        assert!(
+            full_parses > 0 && !searched.0.contains(unsearched),
+            "control: under a roomy limit the same closure admits and searches files"
+        );
+        // A limit one file short of the whole closure falls on a later caller
+        // level: the levels before it are parsed, the crossing one is not.
+        let main_files = searched.1.ok_or("the named mode must narrow")?.len();
+        let between =
+            dependent_scope::with_forced_reach_limit(main_files + full_parses - 1, || {
+                scoped_findings(&root, DependentScopeMode::NameAdmitted)
+            })?;
+        let partial = dependent_scope::observed_reach_parses();
+        assert!(
+            between.0.contains(unsearched) && partial > 0 && partial < full_parses,
+            "a later-level crossing parses only the levels before it: {partial} of {full_parses}"
+        );
 
         let witnessed_root = temp_root("dependent-scope-over-limit-witnessed")?;
         write_dependent_scope_workspace(&witnessed_root, UNRELATED_E_SOURCE)?;
@@ -3213,6 +3225,57 @@ mod tests {
         assert!(
             !witnessed.contains(unsearched),
             "a searched witness must not read as unsearched: {witnessed}"
+        );
+        Ok(())
+    }
+
+    /// #5450: the admission count includes the module parents the widened
+    /// index loads. `c`'s caller sits in `c/src/hop.rs`, whose parent
+    /// `c/src/lib.rs` spells no caller name, so only the module context
+    /// brings it in. A limit equal to the raw closure is one short of the
+    /// loaded files: the crossing level must stop before it is parsed.
+    #[test]
+    fn dependent_scope_over_limit_counts_module_parents() -> Result<(), String> {
+        use dependent_scope::DependentScopeMode;
+        let root = temp_root("dependent-scope-over-limit-module-parent")?;
+        write_dependent_scope_workspace(&root, UNRELATED_E_SOURCE)?;
+        write(&root.join("c/src/lib.rs"), "pub mod hop;\n")?;
+        write(
+            &root.join("c/src/hop.rs"),
+            "pub fn forward(flag: bool) -> bool {\n    scope_b::relay(flag)\n}\n",
+        )?;
+        write(
+            &root.join("c/tests/forward_tests.rs"),
+            "#[test]\nfn forward_holds() {\n    assert!(scope_c::hop::forward(true));\n}\n",
+        )?;
+        let unsearched = "did not search dependent packages";
+
+        let searched = dependent_scope::with_forced_reach_limit(100, || {
+            scoped_findings(&root, DependentScopeMode::NameAdmitted)
+        })?;
+        let full_parses = dependent_scope::observed_reach_parses();
+        let reach = slash_paths(&searched.2);
+        assert!(
+            !searched.0.contains(unsearched)
+                && reach.contains(&"c/src/hop.rs".to_string())
+                && !reach.contains(&"c/src/lib.rs".to_string()),
+            "fixture premise: the closure reaches hop.rs but not its parent: {reach:?}"
+        );
+        let main = slash_paths(&searched.1.ok_or("the named mode must narrow")?);
+        assert!(
+            full_parses == reach.len() && !main.contains(&"c/src/lib.rs".to_string()),
+            "fixture premise: one closure parsed once, the parent outside the main index: \
+             {full_parses} parses, {reach:?}, {main:?}"
+        );
+        let main_files = main.len();
+        let raw = dependent_scope::with_forced_reach_limit(main_files + full_parses, || {
+            scoped_findings(&root, DependentScopeMode::NameAdmitted)
+        })?;
+        let partial = dependent_scope::observed_reach_parses();
+        assert!(
+            raw.0.contains(unsearched) && partial < full_parses,
+            "the module parent must count before the crossing level is parsed: \
+             {partial} of {full_parses}"
         );
         Ok(())
     }
@@ -4972,18 +5035,6 @@ fn absent_delimiter_boundary_returns_head() {
     }
 
     #[test]
-    fn transitive_reach_limit_kind_names_integration_test_path() {
-        assert_eq!(
-            transitive_reach_limit_kind(Path::new("tests/version_req.rs")),
-            StaticLimitKind::RustIntegrationPublicApiPathUnresolved
-        );
-        assert_eq!(
-            transitive_reach_limit_kind(Path::new("src/lib.rs")),
-            StaticLimitKind::RustTransitiveReachUnresolved
-        );
-    }
-
-    #[test]
     fn cargo_binary_invocation_shape_is_conservative_and_deterministic() {
         assert!(is_cargo_binary_invocation(
             r#"let output = Command::new(env!("CARGO_BIN_EXE_worker"))
@@ -5026,18 +5077,6 @@ fn absent_delimiter_boundary_returns_head() {
         assert!(super::find_subprocess_binary_test(&index, Path::new("src/lib.rs")).is_none());
         index.test_at_mut(0).file = PathBuf::from("src/lib.rs");
         assert!(super::find_subprocess_binary_test(&index, Path::new("src/main.rs")).is_none());
-    }
-
-    #[test]
-    fn macro_reach_limit_kind_names_direct_test_body_macro_path() {
-        assert_eq!(
-            macro_reach_limit_kind(crate::analysis::classify::MACRO_WITNESS_TEST_BODY_HOST),
-            StaticLimitKind::RustMacroWrappedTestCallUnresolved
-        );
-        assert_eq!(
-            macro_reach_limit_kind("outer"),
-            StaticLimitKind::RustMacroReachUnresolved
-        );
     }
 
     fn changed_file(path: &str, added: usize, removed: usize) -> ChangedFile {
@@ -6859,6 +6898,7 @@ fn absent_delimiter_boundary_returns_head() {
             oracle_strength: OracleStrength::None,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         }];
 
         let rust_owner = FunctionSummary {

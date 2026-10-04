@@ -29,7 +29,7 @@ Evidence
   - observation no: No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)
   - discriminator no: No statically established assertion can discriminate the changed behavior; execution or macro binding is unestablished (rust_assertion_context_unestablished)
   - local flow reaches returned value: amount - 10 (line 3)
-  - related test src/lib.rs:13 equality_threshold_discounts uses none unknown oracle
+  - related test src/lib.rs:13 equality_threshold_discounts uses none unknown oracle; misses: assertion not credited: ripr could not establish that it runs as the standard macro
   - source function argument value amount = 100 at line 14
   - source function argument value amount == discount_threshold at line 14
   - source function argument value discount_threshold = 100 at line 14

@@ -29,7 +29,7 @@ Evidence
   - observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect
   - discriminator no: No assertion found on related tests
   - local flow reaches error variant: let n = rdr.read(&mut buf)? (line 5)
-  - related test src/lib.rs:21 reports_read_failure uses none unknown oracle
+  - related test src/lib.rs:21 reports_read_failure uses none unknown oracle; misses: has no assertion
 
 Weakness
   - No detected assertion observes the changed value, error, field, or effect
@@ -65,7 +65,7 @@ Evidence
   - observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect
   - discriminator no: No assertion found on related tests
   - local flow reaches unknown sink: unknown sink (line 5)
-  - related test src/lib.rs:21 reports_read_failure uses none unknown oracle
+  - related test src/lib.rs:21 reports_read_failure uses none unknown oracle; misses: has no assertion
 
 Weakness
   - No relevant oracle was detected

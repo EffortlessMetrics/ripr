@@ -15,7 +15,7 @@ Start here:
   Why weak: a related test reaches this change, but no test input tells the old and new behavior apart
   Changed behavior: amount >= discount_threshold
   Missing discriminator: amount == discount_threshold
-  Related test (1 of 2): src/lib.rs:14 below_threshold_has_no_discount
+  Related test (1 of 2): src/lib.rs:14 below_threshold_has_no_discount (no test input reaches `amount == discount_threshold`)
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
   Evidence: reach yes · infection weak · propagation yes · observation yes · discriminator missing
     - reach yes: Related tests appear to reach discounted_total: below_threshold_has_no_discount, far_above_threshold_discounts

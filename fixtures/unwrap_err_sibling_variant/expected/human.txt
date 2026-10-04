@@ -15,7 +15,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return Err(CalcError::TooLarge);
   Missing discriminator (1 of 2): CalcError::TooLarge
-  Related test: tests/errors.rs:5 negative_input_rejects_with_negative_error
+  Related test: tests/errors.rs:5 negative_input_rejects_with_negative_error (no assertion pins `CalcError::TooLarge`)
   Next step: Add a test input that reaches the changed error path and assert the exact error variant it returns.
   Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach compute: negative_input_rejects_with_negative_error

@@ -61,6 +61,18 @@ pub(crate) fn build_gate_decision_report(
                             display_path(path)
                         ));
                         Value::Null
+                    } else if let Some(bound_error) =
+                        findings_bound_input_error(&value, path, "gate input")
+                    {
+                        // Same fail-closed shape for a `limited_findings_bound`
+                        // producer run (#5203): an omitted finding can hide an
+                        // exposed sink, so a bounded denominator never passes
+                        // as a complete gate input. Checked before the older
+                        // limited states so a bounded document names its own
+                        // budget repair; no existing document carries the new
+                        // entry, so older refusals are unchanged.
+                        config_errors.push(bound_error);
+                        Value::Null
                     } else if let Some(partial_error) = partial_scope_input_error(&value, path) {
                         // The document is structurally valid but discloses a
                         // `limited_partial_scope` producer run (RIPR-PROP-0019
@@ -1326,6 +1338,43 @@ pub(crate) fn discloses_limited_partial_scope(value: &Value) -> bool {
                     || entry.get("category").and_then(Value::as_str) == Some(run_status)
             })
         })
+}
+
+/// Whether a JSON document discloses the `limited_findings_bound` run state
+/// (#5203): the producer rendered a findings-array prefix, not the full
+/// analysis set. The producer emits exactly one position (`run_limitations[]`,
+/// the only slot the check schema opens for this state), so only that
+/// position is read; a future producer adding positions extends this predicate.
+pub(crate) fn discloses_limited_findings_bound(value: &Value) -> bool {
+    let run_status = crate::output::json::FINDINGS_BOUND_RUN_STATUS;
+    value
+        .get("run_limitations")
+        .and_then(Value::as_array)
+        .is_some_and(|limitations| {
+            limitations.iter().any(|entry| {
+                entry.get("run_status").and_then(Value::as_str) == Some(run_status)
+                    || entry.get("category").and_then(Value::as_str) == Some(run_status)
+            })
+        })
+}
+
+/// Fail-closed refusal for gate inputs built from a findings-bounded producer
+/// run (#5203). An omitted finding can hide an exposed sink, so a bounded
+/// denominator is never a gate, baseline, badge, or RIPR Zero input — exactly
+/// like a partial-scope denominator, with the findings-budget repair route.
+fn findings_bound_input_error(value: &Value, path: &Path, role: &str) -> Option<String> {
+    if discloses_limited_findings_bound(value) {
+        Some(format!(
+            "gate input {} discloses a {} producer run; a bounded denominator is never a {} — \
+             re-run with a larger {} budget or =0 for the full set before gating",
+            display_path(path),
+            crate::output::json::FINDINGS_BOUND_RUN_STATUS,
+            role,
+            crate::output::json::CHECK_FINDINGS_BYTES_ENV,
+        ))
+    } else {
+        None
+    }
 }
 
 /// Whether a producer supplied the typed incomplete-analysis envelope.

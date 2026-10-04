@@ -120,7 +120,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(terminal.len(), 1);",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "request_only_projection_observes_join",
@@ -130,7 +132,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(terminal[0].0.id, \"receipt-1\");",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "request_only_projection_observes_join",
@@ -140,7 +144,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(terminal[0].1, \"request_identity_v2\");",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],
@@ -262,7 +268,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(terminal.len(), 1);",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "request_only_projection_observes_join",
@@ -272,7 +280,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(terminal[0].0.id, \"receipt-1\");",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "request_only_projection_observes_join",
@@ -282,7 +292,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(terminal[0].1, \"request_identity_v2\");",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],

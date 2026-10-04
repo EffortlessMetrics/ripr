@@ -1,7 +1,8 @@
 use crate::domain::{OracleKind, OracleStrength};
 
 use super::arguments::{
-    assertion_oracle_text, ensure_assertion_arguments, outer_assertion_condition,
+    assertion_oracle_text, ensure_assertion_arguments, is_unguarded_wildcard_assertion,
+    outer_assertion_condition,
 };
 use super::patterns::{
     contains_exact_comparison, is_broad_error_assertion, is_clear_exact_custom_assertion_helper,
@@ -26,6 +27,12 @@ pub(crate) fn classify_assertion(line: &str) -> OracleClassification {
     // reveal decides whether this oracle observes the changed error path.
     let oracle_text = assertion_oracle_text(line);
     let line = oracle_text.as_deref().unwrap_or(line);
+    if is_unguarded_wildcard_assertion(line) {
+        return OracleClassification {
+            kind: OracleKind::RelationalCheck,
+            strength: OracleStrength::Weak,
+        };
+    }
     if let Some(classification) = classify_fallible_assertion(line) {
         return classification;
     }

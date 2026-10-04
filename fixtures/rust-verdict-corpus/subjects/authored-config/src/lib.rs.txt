@@ -1,0 +1,108 @@
+//! A tiny `key = value` service configuration parser with typed errors.
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigError {
+    MissingEquals { line: usize },
+    EmptyKey { line: usize },
+    DuplicateKey { key: String, line: usize },
+    InvalidPort { value: String },
+    UnknownLogLevel(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Settings {
+    pub host: String,
+    pub port: u16,
+    pub log_level: LogLevel,
+    pub verbose: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings {
+            host: "127.0.0.1".to_string(),
+            port: 8080,
+            log_level: LogLevel::Info,
+            verbose: false,
+        }
+    }
+}
+
+/// Split configuration text into trimmed key/value pairs, skipping blank
+/// lines and `#` comments. Line numbers in errors are 1-based.
+pub fn parse_pairs(text: &str) -> Result<Vec<(String, String)>, ConfigError> {
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    for (idx, raw) in text.lines().enumerate() {
+        let line_no = idx + 1;
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            return Err(ConfigError::MissingEquals { line: line_no });
+        };
+        let key = key.trim();
+        if key.is_empty() {
+            return Err(ConfigError::EmptyKey { line: line_no });
+        }
+        if pairs.iter().any(|(seen, _)| seen == key) {
+            return Err(ConfigError::DuplicateKey {
+                key: key.to_string(),
+                line: line_no,
+            });
+        }
+        pairs.push((key.to_string(), value.trim().to_string()));
+    }
+    Ok(pairs)
+}
+
+/// A TCP port; zero and non-numeric values are rejected.
+pub fn parse_port(value: &str) -> Result<u16, ConfigError> {
+    match value.parse::<u16>() {
+        Ok(0) | Err(_) => Err(ConfigError::InvalidPort {
+            value: value.to_string(),
+        }),
+        Ok(port) => Ok(port),
+    }
+}
+
+pub fn parse_log_level(value: &str) -> Result<LogLevel, ConfigError> {
+    match value.to_ascii_lowercase().as_str() {
+        "error" => Ok(LogLevel::Error),
+        "warn" | "warning" => Ok(LogLevel::Warn),
+        "info" => Ok(LogLevel::Info),
+        "debug" => Ok(LogLevel::Debug),
+        other => Err(ConfigError::UnknownLogLevel(other.to_string())),
+    }
+}
+
+/// Accepts the usual spellings of a boolean flag.
+pub fn parse_bool(value: &str) -> Option<bool> {
+    match value {
+        "true" | "yes" | "on" | "1" => Some(true),
+        "false" | "no" | "off" | "0" => Some(false),
+        _ => None,
+    }
+}
+
+pub fn load(text: &str) -> Result<Settings, ConfigError> {
+    let mut settings = Settings::default();
+    for (key, value) in parse_pairs(text)? {
+        match key.as_str() {
+            "host" => settings.host = value,
+            "port" => settings.port = parse_port(&value)?,
+            "log_level" => settings.log_level = parse_log_level(&value)?,
+            "verbose" => settings.verbose = parse_bool(&value).unwrap_or(false),
+            _ => {}
+        }
+    }
+    Ok(settings)
+}

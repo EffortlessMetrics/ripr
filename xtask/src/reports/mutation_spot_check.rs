@@ -49,16 +49,13 @@ const SCRATCH: &str = "target/ripr/reports/mutation-spot-check";
 /// outcomes. `--mutants-arg` is for selecting mutants.
 const HARNESS_OWNED_MUTANTS_ARGS: &[&str] = &[
     "--dir",
-    "-d",
     "--output",
-    "-o",
     "--jobs",
-    "-j",
     "--timeout",
-    "-t",
-    // cargo-mutants ignores the multiplier when --timeout is given, and the
-    // harness always gives it, so the receipt would record a no-op.
+    // The harness always passes --timeout: cargo-mutants rejects the
+    // multiplier alongside it and ignores the minimum, so neither can apply.
     "--timeout-multiplier",
+    "--minimum-test-timeout",
     "--manifest-path",
     "--shuffle",
     "--no-shuffle",
@@ -70,16 +67,33 @@ const HARNESS_OWNED_MUTANTS_ARGS: &[&str] = &[
     "--completions",
     "--emit-schema",
     "--version",
-    "-V",
 ];
+/// Short forms of `--dir`, `--output`, `--jobs` and `--timeout`.
+const HARNESS_OWNED_SHORT_FLAGS: &[char] = &['d', 'o', 'j', 't'];
+/// cargo-mutants 27 short flags that take no value (`--caught`, `--unviable`,
+/// `--help`), so a bundled argument such as `-vj8` continues past them.
+const VALUELESS_SHORT_FLAGS: &[char] = &['v', 'V', 'h'];
 const USAGE: &str = "usage: cargo xtask mutation-spot-check --repo <name>=<checkout> [--repo ...] [--mutants-out <name>=<mutants.out dir>] [--run-mutants] [--mutants-arg <name>=<arg>] [--jobs <n>] [--mutant-timeout-secs <n>] [--examples <n>] [--ripr <binary>]";
 
 fn harness_owned_mutants_arg(arg: &str) -> bool {
+    if let Some(bundle) = arg.strip_prefix('-').filter(|rest| !rest.starts_with('-')) {
+        // clap reads `-vj8` as `-v -j 8`: scan valueless flags until the
+        // first flag that takes a value, whose remainder is that value.
+        for flag in bundle.chars() {
+            if HARNESS_OWNED_SHORT_FLAGS.contains(&flag) {
+                return true;
+            }
+            if !VALUELESS_SHORT_FLAGS.contains(&flag) {
+                return false;
+            }
+        }
+        return false;
+    }
     HARNESS_OWNED_MUTANTS_ARGS.iter().any(|owned| {
         arg == *owned
-            || arg.strip_prefix(owned).is_some_and(|rest| {
-                rest.starts_with('=') || (!owned.starts_with("--") && !rest.is_empty())
-            })
+            || arg
+                .strip_prefix(owned)
+                .is_some_and(|rest| rest.starts_with('='))
     })
 }
 
@@ -1084,6 +1098,12 @@ mod tests {
             "hex=--jobserver=false",
             "--mutants-arg",
             "hex=-Dx.diff",
+            "--mutants-arg",
+            "hex=-Fdecode",
+            "--mutants-arg",
+            "hex=-vfsrc/output.rs",
+            "--mutants-arg",
+            "hex=-V",
         ]))?;
         assert_eq!(
             options.mutants_args.get("hex"),
@@ -1091,7 +1111,10 @@ mod tests {
                 "--file=src/lib.rs".to_string(),
                 "--re=decode".to_string(),
                 "--jobserver=false".to_string(),
-                "-Dx.diff".to_string()
+                "-Dx.diff".to_string(),
+                "-Fdecode".to_string(),
+                "-vfsrc/output.rs".to_string(),
+                "-V".to_string()
             ])
         );
         for (extra, expected) in [
@@ -1133,6 +1156,30 @@ mod tests {
                     "--mutants-arg",
                     "hex=--timeout-multiplier=2",
                 ],
+                "would override how the harness runs",
+            ),
+            (
+                vec![
+                    "--run-mutants",
+                    "--mutants-arg",
+                    "hex=--minimum-test-timeout=5",
+                ],
+                "would override how the harness runs",
+            ),
+            (
+                vec!["--run-mutants", "--mutants-arg", "hex=-dfoo"],
+                "would override how the harness runs",
+            ),
+            (
+                vec!["--run-mutants", "--mutants-arg", "hex=-o=/tmp/x"],
+                "would override how the harness runs",
+            ),
+            (
+                vec!["--run-mutants", "--mutants-arg", "hex=-vj8"],
+                "would override how the harness runs",
+            ),
+            (
+                vec!["--run-mutants", "--mutants-arg", "hex=-Vt5"],
                 "would override how the harness runs",
             ),
             (

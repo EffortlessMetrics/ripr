@@ -78,7 +78,9 @@
           "oracle_kind": "broad_error",
           "oracle": "assert!(authenticate(\"\").is_err());",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "weak_assertion",
+          "why": "assertion too weak to tell the old behavior from the new"
         }
       ],
       "stop_reasons": [],
@@ -158,7 +160,9 @@
           "oracle_kind": "broad_error",
           "oracle": "assert!(authenticate(\"\").is_err());",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "weak_assertion",
+          "why": "assertion too weak to tell the old behavior from the new"
         }
       ],
       "stop_reasons": [],

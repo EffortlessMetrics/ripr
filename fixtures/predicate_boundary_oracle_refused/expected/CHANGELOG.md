@@ -25,3 +25,28 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+## Pending — predicate_boundary_oracle_refused (3)
+
+Reason:
+RIPR-SPEC-0231: related tests ripr examined stay listed and each names why it misses the change (#5344); verdicts unchanged
+
+Command:
+`cargo xtask goldens bless predicate_boundary_oracle_refused --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — predicate_boundary_oracle_refused (4)
+
+Reason:
+RIPR-SPEC-0231: a matched related test keeps its oracle kind and strength in full output and adds why it still misses; verdicts unchanged
+
+Command:
+`cargo xtask goldens bless predicate_boundary_oracle_refused --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

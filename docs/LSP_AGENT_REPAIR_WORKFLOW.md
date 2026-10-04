@@ -275,7 +275,7 @@ explanation.
 | --- | --- | --- |
 | `ripr: Show Status` | `ripr.collectWorkspaceStatus` | Start of every loop iteration |
 | `ripr: Copy Top Repair Packet` | `ripr.collectRepairPacket` | When an actionable packet is available |
-| `ripr: Copy Verify Command` | `ripr.copyTopVerifyCommand` | Copy the verify command to the clipboard |
+| `ripr: Copy Verify Command (Top Repair Packet)` | `ripr.copyTopVerifyCommand` | Copy the verify command to the clipboard |
 | `ripr: Copy Receipt Command (Top Repair Packet)` | `ripr.copyTopReceiptCommand` | Copy the top packet's receipt command to the clipboard |
 | `ripr: Copy Receipt Command` | `ripr.copyReceiptCommand` | Copy the current gap's receipt command to the clipboard |
 | `ripr: Show Receipt Status` | `ripr.collectReceiptStatus` | After the receipt command completes |

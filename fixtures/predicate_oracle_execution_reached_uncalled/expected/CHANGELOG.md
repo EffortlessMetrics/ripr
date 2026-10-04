@@ -50,3 +50,28 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+## Pending — predicate_oracle_execution_reached_uncalled (5)
+
+Reason:
+RIPR-SPEC-0231: related tests ripr examined stay listed and each names why it misses the change (#5344); verdicts unchanged
+
+Command:
+`cargo xtask goldens bless predicate_oracle_execution_reached_uncalled --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — predicate_oracle_execution_reached_uncalled (6)
+
+Reason:
+RIPR-SPEC-0231: a matched related test keeps its oracle kind and strength in full output and adds why it still misses; verdicts unchanged
+
+Command:
+`cargo xtask goldens bless predicate_oracle_execution_reached_uncalled --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

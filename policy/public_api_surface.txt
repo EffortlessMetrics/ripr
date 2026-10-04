@@ -304,6 +304,7 @@ pub use ripr::domain::REPAIR_CARD_CLAIM_BOUNDARY
 pub use ripr::domain::REPAIR_CARD_SCHEMA_VERSION
 pub use ripr::domain::REQUIRED_TAXONOMY_KINDS
 pub use ripr::domain::RelatedTest
+pub use ripr::domain::RelatedTestMiss
 pub use ripr::domain::RelationConfidence
 pub use ripr::domain::RelationReason
 pub use ripr::domain::RepairCardAssertionGoal

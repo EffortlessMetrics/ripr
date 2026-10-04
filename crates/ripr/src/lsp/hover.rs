@@ -476,14 +476,25 @@ fn finding_hover_markdown(diagnostic: &Diagnostic, finding: &Finding) -> String 
         lines.push(String::new());
         lines.push("## Related Tests".to_string());
         for test in &finding.related_tests {
-            let oracle_text = match &test.oracle {
-                Some(oracle) => format!(
+            // #5344: a test that misses the change says why instead of
+            // listing a `none` oracle grade.
+            let why = crate::output::related_test_miss::related_test_miss_reason(
+                test,
+                &finding.activation.missing_discriminators,
+            );
+            let oracle_text = match (&why, &test.oracle) {
+                (Some(why), Some(oracle)) => format!(
+                    " misses: {why}; checked `{}`",
+                    crate::output::related_test_miss::checked_assertion_text(oracle)
+                ),
+                (Some(why), None) => format!(" misses: {why}"),
+                (None, Some(oracle)) => format!(
                     " \u{2014} {} {} oracle: {}",
                     test.oracle_strength.as_str(),
                     test.oracle_kind.as_str(),
                     oracle
                 ),
-                None => String::new(),
+                (None, None) => String::new(),
             };
             lines.push(format!(
                 "- `{}:{}` `{}`{}",

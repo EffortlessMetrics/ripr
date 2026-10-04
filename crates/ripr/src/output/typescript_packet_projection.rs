@@ -1450,6 +1450,7 @@ mod tests {
                 oracle: Some("expect(...).toBe(...)".to_string()),
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             }],
             recommended_next_step: None,
             language: Some(LanguageId::TypeScript),

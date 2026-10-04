@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 1282397..0625733 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -16,7 +16,7 @@ pub enum Tier {
+ 
+ /// Loyalty tier earned by a customer's accumulated points.
+ pub fn tier_for_points(points: u32) -> Tier {
+-    if points >= 5000 {
++    if points > 4999 {
+         Tier::Gold
+     } else if points >= 1000 {
+         Tier::Silver

@@ -236,6 +236,7 @@ mod tests {
             oracle_strength: OracleStrength::Strong,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         }
     }
 

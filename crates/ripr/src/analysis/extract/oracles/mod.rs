@@ -282,3 +282,6 @@ expect_metric_recorded(counter);
 
 #[cfg(test)]
 mod relational_tests;
+
+#[cfg(test)]
+mod wildcard_tests;

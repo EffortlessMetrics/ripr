@@ -149,6 +149,8 @@ Weak or smoke oracle examples:
 - `expect()`
 - `assert!(x > 0)`
 - `assert!(!items.is_empty())`
+- `assert!(matches!(value, _))` and `assert_matches!(value, _)`: an unguarded
+  whole wildcard accepts every value and provides no exact discriminator.
 
 The MVP favors high-signal distinctions over completeness. A weak oracle is not
 bad by itself; it is weak when the changed behavior needs a stronger

@@ -300,3 +300,41 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+## Pending — error_path_sibling_oracle_fake_clean (24)
+
+Reason:
+RIPR-SPEC-0231: related tests ripr examined stay listed and each names why it misses the change (#5344); verdicts unchanged
+
+Command:
+`cargo xtask goldens bless error_path_sibling_oracle_fake_clean --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — error_path_sibling_oracle_fake_clean (25)
+
+Reason:
+RIPR-SPEC-0231: exact-head review fixes; examined misses never displace oracle rows, error-variant and field gaps name the missing assertion (#5344)
+
+Command:
+`cargo xtask goldens bless error_path_sibling_oracle_fake_clean --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — error_path_sibling_oracle_fake_clean (26)
+
+Reason:
+RIPR-SPEC-0231: a matched related test keeps its oracle kind and strength in full output and adds why it still misses; verdicts unchanged
+
+Command:
+`cargo xtask goldens bless error_path_sibling_oracle_fake_clean --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

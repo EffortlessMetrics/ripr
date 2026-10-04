@@ -127,6 +127,7 @@ std::thread_local! {
         const { std::cell::Cell::new(None) };
     static OBSERVED_REACH_FILES: std::cell::RefCell<Vec<PathBuf>> =
         const { std::cell::RefCell::new(Vec::new()) };
+    static OBSERVED_REACH_PARSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static OBSERVED_MAIN_FILES: std::cell::RefCell<Option<Vec<PathBuf>>> =
         const { std::cell::RefCell::new(None) };
 }
@@ -136,6 +137,7 @@ std::thread_local! {
 pub(super) fn with_forced_mode<T>(mode: DependentScopeMode, work: impl FnOnce() -> T) -> T {
     FORCED_MODE.with(|forced| forced.set(Some(mode)));
     OBSERVED_REACH_FILES.with(|files| files.borrow_mut().clear());
+    OBSERVED_REACH_PARSES.with(|parses| parses.set(0));
     OBSERVED_MAIN_FILES.with(|files| *files.borrow_mut() = None);
     let result = work();
     FORCED_MODE.with(|forced| forced.set(None));
@@ -157,6 +159,13 @@ pub(super) fn with_forced_reach_limit<T>(limit: usize, work: impl FnOnce() -> T)
 #[cfg(test)]
 pub(super) fn observed_main_files() -> Option<Vec<PathBuf>> {
     OBSERVED_MAIN_FILES.with(|files| files.borrow().clone())
+}
+
+/// How many withheld files the reach closures on this thread parsed since
+/// the last forced-mode run began.
+#[cfg(test)]
+pub(super) fn observed_reach_parses() -> usize {
+    OBSERVED_REACH_PARSES.with(std::cell::Cell::get)
 }
 
 /// The withheld files the last reach widening on this thread admitted.
@@ -400,8 +409,8 @@ pub(super) fn apply_reach_search_over_limit(
         .push(crate::domain::StopReason::TransitiveReachUnresolved);
     finding.evidence.push(format!(
         "ripr did not search dependent packages for a test that reaches `{owner}`: its callers \
-         span {files} Rust files, over the {limit}-file index limit. A test there may still \
-         observe this change. Raise RIPR_MAX_DIFF_INDEX_FILES above {files} to search them."
+         span at least {files} Rust files, over the {limit}-file index limit. A test there may \
+         still observe this change. Raise RIPR_MAX_DIFF_INDEX_FILES to search them."
     ));
     finding.evidence.extend([
         format!(
@@ -433,8 +442,10 @@ pub(super) struct NarrowedScope {
     withheld: Vec<PathBuf>,
     /// The identifiers each withheld file spells, read once at admission.
     tokens: WithheldTokens,
-    /// Each searched owner's caller closure: the withheld files it admits.
-    closures: std::collections::BTreeMap<String, BTreeSet<PathBuf>>,
+    /// Each searched owner's caller closure: the withheld files it admits,
+    /// or where it passed the limit. The limit is fixed for the scope's
+    /// run, so a cached `Over` stays valid.
+    closures: std::collections::BTreeMap<String, Closure>,
     /// The last widened index and the files it holds; owners whose closure
     /// selects the same files reuse it.
     reach_index: Option<(Vec<PathBuf>, RustIndex)>,
@@ -656,6 +667,20 @@ pub(super) fn admit_dependents(
     })
 }
 
+/// One caller level's admitted files, parsed (`None` when no withheld file
+/// spells a name), and the `macro_rules!` names they define.
+type LevelAdmission = (Option<RustIndex>, Vec<String>);
+
+/// One owner's caller closure.
+enum Closure {
+    /// The withheld files the closure admits.
+    Files(BTreeSet<PathBuf>),
+    /// The closure stopped once the main files plus the files it had
+    /// reached, with their module parents, exceeded the limit; at least
+    /// this many files take part.
+    Over(usize),
+}
+
 /// The witness index outcome for one owner.
 pub(super) enum ReachIndex<'a> {
     /// The main index already holds every file the owner's reach can touch.
@@ -693,13 +718,17 @@ impl NarrowedScope {
             .with(std::cell::Cell::get)
             .unwrap_or(limit);
         if !self.closures.contains_key(owner) {
-            let closure = self.extend_reach(owner, main_index)?;
+            let closure = self.extend_reach(owner, main_index, limit)?;
             self.closures.insert(owner.to_string(), closure);
             #[cfg(test)]
             OBSERVED_REACH_FILES.with(|files| {
                 *files.borrow_mut() = self
                     .closures
                     .values()
+                    .filter_map(|closure| match closure {
+                        Closure::Files(files) => Some(files),
+                        Closure::Over(_) => None,
+                    })
                     .flatten()
                     .cloned()
                     .collect::<BTreeSet<_>>()
@@ -707,12 +736,15 @@ impl NarrowedScope {
                     .collect();
             });
         }
-        let Some(closure) = self
-            .closures
-            .get(owner)
-            .filter(|closure| !closure.is_empty())
-        else {
-            return Ok(ReachIndex::Main);
+        let closure = match self.closures.get(owner) {
+            Some(Closure::Over(files)) => {
+                return Ok(ReachIndex::OverLimit {
+                    files: *files,
+                    limit,
+                });
+            }
+            Some(Closure::Files(files)) if !files.is_empty() => files,
+            _ => return Ok(ReachIndex::Main),
         };
         // This owner's closure only: another owner's wider closure must not
         // push this one over the limit, and the count includes the module
@@ -750,12 +782,16 @@ impl NarrowedScope {
         self.consumed
     }
 
-    /// The withheld files `owner`'s caller closure admits.
+    /// The withheld files `owner`'s caller closure admits, or the count at
+    /// which it passed `limit`. The count only grows level by level, and
+    /// the module parents the widened index adds only add to it, so a
+    /// closure stopped here would be over the limit at its end too.
     fn extend_reach(
         &mut self,
         owner: &str,
         main_index: &RustIndex,
-    ) -> Result<BTreeSet<PathBuf>, String> {
+        limit: usize,
+    ) -> Result<Closure, String> {
         let mut admitted = Vec::new();
         let mut admitted_now = BTreeSet::new();
         let mut names = HashSet::from([owner.to_string()]);
@@ -768,15 +804,24 @@ impl NarrowedScope {
                 seed_macros.extend(macro_rules_names(facts.source.as_bytes()));
             }
         }
-        let (index, macros) =
-            self.admit_spelling(&BTreeSet::from([owner.to_string()]), &mut admitted_now)?;
+        let Some((index, macros)) = self.admit_spelling(
+            &BTreeSet::from([owner.to_string()]),
+            &mut admitted_now,
+            limit,
+        )?
+        else {
+            return Ok(self.over(&admitted_now));
+        };
         seed_macros.extend(macros);
         admitted.extend(index);
         seed_macros.retain(|name| !names.contains(name));
         let mut frontier = BTreeSet::new();
         if !seed_macros.is_empty() {
             names.extend(seed_macros.iter().cloned());
-            let (index, _) = self.admit_spelling(&seed_macros, &mut admitted_now)?;
+            let Some((index, _)) = self.admit_spelling(&seed_macros, &mut admitted_now, limit)?
+            else {
+                return Ok(self.over(&admitted_now));
+            };
             admitted.extend(index);
             // Every invoker spells a seed macro, so it sits in the main
             // index or a file admitted just now: the first caller level.
@@ -803,19 +848,41 @@ impl NarrowedScope {
                 break;
             }
             names.extend(callers.iter().cloned());
-            let (index, _) = self.admit_spelling(&callers, &mut admitted_now)?;
+            let Some((index, _)) = self.admit_spelling(&callers, &mut admitted_now, limit)? else {
+                return Ok(self.over(&admitted_now));
+            };
             admitted.extend(index);
         }
-        Ok(admitted_now)
+        Ok(Closure::Files(admitted_now))
+    }
+
+    fn over(&self, reached: &BTreeSet<PathBuf>) -> Closure {
+        Closure::Over(self.selected_count(reached.iter()))
+    }
+
+    /// Files the widened index would load for the main files plus
+    /// `reached`, counting the module parents it adds (#5450).
+    fn selected_count<'a>(&self, reached: impl Iterator<Item = &'a PathBuf>) -> usize {
+        let selected = self
+            .main_files
+            .iter()
+            .cloned()
+            .chain(reached.cloned())
+            .collect::<Vec<_>>();
+        crate::analysis::workspace::with_module_context_files(&self.all_files, selected).len()
     }
 
     /// Index the withheld files not yet admitted that spell one of `names`,
-    /// with the `macro_rules!` names they define.
+    /// with the `macro_rules!` names they define. `None` when they would
+    /// take the main files plus the closure, with the module parents the
+    /// widened index loads, past `limit`: they are counted
+    /// into `admitted_now` but never parsed (#5450).
     fn admit_spelling(
         &mut self,
         names: &BTreeSet<String>,
         admitted_now: &mut BTreeSet<PathBuf>,
-    ) -> Result<(Option<RustIndex>, Vec<String>), String> {
+        limit: usize,
+    ) -> Result<Option<LevelAdmission>, String> {
         let mut new_files = Vec::new();
         let mut macros = Vec::new();
         for id in self.tokens.spelling(names) {
@@ -833,13 +900,19 @@ impl NarrowedScope {
             new_files.push(file.clone());
         }
         if new_files.is_empty() {
-            return Ok((None, macros));
+            return Ok(Some((None, macros)));
+        }
+        if self.selected_count(admitted_now.iter().chain(&new_files)) > limit {
+            admitted_now.extend(new_files);
+            return Ok(None);
         }
         // The level scan reads only call and body facts, so the parse is
         // enough; the reach index runs the full role pipeline later.
         let index = parse_index(&self.root, &new_files, &mut self.consumed)?;
+        #[cfg(test)]
+        OBSERVED_REACH_PARSES.with(|parses| parses.set(parses.get() + new_files.len()));
         admitted_now.extend(new_files);
-        Ok((Some(index), macros))
+        Ok(Some((Some(index), macros)))
     }
 }
 

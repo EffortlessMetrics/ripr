@@ -68,7 +68,9 @@
           "oracle_kind": "unknown",
           "oracle": "",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "no_assertion",
+          "why": "has no assertion"
         },
         {
           "name": "unrelated_exact_oracle",
@@ -78,7 +80,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(store, expected);",
           "relation_reason": "same_test_file",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "unrelated_exact_oracle",
@@ -88,7 +92,9 @@
           "oracle_kind": "relational_check",
           "oracle": "assert!(label.contains(\"record_effect\"));",
           "relation_reason": "same_test_file",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "weak_assertion",
+          "why": "assertion too weak to tell the old behavior from the new"
         }
       ],
       "stop_reasons": [],

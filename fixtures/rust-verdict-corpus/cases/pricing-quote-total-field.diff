@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 1282397..4032183 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -81,7 +81,7 @@ pub fn quote(unit_cents: u64, quantity: u64, points: u32) -> Quote {
+         tier,
+         subtotal_cents: subtotal,
+         shipping_cents: shipping,
+-        total_cents: subtotal + shipping,
++        total_cents: shipping + subtotal,
+     }
+ }
+ 

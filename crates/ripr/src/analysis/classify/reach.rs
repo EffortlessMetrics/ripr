@@ -129,7 +129,7 @@ fn includes_external_docs(source: &str) -> bool {
 
 /// Parser-backed owner ids carry their impl segment
 /// (`src/lib.rs::impl Display for Money::fmt`).
-fn is_trait_impl_method(owner: &FunctionSummary) -> bool {
+pub(in crate::analysis) fn is_trait_impl_method(owner: &FunctionSummary) -> bool {
     owner
         .id
         .0

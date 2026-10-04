@@ -15,7 +15,7 @@ Start here:
   Why unrevealed: a related test reaches this change, but no assertion observes the changed behavior
   Changed behavior: let n = rdr.read(&mut buf)?;
   Missing discriminator (1 of 3): No detected assertion observes the changed value, error, field, or effect
-  Related test: src/lib.rs:21 reports_read_failure
+  Related test: src/lib.rs:21 reports_read_failure (has no assertion)
   Next step: Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.
   Evidence: reach yes · infection yes · propagation yes · observation no · discriminator no
     - reach yes: Related tests appear to reach read_all: reports_read_failure

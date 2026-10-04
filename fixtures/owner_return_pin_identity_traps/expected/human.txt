@@ -15,7 +15,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: self.base() * 3
   Missing discriminator: No strong discriminator was detected
-  Related test: tests/trap_tests.rs:9 fixed_reader_overrides_next_word
+  Related test: tests/trap_tests.rs:9 fixed_reader_overrides_next_word (assertion does not mention the changed expression)
   Next step: Replace broad assertions with exact equality or a property that constrains the changed returned value.
   Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach next_word: fixed_reader_overrides_next_word

@@ -48,6 +48,16 @@ pub(crate) struct CompactGripContext<'a> {
     /// on the file, but every seam re-filtered its file's whole function
     /// list and searched each body for `#[fixture]`.
     fixture_names: Mutex<BTreeMap<&'a Path, Arc<BTreeSet<String>>>>,
+    /// Bounded transitive-reach facts (RIPR-SPEC-0114/0118), shared with
+    /// `ripr check`. The call graph builds on first use, so a run whose
+    /// seams all have related tests never pays for it.
+    pub(in crate::analysis::test_grip_evidence) transitive_reach:
+        crate::analysis::classify::TransitiveReachIndex<'a>,
+    /// Built on first use; see [`Self::type_mentions`].
+    type_mentions: OnceLock<crate::analysis::test_grip_evidence::reach_limit::TypeMentionIndex>,
+    /// Per owner id: the unresolved-reach summary, or `None` when the
+    /// `no` reach is established. Seams share owners.
+    unresolved_reach: Mutex<BTreeMap<String, Option<String>>>,
 }
 
 /// Candidate generation only: the existing `contains` and `same_module`
@@ -474,7 +484,35 @@ impl<'a> CompactGripContext<'a> {
             inline_unit_layouts: Default::default(),
             owner_lookups: Mutex::new(BTreeMap::new()),
             fixture_names: Mutex::new(BTreeMap::new()),
+            transitive_reach: crate::analysis::classify::TransitiveReachIndex::new(index),
+            type_mentions: OnceLock::new(),
+            unresolved_reach: Mutex::new(BTreeMap::new()),
         })
+    }
+
+    /// Identifier mentions by tests and test-reached production code, for
+    /// the trait-dispatch reach check (#5411).
+    pub(in crate::analysis::test_grip_evidence) fn type_mentions(
+        &self,
+    ) -> &crate::analysis::test_grip_evidence::reach_limit::TypeMentionIndex {
+        self.type_mentions.get_or_init(|| {
+            crate::analysis::test_grip_evidence::reach_limit::TypeMentionIndex::build(self)
+        })
+    }
+
+    pub(in crate::analysis::test_grip_evidence) fn unresolved_reach_cached(
+        &self,
+        owner_id: &str,
+    ) -> Option<Option<String>> {
+        memo(&self.unresolved_reach).get(owner_id).cloned()
+    }
+
+    pub(in crate::analysis::test_grip_evidence) fn cache_unresolved_reach(
+        &self,
+        owner_id: String,
+        summary: Option<String>,
+    ) {
+        memo(&self.unresolved_reach).insert(owner_id, summary);
     }
 
     /// The single evidence-role function in `path` named `name` that starts

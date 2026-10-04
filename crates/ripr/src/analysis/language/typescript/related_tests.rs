@@ -1931,6 +1931,7 @@ pub(crate) fn find_related_tests(
                 oracle_strength,
                 relation_reason,
                 relation_confidence,
+                miss: None,
             }
         })
         .collect()

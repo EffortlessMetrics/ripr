@@ -93,3 +93,14 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+## Pending — proximity_name_oracle_not_credited (9)
+
+Reason:
+RIPR-SPEC-0231: related tests ripr examined stay listed and each names why it misses the change (#5344); verdicts unchanged
+
+Command:
+`cargo xtask goldens bless proximity_name_oracle_not_credited --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

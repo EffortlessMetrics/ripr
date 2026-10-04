@@ -29,7 +29,7 @@
         "observe": {"state":"no","confidence":"medium","summary":"Related tests were found, but no assertion appears to observe the changed value, error, field, or effect"},
         "discriminate": {"state":"no","confidence":"medium","summary":"No assertion found on related tests"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach default_config: decimal_observation_does_not_name_retries", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches constructed field: retries: 1", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches constructed field: retries: 1 (line 7)", "missing discriminator retries: 1,: No field-value assertion observes the constructed field: retries: 1,"],
+      "evidence_path": ["reach yes: Related tests appear to reach default_config: decimal_observation_does_not_name_retries", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches constructed field: retries: 1", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches constructed field: retries: 1 (line 7)", "related test tests/config.rs:7 decimal_observation_does_not_name_retries uses none unknown oracle: assert_observed(3.14_f64);", "missing discriminator retries: 1,: No field-value assertion observes the constructed field: retries: 1,"],
       "flow_sinks": [
         {"kind":"struct_field","text":"retries: 1","line":7}
       ],
@@ -57,8 +57,20 @@
           "flow_sink": {"kind":"struct_field","text":"retries: 1","line":7}
         }
       ],
-      "related_tests_total": 0,
+      "related_tests_total": 1,
       "related_tests": [
+        {
+          "name": "decimal_observation_does_not_name_retries",
+          "file": "tests/config.rs",
+          "line": 7,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "assert_observed(3.14_f64);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high",
+          "miss": "assertion_not_observing",
+          "why": "asserts, but not on the changed value"
+        }
       ],
       "stop_reasons": [],
       "oracle_kind": "unknown",
@@ -88,7 +100,7 @@
         "observe": {"state":"no","confidence":"medium","summary":"Related tests were found, but no assertion appears to observe the changed value, error, field, or effect"},
         "discriminate": {"state":"no","confidence":"medium","summary":"No assertion found on related tests"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach default_config: decimal_observation_does_not_name_retries", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: Config {\n        timeout_secs: 30,\n        retries: 1,\n    }", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches returned value: Config {\n        timeout_secs: 30,\n        retries: 1,\n    } (line 7)"],
+      "evidence_path": ["reach yes: Related tests appear to reach default_config: decimal_observation_does_not_name_retries", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: Config {\n        timeout_secs: 30,\n        retries: 1,\n    }", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches returned value: Config {\n        timeout_secs: 30,\n        retries: 1,\n    } (line 7)", "related test tests/config.rs:7 decimal_observation_does_not_name_retries uses none unknown oracle: assert_observed(3.14_f64);"],
       "flow_sinks": [
         {"kind":"return_value","text":"Config {\n        timeout_secs: 30,\n        retries: 1,\n    }","line":7}
       ],
@@ -106,8 +118,20 @@
       ],
       "missing_discriminators": [
       ],
-      "related_tests_total": 0,
+      "related_tests_total": 1,
       "related_tests": [
+        {
+          "name": "decimal_observation_does_not_name_retries",
+          "file": "tests/config.rs",
+          "line": 7,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "assert_observed(3.14_f64);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high",
+          "miss": "assertion_not_observing",
+          "why": "asserts, but not on the changed value"
+        }
       ],
       "stop_reasons": [],
       "oracle_kind": "unknown",

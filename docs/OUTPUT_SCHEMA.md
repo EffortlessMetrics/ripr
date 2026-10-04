@@ -1009,6 +1009,33 @@ The evidence-first fields are additive in schema `0.2`:
   `opaque`. `direct_owner_call` → `high`; `assertion_target_affinity`,
   `owner_named_test`, `same_test_file` → `medium`; `weak_token_substring`,
   `same_module`, `helper_owner_call` → `low`; other static signals → `opaque`.
+- `related_tests[].miss` and `related_tests[].why` — (optional, additive,
+  #5344) why this test would not notice the changed behavior being wrong.
+  `miss` is a controlled `related_test_miss` value; `why` is one short
+  sentence for people. Both are omitted when the analyzer established no
+  miss, for example for an `exposed` finding's catching test. The
+  assertion-level values (`no_assertion`, `assertion_not_observing`,
+  `assertion_not_credited`) can appear under any class; the class-level values
+  (`no_call_path`, `weak_assertion`, `missing_input`,
+  `missing_exact_assertion`, `observation_unconfirmed`) appear only under
+  `no_static_path`, `weakly_exposed` and `reachable_unrevealed`. `no_call_path`: linked by name or file location only, no
+  call to the changed code. `no_assertion`: the test has no assertion ripr
+  recognizes. `assertion_not_observing`: the test asserts, but none of its
+  assertions observe the changed value; `oracle` then carries the first
+  assertion as checked text and `oracle_strength` is `none`.
+  `assertion_not_credited`: an assertion exists but ripr could not establish
+  that it runs as the standard macro. `weak_assertion`: the matched oracle is
+  weak or smoke-only. `missing_input`: on a predicate probe, the oracle
+  observes the behavior but no input reaches the boundary value in
+  `missing_discriminators` (the `left == right` entry).
+  `missing_exact_assertion`: no assertion pins the exact error variant or
+  constructed field value named in `missing_discriminators`.
+  `observation_unconfirmed`: the oracle has the right shape but its text never
+  names the changed expression (`observation_unverified`). Tests are listed
+  even when they supply no oracle, so `related_tests_total` counts every
+  examined row (one per matched assertion, one per test that supplied none).
+  Rows listed only as `assertion_not_observing` take only window slots the
+  oracle rows leave free, so the oracle rows and their order are unchanged.
 - `oracle_kind` and `oracle_strength` summarize the strongest related oracle
   currently visible to the finding.
 - `suggested_next_action` mirrors `recommended_next_step` for action-oriented
@@ -1981,6 +2008,71 @@ enforcement beyond `expires` (review-after deadlines, required-active
 ledgers) belongs to the gate exception policy (#1442), not check
 suppression.
 
+### `run_limitations` (top-level additive, #5203)
+
+`ripr check --format json` caps the rendered `findings` array at
+`RIPR_CHECK_FINDINGS_BYTES` emitted array bytes (payloads plus separators),
+default 1,000,000. Findings render in deterministic pipeline order; once the
+emitted bytes exceed the budget, the rest is disclosed rather than rendered.
+The first finding always renders, so a nonempty analysis never yields an empty
+prefix. Set the variable to `0` to remove the cap (unbounded); any positive
+integer sets the budget explicitly. An unparseable value fails the run
+(fail-closed), naming the variable and the repair. Does not bump
+`schema_version` (additive optional member).
+
+When the budget engages, the document carries one `run_limitations[]` entry and
+is never complete:
+
+- `category` / `run_status` — always `"limited_findings_bound"` for machine
+  filtering (the `limited_*` family).
+- `basis` — always `"check_findings_byte_budget"`.
+- `downstream_consumable` — always `false`.
+- `message` — `rendered <R> of <T> findings within the findings-array byte
+  budget (...)`, naming the applied setting and the `=0` full-set repair.
+- `repair_route` — always `"output/check-findings-budget"`.
+
+`summary` keeps full analysis counts (`summary.findings` is the analyzed
+total, `rendered + omitted == total`); `finding_alignment` covers the rendered
+prefix only, so alignment rows always resolve inside the document; per-finding
+`canonical_gap_group_size` counts the analyzed group (a total, like
+`related_tests_total`). The gate refuses a bounded document at the pr-guidance,
+gap-ledger, and baseline positions with a `config_error` naming
+`limited_findings_bound` and the budget repair. Gap ledgers generated from a
+bounded check document (`reports gap-ledger --check-output`) propagate
+`run_limitations[]` unchanged, so the gate refuses the generated ledger like
+the bounded check itself. `pr-evidence` renders its internal check input
+unbounded: routing counts the full finding set regardless of the external
+budget, since that JSON never leaves the process. The run exit code is
+unchanged (analysis completed); consumers must read `run_limitations[]`
+before treating `findings[]` as the full set. When the limitation is
+present, `summary.findings` can exceed `findings.len()`; consumers that
+require equal counts must disable the bound (`=0`) or handle the limited
+output.
+
+Example (budget engaged after the first of 61 findings):
+
+```json
+"summary": {"findings": 61, ...},
+"findings": [
+  {"id": "probe:src_lib.rs:call_deletion:184d39d1", ...}
+],
+"run_limitations": [
+  {
+    "category": "limited_findings_bound",
+    "run_status": "limited_findings_bound",
+    "basis": "check_findings_byte_budget",
+    "downstream_consumable": false,
+    "message": "rendered 1 of 61 findings within the findings-array byte budget (RIPR_CHECK_FINDINGS_BYTES=1; raise it or set =0 for the full set)",
+    "repair_route": "output/check-findings-budget"
+  }
+]
+```
+
+Scope: the budget applies to the JSON check renderer only. SARIF, GitHub, and
+human formats render from the same full `CheckOutput` through their own
+existing bounds; per-finding caps (`related_tests`, `observed_values`) are
+unchanged and compose underneath (the budget counts already-capped payloads).
+
 ## Enums
 
 `classification` values:
@@ -2145,6 +2237,17 @@ while `call_effect` remains the fallback for other observable calls.
 - `witness_unavailable`
 - `identity_unnameable`
 - `budget_overflow`
+
+`related_test_miss` values:
+
+- `no_call_path`
+- `no_assertion`
+- `assertion_not_observing`
+- `assertion_not_credited`
+- `weak_assertion`
+- `missing_input`
+- `missing_exact_assertion`
+- `observation_unconfirmed`
 
 ## Badge Output
 
@@ -17239,7 +17342,7 @@ targeted-rerun receipt shape:
     "direct_call_names": ["discounted_total"]
   },
   "cache": {
-    "schema_version": "1.18",
+    "schema_version": "1.20",
     "reuse_state": "reused_file_facts",
     "file_fact_status": "hits_2_misses_0_corrupt_0_store_errors_0",
     "hits": 2,
@@ -17250,7 +17353,7 @@ targeted-rerun receipt shape:
     "recomputation_reasons": ["selected_test_scope_recomputed"],
     "invalidation_status": "not_available",
     "input_fingerprint": {
-      "schema_version": "1.30",
+      "schema_version": "1.31",
       "analyzer_version": "0.11.0+0123456789abcdef0123456789abcdef01234567",
       "workspace_root_hash": "…",
       "files_content_hash": "…",

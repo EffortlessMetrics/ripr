@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index c2dc09a..01b2e53 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -67,7 +67,7 @@ pub fn parse_pairs(text: &str) -> Result<Vec<(String, String)>, ConfigError> {
+ /// A TCP port; zero and non-numeric values are rejected.
+ pub fn parse_port(value: &str) -> Result<u16, ConfigError> {
+     match value.parse::<u16>() {
+-        Ok(0) | Err(_) => Err(ConfigError::InvalidPort {
++        Err(_) => Err(ConfigError::InvalidPort {
+             value: value.to_string(),
+         }),
+         Ok(port) => Ok(port),

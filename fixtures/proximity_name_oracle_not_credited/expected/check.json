@@ -89,7 +89,9 @@
           "oracle_kind": "broad_error",
           "oracle": "assert!(try_parse(\"@bad\").is_err());",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "weak_assertion",
+          "why": "assertion too weak to tell the old behavior from the new"
         },
         {
           "name": "try_parse_variant_is_distinct",
@@ -99,7 +101,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(variant, ParseError::MalformedSource);",
           "relation_reason": "owner_named_test",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "no_call_path",
+          "why": "no call to the changed code found; linked by name only"
         },
         {
           "name": "malformedsource_variant_is_distinct",
@@ -109,7 +113,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(variant, ParseError::MalformedSource);",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "no_call_path",
+          "why": "no call to the changed code found; linked by name only"
         }
       ],
       "stop_reasons": [],
@@ -200,7 +206,9 @@
           "oracle_kind": "broad_error",
           "oracle": "assert!(try_parse(\"@bad\").is_err());",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "weak_assertion",
+          "why": "assertion too weak to tell the old behavior from the new"
         },
         {
           "name": "try_parse_variant_is_distinct",
@@ -210,7 +218,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(variant, ParseError::MalformedSource);",
           "relation_reason": "owner_named_test",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "no_call_path",
+          "why": "no call to the changed code found; linked by name only"
         },
         {
           "name": "malformedsource_variant_is_distinct",
@@ -220,7 +230,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(variant, ParseError::MalformedSource);",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "no_call_path",
+          "why": "no call to the changed code found; linked by name only"
         }
       ],
       "stop_reasons": [],

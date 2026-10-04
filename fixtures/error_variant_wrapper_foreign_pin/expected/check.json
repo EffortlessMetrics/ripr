@@ -29,7 +29,7 @@
         "observe": {"state":"no","confidence":"medium","summary":"Related tests were found, but no assertion appears to observe the changed value, error, field, or effect"},
         "discriminate": {"state":"no","confidence":"medium","summary":"No assertion found on related tests"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach parse_summary: try_parse_summary_with_foreign_pin", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence call effect: try_parse_summary(raw).map_err(Into::into)", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches call effect: try_parse_summary(raw).map_err(Into::into) (line 39)", "source enum variant value OtherError::MalformedSource at line 10", "source enum variant value OtherError::MalformedSource at line 10"],
+      "evidence_path": ["reach yes: Related tests appear to reach parse_summary: try_parse_summary_with_foreign_pin", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence call effect: try_parse_summary(raw).map_err(Into::into)", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches call effect: try_parse_summary(raw).map_err(Into::into) (line 39)", "related test tests/errors.rs:4 try_parse_summary_with_foreign_pin uses none unknown oracle: if !matches!(result, Err(_)) {\nreturn Err(\"callee should fail closed\".into());\n}", "source enum variant value OtherError::MalformedSource at line 10", "source enum variant value OtherError::MalformedSource at line 10"],
       "flow_sinks": [
         {"kind":"call_effect","text":"try_parse_summary(raw).map_err(Into::into)","line":39}
       ],
@@ -70,8 +70,20 @@
       ],
       "missing_discriminators": [
       ],
-      "related_tests_total": 0,
+      "related_tests_total": 1,
       "related_tests": [
+        {
+          "name": "try_parse_summary_with_foreign_pin",
+          "file": "tests/errors.rs",
+          "line": 4,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "if !matches!(result, Err(_)) {\nreturn Err(\"callee should fail closed\".into());\n}",
+          "relation_reason": "owner_named_test",
+          "relation_confidence": "medium",
+          "miss": "assertion_not_observing",
+          "why": "asserts, but not on the changed value"
+        }
       ],
       "stop_reasons": [],
       "oracle_kind": "unknown",
@@ -152,7 +164,9 @@
           "oracle_kind": "broad_error",
           "oracle": "if !matches!(result, Err(_)) {\nreturn Err(\"callee should fail closed\".into());\n}",
           "relation_reason": "owner_named_test",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "weak_assertion",
+          "why": "assertion too weak to tell the old behavior from the new"
         },
         {
           "name": "try_parse_summary_with_foreign_pin",
@@ -162,7 +176,9 @@
           "oracle_kind": "broad_error",
           "oracle": "matches!(result, Err(_))",
           "relation_reason": "owner_named_test",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "weak_assertion",
+          "why": "assertion too weak to tell the old behavior from the new"
         },
         {
           "name": "try_parse_summary_with_foreign_pin",
@@ -172,7 +188,9 @@
           "oracle_kind": "exact_error_variant",
           "oracle": "if !matches!(other, Err(OtherError::MalformedSource)) {\nreturn Err(\"foreign pin should observe OtherError::MalformedSource\".into());\n}",
           "relation_reason": "owner_named_test",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         },
         {
           "name": "try_parse_summary_with_foreign_pin",
@@ -182,7 +200,9 @@
           "oracle_kind": "exact_error_variant",
           "oracle": "matches!(other, Err(OtherError::MalformedSource))",
           "relation_reason": "owner_named_test",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "observation_unconfirmed",
+          "why": "assertion does not mention the changed expression"
         }
       ],
       "stop_reasons": [],

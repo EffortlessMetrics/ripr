@@ -156,6 +156,7 @@ mod tests {
                 oracle: Some("expect(result).toBeGreaterThan(50)".to_string()),
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             }],
             recommended_next_step: Some(
                 "TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.".to_string(),
@@ -283,7 +284,7 @@ mod tests {
         );
 
         // JSON surface
-        let json_out = json_render_with_config(&output, &config);
+        let json_out = json_render_with_config(&output, &config, None);
         assert!(
             json_out.contains("the repair packet is complete and delegatable (advisory)"),
             "JSON surface must contain reconciled next-step.\nExpected: {expected}\nJSON output: {json_out}"
@@ -378,7 +379,7 @@ mod tests {
         );
 
         // JSON surface
-        let json_out = json_render_with_config(&output, &config);
+        let json_out = json_render_with_config(&output, &config, None);
         assert!(
             json_out.contains("no actionable repair packet is emitted"),
             "JSON surface must preserve blocked-case disclosure for incomplete packet.\nJSON output: {json_out}"

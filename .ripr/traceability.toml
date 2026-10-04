@@ -9,6 +9,17 @@ id = "RIPR-SPEC-0001"
 name = "static exposure loop"
 spec = "docs/specs/RIPR-SPEC-0001-static-exposure-loop.md"
 tests = [
+  "crates/ripr/src/analysis/extract/oracles/wildcard_tests.rs::unguarded_wildcard_patterns_are_not_exact_oracles",
+  "crates/ripr/src/analysis/extract/oracles/wildcard_tests.rs::wildcard_downgrade_preserves_patterns_guards_and_other_conditions",
+  "crates/ripr/src/analysis/extract/oracles/wildcard_tests.rs::wildcard_runtime_control_accepts_wrong_behavior_while_exact_pin_distinguishes_it",
+  "crates/ripr/src/analysis/extract/oracles/wildcard_tests.rs::parser_backed_wildcard_uses_the_same_non_exact_authority",
+  "crates/ripr/src/output/json/mod.rs::tests::findings_byte_budget_bounds_array_with_disclosed_totals",
+  "crates/ripr/src/output/json/mod.rs::tests::findings_byte_budget_zero_renders_first_finding_only",
+  "crates/ripr/src/output/json/mod.rs::tests::unbounded_and_huge_budget_renders_are_byte_identical",
+  "crates/ripr/src/output/json/mod.rs::tests::findings_byte_budget_env_parser_fails_closed",
+  "crates/ripr/src/output/json/mod.rs::tests::bounded_alignment_covers_rendered_prefix_only",
+  "crates/ripr/tests/cli_smoke/findings_byte_budget.rs::check_findings_byte_budget_bounds_array_with_disclosed_totals",
+  "crates/ripr/tests/cli_smoke/findings_byte_budget.rs::pr_evidence_internal_check_ignores_findings_byte_budget",
   "crates/ripr/src/analysis/facts/index_tests.rs::moved_large_payload_has_one_backing_through_both_ordered_views",
   "crates/ripr/src/analysis/facts/index_tests.rs::union_mutation_visits_shared_flat_only_and_file_only_once",
   "crates/ripr/src/analysis/facts/index_tests.rs::compaction_keeps_independent_membership_and_duplicate_occurrences",
@@ -1427,6 +1438,10 @@ id = "RIPR-SPEC-0014"
 name = "calibrated gate policy"
 spec = "docs/specs/RIPR-SPEC-0014-calibrated-gate-policy.md"
 tests = [
+  "crates/ripr/src/output/gate/tests.rs::limited_findings_bound_detection_covers_disclosed_position",
+  "crates/ripr/src/output/gate/tests.rs::gate_fails_closed_on_limited_findings_bound_pr_guidance",
+  "crates/ripr/src/output/gate/tests.rs::gate_gap_ledger_and_baseline_refuse_limited_findings_bound",
+  "crates/ripr/src/output/gate/tests.rs::gate_refuses_ledger_generated_from_findings_bounded_check_output",
   "crates/ripr/src/cli/commands.rs::tests::gate_parses_full_option_surface",
   "crates/ripr/src/cli/commands.rs::tests::gate_rejects_bad_surface_and_unknown_args",
   "crates/ripr/src/cli/commands.rs::tests::gate_command_writes_visible_only_reports",
@@ -7137,6 +7152,10 @@ id = "RIPR-SPEC-0108"
 name = "evidence-promotion honesty meta-gate"
 spec = "docs/specs/RIPR-SPEC-0108-evidence-promotion-honesty-meta-gate.md"
 tests = [
+  "xtask/src/tests.rs::evidence_promotion_human_oracle_line_matches_real_rust_evidence",
+  "xtask/src/tests.rs::evidence_promotion_human_oracle_line_rejects_diagnostic_overrides",
+  "xtask/src/tests.rs::evidence_promotion_semantic_assertions_retain_related_test_identity",
+  "xtask/src/evidence_promotion.rs::related_test_assertion_tests::requires_source_identity",
   "xtask/src/main.rs::check_evidence_promotion_honesty",
   "xtask/src/main.rs::tests::evidence_promotion_honesty_accepts_complete_pinned_external_tier",
   "xtask/src/main.rs::tests::evidence_promotion_honesty_accepts_typed_assertion_vocabulary",
@@ -7182,6 +7201,12 @@ tests = [
   "crates/ripr/src/analysis/test_grip_evidence/tests.rs::given_two_impls_when_compact_grip_sees_owner_type_call_then_direct_owner_call",
 ]
 fixtures = [
+  "fixtures/wildcard_oracle_wildcard_original",
+  "fixtures/wildcard_oracle_wildcard_wrong",
+  "fixtures/wildcard_oracle_exact_original",
+  "fixtures/wildcard_oracle_exact_wrong",
+  "fixtures/wildcard_oracle_guarded_original",
+  "fixtures/wildcard_oracle_guarded_wrong",
   "fixtures/benches_harness_evidence",
   "fixtures/evidence-promotion-honesty-corpus",
   "fixtures/evidence-promotion-honesty-corpus/patches/semver-matches-greater.diff",
@@ -12072,3 +12097,153 @@ fixtures = ["fixtures/python/basic"]
 code = [".github/scripts/npm_package.py", ".github/workflows/npm-package-qualification.yml", ".github/workflows/publish-npm.yml", "packaging/npm/bootstrap-alpha1-native-source.json", ".github/workflows/python-wheel-qualification.yml", "packaging/npm/package.template.json"]
 outputs = ["docs/NPM_BOOTSTRAP.md", "packaging/npm/README.md"]
 metrics = ["selected_routes", "executed_routes", "failed_routes", "payload_sha256", "tarball_sha256", "stage_eligible", "selected_requests", "observed_requests"]
+
+[[behavior]]
+id = "RIPR-SPEC-0231"
+name = "Examined-test miss evidence"
+spec = "docs/specs/RIPR-SPEC-0231-examined-test-miss-evidence.md"
+tests = [
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::reveal_evidence_lists_a_test_whose_assertions_do_not_match_as_a_miss",
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::a_matched_test_ranks_ahead_of_an_examined_miss_and_keeps_its_window_slot",
+  "crates/ripr/src/output/related_test_miss.rs::tests",
+]
+code = [
+  "crates/ripr/src/domain/probe.rs",
+  "crates/ripr/src/analysis/classify/reveal.rs",
+  "crates/ripr/src/analysis/classifier/finding.rs",
+  "crates/ripr/src/output/related_test_miss.rs",
+  "crates/ripr/src/output/human/explain.rs",
+]
+outputs = []
+metrics = [
+  "unit_test_pass_rate",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0232"
+name = "Whole-value equality credit for constructed fields"
+spec = "docs/specs/RIPR-SPEC-0232-whole-value-equality-field-credit.md"
+tests = []
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/extract/oracles/classify.rs",
+  "crates/ripr/src/analysis/extract/oracles/patterns.rs",
+  "crates/ripr/src/analysis/classify/activation.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0232-whole-value-equality-field-credit.md",
+]
+metrics = [
+  "field_construction_whole_value_credit",
+  "whole_object_equality_lexical_only",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0233"
+name = "Findings on one line agree on shared facts"
+spec = "docs/specs/RIPR-SPEC-0233-same-line-finding-agreement.md"
+tests = []
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/classify/related_tests.rs",
+  "crates/ripr/src/analysis/classify/reveal.rs",
+  "crates/ripr/src/analysis/classify/flow.rs",
+  "xtask/src/reports/verdict_corpus.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0233-same-line-finding-agreement.md",
+]
+metrics = [
+  "same_line_reach_contradictions",
+  "duplicate_related_test_entries",
+  "same_call_effect_deletion_disagreements",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0227"
+name = "Result-side oracles (is_err, is_ok, unwrap_err, should_panic)"
+spec = "docs/specs/RIPR-SPEC-0227-result-side-oracles.md"
+tests = []
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/extract/oracles/scan.rs",
+  "crates/ripr/src/analysis/extract/oracles/classify.rs",
+  "crates/ripr/src/analysis/classify/boundary_pairing.rs",
+  "crates/ripr/src/analysis/classify/reveal.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0227-result-side-oracles.md",
+]
+metrics = [
+  "result_side_oracle_variant_credit",
+  "result_side_oracle_side_flip_credit",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0228"
+name = "Rust field writes are probed and observed, not unknown"
+spec = "docs/specs/RIPR-SPEC-0228-rust-field-write-observation.md"
+tests = []
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/syntax/ra.rs",
+  "crates/ripr/src/analysis/probes/diff.rs",
+  "crates/ripr/src/analysis/probes/lexical.rs",
+  "crates/ripr/src/analysis/classify/activation.rs",
+  "crates/ripr/src/analysis/classify/propagation_witness.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0228-rust-field-write-observation.md",
+]
+metrics = [
+  "rust_field_write_static_unknown",
+  "rust_field_write_direct_read_credit",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0229"
+name = "Match-arm selection names the unselected arm"
+spec = "docs/specs/RIPR-SPEC-0229-match-arm-selection-discriminator.md"
+tests = []
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/classify/activation.rs",
+  "crates/ripr/src/analysis/classify/reveal.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0229-match-arm-selection-discriminator.md",
+]
+metrics = [
+  "match_arm_unselected_arm_named",
+  "match_arm_selected_arm_credit",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0230"
+name = "Seam reach unknown, not ungripped"
+spec = "docs/specs/RIPR-SPEC-0230-seam-reach-unknown-not-ungripped.md"
+tests = [
+  "crates/ripr/src/analysis/test_grip_evidence/tests.rs::seam_reached_by_no_test_path_stays_ungripped",
+  "crates/ripr/src/analysis/test_grip_evidence/tests.rs::seam_behind_an_unresolved_transitive_path_is_opaque_not_ungripped",
+  "crates/ripr/src/analysis/test_grip_evidence/tests.rs::trait_method_of_a_type_tests_use_is_opaque_not_ungripped",
+  "crates/ripr/src/analysis/test_grip_evidence/tests.rs::trait_method_of_a_type_no_test_reaches_stays_ungripped",
+  "crates/ripr/src/analysis/test_grip_evidence/tests.rs::helper_run_only_through_trait_dispatch_is_opaque_not_ungripped",
+  "crates/ripr/src/analysis/test_grip_evidence/tests.rs::trait_method_reached_only_by_delegation_is_opaque_not_ungripped",
+  "crates/ripr/src/analysis/test_grip_evidence/reach_limit.rs::tests::identifiers_keep_type_shaped_tokens_outside_comments_and_strings",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::transitive_reach_limit_kind_names_integration_test_path",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::macro_reach_limit_kind_names_direct_test_body_macro_path",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/test_grip_evidence/reach_limit.rs",
+  "crates/ripr/src/analysis/test_grip_evidence.rs",
+  "crates/ripr/src/analysis/test_grip_evidence/related_tests/context.rs",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs",
+  "crates/ripr/src/analysis/seam_cache.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0230-seam-reach-unknown-not-ungripped.md",
+]
+metrics = [
+  "ungripped_seams_with_unresolved_reach",
+]

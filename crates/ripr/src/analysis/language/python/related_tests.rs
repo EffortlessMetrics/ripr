@@ -152,6 +152,7 @@ pub(super) fn find_related_tests(
                 oracle_strength,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             }
         })
         .collect()

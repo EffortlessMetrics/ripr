@@ -213,3 +213,14 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+## Pending — decimal_field_observer_non_member_access (19)
+
+Reason:
+RIPR-SPEC-0231: related tests ripr examined stay listed and each names why it misses the change (#5344); verdicts unchanged
+
+Command:
+`cargo xtask goldens bless decimal_field_observer_non_member_access --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -29,7 +29,7 @@ Evidence
   - observation yes: A related test observes a value or effect near the changed behavior
   - discriminator missing: `amount == discount_threshold`; related oracle: Strong oracle found: exact value or pattern assertion
   - local flow reaches returned value: amount - 10 (line 3)
-  - related test src/lib.rs:14 boundary uses strong exact value oracle: assert_eq!(discounted_total(90, 100), 90);
+  - related test src/lib.rs:14 boundary uses strong exact value oracle: assert_eq!(discounted_total(90, 100), 90); misses: no test input reaches `amount == discount_threshold`
   - source assertion argument value 90 at line 15
   - source function argument value amount = 90 at line 15
   - source function argument value discount_threshold = 100 at line 15

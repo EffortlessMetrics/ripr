@@ -94,6 +94,12 @@ pub(crate) const GOVERNED_ENUMS: &[GovernedEnum] = &[
         "crates/ripr/src/domain/probe.rs",
     ),
     governed(
+        "related_test_miss",
+        "related_test_miss",
+        "RelatedTestMiss",
+        "crates/ripr/src/domain/probe.rs",
+    ),
+    governed(
         "agent_card_refusal_kind",
         "agent_card_refusal_kind",
         "AgentCardRefusalKind",

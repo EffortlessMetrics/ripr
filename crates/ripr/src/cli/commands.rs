@@ -6538,7 +6538,7 @@ language = "rust"
             crate::config::CheckInputExplicit::default(),
         );
         let output = crate::app::check_workspace_with_config(input, &config)?;
-        let rendered = crate::output::json::render_with_config(&output, &config);
+        let rendered = crate::output::json::render_with_config(&output, &config, None);
         serde_json::from_str(&rendered).map_err(|err| format!("check JSON did not parse: {err}"))
     }
 

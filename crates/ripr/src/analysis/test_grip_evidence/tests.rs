@@ -16778,3 +16778,211 @@ fn observes_items() {
     );
     Ok(())
 }
+
+/// #5411: the reach stage and grip class for the `amount > 100` seam in
+/// `src/lib.rs`, given the crate's sources.
+fn unresolved_reach_case(files: &[(&str, &str)]) -> Result<(StageEvidence, SeamGripClass), String> {
+    let files: Vec<(PathBuf, &str)> = files
+        .iter()
+        .map(|(path, source)| (PathBuf::from(path), *source))
+        .collect();
+    let index = index_from_files(&files)?;
+    let seams = inventory_seams_from_index(&[PathBuf::from("src/lib.rs")], &index);
+    let seam = seams
+        .iter()
+        .find(|s| {
+            s.kind() == SeamKind::PredicateBoundary && s.expression().contains("amount > 100")
+        })
+        .ok_or_else(|| format!("`amount > 100` seam present in {seams:?}"))?;
+    let evidence = evidence_for_seam(seam, &index);
+    assert!(
+        evidence.related_tests.is_empty(),
+        "fixture must leave the seam without related tests: {:?}",
+        evidence.related_tests
+    );
+    let class = crate::analysis::seam_classification::classify_seam(seam, &evidence);
+    Ok((evidence.reach, class))
+}
+
+#[test]
+fn seam_reached_by_no_test_path_stays_ungripped() -> Result<(), String> {
+    let (reach, class) = unresolved_reach_case(&[
+        (
+            "src/lib.rs",
+            "pub fn total(n: u32) -> u32 { n + 1 }\n\
+             fn surcharge(amount: u32) -> bool { amount > 100 }\n",
+        ),
+        (
+            "tests/total.rs",
+            "#[test] fn totals() { assert_eq!(ripr_fixture::total(1), 2); }\n",
+        ),
+    ])?;
+    assert_eq!(reach.state, StageState::No, "{reach:?}");
+    assert_eq!(class, SeamGripClass::Ungripped);
+    Ok(())
+}
+
+#[test]
+fn seam_behind_an_unresolved_transitive_path_is_opaque_not_ungripped() -> Result<(), String> {
+    let (reach, class) = unresolved_reach_case(&[
+        (
+            "src/lib.rs",
+            "pub fn checkout(amount: u32) -> u32 { if surcharge(amount) { amount + 5 } else { amount } }\n\
+             fn surcharge(amount: u32) -> bool { amount > 100 }\n",
+        ),
+        (
+            "tests/checkout.rs",
+            "#[test] fn checks_out() { let total = ripr_fixture::checkout(150); assert_eq!(total, 155); }\n",
+        ),
+    ])?;
+    assert_eq!(reach.state, StageState::Opaque, "{reach:?}");
+    assert!(
+        reach
+            .summary
+            .contains("rust_integration_public_api_path_unresolved")
+            && reach
+                .summary
+                .contains("`checks_out` (tests/checkout.rs:1) calls `checkout`"),
+        "the limit and its witness are named: {}",
+        reach.summary
+    );
+    assert_eq!(class, SeamGripClass::Opaque);
+    Ok(())
+}
+
+#[test]
+fn trait_method_of_a_type_tests_use_is_opaque_not_ungripped() -> Result<(), String> {
+    let (reach, class) = unresolved_reach_case(&[
+        (
+            "src/lib.rs",
+            "pub struct Amount(pub u32);\n\
+             impl std::fmt::Display for Amount {\n\
+                 fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n\
+                     let amount = self.0;\n\
+                     if amount > 100 { write!(f, \"large\") } else { write!(f, \"small\") }\n\
+                 }\n\
+             }\n",
+        ),
+        (
+            "tests/amount.rs",
+            "use ripr_fixture::Amount;\n\
+             #[test] fn renders() { assert_eq!(Amount(150).to_string(), \"large\"); }\n",
+        ),
+        // Sorts first but only names the type; the witness prefers the test
+        // that builds a value of it.
+        (
+            "tests/a_autotrait.rs",
+            "fn assert_send<T: Send>() {}\n\
+             #[test] fn send() { assert_send::<ripr_fixture::Amount>(); }\n",
+        ),
+    ])?;
+    assert_eq!(reach.state, StageState::Opaque, "{reach:?}");
+    assert!(
+        reach.summary.contains("(trait dispatch)")
+            && reach.summary.contains("trait method of `Amount`")
+            && reach
+                .summary
+                .contains("test `renders` (tests/amount.rs:2) uses `Amount`"),
+        "the limit and its witness are named: {}",
+        reach.summary
+    );
+    assert_eq!(class, SeamGripClass::Opaque);
+    Ok(())
+}
+
+#[test]
+fn trait_method_of_a_type_no_test_reaches_stays_ungripped() -> Result<(), String> {
+    let (reach, class) = unresolved_reach_case(&[
+        (
+            "src/lib.rs",
+            "pub fn total(n: u32) -> u32 { n + 1 }\n\
+             pub struct Amount(pub u32);\n\
+             impl std::fmt::Display for Amount {\n\
+                 fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n\
+                     let amount = self.0;\n\
+                     if amount > 100 { write!(f, \"large\") } else { write!(f, \"small\") }\n\
+                 }\n\
+             }\n",
+        ),
+        (
+            "tests/total.rs",
+            "#[test] fn totals() { assert_eq!(ripr_fixture::total(1), 2); }\n",
+        ),
+    ])?;
+    assert_eq!(reach.state, StageState::No, "{reach:?}");
+    assert_eq!(class, SeamGripClass::Ungripped);
+    Ok(())
+}
+
+#[test]
+fn helper_run_only_through_trait_dispatch_is_opaque_not_ungripped() -> Result<(), String> {
+    let (reach, class) = unresolved_reach_case(&[
+        (
+            "src/lib.rs",
+            "pub struct Amount(pub u32);\n\
+             impl std::fmt::Display for Amount {\n\
+                 fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n\
+                     f.write_str(label(self.0))\n\
+                 }\n\
+             }\n\
+             fn label(amount: u32) -> &'static str { if amount > 100 { \"large\" } else { \"small\" } }\n",
+        ),
+        (
+            "tests/amount.rs",
+            "use ripr_fixture::Amount;\n\
+             #[test] fn renders() { assert_eq!(Amount(150).to_string(), \"large\"); }\n",
+        ),
+    ])?;
+    assert_eq!(reach.state, StageState::Opaque, "{reach:?}");
+    assert!(
+        reach.summary.contains("(trait dispatch)")
+            && reach
+                .summary
+                .contains("`label` may run from `fmt` (src/lib.rs:3)"),
+        "the dispatch root is named: {}",
+        reach.summary
+    );
+    assert_eq!(class, SeamGripClass::Opaque);
+    Ok(())
+}
+
+#[test]
+fn trait_method_reached_only_by_delegation_is_opaque_not_ungripped() -> Result<(), String> {
+    // No test or test-reached body names `Inner`; `Outer::fmt` delegates to it.
+    let (reach, class) = unresolved_reach_case(&[
+        (
+            "src/lib.rs",
+            "#[derive(Default)]\n\
+             struct Inner(u32);\n\
+             impl std::fmt::Display for Inner {\n\
+                 fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n\
+                     let amount = self.0;\n\
+                     if amount > 100 { write!(f, \"large\") } else { write!(f, \"small\") }\n\
+                 }\n\
+             }\n\
+             #[derive(Default)]\n\
+             pub struct Outer { inner: Inner }\n\
+             impl std::fmt::Display for Outer {\n\
+                 fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n\
+                     self.inner.fmt(f)\n\
+                 }\n\
+             }\n",
+        ),
+        (
+            "tests/outer.rs",
+            "use ripr_fixture::Outer;\n\
+             #[test] fn renders() { assert_eq!(Outer::default().to_string(), \"small\"); }\n",
+        ),
+    ])?;
+    assert_eq!(reach.state, StageState::Opaque, "{reach:?}");
+    assert!(
+        reach.summary.contains("(trait dispatch)")
+            && reach
+                .summary
+                .contains("`fmt` may run from `fmt` (src/lib.rs:12), a trait method of `Outer`"),
+        "the delegating root is named: {}",
+        reach.summary
+    );
+    assert_eq!(class, SeamGripClass::Opaque);
+    Ok(())
+}

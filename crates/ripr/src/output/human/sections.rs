@@ -113,8 +113,16 @@ pub(crate) fn render_finding_digest_with_config(finding: &Finding, config: &Ripr
         } else {
             "Related test".to_string()
         };
+        // #5344: say why the named test misses, so the reader can open it
+        // and disagree without re-deriving the analysis.
+        let why = crate::output::related_test_miss::related_test_miss_reason(
+            test,
+            &finding.activation.missing_discriminators,
+        )
+        .map(|why| format!(" ({why})"))
+        .unwrap_or_default();
         out.push_str(&format!(
-            "  {label}: {}:{} {}\n",
+            "  {label}: {}:{} {}{why}\n",
             display_path(&test.file),
             test.line,
             test.name

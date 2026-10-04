@@ -12,6 +12,7 @@
 //! then stable file/name/line tie-breakers.
 
 mod owner_result_binding;
+mod reach_limit;
 mod related_tests;
 
 pub(crate) use related_tests::CompactGripContext;
@@ -310,7 +311,7 @@ fn evidence_for_seam_with_context(
 
     let related: Vec<&TestSummary> = related_indexed.iter().map(|indexed| indexed.test).collect();
 
-    let reach = reach_evidence(seam, &related);
+    let reach = reach_evidence(seam, &related, owner_fn, context);
     let (activate, observed_values, missing_discriminators) =
         activate_evidence(seam, &related_indexed, context, owner_fn);
     let propagate = propagate_evidence(seam, &related);
@@ -368,7 +369,7 @@ pub(crate) fn compact_evidence_for_seam(
     let related: Vec<&TestSummary> = related_indexed.iter().map(|indexed| indexed.test).collect();
     let owner_fn = context.owner_function(seam.file(), seam.display_line());
 
-    let reach = reach_evidence(seam, &related);
+    let reach = reach_evidence(seam, &related, owner_fn, context);
     let (activate, missing_discriminators) =
         compact_activate_evidence(seam, &related_indexed, context, owner_fn);
     let propagate = propagate_evidence(seam, &related);
@@ -389,16 +390,14 @@ pub(crate) fn compact_evidence_for_seam(
     }
 }
 
-fn reach_evidence(seam: &RepoSeam, related: &[&TestSummary]) -> StageEvidence {
+fn reach_evidence(
+    seam: &RepoSeam,
+    related: &[&TestSummary],
+    owner_fn: Option<&FunctionSummary>,
+    context: &CompactGripContext<'_>,
+) -> StageEvidence {
     if related.is_empty() {
-        return StageEvidence::new(
-            StageState::No,
-            Confidence::Medium,
-            format!(
-                "No static test path found for seam owner `{}`",
-                seam.owner()
-            ),
-        );
+        return reach_limit::reach_without_related_tests(seam.owner(), owner_fn, context);
     }
     let names: Vec<&str> = related.iter().take(3).map(|t| t.name.as_str()).collect();
     StageEvidence::new(

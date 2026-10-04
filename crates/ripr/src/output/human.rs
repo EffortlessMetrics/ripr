@@ -768,6 +768,7 @@ pub(crate) fn render_finding_with_context_command(
     context_command: &str,
 ) -> String {
     let mut out = render_finding_with_config(finding, config);
+    out.push_str(&explain::render_verdict_explanation(finding));
     out.push_str(&format!("\nNext: {context_command}\n"));
     push_powershell_variant(&mut out, "", context_command);
     out
@@ -784,6 +785,7 @@ fn push_powershell_variant(out: &mut String, indent: &str, command: &str) {
 }
 
 mod evidence_lines;
+mod explain;
 mod sections;
 mod triage;
 
@@ -2737,6 +2739,7 @@ mod tests {
                 oracle: Some("expect(result).toBe(50)".to_string()),
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             });
         }
         finding
@@ -3558,6 +3561,7 @@ mod tests {
                 oracle_strength: OracleStrength::Weak,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             });
         }
         assert_eq!(finding.related_tests.len(), 9);
@@ -3650,6 +3654,7 @@ mod tests {
             oracle_strength: OracleStrength::Weak,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         });
 
         let digest = super::sections::render_finding_digest_with_config(
@@ -4424,6 +4429,7 @@ mod tests {
             oracle_strength: OracleStrength::Weak,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         }];
         finding.recommended_next_step = Some("Add a focused Perl assertion.".to_string());
         finding.language = Some(LanguageId::Perl);
@@ -4540,6 +4546,7 @@ mod tests {
                 oracle_strength: OracleStrength::Strong,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             }],
             recommended_next_step: Some("Add assertion for disabled path result.".to_string()),
             language: None,
@@ -5288,6 +5295,7 @@ mod tests {
             oracle_strength: OracleStrength::Strong,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         };
         finding.related_tests.push(related_test.clone());
         let mut duplicate_finding = unknown_finding();

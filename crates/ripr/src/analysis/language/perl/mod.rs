@@ -437,6 +437,7 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
                         .unwrap_or(DomainOracleStrength::Unknown),
                     relation_reason: perl_relation_reason,
                     relation_confidence: perl_relation_confidence,
+                    miss: None,
                 }
             })
             .collect();

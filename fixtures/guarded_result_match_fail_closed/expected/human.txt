@@ -15,14 +15,14 @@ Start here:
   Why unrevealed: a related test reaches this change, but no assertion observes the changed behavior
   Changed behavior: Ok(build_response(id.trim(), method)?)
   Missing discriminator (1 of 4): No detected assertion observes the changed value, error, field, or effect
-  Related test (1 of 4): tests/protocol.rs:43 message_only_error_predicate_never_pins
+  Related test (1 of 5): tests/protocol.rs:43 message_only_error_predicate_never_pins (assertion not credited: ripr could not establish that it runs as the standard macro)
   Next step: Establish that the test is collected and enabled, that the assertion runs on its
     executed path, and that it resolves to the intended standard macro, then check the changed
     returned value.
   Evidence: reach yes · infection yes · propagation yes · observation no · discriminator no
     - reach yes: Related tests appear to reach expect_response: direct_owner_call_keeps_the_file_related, message_only_error_predicate_never_pins, shadowed_callee_never_credits_the_seam
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 17 more detail line(s) in --format human-full
+    - 18 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/guarded_result_match_fail_closed/input --diff fixtures/guarded_result_match_fail_closed/diff.patch --mode fast probe:src_lib.rs:error_path:09b3885a

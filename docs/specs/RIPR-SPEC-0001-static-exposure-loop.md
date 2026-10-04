@@ -89,6 +89,13 @@ boundary input to the owner and holds a discriminating oracle on that call's
 result; otherwise the finding is at most `weakly_exposed` and names
 `same_test_pairing_missing` (#4828).
 
+An unguarded whole wildcard pattern (`assert!(matches!(value, _))` or
+`assert_matches!(value, _)`) accepts every value. Its oracle is
+`relational_check` / `weak`, so it cannot establish exact discrimination or
+promote a finding to `exposed` (#5397). Exact patterns and wildcard patterns
+with an explicit guard retain their existing classification. This bounded
+rule does not solve general pattern exhaustiveness or compound conditions.
+
 ## Non-Goals
 
 This spec does not require:

@@ -57,6 +57,16 @@ pub(crate) use diff::{
 /// consumed by the analysis route and the xtask badge route alike. Neither
 /// route may hardcode a base ref or rebuild the diff argv inline.
 pub use diff::{load_diff_range, resolve_default_base_commit};
+/// Whether a boundary fact carries the producer's unresolved-operand
+/// marker. Renderers may disclose this fact but cannot turn it into an
+/// established input prescription. Keep the marker owned by its producer.
+pub(crate) fn boundary_operand_is_unresolved(
+    fact: &crate::domain::MissingDiscriminatorFact,
+) -> bool {
+    fact.reason
+        .contains(classify::BOUNDARY_OPERAND_UNRESOLVED_MARKER)
+}
+
 pub(crate) use facts::cfg_predicates;
 pub(crate) use facts::validated_file_wide_harness_targets;
 pub(crate) use generated_rust_corpus::{CorpusPayloadSize, analyzable_corpus_payload_size};

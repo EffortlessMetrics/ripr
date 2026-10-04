@@ -117,3 +117,14 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+## Pending — recursive_controls (10)
+
+Reason:
+RIPR-SPEC-0231: related tests ripr examined stay listed and each names why it misses the change (#5344); verdicts unchanged
+
+Command:
+`cargo xtask goldens bless recursive_controls --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

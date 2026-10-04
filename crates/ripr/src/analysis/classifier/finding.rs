@@ -159,6 +159,33 @@ pub(in crate::analysis) fn build_finding(
         ));
     }
 
+    // `reveal` names these downgrades in the stage summary; the same tokens
+    // are how `ClassifiedProbeEvidence` recognizes them.
+    let discriminate_summary = &evidence.ripr.reveal.discriminate.summary;
+    let unconfirmed = if discriminate_summary.contains("(observation_unverified)") {
+        Unconfirmed::AllRows
+    } else if discriminate_summary.contains("(oracle_confirmation_mixed)")
+        && evidence.related_tests.len() >= evidence.related_tests_matched_total
+    {
+        // The strongest rank is read from the listed rows, so it is only
+        // reveal's strongest rank when the window dropped nothing; a
+        // truncated window could promote a confirming weaker row. Leave the
+        // rows unannotated rather than claim an unestablished miss.
+        Unconfirmed::StrongestRank
+    } else {
+        Unconfirmed::Confirmed
+    };
+    let mut related_tests = evidence.related_tests;
+    if !exact_oracle_covers_direct_sink {
+        annotate_related_test_misses(
+            &mut related_tests,
+            &class,
+            &context.probe.family,
+            &evidence.activation,
+            unconfirmed,
+        );
+    }
+
     Finding {
         id: context.probe.id.0.clone(),
         canonical_gap: None,
@@ -172,7 +199,7 @@ pub(in crate::analysis) fn build_finding(
         activation: evidence.activation,
         stop_reasons,
         related_tests_matched_total: Some(evidence.related_tests_matched_total),
-        related_tests: evidence.related_tests,
+        related_tests,
         recommended_next_step,
         // Language metadata is populated by the per-language adapter
         // (e.g. `analysis::language::RustAdapter::analyze_diff`) after
@@ -194,6 +221,96 @@ pub(in crate::analysis) fn build_finding(
         // evidence; this constructor has none, so the disposition stays the
         // explicit unknown (#3280).
         source_currentness: crate::domain::SourceCurrentness::UnresolvedSubject,
+    }
+}
+
+/// Which matched rows `reveal` left without a confirmed observation of the
+/// changed expression.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Unconfirmed {
+    /// No downgrade: no row is marked unconfirmed.
+    Confirmed,
+    /// `observation_unverified`: no assertion names the changed expression.
+    AllRows,
+    /// `oracle_confirmation_mixed`: a weaker assertion names it, but none at
+    /// the strongest rank does (reveal's equal-rank tie-break would have
+    /// selected a confirming one). Rows below that rank may be the
+    /// confirming ones, so only the strongest rows are unconfirmed.
+    StrongestRank,
+}
+
+/// Say why each listed test misses, for the classes where ripr reports a gap.
+///
+/// `reveal` already marks tests that supplied no oracle row. This pass covers
+/// tests whose oracle row was matched but cannot carry the finding: under
+/// `no_static_path` no related test is tied to the owner by a call; under a
+/// gap class a weak or smoke oracle cannot tell the values apart, and an
+/// oracle that does observe still misses when no input reaches the predicate
+/// boundary value, or when no assertion pins the exact error variant or field
+/// value the change alters, and an oracle `reveal` left unconfirmed (see
+/// [`Unconfirmed`]) is not established to observe it.
+/// `exposed` and the unknown classes are left alone: ripr does not claim a
+/// miss it has not established.
+fn annotate_related_test_misses(
+    related_tests: &mut [RelatedTest],
+    class: &ExposureClass,
+    family: &ProbeFamily,
+    activation: &ActivationEvidence,
+    unconfirmed: Unconfirmed,
+) {
+    let facts = &activation.missing_discriminators;
+    // Public #1429: an unresolved operand does not establish a missing input.
+    // Keep the typed limitation consistent with examined-test miss evidence.
+    let boundary = input_boundary_fact(facts, family)
+        .is_some_and(|fact| !fact.reason.contains(BOUNDARY_OPERAND_UNRESOLVED_MARKER));
+    let exact = exact_assertion_fact(facts, family).is_some();
+    let strongest_rank = related_tests
+        .iter()
+        .filter(|test| test.miss.is_none() && test.oracle.is_some())
+        .map(|test| strength_rank(&test.oracle_strength))
+        .min();
+    for test in related_tests.iter_mut().filter(|test| test.miss.is_none()) {
+        let row_unconfirmed = match unconfirmed {
+            Unconfirmed::Confirmed => false,
+            Unconfirmed::AllRows => true,
+            Unconfirmed::StrongestRank => {
+                Some(strength_rank(&test.oracle_strength)) == strongest_rank
+            }
+        };
+        test.miss = match class {
+            ExposureClass::NoStaticPath => Some(RelatedTestMiss::NoCallPath),
+            ExposureClass::WeaklyExposed | ExposureClass::ReachableUnrevealed => {
+                if test.oracle.is_none() {
+                    None
+                } else if matches!(
+                    test.oracle_strength,
+                    OracleStrength::Weak | OracleStrength::Smoke
+                ) {
+                    Some(RelatedTestMiss::WeakAssertion)
+                } else if boundary {
+                    Some(RelatedTestMiss::MissingInput)
+                } else if exact {
+                    Some(RelatedTestMiss::MissingExactAssertion)
+                } else if row_unconfirmed {
+                    Some(RelatedTestMiss::ObservationUnconfirmed)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+    }
+}
+
+/// Strongest first.
+fn strength_rank(strength: &OracleStrength) -> u8 {
+    match strength {
+        OracleStrength::Strong => 0,
+        OracleStrength::Medium => 1,
+        OracleStrength::Weak => 2,
+        OracleStrength::Smoke => 3,
+        OracleStrength::Unknown => 4,
+        OracleStrength::None => 5,
     }
 }
 
@@ -460,9 +577,9 @@ fn contains_token_sequence(text: &str, expected: &[String]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        bound_identifiers_from_owner_calls, exact_oracle_aligns_with_sink,
-        oracle_binds_sink_identity, oracle_text_aligns_with_sink, sink_kind_corresponds,
-        strong_assertion_observes_owner_result,
+        Unconfirmed, annotate_related_test_misses, bound_identifiers_from_owner_calls,
+        exact_oracle_aligns_with_sink, oracle_binds_sink_identity, oracle_text_aligns_with_sink,
+        sink_kind_corresponds, strong_assertion_observes_owner_result,
     };
     use crate::analysis::classifier::evidence::ClassifiedProbeEvidence;
     use crate::analysis::rust_index::TestSummary;
@@ -472,6 +589,104 @@ mod tests {
         RiprEvidence, SourceLocation, StageEvidence, StageState, SymbolId,
     };
     use std::path::PathBuf;
+
+    fn matched_row(name: &str, strength: OracleStrength) -> RelatedTest {
+        RelatedTest {
+            name: name.to_string(),
+            file: PathBuf::from("tests/effects.rs"),
+            line: 4,
+            oracle: Some(format!("{name}_assertion")),
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: strength,
+            relation_reason: None,
+            relation_confidence: None,
+            miss: None,
+        }
+    }
+
+    #[test]
+    fn unresolved_boundary_does_not_claim_examined_test_missing_input() {
+        let mut activation = crate::domain::ActivationEvidence::default();
+        activation
+            .missing_discriminators
+            .push(crate::domain::MissingDiscriminatorFact {
+                value: "amount == threshold".to_string(),
+                reason: format!(
+                    "{}: computed local is unsupported",
+                    crate::analysis::classify::BOUNDARY_OPERAND_UNRESOLVED_MARKER
+                ),
+                flow_sink: None,
+            });
+        let mut rows = vec![matched_row(
+            "exact_sink",
+            crate::domain::OracleStrength::Strong,
+        )];
+        annotate_related_test_misses(
+            &mut rows,
+            &crate::domain::ExposureClass::WeaklyExposed,
+            &crate::domain::ProbeFamily::Predicate,
+            &activation,
+            Unconfirmed::Confirmed,
+        );
+        assert_eq!(
+            rows[0].miss, None,
+            "unresolved input is not established missing"
+        );
+        activation.missing_discriminators[0].reason = "no input reaches the boundary".to_string();
+        annotate_related_test_misses(
+            &mut rows,
+            &crate::domain::ExposureClass::WeaklyExposed,
+            &crate::domain::ProbeFamily::Predicate,
+            &activation,
+            Unconfirmed::Confirmed,
+        );
+        assert_eq!(
+            rows[0].miss,
+            Some(crate::domain::RelatedTestMiss::MissingInput)
+        );
+    }
+
+    #[test]
+    fn mixed_confirmation_marks_only_the_strongest_rows_unconfirmed() {
+        // A strong unconfirmed oracle beside a medium mock that confirms:
+        // only the strong row is established as unconfirmed.
+        let mut rows = vec![
+            matched_row("strong_exact", OracleStrength::Strong),
+            matched_row("medium_mock", OracleStrength::Medium),
+        ];
+        annotate_related_test_misses(
+            &mut rows,
+            &crate::domain::ExposureClass::WeaklyExposed,
+            &ProbeFamily::CallDeletion,
+            &ActivationEvidence::default(),
+            Unconfirmed::StrongestRank,
+        );
+        assert_eq!(
+            rows.iter().map(|row| row.miss).collect::<Vec<_>>(),
+            vec![
+                Some(crate::domain::RelatedTestMiss::ObservationUnconfirmed),
+                None
+            ]
+        );
+    }
+
+    #[test]
+    fn unverified_observation_marks_every_matched_row_unconfirmed() {
+        let mut rows = vec![
+            matched_row("strong_exact", OracleStrength::Strong),
+            matched_row("medium_mock", OracleStrength::Medium),
+        ];
+        annotate_related_test_misses(
+            &mut rows,
+            &crate::domain::ExposureClass::WeaklyExposed,
+            &ProbeFamily::CallDeletion,
+            &ActivationEvidence::default(),
+            Unconfirmed::AllRows,
+        );
+        assert!(rows.iter().all(|row| {
+            row.miss == Some(crate::domain::RelatedTestMiss::ObservationUnconfirmed)
+        }));
+    }
 
     fn probe(family: ProbeFamily, expression: &str) -> Probe {
         Probe {
@@ -507,6 +722,7 @@ mod tests {
             oracle_strength: strength,
             relation_reason: Some(RelationReason::DirectOwnerCall),
             relation_confidence: Some(crate::domain::RelationConfidence::High),
+            miss: None,
         }
     }
 

@@ -89,7 +89,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(discount(100), 90);",
           "relation_reason": "same_test_file",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "no_call_path",
+          "why": "no call to the changed code found; linked by file location only"
         },
         {
           "name": "discount_small_unchanged",
@@ -99,7 +101,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(discount(50), 50);",
           "relation_reason": "same_test_file",
-          "relation_confidence": "medium"
+          "relation_confidence": "medium",
+          "miss": "no_call_path",
+          "why": "no call to the changed code found; linked by file location only"
         }
       ],
       "stop_reasons": [],

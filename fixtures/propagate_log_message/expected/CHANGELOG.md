@@ -189,3 +189,14 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+## Pending — propagate_log_message (8)
+
+Reason:
+RIPR-SPEC-0231: related tests ripr examined stay listed and each names why it misses the change (#5344); verdicts unchanged
+
+Command:
+`cargo xtask goldens bless propagate_log_message --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

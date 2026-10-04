@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 8282a55..a92b673 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -71,7 +71,7 @@ impl Inventory {
+             return Err(StockError::Insufficient {
+                 sku: sku.to_string(),
+                 requested: qty,
+-                available,
++                available: self.on_hand(sku),
+             });
+         }
+         let remaining = available - qty;

@@ -7,10 +7,10 @@
 //!
 //! Unlike the xtask, this command does NOT shell out to `cargo run -p ripr --
 //! check ...`. It calls [`crate::check_workspace`] directly and renders the
-//! resulting [`crate::CheckOutput`] as JSON via [`crate::app::render_check`].
+//! resulting [`crate::CheckOutput`] as JSON via [`crate::app::render_check_json_unbounded`].
 //! This avoids recompilation and keeps the analysis in-process.
 
-use crate::app::{CheckInput, Mode, OutputFormat, check_workspace, render_check};
+use crate::app::{CheckInput, Mode, OutputFormat, check_workspace};
 use crate::cli::unknown_argument;
 use crate::config::{load_for_root, repo_exposure_config_identity_hash};
 use crate::output::markdown::{code_span, inline_prose, table_cell_text, table_code_span};
@@ -753,7 +753,11 @@ fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, St
         git_candidate: None,
     };
     let output = check_workspace(input)?;
-    render_check(&output, &OutputFormat::Json)
+    // #5203: the internal packet input renders unbounded. Routing counts
+    // the full finding set; the external findings-array byte budget must
+    // not silently truncate the counts this packet routes from (Codex P1:
+    // a bounded prefix under-counted severe gaps with no disclosure).
+    Ok(crate::app::render_check_json_unbounded(&output))
 }
 
 /// `pr-evidence` reads Git history and writes `target/ripr/pr/` from the

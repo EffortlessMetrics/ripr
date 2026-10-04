@@ -150,7 +150,10 @@ what test is missing and why:
 - related tests (name, file, line, oracle kind/strength)
 - observed activation values when known
 - missing discriminator hypothesis (e.g. "boundary value 100 never tested")
-- reach evidence: does any test call the owner?
+- reach evidence: does any test call the owner? With no related test, reach
+  is `no` only when ripr established that no test path exists; an unresolved
+  transitive, macro or trait-dispatch path makes it `opaque`, so the seam
+  classifies `opaque`, not `ungripped` (RIPR-SPEC-0230)
 - activate evidence: does any test supply the triggering input?
 - propagate evidence: does the test observe the changed state downstream?
 - observe evidence: does the test assert on the visible sink?

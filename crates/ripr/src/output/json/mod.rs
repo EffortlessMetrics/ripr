@@ -8,7 +8,10 @@ pub(crate) use context_packet::{
     render_context_packet_dto, render_context_packet_with_explain_command,
 };
 pub use report::render;
-pub(crate) use report::render_with_config;
+pub(crate) use report::{
+    CHECK_FINDINGS_BYTES_ENV, FINDINGS_BOUND_RUN_STATUS, check_findings_byte_budget,
+    render_with_config,
+};
 
 pub(crate) use formatter::{array_field, escape, field, float_field, number_field};
 
@@ -160,6 +163,7 @@ mod tests {
             oracle_strength: OracleStrength::Strong,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         });
 
         let mut out = String::new();
@@ -395,6 +399,253 @@ mod tests {
         assert!(!rendered.contains("\"gate_eligibility\""));
     }
 
+    // ── Findings-array byte budget (#5203) ──
+
+    fn three_finding_output() -> CheckOutput {
+        let mut output = sample_output(None);
+        output.findings.push(finding_with_expression(
+            "second",
+            20,
+            ExposureClass::Exposed,
+            ProbeFamily::CallDeletion,
+            "values.push(1)",
+        ));
+        output.findings.push(finding_with_expression(
+            "third",
+            30,
+            ExposureClass::StaticUnknown,
+            ProbeFamily::SideEffect,
+            "values.len()",
+        ));
+        output.summary.findings = 3;
+        output
+    }
+
+    #[test]
+    fn findings_byte_budget_bounds_array_with_disclosed_totals() -> Result<(), String> {
+        use super::report::{
+            CHECK_FINDINGS_BYTES_ENV, FINDINGS_BOUND_BASIS, FINDINGS_BOUND_REPAIR_ROUTE,
+            FINDINGS_BOUND_RUN_STATUS, FindingsBudgetSource,
+        };
+        use super::report::{check_findings_byte_budget_from_env, render_with_config};
+        use crate::config::RiprConfig;
+
+        let output = three_finding_output();
+        let first_id = output.findings[0].id.clone();
+        // Budget 1 is robust to pretty-print width: no real finding fits in
+        // one byte, so exactly the deterministic first finding renders.
+        let rendered = render_with_config(
+            &output,
+            &RiprConfig::default(),
+            Some((1, FindingsBudgetSource::Configured)),
+        );
+        let value: serde_json::Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("bounded check JSON should parse: {err}"))?;
+
+        let findings = value["findings"]
+            .as_array()
+            .ok_or("bounded run must carry a findings array")?;
+        assert_eq!(findings.len(), 1, "budget 1 renders exactly one finding");
+        assert_eq!(findings[0]["id"], first_id, "prefix is deterministic");
+        assert_eq!(
+            value["summary"]["findings"], 3,
+            "summary keeps full analysis counts under a render bound"
+        );
+        let limitations = value["run_limitations"]
+            .as_array()
+            .ok_or("bounded run must disclose run_limitations")?;
+        assert_eq!(limitations.len(), 1, "one bound, one entry");
+        let entry = &limitations[0];
+        assert_eq!(entry["run_status"], FINDINGS_BOUND_RUN_STATUS);
+        assert_eq!(entry["category"], FINDINGS_BOUND_RUN_STATUS);
+        assert_eq!(entry["basis"], FINDINGS_BOUND_BASIS);
+        assert_eq!(entry["downstream_consumable"], false);
+        assert_eq!(entry["repair_route"], FINDINGS_BOUND_REPAIR_ROUTE);
+        let message = entry["message"].as_str().ok_or("entry needs a message")?;
+        assert!(
+            message.contains("1 of 3"),
+            "message must reconcile rendered/total: {message}"
+        );
+        assert!(
+            message.contains(CHECK_FINDINGS_BYTES_ENV),
+            "message must name the applied limit: {message}"
+        );
+
+        // The parser behind the configured source: tested here through the
+        // injectable reader (unit tests never touch process env).
+        assert_eq!(
+            check_findings_byte_budget_from_env(
+                CHECK_FINDINGS_BYTES_ENV,
+                999,
+                Err(std::env::VarError::NotPresent),
+            ),
+            Ok(Some((999, FindingsBudgetSource::Default)))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn findings_byte_budget_zero_renders_first_finding_only() -> Result<(), String> {
+        use super::report::{FindingsBudgetSource, render_with_config};
+        use crate::config::RiprConfig;
+
+        // Degenerate explicit budget: first-always still holds, so a nonempty
+        // analysis never yields an empty prefix.
+        let output = three_finding_output();
+        let rendered = render_with_config(
+            &output,
+            &RiprConfig::default(),
+            Some((0, FindingsBudgetSource::Configured)),
+        );
+        let value: serde_json::Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("bounded check JSON should parse: {err}"))?;
+        assert_eq!(value["findings"].as_array().map(Vec::len), Some(1));
+        assert_eq!(
+            value["run_limitations"][0]["run_status"],
+            super::report::FINDINGS_BOUND_RUN_STATUS
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn unbounded_and_huge_budget_renders_are_byte_identical() {
+        use super::report::{FindingsBudgetSource, render_with_config};
+        use crate::config::RiprConfig;
+
+        let output = three_finding_output();
+        let config = RiprConfig::default();
+        let unbounded = render_with_config(&output, &config, None);
+        let huge = render_with_config(
+            &output,
+            &config,
+            Some((usize::MAX, FindingsBudgetSource::Default)),
+        );
+        assert_eq!(
+            huge, unbounded,
+            "an unengaged budget must not change one byte"
+        );
+        assert_eq!(
+            render(&output),
+            unbounded,
+            "the default budget leaves small runs untouched"
+        );
+        assert!(!unbounded.contains("\"run_limitations\""));
+    }
+
+    #[test]
+    fn findings_byte_budget_env_parser_fails_closed() -> Result<(), String> {
+        use super::report::{
+            CHECK_FINDINGS_BYTES_ENV, FindingsBudgetSource, check_findings_byte_budget_from_env,
+        };
+
+        assert_eq!(
+            check_findings_byte_budget_from_env(
+                CHECK_FINDINGS_BYTES_ENV,
+                700,
+                Ok("12".to_string())
+            ),
+            Ok(Some((12, FindingsBudgetSource::Configured)))
+        );
+        assert_eq!(
+            check_findings_byte_budget_from_env(CHECK_FINDINGS_BYTES_ENV, 700, Ok("0".to_string())),
+            Ok(None),
+            "exact `0` is the unbounded opt-out"
+        );
+        // #4529: unparseable values are errors naming the variable, never the
+        // opt-out; #4606: only the exact spelling `0` opts out.
+        for value in ["-1", "not-a-number", "1k", "", "1.5", "+0", "00"] {
+            let Err(error) = check_findings_byte_budget_from_env(
+                CHECK_FINDINGS_BYTES_ENV,
+                700,
+                Ok(value.to_string()),
+            ) else {
+                return Err(format!(
+                    "`{value}` must be refused, not a cap or the opt-out"
+                ));
+            };
+            if !(error.starts_with("RIPR_CHECK_FINDINGS_BYTES `")
+                && error.contains("or 0 to remove the cap"))
+            {
+                return Err(format!(
+                    "error must name the variable and the repair: {error}"
+                ));
+            }
+        }
+        let Err(error) = check_findings_byte_budget_from_env(
+            CHECK_FINDINGS_BYTES_ENV,
+            700,
+            Err(std::env::VarError::NotUnicode(std::ffi::OsString::new())),
+        ) else {
+            return Err("a non-UTF-8 value must be refused".to_string());
+        };
+        assert!(
+            error.contains("is not valid UTF-8"),
+            "non-UTF-8 refusal must say so: {error}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bounded_alignment_covers_rendered_prefix_only() -> Result<(), String> {
+        use super::report::{FindingsBudgetSource, render_with_config};
+        use crate::config::RiprConfig;
+
+        // Same aligning pair as the presentation-text projection test: the
+        // declaration groups its adjacent literal when both render.
+        let mut output = sample_output(None);
+        output.findings = vec![
+            finding_with_expression(
+                "decl",
+                46,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const APPLE_M3_AIR_DEVICE_LABELS_TEXT: &str =",
+            ),
+            finding_with_expression(
+                "literal",
+                47,
+                ExposureClass::StaticUnknown,
+                ProbeFamily::StaticUnknown,
+                "\"apple-m3-air-cpu-neon = M3 MacBook Air Apple CPU/NEON lane\";",
+            ),
+        ];
+        let config = RiprConfig::default();
+        let full = render_with_config(&output, &config, None);
+        let full_value: serde_json::Value = serde_json::from_str(&full)
+            .map_err(|err| format!("full check JSON should parse: {err}"))?;
+        assert_eq!(
+            full_value["finding_alignment"]["summary"]["raw_signals"], 2,
+            "control: the pair aligns when whole"
+        );
+
+        // Budget 1 renders the declaration only; alignment must cover the
+        // rendered prefix (raw_signals 1, spans on line 46) so the document
+        // never references the omitted finding.
+        let bounded = render_with_config(
+            &output,
+            &config,
+            Some((1, FindingsBudgetSource::Configured)),
+        );
+        let bounded_value: serde_json::Value = serde_json::from_str(&bounded)
+            .map_err(|err| format!("bounded check JSON should parse: {err}"))?;
+        assert_eq!(bounded_value["findings"].as_array().map(Vec::len), Some(1));
+        let alignment = &bounded_value["finding_alignment"];
+        assert!(
+            alignment.is_object(),
+            "the lone declaration still aligns: {bounded_value}"
+        );
+        assert_eq!(alignment["summary"]["raw_signals"], 1);
+        assert_eq!(alignment["items"][0]["raw_group_size"], 1);
+        assert_eq!(alignment["items"][0]["raw_spans"][0]["start_line"], 46);
+        assert_eq!(alignment["items"][0]["raw_spans"][0]["end_line"], 46);
+        assert_eq!(
+            alignment["items"][0]["raw_spans"].as_array().map(Vec::len),
+            Some(1),
+            "no span may reference the omitted finding: {alignment}"
+        );
+        Ok(())
+    }
+
     #[test]
     fn render_adds_presentation_text_finding_alignment_when_supported() -> Result<(), String> {
         let output = CheckOutput {
@@ -500,6 +751,7 @@ mod tests {
             oracle_strength: OracleStrength::Strong,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         };
         let output = CheckOutput {
             harness_projections: Vec::new(),
@@ -636,6 +888,7 @@ mod tests {
             oracle_strength: OracleStrength::Strong,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         };
         let output = CheckOutput {
             harness_projections: Vec::new(),
@@ -811,6 +1064,7 @@ mod tests {
                 oracle_strength: OracleStrength::Weak,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             },
             RelatedTest {
                 name: "strict_check".to_string(),
@@ -821,6 +1075,7 @@ mod tests {
                 oracle_strength: OracleStrength::Strong,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             },
         ];
 
@@ -871,6 +1126,7 @@ mod tests {
                 oracle_strength: OracleStrength::Strong,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             })
             .collect();
         let mut out = String::new();
@@ -900,6 +1156,7 @@ mod tests {
                 oracle_strength: OracleStrength::Strong,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             })
             .collect();
         let mut out = String::new();
@@ -962,6 +1219,7 @@ mod tests {
                 oracle_strength: OracleStrength::Weak,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             })
             .collect();
         let mut out = String::new();
@@ -990,6 +1248,7 @@ mod tests {
                 oracle_strength: OracleStrength::Weak,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             })
             .collect();
         assert_eq!(finding.related_tests_total(), 2);
@@ -1034,6 +1293,7 @@ mod tests {
                     oracle_strength: OracleStrength::Weak,
                     relation_reason: None,
                     relation_confidence: None,
+                    miss: None,
                 })
                 .collect();
             finding.related_tests_matched_total = Some(count);
@@ -1074,6 +1334,7 @@ mod tests {
                 oracle_strength: OracleStrength::Weak,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             })
             .collect();
         finding.related_tests_matched_total = Some(9);
@@ -1450,6 +1711,7 @@ mod tests {
             oracle_strength: OracleStrength::Weak,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         }];
         finding.recommended_next_step = Some("Add a focused Perl assertion.".to_string());
         finding.language = Some(LanguageId::Perl);

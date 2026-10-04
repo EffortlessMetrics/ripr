@@ -255,6 +255,22 @@ jobs:
         id: goldens
         run: cargo xtask goldens check
 
+      # Retain these six bounded calibration subjects even on success: the
+      # drift report contains counts and first differences, not full stdout.
+      # This uses the actual canonical producer outputs; it does not rerun,
+      # normalize, bless, or weaken the golden comparison.
+      - name: Retain wildcard calibration producer outputs
+        if: always() && (steps.goldens.outcome == 'success' || steps.goldens.outcome == 'failure')
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact-name }}-wildcard-calibration-${{ github.run_attempt }}
+          path: |
+            target/ripr/fixtures/wildcard_oracle_*/check.json
+            target/ripr/fixtures/wildcard_oracle_*/human.txt
+            target/ripr/fixtures/wildcard_oracle_*/human-full.txt
+          if-no-files-found: error
+          retention-days: 5
+
       - name: Fixture contracts
         id: fixtures
         run: cargo xtask fixtures
