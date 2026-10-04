@@ -1,3 +1,4 @@
+mod agentic_bench;
 mod annotations;
 mod back_sync;
 mod badges;
@@ -61,6 +62,7 @@ mod targeted_test;
 mod test_oracles;
 mod verdict_corpus;
 
+pub(crate) use agentic_bench::agentic_bench;
 pub(crate) use annotations::ripr_annotations;
 pub(crate) use back_sync::back_sync;
 #[cfg(test)]

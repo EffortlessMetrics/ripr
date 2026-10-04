@@ -1,0 +1,30 @@
+{
+  "schema_version": "ripr-agentic-bench-manifest-v1",
+  "bench": "mcp-journey",
+  "bench_index": "B2/B3",
+  "title": "MCP journey and negative authority",
+  "stimulus": "Spawn ripr mcp --stdio against a two-branch fixture (main holds the open predicate, journey closes it); B2 walks status, refresh, list_gaps, get_gap, prepare_repair, and receipt status, while B3 pins the typed-failure vocabulary, pipelined coherence, and the no-write boundary.",
+  "oracle_states": ["pass", "fail"],
+  "oracle_command": "cargo test -p ripr --test agentic_bench_mcp",
+  "selected_target": { "path": "input/base/src/lib.rs", "scope": "exact" },
+  "allowed_surface": [{ "path": "input", "scope": "subtree" }],
+  "fixtures": [
+    {
+      "path": "input/base/Cargo.toml",
+      "sha256": "sha256:b841dcfd5ce38bcbd2113d7fec8f5f359c2c20551b110e509af307c6ae42178e"
+    },
+    {
+      "path": "input/base/src/lib.rs",
+      "sha256": "sha256:7af98354c91c0a68906cddae406f4d1b3771be4bb50e83a46f58ceb134fe4824"
+    },
+    {
+      "path": "input/base/tests/pricing.rs",
+      "sha256": "sha256:e13f40111f73d5cf33272a7a3f1458658c32a412690e73307d05a6acb83cab94"
+    },
+    {
+      "path": "input/journey/src/lib.rs",
+      "sha256": "sha256:0656ec79def352524409bf600a1a57abc4a7a096c73059ee4de3c00376cd3392"
+    }
+  ],
+  "bounds": { "max_paths": 64, "max_file_bytes": 65536, "max_total_bytes": 1048576 }
+}

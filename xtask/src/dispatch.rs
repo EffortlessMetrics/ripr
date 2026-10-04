@@ -91,6 +91,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::TargetedRerunBenchmark(args) => {
             super::reports::targeted_rerun_benchmark(&args)
         }
+        XtaskCommand::AgenticBench(args) => super::reports::agentic_bench(&args),
         XtaskCommand::SeamInventoryScalingBenchmark(args) => {
             super::reports::seam_inventory_scaling_benchmark(&args)
         }

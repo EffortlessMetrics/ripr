@@ -1,0 +1,10 @@
+[package]
+name = "mcp-journey-fixture"
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+name = "mcp_journey_fixture"
+path = "src/lib.rs"
+
+[workspace]

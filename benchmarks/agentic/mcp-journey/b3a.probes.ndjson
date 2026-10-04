@@ -1,0 +1,8 @@
+{"jsonrpc":"2.0","id":"init","method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ripr-agentic-bench","version":"1"}}}
+{"jsonrpc":"2.0","method":"notifications/initialized"}
+{"jsonrpc":"2.0","id":"status","method":"tools/call","params":{"name":"ripr_workspace_status","arguments":{}}}
+{"jsonrpc":"2.0","id":"list","method":"tools/call","params":{"name":"ripr_list_gaps","arguments":{}}}
+{"jsonrpc":"2.0","id":"gap","method":"tools/call","params":{"name":"ripr_get_gap","arguments":{"gap_id":"gap:does-not-exist"}}}
+{"jsonrpc":"2.0","id":"prepare","method":"tools/call","params":{"name":"ripr_prepare_repair","arguments":{"gap_id":"gap:does-not-exist"}}}
+{"jsonrpc":"2.0","id":"attempt","method":"tools/call","params":{"name":"ripr_get_repair_attempt","arguments":{"attempt_id":"repair-attempt-000000000000000000000000"}}}
+{"jsonrpc":"2.0","id":"receipt","method":"tools/call","params":{"name":"ripr_get_receipt_status","arguments":{"receipt_id":"repair-attempt-000000000000000000000000"}}}
