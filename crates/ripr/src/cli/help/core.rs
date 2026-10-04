@@ -307,9 +307,12 @@ or turn the full-repo limitation into a success state.
 "#;
 pub(super) const EXPLAIN_HELP: &str = r#"Print why ripr flagged a specific change.
 
-Usage: ripr explain [--root PATH] [--base REV|--diff PATH] [--from PATH] [--mode MODE] [--no-unchanged-tests] [--perl-facts PATH] [--suppression-policy PATH] <finding-id|file:line>
+Usage: ripr explain [--root PATH] [--base REV] [--worktree|--diff PATH] [--from PATH] [--mode MODE] [--no-unchanged-tests] [--perl-facts PATH] [--suppression-policy PATH] <finding-id|file:line>
 
 Options:
+  --worktree   Analyze staged and unstaged tracked edits, like
+               `ripr check --worktree`, so a finding listed from uncommitted
+               edits can be selected. Not combinable with --diff or --from.
   --from PATH  Load findings from a check artifact written by
                `ripr check --write-artifact PATH` instead of re-running the
                analysis. The artifact's recorded diff source is re-resolved
@@ -345,11 +348,13 @@ The packet is always JSON, for an agent or tool to consume; `--json` is
 accepted and changes nothing. To read the same finding as prose, run
 `ripr explain` with the same selector.
 
-Usage: ripr context [--root PATH] [--base REV|--diff PATH] [--from PATH] [--mode MODE] [--no-unchanged-tests] [--perl-facts PATH] [--suppression-policy PATH] --at <finding-id|file:line> [--max-related-tests N] [--json]
+Usage: ripr context [--root PATH] [--base REV] [--worktree|--diff PATH] [--from PATH] [--mode MODE] [--no-unchanged-tests] [--perl-facts PATH] [--suppression-policy PATH] --at <finding-id|file:line> [--max-related-tests N] [--json]
 
 Options:
   --finding ID
                Select the finding by id or `file:line`, like `--at`.
+  --worktree   Analyze staged and unstaged tracked edits, like
+               `ripr check --worktree` (see `ripr explain --help`).
   --from PATH  Load findings from a check artifact written by
                `ripr check --write-artifact PATH` instead of re-running the
                analysis (same fail-closed identity gate as explain --from).

@@ -7908,6 +7908,8 @@ name = "check worktree mode"
 spec = "docs/specs/RIPR-SPEC-0116-check-worktree-mode.md"
 tests = [
   "crates/ripr/tests/cli_smoke.rs::check_worktree_base_head_analyzes_uncommitted_tracked_edit",
+  "crates/ripr/tests/cli_smoke.rs::check_worktree_drill_in_commands_reach_the_uncommitted_finding",
+  "crates/ripr/src/app/navigation.rs::tests::finding_navigation_carries_worktree_scope_after_the_base",
   "crates/ripr/tests/cli_smoke.rs::check_worktree_base_head_clean_worktree_has_no_scope_or_unanalyzed_disclosure",
   "crates/ripr/tests/cli_smoke.rs::doctor_recommends_worktree_check_on_dirty_worktree",
   "crates/ripr/tests/cli_smoke.rs::doctor_without_git_names_the_fix_and_recommends_the_diff_route",
@@ -7940,7 +7942,12 @@ code = [
   "crates/ripr/src/analysis/pipeline.rs",
   "crates/ripr/src/analysis/diff/load.rs",
   "crates/ripr/src/git.rs",
+  "crates/ripr/src/app/navigation.rs",
+  "crates/ripr/src/app/explain.rs",
+  "crates/ripr/src/app/context.rs",
   "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/commands/check.rs",
+  "crates/ripr/src/cli/commands/context.rs",
   "crates/ripr/src/cli/commands/doctor.rs",
   "crates/ripr/src/cli/help/core.rs",
   "crates/ripr/src/output/doctor.rs",

@@ -155,15 +155,16 @@ pub(crate) fn render_full_with_config_and_navigation(
         }
         out.push('\n');
     }
-    // #4321: a `--worktree` run without `--write-artifact` has no artifact for
-    // drill-in commands to replay; say so and name the route instead of
-    // dropping the block silently. The note only points at ids it actually
-    // printed — an all-suppressed run states the route without the pointer.
-    if let Some(FindingDrillIn::WorktreeReplayNeedsArtifact) = drill_in {
-        out.push_str(&FindingDrillIn::worktree_replay_note_full(
-            findings_rendered > 0,
+    // #4924: when policy suppresses every finding, no block (and no id)
+    // printed above, so the per-finding commands never rendered. Keep a
+    // route to the same run's ids without pointing at ids that are absent.
+    if findings_rendered == 0
+        && let Some(FindingDrillIn::Commands(navigation)) = drill_in
+    {
+        out.push_str(&format!(
+            "Drill in: every finding in this run is suppressed by policy, so none printed above. List this run's finding ids with:\n  {}\n\n",
+            navigation.list_command()
         ));
-        out.push('\n');
     }
     render_all_no_path_disclosure(&mut out, output);
     // RIPR-SPEC-0112: disclose when a committed-history diff left uncommitted working-tree
@@ -2714,11 +2715,24 @@ mod tests {
         }
     }
 
-    /// #4321: a `--worktree` run without `--write-artifact` has no artifact
-    /// for drill-in commands to replay, so the digest states the artifact
-    /// route and names the selected finding instead of dropping the block.
+    /// The drill-in commands for a `--worktree` check, built by the same
+    /// owner `ripr check` uses, so the renderer tests see the real argv.
+    fn worktree_drill_in() -> crate::app::FindingDrillIn {
+        let input = crate::app::CheckInput {
+            root: PathBuf::from("repo"),
+            base: Some("HEAD".to_string()),
+            ..crate::app::CheckInput::default()
+        };
+        crate::app::FindingDrillIn::Commands(crate::app::finding_navigation_with_worktree(
+            &input, None, false, true,
+        ))
+    }
+
+    /// #4321: a `--worktree` run without `--write-artifact` still prints an
+    /// executable drill-in block: the commands carry `--worktree`, so they
+    /// replay the same uncommitted edits instead of committed history.
     #[test]
-    fn worktree_digest_names_the_artifact_replay_route() {
+    fn worktree_digest_prints_worktree_drill_in_commands() {
         let finding = sample_finding();
         let finding_id = finding.id.clone();
         let output = CheckOutput {
@@ -2744,29 +2758,28 @@ mod tests {
             partial_scope: None,
         };
 
-        let drill_in = crate::app::FindingDrillIn::WorktreeReplayNeedsArtifact;
         let rendered = super::render_bounded_with_config_and_navigation(
             &output,
             &crate::config::RiprConfig::default(),
-            Some(&drill_in),
+            Some(&worktree_drill_in()),
         );
 
         assert!(
             rendered.contains(&format!(
-                "Next: this worktree run has no artifact to replay — rerun with --write-artifact, then `ripr explain --from <artifact> {finding_id}` drills into the top finding"
+                "Next: drill into the top finding:\n  ripr explain --root repo --base HEAD --worktree {finding_id}\n  ripr context --root repo --base HEAD --worktree --at {finding_id}\n"
             )),
-            "the digest must state the replay route and name the finding; got:\n{rendered}"
+            "the digest must print worktree-scoped drill-in commands; got:\n{rendered}"
         );
         assert!(
-            !rendered.contains("Next: drill into the top finding:"),
-            "commands replaying a different analysis must not print; got:\n{rendered}"
+            !rendered.contains("--write-artifact"),
+            "an executable drill-in needs no artifact detour; got:\n{rendered}"
         );
     }
 
-    /// #4321: the full form for the same run carries the replay route once
-    /// instead of per-finding command blocks.
+    /// #4321: the full form prints the same worktree-scoped commands under
+    /// every finding block, next to the finding's own `id:` line.
     #[test]
-    fn worktree_human_full_names_the_artifact_replay_route_once() {
+    fn worktree_human_full_prints_worktree_drill_in_per_finding() {
         let mut first = sample_finding();
         first.id = "first".to_string();
         first.probe.location.line = 7;
@@ -2796,36 +2809,44 @@ mod tests {
             partial_scope: None,
         };
 
-        let drill_in = crate::app::FindingDrillIn::WorktreeReplayNeedsArtifact;
         let rendered = super::render_full_with_config_and_navigation(
             &output,
             &crate::config::RiprConfig::default(),
-            Some(&drill_in),
+            Some(&worktree_drill_in()),
         );
 
-        assert!(
-            rendered.contains("Finding ids print above."),
-            "the full form must state the replay route; got:\n{rendered}"
-        );
+        for id in ["first", "second"] {
+            assert!(
+                rendered.contains(&format!("  id: {id}\n"))
+                    && rendered.contains(&format!(
+                        "  ripr explain --root repo --base HEAD --worktree {id}\n"
+                    )),
+                "each finding block must carry its id and worktree drill-in; got:\n{rendered}"
+            );
+        }
         assert_eq!(
-            rendered.matches("--write-artifact").count(),
-            1,
-            "the replay route prints once, not per finding; got:\n{rendered}"
-        );
-        assert!(
-            !rendered.contains("Drill in:"),
-            "commands replaying a different analysis must not print; got:\n{rendered}"
+            rendered.matches("Drill in:").count(),
+            2,
+            "one drill-in block per finding; got:\n{rendered}"
         );
     }
 
-    /// #4924 review: the full-form replay route must not point at ids it did
-    /// not print — when policy suppresses every finding, no `id:` line exists
-    /// above the note, so the route prints without the id pointer.
-    #[test]
-    fn worktree_full_omits_the_id_pointer_when_every_finding_is_suppressed() {
+    /// A `--worktree` full-form output whose findings are `suppressed`.
+    fn worktree_full_with_suppressed(suppressed: &[&str]) -> String {
+        worktree_full_with_suppressed_and_drill_in(suppressed, &worktree_drill_in())
+    }
+
+    fn worktree_full_with_suppressed_and_drill_in(
+        suppressed: &[&str],
+        drill_in: &crate::app::FindingDrillIn,
+    ) -> String {
         use crate::output::suppressions::{CheckSuppressionOutcome, SuppressedCheckFinding};
-        let finding = sample_finding();
-        let finding_id = finding.id.clone();
+        let mut first = sample_finding();
+        first.id = "first".to_string();
+        first.probe.location.line = 7;
+        let mut second = sample_finding();
+        second.id = "second".to_string();
+        second.probe.location.line = 8;
         let output = CheckOutput {
             harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
@@ -2834,45 +2855,96 @@ mod tests {
             root: PathBuf::from("repo"),
             base: None,
             summary: Summary {
-                probes: 1,
-                findings: 1,
+                probes: 2,
+                findings: 2,
                 ..Summary::default()
             },
-            findings: vec![finding],
+            findings: vec![first, second],
             preview_language_advisories: Vec::new(),
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: Some(CheckSuppressionOutcome {
                 policy_path: "policy/ripr-suppressions.toml".to_string(),
-                suppressed: vec![SuppressedCheckFinding {
-                    finding_id,
-                    selector: "src/**".to_string(),
-                }],
+                suppressed: suppressed
+                    .iter()
+                    .map(|id| SuppressedCheckFinding {
+                        finding_id: (*id).to_string(),
+                        selector: "src/**".to_string(),
+                    })
+                    .collect(),
                 warnings: Vec::new(),
             }),
             analysis_outcome: None,
             partial_scope: None,
         };
-
-        let drill_in = crate::app::FindingDrillIn::WorktreeReplayNeedsArtifact;
-        let rendered = super::render_full_with_config_and_navigation(
+        super::render_full_with_config_and_navigation(
             &output,
             &crate::config::RiprConfig::default(),
-            Some(&drill_in),
-        );
+            Some(drill_in),
+        )
+    }
 
+    /// #4924 review: when policy suppresses every finding, no block prints,
+    /// so the per-finding commands never render. The full form still names
+    /// the same run's scoped listing and does not point at absent ids.
+    #[test]
+    fn worktree_full_lists_ids_when_every_finding_is_suppressed() {
+        let rendered = worktree_full_with_suppressed(&["first", "second"]);
         assert!(
-            rendered.contains("Next: this worktree run has no artifact to replay"),
-            "the replay route must still print under full suppression; got:\n{rendered}"
+            rendered.contains(
+                "Drill in: every finding in this run is suppressed by policy, so none printed above. List this run's finding ids with:\n  ripr check --root repo --base HEAD --worktree --json\n"
+            ),
+            "a fully suppressed worktree run must keep a scoped listing route; got:\n{rendered}"
         );
         assert!(
-            !rendered.contains("Finding ids print above."),
-            "the note must not claim ids it did not print; got:\n{rendered}"
+            !rendered.contains("  id: ") && !rendered.contains("ripr explain"),
+            "no finding block or per-finding command prints under full suppression; got:\n{rendered}"
+        );
+    }
+
+    /// A `--write-artifact` worktree run replays the artifact with `--from`,
+    /// which `ripr check` does not accept, so the all-suppressed listing
+    /// re-runs the original worktree scope instead.
+    #[test]
+    fn worktree_full_all_suppressed_listing_never_passes_from_to_check() {
+        let input = crate::app::CheckInput {
+            root: PathBuf::from("repo"),
+            base: Some("HEAD".to_string()),
+            ..crate::app::CheckInput::default()
+        };
+        let drill_in =
+            crate::app::FindingDrillIn::Commands(crate::app::finding_navigation_with_worktree(
+                &input,
+                Some(std::path::Path::new("wt.json")),
+                false,
+                true,
+            ));
+        let rendered = worktree_full_with_suppressed_and_drill_in(&["first", "second"], &drill_in);
+        assert!(
+            rendered.contains("  ripr check --root repo --base HEAD --worktree --json\n"),
+            "the listing must re-run the worktree scope; got:\n{rendered}"
         );
         assert!(
-            !rendered.contains("  id: "),
-            "a fully suppressed run prints no finding blocks; got:\n{rendered}"
+            !rendered.contains("ripr check --root repo --from"),
+            "`ripr check` has no --from; got:\n{rendered}"
+        );
+    }
+
+    /// The listing fallback is for full suppression only: one unsuppressed
+    /// finding keeps its own block and drill-in commands instead.
+    #[test]
+    fn worktree_full_partial_suppression_keeps_per_finding_drill_in() {
+        let rendered = worktree_full_with_suppressed(&["first"]);
+        assert!(
+            rendered.contains("  id: second\n")
+                && rendered.contains("  ripr explain --root repo --base HEAD --worktree second\n"),
+            "the unsuppressed finding keeps its drill-in; got:\n{rendered}"
+        );
+        assert_eq!(rendered.matches("Drill in:").count(), 1, "{rendered}");
+        assert!(
+            !rendered.contains("suppressed by policy, so none printed above"),
+            "partial suppression must not print the all-suppressed fallback; got:\n{rendered}"
         );
     }
 

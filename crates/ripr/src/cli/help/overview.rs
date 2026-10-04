@@ -90,8 +90,8 @@ Analysis:
   ripr pilot [--root PATH] [--out PATH] [--mode draft] [--max-seams 5] [--timeout-ms 30000]
   ripr check [--base REV] [--worktree] [--diff PATH] [--mode draft] [--format FORMAT]
   ripr diff [--root .] [--base REV] [--head HEAD] [--mode draft] [--json]
-  ripr explain [--base REV|--diff PATH] <finding-id|file:line>
-  ripr context [--base REV|--diff PATH] --at <finding-id|file:line>
+  ripr explain [--base REV] [--worktree|--diff PATH] <finding-id|file:line>
+  ripr context [--base REV] [--worktree|--diff PATH] --at <finding-id|file:line>
   ripr rerun --changed-test PATH[::TEST_NODE] [--root PATH] [--json] [--out PATH]
   ripr rerun --gap CANONICAL_GAP_ID --gap-ledger PATH [--root PATH] [--json] [--out PATH]
   ripr evidence-health [--root PATH] [--out PATH] [--out-md PATH] [--mutation-calibration PATH]

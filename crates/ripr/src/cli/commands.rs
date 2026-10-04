@@ -2947,12 +2947,17 @@ pub(super) fn explain(args: &[String]) -> Result<(), String> {
     // the same values resolve here (flag or config).
     let mut from_artifact: Option<PathBuf> = None;
     let mut base_explicitly_provided = false;
+    // `--worktree` matches `ripr check --worktree`: the finding may come
+    // from uncommitted edits the committed-history diff never sees.
+    let mut worktree = false;
+    let mut root_explicitly_provided = false;
     let mut i = 0usize;
     while i < args.len() {
         match args[i].as_str() {
             "--root" => {
                 i += 1;
                 input.root = PathBuf::from(expect_value(args, i, "--root")?);
+                root_explicitly_provided = true;
             }
             "--base" => {
                 i += 1;
@@ -2967,6 +2972,7 @@ pub(super) fn explain(args: &[String]) -> Result<(), String> {
                 i += 1;
                 from_artifact = Some(PathBuf::from(expect_value(args, i, "--from")?));
             }
+            "--worktree" => worktree = true,
             "--mode" => {
                 i += 1;
                 input.mode = parse_mode(expect_value(args, i, "--mode")?)?;
@@ -3019,11 +3025,28 @@ pub(super) fn explain(args: &[String]) -> Result<(), String> {
     if from_artifact.is_none() && base_explicitly_provided && input.diff_file.is_some() {
         return Err(base_with_diff_conflict_error("explain"));
     }
-    let selector = selector.ok_or_else(|| {
-        "missing finding selector; pass a finding id (e.g. `probe:src_lib.rs:error_path:abc123`) or `file:line`. Run `ripr check --json` to list finding ids".to_string()
-    })?;
+    worktree_scope_conflict(
+        "explain",
+        worktree,
+        input.diff_file.is_some(),
+        from_artifact.is_some(),
+    )?;
+    if selector.is_none() && !worktree {
+        return Err(missing_selector_error(
+            "missing finding selector",
+            "ripr check --json",
+        ));
+    }
+    resolve_worktree_root(&mut input, worktree, root_explicitly_provided)?;
     let config = load_for_root(&input.root)?;
     apply_to_check_input(&mut input, &config, explicit);
+    let Some(selector) = selector else {
+        return Err(missing_selector_error(
+            "missing finding selector",
+            &app::finding_navigation_with_worktree(&input, None, explicit.mode, worktree)
+                .list_command(),
+        ));
+    };
     let asserted_base = if base_explicitly_provided {
         input.base.clone()
     } else {
@@ -3049,10 +3072,57 @@ pub(super) fn explain(args: &[String]) -> Result<(), String> {
                 &selector,
                 &config,
                 explicit.mode,
+                worktree,
             )?
         }
     };
     println!("{rendered}");
+    Ok(())
+}
+
+/// The selector-less `explain`/`context` error. `listing` lists finding ids
+/// for the same scope: a `--worktree` run names a worktree-scoped listing,
+/// since plain `ripr check --json` omits findings only uncommitted edits
+/// produce.
+pub(super) fn missing_selector_error(what: &str, listing: &str) -> String {
+    format!(
+        "{what}; pass a finding id (e.g. `probe:src_lib.rs:error_path:abc123`) or `file:line`. Run `{listing}` to list finding ids"
+    )
+}
+
+/// A `--worktree` drill-in without `--root` resolves the implicit project
+/// root the same way `ripr check --worktree` does, so a manual invocation
+/// from a project subdirectory analyzes the scope that listed the finding.
+/// An explicit `--root` is kept as given.
+pub(super) fn resolve_worktree_root(
+    input: &mut CheckInput,
+    worktree: bool,
+    root_explicitly_provided: bool,
+) -> Result<(), String> {
+    if worktree && !root_explicitly_provided {
+        check::resolve_implicit_workspace_root(input)?;
+    }
+    Ok(())
+}
+
+/// `--worktree` is its own diff source, like in `ripr check`: it cannot sit
+/// beside `--diff`, and an artifact from `--from` already fixes the scope.
+pub(super) fn worktree_scope_conflict(
+    command: &str,
+    worktree: bool,
+    diff_file: bool,
+    from_artifact: bool,
+) -> Result<(), String> {
+    if worktree && diff_file {
+        return Err(format!(
+            "{command} --worktree cannot be combined with --diff"
+        ));
+    }
+    if worktree && from_artifact {
+        return Err(format!(
+            "{command} --worktree cannot be combined with --from: the artifact already records the diff it was written from"
+        ));
+    }
     Ok(())
 }
 

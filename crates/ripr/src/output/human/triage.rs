@@ -229,22 +229,10 @@ pub(crate) fn render_human_triage(
     }
     if let Some(finding) = triage.selected {
         out.push_str(&render_finding_digest_with_config(finding, config));
-        match drill_in {
-            Some(FindingDrillIn::Commands(navigation)) => {
-                out.push_str("\nNext: drill into the top finding:\n");
-                out.push_str(&format!("  {}\n", navigation.explain_command(&finding.id)));
-                out.push_str(&format!("  {}\n", navigation.context_command(&finding.id)));
-            }
-            // #4321: a `--worktree` run without `--write-artifact` has no
-            // artifact for sibling commands to replay; say so and name the
-            // route instead of dropping the block silently.
-            Some(FindingDrillIn::WorktreeReplayNeedsArtifact) => {
-                out.push_str(&format!(
-                    "\n{}\n",
-                    FindingDrillIn::worktree_replay_note(&finding.id)
-                ));
-            }
-            None => {}
+        if let Some(FindingDrillIn::Commands(navigation)) = drill_in {
+            out.push_str("\nNext: drill into the top finding:\n");
+            out.push_str(&format!("  {}\n", navigation.explain_command(&finding.id)));
+            out.push_str(&format!("  {}\n", navigation.context_command(&finding.id)));
         }
     }
     // #2567: the default human render is the release-facing surface, so it must

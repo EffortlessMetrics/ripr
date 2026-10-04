@@ -7,6 +7,7 @@ use std::path::Path;
 pub(crate) struct FindingNavigation {
     explain_prefix: String,
     context_prefix: String,
+    list_prefix: String,
 }
 
 impl FindingNavigation {
@@ -14,6 +15,7 @@ impl FindingNavigation {
         Self {
             explain_prefix: "ripr explain".to_string(),
             context_prefix: "ripr context".to_string(),
+            list_prefix: "ripr check".to_string(),
         }
     }
 
@@ -24,51 +26,24 @@ impl FindingNavigation {
     pub(crate) fn context_command(&self, selector: &str) -> String {
         format!("{} --at {}", self.context_prefix, shell_arg(selector))
     }
+
+    /// The `ripr check --json` command that lists finding ids for the same
+    /// scope (root, base or diff, `--worktree`, mode), so a selector miss
+    /// recovers against the analysis it asked about. Only meaningful for a
+    /// fresh scope: `ripr check` has no `--from`.
+    pub(crate) fn list_command(&self) -> String {
+        format!("{} --json", self.list_prefix)
+    }
 }
 
 /// The drill-in guidance the human surfaces print (#4321). The block must
-/// never vanish silently: when sibling commands cannot honestly replay the
-/// run, the surfaces say why and name the route instead of dropping it.
+/// never vanish silently: every check, including a `--worktree` run without
+/// an artifact, prints sibling commands that replay its own input identity.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum FindingDrillIn {
     /// Copy-pasteable `ripr explain` / `ripr context` commands that preserve
-    /// this run's input identity.
+    /// this run's input identity (`--worktree` included).
     Commands(FindingNavigation),
-    /// `--worktree` without `--write-artifact` (#4321): no artifact exists
-    /// for a `--from` replay, and a committed-history replay would analyze a
-    /// different diff, so the surfaces explain the artifact route and name
-    /// `--write-artifact` instead of printing commands that would answer a
-    /// different question.
-    WorktreeReplayNeedsArtifact,
-}
-
-impl FindingDrillIn {
-    /// The one-line replay route printed in place of drill-in commands on a
-    /// `--worktree` run without `--write-artifact` (#4321). The bounded
-    /// digest names its selected finding.
-    pub(crate) fn worktree_replay_note(top_finding_id: &str) -> String {
-        format!(
-            "Next: this worktree run has no artifact to replay — rerun with \
-             --write-artifact, then `ripr explain --from <artifact> {top_finding_id}` drills into the \
-             top finding; a committed-history replay would not match this analysis."
-        )
-    }
-
-    /// The full-form replay route (#4321). `ids_printed_above` states whether
-    /// finding ids actually printed above the note — an all-suppressed run
-    /// must not claim they did (devin review on #4924).
-    pub(crate) fn worktree_replay_note_full(ids_printed_above: bool) -> String {
-        let mut note = concat!(
-            "Next: this worktree run has no artifact to replay — rerun with ",
-            "--write-artifact, then `ripr explain --from <artifact> <finding id>`; a ",
-            "committed-history replay would not match this analysis.",
-        )
-        .to_string();
-        if ids_printed_above {
-            note.push_str(" Finding ids print above.");
-        }
-        note
-    }
 }
 
 /// Build sibling commands that preserve the input identity needed to replay a
@@ -79,6 +54,35 @@ pub(crate) fn finding_navigation(
     artifact_path: Option<&Path>,
     mode_explicit: bool,
 ) -> FindingNavigation {
+    finding_navigation_with_worktree(input, artifact_path, mode_explicit, false)
+}
+
+/// [`finding_navigation`] for a run that may have analyzed the working tree:
+/// `worktree` carries `--worktree` forward so the drill-in commands see the
+/// same uncommitted edits as the check that listed the finding.
+pub(crate) fn finding_navigation_with_worktree(
+    input: &CheckInput,
+    artifact_path: Option<&Path>,
+    mode_explicit: bool,
+    worktree: bool,
+) -> FindingNavigation {
+    let args = navigation_args(input, artifact_path, mode_explicit, worktree);
+    // `ripr check` has no `--from`: the listing always re-runs the original
+    // scope, even when the drill-in commands replay a written artifact.
+    let list_args = navigation_args(input, None, mode_explicit, worktree);
+    FindingNavigation {
+        explain_prefix: format!("ripr explain {args}"),
+        context_prefix: format!("ripr context {args}"),
+        list_prefix: format!("ripr check {list_args}"),
+    }
+}
+
+fn navigation_args(
+    input: &CheckInput,
+    artifact_path: Option<&Path>,
+    mode_explicit: bool,
+    worktree: bool,
+) -> String {
     let mut args = vec![format!(
         "--root {}",
         shell_arg(&input.root.display().to_string())
@@ -94,8 +98,13 @@ pub(crate) fn finding_navigation(
             "--diff {}",
             shell_arg(&diff_file.display().to_string())
         ));
-    } else if let Some(base) = input.base.as_deref() {
-        args.push(format!("--base {}", shell_arg(base)));
+    } else {
+        if let Some(base) = input.base.as_deref() {
+            args.push(format!("--base {}", shell_arg(base)));
+        }
+        if worktree {
+            args.push("--worktree".to_string());
+        }
     }
 
     if mode_explicit || input.mode != Mode::Draft {
@@ -117,11 +126,7 @@ pub(crate) fn finding_navigation(
         ));
     }
 
-    let args = args.join(" ");
-    FindingNavigation {
-        explain_prefix: format!("ripr explain {args}"),
-        context_prefix: format!("ripr context {args}"),
-    }
+    args.join(" ")
 }
 
 #[cfg(test)]
@@ -161,6 +166,42 @@ mod tests {
         assert_eq!(
             navigation.explain_command("probe:id"),
             "ripr explain --root repo --from 'saved artifact.json' --mode ready probe:id"
+        );
+    }
+
+    /// `check --worktree` lists findings from uncommitted edits; its drill-in
+    /// commands must analyze the same edits, not the committed history.
+    #[test]
+    fn finding_navigation_carries_worktree_scope_after_the_base() {
+        let input = CheckInput {
+            base: Some("HEAD".to_string()),
+            ..CheckInput::default()
+        };
+        let navigation = finding_navigation_with_worktree(&input, None, false, true);
+        assert_eq!(
+            navigation.explain_command("src/calc.py:5"),
+            "ripr explain --root . --base HEAD --worktree src/calc.py:5"
+        );
+        assert_eq!(
+            navigation.context_command("src/calc.py:5"),
+            "ripr context --root . --base HEAD --worktree --at src/calc.py:5"
+        );
+        // A selector miss lists ids from the same worktree scope.
+        assert_eq!(
+            navigation.list_command(),
+            "ripr check --root . --base HEAD --worktree --json"
+        );
+        // An artifact already records the worktree diff; `--from` wins.
+        let from_artifact =
+            finding_navigation_with_worktree(&input, Some(Path::new("wt.json")), false, true);
+        assert_eq!(
+            from_artifact.explain_command("probe:id"),
+            "ripr explain --root . --from wt.json probe:id"
+        );
+        // `ripr check` has no `--from`: the listing re-runs the worktree scope.
+        assert_eq!(
+            from_artifact.list_command(),
+            "ripr check --root . --base HEAD --worktree --json"
         );
     }
 

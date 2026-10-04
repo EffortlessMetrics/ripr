@@ -545,6 +545,15 @@ are scoped or reviewed.
   JavaScript too. `PreviewLanguageAdvisory` gains the public field
   `javascript_file_count`; code that builds the struct with a literal must
   set it (#4555).
+- `ripr check --worktree` now prints executable drill-in commands, and
+  `ripr explain` and `ripr context` accept `--worktree`. Before, a worktree
+  run without `--write-artifact` printed only a note pointing at the artifact
+  route, `explain --worktree` was an unknown argument, and `explain
+  file:line` analyzed committed history, where a finding from uncommitted
+  edits does not exist. A selector miss, or a missing selector under
+  `--worktree`, now names a `ripr check ... --json` listing with the same
+  root, base and `--worktree`, and a `--worktree` drill-in without `--root`
+  resolves the project root from a subdirectory the way `ripr check` does.
 - Python: a changed dunder method now relates to the tests that use its class.
   `LowerBound.__init__` relates to tests that construct `LowerBound(...)`,
   instead of tests that define their own helper class with `def __init__`.

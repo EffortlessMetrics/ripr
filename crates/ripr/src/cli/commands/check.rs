@@ -215,7 +215,7 @@ fn non_cargo_workspace_marker(dir: &Path) -> Option<ImplicitRootReason> {
     None
 }
 
-fn resolve_implicit_workspace_root(input: &mut CheckInput) -> Result<(), String> {
+pub(super) fn resolve_implicit_workspace_root(input: &mut CheckInput) -> Result<(), String> {
     let resolved = resolve_project_root(Path::new(".")).map_err(|error| {
         format!("{error}; pass --root PATH to select the analysis root explicitly")
     })?;
@@ -913,19 +913,15 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     if !committed_history_diff {
         output.unanalyzed_working_tree = false;
     }
-    // #4321: a `--worktree` run without `--write-artifact` has no artifact
-    // for drill-in commands to replay (a committed-history replay would
-    // analyze a different diff), so the human surfaces say so and name
-    // `--write-artifact` instead of dropping the block silently.
-    let drill_in = if worktree_explicitly_provided && write_artifact.is_none() {
-        app::FindingDrillIn::WorktreeReplayNeedsArtifact
-    } else {
-        app::FindingDrillIn::Commands(app::finding_navigation(
-            &limited_check_input,
-            write_artifact.as_deref(),
-            explicit.mode,
-        ))
-    };
+    // A `--worktree` run carries `--worktree` into its drill-in commands, so
+    // `explain` and `context` analyze the same uncommitted edits and the
+    // block never needs an artifact to stay executable (#4321).
+    let drill_in = app::FindingDrillIn::Commands(app::finding_navigation_with_worktree(
+        &limited_check_input,
+        write_artifact.as_deref(),
+        explicit.mode,
+        worktree_explicitly_provided,
+    ));
     // #4945: repo seam-driven formats run their walks inside the render arms,
     // so the sink threads through rendering to bracket those walks with
     // repo-scope stage boundaries; diff-scoped arms ignore it.

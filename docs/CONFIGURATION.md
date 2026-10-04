@@ -290,7 +290,7 @@ into full repo truth.
 Renders a single finding in human format.
 
 ```text
-ripr explain [--root PATH] [--base REV | --diff PATH] [--from PATH]
+ripr explain [--root PATH] [--base REV] [--worktree | --diff PATH] [--from PATH]
              [--mode MODE] [--no-unchanged-tests] [--perl-facts PATH]
              [--suppression-policy PATH] <finding-id | file:line>
 ```
@@ -301,12 +301,20 @@ The trailing positional argument selects the finding. Either form works:
 - A `file:line` location, where the file matches the finding's path by exact
   match or path-suffix match.
 
+`--worktree` analyzes staged and unstaged tracked edits, like
+`ripr check --worktree`, so a finding listed from uncommitted edits can be
+selected. `ripr check --worktree` prints drill-in commands that carry the
+flag. It cannot be combined with `--diff` or `--from`; `context` accepts it
+the same way. Without `--root`, a `--worktree` lookup resolves the project
+root from a subdirectory the way `ripr check` does, and a selector miss
+names a `ripr check ... --worktree --json` listing for the same root and base.
+
 ### `ripr context`
 
 Emits a compact JSON context packet for one finding.
 
 ```text
-ripr context [--root PATH] [--base REV | --diff PATH] [--from PATH]
+ripr context [--root PATH] [--base REV] [--worktree | --diff PATH] [--from PATH]
              [--mode MODE] [--no-unchanged-tests] [--perl-facts PATH]
              [--suppression-policy PATH]
              (--at | --finding) <finding-id | file:line>

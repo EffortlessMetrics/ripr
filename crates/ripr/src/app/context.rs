@@ -37,20 +37,46 @@ pub fn collect_context_with_config(
     max_related_tests: usize,
     config: &RiprConfig,
 ) -> Result<String, String> {
+    collect_context_with_config_and_worktree(
+        input,
+        selector,
+        max_related_tests,
+        config,
+        false,
+        false,
+    )
+}
+
+/// [`collect_context_with_config`] over the working tree when `worktree` is
+/// set (`ripr context --worktree`), so a finding `ripr check --worktree`
+/// listed from uncommitted edits can be selected.
+pub(crate) fn collect_context_with_config_and_worktree(
+    input: CheckInput,
+    selector: &str,
+    max_related_tests: usize,
+    config: &RiprConfig,
+    worktree: bool,
+    mode_explicit: bool,
+) -> Result<String, String> {
     let input = CheckInput {
         format: OutputFormat::Json,
         ..input
     };
-    let navigation = super::finding_navigation(&input, None, false);
-    let output = check_workspace_with_config(input, config)?;
+    let navigation = super::finding_navigation_with_worktree(&input, None, mode_explicit, worktree);
+    let output = if worktree {
+        super::check_workspace_worktree_with_config(input, config)?
+    } else {
+        check_workspace_with_config(input, config)?
+    };
     match select_finding(&output.findings, selector) {
         Some(finding) => Ok(output::json::render_context_packet_with_explain_command(
             finding,
             max_related_tests,
             Some(navigation.explain_command(&finding.id)),
         )),
-        None => Err(format!(
-            "no finding matched {selector:?}; run `ripr check --json` to list available finding ids"
+        None => Err(super::explain::no_finding_matched(
+            selector,
+            &navigation.list_command(),
         )),
     }
 }
