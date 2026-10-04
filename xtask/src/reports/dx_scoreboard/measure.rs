@@ -118,6 +118,7 @@ fn measure_in(
     }
     if wants("trust") {
         samples.push(measure_bad_input(binary, scratch));
+        samples.push(measure_hostile_repos(binary));
     }
     if wants("paste") {
         samples.extend(measure_paste(binary, scratch));
@@ -191,18 +192,17 @@ fn measure_corpus_entry(
 
     let cache = scratch.join(format!("cache-{}", entry.id));
     let out = scratch.join(format!("pilot-{}", entry.id));
-    // Clear earlier ripr state, but never through a symlink: a checkout that
-    // ships `target` or `target/ripr` as a link would point the delete
-    // outside the checkout.
-    let is_link =
-        |path: &Path| fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink());
-    if is_link(&checkout.join("target")) || is_link(&checkout.join("target/ripr")) {
-        let reason =
-            "checkout has a symlinked target/ or target/ripr; refusing to clear it".to_string();
+    if let Some(reason) = linked_target(&checkout) {
         for metric in corpus_metrics {
             samples.push(sample(metric, SampleOutcome::Failed, reason.clone()));
         }
-        return json!({"id": entry.id, "sha": entry.sha, "status": "failed", "reason": reason});
+        return json!({
+            "id": entry.id,
+            "sha": entry.sha,
+            "url": entry.url,
+            "status": "failed",
+            "reason": reason,
+        });
     }
     let _ = fs::remove_dir_all(checkout.join("target/ripr"));
     let cache_text = cache.display().to_string();
@@ -369,14 +369,36 @@ fn measure_corpus_entry(
         }
     }
 
-    samples.push(match contradictions {
-        Some((count, _)) if !missing_sources.is_empty() => sample(
-            "trust.self_contradictions",
+    let (outcome, detail) = contradiction_outcome(contradictions, &missing_sources);
+    samples.push(sample("trust.self_contradictions", outcome, detail));
+    json!({"id": entry.id, "sha": entry.sha, "url": entry.url, "status": "measured"})
+}
+
+/// Why earlier ripr state in `checkout` must not be cleared, if it must not.
+/// A checkout that ships `target` or `target/ripr` as a symlink would point
+/// the delete outside the checkout.
+pub(crate) fn linked_target(checkout: &Path) -> Option<String> {
+    let is_link =
+        |path: &Path| fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink());
+    (is_link(&checkout.join("target")) || is_link(&checkout.join("target/ripr"))).then(|| {
+        "checkout has a symlinked target/ or target/ripr; refusing to clear it \
+         (remove the link from the checkout or pin a SHA without it)"
+            .to_string()
+    })
+}
+
+/// The contradiction sample. Both documents must be scanned; a count from
+/// one alone would undercount, so it is incomplete rather than a value.
+pub(crate) fn contradiction_outcome(
+    contradictions: Option<(usize, Vec<String>)>,
+    missing_sources: &[&str],
+) -> (SampleOutcome, String) {
+    match contradictions {
+        Some((count, _)) if !missing_sources.is_empty() => (
             SampleOutcome::Incomplete(count as f64),
             format!("not scanned: {}", missing_sources.join(", ")),
         ),
-        Some((count, examples)) => sample(
-            "trust.self_contradictions",
+        Some((count, examples)) => (
             SampleOutcome::Value(count as f64),
             if examples.is_empty() {
                 "pilot repo-exposure and warm check JSON scanned".to_string()
@@ -384,13 +406,11 @@ fn measure_corpus_entry(
                 format!("e.g. {}", examples.join("; "))
             },
         ),
-        None => sample(
-            "trust.self_contradictions",
+        None => (
             SampleOutcome::NotMeasured,
             "no pilot or check JSON to scan".to_string(),
         ),
-    });
-    json!({"id": entry.id, "sha": entry.sha, "url": entry.url, "status": "measured"})
+    }
 }
 
 fn prepare_checkout(entry: &CorpusEntry, options: &Options) -> Result<PathBuf, String> {
@@ -671,20 +691,25 @@ fn measure_bad_input(binary: &Path, scratch: &Path) -> Sample {
             &[],
             SHORT_TIMEOUT,
             "dx-scoreboard bad-input probe",
-        ) {
-            Ok(measured) if exited_zero(&measured) => {
+        )
+        .map(|measured| probe_result(&measured))
+        {
+            Ok(Probe::ExitedZero) => {
                 false_clean.push(format!("`ripr {}`", shown.join(" ")));
             }
-            // A probe that hangs never refused anything.
-            Ok(measured) if measured.output.timed_out => {
+            Ok(Probe::TimedOut) => {
                 return Sample {
                     metric: "trust.false_clean_on_bad_input".to_string(),
                     repo: None,
                     outcome: SampleOutcome::Failed,
-                    detail: format!("`ripr {}` timed out instead of refusing", shown.join(" ")),
+                    detail: format!(
+                        "`ripr {}` timed out instead of refusing; a bad input must exit \
+                         non-zero promptly",
+                        shown.join(" ")
+                    ),
                 };
             }
-            Ok(_) => {}
+            Ok(Probe::Refused) => {}
             Err(err) => {
                 return Sample {
                     metric: "trust.false_clean_on_bad_input".to_string(),
@@ -711,6 +736,93 @@ fn measure_bad_input(binary: &Path, scratch: &Path) -> Sample {
         outcome: SampleOutcome::Value(false_clean.len() as f64),
         detail,
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Probe {
+    Refused,
+    ExitedZero,
+    /// A probe that hangs never refused anything.
+    TimedOut,
+}
+
+pub(crate) fn probe_result(measured: &MeasuredOutput) -> Probe {
+    if measured.output.timed_out {
+        Probe::TimedOut
+    } else if exited_zero(measured) {
+        Probe::ExitedZero
+    } else {
+        Probe::Refused
+    }
+}
+
+/// Run the hostile-repository journeys (`crates/ripr/tests/hostile_repos.rs`)
+/// against the binary under measurement (`RIPR_HOSTILE_BIN`) and count the
+/// failing ones. A run that does not report a test result is a failed
+/// instrument, not zero failures.
+fn measure_hostile_repos(binary: &Path) -> Sample {
+    let sample = |outcome: SampleOutcome, detail: String| Sample {
+        metric: "trust.hostile_repo_failures".to_string(),
+        repo: None,
+        outcome,
+        detail,
+    };
+    let args: Vec<String> = ["test", "-p", "ripr", "--test", "hostile_repos"]
+        .iter()
+        .map(|arg| (*arg).to_string())
+        .collect();
+    let binary_text = binary.display().to_string();
+    let measured = match capture_output_measured(
+        "cargo",
+        &args,
+        None,
+        &[("RIPR_HOSTILE_BIN", binary_text.as_str())],
+        GIT_TIMEOUT,
+        "dx-scoreboard hostile repos",
+    ) {
+        Ok(measured) => measured,
+        Err(err) => return sample(SampleOutcome::Failed, err),
+    };
+    if measured.output.timed_out {
+        return sample(
+            SampleOutcome::Failed,
+            "cargo test --test hostile_repos timed out".to_string(),
+        );
+    }
+    match parse_test_result(&measured.output.stdout) {
+        Some((passed, failed)) => sample(
+            SampleOutcome::Value(failed as f64),
+            format!(
+                "{passed} of {} hostile-input journeys pass",
+                passed + failed
+            ),
+        ),
+        None => sample(
+            SampleOutcome::Failed,
+            format!(
+                "cargo test --test hostile_repos printed no test result: {}",
+                measured.output.stderr.lines().last().unwrap_or("no output")
+            ),
+        ),
+    }
+}
+
+/// `(passed, failed)` from libtest's `test result:` line.
+pub(crate) fn parse_test_result(stdout: &str) -> Option<(u64, u64)> {
+    let line = stdout
+        .lines()
+        .rev()
+        .find(|line| line.starts_with("test result:"))?;
+    let count = |label: &str| -> Option<u64> {
+        line.split(';')
+            .find(|part| part.trim_end().ends_with(label))?
+            .split_whitespace()
+            .rev()
+            .nth(1)?
+            .parse()
+            .ok()
+    };
+    Some((count("passed")?, count("failed")?))
 }
 
 // -------------------------------------------------------------- paste ----
@@ -1100,7 +1212,7 @@ fn write_tiny_crate(root: &Path) -> Result<(), String> {
 
 // ------------------------------------------------------------ helpers ----
 
-fn rss_sample(
+pub(crate) fn rss_sample(
     sample: &dyn Fn(&str, SampleOutcome, String) -> Sample,
     metric: &str,
     measured: &MeasuredOutput,

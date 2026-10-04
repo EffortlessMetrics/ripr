@@ -14,8 +14,8 @@ target, margin, or corpus pin is a reviewed edit to that file.
 | Board | What a developer feels | Metrics |
 |---|---|---|
 | `speed` | How long until ripr says something useful, and whether the edit-check loop stays interactive | cold `ripr pilot` time and peak memory, warm `ripr check` time and peak memory, per corpus repository |
-| `ci` | What it costs to adopt ripr in CI | lines in the workflow `ripr init --ci github` writes, whether compiling ripr is its only install route, install time (pending) |
-| `trust` | Whether ripr is ever confidently wrong | commands that exit 0 on a missing repository, self-contradicting findings, false-verdict, false-actionable and abstention rates on the hand-checked verdict corpus (read from `fixtures/rust-verdict-corpus/expected/report.json`, which lands with #5318 together with its drift check; not measured until then), mutation spot-check agreement on discriminator and gap claims plus join coverage (ingested), judged-panel false actionable rate |
+| `ci` | What it costs to adopt ripr in CI | lines in the workflow `ripr init --ci github` writes, whether compiling ripr is its only install route, prebuilt install time (ingested from the install harness) |
+| `trust` | Whether ripr is ever confidently wrong | commands that exit 0 on a missing repository, hostile-repository journeys (`crates/ripr/tests/hostile_repos.rs`) that neither find nor refuse cleanly, self-contradicting findings, false-verdict, false-actionable, false-exposed, false-silent and abstention rates (kept separate: fewer abstentions or false gaps are not evidence that credited verdicts are right) on the hand-checked verdict corpus (read from `fixtures/rust-verdict-corpus/expected/report.json`, which lands with #5318 together with its drift check; not measured until then), mutation spot-check agreement on discriminator and gap claims plus join coverage (ingested), judged-panel false actionable rate |
 | `paste` | Whether a printed command works when pasted | printed commands that break or run injected code under a hostile repository path, printed commands that drop the repository root |
 | `first_run` | The new-developer journey from install to first useful result | time to first useful result, walk seconds per crate, failed steps, steps over budget, friction events, `*_unknown` verdicts (all ingested) |
 | `agent` | Whether an agent using only ripr's help closes a real test gap quickly and without being misled | fix success, mutants caught, ripr commands and tool steps to fix, false weak findings left after the fix, stale re-checks, white-box tests written only for ripr (all ingested from the agent-as-user harness) |
@@ -77,7 +77,7 @@ release ripr first, because developers run release builds.
 
 ## Ingesting other harnesses
 
-The scripted first-run journey and the mutation spot-check measure their
+The scripted first-run journey, the install harness and the mutation spot-check measure their
 metrics elsewhere and hand them over with `--ingest <file>`:
 
 ```json
@@ -126,9 +126,13 @@ and never fails the command.
 The **gate** (`--gate --baseline <earlier dx-scoreboard.json>`) fails when a
 metric, or any repository's own sample of it, is worse than the baseline by
 more than `max(regression_pct% of baseline, regression_floor)` (their sum for
-`regression_additive` metrics), when a run stops completing, or when an
-instrument breaks. Metrics the baseline measured that a run cannot compare,
-such as ingested metrics without a receipt, are listed as not compared. Wall-time and memory metrics compare only against a baseline from the
+`regression_additive` metrics), when a repository stops completing, or when
+an instrument breaks. The worst value is compared over the repositories both
+reports measured, so a repository new to the corpus is listed as "not in
+baseline" instead of failing the gate; one that does not complete still fails.
+Metrics the baseline measured that a run cannot compare, such as ingested
+metrics without a receipt, are listed as not compared. Wall-time and memory
+metrics compare only against a baseline from the
 same runner class (`local-linux-x86_64-4cpu`, `github-hosted-linux-x86_64-4cpu`,
 or `RIPR_DX_RUNNER_CLASS`). Counts and line totals compare across runners.
 

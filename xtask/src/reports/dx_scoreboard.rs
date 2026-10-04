@@ -497,6 +497,13 @@ pub(crate) fn parse_ingest(value: &Value, config: &Config) -> Result<Vec<Sample>
             .as_f64()
             .filter(|number| number.is_finite())
             .ok_or_else(|| format!("ingest metric `{id}` needs a finite numeric `value`"))?;
+        // Every scoreboard metric is a duration, count or rate; a negative
+        // one is a broken receipt and must not read as a fast pass.
+        if number < 0.0 {
+            return Err(format!(
+                "ingest metric `{id}` has negative value {number}; fix the harness that wrote it"
+            ));
+        }
         let completed = match &row["completed"] {
             Value::Null => true,
             Value::Bool(done) => *done,
@@ -669,7 +676,9 @@ pub(crate) fn first_run_rows_to_input(value: &Value) -> Result<Value, String> {
         }
         let value = number.unwrap_or(0.0);
         if metric == "secs" || metric == "exit" {
-            let open = steps.iter().rposition(|s| {
+            // Pair with the earliest run of this step still missing this
+            // metric, so rows for repeated runs may arrive in any order.
+            let open = steps.iter().position(|s| {
                 s.case == case
                     && s.step == step
                     && if metric == "secs" {
@@ -678,19 +687,15 @@ pub(crate) fn first_run_rows_to_input(value: &Value) -> Result<Value, String> {
                         s.exit.is_none()
                     }
             });
-            let latest = steps.iter().rposition(|s| s.case == case && s.step == step);
-            let index = match (open, latest) {
-                (Some(open), Some(latest)) if open == latest => open,
-                _ => {
-                    steps.push(Step {
-                        case: case.to_string(),
-                        step: step.to_string(),
-                        secs: None,
-                        exit: None,
-                    });
-                    steps.len() - 1
-                }
-            };
+            let index = open.unwrap_or_else(|| {
+                steps.push(Step {
+                    case: case.to_string(),
+                    step: step.to_string(),
+                    secs: None,
+                    exit: None,
+                });
+                steps.len() - 1
+            });
             if let Some(current) = steps.get_mut(index) {
                 if metric == "secs" {
                     current.secs = Some(value);
@@ -1344,8 +1349,10 @@ fn repo_regressions(def: &MetricDef, row: &Value, base_row: &Value) -> Vec<Value
         .collect()
 }
 
-/// Repositories that completed in the baseline but not in this run. Checked
-/// per repository because another repository may already have been
+/// Repositories that did not complete in this run although their baseline
+/// sample did not stop short either: a repository that completed, or one with
+/// no completed baseline sample (new to the corpus, or unmeasured then).
+/// Checked per repository because another repository may already have been
 /// incomplete in the baseline.
 fn repo_completion_losses(row: &Value, base_row: &Value) -> Vec<Value> {
     let statuses = |r: &Value| -> Vec<(String, String)> {
@@ -1361,18 +1368,66 @@ fn repo_completion_losses(row: &Value, base_row: &Value) -> Vec<Value> {
             })
             .collect()
     };
-    let completed = |status: &str| matches!(status, "meets_target" | "below_target");
     let base = statuses(base_row);
     statuses(row)
         .into_iter()
-        .filter(|(repo, status)| {
-            status == "incomplete"
-                && base
-                    .iter()
-                    .any(|(id, before)| id == repo && completed(before))
+        .filter(|(_, status)| status == "incomplete")
+        .filter_map(|(repo, _)| {
+            let before = base
+                .iter()
+                .find(|(id, _)| *id == repo)
+                .map(|(_, b)| b.as_str());
+            let reason = match before {
+                Some("incomplete") => return None,
+                Some("meets_target" | "below_target") => "did not complete where the baseline did",
+                Some(_) => "did not complete; the baseline has no completed sample for it",
+                None => "new in this run and did not complete; no baseline sample",
+            };
+            Some(json!({"repo": repo, "reason": reason}))
         })
-        .map(|(repo, _)| json!({"repo": repo, "reason": "did not complete where the baseline did"}))
         .collect()
+}
+
+/// Worst baseline and current values over common repositories, and the
+/// repositories new in this run.
+type CommonWorst = (Option<(f64, f64)>, Vec<String>);
+
+/// Worst baseline and current values over the repositories both reports
+/// measured, plus the repositories only this run measured. A repository new to
+/// the corpus is not a regression, so it must not move the compared worst.
+/// `None` when the samples carry no repositories.
+fn common_repo_worst(def: &MetricDef, row: &Value, base_row: &Value) -> Option<CommonWorst> {
+    let values = |r: &Value| -> Vec<(String, f64)> {
+        r["samples"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|s| Some((s["repo"].as_str()?.to_string(), s["value"].as_f64()?)))
+            .collect()
+    };
+    let (current, base) = (values(row), values(base_row));
+    if current.is_empty() && base.is_empty() {
+        return None;
+    }
+    let worst = |items: &mut dyn Iterator<Item = f64>| {
+        items.reduce(|a, b| if is_worse(def, b, a) { b } else { a })
+    };
+    let common: Vec<(f64, f64)> = current
+        .iter()
+        .filter_map(|(repo, now)| {
+            base.iter()
+                .find(|(id, _)| id == repo)
+                .map(|(_, before)| (*before, *now))
+        })
+        .collect();
+    let pair =
+        worst(&mut common.iter().map(|(b, _)| *b)).zip(worst(&mut common.iter().map(|(_, c)| *c)));
+    let new_repos = current
+        .iter()
+        .filter(|(repo, _)| !base.iter().any(|(id, _)| id == repo))
+        .map(|(repo, _)| repo.clone())
+        .collect();
+    Some((pair, new_repos))
 }
 
 /// Compare one metric with the same metric in an earlier report, as the
@@ -1393,10 +1448,13 @@ pub(crate) fn compare_with_baseline(
     let Some(base_row) = base_row else {
         return json!({"comparable": false, "reason": "metric absent from baseline"});
     };
+    // Samples with a repository are judged per repository below.
     let incomplete = |r: &Value| {
-        r["samples"]
-            .as_array()
-            .is_some_and(|samples| samples.iter().any(|s| s["status"] == "incomplete"))
+        r["samples"].as_array().is_some_and(|samples| {
+            samples
+                .iter()
+                .any(|s| s["status"] == "incomplete" && s["repo"].is_null())
+        })
     };
     // A run that stops completing is broken on every runner class, and its
     // elapsed time can look faster than the baseline, so check it first, per
@@ -1426,11 +1484,23 @@ pub(crate) fn compare_with_baseline(
             ),
         });
     }
-    let (Some(base), Some(current)) = (base_row["value"].as_f64(), row["value"].as_f64()) else {
+    let (values, new_repos) = match common_repo_worst(def, row, base_row) {
+        Some((pair, new_repos)) => (pair, new_repos),
+        None => (
+            base_row["value"].as_f64().zip(row["value"].as_f64()),
+            Vec::new(),
+        ),
+    };
+    let Some((base, current)) = values else {
         return json!({
             "comparable": false,
             "value": base_row["value"],
-            "reason": "baseline or current value is missing",
+            "reason": if new_repos.is_empty() {
+                "baseline or current value is missing"
+            } else {
+                "no repository measured in both reports"
+            },
+            "new_repos": new_repos,
         });
     };
     let allowed = allowed_worsening(def, base);
@@ -1443,6 +1513,7 @@ pub(crate) fn compare_with_baseline(
         "allowed_worsening": round(allowed),
         "regressed": worsening(def, base, current) > allowed || !by_repo.is_empty(),
         "regressed_repos": by_repo,
+        "new_repos": new_repos,
         "missing_repos": missing,
     })
 }
@@ -1733,8 +1804,19 @@ fn baseline_cell(baseline: &Value) -> String {
         } else {
             "ok"
         };
+        let new_repos: Vec<&str> = baseline["new_repos"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        let new_note = if new_repos.is_empty() {
+            String::new()
+        } else {
+            format!("; not in baseline: {}", new_repos.join(", "))
+        };
         format!(
-            "{} (Δ {}) {verdict}",
+            "{} (Δ {}) {verdict}{new_note}",
             display_value(&baseline["value"]),
             display_value(&baseline["delta"])
         )

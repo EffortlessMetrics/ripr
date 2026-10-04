@@ -1,8 +1,10 @@
 use super::measure::{
-    PasteVerdict, builds_ripr_from_source, check_contradictions, classify_replay, extract_commands,
-    repo_exposure_contradictions,
+    PasteVerdict, Probe, builds_ripr_from_source, check_contradictions, classify_replay,
+    contradiction_outcome, extract_commands, linked_target, parse_test_result, probe_result,
+    repo_exposure_contradictions, rss_sample,
 };
 use super::*;
+use crate::run::{MeasuredOutput, TimedOutput};
 
 /// The committed config, resolved from the crate root so a test that moves
 /// the working directory cannot break the lookup.
@@ -716,6 +718,50 @@ fn losing_completion_is_judged_per_repo() -> Result<(), String> {
 }
 
 #[test]
+fn a_repo_new_to_the_corpus_is_listed_not_gated_unless_it_stops_short() -> Result<(), String> {
+    let config = parse_config(MINIMAL)?;
+    let base = vec![sample(
+        "speed.warm_check_ms",
+        Some("a"),
+        SampleOutcome::Value(1000.0),
+    )];
+    let baseline = build_report(&config, &all_boards(), &base, &context("r"), None, false);
+    let run = |new: SampleOutcome| {
+        let current = vec![
+            sample(
+                "speed.warm_check_ms",
+                Some("a"),
+                SampleOutcome::Value(1000.0),
+            ),
+            sample("speed.warm_check_ms", Some("c"), new),
+        ];
+        build_report(
+            &config,
+            &all_boards(),
+            &current,
+            &context("r"),
+            Some(&baseline),
+            true,
+        )
+    };
+    // A heavier new repository is slower than the old worst but regressed nothing.
+    let slower = run(SampleOutcome::Value(9000.0));
+    assert_eq!(slower["gate"]["status"].as_str(), Some("pass"));
+    let row = slower["metrics"]
+        .as_array()
+        .and_then(|rows| rows.iter().find(|r| r["id"] == "speed.warm_check_ms"))
+        .ok_or("warm check row missing")?;
+    assert_eq!(row["baseline"]["new_repos"], json!(["c"]));
+    assert_eq!(row["baseline"]["delta"], json!(0.0));
+    assert!(render_markdown(&slower).contains("not in baseline: c"));
+    // A new repository that stops short still fails, and says why.
+    let broken = run(SampleOutcome::Incomplete(40.0));
+    assert_eq!(broken["gate"]["status"].as_str(), Some("fail"));
+    assert!(gate_failure_message(&broken).contains("c: new in this run and did not complete"));
+    Ok(())
+}
+
+#[test]
 fn gate_lists_baseline_metrics_it_could_not_compare() -> Result<(), String> {
     let config = parse_config(MINIMAL)?;
     let base = vec![
@@ -844,6 +890,39 @@ fn first_useful_result_stops_at_the_first_check_that_exits_zero() -> Result<(), 
 }
 
 #[test]
+fn repeated_step_rows_pair_in_order_when_exits_come_last() -> Result<(), String> {
+    let row = |body: &str| format!(r#"{{"schema":"first_run_row.v1",{body}}}"#);
+    // Both timings of a repeated `check` arrive before both exits.
+    let text = [
+        row(r#""case":"_setup","step":"install","metric":"secs","value":10.0"#),
+        row(r#""case":"_setup","step":"install","metric":"exit","value":0"#),
+        row(r#""case":"a","step":"check","metric":"secs","value":1.0"#),
+        row(r#""case":"a","step":"check","metric":"secs","value":4.0"#),
+        row(r#""case":"a","step":"check","metric":"exit","value":1"#),
+        row(r#""case":"a","step":"check","metric":"exit","value":0"#),
+    ]
+    .join("\n");
+    let input = first_run_rows_to_input(&parse_ingest_text(&text)?)?;
+    let get = |id: &str| {
+        input["metrics"]
+            .as_array()
+            .and_then(|rows| rows.iter().find(|r| r["id"] == id).cloned())
+            .unwrap_or_default()
+    };
+    // Only the first run exited nonzero; neither run is left without an exit.
+    assert_eq!(get("first_run.failed_steps")["value"], json!(1));
+    assert_eq!(
+        get("first_run.failed_steps")["evidence"],
+        json!("a/check exit 1")
+    );
+    assert_eq!(
+        get("first_run.time_to_first_useful_result_s")["value"],
+        json!(15.0)
+    );
+    Ok(())
+}
+
+#[test]
 fn gate_compares_every_repository_not_just_the_worst() -> Result<(), String> {
     let config = parse_config(MINIMAL)?;
     let samples = |a: f64, b: f64| {
@@ -924,6 +1003,16 @@ fn malformed_mutation_and_generic_receipts_are_rejected() {
 }
 
 #[test]
+fn hostile_repo_counts_come_from_the_libtest_summary() {
+    let ok = "running 15 tests\n...\ntest result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.1s\n";
+    assert_eq!(parse_test_result(ok), Some((15, 0)));
+    let bad = "test result: FAILED. 13 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out\n";
+    assert_eq!(parse_test_result(bad), Some((13, 2)));
+    // A build failure prints no summary: not "zero failures".
+    assert_eq!(parse_test_result("error[E0061]: oops\n"), None);
+}
+
+#[test]
 fn a_step_without_a_duration_leaves_the_walk_incomplete() -> Result<(), String> {
     let row = |body: &str| format!(r#"{{"schema":"first_run_row.v1",{body}}}"#);
     let text = [
@@ -993,4 +1082,108 @@ fn a_baseline_repo_missing_from_the_run_is_listed_not_passed() -> Result<(), Str
                 .is_some_and(|reason| reason.ends_with("not measured this run: b"))
     }));
     Ok(())
+}
+
+fn measured(timed_out: bool, peak_rss_bytes: Option<u64>) -> MeasuredOutput {
+    MeasuredOutput {
+        output: TimedOutput {
+            status: None,
+            stdout: String::new(),
+            stderr: String::new(),
+            duration: std::time::Duration::from_millis(5),
+            timed_out,
+        },
+        peak_rss_bytes,
+    }
+}
+
+#[test]
+fn the_peak_of_an_incomplete_run_is_not_a_value() {
+    let sample = |metric: &str, outcome: SampleOutcome, detail: String| Sample {
+        metric: metric.to_string(),
+        repo: Some("r".to_string()),
+        outcome,
+        detail,
+    };
+    let run = measured(false, Some(64 * 1024 * 1024));
+    let done = rss_sample(&sample, "speed.warm_check_peak_rss_mb", &run, true);
+    assert!(matches!(done.outcome, SampleOutcome::Value(mb) if (mb - 64.0).abs() < 1e-9));
+    let cut = rss_sample(&sample, "speed.warm_check_peak_rss_mb", &run, false);
+    assert!(matches!(cut.outcome, SampleOutcome::Incomplete(mb) if (mb - 64.0).abs() < 1e-9));
+    assert!(cut.detail.contains("did not complete"));
+}
+
+#[test]
+fn contradictions_from_one_source_are_incomplete() {
+    let (outcome, detail) = contradiction_outcome(Some((0, Vec::new())), &["warm check JSON"]);
+    assert!(matches!(outcome, SampleOutcome::Incomplete(n) if n.abs() < 1e-9));
+    assert_eq!(detail, "not scanned: warm check JSON");
+    let (outcome, _) = contradiction_outcome(Some((2, vec!["x".to_string()])), &[]);
+    assert!(matches!(outcome, SampleOutcome::Value(n) if (n - 2.0).abs() < 1e-9));
+    let (outcome, _) = contradiction_outcome(None, &["pilot repo-exposure.json"]);
+    assert!(matches!(outcome, SampleOutcome::NotMeasured));
+}
+
+#[test]
+fn a_hung_bad_input_probe_is_not_a_refusal() {
+    assert_eq!(probe_result(&measured(true, None)), Probe::TimedOut);
+    // No exit status and no timeout: ended by a signal, which is a refusal.
+    assert_eq!(probe_result(&measured(false, None)), Probe::Refused);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlinked_target_is_never_cleared() -> Result<(), String> {
+    let root = std::env::temp_dir().join(format!("dx-linked-target-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let checkout = root.join("checkout");
+    let outside = root.join("outside");
+    std::fs::create_dir_all(&checkout).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&outside).map_err(|e| e.to_string())?;
+    assert_eq!(linked_target(&checkout), None);
+    std::fs::create_dir_all(checkout.join("target")).map_err(|e| e.to_string())?;
+    assert_eq!(linked_target(&checkout), None);
+    std::os::unix::fs::symlink(&outside, checkout.join("target/ripr"))
+        .map_err(|e| e.to_string())?;
+    let reason = linked_target(&checkout);
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        reason.is_some_and(|r| r.contains("refusing to clear") && r.contains("remove the link"))
+    );
+    Ok(())
+}
+
+#[test]
+fn a_negative_ingested_value_is_refused() -> Result<(), String> {
+    let config = load_config(&committed_config())?;
+    let input = json!({
+        "schema_version": INPUT_SCHEMA_VERSION,
+        "source": "install",
+        "metrics": [{"id": "ci.install_seconds", "value": -0.5}],
+    });
+    assert!(parse_ingest(&input, &config).is_err_and(|e| e.contains("negative")));
+    let fine = json!({
+        "schema_version": INPUT_SCHEMA_VERSION,
+        "source": "install",
+        "metrics": [{"id": "ci.install_seconds", "value": 0.97}],
+    });
+    assert_eq!(parse_ingest(&fine, &config)?.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn libtest_summary_counts_are_read_by_label_not_position() {
+    let line = "test result: FAILED. 123 passed; 45 failed; 6 ignored; 7 measured; 890 filtered out; finished in 1.0s\n";
+    assert_eq!(parse_test_result(line), Some((123, 45)));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_probe_ended_by_a_signal_is_a_refusal_not_a_clean_exit() {
+    use std::os::unix::process::ExitStatusExt;
+    let mut run = measured(false, None);
+    run.output.status = Some(std::process::ExitStatus::from_raw(9));
+    assert_eq!(probe_result(&run), Probe::Refused);
+    run.output.status = Some(std::process::ExitStatus::from_raw(0));
+    assert_eq!(probe_result(&run), Probe::ExitedZero);
 }

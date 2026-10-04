@@ -143,8 +143,8 @@ target = 30
 regression_pct = 50
 regression_floor = 15
 runner_dependent = true
-source = "pending"
-pending_reason = "needs a hosted run of the generated workflow; the prebuilt-install path landed with #5236 but no instrument times it yet"
+source = "ingest:install"
+pending_reason = "timed by the install harness (download, sha256 check, extract, `ripr --version`); pass its receipt with --ingest"
 
 # ------------------------------------------------------------------ trust --
 
@@ -153,6 +153,18 @@ id = "trust.false_clean_on_bad_input"
 board = "trust"
 title = "Commands that exit 0 when pointed at a missing repository"
 unit = "commands"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "measured"
+
+[[metric]]
+id = "trust.hostile_repo_failures"
+board = "trust"
+title = "Hostile-repository journeys (odd file names, symlink loops, shallow clones, submodules) where ripr neither finds nor refuses cleanly"
+unit = "journeys"
 direction = "lower_is_better"
 target = 0
 regression_pct = 0
@@ -211,6 +223,32 @@ regression_pct = 0
 regression_floor = 0.02
 runner_dependent = false
 source = "file:fixtures/rust-verdict-corpus/expected/report.json#abstention_rate"
+pending_reason = "the hand-checked verdict corpus report lands with #5318"
+
+[[metric]]
+id = "trust.verdict_corpus_false_silent"
+board = "trust"
+title = "Hand-checked edits the crate's tests miss that ripr reports as fine (counterweight to abstaining less)"
+unit = "ratio"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "file:fixtures/rust-verdict-corpus/expected/report.json#false_silent_rate"
+pending_reason = "the hand-checked verdict corpus report lands with #5318"
+
+[[metric]]
+id = "trust.verdict_corpus_false_exposed"
+board = "trust"
+title = "Hand-checked edits the crate's tests miss that ripr credits as caught (false confidence; few credited cases so far, so read with its denominator)"
+unit = "ratio"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "file:fixtures/rust-verdict-corpus/expected/report.json#false_exposed_rate"
 pending_reason = "the hand-checked verdict corpus report lands with #5318"
 
 [[metric]]

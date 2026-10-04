@@ -80,8 +80,17 @@ fn drain<R: Read + Send + 'static>(stream: Option<R>) -> thread::JoinHandle<Vec<
     })
 }
 
+/// The binary under test: `RIPR_HOSTILE_BIN` when a harness such as
+/// `cargo xtask dx-scoreboard --ripr-bin` measures a specific build, otherwise
+/// the one Cargo built for this test.
+fn ripr_bin() -> PathBuf {
+    std::env::var_os("RIPR_HOSTILE_BIN")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_ripr")))
+}
+
 fn ripr(dir: &Path, args: &[&str], envs: &[(&str, &str)]) -> Result<Ran, String> {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_ripr"));
+    let mut command = Command::new(ripr_bin());
     command
         .current_dir(dir)
         .args(args)
