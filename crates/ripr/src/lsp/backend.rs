@@ -300,7 +300,7 @@ impl Backend {
     ///   and is marked `seams_deferred` (run_status = `"seams_deferred"`).
     ///   This typically completes in 33ms–11s instead of 336s cold.
     ///
-    /// - `false` (explicit `ripr.refreshDiagnostics` command): the full seam
+    /// - `false` (explicit `ripr.refresh` wire command): the full seam
     ///   inventory also runs, transitioning the snapshot to `full` (or
     ///   `limited`/`stale`/`cache_limited` per existing rules) with seam
     ///   diagnostics present.
@@ -5770,8 +5770,8 @@ impl Backend {
                 .and_then(|value| value.input_identity_id())
                 .or(health.current_input_identity),
             "invalidation_reason": reason,
-            "recovery_route": "ripr.refreshDiagnostics",
-            "recovery_command": "ripr.refreshDiagnostics",
+            "recovery_route": REFRESH_COMMAND,
+            "recovery_command": REFRESH_COMMAND,
             "limits_note": "Static editor evidence only; refresh before using seam context or repair guidance.",
         })
     }

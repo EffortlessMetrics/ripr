@@ -14441,7 +14441,7 @@ fn seam_evidence_is_identity_bound_and_deferred_refresh_returns_typed_stale_resu
             assert_eq!(stale["kind"], "lsp_seam_evidence");
             assert_eq!(stale["status"], "stale");
             assert_eq!(stale["current_snapshot_id"], "snapshot:full");
-            assert_eq!(stale["recovery_route"], "ripr.refreshDiagnostics");
+            assert_eq!(stale["recovery_route"], REFRESH_COMMAND);
             assert_eq!(stale["invalidation_reason"], expected_reason);
             if cited_identity.is_null() {
                 assert_eq!(stale["stale_evidence_identity"]["seam_id"], seam_id);
@@ -14504,7 +14504,7 @@ fn seam_evidence_is_identity_bound_and_deferred_refresh_returns_typed_stale_resu
                 "snapshot:full"
             );
             assert_eq!(stale["current_snapshot_id"], "snapshot:deferred");
-            assert_eq!(stale["recovery_route"], "ripr.refreshDiagnostics");
+            assert_eq!(stale["recovery_route"], REFRESH_COMMAND);
             assert!(
                 stale["invalidation_reason"]
                     .as_str()
@@ -14528,10 +14528,7 @@ fn seam_evidence_is_identity_bound_and_deferred_refresh_returns_typed_stale_resu
             .ok_or_else(|| "expected typed stale result without snapshot".to_string())?;
         assert_eq!(stale_without_snapshot["status"], "stale");
         assert!(stale_without_snapshot["current_snapshot_id"].is_null());
-        assert_eq!(
-            stale_without_snapshot["recovery_route"],
-            "ripr.refreshDiagnostics"
-        );
+        assert_eq!(stale_without_snapshot["recovery_route"], REFRESH_COMMAND);
         Ok(())
     })
 }
@@ -14634,7 +14631,20 @@ fn execute_command_collect_evidence_context_returns_typed_stale_for_unknown_seam
             packet["invalidation_reason"],
             "the cited seam is absent from the current full-seam evidence"
         );
-        assert_eq!(packet["recovery_command"], "ripr.refreshDiagnostics");
+        assert_eq!(packet["recovery_command"], REFRESH_COMMAND);
+        // #5274: the emitted recovery command must execute through the
+        // server's own dispatcher, not merely name the palette alias.
+        let recovery = packet["recovery_command"]
+            .as_str()
+            .ok_or_else(|| "expected string recovery_command".to_string())?;
+        backend
+            .execute_command(ExecuteCommandParams {
+                command: recovery.to_string(),
+                arguments: vec![],
+                work_done_progress_params: Default::default(),
+            })
+            .await
+            .map_err(|err| format!("emitted recovery_command rejected: {err}"))?;
         Ok(())
     })
 }

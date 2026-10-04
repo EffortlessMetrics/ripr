@@ -85,12 +85,12 @@ The existing limited policy (`is_full_run = run_status == "full"`) applies:
 - Finding WARNINGs downgrade to INFORMATION (not authoritative without full evidence).
 - Gap-record diagnostics are suppressed (not emitted when not full).
 - `collect_workspace_status` returns `run_status: "seams_deferred"` with the
-  `refresh_command: "ripr.refreshDiagnostics"` affordance so the cockpit can
+  `refresh_command: "ripr.refresh"` affordance so the cockpit can
   show "run refresh for full seam evidence."
 
 ### Explicit refresh on demand
 
-The `ripr.refreshDiagnostics` (`REFRESH_COMMAND`) handler calls
+The `ripr.refresh` (`REFRESH_COMMAND`) handler calls
 `refresh_diagnostics(defer_seam_inventory: false)`. The full seam inventory runs
 and the snapshot transitions to `full` (or `limited`/`stale`/`cache_limited` per
 existing rules) with seam diagnostics present.
@@ -129,7 +129,7 @@ When `refresh_diagnostics(defer_seam_inventory: bool)` is called:
   existing rules).
 
 `collect_workspace_status` surfaces `run_status: "seams_deferred"` and
-`refresh_command: "ripr.refreshDiagnostics"` so the cockpit can present an actionable
+`refresh_command: "ripr.refresh"` so the cockpit can present an actionable
 "run refresh for full seam evidence" affordance.
 
 ## Non-Goals
@@ -179,7 +179,7 @@ Test: `spec_0105_deferred_snapshot_has_no_seams_and_run_status_seams_deferred`
 
 After a default open (deferred), `collect_workspace_status` returns:
 - `run_status: "seams_deferred"` (not "full").
-- `refresh_command: "ripr.refreshDiagnostics"`.
+- `refresh_command: "ripr.refresh"`.
 - `diagnostics.findings` > 0 (diff findings are complete, not aborted).
 - `diagnostics.seam_diagnostics == 0`.
 
@@ -239,7 +239,7 @@ did_open → workspace_diagnostics_with_config(defer_seam_inventory=true)
   Pass 2 SKIPPED (seams_deferred=true)
 publishDiagnostics emitted in ~11s
 
-collect_workspace_status → run_status: "seams_deferred", refresh_command: "ripr.refreshDiagnostics"
+collect_workspace_status → run_status: "seams_deferred", refresh_command: "ripr.refresh"
 
 ripr.refreshDiagnostics → workspace_diagnostics_with_config(defer_seam_inventory=false)
   Pass 1: check_workspace_with_config

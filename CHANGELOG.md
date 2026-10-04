@@ -34,6 +34,11 @@ are scoped or reviewed.
   tab path, or treat a correct whitespace stamp as malformed. Parent, root, and
   prefix components stay rejected (#5128).
 
+- LSP: stale-seam evidence packets name the executable wire command
+  `ripr.refresh` in `recovery_route`/`recovery_command` instead of the
+  client palette alias, which the server dispatcher rejects. Palette advice in
+  human-readable recovery prose is unchanged (#5274).
+
 ### Changed
 
 - CI: the `ripr init --ci github` workflow downloads the pinned ripr
