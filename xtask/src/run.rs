@@ -30,6 +30,7 @@ const POST_KILL_DRAIN_GRACE: Duration = Duration::from_secs(5);
 /// expires. Two seconds is long enough for SIGKILL and a missed-fork retry,
 /// and short enough that an unkillable leftover becomes an explicit error
 /// instead of a silent timeout.
+#[cfg(unix)]
 const POST_KILL_GROUP_CONFIRM_GRACE: Duration = Duration::from_secs(2);
 
 #[cfg(unix)]
@@ -1540,14 +1541,16 @@ fn spawn_stream_file_writer_channel<T: Read + Send + 'static>(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use super::POST_KILL_GROUP_CONFIRM_GRACE;
     use super::{
-        CapturedOutput, POST_KILL_DRAIN_GRACE, POST_KILL_GROUP_CONFIRM_GRACE, capture_output,
-        capture_output_with_timeout, capture_output_without_timeout,
-        capture_stdout_to_file_with_timeout, command_success_owned, drain_stream_reader_bounded,
-        parse_env_timeout_secs, parse_stat_pgrp, read_stream_with_latency_progress,
-        remove_stdout_capture_temp, run, run_in_dir, run_output, run_output_optional,
-        run_output_owned, run_output_owned_with_envs, run_output_owned_with_timeout, run_owned,
-        spawn_stream_reader_channel, terminate_after_timeout, timeout_was_enforced,
+        CapturedOutput, POST_KILL_DRAIN_GRACE, capture_output, capture_output_with_timeout,
+        capture_output_without_timeout, capture_stdout_to_file_with_timeout, command_success_owned,
+        drain_stream_reader_bounded, parse_env_timeout_secs, parse_stat_pgrp,
+        read_stream_with_latency_progress, remove_stdout_capture_temp, run, run_in_dir, run_output,
+        run_output_optional, run_output_owned, run_output_owned_with_envs,
+        run_output_owned_with_timeout, run_owned, spawn_stream_reader_channel,
+        terminate_after_timeout, timeout_was_enforced,
     };
     use crate::acquire_test_cwd_read_guard;
     use ripr::process_owner::OwnedProcess;
@@ -2421,6 +2424,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(unix)]
     #[test]
     fn post_kill_group_confirm_grace_is_two_seconds() -> Result<(), String> {
         if POST_KILL_GROUP_CONFIRM_GRACE != Duration::from_secs(2) {
