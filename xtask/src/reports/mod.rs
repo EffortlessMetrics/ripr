@@ -47,6 +47,7 @@ mod repo;
 #[cfg(test)]
 mod reverse_authorization;
 mod review_comments;
+mod rust_corpus;
 mod rust_repair_trust;
 mod sarif;
 mod seam_inventory_scaling;
@@ -152,6 +153,7 @@ pub(crate) use repo::{
     repo_seam_inventory,
 };
 pub(crate) use review_comments::ripr_review_comments;
+pub(crate) use rust_corpus::rust_corpus;
 pub(crate) use rust_repair_trust::{rust_repair_trust_report, rust_repair_trust_report_value_at};
 pub(crate) use sarif::sarif_policy;
 #[cfg(test)]

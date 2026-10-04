@@ -1,0 +1,1441 @@
+{
+  "schema_version": "1",
+  "kind": "ripr_rust_corpus_manifest",
+  "corpus_version": "2026-10-04.4",
+  "description": "Pinned real-world Rust repositories shared by ripr evaluation work (scoreboards, verdict checks, CPU/memory/size measurements, mutation spot-checks, first-run tests). Each entry pins one upstream commit and its first parent so every subject has both a whole-repo state and a real upstream diff.",
+  "selection_rule": "For each repository, the pinned commit is the most recent first-parent commit on the default branch (fetched 2026-10-04; archived repositories therefore pin their last qualifying change) whose diff against its first parent changes 1 to 12 non-test .rs files and 6 to 400 Rust lines, preferring behavior fixes over chores. Each repo also records a profile class (good, legacy or common) and the style it represents; the class is a maintainer judgment backed by the probe counts, not a measurement. base_sha is that commit's first parent, so `git diff base_sha sha` is the change a reviewer actually saw.",
+  "limits": [
+    "pins are exact commits; refreshing them is a new corpus_version, never an in-place edit",
+    "probe counts are lexical file counts measured at the pin on 2026-10-04 and describe the subject, not ripr behavior",
+    "fetching is opt-in network (--allow-network) and never runs on the default CI path",
+    "the corpus is Rust-only; Python subjects stay in fixtures/python-eval-sweep/manifest.json",
+    "no repository here is vendored or redistributed; checkouts live under target/"
+  ],
+  "roles": {
+    "representative": "Part of the corpus ripr should work well on; selected by the fast and full tiers.",
+    "integration_target": "A repository ripr intends to integrate with or be used on; selected by the targets tier. No upstream contact is implied."
+  },
+  "tiers": {
+    "targets": {
+      "purpose": "Integration-target readiness runs: the repositories ripr plans to integrate with, regardless of size.",
+      "selects": "repos whose roles include integration_target"
+    },
+    "fast": {
+      "purpose": "Pull-request and quick local runs: small and medium repositories, each under ~25 MB checked out.",
+      "selects": "repos with tier = fast"
+    },
+    "full": {
+      "purpose": "Nightly and release measurement: every repository, including the large monorepos.",
+      "selects": "every repo"
+    }
+  },
+  "stress_categories": [
+    {
+      "id": "proc_macro",
+      "description": "Product code is a proc-macro or derive; behavior is observable only through expansion.",
+      "full_only": false
+    },
+    {
+      "id": "compile_fail_ui_tests",
+      "description": "trybuild-style UI tests whose oracle is compiler stderr.",
+      "full_only": false
+    },
+    {
+      "id": "build_rs",
+      "description": "build.rs scripts that probe the compiler or generate code at build time.",
+      "full_only": false
+    },
+    {
+      "id": "no_std",
+      "description": "#![no_std] or cfg_attr no_std crates.",
+      "full_only": false
+    },
+    {
+      "id": "embedded",
+      "description": "Embedded targets where most tests cannot run on the host.",
+      "full_only": false
+    },
+    {
+      "id": "async_no_std",
+      "description": "async executors and drivers without std.",
+      "full_only": true
+    },
+    {
+      "id": "generated_code",
+      "description": "Large checked-in or build-time generated Rust.",
+      "full_only": false
+    },
+    {
+      "id": "large_library",
+      "description": "Library over ~150k Rust lines.",
+      "full_only": false
+    },
+    {
+      "id": "workspace",
+      "description": "Multi-crate Cargo workspace.",
+      "full_only": false
+    },
+    {
+      "id": "large_workspace",
+      "description": "Workspace with 40 or more Cargo manifests.",
+      "full_only": true
+    },
+    {
+      "id": "large_monorepo",
+      "description": "Repository-scale subject (over ~300k lines or over ~100 manifests); full tier only.",
+      "full_only": true
+    },
+    {
+      "id": "binary_crate",
+      "description": "Primary product is a binary, not a library.",
+      "full_only": false
+    },
+    {
+      "id": "small_crate",
+      "description": "Under ~10k lines; cheapest real-repo smoke subject.",
+      "full_only": false
+    },
+    {
+      "id": "custom_test_macro",
+      "description": "Tests declared through a project-specific macro or attribute (rgtest!, #[cargo_test]).",
+      "full_only": false
+    },
+    {
+      "id": "custom_test_harness",
+      "description": "Test targets with harness = false or a non-libtest runner.",
+      "full_only": false
+    },
+    {
+      "id": "test_macro_rstest",
+      "description": "Tests written with rstest fixtures and cases.",
+      "full_only": false
+    },
+    {
+      "id": "test_macro_proptest",
+      "description": "Tests written with proptest! strategies.",
+      "full_only": false
+    },
+    {
+      "id": "snapshot_tests",
+      "description": "Oracles held in snapshots (insta, snapbox/trycmd, expect-test).",
+      "full_only": false
+    },
+    {
+      "id": "async_tokio",
+      "description": "tokio-based async code with #[tokio::test].",
+      "full_only": false
+    },
+    {
+      "id": "loom_model_tests",
+      "description": "Concurrency model tests behind cfg(loom).",
+      "full_only": true
+    },
+    {
+      "id": "ffi",
+      "description": "extern \"C\" boundaries or bindgen bindings.",
+      "full_only": false
+    },
+    {
+      "id": "bundled_c",
+      "description": "Vendored C sources compiled by build.rs.",
+      "full_only": false
+    },
+    {
+      "id": "edition_2015",
+      "description": "Pre-2018 edition code: no edition key, extern crate, try!.",
+      "full_only": false
+    },
+    {
+      "id": "sparse_tests",
+      "description": "Few tests, inline only, no tests/ directory.",
+      "full_only": false
+    },
+    {
+      "id": "database_layer",
+      "description": "Application code over a SQL database layer (sqlx, diesel).",
+      "full_only": false
+    },
+    {
+      "id": "wasm_target",
+      "description": "wasm32 code with wasm-bindgen tests.",
+      "full_only": true
+    }
+  ],
+  "profile_classes": {
+    "good": "Well-maintained, carefully reviewed code that represents current idioms; ripr should be precise here.",
+    "legacy": "Long-lived code with older idioms, large modules, or thin tests; ripr should stay honest and fail closed rather than guess.",
+    "common": "Ordinary team or community code of the kind most users have; ripr should be useful here without tuning."
+  },
+  "known_gaps": [
+    "no repository that runs tests through cargo-nextest-only configuration",
+    "no Windows-only or cfg(windows)-dominant crate",
+    "no crate whose tests live exclusively in a separate tests crate of another repository"
+  ],
+  "repos": [
+    {
+      "id": "serde",
+      "url": "https://github.com/serde-rs/serde",
+      "tier": "fast",
+      "crate_kind": "library",
+      "license": "MIT OR Apache-2.0",
+      "sha": "6d6e9a11101354ce769a3438a088b6b9305c1863",
+      "base_sha": "cfe669241065984177ff63af8b45058e6e9b499d",
+      "change": {
+        "subject": "Merge pull request #3085 from dtolnay/syn3",
+        "committed": "2026-07-18",
+        "rust_files_changed": 3,
+        "rust_lines_changed": 22
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "good",
+        "style": "Small, heavily reviewed library with a disciplined public API; macro-generated behavior."
+      },
+      "stresses": [
+        "proc_macro",
+        "compile_fail_ui_tests",
+        "build_rs",
+        "no_std"
+      ],
+      "why": "The most depended-on Rust crate and the one most ripr users have in their tree. The pinned change migrates serde_derive to syn 3. serde_derive is a large proc-macro whose behavior is only observable through expanded derives in test_suite; trybuild UI tests and build.rs version probing round it out.",
+      "probe": {
+        "rust_files": 208,
+        "rust_lines": 42636,
+        "cargo_manifests": 7,
+        "build_rs": 4,
+        "proc_macro_crates": 1,
+        "no_std_files": 3,
+        "harness_false_targets": 0,
+        "checkout_mb": 3,
+        "extern_crate_files": 4,
+        "files_over_3000_lines": 3
+      }
+    },
+    {
+      "id": "regex",
+      "url": "https://github.com/rust-lang/regex",
+      "tier": "fast",
+      "crate_kind": "library",
+      "license": "MIT OR Apache-2.0",
+      "sha": "c21ed55e3c61dc373a82ad2b1293031a132c408d",
+      "base_sha": "2b527599eb9eea0dcc288c704584f242f26a5c61",
+      "change": {
+        "subject": "automata: make MAX_POOL_STACKS user configurable",
+        "committed": "2026-08-04",
+        "rust_files_changed": 2,
+        "rust_lines_changed": 110
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "good",
+        "style": "Carefully engineered performance library; large generated tables beside hand-tuned automata."
+      },
+      "stresses": [
+        "generated_code",
+        "large_library",
+        "no_std",
+        "workspace"
+      ],
+      "why": "Already the subject of the evidence-quality benchmark. regex-automata and regex-syntax are ~160k Rust lines with checked-in generated Unicode tables, which stresses file-size handling and seam inventory on code no human edits.",
+      "probe": {
+        "rust_files": 227,
+        "rust_lines": 160878,
+        "cargo_manifests": 8,
+        "build_rs": 0,
+        "proc_macro_crates": 0,
+        "no_std_files": 4,
+        "harness_false_targets": 0,
+        "checkout_mb": 10,
+        "extern_crate_files": 5,
+        "files_over_3000_lines": 10
+      }
+    },
+    {
+      "id": "ripgrep",
+      "url": "https://github.com/BurntSushi/ripgrep",
+      "tier": "fast",
+      "crate_kind": "binary",
+      "license": "Unlicense OR MIT",
+      "sha": "435f59fc4b43af3ab32f34d53fa34978f393fe52",
+      "base_sha": "dffd776a737dc19a48b758dd6a621de113794121",
+      "change": {
+        "subject": "ignore: skip loading unreachable ignore files",
+        "committed": "2026-07-29",
+        "rust_files_changed": 1,
+        "rust_lines_changed": 34
+      },
+      "roles": [
+        "representative",
+        "integration_target"
+      ],
+      "profile": {
+        "class": "good",
+        "style": "Well-factored CLI over reusable library crates; tests through a project macro."
+      },
+      "stresses": [
+        "binary_crate",
+        "custom_test_macro",
+        "workspace"
+      ],
+      "why": "CLI binary plus a workspace of library crates (ignore, globset, grep-*). Integration tests are generated by the rgtest! macro, so a test is not a plain #[test] fn.",
+      "probe": {
+        "rust_files": 110,
+        "rust_lines": 56376,
+        "cargo_manifests": 12,
+        "build_rs": 1,
+        "proc_macro_crates": 0,
+        "no_std_files": 0,
+        "harness_false_targets": 0,
+        "checkout_mb": 4,
+        "extern_crate_files": 2,
+        "files_over_3000_lines": 2
+      }
+    },
+    {
+      "id": "anyhow",
+      "url": "https://github.com/dtolnay/anyhow",
+      "tier": "fast",
+      "crate_kind": "library",
+      "license": "MIT OR Apache-2.0",
+      "sha": "e621bd35ddddcd8b2f39d80b9f5938583571a87d",
+      "base_sha": "917a16932009c1957f53c2ea325663948add2153",
+      "change": {
+        "subject": "Merge pull request #452 from dtolnay/downcast",
+        "committed": "2026-06-25",
+        "rust_files_changed": 2,
+        "rust_lines_changed": 36
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "good",
+        "style": "Tiny, tightly maintained library with unsafe internals and compile-fail tests."
+      },
+      "stresses": [
+        "build_rs",
+        "compile_fail_ui_tests",
+        "no_std",
+        "small_crate"
+      ],
+      "why": "Tiny, ubiquitous library: the fastest real-repo smoke subject. build.rs probes the compiler for backtrace/error_generic_member_access support, and the crate uses unsafe vtable code with trybuild UI tests.",
+      "probe": {
+        "rust_files": 37,
+        "rust_lines": 5857,
+        "cargo_manifests": 2,
+        "build_rs": 1,
+        "proc_macro_crates": 0,
+        "no_std_files": 2,
+        "harness_false_targets": 0,
+        "checkout_mb": 1,
+        "extern_crate_files": 1,
+        "files_over_3000_lines": 0
+      }
+    },
+    {
+      "id": "thiserror",
+      "url": "https://github.com/dtolnay/thiserror",
+      "tier": "fast",
+      "crate_kind": "library",
+      "license": "MIT OR Apache-2.0",
+      "sha": "58037b575a2a5543d0d54a49360554325b49f55a",
+      "base_sha": "72ea49262d6412ccbc08f1696dda8626409e657d",
+      "change": {
+        "subject": "Merge pull request #459 from dtolnay/turbofish",
+        "committed": "2026-09-23",
+        "rust_files_changed": 2,
+        "rust_lines_changed": 48
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "good",
+        "style": "Tiny derive crate whose tests are mostly UI snapshots."
+      },
+      "stresses": [
+        "proc_macro",
+        "compile_fail_ui_tests",
+        "small_crate"
+      ],
+      "why": "Small derive-macro crate where almost all behavior is in proc-macro expansion and ~70 trybuild UI cases; a change in impl/ is only discriminated by compile-fail stderr snapshots.",
+      "probe": {
+        "rust_files": 69,
+        "rust_lines": 5334,
+        "cargo_manifests": 3,
+        "build_rs": 1,
+        "proc_macro_crates": 1,
+        "no_std_files": 3,
+        "harness_false_targets": 0,
+        "checkout_mb": 1,
+        "extern_crate_files": 2,
+        "files_over_3000_lines": 0
+      }
+    },
+    {
+      "id": "heapless",
+      "url": "https://github.com/rust-embedded/heapless",
+      "tier": "fast",
+      "crate_kind": "library",
+      "license": "MIT OR Apache-2.0",
+      "sha": "1be54359c6d7afee5f9d063fe6bc950b379068e2",
+      "base_sha": "b972a65e0a38148057e399dcb936aa6c73e39db1",
+      "change": {
+        "subject": "Merge pull request #680 from sgued/index-map-set-remove",
+        "committed": "2026-07-29",
+        "rust_files_changed": 2,
+        "rust_lines_changed": 110
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "good",
+        "style": "Focused no_std collections crate with const generics and cfg-gated test code."
+      },
+      "stresses": [
+        "no_std",
+        "embedded"
+      ],
+      "why": "Canonical no_std embedded collections crate (#![cfg_attr(not(test), no_std)]); exercises cfg-gated std/test regions and const-generic containers without an async runtime.",
+      "probe": {
+        "rust_files": 37,
+        "rust_lines": 21365,
+        "cargo_manifests": 2,
+        "build_rs": 1,
+        "proc_macro_crates": 0,
+        "no_std_files": 2,
+        "harness_false_targets": 0,
+        "checkout_mb": 1,
+        "extern_crate_files": 1,
+        "files_over_3000_lines": 0
+      }
+    },
+    {
+      "id": "rstest",
+      "url": "https://github.com/la10736/rstest",
+      "tier": "fast",
+      "crate_kind": "library",
+      "license": "MIT OR Apache-2.0",
+      "sha": "509ffef32538324bd75d0addf49ee7e0296bff81",
+      "base_sha": "043437d63956f1c9e3f6284c4463169cb484cd3b",
+      "change": {
+        "subject": "fix: `mut` arguments with `#[trace]`",
+        "committed": "2026-09-06",
+        "rust_files_changed": 2,
+        "rust_lines_changed": 36
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "common",
+        "style": "Ordinary mid-size proc-macro project; typical community crate layout."
+      },
+      "stresses": [
+        "proc_macro",
+        "test_macro_rstest",
+        "workspace"
+      ],
+      "why": "rstest itself: its tests are written with #[rstest] fixtures and cases (119 files), and the product is a proc-macro, so both the code under test and the test syntax are macro-generated.",
+      "probe": {
+        "rust_files": 149,
+        "rust_lines": 21198,
+        "cargo_manifests": 7,
+        "build_rs": 1,
+        "proc_macro_crates": 2,
+        "no_std_files": 1,
+        "harness_false_targets": 0,
+        "checkout_mb": 4,
+        "extern_crate_files": 2,
+        "files_over_3000_lines": 0
+      }
+    },
+    {
+      "id": "proptest",
+      "url": "https://github.com/proptest-rs/proptest",
+      "tier": "fast",
+      "crate_kind": "library",
+      "license": "MIT OR Apache-2.0",
+      "sha": "0d1cc6623fcff0f127a95000a93f277d6867ca05",
+      "base_sha": "b6e5aa0083a477c85b82e896dc0056ff49b79e7f",
+      "change": {
+        "subject": "Merge pull request #657 from matthiasgoergens/duration-arbitrary-overflow",
+        "committed": "2026-09-26",
+        "rust_files_changed": 1,
+        "rust_lines_changed": 27
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "legacy",
+        "style": "Library ported from Hypothesis with older idioms still pervasive (extern crate in 51 files, #[macro_use] in 30)."
+      },
+      "stresses": [
+        "test_macro_proptest",
+        "proc_macro",
+        "custom_test_harness",
+        "workspace"
+      ],
+      "why": "Property-testing library whose own tests use proptest! (33 files) and a derive crate; discriminators are generated strategies, not literal assert_eq!, which is the hard case for oracle-strength classification.",
+      "probe": {
+        "rust_files": 201,
+        "rust_lines": 37565,
+        "cargo_manifests": 8,
+        "build_rs": 0,
+        "proc_macro_crates": 2,
+        "no_std_files": 1,
+        "harness_false_targets": 1,
+        "checkout_mb": 3,
+        "extern_crate_files": 51,
+        "files_over_3000_lines": 1
+      }
+    },
+    {
+      "id": "insta",
+      "url": "https://github.com/mitsuhiko/insta",
+      "tier": "fast",
+      "crate_kind": "library",
+      "license": "Apache-2.0",
+      "sha": "70be034869ec431519919d60102c2e65e7b54bae",
+      "base_sha": "54d0b9691c3a951c0f82e1d6fa8ebe6a7130804d",
+      "change": {
+        "subject": "Serialize unit enum variants used as JSON map keys (#934)",
+        "committed": "2026-08-17",
+        "rust_files_changed": 2,
+        "rust_lines_changed": 41
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "good",
+        "style": "Mid-size library tested through its own snapshot macros."
+      },
+      "stresses": [
+        "snapshot_tests",
+        "workspace"
+      ],
+      "why": "Snapshot-testing library tested with its own assert_*_snapshot! macros (37 files); oracles live in .snap files beside the tests rather than in Rust literals.",
+      "probe": {
+        "rust_files": 56,
+        "rust_lines": 25887,
+        "cargo_manifests": 3,
+        "build_rs": 0,
+        "proc_macro_crates": 0,
+        "no_std_files": 0,
+        "harness_false_targets": 0,
+        "checkout_mb": 4,
+        "extern_crate_files": 0,
+        "files_over_3000_lines": 0
+      }
+    },
+    {
+      "id": "prost",
+      "url": "https://github.com/tokio-rs/prost",
+      "tier": "fast",
+      "crate_kind": "library",
+      "license": "Apache-2.0",
+      "sha": "4104042b04071fa0a73c155ce2df64be8a75c194",
+      "base_sha": "aa0d50eb4a42e54ed260c52b103e16eaaedb6c9a",
+      "change": {
+        "subject": "fix(prost-derive): avoid UTF-8 panic for enumeration names (#1425)",
+        "committed": "2026-07-03",
+        "rust_files_changed": 1,
+        "rust_lines_changed": 10
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "common",
+        "style": "Ordinary codegen workspace mixing edition 2015 to 2024 crates."
+      },
+      "stresses": [
+        "generated_code",
+        "build_rs",
+        "proc_macro",
+        "custom_test_harness",
+        "workspace"
+      ],
+      "why": "Protobuf codegen: build.rs scripts generate Rust from .proto at build time and prost-build carries checked-in expected generated output, plus the prost-derive proc-macro. Tests whose subject only exists after build.rs runs.",
+      "probe": {
+        "rust_files": 105,
+        "rust_lines": 18973,
+        "cargo_manifests": 18,
+        "build_rs": 5,
+        "proc_macro_crates": 1,
+        "no_std_files": 3,
+        "harness_false_targets": 2,
+        "checkout_mb": 2,
+        "extern_crate_files": 4,
+        "files_over_3000_lines": 0
+      }
+    },
+    {
+      "id": "axum",
+      "url": "https://github.com/tokio-rs/axum",
+      "tier": "fast",
+      "crate_kind": "library",
+      "license": "MIT",
+      "sha": "f8b02f22cf10bee707bda19b58265b9e33677535",
+      "base_sha": "83366c2b275599366d0b914b27128141cf4ca936",
+      "change": {
+        "subject": "axum: Don't wrap merged service routes in another Route (#3909)",
+        "committed": "2026-09-30",
+        "rust_files_changed": 2,
+        "rust_lines_changed": 49
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "good",
+        "style": "Modern async library workspace with typed extractors and many examples."
+      },
+      "stresses": [
+        "async_tokio",
+        "workspace",
+        "proc_macro"
+      ],
+      "why": "The common async web-service shape: tower/hyper/tokio, #[tokio::test] in 36 files, axum-macros, and a 61-manifest workspace including examples. Representative of service code ripr users actually write.",
+      "probe": {
+        "rust_files": 301,
+        "rust_lines": 47483,
+        "cargo_manifests": 61,
+        "build_rs": 0,
+        "proc_macro_crates": 1,
+        "no_std_files": 0,
+        "harness_false_targets": 1,
+        "checkout_mb": 5,
+        "extern_crate_files": 1,
+        "files_over_3000_lines": 0
+      }
+    },
+    {
+      "id": "rusqlite",
+      "url": "https://github.com/rusqlite/rusqlite",
+      "tier": "fast",
+      "crate_kind": "library",
+      "license": "MIT",
+      "sha": "08dd1f1e65eb1262edbc72760ccaa9281add0034",
+      "base_sha": "00a9ddf447ed676702f1b19c50526d50414bd5d1",
+      "change": {
+        "subject": "Merge pull request #1899 from gwenn/callback",
+        "committed": "2026-09-06",
+        "rust_files_changed": 6,
+        "rust_lines_changed": 195
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "common",
+        "style": "Ordinary binding crate with a few very large modules (5 files over 3,000 lines)."
+      },
+      "stresses": [
+        "ffi",
+        "build_rs",
+        "bundled_c"
+      ],
+      "why": "FFI bindings to SQLite: libsqlite3-sys has a bindgen/bundled-C build.rs and 23 files with extern \"C\" callbacks. The fast tier's FFI representative; the tree is 22 MB mostly because of the bundled sqlite3.c.",
+      "probe": {
+        "rust_files": 70,
+        "rust_lines": 51239,
+        "cargo_manifests": 3,
+        "build_rs": 1,
+        "proc_macro_crates": 1,
+        "no_std_files": 1,
+        "harness_false_targets": 3,
+        "checkout_mb": 22,
+        "extern_crate_files": 3,
+        "files_over_3000_lines": 5
+      }
+    },
+    {
+      "id": "tokio",
+      "url": "https://github.com/tokio-rs/tokio",
+      "tier": "full",
+      "crate_kind": "library",
+      "license": "MIT",
+      "sha": "11d1ca0948874a75a75c484522c132b0f0897dc4",
+      "base_sha": "86678437268b2a34cc72b3cff6ef2148c75e23af",
+      "change": {
+        "subject": "sync: notify `CancellationToken` descendants after releasing locks (#8556)",
+        "committed": "2026-10-03",
+        "rust_files_changed": 2,
+        "rust_lines_changed": 82
+      },
+      "roles": [
+        "representative",
+        "integration_target"
+      ],
+      "profile": {
+        "class": "good",
+        "style": "Large, carefully reviewed runtime; cfg-heavy and concurrency-tested."
+      },
+      "stresses": [
+        "async_tokio",
+        "workspace",
+        "custom_test_harness",
+        "large_library",
+        "loom_model_tests"
+      ],
+      "why": "The async runtime itself: 185k lines, #[tokio::test] in 184 files, loom model tests behind cfg(loom), and harness = false test targets. Stresses cfg-heavy code and runtime-internal tests.",
+      "probe": {
+        "rust_files": 808,
+        "rust_lines": 185269,
+        "cargo_manifests": 13,
+        "build_rs": 0,
+        "proc_macro_crates": 1,
+        "no_std_files": 0,
+        "harness_false_targets": 18,
+        "checkout_mb": 9,
+        "extern_crate_files": 1,
+        "files_over_3000_lines": 0
+      }
+    },
+    {
+      "id": "clap",
+      "url": "https://github.com/clap-rs/clap",
+      "tier": "full",
+      "crate_kind": "library",
+      "license": "MIT OR Apache-2.0",
+      "sha": "34430008f695f43d37364ce47cce5156febb1c52",
+      "base_sha": "e6adcc21a6b4ea285bd646e977884c8d653841b7",
+      "change": {
+        "subject": "Merge pull request #6526 from bonnefoa/fix-completion-escape",
+        "committed": "2026-09-15",
+        "rust_files_changed": 3,
+        "rust_lines_changed": 12
+      },
+      "roles": [
+        "representative",
+        "integration_target"
+      ],
+      "profile": {
+        "class": "good",
+        "style": "Large, actively maintained library where many tests assert on rendered text."
+      },
+      "stresses": [
+        "proc_macro",
+        "snapshot_tests",
+        "custom_test_harness",
+        "workspace"
+      ],
+      "why": "Large argument-parsing library with clap_derive, snapbox/trycmd snapshot tests, and harness = false UI targets; many tests assert on rendered help text rather than values.",
+      "probe": {
+        "rust_files": 337,
+        "rust_lines": 84668,
+        "cargo_manifests": 8,
+        "build_rs": 0,
+        "proc_macro_crates": 1,
+        "no_std_files": 0,
+        "harness_false_targets": 5,
+        "checkout_mb": 6,
+        "extern_crate_files": 0,
+        "files_over_3000_lines": 3
+      }
+    },
+    {
+      "id": "cargo",
+      "url": "https://github.com/rust-lang/cargo",
+      "tier": "full",
+      "crate_kind": "binary",
+      "license": "MIT OR Apache-2.0",
+      "sha": "f3865b2a4d1acc5276f6b3c67d0e057f4dab3928",
+      "base_sha": "0c38e943f4640efe8ade36f1034fdd8d87c26dcb",
+      "change": {
+        "subject": "fix(config): Proper dotted tuple support with legacy fallback (#17536)",
+        "committed": "2026-09-29",
+        "rust_files_changed": 3,
+        "rust_lines_changed": 135
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "legacy",
+        "style": "Long-lived binary with sprawling ops modules (15 files over 3,000 lines) and a bespoke test harness."
+      },
+      "stresses": [
+        "binary_crate",
+        "custom_test_macro",
+        "snapshot_tests",
+        "large_workspace",
+        "large_monorepo"
+      ],
+      "why": "Cargo: a 345k-line binary with 659 Cargo.toml files (most are test fixtures) and a custom #[cargo_test] attribute used in 544 files; assertions go through snapbox. The worst case for test-harness recognition and for manifest discovery.",
+      "probe": {
+        "rust_files": 1374,
+        "rust_lines": 345240,
+        "cargo_manifests": 659,
+        "build_rs": 6,
+        "proc_macro_crates": 1,
+        "no_std_files": 5,
+        "harness_false_targets": 3,
+        "checkout_mb": 32,
+        "extern_crate_files": 7,
+        "files_over_3000_lines": 15
+      }
+    },
+    {
+      "id": "rust-analyzer",
+      "url": "https://github.com/rust-lang/rust-analyzer",
+      "tier": "full",
+      "crate_kind": "binary",
+      "license": "MIT OR Apache-2.0",
+      "sha": "2466425b2c14591ae86baca9e89a1eff7c208829",
+      "base_sha": "3c1bad2335f752effb78414abcff191b583263d3",
+      "change": {
+        "subject": "Merge pull request #23450 from A4-Tacks/hover-struct-semi",
+        "committed": "2026-10-02",
+        "rust_files_changed": 2,
+        "rust_lines_changed": 70
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "good",
+        "style": "Large, well-structured IDE codebase with inline expect-test snapshots."
+      },
+      "stresses": [
+        "binary_crate",
+        "large_monorepo",
+        "snapshot_tests",
+        "generated_code",
+        "large_workspace"
+      ],
+      "why": "Large binary monorepo (587k lines, 47 crates) tested with expect-test inline snapshots (expect![[...]] in 108 files) and checked-in generated syntax code. The realistic upper bound for an IDE-scale workspace.",
+      "probe": {
+        "rust_files": 1485,
+        "rust_lines": 586906,
+        "cargo_manifests": 47,
+        "build_rs": 5,
+        "proc_macro_crates": 2,
+        "no_std_files": 7,
+        "harness_false_targets": 1,
+        "checkout_mb": 29,
+        "extern_crate_files": 49,
+        "files_over_3000_lines": 23
+      }
+    },
+    {
+      "id": "wasm-bindgen",
+      "url": "https://github.com/wasm-bindgen/wasm-bindgen",
+      "tier": "full",
+      "crate_kind": "library",
+      "license": "MIT OR Apache-2.0",
+      "sha": "ddcea00ff36ad60b4b179d121241c71d44984ea1",
+      "base_sha": "cf18f57f436fae4a5d70fa54e9ba790e5e53b75f",
+      "change": {
+        "subject": "Quote tuple struct field names in the inspectable toJSON (#5349)",
+        "committed": "2026-09-24",
+        "rust_files_changed": 3,
+        "rust_lines_changed": 54
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "legacy",
+        "style": "Older codebase dominated by generated bindings (extern crate in 33 files, 13 files over 3,000 lines) after a maintainer handoff."
+      },
+      "stresses": [
+        "wasm_target",
+        "proc_macro",
+        "ffi",
+        "large_workspace",
+        "generated_code"
+      ],
+      "why": "wasm32 target code: #[wasm_bindgen] in 2,267 files (most of them generated web-sys bindings), wasm_bindgen_test instead of #[test], and a proc-macro/CLI pipeline. Tests that only run under a wasm runner.",
+      "probe": {
+        "rust_files": 2400,
+        "rust_lines": 370564,
+        "cargo_manifests": 62,
+        "build_rs": 5,
+        "proc_macro_crates": 2,
+        "no_std_files": 9,
+        "harness_false_targets": 0,
+        "checkout_mb": 31,
+        "extern_crate_files": 33,
+        "files_over_3000_lines": 13
+      }
+    },
+    {
+      "id": "embassy",
+      "url": "https://github.com/embassy-rs/embassy",
+      "tier": "full",
+      "crate_kind": "library",
+      "license": "MIT OR Apache-2.0",
+      "sha": "ae258ddd1b2a45715aef5ac12a70434b94e96139",
+      "base_sha": "e1e3d93306cda80937d33038cd315b5256b6fd89",
+      "change": {
+        "subject": "Merge pull request #7155 from Gentherm-Public/mspm0-fix-uart-hang",
+        "committed": "2026-10-02",
+        "rust_files_changed": 1,
+        "rust_lines_changed": 239
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "common",
+        "style": "Large embedded monorepo of per-chip HAL code with uneven test coverage."
+      },
+      "stresses": [
+        "no_std",
+        "embedded",
+        "async_no_std",
+        "build_rs",
+        "large_monorepo",
+        "ffi"
+      ],
+      "why": "Embedded async monorepo: 171 manifests, 127 build.rs scripts, 1,235 no_std files across HAL crates for many chips, and very few host-runnable tests. The case where honest output is mostly 'no static path' or 'unknown'.",
+      "probe": {
+        "rust_files": 2335,
+        "rust_lines": 590758,
+        "cargo_manifests": 171,
+        "build_rs": 127,
+        "proc_macro_crates": 1,
+        "no_std_files": 1235,
+        "harness_false_targets": 0,
+        "checkout_mb": 34,
+        "extern_crate_files": 13,
+        "files_over_3000_lines": 6
+      }
+    },
+    {
+      "id": "bevy",
+      "url": "https://github.com/bevyengine/bevy",
+      "tier": "full",
+      "crate_kind": "library",
+      "license": "MIT OR Apache-2.0",
+      "sha": "52c3ec0d5ecec0cdf6f4d2fdfd0895267d64740f",
+      "base_sha": "1fd5d65d02f091dcd869eda79bae2a2016e83017",
+      "change": {
+        "subject": "Support map and set keys in reflection paths (#25968)",
+        "committed": "2026-10-01",
+        "rust_files_changed": 4,
+        "rust_lines_changed": 302
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "common",
+        "style": "Very large, fast-moving community engine (17 files over 3,000 lines, extern crate in 56 files)."
+      },
+      "stresses": [
+        "large_monorepo",
+        "proc_macro",
+        "large_workspace",
+        "custom_test_harness"
+      ],
+      "why": "The largest subject: 664k lines in 1,925 files, 98 manifests, 12 proc-macro crates (ECS derive, reflect), and harness = false targets. The size-limit and memory threads' ceiling case.",
+      "probe": {
+        "rust_files": 1925,
+        "rust_lines": 664268,
+        "cargo_manifests": 98,
+        "build_rs": 0,
+        "proc_macro_crates": 12,
+        "no_std_files": 23,
+        "harness_false_targets": 18,
+        "checkout_mb": 95,
+        "extern_crate_files": 56,
+        "files_over_3000_lines": 17
+      }
+    },
+    {
+      "id": "rust-openssl",
+      "url": "https://github.com/sfackler/rust-openssl",
+      "tier": "fast",
+      "crate_kind": "library",
+      "license": "MIT OR Apache-2.0",
+      "sha": "1bac3e104eb2d4bbcdff94558b9a808bf7464676",
+      "base_sha": "a343a7b320665af2c362aecd96a44f854c0b0468",
+      "change": {
+        "subject": "dsa: reject parameterless public keys and stop minting null BigNumRefs (#2688)",
+        "committed": "2026-09-21",
+        "rust_files_changed": 1,
+        "rust_lines_changed": 127
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "legacy",
+        "style": "Long-lived FFI wrapper built on foreign-type macros; edition 2018 crates and thin tests over C behavior."
+      },
+      "stresses": [
+        "ffi",
+        "build_rs",
+        "proc_macro",
+        "workspace"
+      ],
+      "why": "OpenSSL bindings: openssl-sys build.rs detects and configures the system library, and the safe crate wraps 51 files of extern \"C\" declarations behind foreign-type macros. Long-lived security-critical FFI code whose tests mostly call through to C.",
+      "probe": {
+        "rust_files": 139,
+        "rust_lines": 48653,
+        "cargo_manifests": 6,
+        "build_rs": 3,
+        "proc_macro_crates": 1,
+        "no_std_files": 0,
+        "harness_false_targets": 0,
+        "checkout_mb": 3,
+        "extern_crate_files": 2,
+        "files_over_3000_lines": 1
+      }
+    },
+    {
+      "id": "atuin",
+      "url": "https://github.com/atuinsh/atuin",
+      "tier": "fast",
+      "crate_kind": "binary",
+      "license": "MIT",
+      "sha": "90f590b9235556363ffb5b2c66728f8af3c27afe",
+      "base_sha": "c8d4d7b5d97c13a361dbfbdba9fa5c4d12c7b42a",
+      "change": {
+        "subject": "fix(ai-session): read an unknown parent kind as None (#4301)",
+        "committed": "2026-09-30",
+        "rust_files_changed": 1,
+        "rust_lines_changed": 99
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "common",
+        "style": "Team-written application: services, CLI and storage code with heavy unwrap use outside tests (2,433 non-test call sites)."
+      },
+      "stresses": [
+        "async_tokio",
+        "database_layer",
+        "test_macro_rstest",
+        "test_macro_proptest",
+        "workspace",
+        "binary_crate"
+      ],
+      "why": "Shell-history application with a sync server: tokio service code over sqlx, #[tokio::test] in 98 files, rstest in 208 and proptest in 41. Fills the application-with-database gap, and is the ordinary team-written app code most users have.",
+      "probe": {
+        "rust_files": 475,
+        "rust_lines": 135926,
+        "cargo_manifests": 15,
+        "build_rs": 5,
+        "proc_macro_crates": 0,
+        "no_std_files": 0,
+        "harness_false_targets": 8,
+        "checkout_mb": 14,
+        "extern_crate_files": 1,
+        "files_over_3000_lines": 2
+      }
+    },
+    {
+      "id": "image",
+      "url": "https://github.com/image-rs/image",
+      "tier": "full",
+      "crate_kind": "library",
+      "license": "MIT OR Apache-2.0",
+      "sha": "6812e732343b0eaaeeef90ca751dd0e73430fb15",
+      "base_sha": "a20d0bb34bd4f3d8090331702e7f0063b52878dd",
+      "change": {
+        "subject": "Merge pull request #3105 from image-rs/generic-image-pixels-iterator",
+        "committed": "2026-08-28",
+        "rust_files_changed": 1,
+        "rust_lines_changed": 59
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "legacy",
+        "style": "Long-lived format library with older idioms (extern crate in 26 files, #[macro_use] in 14) and large per-format modules."
+      },
+      "stresses": [
+        "custom_test_harness",
+        "large_library"
+      ],
+      "why": "Image decoding and encoding library with format-specific modules, harness = false reference-image test targets (8), and older idioms still present (extern crate in 26 files, #[macro_use] in 14).",
+      "probe": {
+        "rust_files": 117,
+        "rust_lines": 43653,
+        "cargo_manifests": 3,
+        "build_rs": 0,
+        "proc_macro_crates": 0,
+        "no_std_files": 0,
+        "harness_false_targets": 8,
+        "checkout_mb": 20,
+        "extern_crate_files": 26,
+        "files_over_3000_lines": 1
+      }
+    },
+    {
+      "id": "lemmy",
+      "url": "https://github.com/LemmyNet/lemmy",
+      "tier": "full",
+      "crate_kind": "binary",
+      "license": "AGPL-3.0",
+      "sha": "8d83bcf176e5e455be92861e717729058332e0b0",
+      "base_sha": "f1476db8785600db709e6e01df331e00cffbe340",
+      "change": {
+        "subject": "Mark instance as alive if activity is received from it (#6679)",
+        "committed": "2026-10-01",
+        "rust_files_changed": 2,
+        "rust_lines_changed": 91
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "common",
+        "style": "Application server workspace of the kind most Rust services look like."
+      },
+      "stresses": [
+        "async_tokio",
+        "database_layer",
+        "large_workspace",
+        "binary_crate"
+      ],
+      "why": "Federated forum server: actix-web (171 files) over diesel (141 files) across a 42-manifest workspace. Integration-heavy service code where many tests need a database.",
+      "probe": {
+        "rust_files": 526,
+        "rust_lines": 74364,
+        "cargo_manifests": 42,
+        "build_rs": 2,
+        "proc_macro_crates": 0,
+        "no_std_files": 0,
+        "harness_false_targets": 0,
+        "checkout_mb": 11,
+        "extern_crate_files": 2,
+        "files_over_3000_lines": 0
+      }
+    },
+    {
+      "id": "zola",
+      "url": "https://github.com/getzola/zola",
+      "tier": "full",
+      "crate_kind": "binary",
+      "license": "EUPL-1.2",
+      "sha": "193fb0aa36d309b368c51b025aa698ba817bfc9f",
+      "base_sha": "ee95c47107cd3325d23e4518bcda6eae5c7db5a3",
+      "change": {
+        "subject": "Merge pull request #3255 from getzola/next",
+        "committed": "2026-09-11",
+        "rust_files_changed": 11,
+        "rust_lines_changed": 253
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "common",
+        "style": "Mid-size application with ordinary CLI and rendering code."
+      },
+      "stresses": [
+        "binary_crate",
+        "snapshot_tests",
+        "workspace"
+      ],
+      "why": "Static site generator: a mid-size application workspace with ordinary CLI and rendering code, insta snapshots in some crates, and harness = false targets.",
+      "probe": {
+        "rust_files": 102,
+        "rust_lines": 24565,
+        "cargo_manifests": 13,
+        "build_rs": 2,
+        "proc_macro_crates": 0,
+        "no_std_files": 0,
+        "harness_false_targets": 2,
+        "checkout_mb": 12,
+        "extern_crate_files": 0,
+        "files_over_3000_lines": 0
+      }
+    },
+    {
+      "id": "nushell",
+      "url": "https://github.com/nushell/nushell",
+      "tier": "full",
+      "crate_kind": "binary",
+      "license": "MIT",
+      "sha": "1f2dd1f54a16903f8d39453201cb15e7744e6236",
+      "base_sha": "3100c9d764278bc6285f259917e66423ff0dc7f4",
+      "change": {
+        "subject": "fix(completions): keep menus open on no match, let cancelled pickers close and reopen (#19129)",
+        "committed": "2026-10-01",
+        "rust_files_changed": 3,
+        "rust_lines_changed": 119
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "common",
+        "style": "Large community codebase with uneven style across crates."
+      },
+      "stresses": [
+        "binary_crate",
+        "large_monorepo",
+        "large_workspace",
+        "test_macro_rstest",
+        "custom_test_harness"
+      ],
+      "why": "Shell and language runtime: 455k lines across 48 manifests and 11 binaries, 1,048 files with #[test], rstest in 130. A large, fast-moving community codebase with uneven style across crates.",
+      "probe": {
+        "rust_files": 1945,
+        "rust_lines": 455312,
+        "cargo_manifests": 48,
+        "build_rs": 4,
+        "proc_macro_crates": 2,
+        "no_std_files": 0,
+        "harness_false_targets": 18,
+        "checkout_mb": 26,
+        "extern_crate_files": 18,
+        "files_over_3000_lines": 6
+      }
+    },
+    {
+      "id": "iron",
+      "url": "https://github.com/iron/iron",
+      "tier": "fast",
+      "crate_kind": "library",
+      "license": "MIT",
+      "sha": "2cbd63d67fc7d5f355ec051dda4efcc57b94591a",
+      "base_sha": "e3e8720fa3be21bfde94985013c55503eed5b0b3",
+      "change": {
+        "subject": "Merge branch 'zgtm-fix-query-strings'",
+        "committed": "2019-12-18",
+        "rust_files_changed": 2,
+        "rust_lines_changed": 33
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "legacy",
+        "style": "Archived 2015-edition web framework: no edition key, extern crate in 30 files, try! still in use, and no tests/ directory."
+      },
+      "stresses": [
+        "edition_2015",
+        "sparse_tests",
+        "workspace"
+      ],
+      "why": "Archived web framework pinned at its last qualifying change: 2015-edition code with extern crate and try!, and tests only as inline modules. The legacy service code that still sits in older dependency trees.",
+      "probe": {
+        "rust_files": 44,
+        "rust_lines": 4373,
+        "cargo_manifests": 7,
+        "build_rs": 0,
+        "proc_macro_crates": 0,
+        "no_std_files": 0,
+        "harness_false_targets": 0,
+        "checkout_mb": 1,
+        "extern_crate_files": 30,
+        "files_over_3000_lines": 0
+      }
+    },
+    {
+      "id": "rustc-serialize",
+      "url": "https://github.com/rust-lang-deprecated/rustc-serialize",
+      "tier": "fast",
+      "crate_kind": "library",
+      "license": "MIT OR Apache-2.0",
+      "sha": "f424df87a6e1e3468fe0be727ab5fdeb6f42210b",
+      "base_sha": "563fc46c22a68eb3073374a17722ca695f097c85",
+      "change": {
+        "subject": "Merge pull request #175 from kdomanski/master",
+        "committed": "2016-12-25",
+        "rust_files_changed": 1,
+        "rust_lines_changed": 9
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "legacy",
+        "style": "Deprecated 2015-edition serialization crate with try! and a handful of inline tests; the pre-serde code many old dependency trees still carry."
+      },
+      "stresses": [
+        "edition_2015",
+        "sparse_tests",
+        "small_crate"
+      ],
+      "why": "Deprecated predecessor of serde, 2015 edition, nine source files, four with tests. The smallest legacy subject; a JSON float-parsing fix is the pinned change.",
+      "probe": {
+        "rust_files": 9,
+        "rust_lines": 6794,
+        "cargo_manifests": 1,
+        "build_rs": 0,
+        "proc_macro_crates": 0,
+        "no_std_files": 0,
+        "harness_false_targets": 0,
+        "checkout_mb": 1,
+        "extern_crate_files": 3,
+        "files_over_3000_lines": 1
+      }
+    },
+    {
+      "id": "spotify-tui",
+      "url": "https://github.com/Rigellute/spotify-tui",
+      "tier": "fast",
+      "crate_kind": "binary",
+      "license": "MIT OR Apache-2.0",
+      "sha": "7550d6ebd51c20bc1188540698a38b112927391b",
+      "base_sha": "ecddb5eb4fb441bf46075d44cf12cd2294a251c7",
+      "change": {
+        "subject": "Fix confirmation dialog handling on playlist delete. (#910)",
+        "committed": "2021-11-17",
+        "rust_files_changed": 5,
+        "rust_lines_changed": 26
+      },
+      "roles": [
+        "representative"
+      ],
+      "profile": {
+        "class": "legacy",
+        "style": "Archived 2018-edition terminal application with thin inline tests and no integration suite; ordinary app code that stopped being maintained."
+      },
+      "stresses": [
+        "binary_crate",
+        "sparse_tests"
+      ],
+      "why": "Archived terminal application: one crate, 12k lines, inline tests in 13 files and no tests/ directory. Ordinary app code at the end of its maintenance.",
+      "probe": {
+        "rust_files": 45,
+        "rust_lines": 12095,
+        "cargo_manifests": 1,
+        "build_rs": 0,
+        "proc_macro_crates": 0,
+        "no_std_files": 0,
+        "harness_false_targets": 0,
+        "checkout_mb": 2,
+        "extern_crate_files": 1,
+        "files_over_3000_lines": 0
+      }
+    },
+    {
+      "id": "cargo-mutants",
+      "url": "https://github.com/sourcefrog/cargo-mutants",
+      "tier": "fast",
+      "crate_kind": "binary",
+      "license": "MIT",
+      "sha": "72100ff69c306ea83e0d42ecfa3bbce91943caad",
+      "base_sha": "e838ca19a03f9bdef7e421b39bf42becdfa6d310",
+      "change": {
+        "subject": "Fix Illumos CI (#659)",
+        "committed": "2026-10-01",
+        "rust_files_changed": 1,
+        "rust_lines_changed": 23
+      },
+      "roles": [
+        "representative",
+        "integration_target"
+      ],
+      "profile": {
+        "class": "good",
+        "style": "Actively maintained mutation-testing tool with a broad tests/ suite and insta snapshots."
+      },
+      "stresses": [
+        "binary_crate",
+        "snapshot_tests"
+      ],
+      "why": "Integration target and ripr's runtime counterpart: a mutation-testing CLI with a 12-file tests/ suite and insta snapshots.",
+      "probe": {
+        "rust_files": 182,
+        "rust_lines": 19561,
+        "cargo_manifests": 2,
+        "build_rs": 0,
+        "proc_macro_crates": 1,
+        "no_std_files": 0,
+        "harness_false_targets": 0,
+        "checkout_mb": 4,
+        "extern_crate_files": 0,
+        "files_over_3000_lines": 1
+      }
+    },
+    {
+      "id": "fd",
+      "url": "https://github.com/sharkdp/fd",
+      "tier": "fast",
+      "crate_kind": "binary",
+      "license": "MIT OR Apache-2.0",
+      "sha": "ce97e473ebaec49697c07daa50a7bc2b32f713d2",
+      "base_sha": "2797c4a6d579ebb1bac8a6b3c58ab9db90bed116",
+      "change": {
+        "subject": "Merge pull request #2039 from hexbinoct/fix/min-depth-broken-symlink",
+        "committed": "2026-09-24",
+        "rust_files_changed": 3,
+        "rust_lines_changed": 272
+      },
+      "roles": [
+        "representative",
+        "integration_target"
+      ],
+      "profile": {
+        "class": "good",
+        "style": "Small, well-tested CLI with integration tests that drive the built binary."
+      },
+      "stresses": [
+        "binary_crate",
+        "small_crate"
+      ],
+      "why": "Integration target: a small, widely used CLI whose tests drive the built binary through a test environment helper.",
+      "probe": {
+        "rust_files": 24,
+        "rust_lines": 8649,
+        "cargo_manifests": 1,
+        "build_rs": 0,
+        "proc_macro_crates": 0,
+        "no_std_files": 0,
+        "harness_false_targets": 0,
+        "checkout_mb": 1,
+        "extern_crate_files": 0,
+        "files_over_3000_lines": 1
+      }
+    },
+    {
+      "id": "bat",
+      "url": "https://github.com/sharkdp/bat",
+      "tier": "fast",
+      "crate_kind": "binary",
+      "license": "MIT OR Apache-2.0",
+      "sha": "4987f76709aae3a1c4db723c53874c9ddcb0c4fd",
+      "base_sha": "7323a7514f7601737640e7172be115127d6db08c",
+      "change": {
+        "subject": "Merge pull request #4015 from mikehasa/fix/track-strikethrough-sgr9",
+        "committed": "2026-09-22",
+        "rust_files_changed": 2,
+        "rust_lines_changed": 51
+      },
+      "roles": [
+        "representative",
+        "integration_target"
+      ],
+      "profile": {
+        "class": "good",
+        "style": "Well-tested CLI with a custom build/main.rs build script and many integration tests."
+      },
+      "stresses": [
+        "binary_crate",
+        "build_rs"
+      ],
+      "why": "Integration target: a widely used CLI with a custom build script path (build/main.rs) and 15 integration test files.",
+      "probe": {
+        "rust_files": 67,
+        "rust_lines": 18359,
+        "cargo_manifests": 1,
+        "build_rs": 0,
+        "proc_macro_crates": 0,
+        "no_std_files": 0,
+        "harness_false_targets": 0,
+        "checkout_mb": 12,
+        "extern_crate_files": 0,
+        "files_over_3000_lines": 1
+      }
+    }
+  ]
+}

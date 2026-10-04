@@ -650,6 +650,15 @@ reason = "Controlled Rust workspace used by the SPEC-0123 targeted-rerun benchma
 covered_by = ["cargo xtask targeted-rerun-benchmark", "cargo xtask check-file-policy"]
 
 [[allow]]
+glob = "benchmarks/rust_corpus/manifest.json"
+kind = "benchmark_fixture"
+owner = "eval-corpus"
+surface = "fixtures"
+classification = "fixture"
+reason = "Pinned real-repository Rust corpus manifest shared by evaluation lanes; pins exact upstream commits and never vendors their source."
+covered_by = ["cargo xtask rust-corpus check", "cargo xtask check-file-policy"]
+
+[[allow]]
 glob = "tests/fixtures/verification/**/*.json"
 kind = "verification_contract_fixture"
 owner = "contracts"
