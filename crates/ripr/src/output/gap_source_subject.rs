@@ -274,6 +274,94 @@ mod tests {
         assert_eq!(subject_relative_path(root, "/elsewhere/src/lib.rs"), None);
         assert_eq!(subject_relative_path(root, "../src/lib.rs"), None);
         assert_eq!(subject_relative_path(root, "  "), None);
+        assert_eq!(subject_relative_path(root, ""), None);
+        assert_eq!(subject_relative_path(root, "not a path"), None);
+    }
+
+    #[test]
+    fn subject_relative_path_preserves_whitespace_identity() {
+        let root = Path::new("/repo");
+        assert_eq!(
+            subject_relative_path(root, " leading.py"),
+            Some(" leading.py".to_string())
+        );
+        assert_eq!(
+            subject_relative_path(root, "leading.py"),
+            Some("leading.py".to_string())
+        );
+        assert_eq!(
+            subject_relative_path(root, "leading.py "),
+            Some("leading.py ".to_string())
+        );
+        assert_eq!(
+            subject_relative_path(root, " spaced/discount.py"),
+            Some(" spaced/discount.py".to_string())
+        );
+        assert_eq!(
+            subject_relative_path(root, "foo bar.py"),
+            Some("foo bar.py".to_string())
+        );
+        assert_eq!(
+            subject_relative_path(root, " quoted\t.py"),
+            Some(" quoted\t.py".to_string())
+        );
+        assert_eq!(
+            subject_relative_path(root, " leading.py::discount_threshold"),
+            Some(" leading.py".to_string())
+        );
+        assert_eq!(
+            subject_relative_path(root, "./ spaced\\file.rs"),
+            Some(" spaced/file.rs".to_string())
+        );
+        assert_eq!(
+            subject_relative_path(root, "/repo/ leading.py"),
+            Some(" leading.py".to_string())
+        );
+        assert_ne!(
+            subject_relative_path(root, " leading.py"),
+            subject_relative_path(root, "leading.py")
+        );
+    }
+
+    #[test]
+    fn subject_relative_path_rejects_prefix_and_root_escape() {
+        let root = Path::new("/repo");
+        assert_eq!(subject_relative_path(root, "/outside.py"), None);
+        assert_eq!(subject_relative_path(root, "../outside.py"), None);
+        // `check-local-context` forbids contiguous drive-letter path literals.
+        let drive_relative = format!("{}:outside.py", 'C');
+        let drive_absolute = format!("{}:/outside.py", 'C');
+        if cfg!(windows) {
+            assert_eq!(
+                subject_relative_path(root, &drive_relative),
+                None,
+                "drive-relative identity must not join outside the workspace"
+            );
+            assert_eq!(subject_relative_path(root, &drive_absolute), None);
+            assert_eq!(
+                check_source_subject(
+                    root,
+                    Some(&json!({
+                        "digest_algorithm": "sha256",
+                        "files": [{"path": drive_relative, "digest": null}]
+                    })),
+                    &BTreeSet::new()
+                ),
+                SourceSubjectCheck::Unverifiable("source_subject_malformed"),
+                "currentness must fail closed before reading a prefixed stamp"
+            );
+        } else {
+            assert_eq!(
+                subject_relative_path(root, &drive_relative).as_deref(),
+                Some(drive_relative.as_str()),
+                "a drive-letter lookalike is an ordinary Unix filename"
+            );
+            assert_eq!(
+                subject_relative_path(root, &drive_absolute).as_deref(),
+                Some(drive_absolute.as_str()),
+                "a drive-absolute lookalike is a Unix directory named like a drive"
+            );
+        }
     }
 
     #[test]
@@ -296,6 +384,83 @@ mod tests {
             check_source_subject(&root, Some(&stamp), &paths),
             SourceSubjectCheck::Stale("src/lib.rs".to_string())
         );
+        std::fs::remove_dir_all(&root).map_err(|err| err.to_string())
+    }
+
+    #[test]
+    fn source_subject_keeps_whitespace_paths_and_stales_only_the_changed_identity()
+    -> Result<(), String> {
+        let root = temp_root("whitespace-identity")?;
+        let spaced = " leading.py";
+        let plain = "leading.py";
+        let nested = " spaced/discount.py";
+        std::fs::create_dir_all(root.join(" spaced")).map_err(|err| err.to_string())?;
+        std::fs::write(root.join(spaced), "def spaced():\n    return 1\n")
+            .map_err(|err| err.to_string())?;
+        std::fs::write(root.join(plain), "def plain():\n    return 2\n")
+            .map_err(|err| err.to_string())?;
+        std::fs::write(root.join(nested), "def nested():\n    return 3\n")
+            .map_err(|err| err.to_string())?;
+
+        let paths = BTreeSet::from([spaced.to_string(), plain.to_string(), nested.to_string()]);
+        let spaced_only = BTreeSet::from([spaced.to_string()]);
+        let stamp = stamp_value(&root, &paths)?;
+        let spaced_stamp = stamp_value(&root, &spaced_only)?;
+        let stamped_paths: Vec<&str> = stamp["files"]
+            .as_array()
+            .ok_or("stamp files missing")?
+            .iter()
+            .filter_map(|file| file["path"].as_str())
+            .collect();
+        assert_eq!(
+            stamped_paths,
+            vec![spaced, nested, plain],
+            "BTreeSet order is lexical; identities must stay exact"
+        );
+        assert_ne!(stamp["files"][0]["digest"], stamp["files"][2]["digest"]);
+        assert_eq!(
+            stamp["files"][0]["digest"].as_str(),
+            source_file_digest(&root, spaced)?.as_deref()
+        );
+        assert_eq!(
+            stamp["files"][2]["digest"].as_str(),
+            source_file_digest(&root, plain)?.as_deref()
+        );
+        assert_eq!(
+            check_source_subject(&root, Some(&stamp), &paths),
+            SourceSubjectCheck::Current
+        );
+
+        std::fs::write(root.join(plain), "def plain():\n    return 9\n")
+            .map_err(|err| err.to_string())?;
+        assert_eq!(
+            check_source_subject(&root, Some(&spaced_stamp), &spaced_only),
+            SourceSubjectCheck::Current,
+            "editing the namesake must not stale the whitespace-bearing subject"
+        );
+        assert_eq!(
+            check_source_subject(&root, Some(&stamp), &paths),
+            SourceSubjectCheck::Stale(plain.to_string())
+        );
+
+        std::fs::write(root.join(plain), "def plain():\n    return 2\n")
+            .map_err(|err| err.to_string())?;
+        std::fs::write(root.join(spaced), "def spaced():\n    return 8\n")
+            .map_err(|err| err.to_string())?;
+        assert_eq!(
+            check_source_subject(&root, Some(&stamp), &paths),
+            SourceSubjectCheck::Stale(spaced.to_string())
+        );
+
+        let named = json!({
+            "file": spaced,
+            "related_test": format!("{plain}::discount_threshold"),
+            "nested": {"path": nested}
+        });
+        let mut collected = BTreeSet::new();
+        named_files_in_value(&root, &named, &mut collected);
+        assert_eq!(collected, paths);
+
         std::fs::remove_dir_all(&root).map_err(|err| err.to_string())
     }
 
@@ -502,6 +667,19 @@ mod tests {
         assert_eq!(
             derive_source_subject(None, root, root, &BTreeSet::new()).map(|s| s.files.len()),
             Ok(0)
+        );
+
+        let whitespace = json!({
+            "digest_algorithm": "sha256",
+            "files": [{"path": " leading.py", "digest": "sha256:aa"}]
+        });
+        let required_whitespace = BTreeSet::from([" leading.py".to_string()]);
+        let derived_whitespace =
+            derive_source_subject(Some(&whitespace), root, root, &required_whitespace)?;
+        assert_eq!(derived_whitespace.files[0].path, " leading.py");
+        assert_eq!(
+            derived_whitespace.files[0].digest.as_deref(),
+            Some("sha256:aa")
         );
         Ok(())
     }

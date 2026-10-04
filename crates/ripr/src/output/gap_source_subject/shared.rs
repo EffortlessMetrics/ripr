@@ -65,12 +65,10 @@ pub(crate) fn absolute_root(root: &Path) -> PathBuf {
 ///   and the canonical root, so `--root .` and symlinked roots both work);
 /// - a relative path is root-relative, except that ripr's own display form
 ///   `<relative root>/<file>` is recognized when `root` is itself relative;
-/// - traversal (`..`) is rejected.
+/// - traversal (`..`) is rejected;
+/// - whitespace in a filename or directory is identity, not padding (#5128).
 pub(crate) fn subject_relative_path(root: &Path, raw: &str) -> Option<String> {
-    let file = raw.split_once("::").map_or(raw, |(file, _)| file).trim();
-    if file.is_empty() || file.chars().any(char::is_whitespace) {
-        return None;
-    }
+    let file = subject_named_file(raw)?;
     let normalized = file.replace('\\', "/");
     let path = Path::new(&normalized);
     let relative = if path.is_absolute() {
@@ -78,10 +76,26 @@ pub(crate) fn subject_relative_path(root: &Path, raw: &str) -> Option<String> {
     } else {
         strip_relative_root_prefix(root, path)
     };
+    relative_stamp_path(&relative)
+}
+
+/// File part of a `path::test_name` selector, or the whole token when it is
+/// already a path. Paths are filesystem identities: surrounding whitespace is
+/// kept, because trimming can name a different existing file (#5128).
+fn subject_named_file(raw: &str) -> Option<&str> {
+    let file = raw.split_once("::").map_or(raw, |(file, _)| file);
+    (!file.is_empty()).then_some(file)
+}
+
+/// Repo-relative stamp spelling: `/` separators, last segment has an
+/// extension, and parent/root/prefix components are rejected. Whitespace in a
+/// `Normal` segment is kept; slash-splitting would drop Windows prefix and
+/// rooted-path rejection (#5128).
+fn relative_stamp_path(relative: &Path) -> Option<String> {
     let mut parts = Vec::new();
     for component in relative.components() {
         match component {
-            Component::Normal(part) => parts.push(part.to_string_lossy().into_owned()),
+            Component::Normal(part) => parts.push(part.to_str()?.to_string()),
             Component::CurDir => {}
             Component::ParentDir | Component::RootDir | Component::Prefix(_) => return None,
         }

@@ -16454,7 +16454,11 @@ top-level `source_subject`:
   by `path`. `path` is repo-relative with `/` separators and no `.` or `..`
   segments; a `path::test_name` selector contributes its file part, and a
   string whose last segment has no extension (a bare test or observer name) is
-  not a file. An absolute path counts when it lies under the root, which is
+  not a file. Whitespace in a filename or directory is identity, not padding:
+  ` leading.py` stays distinct from `leading.py`, and a Git-quoted path is not
+  trimmed or omitted. Parent, root, and prefix components stay rejected, so a
+  drive-relative or rooted spelling cannot collapse onto a workspace-relative
+  stamp. An absolute path counts when it lies under the root, which is
   resolved to an absolute path first. `digest` is `"sha256:<hex>"` of the file
   bytes, or `null` when the file did not exist.
 

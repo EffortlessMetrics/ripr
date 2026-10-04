@@ -541,6 +541,105 @@ fn git_quoted_python_path_preserves_tab_identity() -> TestResult {
 }
 
 #[test]
+fn check_json_source_subject_preserves_whitespace_path_identity() -> TestResult {
+    use sha2::{Digest, Sha256};
+    let root = git_path_fixture(
+        "python-source-subject-space-paths",
+        &["leading.py", " leading.py", " spaced/discount.py"],
+        SOURCE,
+    )?;
+    fs::write(root.join(" leading.py"), format!("{SOURCE}# spaced\n"))?;
+    fs::write(root.join("leading.py"), format!("{SOURCE}# plain\n"))?;
+    fs::write(
+        root.join(" spaced/discount.py"),
+        format!("{SOURCE}# nested\n"),
+    )?;
+    let present = json(&root)?;
+    assert_eq!(present["summary"]["findings"], 3, "{present}");
+    let probe_files: Vec<&str> = present["findings"]
+        .as_array()
+        .ok_or("missing findings")?
+        .iter()
+        .filter_map(|finding| finding["probe"]["file"].as_str())
+        .collect();
+    assert!(probe_files.contains(&" leading.py"), "{probe_files:?}");
+    assert!(probe_files.contains(&"leading.py"), "{probe_files:?}");
+    assert!(
+        probe_files.contains(&" spaced/discount.py"),
+        "{probe_files:?}"
+    );
+
+    let files = present["source_subject"]["files"]
+        .as_array()
+        .ok_or("missing source_subject.files")?;
+    let stamped: Vec<(&str, Option<&str>)> = files
+        .iter()
+        .map(|file| (file["path"].as_str().unwrap_or(""), file["digest"].as_str()))
+        .collect();
+    let paths: Vec<&str> = stamped.iter().map(|(path, _)| *path).collect();
+    assert!(paths.contains(&" leading.py"), "{stamped:?}");
+    assert!(paths.contains(&"leading.py"), "{stamped:?}");
+    assert!(paths.contains(&" spaced/discount.py"), "{stamped:?}");
+    assert!(
+        !paths.contains(&"spaced/discount.py"),
+        "trimmed directory identity must not replace the spaced path: {stamped:?}"
+    );
+
+    let digest_of = |relative: &str| -> TestResult<String> {
+        Ok(format!(
+            "sha256:{:x}",
+            Sha256::digest(fs::read(root.join(relative))?)
+        ))
+    };
+    let spaced = stamped
+        .iter()
+        .find(|(path, _)| *path == " leading.py")
+        .ok_or("missing spaced stamp")?;
+    let plain = stamped
+        .iter()
+        .find(|(path, _)| *path == "leading.py")
+        .ok_or("missing plain stamp")?;
+    let nested = stamped
+        .iter()
+        .find(|(path, _)| *path == " spaced/discount.py")
+        .ok_or("missing nested stamp")?;
+    assert_ne!(
+        spaced.1, plain.1,
+        "distinct contents must not share a digest"
+    );
+    let spaced_digest = digest_of(" leading.py")?;
+    let plain_digest = digest_of("leading.py")?;
+    let nested_digest = digest_of(" spaced/discount.py")?;
+    assert_eq!(spaced.1, Some(spaced_digest.as_str()));
+    assert_eq!(plain.1, Some(plain_digest.as_str()));
+    assert_eq!(nested.1, Some(nested_digest.as_str()));
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn check_json_source_subject_preserves_git_quoted_tab_path() -> TestResult {
+    use sha2::{Digest, Sha256};
+    let path = " quoted\t.py";
+    let root = git_path_fixture("python-source-subject-tab-path", &[path], SOURCE)?;
+    fs::write(root.join(path), format!("{SOURCE}# tab\n"))?;
+    let present = json(&root)?;
+    assert_eq!(present["summary"]["findings"], 1, "{present}");
+    let files = present["source_subject"]["files"]
+        .as_array()
+        .ok_or("missing source_subject.files")?;
+    let stamped = files
+        .iter()
+        .find(|file| file["path"].as_str() == Some(path))
+        .ok_or_else(|| format!("missing tab stamp in {files:?}"))?;
+    let digest = format!("sha256:{:x}", Sha256::digest(fs::read(root.join(path))?));
+    assert_eq!(stamped["digest"].as_str(), Some(digest.as_str()));
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 fn mixed_python_paths_keep_whitespace_distinct_from_available_sibling() -> TestResult {
     let root = git_path_fixture(
         "python-distinct-space-paths",

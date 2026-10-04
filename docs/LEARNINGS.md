@@ -3,6 +3,21 @@
 This log captures repo knowledge that should survive individual PRs and chat
 sessions. It is intentionally short and actionable.
 
+## 2026-10-03: source-subject stamps must not trim path identity (#5128)
+
+`subject_relative_path` used to `trim()` a named file and then reject leftover
+whitespace. Valid paths such as ` leading.py` collapsed onto `leading.py`; a
+directory like ` spaced/discount.py` was rewritten; Git-quoted tab names were
+dropped. The currentness consumer then treated a correctly spelled whitespace
+stamp as `source_subject_malformed`.
+
+Keep filesystem identity in the source-subject owner. Split `path::test_name`
+selectors, but do not trim the file part or reject interior whitespace. Walk
+`Path` components so parent, root, and prefix segments stay rejected; a
+slash-split rewrite dropped Windows drive-relative and rooted identities.
+Paths remain the limitation-path rule: they are identities, not prose. Do not
+add a second filesystem authority in a renderer or `lsp/diagnostics.rs`.
+
 ## 2026-10-03: `Path::is_dir()` is not a missing-path probe (#5101)
 
 `Path::is_dir()` is false for a missing path and for an existing file. Doctor
