@@ -217,8 +217,10 @@ pub(crate) fn render_human_triage(
         // to change something, not to provide a scope.
         HumanTriageState::MissingScope => {
             if let Some(base) = output.base.as_deref() {
+                // "tracked" (#5258): `--worktree` diffs tracked edits only,
+                // so the line must not promise it covers untracked files.
                 out.push_str(&format!(
-                    "  Safe next action: no changed files were compared against `{base}`; commit a change and re-run, or add `--worktree` to include uncommitted edits.\n"
+                    "  Safe next action: no changed files were compared against `{base}`; commit a change and re-run, or add `--worktree` to include uncommitted tracked edits.\n"
                 ));
             } else {
                 out.push_str(

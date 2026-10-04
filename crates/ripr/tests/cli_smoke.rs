@@ -17157,10 +17157,12 @@ fn check_default_base_with_clean_worktree_keeps_no_scope_note_only() -> Result<(
         ));
     }
     // Clean-install walk (0.11): Start-here must name the flag that analyzes
-    // uncommitted edits, not only "make a change".
-    if !stdout.contains("add `--worktree` to include uncommitted edits") {
+    // uncommitted edits, not only "make a change". "tracked" per #5258: the
+    // runtime wording must match `check --help` and cannot promise that
+    // `--worktree` covers untracked files.
+    if !stdout.contains("add `--worktree` to include uncommitted tracked edits") {
         return Err(format!(
-            "empty-range Start-here must name `--worktree`; got:\n{stdout}"
+            "empty-range Start-here must name `--worktree` for tracked edits; got:\n{stdout}"
         ));
     }
     if !stdout.contains("compared base was `main`") || stdout.contains("--base origin/main") {

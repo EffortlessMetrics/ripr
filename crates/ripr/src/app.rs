@@ -285,6 +285,13 @@ pub struct CheckOutput {
     /// evidence. An empty result in this state does NOT mean they are
     /// covered. See RIPR-SPEC-0112.
     pub unanalyzed_working_tree: bool,
+    /// The untracked subset of the unanalyzed working-tree state (#5258):
+    /// routed source/test files that are neither committed nor staged, so
+    /// neither the committed diff nor `--worktree` analyzes them. Lets the
+    /// human/GitHub notes name the real repair (staging) instead of offering
+    /// `--worktree` for files it cannot see. Cleared together with
+    /// `unanalyzed_working_tree` for every non-committed-history mode.
+    pub(crate) untracked_working_tree_source_paths: Vec<String>,
     /// Suppression-policy application outcome (#1441). `Some` only when the
     /// caller passed `--suppression-policy`; findings named here stay in
     /// `findings` (visible, marked suppressed by renderers) while the

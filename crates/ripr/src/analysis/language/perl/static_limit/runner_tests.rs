@@ -130,6 +130,7 @@ fn perl_static_limit_missing_runner_keeps_observation() -> Result<(), String> {
         language_runs: Vec::new(),
         no_scope_provided: false,
         unanalyzed_working_tree: false,
+        untracked_working_tree_source_paths: Vec::new(),
         suppression: None,
         partial_scope: None,
     };

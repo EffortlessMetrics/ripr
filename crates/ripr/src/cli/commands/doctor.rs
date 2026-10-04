@@ -106,6 +106,19 @@ pub(in crate::cli) fn doctor(args: &[String]) -> Result<(), String> {
     ok &= report_doctor_core_check(core_report, "root_directory");
     ok &= report_doctor_core_check(core_report, "cargo_toml");
     ok &= report_doctor_core_check(core_report, "git_repository");
+    // #5259: advisory (never fails the run) — the work tree is real, but a
+    // repository with no commits cannot produce the diff base the default
+    // first command needs, so the state must be visible on this screen.
+    // Printed only when the evaluation recorded it: the check exists exactly
+    // when HEAD is unborn, and its absence in a normal repository is the
+    // healthy case, not a missing core check.
+    if core_report
+        .checks
+        .iter()
+        .any(|check| check.name == "git_head")
+    {
+        ok &= report_doctor_core_check(core_report, "git_head");
+    }
     report_config_status(&root, core_evaluation.config, &mut ok);
     report_cache_status(&root);
     report_generated_workflow_status(&root);
@@ -302,6 +315,9 @@ fn print_doctor_start_here_guidance(root: &Path, report: &output::doctor::Doctor
         output::doctor::DoctorFirstCommand::SavedDiff => {}
         output::doctor::DoctorFirstCommand::MissingRoot
         | output::doctor::DoctorFirstCommand::OutsideGit => {}
+        // #5259: the recommended line above already names the commit-first
+        // repair; the advisory `git_head` check line carries the same state.
+        output::doctor::DoctorFirstCommand::UnbornHead => {}
     }
     // A detected preview language that is not enabled is skipped by `ripr
     // check`, so in a TypeScript-only repository the recommended command is a

@@ -912,6 +912,9 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
         && !format.is_repo_scope();
     if !committed_history_diff {
         output.unanalyzed_working_tree = false;
+        // #5258: the untracked list drives the same disclosure family; a
+        // non-committed-history mode must not inherit it either.
+        output.untracked_working_tree_source_paths.clear();
     }
     // A `--worktree` run carries `--worktree` into its drill-in commands, so
     // `explain` and `context` analyze the same uncommitted edits and the

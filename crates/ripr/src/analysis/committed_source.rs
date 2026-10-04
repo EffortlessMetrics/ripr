@@ -49,6 +49,10 @@ pub(crate) struct CommittedSourceOverlay {
     /// Neither exists at `HEAD`, but discovery walks the disk without
     /// `.gitignore`, so both read as absent unless tracked.
     ignored: IgnoredPaths,
+    /// Untracked routed paths (#5258), kept beside the dirty set so the
+    /// output layer can tell the `--worktree`-visible edits from the files
+    /// no flag covers.
+    untracked: BTreeSet<String>,
 }
 
 #[derive(Debug, Default)]
@@ -90,6 +94,16 @@ impl CommittedSourceOverlay {
         self.entries.keys().map(String::as_str)
     }
 
+    /// Dirty routed paths that are untracked (neither committed nor staged,
+    /// `git status --porcelain` `??` records), root-relative and
+    /// `/`-separated, in order. #5258: these are exactly the paths neither
+    /// the committed diff nor `--worktree` can analyze, so the
+    /// uncommitted-edits note must name them instead of offering
+    /// `--worktree` as their remedy.
+    pub(crate) fn untracked_source_paths(&self) -> Vec<String> {
+        self.untracked.iter().cloned().collect()
+    }
+
     /// Dirty paths that exist at `HEAD` but are missing from the working
     /// tree. Discovery walks the working tree, so these cannot be found and
     /// are disclosed instead of silently dropped.
@@ -124,6 +138,7 @@ impl CommittedSourceOverlay {
             root: root.to_path_buf(),
             canonical_root: root.canonicalize().ok(),
             ignored: IgnoredPaths::default(),
+            untracked: BTreeSet::new(),
             entries: entries
                 .into_iter()
                 .map(|(path, bytes)| (path.to_string(), bytes.map(<[u8]>::to_vec)))
@@ -289,6 +304,11 @@ pub(crate) fn probe(
             .collect(),
         tracked_within: BTreeSet::new(),
     };
+    // #5258: untracked routed paths stay in the dirty set (they have no
+    // `HEAD` content, so the overlay reads them absent) and are also named
+    // here, so the output layer can distinguish them from the edits
+    // `--worktree` covers.
+    let untracked = below_root(records.untracked);
     if dirty.is_empty() && ignored.files.is_empty() && ignored.directories.is_empty() {
         return Ok(None);
     }
@@ -333,6 +353,7 @@ pub(crate) fn probe(
         canonical_root: root.canonicalize().ok(),
         entries,
         ignored,
+        untracked,
     }))
 }
 
@@ -373,6 +394,10 @@ struct StatusRecords {
     /// Rename and copy records carry a second (original) path; both sides
     /// are dirty.
     dirty: Vec<String>,
+    /// The subset of `dirty` that is untracked (`??` records; #5258):
+    /// neither the committed diff nor `--worktree` analyzes these, so the
+    /// uncommitted-edits note must not offer `--worktree` as their remedy.
+    untracked: Vec<String>,
     ignored_files: Vec<String>,
     /// Ignored directories, without the trailing `/`.
     ignored_directories: Vec<String>,
@@ -411,7 +436,13 @@ fn parse_porcelain_z(bytes: &[u8]) -> Result<StatusRecords, String> {
             continue;
         }
         if routed(path) {
-            out.dirty.push(utf8_path(path)?);
+            let named = utf8_path(path)?;
+            // #5258: `??` marks an untracked path — no adapter-routed read
+            // of it can be covered by either diff mode.
+            if *index_status == b'?' {
+                out.untracked.push(named.clone());
+            }
+            out.dirty.push(named);
         }
         if let Some(original) = original.filter(|original| routed(original)) {
             out.dirty.push(utf8_path(original)?);

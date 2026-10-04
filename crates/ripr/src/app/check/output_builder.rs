@@ -25,6 +25,9 @@ pub(super) fn check_output_from_analysis(
         // RIPR-SPEC-0112: the note fires only when uncommitted edits touched
         // a source or test file, i.e. when `--worktree` would differ.
         unanalyzed_working_tree: !analysis.uncommitted_source_paths.is_empty(),
+        // #5258: name the untracked subset so the note can offer the real
+        // repair; `--worktree` covers only the tracked remainder.
+        untracked_working_tree_source_paths: analysis.untracked_source_paths,
         suppression: None,
         partial_scope: analysis.partial_scope,
     }

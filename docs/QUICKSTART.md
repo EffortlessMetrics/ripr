@@ -247,7 +247,7 @@ PR-facing packet. It does not run analysis or repair the code. See
 | --- | --- |
 | Cargo installation fails. | Check the first Cargo error and `rustc --version` (Rust 1.95 or newer). Fix the reported build or download problem before retrying. |
 | ripr is installed, but repository setup fails. | Run `ripr doctor` and inspect its individual capability results. |
-| `check` sees no change after an edit. | In a development build, use `--worktree` for staged and unstaged edits. Otherwise inspect a committed change using your installed version's supported options. |
+| `check` sees no change after an edit. | In a development build, use `--worktree` for staged and unstaged tracked edits. Otherwise inspect a committed change using your installed version's supported options. |
 | The wrong base is selected. | Use `--base REF` with an existing reference in this repository. |
 | Configuration is rejected. | Run `ripr config validate` and fix the named setting. Configuration is optional, but an invalid file is not ignored. |
 | Editor diagnostics are missing or stale. | Check `ripr: Show Status`, save the file, and use the extension's refresh action. |

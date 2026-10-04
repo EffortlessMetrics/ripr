@@ -56,6 +56,10 @@ pub(crate) enum DoctorFirstCommand {
     /// `git_repository` failed while git itself runs: the repository-free scan
     /// is the only route that can run here.
     OutsideGit,
+    /// `git_repository` passed but `HEAD` is unborn (#5259): the repository
+    /// has no commit to diff against, so every diff-scoped first command
+    /// fails; name the commit-first path and keep the repository-free scan.
+    UnbornHead,
     SavedDiff,
     Worktree,
     DefaultCheck,
@@ -109,20 +113,28 @@ impl DoctorFirstCommand {
             Self::SavedDiff
         } else if !passed("git_repository") {
             Self::OutsideGit
+        } else if report
+            .checks
+            .iter()
+            .any(|check| check.name == "git_head" && check.status == DoctorCheckStatus::Advisory)
+        {
+            // #5259: the work tree is real but `HEAD` is unborn, so no base
+            // can resolve; the diff-scoped first commands would all fail.
+            Self::UnbornHead
         } else {
             Self::resolve(true, dirty_worktree)
         }
     }
 
-    /// The runnable `ripr check` form, or `None` for the state variant, which
-    /// recommends no git-backed command; `recommendation_lines_for` renders
-    /// that directly.
+    /// The runnable `ripr check` form, or `None` for the state variants,
+    /// which recommend no git-backed command; `recommendation_lines_for`
+    /// renders those directly.
     pub(crate) fn command_line(self) -> Option<&'static str> {
         match self {
             Self::SavedDiff => Some(Self::SAVED_DIFF_LINE),
             Self::Worktree => Some(Self::WORKTREE_LINE),
             Self::DefaultCheck => Some(Self::DEFAULT_LINE),
-            Self::MissingRoot | Self::OutsideGit => None,
+            Self::MissingRoot | Self::OutsideGit | Self::UnbornHead => None,
         }
     }
 
@@ -198,6 +210,46 @@ impl DoctorFirstCommand {
                             lines.push(format!(
                                 "- Recommended first command (PowerShell): fix the Git check \
                                  above, or scan without Git history: `{powershell}`"
+                            ));
+                        }
+                        lines
+                    }
+                    Err(error) => Self::recommendation_lines(Err(error)),
+                }
+            }
+            Self::UnbornHead => {
+                use crate::agent::loop_commands::shell_arg;
+                // #5259: the diff has no base until the first commit exists,
+                // so the line names the commit-first path (the same repair
+                // the check-time default-base error states) and keeps the
+                // repository-free scan runnable now. The scan's root follows
+                // the same physical-root rule as the other recommendations.
+                let bound = match root.canonicalize() {
+                    Ok(resolved) => doctor_command_root_display(root, &resolved),
+                    Err(_) => absolute_doctor_root_display(root),
+                };
+                let bash = bound.map(|bound| {
+                    format!(
+                        "ripr check --root {} --format repo-exposure-md",
+                        shell_arg(&bound)
+                    )
+                });
+                match bash {
+                    Ok(bash) => {
+                        let mut lines = vec![format!(
+                            "- Recommended first command: this repository has no commits yet, \
+                             so `ripr check` has no base to diff; commit once first (then \
+                             `ripr check --base HEAD --worktree` analyzes uncommitted edits), \
+                             or scan without Git history: `{bash}`"
+                        )];
+                        if let crate::output::markdown::PowershellForm::Translated(powershell) =
+                            crate::output::markdown::powershell_form(&bash)
+                        {
+                            lines.push(format!(
+                                "- Recommended first command (PowerShell): this repository has \
+                                 no commits yet, so `ripr check` has no base to diff; commit \
+                                 once first (then `ripr check --base HEAD --worktree` analyzes \
+                                 uncommitted edits), or scan without Git history: `{powershell}`"
                             ));
                         }
                         lines
@@ -881,6 +933,32 @@ fn work_tree_probe(root: &Path) -> Option<WorkTreeProbe> {
     )
 }
 
+/// #5259: whether `HEAD` is unborn (the repository has no commits yet).
+/// Call only after [`work_tree_probe`] reported `Inside`: there, a
+/// `rev-parse --verify` that exits nonzero is git answering "no such
+/// revision", which is the unborn state. `false` when git could not answer
+/// (missing or timed-out git proves nothing, so doctor claims nothing) —
+/// the probe's absence must not read as "unborn" (#5398 review).
+fn unborn_head(root: &Path) -> bool {
+    probe_says_unborn(
+        crate::git::run_git_output_with_deadline(
+            root,
+            &["rev-parse", "--verify", "--quiet", "HEAD"],
+            Some(DOCTOR_TOOL_TIMEOUT),
+        )
+        .ok()
+        .map(|output| output.status.success()),
+    )
+}
+
+/// Pure three-arm verdict for [`unborn_head`]: `Some(true)` is git running
+/// and resolving HEAD (born), `Some(false)` is git running and refusing the
+/// revision (unborn), and `None` is a probe that never answered (spawn
+/// failure or deadline). Only the second arm claims unborn.
+fn probe_says_unborn(head_resolves: Option<bool>) -> bool {
+    head_resolves == Some(false)
+}
+
 /// Evaluate the doctor core checks and also return the raw config load
 /// result, so the human-readable projection can print full local detail
 /// without going through the redacted JSON evidence. `detected` is the
@@ -948,11 +1026,29 @@ fn evaluate_doctor_core_with_probe_for_profile(
             format!("Git work tree check skipped: {reason}"),
         ),
         None => match work_tree_probe(root) {
-            Some(WorkTreeProbe::Inside) => report.add_check(
-                "git_repository",
-                DoctorStatus::Pass,
-                Some(format!("inside a Git work tree at {}", human_path(root))),
-            ),
+            Some(WorkTreeProbe::Inside) => {
+                report.add_check(
+                    "git_repository",
+                    DoctorStatus::Pass,
+                    Some(format!("inside a Git work tree at {}", human_path(root))),
+                );
+                // #5259: an unborn HEAD is a work tree that cannot produce a
+                // diff base, so the workspace is not ready for the default
+                // first command. Advisory (the work-tree check itself is
+                // true), and the evidence reuses the commit-first repair the
+                // check-time default-base error names. Only a `rev-parse`
+                // that ran and answered "no" proves unborn: inside a
+                // confirmed work tree that is exactly what nonzero means.
+                if unborn_head(root) {
+                    report.add_advisory_check(
+                        "git_head",
+                        "this repository has no commits yet (unborn HEAD); `ripr check` has \
+                         no base to diff — commit once first, then analyze uncommitted edits \
+                         with `ripr check --base HEAD --worktree`"
+                            .to_string(),
+                    );
+                }
+            }
             Some(WorkTreeProbe::Refused(message)) => {
                 report.add_check("git_repository", DoctorStatus::Fail, Some(message));
             }
@@ -3369,6 +3465,123 @@ mod tests {
             DoctorFirstCommand::resolve_for_report(&healthy, || false),
             DoctorFirstCommand::DefaultCheck
         );
+    }
+
+    /// #5259: a repository with no commits passes `git_repository` (it is a
+    /// real work tree) but cannot resolve a diff base, so the evaluation
+    /// records the advisory `git_head` check and the first command names the
+    /// commit-first repair with the repository-free scan, never a
+    /// diff-scoped `ripr check` that would exit 2 there.
+    #[test]
+    fn unborn_head_repository_is_advised_and_not_sent_to_ripr_check() -> Result<(), String> {
+        let root = doctor_scope_root(
+            "unborn-head",
+            &[
+                (
+                    "Cargo.toml",
+                    "[package]\nname = \"probe\"\nversion = \"0.1.0\"\n",
+                ),
+                ("src/lib.rs", "pub fn f() {}\n"),
+            ],
+        )?;
+        git_in(&root, &["init", "."])?;
+        // Fixture check: HEAD really is unborn (no commits yet). Status, not
+        // spawn success — `git rev-parse --verify` exits nonzero there.
+        let head_resolves = crate::git::run_git_output_with_deadline(
+            &root,
+            &["rev-parse", "--verify", "--quiet", "HEAD"],
+            Some(DOCTOR_TOOL_TIMEOUT),
+        )
+        .is_ok_and(|output| output.status.success());
+        if head_resolves {
+            let _ = std::fs::remove_dir_all(&root);
+            return Err("fixture: expected an unborn HEAD".to_string());
+        }
+        let report = evaluate_doctor_core_with_config(&root, &[LanguageId::Rust]).report;
+        let git_repository = check(&report, "git_repository")?;
+        let head = check(&report, "git_head")?;
+        let passed = git_repository.status == DoctorCheckStatus::Pass;
+        let _ = std::fs::remove_dir_all(&root);
+        if !passed {
+            return Err(format!(
+                "fixture work-tree check failed: {git_repository:?}"
+            ));
+        }
+        if head.status != DoctorCheckStatus::Advisory {
+            return Err(format!(
+                "an unborn HEAD must be the advisory git_head check: {head:?}"
+            ));
+        }
+        if !head
+            .evidence
+            .as_deref()
+            .is_some_and(|evidence| evidence.contains("no commits yet"))
+        {
+            return Err(format!(
+                "git_head evidence must name the commit-first path: {head:?}"
+            ));
+        }
+        // Advisory never fails the run...
+        if doctor_report_result(&report).is_err() {
+            return Err("an advisory git_head check must not fail the doctor run".to_string());
+        }
+        // ...but it reroutes the first command away from the failing check.
+        let first = DoctorFirstCommand::resolve_for_report(&report, || false);
+        if first != DoctorFirstCommand::UnbornHead {
+            return Err(format!("expected UnbornHead, got {first:?}"));
+        }
+        Ok(())
+    }
+
+    /// #5259 review: only a probe that RAN and answered "no" may claim
+    /// unborn; a probe that never answered (spawn failure, deadline) must
+    /// claim nothing, or a slow host would add a false `git_head` advisory
+    /// and reroute the first command in a healthy repository.
+    #[test]
+    fn unborn_head_verdict_claims_nothing_when_the_probe_never_answered() {
+        assert!(
+            !probe_says_unborn(Some(true)),
+            "a resolving HEAD is born, not unborn"
+        );
+        assert!(
+            probe_says_unborn(Some(false)),
+            "git refusing the revision is the unborn state"
+        );
+        assert!(
+            !probe_says_unborn(None),
+            "a probe that never answered must not claim unborn"
+        );
+    }
+
+    /// #5259: the UnbornHead recommendation names the commit-first repair
+    /// and keeps the repository-free scan runnable now, with the root bound
+    /// exactly as the other recommendations bind it.
+    #[test]
+    fn unborn_head_recommendation_names_commit_first_and_the_repo_free_scan() -> Result<(), String>
+    {
+        let root = doctor_scope_root("unborn-head-rec", &[])?;
+        let lines = DoctorFirstCommand::UnbornHead.recommendation_lines_for(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        let first = lines
+            .first()
+            .ok_or("the unborn-head recommendation must render")?;
+        for needle in [
+            "no commits yet",
+            "has no base to diff",
+            "commit once first",
+            "--base HEAD --worktree",
+            "--format repo-exposure-md",
+        ] {
+            if !first.contains(needle) {
+                return Err(format!("recommendation {first:?} misses {needle:?}"));
+            }
+        }
+        if !first.contains(&format!("--root {}", human_path(&root))) {
+            return Err(format!(
+                "recommendation must bind the diagnosed root: {first:?}"
+            ));
+        }
+        Ok(())
     }
     /// absolute path must fail closed with actionable evidence, independent
     /// of what happens to be (or not be) on the host's PATH.

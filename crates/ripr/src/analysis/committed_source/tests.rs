@@ -93,6 +93,13 @@ fn untracked_source_reads_absent_and_only_source_paths_raise_the_note() -> Resul
         vec!["tests/new.rs".to_string()],
         "a README edit does not raise the uncommitted-edits note"
     );
+    // #5258: the untracked subset is named, so the note can offer the
+    // staging repair instead of `--worktree`.
+    assert_eq!(
+        overlay.untracked_source_paths(),
+        vec!["tests/new.rs".to_string()],
+        "the untracked test file is named; the tracked README edit is not in the set"
+    );
     assert!(
         overlay.committed_paths_missing_on_disk().is_empty(),
         "an untracked file has no HEAD content to miss"
@@ -104,6 +111,34 @@ fn untracked_source_reads_absent_and_only_source_paths_raise_the_note() -> Resul
             "an untracked test is not committed evidence"
         );
     });
+    Ok(())
+}
+
+/// #5258: a mixed tree — a tracked edit plus an untracked source file —
+/// separates the two in the untracked set, so the note names the files
+/// `--worktree` cannot see while the tracked edit keeps its remedy.
+#[test]
+fn untracked_set_separates_untracked_files_from_tracked_edits() -> Result<(), String> {
+    let repo = fixture_root("untracked-mixed")?;
+    write(&repo.0, "src/lib.rs", "pub fn one() -> u8 { 1 }\n")?;
+    write(&repo.0, "src/kept.rs", "pub fn kept() -> u8 { 2 }\n")?;
+    commit_all(&repo.0, "base")?;
+    write(&repo.0, "src/lib.rs", "pub fn dirty() -> u8 { 9 }\n")?;
+    write(&repo.0, "src/new.rs", "pub fn fresh() {}\n")?;
+
+    let Some(overlay) = probe(&repo.0, DEADLINE)? else {
+        return Err("a mixed tree must produce an overlay".to_string());
+    };
+    assert_eq!(
+        overlay.untracked_source_paths(),
+        vec!["src/new.rs".to_string()],
+        "only the untracked file is named; the tracked edit stays out of the set"
+    );
+    assert!(
+        overlay
+            .dirty_source_paths()
+            .contains(&"src/lib.rs".to_string())
+    );
     Ok(())
 }
 
@@ -212,6 +247,10 @@ fn nested_root_keys_are_relative_to_the_analyzed_root() -> Result<(), String> {
 fn porcelain_parser_pairs_rename_sources_and_rejects_malformed_records() -> Result<(), String> {
     let parsed = parse_porcelain_z(b" M a.rs\0R  new.rs\0old.rs\0A  added.rs\0")?;
     assert_eq!(parsed.dirty, vec!["a.rs", "new.rs", "old.rs", "added.rs"]);
+    assert!(
+        parsed.untracked.is_empty(),
+        "no `??` record: the untracked set stays empty"
+    );
     // Review of #4442: only routed paths are kept, so an unrelated edited
     // binary, README or non-UTF-8 name costs no blob load and cannot fail
     // the probe; ignored routed files and ignored directories are kept.
@@ -221,6 +260,12 @@ fn porcelain_parser_pairs_rename_sources_and_rejects_malformed_records() -> Resu
     assert_eq!(parsed.dirty, vec!["src/lib.rs"]);
     assert_eq!(parsed.ignored_files, vec!["tests/local.rs"]);
     assert_eq!(parsed.ignored_directories, vec!["build"]);
+    // #5258: `??` records are untracked. They stay in the dirty set (the
+    // overlay reads them absent at HEAD) and are named for the output layer,
+    // so the note can distinguish them from the `--worktree`-visible edits.
+    let parsed = parse_porcelain_z(b"?? src/new.rs\0 M src/kept.rs\0?? notes.txt\0")?;
+    assert_eq!(parsed.dirty, vec!["src/new.rs", "src/kept.rs"]);
+    assert_eq!(parsed.untracked, vec!["src/new.rs"]);
     assert!(
         parse_porcelain_z(b"M\0").is_err(),
         "a truncated record fails closed"
@@ -240,6 +285,7 @@ fn missing_on_disk_disclosure_names_bounded_paths() {
         root: std::env::temp_dir().join("ripr-committed-source-missing-none"),
         canonical_root: None,
         ignored: IgnoredPaths::default(),
+        untracked: BTreeSet::new(),
         entries: BTreeMap::from([
             ("gone.rs".to_string(), Some(b"x".to_vec())),
             ("never.rs".to_string(), None),

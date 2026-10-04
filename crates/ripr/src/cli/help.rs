@@ -500,6 +500,10 @@ mod tests {
             "ripr init --ci github",
             "ripr help <command>",
             "ripr help --all",
+            // #5266: the machine-discovery route must be reachable from the
+            // documented first surface; before this line existed, an agent
+            // following `--help` could never learn `help --json` exists.
+            "ripr help --json",
         ] {
             assert!(
                 HELP.contains(needle),

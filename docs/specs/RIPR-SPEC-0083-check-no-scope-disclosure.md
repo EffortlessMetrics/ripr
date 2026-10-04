@@ -119,7 +119,8 @@ Note: `<base>...HEAD` contains no changed files, so there was nothing to analyze
 
   The triage "Safe next action" likewise reads `no changed files were
   compared against `<base>`; commit a change and re-run, or add `--worktree` to
-  include uncommitted edits` — the honest action
+  include uncommitted tracked edits` (#5258 qualifies the remedy: the flag
+  diffs tracked edits only) — the honest action
   is to change something, not to provide a scope.
 
 - No established base at all: guidance names a placeholder for an existing

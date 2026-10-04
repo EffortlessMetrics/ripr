@@ -47,6 +47,7 @@ What are you trying to do?
 More:
   ripr help <command>    Options for one command.
   ripr help --all        Every command, grouped by area.
+  ripr help --json       Versioned machine-readable command catalog.
 
 ripr is static and advisory. It reads changed code, builds mutation-shaped
 probes, and estimates whether tests reach, infect, propagate, and reveal the

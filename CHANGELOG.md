@@ -11,6 +11,26 @@ are scoped or reviewed.
 
 ### Fixed
 
+- `ripr check`: the uncommitted-changes note no longer offers `--worktree`
+  as the remedy for untracked files, which the flag never sees. The tracked
+  wording now says "staged and unstaged tracked edits" (matching
+  `check --help`), and when untracked source/test files exist the note names
+  them and the real repair — stage first (`git add`, or `git add -N`
+  intent-to-add makes a new file visible to `--worktree`) — or `--diff PATH`.
+  The GitHub-format warning carries the same two states (#5258).
+
+- `ripr doctor`: a repository with no commits yet (unborn HEAD) records the
+  advisory `git_head` check naming the commit-first repair, and the
+  recommended first command becomes the commit-first guidance plus the
+  repository-free full-repo scan instead of a `ripr check` that cannot
+  resolve a base there (#5259).
+
+- `ripr help --json` is discoverable from human help: the `ripr --help`
+  `More:` block names the machine catalog route, and the catalog's own
+  `cmd:help` row reports `json_support: true` with limitations that name the
+  `--json` route, so the catalog no longer contradicts the parser that
+  accepts it (#5266).
+
 - LSP: `shutdown` publishes an empty diagnostic set for every previously
   published URI on push clients (pull clients stay silent), matching the
   root-change path. The terminal clear serializes with in-flight refresh
@@ -48,6 +68,7 @@ are scoped or reviewed.
   provider, and `ripr agent repair --phase before` without `--seam-id` points
   to `ripr pilot --root .` and says the `probe:...` IDs from `ripr check` are
   not seam IDs.
+
 
 - `ripr agent card` and the `ripr agent repair` / `ripr agent receipt`
   recovery messages bind a relative `--root` to the selected directory in the
