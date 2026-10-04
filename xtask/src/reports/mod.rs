@@ -2,6 +2,7 @@ mod agentic_bench;
 mod annotations;
 mod back_sync;
 mod badges;
+mod bench_agent_surfaces;
 mod blind_journey;
 mod blind_journey_execute;
 mod bun;
@@ -95,6 +96,7 @@ pub(crate) use badges::{
     badge_artifacts, badge_basis, check_badge_diff_policy, check_badge_endpoints,
     repo_badge_artifacts, ripr_plus, update_badge_endpoints,
 };
+pub(crate) use bench_agent_surfaces::bench_agent_surfaces;
 pub(crate) use blind_journey::{
     assess_blind_journey_fixture_corpus, blind_journey_contract_report,
 };

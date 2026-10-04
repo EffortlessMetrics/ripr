@@ -1205,7 +1205,6 @@ status = "proposed"
 owner = "editor"
 standalone_reason = "Issue #4643 records the VS Code slice of the #2928 editor shell: one typed adapter (`src/attemptStatus.ts`) parses the RIPR-SPEC-0217 `agent_attempt_status` DTO and attempt inventory as the sole editor authority — fail-closed on any document outside the pinned envelope or status-class vocabulary (a strengthening class such as `passed` is refused, never projected); deterministic active-attempt resolution (explicit selection wins, an unknown explicit id stays an exact query for the typed corrupt_or_unavailable result, a remembered per-root selection is honored only while it is still an inventory row and discarded when stale, several current attempts require an explicit quick pick whose dismissal presents nothing, and newest/first-folder/most-recently-modified heuristics do not exist); the selection persists in workspaceState across restart/deactivation while in-memory presentation is discarded on stop; class-to-tone presentation never strengthens (`finished_historical` remains a warning, `corrupt_or_unavailable` and `failed` are errors, only `finished_current` passes, failed reads render unavailable); untrusted workspaces refuse before any CLI invocation; and the command is read-only end to end with parity fixtures under `editors/vscode/test-fixtures/attempt-status/` whose suite fails if the adapter is removed."
 
-
 [[artifact]]
 id = "RIPR-SPEC-0222"
 kind = "spec"
@@ -1213,3 +1212,11 @@ path = "docs/specs/RIPR-SPEC-0222-byte-bounded-classified-cache-store.md"
 status = "proposed"
 owner = "product-analysis"
 standalone_reason = "Issue #4999 records the write-side classified-cache publication bound: borrowed ClassifiedSeam serialization through a bounded atomic writer, an encoded-byte ceiling on both the single-entry and sharded paths with record count only as a secondary cap, an explicit skip when one record cannot fit, and generation-atomic replacement that leaves the previous valid cache or a miss. This is a store-path bound, not a process-RSS guarantee and not the load/decode sibling (#5124). Renumbered from RIPR-SPEC-0218 after #5370 landed that id, and from RIPR-SPEC-0220 after #5366 landed the vscode shared-attempt status under that id. Open #5416 occupies 0221."
+
+[[artifact]]
+id = "RIPR-SPEC-0221"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0221-agent-surface-benchmark.md"
+status = "proposed"
+owner = "xtask"
+standalone_reason = "Issue #5257 records the cross-surface agent-experience benchmark: cargo xtask bench-agent-surfaces measures CLI, MCP stdio, and LSP stdio latency plus envelope actionability and output determinism over content-pinned offline corpora in one identity-bound advisory receipt, with typed validity gates, --compare regression flagging, and recorded structural limitations where a population cannot exist on large checkouts; no new CI gate."

@@ -12094,6 +12094,47 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0221"
+name = "Agent surface benchmark (CLI/MCP/LSP latency, actionability, determinism)"
+spec = "docs/specs/RIPR-SPEC-0221-agent-surface-benchmark.md"
+tests = [
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::parse_options_defaults_match_the_spec_run_counts",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::parse_options_rejects_unknown_arguments_and_empty_values",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::parse_options_supports_corpus_filter_and_overrides",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::percentile_uses_sorted_nearest_rank",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::determinism_outcome_passes_stable_and_fails_on_raw_difference",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::mid_corpus_generation_is_deterministic_and_mutates_exactly_one_line",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::mid_file_diff_round_trips_through_apply_patch",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::mid_test_oracle_mix_covers_strong_weak_and_absent",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::sample_diff_rewrites_paths_and_round_trips",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::actionability_metrics_aggregate_the_schema_fields",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::actionability_metrics_records_alignment_when_present",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::receipt_status_orders_fail_over_regressed_over_warn",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::compare_receipts_flags_worsened_p50_and_sub_unity_ratio",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::m1_sample_classification_covers_the_validity_gates",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::limited_diff_scope_artifact_is_a_structural_outcome_not_a_harness_failure",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::no_snapshot_after_failed_refresh_is_a_named_chained_absence",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::file_uri_is_absolute_with_forward_slashes",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::gap_list_absence_is_named_not_faked",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::m5_timeout_is_a_warn_note_not_a_failure",
+  "xtask/src/reports/bench_agent_surfaces.rs::tests::m4_reads_readiness_from_renderer_projections",
+]
+fixtures = [
+]
+code = [
+  "xtask/src/reports/bench_agent_surfaces.rs",
+  "xtask/src/reports/mod.rs",
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0221-agent-surface-benchmark.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0222"
 name = "Byte-bounded classified-cache store publication"
 spec = "docs/specs/RIPR-SPEC-0222-byte-bounded-classified-cache-store.md"

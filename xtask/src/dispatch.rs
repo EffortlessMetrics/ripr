@@ -99,6 +99,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::DxScoreboard(args) => super::reports::dx_scoreboard(&args),
         XtaskCommand::ScaleCliffBenchmark(args) => super::reports::scale_cliff_benchmark(&args),
         XtaskCommand::RustCorpus(args) => super::reports::rust_corpus(&args),
+        XtaskCommand::BenchAgentSurfaces(args) => super::reports::bench_agent_surfaces(&args),
         XtaskCommand::RepoContractReport => super::repo_contract_report(),
         XtaskCommand::EvidenceHealth => super::reports::evidence_health_report(),
         XtaskCommand::Lane1EvidenceAudit => super::reports::lane1_evidence_audit_report(),
