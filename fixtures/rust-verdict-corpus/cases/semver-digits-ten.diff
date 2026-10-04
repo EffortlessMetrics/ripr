@@ -1,0 +1,13 @@
+diff --git a/src/display.rs b/src/display.rs
+index d7446e5..f6539ec 100644
+--- a/src/display.rs
++++ b/src/display.rs
+@@ -154,7 +154,7 @@ fn pad(
+ }
+ 
+ fn digits(val: u64) -> usize {
+-    if val < 10 {
++    if 10 > val {
+         1
+     } else {
+         1 + digits(val / 10)

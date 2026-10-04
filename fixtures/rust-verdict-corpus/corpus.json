@@ -2,7 +2,7 @@
   "schema_version": "ripr_verdict_corpus.v1",
   "kind": "ripr_verdict_corpus",
   "spec": "RIPR-SPEC-0219",
-  "corpus_version": "2026-10-04.1",
+  "corpus_version": "2026-10-04.2",
   "description": "Hand-labeled Rust verdict corpus: one-line edits in pinned real crates, each labeled with what the crate's own tests actually discriminate, so ripr's verdicts can be scored as false actionable, false exposed, false silent, abstained, or ideal.",
   "label_method": "For each case the edit was applied to the full pinned checkout, the crate's own test command was run to confirm the edit keeps tests green (behavior_preserving_rewrite) or breaks them (behavior_change), and each listed mutant of the edited expression was applied on top and the same test command run. A mutant counts as detected (`tests_failed`) when the test command fails after compiling. Each mutant was reviewed by hand for equivalence before its outcome counted. Truth is derived from the count of mutants with tests_failed: all is discriminated, none is not_discriminated, otherwise partially_discriminated.",
   "verdict_projection": "Only candidate_current findings on the anchor file and line count. exposed is credited; a named static_limit_kind or a no_static_path, infection_unknown, propagation_unknown or static_unknown class is limited; any other class (weakly_exposed, reachable_unrevealed) is a gap. A gap on the line outranks credit, and credit outranks a limit. No anchored finding is silent. The per-finding reading mirrors crates/ripr/src/output/human/triage.rs; the line-level precedence is this corpus's own policy.",
@@ -290,6 +290,114 @@
         {
           "path": "src/parse.rs",
           "sha256": "6682ec95bc91a3e972b1ccbb6a32add5c96a0ad542253c2a4ebe64d3e24b3f32"
+        }
+      ]
+    },
+    {
+      "subject_id": "bytesize-66a3715",
+      "upstream": "https://github.com/bytesize-rs/bytesize",
+      "commit": "66a3715e33369e99cb428bcd5aee32291f8e0a94",
+      "version_label": "master@66a3715 (mutation spot-check pin; differs from corpus bytesize 1.3.0 pin)",
+      "license": "Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "c4ab1708e40e9af1bacfa3fdc4fc4d6248d664414c219529d2620cc242789993"
+        },
+        {
+          "path": "LICENSE",
+          "sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "d53c4c0de85a7df83ffae8700a3a67837a4ea826e91ea7653f63a98e2b8cd0e2"
+        }
+      ]
+    },
+    {
+      "subject_id": "rusqlite",
+      "upstream": "https://github.com/rusqlite/rusqlite",
+      "commit": "08dd1f1e65eb1262edbc72760ccaa9281add0034",
+      "version_label": "master@08dd1f1e",
+      "license": "MIT",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "a6d291ae3f9759f08cb85f736dc81727d2844f309e7bf72fd274c5292f38c9a2"
+        },
+        {
+          "path": "LICENSE",
+          "sha256": "c10c1f27337546471e5f7e4e97fdd398b35b9d4e126115dcd22de8d8e65abf6f"
+        },
+        {
+          "path": "src/inner_connection.rs",
+          "sha256": "dbe6cb6561ffcd7a35bd4210648cfdadc0e500829b46363bf34ddec311b99e42"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "6d1fb08709c1134713541a1fa87c29d2ab3732dfee5ef97fc8f176016a338790"
+        }
+      ]
+    },
+    {
+      "subject_id": "semver-280ebcb",
+      "upstream": "https://github.com/dtolnay/semver",
+      "commit": "280ebcb6edac3aa4cdc545dbff8a26c5ac4861fe",
+      "version_label": "master@280ebcb (mutation spot-check pin; differs from corpus semver 1.0.23 pin)",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "a3386a53d0ad50260a7424689ba2d983abd6c6b5bb09bda48b9fceb3032e8318"
+        },
+        {
+          "path": "LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        },
+        {
+          "path": "src/display.rs",
+          "sha256": "cfe08cb163fd5ba7fa024880a0809afb07f6e465891d8cefb716c693b13958d0"
+        },
+        {
+          "path": "src/eval.rs",
+          "sha256": "292eac9472c92db20fcd3a864c5598f55a2f5554008af8f704ff975fcf40dd74"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "e56f4d7c7774c45e61026fb0050955d67601c9ad18bdf93f8921d9898067c119"
+        },
+        {
+          "path": "tests/test_version_req.rs",
+          "sha256": "edb7440c14655a77af2dfed4ea8eebbd9b637947c46f33164a2b66b62f75d464"
+        }
+      ]
+    },
+    {
+      "subject_id": "strsim",
+      "upstream": "https://github.com/rapidfuzz/strsim-rs",
+      "commit": "dacc84c0dc61eff0ee0ff66962bcf2e17018ad26",
+      "version_label": "master@dacc84c",
+      "license": "MIT",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "3915cdcd5b4381dca961eca95621a5ef297694c02d1dea995b2262c3db8bb4c3"
+        },
+        {
+          "path": "LICENSE",
+          "sha256": "1e697ce8d21401fbf1bddd9b5c3fd4c4c79ae1e3bdf51f81761c85e11d5a89cd"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "dbbee90724d9ed59185d0882c46bfbcaa6ffff4755d29663ee8acc9c542057c1"
         }
       ]
     }
@@ -1406,6 +1514,423 @@
         "full_checkout_verdict": "limited",
         "full_checkout_classifications": [
           "infection_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "rusqlite-singlethreaded-magic",
+      "subject_id": "rusqlite",
+      "diff": "cases/rusqlite-singlethreaded-magic.diff",
+      "anchor": {
+        "file": "src/inner_connection.rs",
+        "line": 434
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate",
+      "test_shape": "unit_test_public_api_indirect",
+      "hard_case": "mutation spot-check (#5334) graded this seam ungripped with no reach in repo mode; every test that opens a Connection fails under the mutant, and the comparison sits behind FFI and an undocumented SQLite magic value.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test --features bundled --lib",
+        "toolchain": "rustc 1.97.0 (2d8144b78 2026-07-07), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "SQLITE_SINGLETHREADED_MUTEX_MAGIC != mutex_ptr as usize",
+            "outcome": "tests_failed",
+            "failing_test": "busy::test::test_default_busy (133 lib tests fail; every test that opens a Connection)",
+            "equivalence_review": "not equivalent: a real mutex pointer is never 8, so every connection open returns SqliteSingleThreadedMode."
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "Every Connection open runs ensure_safe_sqlite_threading_mode, so flipping the magic-value comparison fails the 133 of 170 lib tests that open one. Diff-mode ripr reports no_static_path with zero related tests plus static_unknown (limited), an acceptable abstention rather than the repo-mode gap; crediting would be ideal.",
+      "labeling_observation": {
+        "ripr_commit": "7a6d4b7a5",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "no_static_path",
+          "static_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "semver-digits-ten",
+      "subject_id": "semver-280ebcb",
+      "diff": "cases/semver-digits-ten.diff",
+      "anchor": {
+        "file": "src/display.rs",
+        "line": 157
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "integration_test_public_api",
+      "hard_case": null,
+      "truth": {
+        "state": "partially_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.97.0 (2d8144b78 2026-07-07), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "10 >= val",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: digits(10) returns 1, so format!(\"{:>8}\", Version::new(10, 0, 0)) pads one column too many; no test formats a padded version with a component equal to 10."
+          },
+          {
+            "replacement": "10 == val",
+            "outcome": "tests_failed",
+            "failing_test": "test_version::test_align (stack overflow aborts the test binary)",
+            "equivalence_review": "not equivalent: digits recurses until the value divides down to exactly 10, so components such as 1, 2 and 3 recurse forever and overflow the stack."
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "test_align pads 1.2.3-rc1, which catches the runaway == mutant but never formats a component equal to 10, so the <= boundary goes unseen. ripr reports no_static_path with zero related tests (limited), an acceptable abstention; a gap naming the 10 boundary would be ideal.",
+      "labeling_observation": {
+        "ripr_commit": "7a6d4b7a5",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "no_static_path"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "semver-req-separator",
+      "subject_id": "semver-280ebcb",
+      "diff": "cases/semver-req-separator.diff",
+      "anchor": {
+        "file": "src/display.rs",
+        "line": 39
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "integration_test_custom_assert_helper",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.97.0 (2d8144b78 2026-07-07), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "0 > i",
+            "outcome": "tests_failed",
+            "failing_test": "test_multiple",
+            "equivalence_review": "not equivalent: the ', ' separator is never written between comparators."
+          },
+          {
+            "replacement": "0 <= i",
+            "outcome": "tests_failed",
+            "failing_test": "test_basic, test_cargo3202, test_exact (+3 more)",
+            "equivalence_review": "not equivalent: a leading ', ' is written before the first comparator."
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "test_multiple's assert_to_string pins \">0.0.9, <=2.5.3\", and single-comparator to_string assertions in test_basic and others catch a leading separator, so both mutants fail. Diff-mode ripr reports no_static_path twice with zero related tests (limited), an acceptable abstention instead of the repo-mode gap; crediting would be ideal.",
+      "labeling_observation": {
+        "ripr_commit": "7a6d4b7a5",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "no_static_path"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "strsim-sorensen-dice-equal",
+      "subject_id": "strsim",
+      "diff": "cases/strsim-sorensen-dice-equal.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 724
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate",
+      "test_shape": "unit_test_assert_float_tolerance",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.97.0 (2d8144b78 2026-07-07), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "b != a",
+            "outcome": "tests_failed",
+            "failing_test": "tests::sorensen_dice_all",
+            "equivalence_review": "not equivalent: different strings return 1.0 and equal strings fall through to the bigram count."
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "sorensen_dice_all asserts 0.0 for \"a\"/\"b\" and similar distinct pairs through assert_delta!, so the negated equality fails it. ripr reports weakly_exposed twice (a gap), a false actionable verdict.",
+      "labeling_observation": {
+        "ripr_commit": "7a6d4b7a5",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "bytesize-as-kib-div",
+      "subject_id": "bytesize-66a3715",
+      "diff": "cases/bytesize-as-kib-div.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 264
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "unit_test_assert_eq",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.97.0 (2d8144b78 2026-07-07), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.0 as f64 % (KIB as f64)",
+            "outcome": "tests_failed",
+            "failing_test": "core_tests::as_unit_conversions",
+            "equivalence_review": "not equivalent: as_kib returns the remainder instead of the quotient for any size of at least 1 KiB."
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "as_unit_conversions asserts ByteSize::gb(43).as_kib() exactly, so the % mutant fails it. ripr reports weakly_exposed (a gap), a false actionable verdict.",
+      "labeling_observation": {
+        "ripr_commit": "7a6d4b7a5",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "bytesize-as-mb-div",
+      "subject_id": "bytesize-66a3715",
+      "diff": "cases/bytesize-as-mb-div.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 270
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "unit_test_assert_eq",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.97.0 (2d8144b78 2026-07-07), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.0 as f64 % (MB as f64)",
+            "outcome": "tests_failed",
+            "failing_test": "core_tests::as_unit_conversions",
+            "equivalence_review": "not equivalent: as_mb returns the remainder instead of the quotient for any size of at least 1 MB."
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "as_unit_conversions asserts ByteSize::kib(938948).as_mb() exactly, so the % mutant fails it. ripr reports weakly_exposed (a gap), a false actionable verdict.",
+      "labeling_observation": {
+        "ripr_commit": "7a6d4b7a5",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "bytesize-as-kb-div",
+      "subject_id": "bytesize-66a3715",
+      "diff": "cases/bytesize-as-kb-div.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 258
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "unit_test_assert_eq",
+      "hard_case": "ripr reports no_static_path while listing related tests, one of the corpus's internal contradictions.",
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.97.0 (2d8144b78 2026-07-07), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.0 as f64 % (KB as f64)",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: as_kb returns the remainder instead of the quotient, e.g. 2000 B gives 0.0 instead of 2.0."
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "No test calls as_kb, so the % mutant leaves the tests passing. ripr reports no_static_path (limited), an acceptable abstention, but lists 26 same-file related tests, which the corpus counts as a no_static_path_with_related_tests contradiction.",
+      "labeling_observation": {
+        "ripr_commit": "7a6d4b7a5",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "no_static_path"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "bytesize-as-mib-div",
+      "subject_id": "bytesize-66a3715",
+      "diff": "cases/bytesize-as-mib-div.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 276
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "unit_test_assert_eq",
+      "hard_case": "ripr reports no_static_path while listing related tests, one of the corpus's internal contradictions.",
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.97.0 (2d8144b78 2026-07-07), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.0 as f64 % (MIB as f64)",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: as_mib returns the remainder instead of the quotient for any size of at least 1 MiB."
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "No test calls as_mib, so the % mutant leaves the tests passing. ripr reports no_static_path (limited), an acceptable abstention, with the same no_static_path_with_related_tests contradiction as the as_kb case.",
+      "labeling_observation": {
+        "ripr_commit": "7a6d4b7a5",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "no_static_path"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "strsim-jaro-winkler-threshold-shift",
+      "subject_id": "strsim",
+      "diff": "cases/strsim-jaro-winkler-threshold-shift.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 195
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "unit_test_assert_float_tolerance",
+      "hard_case": "the spot-check's reported miss on this line (`>` to `>=`) is an equivalent mutant: strsim's f64 Jaro never equals exactly 0.7 for strings up to 70 characters, so this case replaces it with threshold shifts that do change behavior.",
+      "truth": {
+        "state": "partially_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.97.0 (2d8144b78 2026-07-07), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "0.75 < sim",
+            "outcome": "tests_failed",
+            "failing_test": "tests::jaro_winkler_length_of_one",
+            "equivalence_review": "not equivalent: pairs with jaro in (0.7, 0.75] lose the prefix bonus, e.g. Dinsdale/D."
+          },
+          {
+            "replacement": "0.65 < sim",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: jaro(\"abcd\", \"abxy\") = 0.667 gains the prefix bonus (0.667 becomes 0.733)."
+          },
+          {
+            "replacement": "0.7 > sim",
+            "outcome": "tests_failed",
+            "failing_test": "tests::jaro_winkler_diff_no_transposition, tests::jaro_winkler_diff_short, tests::jaro_winkler_diff_with_transposition (+6 more)",
+            "equivalence_review": "not equivalent: the prefix bonus applies only to dissimilar pairs."
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The tests pin jaro_winkler values above 0.7 (Dinsdale/D catches the raised threshold) but none in (0.65, 0.7], so lowering the threshold goes unseen. ripr's weakly_exposed gap is ideal.",
+      "labeling_observation": {
+        "ripr_commit": "7a6d4b7a5",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
         ],
         "excerpt_parity": "matched"
       }

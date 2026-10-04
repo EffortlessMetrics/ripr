@@ -1,0 +1,13 @@
+diff --git a/src/display.rs b/src/display.rs
+index d7446e5..5b700d4 100644
+--- a/src/display.rs
++++ b/src/display.rs
+@@ -36,7 +36,7 @@ impl Display for VersionReq {
+             return formatter.write_str("*");
+         }
+         for (i, comparator) in self.comparators.iter().enumerate() {
+-            if i > 0 {
++            if 0 < i {
+                 formatter.write_str(", ")?;
+             }
+             write!(formatter, "{}", comparator)?;

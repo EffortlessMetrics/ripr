@@ -1,58 +1,59 @@
 {
   "schema_version": "ripr_verdict_corpus_report.v1",
   "spec": "RIPR-SPEC-0219",
-  "corpus_version": "2026-10-04.1",
-  "cases_total": 23,
+  "corpus_version": "2026-10-04.2",
+  "cases_total": 32,
   "by_truth": {
-    "discriminated": 15,
-    "not_discriminated": 2,
-    "partially_discriminated": 6
+    "discriminated": 20,
+    "not_discriminated": 4,
+    "partially_discriminated": 8
   },
   "by_outcome": {
-    "abstained": 13,
-    "false_actionable": 7,
-    "ideal": 3
+    "abstained": 18,
+    "false_actionable": 10,
+    "ideal": 4
   },
   "by_observed_verdict": {
-    "gap": 10,
-    "limited": 13
+    "gap": 14,
+    "limited": 18
   },
   "false_verdict_rate": {
-    "numerator": 7,
-    "denominator": 23,
-    "rate": "0.3043"
+    "numerator": 10,
+    "denominator": 32,
+    "rate": "0.3125"
   },
   "false_actionable_rate": {
-    "numerator": 7,
-    "denominator": 15,
-    "rate": "0.4667"
+    "numerator": 10,
+    "denominator": 20,
+    "rate": "0.5000"
   },
   "false_exposed_rate": {
     "numerator": 0,
-    "denominator": 8,
+    "denominator": 12,
     "rate": "0.0000"
   },
   "false_silent_rate": {
     "numerator": 0,
-    "denominator": 8,
+    "denominator": 12,
     "rate": "0.0000"
   },
   "ideal_rate": {
-    "numerator": 3,
-    "denominator": 23,
-    "rate": "0.1304"
+    "numerator": 4,
+    "denominator": 32,
+    "rate": "0.1250"
   },
   "abstention_rate": {
-    "numerator": 13,
-    "denominator": 23,
-    "rate": "0.5652"
+    "numerator": 18,
+    "denominator": 32,
+    "rate": "0.5625"
   },
   "contradiction_rate": {
-    "numerator": 2,
-    "denominator": 29,
-    "rate": "0.0690"
+    "numerator": 4,
+    "denominator": 39,
+    "rate": "0.1026"
   },
   "contradictions_by_code": {
+    "no_static_path_with_related_tests": 2,
     "reach_yes_without_related_tests": 2
   },
   "rows": [
@@ -450,6 +451,164 @@
         "infection_unknown"
       ],
       "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "rusqlite-singlethreaded-magic",
+      "subject_id": "rusqlite",
+      "anchor": "src/inner_connection.rs:434",
+      "behavior_family": "predicate",
+      "test_shape": "unit_test_public_api_indirect",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "no_static_path",
+        "static_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "semver-digits-ten",
+      "subject_id": "semver-280ebcb",
+      "anchor": "src/display.rs:157",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "integration_test_public_api",
+      "hard_case": false,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "no_static_path"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "semver-req-separator",
+      "subject_id": "semver-280ebcb",
+      "anchor": "src/display.rs:39",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "integration_test_custom_assert_helper",
+      "hard_case": false,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "no_static_path"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "strsim-sorensen-dice-equal",
+      "subject_id": "strsim",
+      "anchor": "src/lib.rs:724",
+      "behavior_family": "predicate",
+      "test_shape": "unit_test_assert_float_tolerance",
+      "hard_case": false,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "bytesize-as-kib-div",
+      "subject_id": "bytesize-66a3715",
+      "anchor": "src/lib.rs:264",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "unit_test_assert_eq",
+      "hard_case": false,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "bytesize-as-mb-div",
+      "subject_id": "bytesize-66a3715",
+      "anchor": "src/lib.rs:270",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "unit_test_assert_eq",
+      "hard_case": false,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "bytesize-as-kb-div",
+      "subject_id": "bytesize-66a3715",
+      "anchor": "src/lib.rs:258",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "unit_test_assert_eq",
+      "hard_case": true,
+      "truth": "not_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "no_static_path"
+      ],
+      "outcome": "abstained",
+      "contradictions": [
+        "no_static_path_with_related_tests"
+      ]
+    },
+    {
+      "case_id": "bytesize-as-mib-div",
+      "subject_id": "bytesize-66a3715",
+      "anchor": "src/lib.rs:276",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "unit_test_assert_eq",
+      "hard_case": true,
+      "truth": "not_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "no_static_path"
+      ],
+      "outcome": "abstained",
+      "contradictions": [
+        "no_static_path_with_related_tests"
+      ]
+    },
+    {
+      "case_id": "strsim-jaro-winkler-threshold-shift",
+      "subject_id": "strsim",
+      "anchor": "src/lib.rs:195",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "unit_test_assert_float_tolerance",
+      "hard_case": true,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "ideal",
       "contradictions": []
     }
   ],

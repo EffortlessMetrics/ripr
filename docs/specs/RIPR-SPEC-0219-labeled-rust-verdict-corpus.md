@@ -80,6 +80,11 @@ was applied on top; for a `behavior_change` the edit is its own single
 mutant. A mutant counts as detected (`tests_failed`) when the test command
 fails after compiling.
 Each mutant carries a written equivalence review and the test that failed.
+A mutant that is equivalent in the pinned build cannot carry truth: its
+passing tests show nothing about a missing discriminator. A reported miss
+that turns out equivalent is replaced by a non-equivalent mutant of the same
+expression, or the line is left out. Each case records the toolchain its
+truth ran under.
 Truth derives from how many mutants failed the tests: all is `discriminated`, none is
 `not_discriminated`, otherwise `partially_discriminated`.
 
@@ -168,6 +173,11 @@ the distinct codes seen in that case's run.
 - itoa `remain > 9` rewritten as `remain >= 10`: the macro-generated tests
   still pass under both mutants, so a gap is ideal and ripr's
   `no_static_path` scores `abstained`.
+- strsim `dacc84c` `src/lib.rs:195` `sim > 0.7`: the spot-check's `>=`
+  miss is equivalent: no string pair up to 70 characters long gives a Jaro
+  value of exactly 0.7. The case uses threshold shifts instead: 0.75 fails a
+  test and 0.65 does not, so the truth is `partially_discriminated` and ripr's `weakly_exposed` scores
+  `ideal`.
 - semver `op()` at 1.0.23 `src/parse.rs:272`: ripr says a related test
   reaches `op` while `related_tests_total` is 0, recorded as
   `reach_yes_without_related_tests`.

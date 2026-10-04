@@ -197,6 +197,14 @@ are scoped or reviewed.
 
 ### Added
 
+- Verdict corpus: 9 cases from the mutation spot-check (rusqlite, strsim and
+  second semver and bytesize pins), now 32 cases across 10 subjects. The
+  report adds 3 false actionable gaps (strsim `==` and bytesize `as_kib` and
+  `as_mb` read `weakly_exposed` while a test fails under the mutant) and 2
+  `no_static_path_with_related_tests` contradictions, for 10 of 20
+  discriminated cases and 4 of 39 findings. rusqlite `inner_connection.rs:86`
+  is left out because its spot-check mutant is equivalent on SQLite 3.37 and
+  later (RIPR-SPEC-0219, #5332).
 - LSP: the accepted refresh's work-done progress now consumes the shared
   producer stage vocabulary — the blocking analysis runs through the shared
   progress-bearing entry point and a best-effort bridge forwards

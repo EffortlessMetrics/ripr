@@ -1,16 +1,16 @@
 # Rust verdict corpus report
 
-Spec: RIPR-SPEC-0219. Corpus version: 2026-10-04.1. Cases: 23.
+Spec: RIPR-SPEC-0219. Corpus version: 2026-10-04.2. Cases: 32.
 
 | Rate | Count | Rate |
 | --- | --- | --- |
-| False verdicts (all cases) | 7/23 | 0.3043 |
-| False actionable (of discriminated) | 7/15 | 0.4667 |
-| False exposed (of not fully discriminated) | 0/8 | 0.0000 |
-| False silent (of not fully discriminated) | 0/8 | 0.0000 |
-| Ideal verdict | 3/23 | 0.1304 |
-| Abstained (limited or silent where acceptable) | 13/23 | 0.5652 |
-| Findings with a contradiction | 2/29 | 0.0690 |
+| False verdicts (all cases) | 10/32 | 0.3125 |
+| False actionable (of discriminated) | 10/20 | 0.5000 |
+| False exposed (of not fully discriminated) | 0/12 | 0.0000 |
+| False silent (of not fully discriminated) | 0/12 | 0.0000 |
+| Ideal verdict | 4/32 | 0.1250 |
+| Abstained (limited or silent where acceptable) | 18/32 | 0.5625 |
+| Findings with a contradiction | 4/39 | 0.1026 |
 
 | Case | Truth | Ideal | Observed | Classes | Outcome | Changed since labeling | Contradictions |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -37,6 +37,15 @@ Spec: RIPR-SPEC-0219. Corpus version: 2026-10-04.1. Cases: 23.
 | `itoa-four-digit-loop` | not_discriminated | gap | limited | no_static_path | abstained | no | none |
 | `semver-digit-upper-first-run` | discriminated | credited | limited | infection_unknown | abstained | no | none |
 | `bytesize-format-unit-first-run` | discriminated | credited | limited | infection_unknown | abstained | no | none |
+| `rusqlite-singlethreaded-magic` | discriminated | credited | limited | no_static_path, static_unknown | abstained | no | none |
+| `semver-digits-ten` | partially_discriminated | gap | limited | no_static_path | abstained | no | none |
+| `semver-req-separator` | discriminated | credited | limited | no_static_path | abstained | no | none |
+| `strsim-sorensen-dice-equal` | discriminated | credited | gap | weakly_exposed | false_actionable | no | none |
+| `bytesize-as-kib-div` | discriminated | credited | gap | weakly_exposed | false_actionable | no | none |
+| `bytesize-as-mb-div` | discriminated | credited | gap | weakly_exposed | false_actionable | no | none |
+| `bytesize-as-kb-div` | not_discriminated | gap | limited | no_static_path | abstained | no | no_static_path_with_related_tests |
+| `bytesize-as-mib-div` | not_discriminated | gap | limited | no_static_path | abstained | no | no_static_path_with_related_tests |
+| `strsim-jaro-winkler-threshold-shift` | partially_discriminated | gap | gap | weakly_exposed | ideal | no | none |
 
 Non-claims:
 
