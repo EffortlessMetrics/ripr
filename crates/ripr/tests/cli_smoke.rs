@@ -9429,6 +9429,146 @@ fn doctor_reports_missing_config_defaults() -> Result<(), String> {
     Ok(())
 }
 
+// #5280: ripr's .cargo/config.toml force-redirects linker TEMP/TMP/TMPDIR
+// into workspace-relative target/, so a fresh checkout building with an
+// isolated CARGO_TARGET_DIR fails MSVC linking (LNK1104) until target/
+// exists. The source-build doctor profile must surface that constraint and
+// the mkdir repair; the analysis profile stays quiet about it, and a present
+// directory resolves the advisory.
+#[test]
+fn doctor_source_build_preflight_warns_on_linker_temp_redirect() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    // RAII cleanup: a failed assertion or early error must not leak the
+    // temporary workspace, matching the Drop-guard fixtures used by the
+    // other test files.
+    struct TempWorkspaceGuard<'a>(&'a Path);
+    impl Drop for TempWorkspaceGuard<'_> {
+        fn drop(&mut self) {
+            ignore_remove_dir_all(self.0);
+        }
+    }
+    let _cleanup = TempWorkspaceGuard(&workspace);
+    std::fs::create_dir_all(workspace.join(".cargo")).map_err(|e| format!("create .cargo: {e}"))?;
+    std::fs::write(
+        workspace.join(".cargo/config.toml"),
+        "[env]\n\
+         TEMP = { value = \"target\", relative = true, force = true }\n\
+         TMP = { value = \"target\", relative = true, force = true }\n\
+         TMPDIR = { value = \"target\", relative = true, force = true }\n",
+    )
+    .map_err(|e| format!("write .cargo/config.toml: {e}"))?;
+    let root = workspace.display().to_string();
+
+    // `doctor_check_status` is unix-gated, so this test extracts the check
+    // status itself and stays cross-platform: the redirect constraint is a
+    // Windows-MSVC failure mode, but the doctor surface is not.
+    let check_status = |report: &serde_json::Value, name: &str| -> String {
+        report["checks"]
+            .as_array()
+            .and_then(|checks| checks.iter().find(|check| check["name"] == name))
+            .and_then(|check| check["status"].as_str())
+            .unwrap_or("absent")
+            .to_string()
+    };
+
+    let source = run_ripr(&[
+        "doctor",
+        "--root",
+        &root,
+        "--profile",
+        "source-build",
+        "--json",
+    ]);
+    assert!(
+        source.status.success(),
+        "an advisory must not fail the source-build doctor: {source:?}"
+    );
+    let source_report: serde_json::Value = serde_json::from_slice(&source.stdout)
+        .map_err(|e| format!("source-build doctor JSON did not parse: {e}"))?;
+    if check_status(&source_report, "linker_temp_redirect") != "advisory" {
+        return Err(format!(
+            "absent workspace target/ with a linker-temp redirect must warn: {source_report}"
+        ));
+    }
+    let evidence = source_report["checks"]
+        .as_array()
+        .and_then(|checks| {
+            checks
+                .iter()
+                .find(|check| check["name"] == "linker_temp_redirect")
+                .and_then(|check| check["evidence"].as_str())
+        })
+        .unwrap_or_default()
+        .to_string();
+    for needle in ["LNK1104", "workspace-relative target/", "mkdir "] {
+        assert!(
+            evidence.contains(needle),
+            "evidence must name {needle}: {evidence}"
+        );
+    }
+
+    // The analysis profile stays quiet: the constraint matters only when
+    // building ripr from source.
+    let analysis = run_ripr(&["doctor", "--root", &root, "--profile", "analysis", "--json"]);
+    assert!(
+        analysis.status.success(),
+        "analysis doctor must succeed: {analysis:?}"
+    );
+    let analysis_report: serde_json::Value = serde_json::from_slice(&analysis.stdout)
+        .map_err(|e| format!("analysis doctor JSON did not parse: {e}"))?;
+    assert_eq!(
+        check_status(&analysis_report, "linker_temp_redirect"),
+        "absent",
+        "the analysis profile must not carry the source-build preflight"
+    );
+
+    // The human surface prints the same advisory with its repair. The repair
+    // names the workspace-rooted directory (the binary is invoked from a
+    // different working directory here), not a bare cwd-relative name.
+    let human = run_ripr(&["doctor", "--root", &root, "--profile", "source-build"]);
+    let stdout = String::from_utf8_lossy(&human.stdout);
+    assert!(
+        stdout.contains("~ .cargo/config.toml redirects linker temp variables"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("LNK1104"), "{stdout}");
+    let raw_target = workspace.join("target").display().to_string();
+    let rooted_target = if cfg!(windows) {
+        raw_target.replace('\\', "/")
+    } else {
+        raw_target
+    };
+    assert!(
+        stdout.contains(&format!("mkdir {rooted_target}")),
+        "repair must name the workspace-rooted directory {rooted_target}:\n{stdout}"
+    );
+
+    // Once the directory exists (a normal workspace build creates it), the
+    // preflight is silent again.
+    std::fs::create_dir_all(workspace.join("target")).map_err(|e| format!("create target: {e}"))?;
+    let resolved = run_ripr(&[
+        "doctor",
+        "--root",
+        &root,
+        "--profile",
+        "source-build",
+        "--json",
+    ]);
+    assert!(
+        resolved.status.success(),
+        "resolved doctor must succeed: {resolved:?}"
+    );
+    let resolved_report: serde_json::Value = serde_json::from_slice(&resolved.stdout)
+        .map_err(|e| format!("resolved doctor JSON did not parse: {e}"))?;
+    assert_eq!(
+        check_status(&resolved_report, "linker_temp_redirect"),
+        "absent",
+        "a present workspace target must resolve the advisory"
+    );
+
+    Ok(())
+}
+
 #[test]
 fn doctor_reports_present_start_here_packet() -> Result<(), String> {
     let workspace = make_temp_workspace(None)?;

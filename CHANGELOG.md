@@ -43,6 +43,16 @@ are scoped or reviewed.
 
 ### Fixed
 
+- CLI: `ripr doctor --profile source-build` warns when the workspace's
+  `.cargo/config.toml` redirects linker temp variables (`TEMP`, `TMP`,
+  `TMPDIR`) into a workspace-relative directory that does not exist. ripr's
+  own config force-redirects them into `target/` (PR #397), so a fresh
+  `git worktree add` building with an isolated `CARGO_TARGET_DIR` failed
+  MSVC linking with an opaque `LNK1104 ... target\lnk{GUID}.tmp` until the
+  directory was hand-created; the advisory names the redirect and the
+  `mkdir` repair. The redirect stays — it protects full system temp drives —
+  and the constraint is now documented in
+  `docs/agent-context/validation.md` (#5280).
 - Repair attempts: concurrent `ripr agent repair --phase after` invocations
   against one attempt no longer lose a verdict to a last-writer-wins
   manifest replace. Manifest commits serialize on a short-held exclusive
