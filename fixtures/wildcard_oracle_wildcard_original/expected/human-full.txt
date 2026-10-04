@@ -1,0 +1,42 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/wildcard_oracle_wildcard_original/input
+
+Summary: 1 probe(s), 0 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 1 of 1 finding(s) unsuppressed
+
+Analysis outcome: findings below (analysis complete; complete_with_findings).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+WARNING fixtures/wildcard_oracle_wildcard_original/input/src/lib.rs:2
+  id: probe:src_lib.rs:return_value:519eff0d
+
+Changed
+  before: value + 0
+  after:  value + 1
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::score
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach score: observes_score
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Complete propagation witness reaches returned value: value + 1
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Only relational oracle found; it may not discriminate the changed value exactly
+  - local flow reaches returned value: value + 1 (line 2)
+  - related test src/lib.rs:8 observes_score uses weak relational check oracle: assert!(matches!(value, _));
+  - source function argument value value = 1 at line 9
+
+Weakness
+  - No strong discriminator was detected
+
+Next step
+  Replace broad assertions with exact equality or a property that constrains the changed returned value.
+Drill in:
+  ripr explain --root fixtures/wildcard_oracle_wildcard_original/input --diff fixtures/wildcard_oracle_wildcard_original/diff.patch --mode fast probe:src_lib.rs:return_value:519eff0d
+  ripr context --root fixtures/wildcard_oracle_wildcard_original/input --diff fixtures/wildcard_oracle_wildcard_original/diff.patch --mode fast --at probe:src_lib.rs:return_value:519eff0d

@@ -9,6 +9,10 @@ id = "RIPR-SPEC-0001"
 name = "static exposure loop"
 spec = "docs/specs/RIPR-SPEC-0001-static-exposure-loop.md"
 tests = [
+  "crates/ripr/src/analysis/extract/oracles/wildcard_tests.rs::unguarded_wildcard_patterns_are_not_exact_oracles",
+  "crates/ripr/src/analysis/extract/oracles/wildcard_tests.rs::wildcard_downgrade_preserves_patterns_guards_and_other_conditions",
+  "crates/ripr/src/analysis/extract/oracles/wildcard_tests.rs::wildcard_runtime_control_accepts_wrong_behavior_while_exact_pin_distinguishes_it",
+  "crates/ripr/src/analysis/extract/oracles/wildcard_tests.rs::parser_backed_wildcard_uses_the_same_non_exact_authority",
   "crates/ripr/src/analysis/facts/index_tests.rs::moved_large_payload_has_one_backing_through_both_ordered_views",
   "crates/ripr/src/analysis/facts/index_tests.rs::union_mutation_visits_shared_flat_only_and_file_only_once",
   "crates/ripr/src/analysis/facts/index_tests.rs::compaction_keeps_independent_membership_and_duplicate_occurrences",
@@ -7137,6 +7141,10 @@ id = "RIPR-SPEC-0108"
 name = "evidence-promotion honesty meta-gate"
 spec = "docs/specs/RIPR-SPEC-0108-evidence-promotion-honesty-meta-gate.md"
 tests = [
+  "xtask/src/tests.rs::evidence_promotion_human_oracle_line_matches_real_rust_evidence",
+  "xtask/src/tests.rs::evidence_promotion_human_oracle_line_rejects_diagnostic_overrides",
+  "xtask/src/tests.rs::evidence_promotion_semantic_assertions_retain_related_test_identity",
+  "xtask/src/evidence_promotion.rs::related_test_assertion_tests::requires_source_identity",
   "xtask/src/main.rs::check_evidence_promotion_honesty",
   "xtask/src/main.rs::tests::evidence_promotion_honesty_accepts_complete_pinned_external_tier",
   "xtask/src/main.rs::tests::evidence_promotion_honesty_accepts_typed_assertion_vocabulary",
@@ -7182,6 +7190,12 @@ tests = [
   "crates/ripr/src/analysis/test_grip_evidence/tests.rs::given_two_impls_when_compact_grip_sees_owner_type_call_then_direct_owner_call",
 ]
 fixtures = [
+  "fixtures/wildcard_oracle_wildcard_original",
+  "fixtures/wildcard_oracle_wildcard_wrong",
+  "fixtures/wildcard_oracle_exact_original",
+  "fixtures/wildcard_oracle_exact_wrong",
+  "fixtures/wildcard_oracle_guarded_original",
+  "fixtures/wildcard_oracle_guarded_wrong",
   "fixtures/benches_harness_evidence",
   "fixtures/evidence-promotion-honesty-corpus",
   "fixtures/evidence-promotion-honesty-corpus/patches/semver-matches-greater.diff",

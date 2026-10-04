@@ -544,7 +544,10 @@ pub(crate) const COUNT_CACHE_SCHEMA_VERSION: &str = "0.2";
 /// fabricate property-body functions/tests. Published 1.16 facts must miss.
 /// `1.18`: parser raw oracle scans exclude opaque property bodies (#5131).
 /// Published `1.17` favorable discarded-oracle facts cannot replay.
-pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "1.18";
+/// `1.20`: unguarded wildcard pattern assertions are weak, not exact strong
+/// oracles (#5397). Predecessor strong wildcard facts must not replay. The
+/// concurrent assertion-admission candidate #5359 uses generation `1.19`.
+pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "1.20";
 
 /// Keep the best-effort classified-seam cache from turning a successful live
 /// analysis into an unbounded post-analysis stall on large repos. Larger live
@@ -3636,7 +3639,7 @@ mod tests {
         // 1.12 -> 1.13: impl_context records the function's impl self type (#4558).
         // 1.13 -> 1.14: `FunctionFact` gains the parser's item container
         // (#4478); a warm pre-bump hit would read every owner as `Unknown`.
-        assert_eq!(FILE_FACT_CACHE_SCHEMA_VERSION, "1.18");
+        assert_eq!(FILE_FACT_CACHE_SCHEMA_VERSION, "1.20");
         // 1.4 -> 1.5: metadata-sourced harness validation (#3634) flips
         // verdicts for workspaces the manifest emulation approximated.
         // 1.5 -> 1.6: the #3636 reachability authority excludes

@@ -47,6 +47,81 @@ pub(super) fn ensure_assertion_arguments(line: &str) -> Option<Vec<String>> {
     macro_invocation_arguments(line, "ensure!")
 }
 
+/// A whole unguarded `_` pattern accepts every scrutinee. Keep this separate
+/// from substring macro recognition: a guard, compound condition, or diagnostic
+/// containing `matches!` may still carry an independent discriminator.
+pub(super) fn is_unguarded_wildcard_assertion(line: &str) -> bool {
+    if let Some(arguments) = ["assert_matches!", "debug_assert_matches!"]
+        .into_iter()
+        .find_map(|name| complete_macro_arguments(line, name))
+    {
+        return arguments
+            .get(1)
+            .is_some_and(|pattern| is_wildcard_pattern(pattern));
+    }
+    let Some(condition) = ["assert!", "debug_assert!", "ensure!"]
+        .into_iter()
+        .find_map(|name| complete_macro_arguments(line, name)?.into_iter().next())
+    else {
+        return false;
+    };
+    let condition = mask_comments_and_strings(&condition);
+    let mut expression = condition.trim();
+    while let Some(inner) = parenthesized_contents(expression) {
+        expression = inner.trim();
+    }
+    complete_macro_arguments(expression, "matches!").is_some_and(|arguments| {
+        arguments.len() == 2
+            && arguments
+                .get(1)
+                .is_some_and(|pattern| is_wildcard_pattern(pattern))
+    })
+}
+
+fn is_wildcard_pattern(pattern: &str) -> bool {
+    let masked = mask_comments_and_strings(pattern);
+    let mut pattern = masked.trim();
+    while let Some(inner) = parenthesized_contents(pattern) {
+        pattern = inner.trim();
+    }
+    pattern == "_"
+}
+
+fn complete_macro_arguments(text: &str, macro_name: &str) -> Option<Vec<String>> {
+    let text = text.trim();
+    let masked = mask_comments_and_strings(text);
+    let open = masked.find(['(', '[', '{'])?;
+    // Standard macro paths may have trivia between their tokens or a leading
+    // global-path separator. Only the supported complete path is accepted.
+    let path = masked[..open]
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
+    let matches_path = path == macro_name
+        || ["std::", "core::", "::std::", "::core::"]
+            .into_iter()
+            .any(|prefix| path.strip_prefix(prefix) == Some(macro_name));
+    if !matches_path {
+        return None;
+    }
+    let contents = delimited_contents_at(text, open)?;
+    let after = masked.get(open + contents.len() + 2..)?;
+    if !matches!(after.trim(), "" | ";") {
+        return None;
+    }
+    let mut arguments = split_top_level_commas(&contents);
+    // A trailing comma followed only by comments does not add a third
+    // `matches!` operand. Keep both actual operands, including string literals.
+    while arguments.len() > 2
+        && arguments
+            .last()
+            .is_some_and(|argument| mask_comments_and_strings(argument).trim().is_empty())
+    {
+        arguments.pop();
+    }
+    Some(arguments)
+}
+
 /// The new scalar predicate credit requires an entire outer assertion. The
 /// older argument helper deliberately recognizes macro calls inside a line;
 /// that is not sufficient authority for this narrower classification.

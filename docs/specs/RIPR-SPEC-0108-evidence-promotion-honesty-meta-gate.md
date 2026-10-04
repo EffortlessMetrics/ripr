@@ -69,6 +69,29 @@ There was no standing CI gate that read the byte-pinned golden and asserted "no
 finding may be `exposed` for charter member X, regardless of what the golden
 says it was re-blessed to."
 
+## Whole-wildcard discriminator controls
+
+The six `wildcard_oracle_*` fixtures cross original/wrong return values with
+whole wildcard, exact2 and guarded equality assertions. Each actual fast-mode
+output retains one return-value finding and one related test. Whole unguarded
+wildcards remain relational/weak and must not promote; exact and guarded
+controls retain strong discrimination. The independent `score(1) == 2`
+contract and native runtime control establish why the wildcard is vacuous.
+These synthetic charter members do not alter the selected real-Rust corpus
+denominator or establish representative-project accuracy. Golden assertions
+pin a nonzero finding count and oracle fields so empty findings cannot pass
+even when report-level scope or limitations are retained.
+The typed `expected_related_test` assertion also pins the test's file, line,
+name and oracle fields on every selected finding. Deleting that JSON evidence
+cannot pass by retaining top-level oracle fields and human prose.
+
+Oracle projection validation also accepts the renderer's anchored related-test
+sentence (`- related test ... uses weak relational check oracle: ...`, or the
+strong exact-value counterpart). The descriptor before the assertion controls
+kind and strength; diagnostic text inside the assertion cannot override it.
+The separator follows a complete path, line and test identity, so a path that
+contains ` uses ` does not hide an otherwise valid oracle projection.
+
 ## Behavior
 
 ### The invariant
@@ -134,6 +157,7 @@ says it was re-blessed to."
       `allowed_edit_surface`, and `forbidden_files`
     - `must_not_have_contradictory_packet_messaging`
     - `expected_oracle` with `kind` and `strength`
+    - `expected_related_test` with `name`, `file`, positive `line`, `kind` and `strength`
     - `expected_class` with `class`
     - `maximum_class` with `class`
     - `expected_completeness` with `completeness`

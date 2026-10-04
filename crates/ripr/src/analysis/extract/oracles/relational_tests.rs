@@ -130,7 +130,6 @@ fn relational_messages_and_call_chains_do_not_steal_oracle_kind() -> Result<(), 
         "r#\"assert!(plan.published > 0)\"#",
         "wrapper(assert!(plan.published > 0));",
         "// assert!(plan.published > 0)",
-        "assert!(matches!(plan.published, _));",
         "assert!(plan.published > 0) trailing",
         "assert!(plan.published > 0",
     ] {

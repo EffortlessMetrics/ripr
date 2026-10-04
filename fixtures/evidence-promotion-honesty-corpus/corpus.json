@@ -5,6 +5,236 @@
   "description": "Cross-language pinned adversarial corpus: evidence may not promote to exposed/strong unless it structurally matches the seam.",
   "cases": [
     {
+      "id": "rust_wildcard_oracle_wildcard_original",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/wildcard_oracle_wildcard_original",
+      "vector": "unguarded_whole_wildcard_has_no_discriminator_original",
+      "probe_family": "return_value",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "weakly_exposed"
+        },
+        {
+          "type": "expected_oracle",
+          "kind": "relational_check",
+          "strength": "weak"
+        },
+        {
+          "type": "expected_related_test",
+          "name": "observes_score",
+          "file": "src/lib.rs",
+          "line": 8,
+          "kind": "relational_check",
+          "strength": "weak"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
+      "id": "rust_wildcard_oracle_wildcard_wrong",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/wildcard_oracle_wildcard_wrong",
+      "vector": "unguarded_whole_wildcard_has_no_discriminator_wrong",
+      "probe_family": "return_value",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "weakly_exposed"
+        },
+        {
+          "type": "expected_oracle",
+          "kind": "relational_check",
+          "strength": "weak"
+        },
+        {
+          "type": "expected_related_test",
+          "name": "observes_score",
+          "file": "src/lib.rs",
+          "line": 8,
+          "kind": "relational_check",
+          "strength": "weak"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
+      "id": "rust_wildcard_oracle_exact_original",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/wildcard_oracle_exact_original",
+      "vector": "retained_exact_discriminator_positive_control_original",
+      "probe_family": "return_value",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "exposed"
+        },
+        {
+          "type": "expected_oracle",
+          "kind": "exact_value",
+          "strength": "strong"
+        },
+        {
+          "type": "expected_related_test",
+          "name": "observes_score",
+          "file": "src/lib.rs",
+          "line": 8,
+          "kind": "exact_value",
+          "strength": "strong"
+        }
+      ]
+    },
+    {
+      "id": "rust_wildcard_oracle_exact_wrong",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/wildcard_oracle_exact_wrong",
+      "vector": "retained_exact_discriminator_positive_control_wrong",
+      "probe_family": "return_value",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "exposed"
+        },
+        {
+          "type": "expected_oracle",
+          "kind": "exact_value",
+          "strength": "strong"
+        },
+        {
+          "type": "expected_related_test",
+          "name": "observes_score",
+          "file": "src/lib.rs",
+          "line": 8,
+          "kind": "exact_value",
+          "strength": "strong"
+        }
+      ]
+    },
+    {
+      "id": "rust_wildcard_oracle_guarded_original",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/wildcard_oracle_guarded_original",
+      "vector": "retained_guarded_discriminator_positive_control_original",
+      "probe_family": "return_value",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "exposed"
+        },
+        {
+          "type": "expected_oracle",
+          "kind": "exact_value",
+          "strength": "strong"
+        },
+        {
+          "type": "expected_related_test",
+          "name": "observes_score",
+          "file": "src/lib.rs",
+          "line": 8,
+          "kind": "exact_value",
+          "strength": "strong"
+        }
+      ]
+    },
+    {
+      "id": "rust_wildcard_oracle_guarded_wrong",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/wildcard_oracle_guarded_wrong",
+      "vector": "retained_guarded_discriminator_positive_control_wrong",
+      "probe_family": "return_value",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "exposed"
+        },
+        {
+          "type": "expected_oracle",
+          "kind": "exact_value",
+          "strength": "strong"
+        },
+        {
+          "type": "expected_related_test",
+          "name": "observes_score",
+          "file": "src/lib.rs",
+          "line": 8,
+          "kind": "exact_value",
+          "strength": "strong"
+        }
+      ]
+    },
+    {
       "id": "rust_predicate_boundary_oracle_refused",
       "language": "rust",
       "tier": "pure",
