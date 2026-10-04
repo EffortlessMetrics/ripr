@@ -24,6 +24,7 @@ mod merge_queue;
 mod metrics;
 mod module_health;
 mod mutation;
+mod mutation_spot_check;
 mod operator;
 mod orchestration;
 mod perl_migration;
@@ -137,6 +138,7 @@ pub(crate) use mutation::{
     mutation_calibration_report_markdown, parse_mutation_calibration_args,
     parse_mutation_outcomes_json, read_mutation_input_json,
 };
+pub(crate) use mutation_spot_check::mutation_spot_check;
 pub(crate) use operator::operator_cockpit_report;
 pub(crate) use orchestration::{
     assess_orchestration_fixture_corpus, orchestration_scorecard_report,

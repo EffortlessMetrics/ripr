@@ -11,6 +11,13 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Calibration: `ripr calibrate cargo-mutants` reads real cargo-mutants
+  `mutants.out` output. Outcomes nested under `scenario.Mutant` with
+  `CaughtMutant`/`MissedMutant`/`Timeout`/`Unviable` summaries now import as
+  `caught`/`missed`/`timeout`/`unviable`, and `outcomes.json` and
+  `mutants.json` records merge by mutant name. Before, every outcome from a
+  cargo-mutants 27.1 run imported as `unknown`, so no agreement bucket ever
+  filled.
 - CLI: `ripr check` warns on stderr, on the no-scope empty-result path, when
   the default base and HEAD each resolve to the same commit after analysis (for
   example `origin/HEAD` tracking the checked-out branch in a clone of a feature
