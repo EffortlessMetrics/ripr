@@ -2451,9 +2451,12 @@ fn github_workflow_check(binary: &Path) -> ReleaseReadinessCheck {
                 "ripr agent review-summary",
                 "ripr reports gap-ledger",
                 "ripr first-pr",
-                "#### First-run status",
-                "missing_start_here",
-                "cat target/ripr/reports/start-here.md",
+                // #5375: the first-run summary text moved out of the YAML
+                // into `ripr reports ci-summary` (#5236). The workflow must
+                // call it; `ci_summary_first_run_missing` below checks the
+                // installed binary's empty-state output carries the text.
+                "ripr reports ci-summary",
+                "$GITHUB_STEP_SUMMARY",
                 "target/ripr/reports/gap-decision-ledger.json",
                 "target/ripr/reports/start-here.md",
                 "target/ripr/pilot",
@@ -2465,11 +2468,8 @@ fn github_workflow_check(binary: &Path) -> ReleaseReadinessCheck {
                 "RIPR_UPLOAD_SARIF",
                 "actions/upload-artifact",
             ];
-            let missing = required
-                .iter()
-                .filter(|needle| !result.stdout.contains(**needle))
-                .map(|needle| (*needle).to_string())
-                .collect::<Vec<_>>();
+            let mut missing = missing_required_needles(&result.stdout, &required);
+            missing.extend(ci_summary_first_run_missing(binary));
             if missing.is_empty() {
                 readiness_check(
                     "github-workflow-defaults",
@@ -2510,6 +2510,57 @@ fn github_workflow_check(binary: &Path) -> ReleaseReadinessCheck {
             Vec::new(),
             vec![err],
         ),
+    }
+}
+
+/// Text the generated workflow's summary step must print on a first run,
+/// before any start-here packet exists (#5375).
+const CI_SUMMARY_FIRST_RUN_NEEDLES: &[&str] = &[
+    "#### First-run status",
+    "missing_start_here",
+    "target/ripr/reports/start-here.md",
+];
+
+/// Runs the installed binary's `reports ci-summary` against an empty root
+/// outside the checkout and returns the first-run needles it did not print,
+/// or why it could not run. Empty means the summary step would still lead a
+/// new adopter to start-here.
+fn ci_summary_first_run_missing(binary: &Path) -> Vec<String> {
+    let root = match external_cli_fixture_root() {
+        Ok(root) => root.join("ci-summary"),
+        Err(err) => return vec![format!("ci-summary fixture root: {err}")],
+    };
+    if let Err(err) = fs::create_dir_all(&root) {
+        return vec![format!("ci-summary fixture root: {err}")];
+    }
+    let root_text = root.to_string_lossy().into_owned();
+    let result = run_command_path(
+        binary,
+        &[
+            "reports",
+            "ci-summary",
+            "--root",
+            &root_text,
+            "--base-ref",
+            "main",
+        ],
+    );
+    if let Some(parent) = root.parent() {
+        let _ = fs::remove_dir_all(parent);
+    }
+    match result {
+        Ok(result) if result.success => {
+            missing_required_needles(&result.stdout, CI_SUMMARY_FIRST_RUN_NEEDLES)
+                .into_iter()
+                .map(|needle| format!("ripr reports ci-summary output: {needle}"))
+                .collect()
+        }
+        Ok(result) => {
+            let mut details = vec!["ripr reports ci-summary failed".to_string()];
+            details.extend(command_details(&result));
+            details
+        }
+        Err(err) => vec![format!("ripr reports ci-summary could not run: {err}")],
     }
 }
 
@@ -3116,12 +3167,13 @@ fn run_command_path(program: &Path, args: &[&str]) -> Result<CommandResult, Stri
 mod tests {
     use super::{
         EditorVersion, FIRST_SCREEN_NEEDLES, PackageVersion, RELEASE_LOOP_NEEDLES,
-        ReleaseReadinessCheck, ReleaseReadinessReport, create_external_doctor_fixture,
-        extension_version_check_from, extract_packaged_crate, missing_required_needles,
-        package_version, parse_release_readiness_args, read_crate_version, readiness_check,
-        release_readiness_json, release_readiness_markdown, release_readiness_status,
-        validate_binary_identity, validate_doctor_result, validate_installed_version,
-        validate_package_entry, vsix_start_current_repair_command_present,
+        ReleaseReadinessCheck, ReleaseReadinessReport, ci_summary_first_run_missing,
+        create_external_doctor_fixture, extension_version_check_from, extract_packaged_crate,
+        missing_required_needles, package_version, parse_release_readiness_args,
+        read_crate_version, readiness_check, release_readiness_json, release_readiness_markdown,
+        release_readiness_status, validate_binary_identity, validate_doctor_result,
+        validate_installed_version, validate_package_entry,
+        vsix_start_current_repair_command_present,
     };
     use serde_json::Value;
     use std::fs;
@@ -4234,5 +4286,65 @@ mod tests {
         };
         let _ = fs::remove_dir_all(&root);
         result
+    }
+
+    /// #5375: the readiness row reads the first-run guidance from the
+    /// installed binary's `reports ci-summary`, not from workflow text. A
+    /// stand-in binary that prints it passes; one that prints a summary
+    /// without it, or fails, is named in the row's details.
+    #[cfg(unix)]
+    #[test]
+    fn ci_summary_first_run_probe_reads_the_binary_output() -> Result<(), String> {
+        use std::os::unix::fs::PermissionsExt;
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| format!("clock error: {err}"))?
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("ripr-ci-summary-probe-{stamp}"));
+        fs::create_dir_all(&dir).map_err(|err| format!("failed to create dir: {err}"))?;
+        let stand_in = |name: &str, body: &str| -> Result<std::path::PathBuf, String> {
+            let path = dir.join(name);
+            fs::write(&path, format!("#!/bin/sh\n{body}\n"))
+                .map_err(|err| format!("write {name}: {err}"))?;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
+                .map_err(|err| format!("chmod {name}: {err}"))?;
+            Ok(path)
+        };
+        let good = stand_in(
+            "good",
+            "[ \"$1 $2\" = 'reports ci-summary' ] || exit 9\n\
+             printf '#### First-run status\\n- Status: `missing_start_here`\\n\
+             Open `target/ripr/reports/start-here.md` first.\\n'",
+        )?;
+        let silent = stand_in("silent", "echo '## RIPR advisory summary'")?;
+        let failing = stand_in("failing", "echo boom >&2; exit 3")?;
+
+        let good_missing = ci_summary_first_run_missing(&good);
+        let silent_missing = ci_summary_first_run_missing(&silent);
+        let failing_missing = ci_summary_first_run_missing(&failing);
+        let _ = fs::remove_dir_all(&dir);
+
+        if !good_missing.is_empty() {
+            return Err(format!(
+                "complete summary reported missing: {good_missing:?}"
+            ));
+        }
+        if silent_missing.len() != 3
+            || !silent_missing
+                .iter()
+                .any(|item| item.contains("#### First-run status"))
+        {
+            return Err(format!(
+                "summary without first-run text: {silent_missing:?}"
+            ));
+        }
+        if !failing_missing
+            .iter()
+            .any(|item| item.contains("ripr reports ci-summary failed"))
+            || !failing_missing.iter().any(|item| item.contains("boom"))
+        {
+            return Err(format!("failing binary not named: {failing_missing:?}"));
+        }
+        Ok(())
     }
 }
