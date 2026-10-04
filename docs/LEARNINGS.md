@@ -31,6 +31,20 @@ keys; a compile-time assertion requires the keys to match the producer
 tokens. Do not treat a limitation sentence or a "non-zero" stop-state as
 the contract.
 
+## 2026-10-04: Weak grip needs established activation (pilot accuracy)
+
+`ripr pilot` ranks `weakly_gripped` first. The mutation spot check scored its
+top ten recommendations on five crates: 9 of 37 pointed at a missed
+mutant. Most top weak seams had `activate: unknown`. Some had #4214's
+boundary hint with no observed value, others only same-file related tests.
+Real mutants caught 8 of the 11 seam-precise "missing boundary" claims of
+that shape. `classify_seam` now grades weak grip only when activation is
+known. Otherwise the seam is `ActivationUnknown`. The missing-discriminator
+hint stays in the evidence as guidance. Score ranking changes with
+`cargo xtask mutation-spot-check`, whose receipt now carries
+`pilot_top_recommendations`. Do not judge them from verdict agreement:
+`weakly_gripped` and unknown classes are unscored there.
+
 ## 2026-10-04: `help --json` must be named and self-reported (#5266)
 
 A machine-only route that human `ripr help` does not name is undiscoverable.
@@ -241,9 +255,10 @@ absorb #4478 (confirmation pin), #4486 (proximity-only oracle), or #3727.
 `CallFact`, `LetBindingFact`, and `ValueEnv` cannot prove that a local is the
 direct return of the seam owner. A nearby test name or a `.field` token on
 another object must not emit a compatible missing discriminator. Derive the
-fact only after activation is already `Yes`; nonempty `missing_discriminators`
-classifies `WeaklyGripped` before `ActivationUnknown`, so an unconditional
-field fact would invent actionability. Keep helper-transfer and qualified or
+fact only after activation is already `Yes`; with activation known, nonempty
+`missing_discriminators` classifies `WeaklyGripped` before
+`ActivationUnknown`, so an unconditional field fact would invent
+actionability. Keep helper-transfer and qualified or
 method callees as named limitations until a later producer can resolve them.
 A same-name local or imported callee, a mutable borrow of the observed field,
 an assertion-message-only field mention, and an assertion-local shadow of the

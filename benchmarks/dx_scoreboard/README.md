@@ -115,7 +115,10 @@ These native receipts are also accepted as-is:
   changed verdict list is printed under "For review" and never fails the gate.
 - `ripr-mutation-spot-check-v1` from the mutation spot-check: the agreement
   rate of the `claims_discriminator` and `claims_no_discriminator` families,
-  and join coverage as `seam_precise` pairings over all mutants. These compare
+  join coverage as `seam_precise` pairings over all mutants, and the
+  precision of `ripr pilot`'s top ten recommendations per repository (a
+  recommendation is confirmed when a mutant on its line, or else in its
+  function's body, was missed). These compare
   static claims with real mutation outcomes on a sample; they are evidence
   about ripr's calibration, not a mutation result for the corpus.
 - `ripr-rust-corpus-smoke-v1` from `cargo xtask rust-corpus smoke`: per

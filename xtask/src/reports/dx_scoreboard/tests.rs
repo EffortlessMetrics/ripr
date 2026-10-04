@@ -560,6 +560,7 @@ fn mutation_spot_check_receipt_maps_agreement_and_join_coverage() -> Result<(), 
             {"pairings": {"seam_precise": 2}, "calibration_metrics": {"mutants_total": 86}},
             {"pairings": {"seam_precise": 170}, "calibration_metrics": {"mutants_total": 1659}},
         ],
+        "pilot_top_recommendations": {"scored": 39, "precision": 0.385, "by_tier": {"seam": {"confirmed": 2, "refuted": 5}, "owner": {"confirmed": 13, "refuted": 19}}, "repos": [{"name": "semver"}, {"name": "humantime"}]},
     });
     let input = mutation_spot_check_to_input(&receipt)?;
     let value = |id: &str| {
@@ -573,6 +574,21 @@ fn mutation_spot_check_receipt_maps_agreement_and_join_coverage() -> Result<(), 
     assert!(
         value("trust.mutation_join_coverage").is_some_and(|v| (v - 172.0 / 1745.0).abs() < 1e-9)
     );
+    assert_eq!(
+        value("trust.pilot_top_recommendation_precision"),
+        Some(0.385)
+    );
+    let pilot_evidence = input["metrics"].as_array().and_then(|rows| {
+        rows.iter()
+            .find(|row| row["id"] == "trust.pilot_top_recommendation_precision")
+            .and_then(|row| row["evidence"].as_str())
+    });
+    assert_eq!(
+        pilot_evidence,
+        Some(
+            "39 pilot recommendations scored (seam 2/7, line 0/0, owner 13/32) over semver, humantime"
+        )
+    );
 
     let evidence = |input: &Value| input["evidence"].as_str().unwrap_or_default().to_string();
     assert!(
@@ -583,7 +599,7 @@ fn mutation_spot_check_receipt_maps_agreement_and_join_coverage() -> Result<(), 
 
     let config = load_config(&committed_config())?;
     let samples = parse_ingest(&receipt, &config)?;
-    assert_eq!(samples.len(), 3);
+    assert_eq!(samples.len(), 4);
 
     let mut empty_args = receipt.clone();
     empty_args["repos"][0]["cargo_mutants_args"] = json!([]);
@@ -602,7 +618,7 @@ fn mutation_spot_check_receipt_maps_agreement_and_join_coverage() -> Result<(), 
     // Ingest publishes each row's own evidence, so the caveat must reach
     // every sample, not only the top-level evidence.
     let samples = parse_ingest(&sampled, &config)?;
-    assert_eq!(samples.len(), 3);
+    assert_eq!(samples.len(), 4);
     for sample in &samples {
         assert!(sample.detail.contains(caveat), "{}", sample.detail);
     }
@@ -612,6 +628,44 @@ fn mutation_spot_check_receipt_maps_agreement_and_join_coverage() -> Result<(), 
             .iter()
             .all(|sample| !sample.detail.contains("cargo-mutants arguments"))
     );
+
+    // A receipt from before the pilot section, or with nothing scored, adds
+    // no pilot row rather than a misleading zero.
+    // A run with a repository's pilot unavailable measured a smaller
+    // population, so it publishes no pilot row either.
+    for section in [
+        None,
+        Some(json!({"scored": 0, "precision": null})),
+        Some(json!({"scored": 39, "precision": 0.4, "unavailable_repos": 1})),
+    ] {
+        let mut older = receipt.clone();
+        match section {
+            Some(section) => older["pilot_top_recommendations"] = section,
+            None => {
+                older
+                    .as_object_mut()
+                    .map(|map| map.remove("pilot_top_recommendations"));
+            }
+        }
+        let rows = mutation_spot_check_to_input(&older)?;
+        assert!(rows["metrics"].as_array().is_some_and(|rows| {
+            rows.iter()
+                .all(|row| row["id"] != "trust.pilot_top_recommendation_precision")
+        }));
+    }
+    // A present section with an unreadable count is a malformed receipt.
+    let mut malformed = receipt.clone();
+    malformed["pilot_top_recommendations"]["unavailable_repos"] = json!("1");
+    if mutation_spot_check_to_input(&malformed).is_ok() {
+        return Err("accepted a string unavailable_repos".to_string());
+    }
+    for scored in [json!(null), json!("39"), json!(-1)] {
+        let mut malformed = receipt.clone();
+        malformed["pilot_top_recommendations"]["scored"] = scored.clone();
+        if mutation_spot_check_to_input(&malformed).is_ok() {
+            return Err(format!("accepted pilot scored {scored}"));
+        }
+    }
     Ok(())
 }
 

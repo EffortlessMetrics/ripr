@@ -922,6 +922,44 @@ pub(crate) fn rust_corpus_smoke_to_input(value: &Value) -> Result<Value, String>
     }))
 }
 
+/// The repositories a pilot precision covers, so a row measured over a
+/// different population than its baseline says so in its evidence.
+fn pilot_repos(pilot: &Value) -> String {
+    let names = pilot["repos"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|repo| repo["name"].as_str())
+        .collect::<Vec<_>>();
+    if names.is_empty() {
+        "unrecorded repositories".to_string()
+    } else {
+        names.join(", ")
+    }
+}
+
+/// Scored pilot recommendations per judge tier, so the scoreboard row shows
+/// how much of its precision rests on the coarse `line` and `owner` tiers.
+fn pilot_tier_split(pilot: &Value) -> String {
+    ["seam", "line", "owner"]
+        .iter()
+        .map(|tier| {
+            let count = |verdict: &str| {
+                pilot
+                    .pointer(&format!("/by_tier/{tier}/{verdict}"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
+            };
+            format!(
+                "{tier} {}/{}",
+                count("confirmed"),
+                count("confirmed") + count("refuted")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// Convert a `ripr-mutation-spot-check-v1` receipt into scoreboard rows:
 ///
 /// - discriminator claim agreement: when ripr says a test discriminates the
@@ -929,7 +967,10 @@ pub(crate) fn rust_corpus_smoke_to_input(value: &Value) -> Result<Value, String>
 /// - gap claim agreement: when ripr says no test discriminates, the share of
 ///   seam-precise mutants a real run missed (the rest are false gaps);
 /// - join coverage: seam-precise joins over all mutants, because agreement
-///   rates only speak for the mutants that could be joined to a seam.
+///   rates only speak for the mutants that could be joined to a seam;
+/// - pilot top-recommendation precision: of `ripr pilot`'s top seams that a
+///   real mutant scores, the share where a mutant was missed (receipts written
+///   before the pilot section existed simply omit the row).
 pub(crate) fn mutation_spot_check_to_input(value: &Value) -> Result<Value, String> {
     let families = value["scored_families"]
         .as_object()
@@ -985,6 +1026,43 @@ pub(crate) fn mutation_spot_check_to_input(value: &Value) -> Result<Value, Strin
         }
         joined += precise;
         mutants += total;
+    }
+    // Older receipts carry no pilot section; a present one must say how many
+    // recommendations it scored, so a malformed receipt fails instead of
+    // reading as not measured.
+    let pilot = &value["pilot_top_recommendations"];
+    let scored = if pilot.is_null() {
+        0
+    } else {
+        pilot["scored"].as_u64().ok_or(
+            "mutation spot-check pilot_top_recommendations needs scored as a non-negative integer",
+        )?
+    };
+    // A run that lost a repository's pilot ranking measured a different
+    // population than the baseline, so it publishes no pilot row rather
+    // than a precision the regression gate would compare as like for like.
+    let unavailable = match &pilot["unavailable_repos"] {
+        Value::Null => 0,
+        count => count.as_u64().ok_or(
+            "mutation spot-check pilot_top_recommendations needs unavailable_repos as a non-negative integer",
+        )?,
+    };
+    if scored > 0 && unavailable == 0 {
+        let precision = pilot["precision"]
+            .as_f64()
+            .filter(|rate| (0.0..=1.0).contains(rate))
+            .ok_or(
+                "mutation spot-check pilot_top_recommendations needs precision between 0 and 1",
+            )?;
+        rows.push(json!({
+            "id": "trust.pilot_top_recommendation_precision",
+            "value": precision,
+            "evidence": format!(
+                "{scored} pilot recommendations scored ({}) over {}",
+                pilot_tier_split(pilot),
+                pilot_repos(pilot)
+            ),
+        }));
     }
     if mutants > 0 {
         rows.push(json!({

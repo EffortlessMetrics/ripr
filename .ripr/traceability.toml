@@ -301,6 +301,8 @@ tests = [
   "crates/ripr/tests/agent_command_journey.rs::prepared_packet_next_commands_stay_in_selected_root_from_foreign_cwd",
   "crates/ripr/tests/agent_command_journey.rs::prepared_packet_continuation_cannot_resume_a_later_attempt_for_the_same_seam",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::prepared_packet_continuation_preserves_required_python_authorization",
+  "crates/ripr/src/analysis/seam_classification.rs::tests::given_activation_unknown_then_weak_evidence_is_activation_unknown_not_weak_grip",
+  "crates/ripr/src/analysis/test_grip_evidence/tests.rs::boundary_with_unobserved_activation_is_activation_unknown_and_keeps_its_hint",
   "crates/ripr/src/analysis/seams.rs::tests::seam_id_is_deterministic_for_identical_inputs",
   "crates/ripr/src/analysis/seams.rs::tests::seam_id_differs_when_any_canonical_field_differs",
   "crates/ripr/src/analysis/seams.rs::tests::seam_ids_do_not_depend_on_construction_order",

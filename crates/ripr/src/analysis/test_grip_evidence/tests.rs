@@ -16986,3 +16986,51 @@ fn trait_method_reached_only_by_delegation_is_opaque_not_ungripped() -> Result<(
     assert_eq!(class, SeamGripClass::Opaque);
     Ok(())
 }
+
+/// Pilot accuracy (mutation spot check, humantime `item_plural`): a boundary
+/// reached only through trait dispatch has no observed activation value. The
+/// boundary hint stays as guidance, but the seam is `activation_unknown`, not
+/// a `weakly_gripped` gap pilot would rank first. Real mutants were caught.
+#[test]
+fn boundary_with_unobserved_activation_is_activation_unknown_and_keeps_its_hint()
+-> Result<(), String> {
+    let path = PathBuf::from("src/lib.rs");
+    let source = r#"
+use std::fmt;
+pub struct Plural(pub u64);
+fn suffix(value: u64) -> &'static str {
+    if value > 1 { "s" } else { "" }
+}
+impl fmt::Display for Plural {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "item{}", suffix(self.0))
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::Plural;
+    #[test]
+    fn plural_suffix() {
+        assert_eq!(Plural(3).to_string(), "items");
+    }
+}
+"#;
+    let index = index_from_files(&[(path.clone(), source)])?;
+    let seams = inventory_seams_from_index(&[path], &index);
+    let seam = seams
+        .iter()
+        .find(|seam| seam.kind() == SeamKind::PredicateBoundary)
+        .ok_or_else(|| "boundary seam must be inventoried".to_string())?;
+    let evidence = evidence_for_seam(seam, &index);
+    let class = crate::analysis::seam_classification::classify_seam(seam, &evidence);
+    if evidence.activate.state != StageState::Unknown
+        || evidence.missing_discriminators.is_empty()
+        || class != SeamGripClass::ActivationUnknown
+    {
+        return Err(format!(
+            "unobserved activation must keep the hint but not grade a weak grip: class={class:?}, activate={:?}, missing={:?}",
+            evidence.activate.state, evidence.missing_discriminators
+        ));
+    }
+    Ok(())
+}

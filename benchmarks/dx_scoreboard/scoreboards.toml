@@ -276,6 +276,18 @@ runner_dependent = false
 source = "ingest:mutation-spot-check"
 
 [[metric]]
+id = "trust.pilot_top_recommendation_precision"
+board = "trust"
+title = "When ripr pilot ranks a seam in its top ten, a real mutant there is missed"
+unit = "ratio"
+direction = "higher_is_better"
+target = 0.6
+regression_pct = 0
+regression_floor = 0.05
+runner_dependent = false
+source = "ingest:mutation-spot-check"
+
+[[metric]]
 id = "trust.mutation_join_coverage"
 board = "trust"
 title = "Real mutants that join a ripr seam precisely enough to score"
