@@ -1,3 +1,4 @@
+use crate::agent::loop_commands::shell_arg;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -607,9 +608,9 @@ fn recommendation_from_sources(
                 .map_or("after.json", |path| path);
             Some(format!(
                 "ripr agent verify --root {} --before {} --after {} --json",
-                agent_root(parsed.agent_packet.as_ref(), input),
-                before,
-                after
+                shell_arg(&agent_root(parsed.agent_packet.as_ref(), input)),
+                shell_arg(before),
+                shell_arg(after)
             ))
         } else {
             None
@@ -640,8 +641,9 @@ fn handoff_from_sources(
     .to_string();
     let agent_command = seam.seam_id.as_ref().map(|seam_id| {
         format!(
-            "ripr agent start --root {} --seam-id {seam_id} --out target/ripr/workflow",
-            agent_root(parsed.agent_packet.as_ref(), input)
+            "ripr agent start --root {} --seam-id {} --out target/ripr/workflow",
+            shell_arg(&agent_root(parsed.agent_packet.as_ref(), input)),
+            shell_arg(seam_id)
         )
     });
     ProofHandoff {
@@ -1238,6 +1240,66 @@ mod tests {
         assert!(rendered.contains("\"gate_decision\": \"gate-decision.json\""));
         assert!(rendered.contains("tests/pricing.rs::below_threshold_has_no_discount"));
         Ok(())
+    }
+
+    #[test]
+    fn test_oracle_assistant_proof_quotes_hostile_root_seam_and_snapshot_paths()
+    -> Result<(), String> {
+        let guidance = r#"{
+          "comments": [
+            {
+              "seam_id": "src_we ird_it's;x.rs:predicate:ec6d6f91",
+              "kind": "predicate_boundary",
+              "grip_class": "strongly_gripped",
+              "missing_discriminator": "variant equality",
+              "placement": {"path": "src/lib.rs", "line": 9, "mode": "changed_line"},
+              "suggested_test": {"intent": "Add one focused discriminator test."},
+              "llm_guidance": {}
+            }
+          ]
+        }"#;
+        let seam = "src_we ird_it's;x.rs:predicate:ec6d6f91";
+        let before = repo_exposure(seam, "strongly_gripped", "src/lib.rs", 9);
+        let after = repo_exposure(seam, "weakly_gripped", "src/lib.rs", 9);
+        let report = build_test_oracle_assistant_proof_report(TestOracleAssistantProofInput {
+            root: "it's a repo".to_string(),
+            pr_guidance_path: Some("comments.json".to_string()),
+            agent_packet_path: None,
+            before_path: Some("before snap.json".to_string()),
+            after_path: Some("after;snap.json".to_string()),
+            receipt_path: None,
+            ledger_path: None,
+            coverage_frontier_path: None,
+            gate_decision_path: None,
+            pr_guidance_json: Some(Ok(guidance.to_string())),
+            agent_packet_json: None,
+            before_json: Some(Ok(before)),
+            after_json: Some(Ok(after)),
+            receipt_json: None,
+            ledger_json: None,
+            coverage_frontier_json: None,
+            gate_decision_json: None,
+        });
+
+        let rendered = render_test_oracle_assistant_proof_json(&report)?;
+        let value: Value =
+            serde_json::from_str(&rendered).map_err(|err| format!("parse JSON: {err}"))?;
+        let mut commands = Vec::new();
+        collect_strings(&value, &mut commands);
+        let start = "ripr agent start --root 'it'\\''s a repo' --seam-id 'src_we ird_it'\\''s;x.rs:predicate:ec6d6f91' --out target/ripr/workflow";
+        let verify = "ripr agent verify --root 'it'\\''s a repo' --before 'before snap.json' --after 'after;snap.json' --json";
+        assert!(commands.iter().any(|text| text == start), "{commands:?}");
+        assert!(commands.iter().any(|text| text == verify), "{commands:?}");
+        Ok(())
+    }
+
+    fn collect_strings(value: &Value, out: &mut Vec<String>) {
+        match value {
+            Value::String(text) => out.push(text.clone()),
+            Value::Array(items) => items.iter().for_each(|item| collect_strings(item, out)),
+            Value::Object(map) => map.values().for_each(|item| collect_strings(item, out)),
+            _ => {}
+        }
     }
 
     #[test]

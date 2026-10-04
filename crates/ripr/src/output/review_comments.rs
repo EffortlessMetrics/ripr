@@ -3,7 +3,7 @@ use crate::agent::loop_commands::{
     WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_BRIEF_ARTIFACT,
     WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
     WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_brief_command, agent_verify_command,
-    check_analysis_outcome_command_with_base, display_path,
+    check_analysis_outcome_command_with_base, display_path, shell_arg,
 };
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::canonical_gap::canonical_gap_identity;
@@ -705,7 +705,11 @@ fn gap_record_comment_json(
         },
         "llm_guidance": {
             "prompt": repair_prompt(repair_route, &verify_command),
-            "command": format!("ripr first-action --root {} --gap-ledger {}", display_path(root), gap_ledger_path),
+            "command": format!(
+                "ripr first-action --root {} --gap-ledger {}",
+                shell_arg(&display_path(root)),
+                shell_arg(gap_ledger_path)
+            ),
             "verify_command": verify_command,
         },
     });
@@ -3329,6 +3333,29 @@ mod tests {
         assert!(rendered.contains("state: `unknown`"));
         assert!(rendered.contains("source_location_unresolved"));
         assert!(rendered.contains("analysis/source-location-resolution"));
+    }
+
+    #[test]
+    fn review_comments_gap_ledger_first_action_command_quotes_root_and_ledger() -> Result<(), String>
+    {
+        let records = crate::output::gap_decision_ledger::parse_gap_records_json(
+            gap_record_review_comments_fixture(),
+        )?;
+        let rendered = render_gap_record_review_comments_json(
+            Path::new("it's a repo"),
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            "target/it's;ledger.json",
+            &records,
+        )?;
+        let value: Value =
+            serde_json::from_str(&rendered).map_err(|err| format!("parse JSON: {err}"))?;
+        assert_eq!(
+            value["comments"][0]["llm_guidance"]["command"],
+            "ripr first-action --root 'it'\\''s a repo' --gap-ledger 'target/it'\\''s;ledger.json'"
+        );
+        Ok(())
     }
 
     #[test]
