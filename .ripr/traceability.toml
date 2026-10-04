@@ -12270,6 +12270,40 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0223"
+name = "Issue lifecycle read-only intake pilot over six real issue snapshots"
+spec = "docs/specs/RIPR-SPEC-0223-issue-lifecycle-intake-pilot.md"
+tests = [
+  "xtask/src/issue_lifecycle_intake.rs::tests::issue_lifecycle_intake_pilot_committed_corpus_loads_with_six_categories",
+  "xtask/src/issue_lifecycle_intake.rs::tests::issue_lifecycle_intake_pilot_false_duplicate_candidate_corrected_by_root_review",
+  "xtask/src/issue_lifecycle_intake.rs::tests::issue_lifecycle_intake_pilot_real_overlapping_pr_blocks_duplicate_pickup",
+  "xtask/src/issue_lifecycle_intake.rs::tests::issue_lifecycle_intake_pilot_narrow_issue_skips_spec_bureaucracy",
+  "xtask/src/issue_lifecycle_intake.rs::tests::issue_lifecycle_intake_pilot_architecture_ambiguity_stops_at_root_decision_required",
+  "xtask/src/issue_lifecycle_intake.rs::tests::issue_lifecycle_intake_pilot_missing_evidence_yields_exact_questions",
+  "xtask/src/issue_lifecycle_intake.rs::tests::issue_lifecycle_intake_pilot_partial_umbrella_retains_uncovered_acceptance",
+  "xtask/src/issue_lifecycle_intake.rs::tests::issue_lifecycle_intake_pilot_duplicate_row_names_evidence_and_stays_first_class",
+  "xtask/src/issue_lifecycle_intake.rs::tests::issue_lifecycle_intake_pilot_relevant_movement_invalidates_row_unrelated_does_not",
+  "xtask/src/issue_lifecycle_intake.rs::tests::issue_lifecycle_intake_pilot_no_active_toml_label_age_or_title_selects_work",
+  "xtask/src/issue_lifecycle_intake.rs::tests::issue_lifecycle_intake_pilot_cold_start_root_reconstructs_packet_without_chat",
+  "xtask/src/issue_lifecycle_intake.rs::tests::issue_lifecycle_intake_pilot_packet_bytes_complete_or_explicitly_not_measured",
+  "xtask/src/issue_lifecycle_intake.rs::tests::issue_lifecycle_intake_pilot_fabricated_selected_bytes_fail_closed",
+  "xtask/src/issue_lifecycle_intake.rs::tests::issue_lifecycle_intake_pilot_downgraded_root_disposition_rejected",
+  "xtask/src/issue_lifecycle_intake.rs::tests::issue_lifecycle_intake_pilot_extra_provenance_row_rejected",
+]
+fixtures = [
+  "fixtures/issue_lifecycle_intake",
+]
+code = [
+  "xtask/src/issue_lifecycle_intake.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0223-issue-lifecycle-intake-pilot.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0225"
 name = "Whole-value equality credit for constructed fields"
 spec = "docs/specs/RIPR-SPEC-0225-whole-value-equality-field-credit.md"

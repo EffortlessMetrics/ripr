@@ -1956,6 +1956,167 @@ fn validate_issue_lifecycle_attempts_fixture_corpus_at(
     Ok(())
 }
 
+pub(crate) fn validate_issue_lifecycle_intake_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/issue_lifecycle_intake");
+    for required in ["SPEC.md", "corpus.json", "controls.json", "provenance.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "issue lifecycle intake fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    if !root.join("snapshots").is_dir() {
+        violations.push(
+            "issue lifecycle intake fixture corpus is missing its snapshots directory".to_string(),
+        );
+    }
+    let spec_path = root.join("SPEC.md");
+    if spec_path.exists() {
+        let body = read_text_lossy(&spec_path)?;
+        if !body.contains("RIPR-SPEC-0223") {
+            violations.push(
+                "issue lifecycle intake SPEC.md must name its RIPR-SPEC-0223 decision".to_string(),
+            );
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !body.contains(heading) {
+                violations.push(format!(
+                    "issue lifecycle intake SPEC.md must contain the `{heading}` section"
+                ));
+            }
+        }
+    }
+    let corpus_path = root.join("corpus.json");
+    if !corpus_path.exists() {
+        return Ok(());
+    }
+    let body = read_text_lossy(&corpus_path)?;
+    let corpus = match crate::issue_lifecycle_intake::load_issue_lifecycle_intake_corpus(&body) {
+        Ok(corpus) => corpus,
+        Err(error) => {
+            violations.push(format!("issue lifecycle intake corpus is invalid: {error}"));
+            return Ok(());
+        }
+    };
+    for failure in crate::issue_lifecycle_intake::assess_intake_corpus(&corpus) {
+        violations.push(format!(
+            "issue lifecycle intake corpus assessment failed: {failure}"
+        ));
+    }
+    for row in &corpus.rows {
+        if let Err(error) = crate::issue_lifecycle_intake::verify_intake_row_snapshot(row, root) {
+            violations.push(format!(
+                "issue lifecycle intake snapshot binding failed: {error}"
+            ));
+        }
+        let assessment =
+            crate::issue_lifecycle_attempt::assess_issue_lifecycle_attempt(&row.attempt);
+        if !assessment.counted {
+            violations.push(format!(
+                "issue lifecycle intake row `{}` was rejected by the RIPR-SPEC-0218 counting law: {:?}",
+                row.id, assessment.reasons
+            ));
+        }
+        if assessment.disposition != Some(row.root_disposition.disposition) {
+            violations.push(format!(
+                "issue lifecycle intake row `{}` root disposition {:?} disagrees with the assessed disposition {:?}",
+                row.id, row.root_disposition.disposition, assessment.disposition
+            ));
+        }
+    }
+    let controls_path = root.join("controls.json");
+    if controls_path.exists() {
+        let body = read_text_lossy(&controls_path)?;
+        match crate::issue_lifecycle_intake::load_issue_lifecycle_intake_control_corpus(&body) {
+            Ok(controls) => {
+                for failure in
+                    crate::issue_lifecycle_intake::assess_intake_control_corpus(&controls)
+                {
+                    violations.push(format!(
+                        "issue lifecycle intake control corpus assessment failed: {failure}"
+                    ));
+                }
+                for control in &controls.rows {
+                    let assessment = crate::issue_lifecycle_attempt::assess_issue_lifecycle_attempt(
+                        &control.row.attempt,
+                    );
+                    if !assessment.counted {
+                        violations.push(format!(
+                            "issue lifecycle intake control `{}` was rejected by the RIPR-SPEC-0218 counting law: {:?}",
+                            control.id, assessment.reasons
+                        ));
+                    }
+                }
+            }
+            Err(error) => {
+                violations.push(format!(
+                    "issue lifecycle intake controls are invalid: {error}"
+                ));
+            }
+        }
+    }
+    let provenance_path = root.join("provenance.json");
+    if !provenance_path.exists() {
+        return Ok(());
+    }
+    let body = read_text_lossy(&provenance_path)?;
+    match crate::issue_lifecycle_intake::load_issue_lifecycle_intake_provenance(&body) {
+        Ok(provenance) => {
+            if provenance.rows.len() != corpus.rows.len() {
+                violations.push(format!(
+                    "issue lifecycle intake provenance must name {} rows, got {}",
+                    corpus.rows.len(),
+                    provenance.rows.len()
+                ));
+            }
+            if provenance.base_main != corpus.base_main {
+                violations.push(format!(
+                    "issue lifecycle intake provenance base_main `{}` disagrees with corpus `{}`",
+                    provenance.base_main, corpus.base_main
+                ));
+            }
+            if provenance.captured_at != corpus.captured_at {
+                violations.push(format!(
+                    "issue lifecycle intake provenance captured_at `{}` disagrees with corpus `{}`",
+                    provenance.captured_at, corpus.captured_at
+                ));
+            }
+            for row in &corpus.rows {
+                match provenance
+                    .rows
+                    .iter()
+                    .find(|entry| entry.issue == row.snapshot.issue_number)
+                {
+                    Some(entry) => {
+                        if entry.category != row.category {
+                            violations.push(format!(
+                                "issue lifecycle intake provenance category `{}` disagrees with row `{}` category `{}`",
+                                entry.category, row.id, row.category
+                            ));
+                        }
+                    }
+                    None => {
+                        violations.push(format!(
+                            "issue lifecycle intake provenance is missing issue `{}`",
+                            row.snapshot.issue_ref
+                        ));
+                    }
+                }
+            }
+        }
+        Err(error) => {
+            violations.push(format!(
+                "issue lifecycle intake provenance is invalid: {error}"
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_blind_journey_execute_fixture_corpus(
     violations: &mut Vec<String>,
 ) -> Result<(), String> {

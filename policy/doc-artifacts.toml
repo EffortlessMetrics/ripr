@@ -1238,6 +1238,14 @@ owner = "xtask"
 standalone_reason = "Issue #5257 records the cross-surface agent-experience benchmark: cargo xtask bench-agent-surfaces measures CLI, MCP stdio, and LSP stdio latency plus envelope actionability and output determinism over content-pinned offline corpora in one identity-bound advisory receipt, with typed validity gates, --compare regression flagging, and recorded structural limitations where a population cannot exist on large checkouts; no new CI gate."
 
 [[artifact]]
+id = "RIPR-SPEC-0223"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0223-issue-lifecycle-intake-pilot.md"
+status = "proposed"
+owner = "test-infra"
+standalone_reason = "Issue #4930 runs the read-only intake pilot (ISSUE-D2) as the first real-corpus consumer of the frozen RIPR-SPEC-0218 attempt contract: exactly six REAL captured issue snapshots (#5439 narrow accepted-contract bug, #5440 duplicate of #5270, #5399 overlapping open PR #5408, #5373 needs-evidence, #2928 partially landed umbrella with merged child #4643/PR #5366 and open residuals, #5441 architecture/authority ambiguity against ADR 0017) are classified through the closed fifteen-value disposition vocabulary with an independent root disposition per row, immutable digest-bound issue/comments/timeline snapshots, provenance with capture timestamp and base main SHA, packet selected/omitted/overflow bytes measured or explicitly not_measured, triager candidates with root corrections retained verbatim, exact missing-evidence questions instead of guessed implementation, the movement law (bound-identity movement invalidates a row, unrelated movement does not), the selection law (no active.toml, label, age or title silently selects work; the packet projection reads only committed corpus fields), byte-identical cold-start reconstruction from the corpus alone, and a synthetic mechanics control corpus (false-duplicate correction, overlapping-PR pickup block, explicit not_measured bytes) kept outside the six real rows; results flow through the unchanged #4929 counting law and IssueLifecycleScorecardV1 projection without a parallel intake report, claiming read-only intake quality for six exact issues only — no triage universality, no duplicate-detection accuracy, no implementation or closeout claim."
+
+[[artifact]]
 id = "RIPR-SPEC-0225"
 kind = "spec"
 path = "docs/specs/RIPR-SPEC-0225-whole-value-equality-field-credit.md"

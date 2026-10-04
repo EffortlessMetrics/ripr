@@ -125,7 +125,9 @@ pub(crate) use fixtures::{
 pub(crate) use index::{reports, reports_index};
 pub(crate) use issue_intake::issue_intake;
 pub(crate) use issue_lifecycle::{
-    assess_issue_lifecycle_fixture_corpus, issue_lifecycle_scorecard_report,
+    assess_issue_lifecycle_fixture_corpus, build_issue_lifecycle_scorecard,
+    issue_lifecycle_corpus_identity, issue_lifecycle_scorecard_json,
+    issue_lifecycle_scorecard_markdown, issue_lifecycle_scorecard_report,
 };
 pub(crate) use lsp::lsp_cockpit_report;
 pub(crate) use lsp_performance::lsp_performance_report;

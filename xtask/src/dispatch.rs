@@ -65,6 +65,9 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::IssueLifecycleScorecard(args) => {
             super::reports::issue_lifecycle_scorecard_report(&args)
         }
+        XtaskCommand::IssueLifecycleIntakeScorecard(args) => {
+            super::issue_lifecycle_intake::issue_lifecycle_intake_scorecard(&args)
+        }
         XtaskCommand::RustJudgedPanel(args) => super::rust_judged_panel::run(&args),
         XtaskCommand::CheckRustJudgedPanel => super::check_rust_judged_panel(),
         XtaskCommand::CheckReleaseChallengeSelection => {

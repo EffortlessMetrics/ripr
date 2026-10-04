@@ -177,3 +177,18 @@ reason = "Discriminating #4795 controls must quote the closed runtime-result voc
 path = "xtask/src/tests.rs"
 owner = "devtools"
 reason = "The regression tests for the static-language checker (moved verbatim out of main.rs in the #2119 decomposition) intentionally contain the literal prohibited terms they exercise."
+
+[[allow]]
+path = "fixtures/issue_lifecycle_intake/snapshots/issue-2928-timeline.json"
+owner = "test-infra"
+reason = "Immutable verbatim GitHub timeline capture for the #4930 read-only intake pilot; the captured cross-referenced issue body enumerates the prohibited mutation-runtime vocabulary as data, not as static classification output."
+
+[[allow]]
+path = "fixtures/issue_lifecycle_intake/snapshots/issue-5399-timeline.json"
+owner = "test-infra"
+reason = "Immutable verbatim GitHub timeline capture for the #4930 read-only intake pilot; the captured cross-referenced issue body enumerates the prohibited mutation-runtime vocabulary as data, not as static classification output."
+
+[[allow]]
+path = "fixtures/issue_lifecycle_intake/snapshots/issue-5439-timeline.json"
+owner = "test-infra"
+reason = "Immutable verbatim GitHub timeline capture for the #4930 read-only intake pilot; the captured cross-referenced issue body enumerates the prohibited mutation-runtime vocabulary as data, not as static classification output."

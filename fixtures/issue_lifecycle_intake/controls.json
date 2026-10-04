@@ -1,0 +1,489 @@
+{
+ "schema_version": "issue_lifecycle_intake_control_corpus.v1",
+ "rows": [
+  {
+   "id": "control_false_duplicate_corrected",
+   "control": "false_duplicate_candidate_corrected_by_root_review",
+   "scenario": "the triager flags a duplicate candidate that shares only a module name; root review corrects it and keeps the row qualified",
+   "row": {
+    "id": "control_false_duplicate_corrected",
+    "category": "control",
+    "snapshot": {
+     "issue_number": 0,
+     "issue_ref": "synthetic/target#0000",
+     "snapshot_path": null,
+     "comments_path": null,
+     "timeline_path": null,
+     "captured_at": "2026-10-04T11:02:59Z",
+     "issue_snapshot_id": "synthetic-issue-snapshot:sha256:0000000000000000000000000000000000000000000000000000000000000000",
+     "comments_snapshot_id": "synthetic-issue-comments:sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "current_main": "synthetic-main-sha",
+    "packet_bytes": {
+     "selected": {
+      "measured": 2048
+     },
+     "omitted": {
+      "measured": 0
+     },
+     "overflow": {
+      "measured": 0
+     }
+    },
+    "open_candidates": [
+     {
+      "kind": "duplicate",
+      "identity": "synthetic/target#9001",
+      "evidence": "triager candidate: same module name only",
+      "root_corrected": true,
+      "root_note": "candidate shares only the module name; contract differs"
+     }
+    ],
+    "triager_findings": [
+     "synthetic mechanics finding for control false_duplicate_candidate_corrected_by_root_review"
+    ],
+    "missing_evidence_questions": [],
+    "root_disposition": {
+     "disposition": "qualified_one_pr",
+     "rationale": "root corrected the duplicate candidate: the candidate issue shares only the module name, while the accepted contract here differs; the correction is retained verbatim",
+     "corrected_candidates": [
+      "synthetic/target#9001"
+     ]
+    },
+    "retrieval_steps": [
+     {
+      "step": "synthetic retrieval",
+      "command": "control fixture; no live command",
+      "bytes": {
+       "measured": 0
+      }
+     }
+    ],
+    "limitations": [
+     "synthetic mechanics row; never enters a real denominator"
+    ],
+    "false_candidates": [
+     "synthetic/target#9001"
+    ],
+    "non_claims": [
+     "claims no real-issue intake quality"
+    ],
+    "attempt": {
+     "schema_version": "issue_lifecycle_attempt.v1",
+     "lifecycle_id": "control-false-duplicate-corrected",
+     "observation_key": "observation-control-false-duplicate-corrected",
+     "synthetic": true,
+     "disposition": "qualified_one_pr",
+     "base_attempts": [
+      {
+       "attempt_id": "attempt-control-false-duplicate-corrected",
+       "shared_facts": [
+        "context"
+       ]
+      }
+     ],
+     "issue": {
+      "snapshot_id": "synthetic-issue-snapshot:sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "issue_ref": "synthetic/target#0000",
+      "comments_ref": "synthetic-issue-comments:sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "labels_ref": "synthetic-issue-labels:sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "assignees_ref": null,
+      "milestone_ref": null
+     },
+     "initial": {
+      "information_completeness": "complete",
+      "issue_family": "narrow_bug"
+     },
+     "context": {
+      "current_main": "synthetic-main-sha",
+      "relevant_prs": [],
+      "portfolio": "ripr-swarm-issue-lifecycle-intake-pilot",
+      "selected_work": "synthetic/target#0000",
+      "claim_ids": []
+     },
+     "intake": {
+      "evidence": [
+       {
+        "identity": "synthetic-intake-packet:sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "bytes": 1024
+       }
+      ],
+      "missing_evidence_questions": []
+     },
+     "contract_decision": {
+      "spec_required": false,
+      "decision_rationale": "root corrected the duplicate candidate: the candidate issue shares only the module name, while the accepted contract here differs; the correction is retained verbatim",
+      "root_disposition": "root-control"
+     },
+     "contract_artifacts": {
+      "proposal": null,
+      "spec": null,
+      "adr": null,
+      "challenge": null,
+      "amendments": [],
+      "acceptance": null
+     },
+     "plan": {
+      "plan_id": "plan-control-false-duplicate-corrected",
+      "work_items": [],
+      "dependencies": [],
+      "acceptance_coverage": []
+     },
+     "claim_events": [],
+     "execution_refs": {
+      "pr": null,
+      "review": null,
+      "checks": [],
+      "verification": null,
+      "merge": null,
+      "current_main": "synthetic-main-sha"
+     },
+     "progress": {
+      "mutation_plan": null,
+      "before_digest": null,
+      "after_digest": null,
+      "suppressed_unchanged": false
+     },
+     "burn_down": {
+      "state": "open",
+      "uncovered_rows": [],
+      "contradicted_rows": [],
+      "deferred_rows": []
+     },
+     "closeout": {
+      "state": "not_started",
+      "reason": null,
+      "remaining_limitations": [],
+      "current_head_verification": null
+     },
+     "limitations": [
+      "synthetic mechanics row; never enters a real denominator"
+     ],
+     "non_claims": [
+      "claims no real-issue intake quality"
+     ],
+     "row_digest": "adf4f01a40a936c894b6495b88033a45faba9dbcc10c275e887d9a97e2f1888e"
+    }
+   }
+  },
+  {
+   "id": "control_open_pr_blocks_duplicate_pickup",
+   "control": "real_overlapping_pr_blocks_duplicate_pickup",
+   "scenario": "a duplicate candidate exists but a real open PR overlaps the lane; pickup stays blocked with the collision retained",
+   "row": {
+    "id": "control_open_pr_blocks_duplicate_pickup",
+    "category": "control",
+    "snapshot": {
+     "issue_number": 0,
+     "issue_ref": "synthetic/target#0000",
+     "snapshot_path": null,
+     "comments_path": null,
+     "timeline_path": null,
+     "captured_at": "2026-10-04T11:02:59Z",
+     "issue_snapshot_id": "synthetic-issue-snapshot:sha256:0000000000000000000000000000000000000000000000000000000000000000",
+     "comments_snapshot_id": "synthetic-issue-comments:sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "current_main": "synthetic-main-sha",
+    "packet_bytes": {
+     "selected": {
+      "measured": 4096
+     },
+     "omitted": {
+      "measured": 0
+     },
+     "overflow": {
+      "measured": 0
+     }
+    },
+    "open_candidates": [
+     {
+      "kind": "duplicate",
+      "identity": "synthetic/target#9002",
+      "evidence": "triager candidate: similar acceptance wording",
+      "root_corrected": false,
+      "root_note": null
+     },
+     {
+      "kind": "open_pr_overlap",
+      "identity": "pr-synthetic-9100",
+      "evidence": "real open PR overlaps the selected work",
+      "root_corrected": false,
+      "root_note": null
+     }
+    ],
+    "triager_findings": [
+     "synthetic mechanics finding for control real_overlapping_pr_blocks_duplicate_pickup"
+    ],
+    "missing_evidence_questions": [],
+    "root_disposition": {
+     "disposition": "blocked",
+     "rationale": "the duplicate candidate cannot be picked up: open PR synthetic/target#9100 overlaps the selected work, so the row stays blocked",
+     "corrected_candidates": []
+    },
+    "retrieval_steps": [
+     {
+      "step": "synthetic retrieval",
+      "command": "control fixture; no live command",
+      "bytes": {
+       "measured": 0
+      }
+     }
+    ],
+    "limitations": [
+     "synthetic mechanics row; never enters a real denominator"
+    ],
+    "false_candidates": [],
+    "non_claims": [
+     "claims no real-issue intake quality"
+    ],
+    "attempt": {
+     "schema_version": "issue_lifecycle_attempt.v1",
+     "lifecycle_id": "control-open-pr-blocks-duplicate-pickup",
+     "observation_key": "observation-control-open-pr-blocks-duplicate-pickup",
+     "synthetic": true,
+     "disposition": "blocked",
+     "base_attempts": [
+      {
+       "attempt_id": "attempt-control-open-pr-blocks-duplicate-pickup",
+       "shared_facts": [
+        "context"
+       ]
+      }
+     ],
+     "issue": {
+      "snapshot_id": "synthetic-issue-snapshot:sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "issue_ref": "synthetic/target#0000",
+      "comments_ref": "synthetic-issue-comments:sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "labels_ref": "synthetic-issue-labels:sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "assignees_ref": null,
+      "milestone_ref": null
+     },
+     "initial": {
+      "information_completeness": "complete",
+      "issue_family": "overlapping_claim"
+     },
+     "context": {
+      "current_main": "synthetic-main-sha",
+      "relevant_prs": [],
+      "portfolio": "ripr-swarm-issue-lifecycle-intake-pilot",
+      "selected_work": "synthetic/target#0000",
+      "claim_ids": []
+     },
+     "intake": {
+      "evidence": [
+       {
+        "identity": "synthetic-intake-packet:sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "bytes": 1024
+       }
+      ],
+      "missing_evidence_questions": []
+     },
+     "contract_decision": {
+      "spec_required": false,
+      "decision_rationale": "the duplicate candidate cannot be picked up: open PR synthetic/target#9100 overlaps the selected work, so the row stays blocked",
+      "root_disposition": "root-control"
+     },
+     "contract_artifacts": {
+      "proposal": null,
+      "spec": null,
+      "adr": null,
+      "challenge": null,
+      "amendments": [],
+      "acceptance": null
+     },
+     "plan": {
+      "plan_id": "plan-control-open-pr-blocks-duplicate-pickup",
+      "work_items": [],
+      "dependencies": [],
+      "acceptance_coverage": []
+     },
+     "claim_events": [],
+     "execution_refs": {
+      "pr": null,
+      "review": null,
+      "checks": [],
+      "verification": null,
+      "merge": null,
+      "current_main": "synthetic-main-sha"
+     },
+     "progress": {
+      "mutation_plan": null,
+      "before_digest": null,
+      "after_digest": null,
+      "suppressed_unchanged": false
+     },
+     "burn_down": {
+      "state": "open",
+      "uncovered_rows": [],
+      "contradicted_rows": [],
+      "deferred_rows": []
+     },
+     "closeout": {
+      "state": "not_started",
+      "reason": null,
+      "remaining_limitations": [],
+      "current_head_verification": null
+     },
+     "limitations": [
+      "synthetic mechanics row; never enters a real denominator"
+     ],
+     "non_claims": [
+      "claims no real-issue intake quality"
+     ],
+     "row_digest": "4db336776b2eebc4e9a21049f8455576560b43f5c27aedf6b6954bb292def730"
+    }
+   }
+  },
+  {
+   "id": "control_bytes_explicitly_not_measured",
+   "control": "packet_bytes_not_measured_is_explicit",
+   "scenario": "a row that could not measure its packet bytes says not_measured explicitly instead of fabricating a number",
+   "row": {
+    "id": "control_bytes_explicitly_not_measured",
+    "category": "needs_evidence",
+    "snapshot": {
+     "issue_number": 0,
+     "issue_ref": "synthetic/target#0000",
+     "snapshot_path": null,
+     "comments_path": null,
+     "timeline_path": null,
+     "captured_at": "2026-10-04T11:02:59Z",
+     "issue_snapshot_id": "synthetic-issue-snapshot:sha256:0000000000000000000000000000000000000000000000000000000000000000",
+     "comments_snapshot_id": "synthetic-issue-comments:sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "current_main": "synthetic-main-sha",
+    "packet_bytes": {
+     "selected": "not_measured",
+     "omitted": "not_measured",
+     "overflow": "not_measured"
+    },
+    "open_candidates": [],
+    "triager_findings": [
+     "synthetic mechanics finding for control packet_bytes_not_measured_is_explicit"
+    ],
+    "missing_evidence_questions": [
+     "what byte count did the omitted packet surface carry?"
+    ],
+    "root_disposition": {
+     "disposition": "needs_evidence",
+     "rationale": "packet byte counts were not measured; the corpus says so explicitly",
+     "corrected_candidates": []
+    },
+    "retrieval_steps": [
+     {
+      "step": "synthetic retrieval",
+      "command": "control fixture; no live command",
+      "bytes": {
+       "measured": 0
+      }
+     }
+    ],
+    "limitations": [
+     "synthetic mechanics row; never enters a real denominator"
+    ],
+    "false_candidates": [],
+    "non_claims": [
+     "claims no real-issue intake quality"
+    ],
+    "attempt": {
+     "schema_version": "issue_lifecycle_attempt.v1",
+     "lifecycle_id": "control-bytes-explicitly-not-measured",
+     "observation_key": "observation-control-bytes-explicitly-not-measured",
+     "synthetic": true,
+     "disposition": "needs_evidence",
+     "base_attempts": [
+      {
+       "attempt_id": "attempt-control-bytes-explicitly-not-measured",
+       "shared_facts": [
+        "context"
+       ]
+      }
+     ],
+     "issue": {
+      "snapshot_id": "synthetic-issue-snapshot:sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "issue_ref": "synthetic/target#0000",
+      "comments_ref": "synthetic-issue-comments:sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "labels_ref": "synthetic-issue-labels:sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "assignees_ref": null,
+      "milestone_ref": null
+     },
+     "initial": {
+      "information_completeness": "complete",
+      "issue_family": "unknown"
+     },
+     "context": {
+      "current_main": "synthetic-main-sha",
+      "relevant_prs": [],
+      "portfolio": "ripr-swarm-issue-lifecycle-intake-pilot",
+      "selected_work": "synthetic/target#0000",
+      "claim_ids": []
+     },
+     "intake": {
+      "evidence": [
+       {
+        "identity": "synthetic-intake-packet:sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "bytes": 1024
+       }
+      ],
+      "missing_evidence_questions": [
+       "what byte count did the omitted packet surface carry?"
+      ]
+     },
+     "contract_decision": {
+      "spec_required": false,
+      "decision_rationale": "packet byte counts were not measured; the corpus says so explicitly",
+      "root_disposition": "root-control"
+     },
+     "contract_artifacts": {
+      "proposal": null,
+      "spec": null,
+      "adr": null,
+      "challenge": null,
+      "amendments": [],
+      "acceptance": null
+     },
+     "plan": {
+      "plan_id": "plan-control-bytes-explicitly-not-measured",
+      "work_items": [],
+      "dependencies": [],
+      "acceptance_coverage": []
+     },
+     "claim_events": [],
+     "execution_refs": {
+      "pr": null,
+      "review": null,
+      "checks": [],
+      "verification": null,
+      "merge": null,
+      "current_main": "synthetic-main-sha"
+     },
+     "progress": {
+      "mutation_plan": null,
+      "before_digest": null,
+      "after_digest": null,
+      "suppressed_unchanged": false
+     },
+     "burn_down": {
+      "state": "open",
+      "uncovered_rows": [],
+      "contradicted_rows": [],
+      "deferred_rows": []
+     },
+     "closeout": {
+      "state": "not_started",
+      "reason": null,
+      "remaining_limitations": [],
+      "current_head_verification": null
+     },
+     "limitations": [
+      "synthetic mechanics row; never enters a real denominator"
+     ],
+     "non_claims": [
+      "claims no real-issue intake quality"
+     ],
+     "row_digest": "e649000beabc1690edeb7d30c28bdabc1973696168fa88d544d16eb87cbc480b"
+    }
+   }
+  }
+ ]
+}

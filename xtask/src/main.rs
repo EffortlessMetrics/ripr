@@ -42,6 +42,7 @@ mod fixture_contracts;
 mod gap_source_subject_shared;
 mod identity_registry;
 mod issue_lifecycle_attempt;
+mod issue_lifecycle_intake;
 mod no_panic;
 mod orchestration_attempt;
 mod output_enum_contracts;

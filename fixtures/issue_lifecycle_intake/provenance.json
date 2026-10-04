@@ -1,0 +1,39 @@
+{
+ "schema_version": "issue_lifecycle_intake_provenance.v1",
+ "repository": "EffortlessMetrics/ripr-swarm",
+ "captured_at": "2026-10-04T11:02:59Z",
+ "base_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58",
+ "capture_method": "read-only gh api capture (issue, comments, timeline); zero GitHub mutation",
+ "rows": [
+  {
+   "issue": 5439,
+   "category": "narrow_accepted_contract_bug",
+   "justification": "single producer contract defect (nested TypeScript verify commands miss the package root) with exact acceptance and no open question; no spec artifact needed"
+  },
+  {
+   "issue": 5440,
+   "category": "duplicate_or_already_satisfied",
+   "justification": "same failing test and assertion values as the broader open issue #5270, which already tracks the repair; root confirmed the duplicate"
+  },
+  {
+   "issue": 5399,
+   "category": "overlapping_open_pr",
+   "justification": "open PR #5408 carries this issue's exact claim with a published head and independent review; pickup would collide"
+  },
+  {
+   "issue": 5373,
+   "category": "needs_evidence",
+   "justification": "acceptance demands an identified root cause; the snapshot retains observations but cannot answer the four open questions"
+  },
+  {
+   "issue": 2928,
+   "category": "partially_landed_umbrella",
+   "justification": "merged children (#4643 via PR #5366, #2528, #1613) cover part of the required outcome while six linked residuals stay open"
+  },
+  {
+   "issue": 5441,
+   "category": "root_decision_required",
+   "justification": "editor stub action conflicts with ADR 0017 authority; the decision owner must choose among three recorded options"
+  }
+ ]
+}
