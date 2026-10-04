@@ -3,6 +3,29 @@
 This log captures repo knowledge that should survive individual PRs and chat
 sessions. It is intentionally short and actionable.
 
+## 2026-10-04: A recorded timeout is not process-group-gone (#5382)
+
+`capture_output_with_timeout` used to set `timed_out: true` after the first
+Unix group-kill and a bounded pipe drain. Drain-truncated output proves the
+helper returned, not that every group member died. A descendant can miss the
+first `kill -KILL -- -<pgid>` by forking around it (GNU `time` starting `ripr`
+is the concrete case), keep running, and skew later timings on a shared runner.
+
+After reaping the direct child, the timeout path must confirm the process group
+is empty (re-sending SIGKILL while a short budget remains) or fail closed that
+it could not. Callers may record `timed_out` only when that confirmation
+succeeds. Do not treat Job Object containment on Windows as covering this Unix
+group-confirm gap, and do not fold the check into scale-cliff or another
+caller: the shared wait/timeout owner is the authority.
+
+On Linux, a complete `/proc` scan of every readable numeric pid is the member
+list so SIGKILL zombies are not "still running" and a live other-uid descendant
+is not hidden behind a same-uid zombie. An empty scan is not gone by itself:
+`kill -0` ESRCH (or a successful probe of a zombie) may confirm empty, while
+EPERM or an unreadable/unparseable `stat` must not. The probe runs under
+`LC_ALL=C` so ESRCH is English "No such process". A stdout-to-file capture must
+delete its temp file when confirmation fails.
+
 ## 2026-10-03: Windows `where` is not a PATH probe (#5103)
 
 `where prove` searches the process current directory first. Doctor's Perl
