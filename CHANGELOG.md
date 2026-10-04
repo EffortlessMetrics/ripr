@@ -35,6 +35,12 @@ are scoped or reviewed.
   `mutants.json` records merge by mutant name. Before, every outcome from a
   cargo-mutants 27.1 run imported as `unknown`, so no agreement bucket ever
   filled.
+- Mutation spot-check: `--mutants-arg <name>=<arg>` (#5475) passes selection
+  arguments such as `--workspace`, `--file` or `--re` to the cargo-mutants run
+  the harness starts, records them in the receipt, and marks scoreboard samples
+  from such runs. Arguments the harness owns or that cannot take effect are
+  refused, including bundled short flags such as `-vj8` and
+  `--minimum-test-timeout`; `-V` (`--unviable`) is accepted (#5565).
 - CLI: `ripr check` warns on stderr, on the no-scope empty-result path, when
   the default base and HEAD each resolve to the same commit after analysis (for
   example `origin/HEAD` tracking the checked-out branch in a clone of a feature
