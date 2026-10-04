@@ -22,6 +22,7 @@ use crate::app::repair_attempt::{
     find_manifest_artifact_by_role, find_terminal_artifact_by_role, inventory_repair_attempts_from,
     load_attempt_terminal_receipt, repair_attempt_state_label,
 };
+use crate::output::agent_receipt::AgentReceiptReading;
 use crate::output::receipt_lifecycle::receipt_lifecycle_state_from_receipt_value;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -160,32 +161,51 @@ pub(crate) fn command_spec_document(spec: &crate::domain::CommandSpec) -> Value 
     document
 }
 
-/// Derive the wire status for one validated terminal receipt document. The
-/// producer's actual movement is read before the lossy presence lifecycle:
-/// a `regressed` movement must surface as `regressed`, never collapse into
-/// the shared fail-closed `receipt_missing` bucket and read as
-/// `after_pending` (review finding on #5155).
+/// Project one authentic terminal receipt through the same semantic reading
+/// as CLI status. Authentic bytes establish receipt presence, not producer
+/// completeness or gap closure; static movement remains separate evidence.
 fn terminal_receipt_status(value: &Value) -> &'static str {
+    use crate::output::receipt_lifecycle as lifecycle;
+
+    let reading = AgentReceiptReading::from_value(value);
+    if reading.status.as_deref() == Some("invalid") {
+        return "invalid";
+    }
+    match reading.receipt_state.as_str() {
+        lifecycle::RECEIPT_GAP_MISMATCH => return "invalid",
+        lifecycle::RECEIPT_STALE => return "stale",
+        _ => {}
+    }
+    if !reading.is_advisory() {
+        return "limited";
+    }
+    // Retain the existing adapter's legacy movement field and normalization.
+    // This only preserves regression after the completeness gate; it cannot
+    // promote an incomplete/invalid receipt or turn presence into closure.
     let movement_regressed = value
         .pointer("/provenance/movement")
         .or(value.pointer("/static_movement/state"))
+        .or(value.pointer("/seam/change"))
         .and_then(Value::as_str)
         .is_some_and(|movement| movement.trim().eq_ignore_ascii_case("regressed"));
     if movement_regressed {
         return "regressed";
     }
-    receipt_status_from_lifecycle(&receipt_lifecycle_state_from_receipt_value(value))
+    if reading.shows_gap_closed() {
+        return "improved";
+    }
+    receipt_status_from_lifecycle(&reading.receipt_state)
 }
 
-/// Map the shared receipt-lifecycle vocabulary onto the receipt-status
-/// vocabulary this slice exposes. Unrecognized producer states stay
-/// non-claimed (`limited`), never an affirmative status.
+/// Project the lifecycle only as a non-closure fallback. Affirmative static
+/// improvement is earned above through the shared receipt reading, never
+/// through presence or a movement token alone.
 fn receipt_status_from_lifecycle(normalized: &str) -> &'static str {
     use crate::output::receipt_lifecycle as lifecycle;
     match normalized {
-        lifecycle::RECEIPT_MOVEMENT_IMPROVED => "improved",
+        lifecycle::RECEIPT_MOVEMENT_IMPROVED => "limited",
         lifecycle::RECEIPT_MOVEMENT_UNCHANGED => "unchanged",
-        lifecycle::RECEIPT_FOUND => "closed",
+        lifecycle::RECEIPT_FOUND => "limited",
         lifecycle::RECEIPT_STALE => "stale",
         lifecycle::RECEIPT_GAP_MISMATCH => "invalid",
         lifecycle::RECEIPT_MISSING => "after_pending",
@@ -473,10 +493,8 @@ fn durable_receipt_document(
                 ("invalid", receipt)
             }
             AttemptTerminalReceipt::Issued { path, value } => {
-                // The producer's actual movement is read before the lossy
-                // presence lifecycle: a `regressed` movement must surface as
-                // `regressed`, never collapse into the shared fail-closed
-                // `receipt_missing` bucket and read as `after_pending`.
+                // Preserve the presence lifecycle and original producer
+                // document, while the shared reading owns semantic strength.
                 let lifecycle_state = receipt_lifecycle_state_from_receipt_value(&value);
                 let status = terminal_receipt_status(&value);
                 let binding = find_terminal_artifact_by_role(
@@ -1125,9 +1143,9 @@ mod tests {
     #[test]
     fn receipt_status_vocabulary_maps_the_shared_lifecycle() {
         let cases = [
-            ("receipt_movement_improved", "improved"),
+            ("receipt_movement_improved", "limited"),
             ("receipt_movement_unchanged", "unchanged"),
-            ("receipt_found", "closed"),
+            ("receipt_found", "limited"),
             ("receipt_stale", "stale"),
             ("receipt_gap_mismatch", "invalid"),
             ("receipt_missing", "after_pending"),
@@ -1145,21 +1163,638 @@ mod tests {
     }
 
     #[test]
-    fn regressed_movement_survives_the_presence_lifecycle() {
-        // A real regressed receipt would collapse to receipt_missing through
-        // the shared fail-closed movement mapping; the wire must still say
-        // regressed (#5155 review).
-        let regressed = json!({
-            "provenance": { "movement": "regressed" },
-            "summary": { "receipt_state": "receipt_found" }
-        });
-        assert_eq!(terminal_receipt_status(&regressed), "regressed");
-        let regressed_alt = json!({ "static_movement": { "state": "regressed" } });
-        assert_eq!(terminal_receipt_status(&regressed_alt), "regressed");
-        let improved = json!({ "provenance": { "movement": "improved" } });
-        assert_eq!(terminal_receipt_status(&improved), "improved");
-        let absent = json!({ "provenance": { "movement": "" } });
-        assert_eq!(terminal_receipt_status(&absent), "after_pending");
+    fn terminal_receipts_preserve_stale_and_mismatch_before_completeness() {
+        // Adapter controls: lifecycle specificity is independent of producer
+        // completeness, while producer-invalid remains the first refusal.
+        let cases = [
+            ("advisory", "receipt_stale", "stale"),
+            ("incomplete", "receipt_stale", "stale"),
+            ("unknown", "receipt_stale", "stale"),
+            ("invalid", "receipt_stale", "invalid"),
+            ("advisory", "receipt_gap_mismatch", "invalid"),
+            ("incomplete", "receipt_gap_mismatch", "invalid"),
+            ("unknown", "receipt_gap_mismatch", "invalid"),
+            ("invalid", "receipt_gap_mismatch", "invalid"),
+        ];
+        for (status, state, expected) in cases {
+            let receipt = json!({
+                "status": status,
+                "provenance": { "movement": "improved" },
+                "summary": { "receipt_state": state },
+            });
+            assert_eq!(terminal_receipt_status(&receipt), expected, "{receipt}");
+        }
+    }
+
+    #[test]
+    fn terminal_legacy_regression_preserves_completeness_and_field_precedence() {
+        // Literal compatibility inputs challenge the adapter, not receipt
+        // authentication. The retained producer/retention fixtures below
+        // separately cover the current emitted receipt form.
+        let cases = [
+            (
+                json!({"status": "advisory", "static_movement": {"state": " \tReGrEsSeD\n"}, "summary": {"receipt_state": "receipt_found"}}),
+                "regressed",
+            ),
+            (
+                json!({"status": "advisory", "provenance": {"movement": " \tReGrEsSeD\n"}, "summary": {"receipt_state": "receipt_found"}}),
+                "regressed",
+            ),
+            (
+                json!({"status": "advisory", "static_movement": {"state": "regressed"}, "seam": {"change": "unchanged"}, "summary": {"receipt_state": "receipt_found"}}),
+                "regressed",
+            ),
+            (
+                json!({"status": "advisory", "provenance": {"movement": "unchanged"}, "static_movement": {"state": "regressed"}, "summary": {"receipt_state": "receipt_movement_unchanged"}}),
+                "unchanged",
+            ),
+            (
+                json!({"status": "incomplete", "static_movement": {"state": "regressed"}, "summary": {"receipt_state": "receipt_found"}}),
+                "limited",
+            ),
+            (
+                json!({"status": "invalid", "static_movement": {"state": "regressed"}, "summary": {"receipt_state": "receipt_found"}}),
+                "invalid",
+            ),
+            (
+                json!({"static_movement": {"state": "regressed"}, "summary": {"receipt_state": "receipt_found"}}),
+                "limited",
+            ),
+            (
+                json!({"status": "advisory", "static_movement": {"state": "improved"}, "summary": {"receipt_state": "receipt_found"}}),
+                "limited",
+            ),
+            (
+                json!({"status": "advisory", "static_movement": {"state": "regressed_extra"}, "summary": {"receipt_state": "receipt_found"}}),
+                "limited",
+            ),
+            (
+                json!({"status": "advisory", "static_movement": {"state": "regressed"}, "summary": {"receipt_state": "receipt_stale"}}),
+                "stale",
+            ),
+            (
+                json!({"status": "advisory", "static_movement": {"state": "regressed"}, "summary": {"receipt_state": "receipt_movement_improved"}}),
+                "regressed",
+            ),
+        ];
+        for (receipt, expected) in cases {
+            assert_eq!(terminal_receipt_status(&receipt), expected, "{receipt}");
+        }
+    }
+
+    #[test]
+    fn regressed_movement_survives_the_presence_lifecycle() -> Result<(), String> {
+        // The real producer's regressed movement collapses to receipt_missing,
+        // but the complete receipt still reports regression (#5155 / #5199).
+        assert_receipt_case("complete_regressed")
+    }
+
+    const RECEIPT_FIXTURE_SEAM: &str = "seam:receipt-parity";
+
+    enum ReceiptFixtureOutcome {
+        Complete,
+        Incomplete(AnalysisOutcomeKind),
+        Missing,
+        Invalid,
+    }
+
+    struct ReceiptCase {
+        label: &'static str,
+        before: &'static str,
+        after: &'static str,
+        outcome: ReceiptFixtureOutcome,
+        producer_status: &'static str,
+        movement: &'static str,
+        cli_disposition: &'static str,
+        mcp_status: &'static str,
+    }
+
+    fn receipt_cases() -> [ReceiptCase; 8] {
+        [
+            ReceiptCase {
+                label: "complete_improved",
+                before: "weakly_gripped",
+                after: "strongly_gripped",
+                outcome: ReceiptFixtureOutcome::Complete,
+                producer_status: "advisory",
+                movement: "improved",
+                cli_disposition: "finished",
+                mcp_status: "improved",
+            },
+            ReceiptCase {
+                label: "complete_changed",
+                before: "activation_unknown",
+                after: "propagation_unknown",
+                outcome: ReceiptFixtureOutcome::Complete,
+                producer_status: "advisory",
+                movement: "changed",
+                cli_disposition: "gap_open",
+                mcp_status: "limited",
+            },
+            ReceiptCase {
+                label: "typed_incomplete_improved",
+                before: "weakly_gripped",
+                after: "strongly_gripped",
+                outcome: ReceiptFixtureOutcome::Incomplete(AnalysisOutcomeKind::UnsupportedInput),
+                producer_status: "incomplete",
+                movement: "improved",
+                cli_disposition: "unconfirmed",
+                mcp_status: "limited",
+            },
+            ReceiptCase {
+                label: "partial_incomplete_improved",
+                before: "weakly_gripped",
+                after: "strongly_gripped",
+                outcome: ReceiptFixtureOutcome::Incomplete(
+                    AnalysisOutcomeKind::PartialWithLimitations,
+                ),
+                producer_status: "incomplete",
+                movement: "improved",
+                cli_disposition: "unconfirmed",
+                mcp_status: "limited",
+            },
+            ReceiptCase {
+                label: "missing_outcome_improved",
+                before: "weakly_gripped",
+                after: "strongly_gripped",
+                outcome: ReceiptFixtureOutcome::Missing,
+                producer_status: "incomplete",
+                movement: "improved",
+                cli_disposition: "unconfirmed",
+                mcp_status: "limited",
+            },
+            ReceiptCase {
+                label: "invalid_outcome_improved",
+                before: "weakly_gripped",
+                after: "strongly_gripped",
+                outcome: ReceiptFixtureOutcome::Invalid,
+                producer_status: "invalid",
+                movement: "improved",
+                cli_disposition: "unconfirmed",
+                mcp_status: "invalid",
+            },
+            ReceiptCase {
+                label: "complete_regressed",
+                before: "weakly_gripped",
+                after: "ungripped",
+                outcome: ReceiptFixtureOutcome::Complete,
+                producer_status: "advisory",
+                movement: "regressed",
+                cli_disposition: "gap_open",
+                mcp_status: "regressed",
+            },
+            ReceiptCase {
+                label: "complete_unchanged",
+                before: "weakly_gripped",
+                after: "weakly_gripped",
+                outcome: ReceiptFixtureOutcome::Complete,
+                producer_status: "advisory",
+                movement: "unchanged",
+                cli_disposition: "gap_open",
+                mcp_status: "unchanged",
+            },
+        ]
+    }
+
+    fn write_receipt_fixture(path: &Path, bytes: &[u8]) -> Result<(), String> {
+        let parent = path
+            .parent()
+            .ok_or_else(|| format!("fixture path has no parent: {}", path.display()))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("create fixture parent {}: {error}", parent.display()))?;
+        std::fs::write(path, bytes)
+            .map_err(|error| format!("write fixture {}: {error}", path.display()))
+    }
+
+    fn receipt_fixture_snapshot(class: &str) -> Result<String, String> {
+        // Static evidence inputs, not an analyzer run. Production comparison
+        // and rendering below determine movement and every receipt status.
+        serde_json::to_string_pretty(&json!({
+            "seams": [{
+                "seam_id": RECEIPT_FIXTURE_SEAM,
+                "kind": "predicate_boundary",
+                "file": "src/lib.rs",
+                "line": 1,
+                "grip_class": class,
+            }]
+        }))
+        .map_err(|error| format!("serialize fixture snapshot: {error}"))
+    }
+
+    fn receipt_fixture_analysis(
+        root: &Path,
+        outcome: &ReceiptFixtureOutcome,
+    ) -> Result<crate::output::agent_receipt::AgentReceiptAnalysisOutcome, String> {
+        use crate::analysis_outcome::{
+            AnalysisLimitation, AnalysisLimitationKind, AnalysisRecovery, AnalysisRecoveryKind,
+            AnalysisStage,
+        };
+        use crate::app::analysis_outcome_artifact::{
+            AnalysisOutcomeArtifactError, read_analysis_outcome_artifact_at,
+        };
+        use crate::output::agent_receipt::{
+            AgentReceiptAnalysisOutcome, AgentReceiptUnavailableStatus,
+        };
+
+        let kind = match outcome {
+            ReceiptFixtureOutcome::Complete => AnalysisOutcomeKind::CompleteNoFindings,
+            ReceiptFixtureOutcome::Incomplete(kind) => *kind,
+            ReceiptFixtureOutcome::Missing | ReceiptFixtureOutcome::Invalid => {
+                let path = root.join("target/ripr/workflow/receipt-fixture-analysis.json");
+                if matches!(outcome, ReceiptFixtureOutcome::Invalid) {
+                    write_receipt_fixture(&path, b"{not JSON\n")?;
+                }
+                let read =
+                    read_analysis_outcome_artifact_at(root, &root.display().to_string(), &path);
+                return match (outcome, read) {
+                    (
+                        ReceiptFixtureOutcome::Missing,
+                        Err(error @ AnalysisOutcomeArtifactError::Missing(_)),
+                    ) => Ok(AgentReceiptAnalysisOutcome::Unavailable {
+                        status: AgentReceiptUnavailableStatus::Missing,
+                        reason: error.to_string(),
+                    }),
+                    (
+                        ReceiptFixtureOutcome::Invalid,
+                        Err(error @ AnalysisOutcomeArtifactError::Invalid(_)),
+                    ) => Ok(AgentReceiptAnalysisOutcome::Unavailable {
+                        status: AgentReceiptUnavailableStatus::Invalid,
+                        reason: error.to_string(),
+                    }),
+                    _ => Err("analysis fixture did not reach its intended unavailable arm".into()),
+                };
+            }
+        };
+        let limitations = if kind.is_complete() {
+            Vec::new()
+        } else {
+            vec![AnalysisLimitation::new(
+                AnalysisLimitationKind::ProducerFailure,
+                AnalysisStage::AnalysisPipeline,
+                AnalysisRecovery::new(
+                    AnalysisRecoveryKind::InspectFailure,
+                    "inspect the fixture producer limitation",
+                )?,
+            )]
+        };
+        let typed = AnalysisOutcome::new(
+            kind,
+            Default::default(),
+            AnalysisOutcomeCounts {
+                changed_file_count: 1,
+                changed_line_count: 1,
+                candidate_line_count: 1,
+                probe_count: u64::from(kind.is_complete()),
+                finding_count: 0,
+            },
+            limitations,
+        )?;
+        Ok(AgentReceiptAnalysisOutcome::Present(Box::new(typed)))
+    }
+
+    fn assert_retained_receipt_case(root: &Path, case: &ReceiptCase) -> Result<(), String> {
+        use crate::app::repair_attempt::{
+            BeforeArtifactSource, BeginRepairAttemptOptions, TERMINAL_RECEIPT_ROLE,
+            TERMINAL_VERIFY_ROLE, begin_repair_attempt_with, edit_cage_policy_from_packet,
+            finish_repair_attempt, load_repair_attempt_manifest, receipt_binding_from,
+            retain_terminal_evidence, write_edit_cage_baseline,
+        };
+        use crate::edit_cage::HeadMovement;
+        use crate::output::agent_receipt::{
+            AgentReceiptArtifactProvenance, AgentReceiptProvenance, AgentReceiptReading,
+            render_agent_receipt_value_json,
+        };
+        use crate::output::outcome::{
+            AgentVerifyArtifactBinding, render_agent_verify_json_with_currentness,
+            targeted_test_outcome_report_from_json,
+        };
+        use crate::testing::fixture_git::fixture_git_ok;
+
+        std::fs::create_dir_all(root).map_err(|error| format!("create fixture root: {error}"))?;
+        fixture_git_ok(root, &["init"])?;
+        fixture_git_ok(root, &["config", "user.email", "ripr-test@example.invalid"])?;
+        fixture_git_ok(root, &["config", "user.name", "RIPR Test"])?;
+        write_receipt_fixture(&root.join(".gitignore"), b"/target/\n")?;
+        write_receipt_fixture(&root.join("src/lib.rs"), b"pub fn value() -> u8 { 0 }\n")?;
+        fixture_git_ok(root, &["add", "."])?;
+        fixture_git_ok(root, &["commit", "--no-gpg-sign", "-m", "receipt fixture"])?;
+
+        let workflow = root.join("target/ripr/workflow");
+        let before_path = workflow.join("before.receipt-fixture.json");
+        let after_path = workflow.join("after.receipt-fixture.json");
+        let packet_path = workflow.join("packet.receipt-fixture.json");
+        let baseline_path = workflow.join("baseline.receipt-fixture.json");
+        let verify_path = workflow.join("verify.receipt-fixture.json");
+        let receipt_path = root.join("target/ripr/reports/agent-receipt.json");
+        let before = receipt_fixture_snapshot(case.before)?;
+        let after = receipt_fixture_snapshot(case.after)?;
+        write_receipt_fixture(&before_path, before.as_bytes())?;
+        let packet = serde_json::to_string_pretty(&json!({
+            "seam_id": RECEIPT_FIXTURE_SEAM,
+            "allowed_edit_surface": ["tests/target.rs"],
+            "forbidden_files": [],
+        }))
+        .map_err(|error| format!("serialize fixture packet: {error}"))?;
+        write_receipt_fixture(&packet_path, packet.as_bytes())?;
+        let policy = edit_cage_policy_from_packet(&packet, RECEIPT_FIXTURE_SEAM)?;
+        write_edit_cage_baseline(root, &baseline_path, &policy)?;
+        let prepared = begin_repair_attempt_with(BeginRepairAttemptOptions {
+            root,
+            root_argument: root,
+            seam_id: RECEIPT_FIXTURE_SEAM,
+            sources: &[
+                BeforeArtifactSource {
+                    role: "before_snapshot",
+                    path: &before_path,
+                },
+                BeforeArtifactSource {
+                    role: "agent_packet",
+                    path: &packet_path,
+                },
+                BeforeArtifactSource {
+                    role: "edit_cage_baseline",
+                    path: &baseline_path,
+                },
+            ],
+            expected_repository_head: None,
+            next_command_suffix: None,
+            store: None,
+        })?;
+        let retained_before_path = root.join(
+            &find_manifest_artifact_by_role(&prepared.manifest, "before_snapshot")
+                .ok_or_else(|| "prepared fixture omitted its before snapshot".to_string())?
+                .path,
+        );
+        let retained_packet_path = root.join(
+            &find_manifest_artifact_by_role(&prepared.manifest, "agent_packet")
+                .ok_or_else(|| "prepared fixture omitted its packet".to_string())?
+                .path,
+        );
+        write_receipt_fixture(&root.join("tests/target.rs"), b"#[test]\nfn focused() {}\n")?;
+        write_receipt_fixture(&after_path, after.as_bytes())?;
+        let report = targeted_test_outcome_report_from_json(
+            &before,
+            &after,
+            retained_before_path.display().to_string(),
+            after_path.display().to_string(),
+        )?;
+        let verify = render_agent_verify_json_with_currentness(
+            &report,
+            None,
+            &AgentVerifyArtifactBinding {
+                before_content_sha256: crate::agent::provenance::sha256_file(
+                    &retained_before_path,
+                )?,
+                after_content_sha256: crate::agent::provenance::sha256_file(&after_path)?,
+            },
+        )?;
+        write_receipt_fixture(&verify_path, verify.as_bytes())?;
+        finish_repair_attempt(
+            root,
+            &prepared.manifest.repair_attempt_id,
+            &retained_packet_path,
+            HeadMovement::AdmitDescendantCommits,
+        )?;
+        let finished = load_repair_attempt_manifest(root, &prepared.manifest.repair_attempt_id)?;
+        if finished.state != RepairAttemptState::ReadyToFinish {
+            return Err(format!("{} fixture did not finish compliantly", case.label));
+        }
+        let verify_value: Value =
+            serde_json::from_str(&verify).map_err(|error| error.to_string())?;
+        let provenance = |path: &Path| -> Result<AgentReceiptArtifactProvenance, String> {
+            Ok(AgentReceiptArtifactProvenance {
+                path: path.display().to_string(),
+                sha256: crate::agent::provenance::sha256_file(path)?,
+            })
+        };
+        let rendered = render_agent_receipt_value_json(
+            &verify_value,
+            verify_path.display().to_string(),
+            RECEIPT_FIXTURE_SEAM,
+            Some("tests/target.rs"),
+            &[],
+            AgentReceiptProvenance {
+                ripr_version: env!("CARGO_PKG_VERSION").to_string(),
+                repo_root: root.display().to_string(),
+                config_fingerprint: None,
+                command_template_version: "0.1".to_string(),
+                generated_at: format!(
+                    "unix_ms:{}",
+                    current_unix_ms().map_err(|failure| failure.detail)?,
+                ),
+                workflow_artifact: None,
+                before_artifact: provenance(&retained_before_path)?,
+                after_artifact: provenance(&after_path)?,
+                verify_artifact: provenance(&verify_path)?,
+            },
+            receipt_fixture_analysis(root, &case.outcome)?,
+        )?;
+        let mut receipt: Value =
+            serde_json::from_str(&rendered).map_err(|error| error.to_string())?;
+        receipt["repair_attempt"] = receipt_binding_from(
+            root,
+            None,
+            RECEIPT_FIXTURE_SEAM,
+            &retained_packet_path,
+            Some(finished.repair_attempt_id.as_str()),
+        )?;
+        let reading = AgentReceiptReading::from_value(&receipt);
+        if reading.status.as_deref() != Some(case.producer_status)
+            || reading.movement.as_deref() != Some(case.movement)
+        {
+            return Err(format!(
+                "{} fixture producer reached unexpected status/movement: {reading:?}",
+                case.label,
+            ));
+        }
+        assert!(
+            reading.test_not_run(),
+            "{} fixture executed no test",
+            case.label,
+        );
+        let mut receipt_bytes =
+            serde_json::to_vec_pretty(&receipt).map_err(|error| error.to_string())?;
+        receipt_bytes.push(b'\n');
+        write_receipt_fixture(&receipt_path, &receipt_bytes)?;
+        retain_terminal_evidence(
+            root,
+            &finished.repair_attempt_id,
+            &[
+                BeforeArtifactSource {
+                    role: TERMINAL_RECEIPT_ROLE,
+                    path: &receipt_path,
+                },
+                BeforeArtifactSource {
+                    role: TERMINAL_VERIFY_ROLE,
+                    path: &verify_path,
+                },
+            ],
+        )?;
+        let retained = load_repair_attempt_manifest(root, &finished.repair_attempt_id)?;
+        let artifact = find_terminal_artifact_by_role(&retained, TERMINAL_RECEIPT_ROLE)
+            .ok_or_else(|| "fixture retained no receipt binding".to_string())?;
+        let retained_path = root.join(&artifact.path);
+        let actual_bytes = std::fs::read(&retained_path)
+            .map_err(|error| format!("read retained fixture receipt: {error}"))?;
+        let actual_size = u64::try_from(actual_bytes.len()).map_err(|error| error.to_string())?;
+        if actual_bytes != receipt_bytes
+            || artifact.sha256 != crate::agent::provenance::sha256_file(&retained_path)?
+            || artifact.bytes != actual_size
+        {
+            return Err("fixture terminal bytes did not retain their actual digest/size".into());
+        }
+        match load_attempt_terminal_receipt(root, &retained) {
+            AttemptTerminalReceipt::Issued { value, .. } if value == receipt => {}
+            other => return Err(format!("fixture did not reach authentic Issued: {other:?}")),
+        }
+        eprintln!(
+            "receipt parity {}: attempt={} receipt={} bytes={} before={} after={} verify={}",
+            case.label,
+            retained.repair_attempt_id.as_str(),
+            artifact.sha256,
+            artifact.bytes,
+            crate::agent::provenance::sha256_file(&retained_before_path)?,
+            crate::agent::provenance::sha256_file(&after_path)?,
+            crate::agent::provenance::sha256_file(&verify_path)?,
+        );
+
+        let cli_report = crate::app::agent_status::build_agent_status_report_from(root, root, None);
+        let cli_json: Value = serde_json::from_str(
+            &crate::app::agent_status::render_agent_status_json(&cli_report)?,
+        )
+        .map_err(|error| format!("parse CLI status fixture: {error}"))?;
+        let cli_attempts = cli_json["repair_attempts"]
+            .as_array()
+            .ok_or_else(|| "CLI status omitted its attempt inventory".to_string())?;
+        if cli_attempts.len() != 1 {
+            return Err(format!(
+                "fixture has {} CLI attempts, expected one",
+                cli_attempts.len(),
+            ));
+        }
+        let cli_attempt = cli_attempts
+            .iter()
+            .find(|attempt| {
+                attempt["attempt_id"].as_str() == Some(retained.repair_attempt_id.as_str())
+            })
+            .ok_or_else(|| "CLI status did not read this exact retained attempt".to_string())?;
+        assert_eq!(
+            cli_attempt["disposition"], case.cli_disposition,
+            "{}",
+            case.label
+        );
+        assert_eq!(
+            cli_attempt["receipt"]["status"], case.producer_status,
+            "{}",
+            case.label
+        );
+        assert_eq!(
+            cli_attempt["receipt"]["movement"], case.movement,
+            "{}",
+            case.label
+        );
+        assert_eq!(
+            cli_attempt["receipt"]["shows_gap_closed"],
+            case.cli_disposition == "finished",
+            "{}",
+            case.label,
+        );
+
+        let session = WorkspaceSession::default();
+        let document = session
+            .receipt_status_document(retained.repair_attempt_id.as_str(), Some(root), None)
+            .map_err(|failure| format!("receipt fixture projection: {}", failure.detail))?;
+        assert_eq!(document["receipt"]["status"], "issued", "{}", case.label);
+        assert_eq!(document["receipt"]["document"], receipt, "{}", case.label);
+        assert_eq!(
+            document["receipt"]["binding"]["sha256"], artifact.sha256,
+            "{}",
+            case.label
+        );
+        assert_eq!(
+            document["receipt"]["binding"]["bytes"], artifact.bytes,
+            "{}",
+            case.label
+        );
+        assert_eq!(
+            terminal_receipt_status(&receipt),
+            case.mcp_status,
+            "{} terminal semantic reading",
+            case.label,
+        );
+        assert_eq!(
+            document["status"], case.mcp_status,
+            "{} MCP/CLI parity",
+            case.label
+        );
+        let repeated = session
+            .receipt_status_document(retained.repair_attempt_id.as_str(), Some(root), None)
+            .map_err(|failure| failure.detail)?;
+        assert_eq!(document, repeated, "{} repeated read", case.label);
+
+        // Intentional negative: changing retained bytes after the successful
+        // comparison must revoke Issued, never reconstruct a success.
+        write_receipt_fixture(&retained_path, b"tampered\n")?;
+        match load_attempt_terminal_receipt(root, &retained) {
+            AttemptTerminalReceipt::Unavailable { .. } => {}
+            other => return Err(format!("tampered fixture remained readable: {other:?}")),
+        }
+        let tampered = session
+            .receipt_status_document(retained.repair_attempt_id.as_str(), Some(root), None)
+            .map_err(|failure| failure.detail)?;
+        assert_eq!(
+            tampered["status"], "invalid",
+            "{} digest tamper",
+            case.label
+        );
+        Ok(())
+    }
+
+    fn assert_receipt_case(label: &str) -> Result<(), String> {
+        let cases = receipt_cases();
+        let case = cases
+            .iter()
+            .find(|case| case.label == label)
+            .ok_or_else(|| format!("unknown receipt fixture case: {label}"))?;
+        let root = unique_test_dir(case.label)?;
+        let result = assert_retained_receipt_case(&root, case);
+        let cleanup = crate::testing::fixture_git::remove_fixture_tree(&root);
+        result.and(cleanup)
+    }
+
+    #[test]
+    fn complete_improved_receipt_preserves_improvement() -> Result<(), String> {
+        assert_receipt_case("complete_improved")
+    }
+
+    #[test]
+    fn complete_changed_receipt_never_closes_the_gap() -> Result<(), String> {
+        assert_receipt_case("complete_changed")
+    }
+
+    #[test]
+    fn typed_incomplete_receipt_never_claims_improvement() -> Result<(), String> {
+        assert_receipt_case("typed_incomplete_improved")
+    }
+
+    #[test]
+    fn partial_incomplete_receipt_never_claims_improvement() -> Result<(), String> {
+        assert_receipt_case("partial_incomplete_improved")
+    }
+
+    #[test]
+    fn missing_outcome_receipt_never_claims_improvement() -> Result<(), String> {
+        assert_receipt_case("missing_outcome_improved")
+    }
+
+    #[test]
+    fn invalid_outcome_receipt_preserves_invalid_status() -> Result<(), String> {
+        assert_receipt_case("invalid_outcome_improved")
+    }
+
+    #[test]
+    fn complete_unchanged_receipt_preserves_unchanged_status() -> Result<(), String> {
+        assert_receipt_case("complete_unchanged")
     }
 
     #[test]

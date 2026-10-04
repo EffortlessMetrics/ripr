@@ -10,6 +10,7 @@ Linked issues:
 
 - #3090 (this slice: `ripr_prepare_repair`, `ripr_get_repair_attempt`,
   `ripr_get_receipt_status`, and the repair-attempt / receipt resources)
+- #5199 (terminal receipt completeness and open-gap projection repair)
 - #3087 (parent standard MCP server epic)
 - #3088 (transport/discovery/read-only boundary slice; this slice keeps its
   SDK-owned dispatch and bounded framing)
@@ -99,9 +100,20 @@ read-only and without execution authority (ADR 0022):
   are attempt-bound). The status vocabulary is `awaiting_edit`,
   `after_pending`, `verification_pending`, `improved`, `closed`,
   `unchanged`, `regressed`, `limited`, `stale`, `invalid`; durable manifest
-  states and the shared receipt-lifecycle vocabulary map onto it, and a
-  finished attempt with a digest-bound terminal receipt projects the
-  receipt document with its exact byte bindings. Session transactions
+  states map onto it, and a finished attempt with a digest-bound terminal
+  receipt projects the receipt document with its exact byte bindings. The
+  terminal projection consumes the same `AgentReceiptReading` as CLI status:
+  advisory plus improved static grip reports `improved`; complete unchanged
+  and regressed receipts preserve their movements; complete `changed` stays
+  open and reports `limited`. Producer-invalid status reports `invalid` first;
+  recorded stale and gap-mismatch lifecycle states retain `stale` and `invalid`
+  before other incomplete or unavailable producer completeness reports
+  `limited`, even when static movement improved. Advisory regression retains
+  the trimmed, case-insensitive legacy `static_movement.state` fallback after
+  `provenance.movement` and before `seam.change`; it cannot bypass completeness.
+  Receipt presence alone never reports `closed`;
+  the declared vocabulary and schema stay unchanged. Producer completeness,
+  static movement and runtime execution remain separate evidence axes. Session transactions
   report `awaiting_edit` with an explicit null receipt: RIPR performs no
   verification and issues no receipt, so the external client owns the edit,
   the verification execution, and the receipt under its own authority.
@@ -131,10 +143,20 @@ read-only and without execution authority (ADR 0022):
   stays `awaiting_edit`; unknown and canonically invalid durable attempts
   fail closed in a temporary store.
 - Vocabulary and projection controls: the receipt-status mapping over the
-  shared receipt-lifecycle states; `CommandSpec` projection round-trips
-  direct, shell-required, and manual modes without granting display
-  authority, and a removal experiment shows a spaced display argument
-  cannot be reconstructed from the display string.
+  shared receipt reading and subordinate presence lifecycle. Producer-backed
+  controls cover complete improved, changed, regressed and unchanged, typed
+  incomplete improved, missing outcome improved and invalid outcome improved
+  (plus the `PartialWithLimitations` typed sibling). Each case uses a fresh
+  real Git fixture, actual prepare/finish and receipt binding, real produced
+  verify/receipt bytes and immutable terminal retention before comparing CLI
+  status with the MCP document. Actual byte hashes/sizes, repeated reads and
+  intentional digest tamper are checked. These source tests do not establish
+  stock-process parity or installed CLI receipt issuance; #3091 retains that
+  transport acceptance. Restoring presence-only closure or dropping producer
+  completeness must fail the corresponding control.
+- `CommandSpec` projection round-trips direct, shell-required, and manual
+  modes without granting display authority, and a removal experiment shows a
+  spaced display argument cannot be reconstructed from the display string.
 - Wire controls: the SDK session discovers all seven tools and four
   templates; the stdio fail-closed control pins the typed pre-refresh
   failures for the new tools; the inline-version recovery control expects
@@ -178,10 +200,12 @@ read-only and without execution authority (ADR 0022):
    `CommandSpec` routes with `display_is_execution_authority: false`; a
    garbage manifest fails closed with `attempt_invalid`.
 4. `ripr_get_receipt_status` for a finished durable attempt with a retained
-   terminal receipt projects the movement-derived status
-   (`improved`/`unchanged`/`closed`/…) with the receipt's exact byte
-   bindings; a session transaction reports `awaiting_edit` with an explicit
-   null receipt.
+   terminal receipt projects a status no stronger than the shared producer
+   reading, with the receipt's exact byte bindings: complete improved stays
+   `improved`, complete changed stays open as `limited`, and incomplete or
+   invalid completeness cannot claim improvement. Static movement stays in
+   the original producer document. A session transaction reports
+   `awaiting_edit` with an explicit null receipt.
 5. Before any refresh, `ripr_prepare_repair` fails closed with
    `no_snapshot` and the two reads fail closed with `attempt_not_found`; a
    refresh that changes the evidence fails an old transaction with the
@@ -192,7 +216,24 @@ read-only and without execution authority (ADR 0022):
 - `crates/ripr/src/mcp/repair.rs::tests` — session transaction route,
   ineligibility, fail-closed states, root-bound identity, supersession,
   receipt status, durable-store negatives, vocabulary mapping, and
-  `CommandSpec` projection experiments.
+  `CommandSpec` projection experiments. #5199 gives every semantic fixture
+  one independently selectable owner over the same actual producer/retention
+  route: `complete_improved_receipt_preserves_improvement`,
+  `complete_changed_receipt_never_closes_the_gap`,
+  `typed_incomplete_receipt_never_claims_improvement`,
+  `partial_incomplete_receipt_never_claims_improvement`,
+  `missing_outcome_receipt_never_claims_improvement`,
+  `invalid_outcome_receipt_preserves_invalid_status`,
+  `complete_unchanged_receipt_preserves_unchanged_status` and the existing
+  `regressed_movement_survives_the_presence_lifecycle`. A failing case cannot
+  prevent another case's exact test selector from running.
+  Literal adapter controls
+  `terminal_receipts_preserve_stale_and_mismatch_before_completeness` and
+  `terminal_legacy_regression_preserves_completeness_and_field_precedence`
+  separately pin lifecycle specificity, producer-invalid precedence,
+  legacy normalization and field priority, incomplete/missing-status guards,
+  and near-token refusal. They do not establish producer or retention
+  authenticity for those compatibility inputs.
 - `crates/ripr/src/mcp/gaps.rs::tests` — the committed producer
   repair-readiness evaluation and its fail-closed gates.
 - `crates/ripr/src/mcp/protocol.rs::tests` + `server_tests.rs` —

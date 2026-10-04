@@ -171,9 +171,22 @@ attempt-bound) onto the vocabulary `awaiting_edit`, `after_pending`,
 `limited`, `stale`, `invalid`. Session transactions report `awaiting_edit`
 with an explicit `null` receipt; a finished durable attempt with a
 digest-bound terminal receipt projects the receipt document with its exact
-byte bindings and the movement-derived status. RIPR performs no verification
-and issues no receipt: the external client owns the edit, the verification
-execution, and the receipt under its own authority.
+byte bindings. Terminal status uses the same receipt reading as CLI agent
+status: an advisory receipt with improved static grip reports `improved`;
+complete unchanged and regressed receipts preserve those movements. A
+complete `changed` receipt leaves the gap open and reports `limited`.
+Producer-invalid status reports `invalid` first. Recorded stale and
+gap-mismatch lifecycle states retain `stale` and `invalid`, including with
+incomplete producer status. Other producer-incomplete or unavailable
+completeness reports `limited`, even when its recorded static movement is
+improved. Advisory regression retains the trimmed, case-insensitive legacy
+`static_movement.state` fallback after `provenance.movement` and before
+`seam.change`; regression cannot bypass the completeness gate.
+Receipt presence alone never reports `closed`; the
+existing wire vocabulary remains unchanged. The nested producer document
+preserves completeness and movement independently. RIPR performs no
+verification and issues no receipt: the external client owns the edit, the
+verification execution, and the receipt under its own authority.
 
 The `ripr://snapshot/{snapshot_id}` resource returns bounded snapshot
 evidence: the snapshot identity, the typed `AnalysisOutcome`, the full
