@@ -1309,12 +1309,14 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config_and_lines(
     inventory_diff_scoped_classified_seams_inner(
         root,
         config,
-        changed_files,
-        changed_owner_names,
+        DiffScopedInventoryInput {
+            changed_files,
+            changed_owner_names,
+            changed_lines,
+        },
         !no_impact_fast_path_disabled(),
         None,
         None,
-        changed_lines,
     )
 }
 
@@ -1350,12 +1352,14 @@ pub(crate) fn inventory_diff_scoped_streamed_seams_at_with_config(
     inventory_diff_scoped_classified_seams_inner(
         root,
         config,
-        changed_files,
-        changed_owner_names,
+        DiffScopedInventoryInput {
+            changed_files,
+            changed_owner_names,
+            changed_lines: None,
+        },
         !no_impact_fast_path_disabled(),
         None,
         Some((consumer, review_evidence_window_size()?)),
-        None,
     )
 }
 
@@ -1451,6 +1455,14 @@ fn classify_evidence_windows(
     Ok(evaluated)
 }
 
+/// Borrowed file, owner and line selection for the private scoped inventory.
+/// Wrappers retain their distinct collection and streaming controls.
+struct DiffScopedInventoryInput<'a> {
+    changed_files: &'a [PathBuf],
+    changed_owner_names: &'a [String],
+    changed_lines: Option<&'a [(PathBuf, usize)]>,
+}
+
 /// Shared body behind [`inventory_diff_scoped_classified_seams_at_with_config`].
 /// The explicit `fast_path_enabled` flag is the removal control (issue
 /// #3859, control 12): tests drive the disabled route directly instead
@@ -1458,13 +1470,16 @@ fn classify_evidence_windows(
 fn inventory_diff_scoped_classified_seams_inner(
     root: &Path,
     config: &RiprConfig,
-    changed_files: &[PathBuf],
-    changed_owner_names: &[String],
+    input: DiffScopedInventoryInput<'_>,
     fast_path_enabled: bool,
     stages: Option<&DiffScopeEvidenceStages<'_>>,
     consumer: Option<(&mut dyn ScopedEvidenceConsumer, usize)>,
-    changed_lines: Option<&[(PathBuf, usize)]>,
 ) -> Result<ScopedClassifiedSeamInventory, String> {
+    let DiffScopedInventoryInput {
+        changed_files,
+        changed_owner_names,
+        changed_lines,
+    } = input;
     cancellation::checkpoint()?;
     let absent_changed_files = workspace::changed_source_files_absent_from_worktree(
         root,
@@ -4775,10 +4790,12 @@ marker = "libtest_mimic::Trial"
         let full = inventory_diff_scoped_classified_seams_inner(
             &root,
             &config,
-            &changed,
-            &[],
+            DiffScopedInventoryInput {
+                changed_files: &changed,
+                changed_owner_names: &[],
+                changed_lines: None,
+            },
             false,
-            None,
             None,
             None,
         )?;
@@ -4960,10 +4977,12 @@ marker = "libtest_mimic::Trial"
         let cold = inventory_diff_scoped_classified_seams_inner(
             &root,
             &config,
-            &changed,
-            &[],
+            DiffScopedInventoryInput {
+                changed_files: &changed,
+                changed_owner_names: &[],
+                changed_lines: None,
+            },
             false,
-            None,
             None,
             None,
         )?;
@@ -5019,10 +5038,12 @@ marker = "libtest_mimic::Trial"
         let recovered = inventory_diff_scoped_classified_seams_inner(
             &root,
             &config,
-            &changed,
-            &[],
+            DiffScopedInventoryInput {
+                changed_files: &changed,
+                changed_owner_names: &[],
+                changed_lines: None,
+            },
             true,
-            None,
             None,
             None,
         )?;
@@ -5115,20 +5136,24 @@ marker = "libtest_mimic::Trial"
         let fast = inventory_diff_scoped_classified_seams_inner(
             &root,
             &config,
-            &changed,
-            &[],
+            DiffScopedInventoryInput {
+                changed_files: &changed,
+                changed_owner_names: &[],
+                changed_lines: None,
+            },
             true,
-            None,
             None,
             None,
         )?;
         let full = inventory_diff_scoped_classified_seams_inner(
             &root,
             &config,
-            &changed,
-            &[],
+            DiffScopedInventoryInput {
+                changed_files: &changed,
+                changed_owner_names: &[],
+                changed_lines: None,
+            },
             false,
-            None,
             None,
             None,
         )?;

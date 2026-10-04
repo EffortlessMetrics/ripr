@@ -350,15 +350,26 @@ fn review_comments_with_admission(
     // `started` is observed immediately before admission, making the run's
     // full budget the remaining budget at this point.
     let revision_budget = Some(Duration::from_millis(options.timeout_ms));
-    let mut receipt = output::review_comments_receipt::ReviewCommentsRunReceipt::new_with_mode(
-        &input.root,
-        &options.base,
-        &options.head,
-        &input.mode,
-        options.timeout_ms,
-        &artifacts,
-        revision_budget,
-    );
+    let mut receipt = if input.mode == app::Mode::Draft {
+        output::review_comments_receipt::ReviewCommentsRunReceipt::new(
+            &input.root,
+            &options.base,
+            &options.head,
+            options.timeout_ms,
+            &artifacts,
+            revision_budget,
+        )
+    } else {
+        output::review_comments_receipt::ReviewCommentsRunReceipt::new_with_mode(
+            &input.root,
+            &options.base,
+            &options.head,
+            &input.mode,
+            options.timeout_ms,
+            &artifacts,
+            revision_budget,
+        )
+    };
     receipt.write_atomic(&receipt_path)?;
     receipt.phase("input_validation", "configuration");
     receipt.write_atomic(&receipt_path)?;
@@ -1288,6 +1299,7 @@ mod tests {
             .ok_or_else(|| "producer reuse has no canonical phase evidence".to_string())?;
         if receipt["status"] != "complete"
             || receipt["root_identity"] != root_identity
+            || receipt["requested_mode"] != "draft"
             || reused["reused"] != true
             || reused["subject_count"] != 0
             || !out.with_extension("md").is_file()
@@ -1330,6 +1342,7 @@ mod tests {
         .map_err(|error| error.to_string())?;
         if !error.contains("producer_identity_mismatch")
             || refused_receipt["status"] != "failed"
+            || refused_receipt["requested_mode"] != "draft"
             || refused_receipt["primary_failure"]["category"] != "producer_identity_mismatch"
             || refused_out.exists()
             || refused_out.with_extension("md").exists()
