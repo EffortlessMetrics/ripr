@@ -574,9 +574,44 @@ fn mutation_spot_check_receipt_maps_agreement_and_join_coverage() -> Result<(), 
         value("trust.mutation_join_coverage").is_some_and(|v| (v - 172.0 / 1745.0).abs() < 1e-9)
     );
 
+    let evidence = |input: &Value| input["evidence"].as_str().unwrap_or_default().to_string();
+    assert!(
+        !evidence(&input).contains("cargo-mutants arguments"),
+        "{}",
+        evidence(&input)
+    );
+
     let config = load_config(&committed_config())?;
     let samples = parse_ingest(&receipt, &config)?;
     assert_eq!(samples.len(), 3);
+
+    let mut empty_args = receipt.clone();
+    empty_args["repos"][0]["cargo_mutants_args"] = json!([]);
+    let input = mutation_spot_check_to_input(&empty_args)?;
+    assert!(
+        !evidence(&input).contains("cargo-mutants arguments"),
+        "{}",
+        evidence(&input)
+    );
+
+    let mut sampled = receipt.clone();
+    sampled["repos"][0]["cargo_mutants_args"] = json!(["--re=decode"]);
+    let caveat = "1 of 2 repositories ran with cargo-mutants arguments";
+    let input = mutation_spot_check_to_input(&sampled)?;
+    assert!(evidence(&input).contains(caveat), "{}", evidence(&input));
+    // Ingest publishes each row's own evidence, so the caveat must reach
+    // every sample, not only the top-level evidence.
+    let samples = parse_ingest(&sampled, &config)?;
+    assert_eq!(samples.len(), 3);
+    for sample in &samples {
+        assert!(sample.detail.contains(caveat), "{}", sample.detail);
+    }
+    let unsampled = parse_ingest(&receipt, &config)?;
+    assert!(
+        unsampled
+            .iter()
+            .all(|sample| !sample.detail.contains("cargo-mutants arguments"))
+    );
     Ok(())
 }
 
