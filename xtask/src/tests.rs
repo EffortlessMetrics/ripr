@@ -11133,6 +11133,139 @@ fn sorted_allowlist_content_preserves_header_and_sorts_entries() {
 }
 
 #[test]
+fn count_policy_allowlist_rejects_duplicate_path_pattern_row() -> Result<(), String> {
+    let policy = "\
+# header
+fixtures/example.rs|ExampleMarker|1|owners|first bound
+fixtures/example.rs|ExampleMarker|9|owners|silently wider bound
+";
+    let err = super::parse_count_policy_allowlist("policy/process_allowlist.txt", policy)
+        .err()
+        .ok_or_else(|| "duplicate count-policy row must fail".to_string())?;
+    if !err.contains("policy/process_allowlist.txt:3") {
+        return Err(format!("expected the later line number, got {err}"));
+    }
+    if !err.contains("path|pattern `fixtures/example.rs|ExampleMarker` is duplicated (first declared near line 2)")
+    {
+        return Err(format!("expected a first-declaration pointer, got {err}"));
+    }
+
+    let runtime = "\
+.github/workflows/example.yml|uses:example/action|1|first bound
+.github/workflows/example.yml|uses:example/action|4|silently wider bound
+";
+    let err = super::parse_count_allowlist("policy/workflow_action_runtime_allowlist.txt", runtime)
+        .err()
+        .ok_or_else(|| "duplicate count-allowlist row must fail".to_string())?;
+    if !err.contains("policy/workflow_action_runtime_allowlist.txt:2") {
+        return Err(format!("expected the later line number, got {err}"));
+    }
+    if !err.contains(
+        "path|pattern `.github/workflows/example.yml|uses:example/action` is duplicated (first declared near line 1)",
+    ) {
+        return Err(format!("expected a first-declaration pointer, got {err}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn count_policy_allowlist_accepts_unique_path_pattern_row() -> Result<(), String> {
+    let policy = "\
+# header
+fixtures/example.rs|ExampleMarker|2|owners|owned bound
+fixtures/example.rs|OtherMarker|1|owners|different pattern
+fixtures/other.rs|ExampleMarker|1|owners|different path
+";
+    let allowed = super::parse_count_policy_allowlist("policy/process_allowlist.txt", policy)
+        .map_err(|err| format!("unique count-policy rows must parse: {err}"))?;
+    if allowed.get(&(
+        "fixtures/example.rs".to_string(),
+        "ExampleMarker".to_string(),
+    )) != Some(&2)
+    {
+        return Err(format!(
+            "unique policy row bound was not retained: {allowed:?}"
+        ));
+    }
+    if allowed.len() != 3 {
+        return Err(format!(
+            "each unique path|pattern key must be kept, got {}",
+            allowed.len()
+        ));
+    }
+
+    let runtime = "\
+.github/workflows/example.yml|uses:example/action|2|owned bound
+.github/workflows/other.yml|uses:example/action|1|different path
+";
+    let allowed =
+        super::parse_count_allowlist("policy/workflow_action_runtime_allowlist.txt", runtime)
+            .map_err(|err| format!("unique count-allowlist rows must parse: {err}"))?;
+    if allowed.get(&(
+        ".github/workflows/example.yml".to_string(),
+        "uses:example/action".to_string(),
+    )) != Some(&2)
+    {
+        return Err(format!(
+            "unique runtime row bound was not retained: {allowed:?}"
+        ));
+    }
+    if allowed.len() != 2 {
+        return Err(format!(
+            "each unique path|pattern key must be kept, got {}",
+            allowed.len()
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn executable_allowlist_rejects_stale_row() -> Result<(), String> {
+    let allowlist = BTreeSet::from([
+        "deleted/script.sh".to_string(),
+        "demoted/script.sh".to_string(),
+    ]);
+    let stage = "\
+100644 abcdef0123456789abcdef0123456789abcdef01 0\tdemoted/script.sh
+100644 fedcba0123456789abcdef0123456789abcdef01 0\tordinary.rs
+";
+    let violations = super::executable_file_violations(&allowlist, stage);
+    if !violations.iter().any(|row| {
+        row.contains(
+            "deleted/script.sh allowlist entry is stale: path is not in git ls-files --stage; remove the entry",
+        )
+    }) {
+        return Err(format!(
+            "missing executable allowlist path must fail: {violations:?}"
+        ));
+    }
+    if !violations.iter().any(|row| {
+        row.contains(
+            "demoted/script.sh allowlist entry is stale: mode is 100644, expected 100755; remove the entry",
+        )
+    }) {
+        return Err(format!(
+            "demoted executable allowlist path must fail: {violations:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn executable_allowlist_accepts_live_100755_row() -> Result<(), String> {
+    let path = "packaging/npm/launcher/bin/ripr.cjs";
+    let allowlist = BTreeSet::from([path.to_string()]);
+    let stage = format!("100755 9cea22d6aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 0\t{path}\n");
+    let violations = super::executable_file_violations(&allowlist, &stage);
+    if !violations.is_empty() {
+        return Err(format!(
+            "a live 100755 allowlist row must still pass: {violations:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn shape_rewrite_notice_lists_rewritten_files() {
     assert_eq!(super::shape_rewrite_notice(&[]), None);
     let notice =
