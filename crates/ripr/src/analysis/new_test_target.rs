@@ -9,11 +9,12 @@ use crate::analysis::facts::FunctionSourceRole;
 use crate::analysis::language::is_generated_rust_file_with_patterns;
 use crate::analysis::rust_index::{self, FunctionSummary, RustIndex};
 use crate::analysis::seams::{RepoSeam, SeamKind};
-use crate::analysis::syntax::{
-    GovernedCfgTestModule, governed_cfg_test_modules, production_owner_module_path,
-};
+use crate::analysis::syntax::{GovernedCfgTestModule, inline_unit_module_layout};
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
+use std::rc::Rc;
 
 mod integration;
 #[cfg(test)]
@@ -147,12 +148,16 @@ pub(crate) enum NewTestProposalProvenance {
 /// When both stay Missing, keep Integration's Cargo/layout blockers. A
 /// PrivateOwner Integration refusal does not replace an InlineUnit module
 /// reason: private items can still earn a same-file unit proposal.
-pub(crate) fn admit_new_test_target(seam: &RepoSeam, index: &RustIndex) -> NewTestTargetAdmission {
+pub(crate) fn admit_new_test_target(
+    seam: &RepoSeam,
+    index: &RustIndex,
+    layouts: &InlineUnitLayoutMemo,
+) -> NewTestTargetAdmission {
     let integration = admit_new_integration_test(seam, index);
     if integration.proposal.is_some() {
         return integration;
     }
-    let inline = admit_new_inline_unit_test(seam, index);
+    let inline = admit_new_inline_unit_test_with(seam, index, layouts);
     if inline.proposal.is_some() {
         return inline;
     }
@@ -173,11 +178,20 @@ pub(crate) fn admit_new_test_target(seam: &RepoSeam, index: &RustIndex) -> NewTe
 /// target, a refused DirectOwnerCall stays Missing rather than Proposed, and
 /// an advisory related observer does not block an independently admitted
 /// proposal.
+#[cfg(test)]
 pub(crate) fn admit_new_inline_unit_test(
     seam: &RepoSeam,
     index: &RustIndex,
 ) -> NewTestTargetAdmission {
-    match try_admit_new_inline_unit_test(seam, index) {
+    admit_new_inline_unit_test_with(seam, index, &InlineUnitLayoutMemo::default())
+}
+
+fn admit_new_inline_unit_test_with(
+    seam: &RepoSeam,
+    index: &RustIndex,
+    layouts: &InlineUnitLayoutMemo,
+) -> NewTestTargetAdmission {
+    match try_admit_new_inline_unit_test(seam, index, layouts) {
         Ok((proposal, region)) => NewTestTargetAdmission {
             proposal: Some(proposal),
             region: Some(region),
@@ -194,6 +208,7 @@ pub(crate) fn admit_new_inline_unit_test(
 fn try_admit_new_inline_unit_test(
     seam: &RepoSeam,
     index: &RustIndex,
+    layouts: &InlineUnitLayoutMemo,
 ) -> Result<(NewTestTargetProposal, InlineTestRegionAuthority), NewTestProposalBlocker> {
     if !matches!(
         seam.kind(),
@@ -234,9 +249,12 @@ fn try_admit_new_inline_unit_test(
         return Err(NewTestProposalBlocker::CustomHarness);
     }
 
-    let modules =
-        governed_cfg_test_modules(&facts.source).ok_or(NewTestProposalBlocker::LexicalFallback)?;
-    let region = unique_inline_region(seam.file(), &facts.source, owner_fn, &modules)?;
+    let layout = layouts.layout(seam.file(), &facts.source);
+    let modules = layout
+        .modules
+        .as_deref()
+        .ok_or(NewTestProposalBlocker::LexicalFallback)?;
+    let region = unique_inline_region(seam.file(), &facts.source, owner_fn, &layout, modules)?;
 
     Ok((
         NewTestTargetProposal {
@@ -253,9 +271,12 @@ fn unique_inline_region(
     file: &Path,
     source: &str,
     owner_fn: &FunctionSummary,
+    layout: &InlineUnitFileLayout,
     modules: &[GovernedCfgTestModule],
 ) -> Result<InlineTestRegionAuthority, NewTestProposalBlocker> {
-    let owner_modules = production_owner_module_path(source, owner_fn.start_line)
+    let owner_modules = layout
+        .owner_module_paths
+        .get(&owner_fn.start_line)
         .ok_or(NewTestProposalBlocker::OwnerUnresolved)?;
     let inline = modules
         .iter()
@@ -276,7 +297,7 @@ fn unique_inline_region(
         return Err(NewTestProposalBlocker::AmbiguousModule);
     }
     let module = inline[0];
-    if module.parent_modules != owner_modules {
+    if &module.parent_modules != owner_modules {
         return Err(NewTestProposalBlocker::OwnerInaccessible);
     }
     let body_start = module
@@ -294,8 +315,50 @@ fn unique_inline_region(
         parent_modules: module.parent_modules.clone(),
         body_start,
         close_brace_start,
-        source_digest: region::source_digest(source),
+        source_digest: layout.source_digest.clone(),
     })
+}
+
+/// Parser-backed facts an InlineUnit admission reads from one file. Each
+/// depends only on the file's source, so one parse and one digest per file
+/// serve every seam in it; per seam, admission used to parse the whole file
+/// twice and hash it once, which dominated cold `ripr pilot` time.
+#[derive(Debug)]
+struct InlineUnitFileLayout {
+    /// `None` when the file is not parser-valid.
+    modules: Option<Vec<GovernedCfgTestModule>>,
+    /// Enclosing non-cfg-test modules of each function, by start line.
+    owner_module_paths: BTreeMap<usize, Vec<String>>,
+    source_digest: String,
+}
+
+/// Per-file [`InlineUnitFileLayout`] memo for one evidence pass. The pass
+/// borrows the index immutably, so a file's source cannot change while the
+/// memo lives.
+#[derive(Debug, Default)]
+pub(crate) struct InlineUnitLayoutMemo {
+    layouts: RefCell<BTreeMap<PathBuf, Rc<InlineUnitFileLayout>>>,
+}
+
+impl InlineUnitLayoutMemo {
+    fn layout(&self, file: &Path, source: &str) -> Rc<InlineUnitFileLayout> {
+        if let Some(layout) = self.layouts.borrow().get(file) {
+            return Rc::clone(layout);
+        }
+        let (modules, owner_module_paths) = match inline_unit_module_layout(source) {
+            Some(layout) => (Some(layout.modules), layout.owner_module_paths),
+            None => (None, BTreeMap::new()),
+        };
+        let layout = Rc::new(InlineUnitFileLayout {
+            modules,
+            owner_module_paths,
+            source_digest: region::source_digest(source),
+        });
+        self.layouts
+            .borrow_mut()
+            .insert(file.to_path_buf(), Rc::clone(&layout));
+        layout
+    }
 }
 
 fn path_is_generated_or_vendor(path: &Path) -> bool {

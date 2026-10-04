@@ -50,6 +50,7 @@ use crate::analysis::syntax::{
     owner_pin_assertions, trusted_macro_binding_ambiguities,
 };
 use crate::domain::{Probe, ProbeFamily};
+use rayon::prelude::*;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -95,19 +96,7 @@ impl OwnerPinSyntax {
 
     fn admits(&self, test: &TestSummary, assertion: &OracleFact, index: &RustIndex) -> bool {
         let mut ambiguous = self.ambiguous_macro_bindings.borrow_mut();
-        let ambiguous = ambiguous.get_or_insert_with(|| {
-            index
-                .files()
-                .values()
-                .flat_map(|facts| {
-                    trusted_macro_binding_ambiguities(
-                        &facts.source,
-                        &index.package_names,
-                        NON_RETURNING_MACROS,
-                    )
-                })
-                .collect()
-        });
+        let ambiguous = ambiguous.get_or_insert_with(|| trusted_macro_ambiguities_in(index));
         let Some(facts) = index
             .files()
             .get(&test.file)
@@ -170,6 +159,56 @@ impl OwnerPinSyntax {
                 &ambiguous,
             )
     }
+}
+
+/// Trusted macro names some workspace file may rebind.
+///
+/// Parses workspace files, so on a warm `ripr check` of a large workspace
+/// this scan dominated wall time (37% on ripr-swarm). Files are independent
+/// and the result is a set, so the scan runs on the rayon pool with an
+/// order-independent answer.
+fn trusted_macro_ambiguities_in(index: &RustIndex) -> BTreeSet<String> {
+    let scan = |sources: &[&str]| -> BTreeSet<String> {
+        sources
+            .par_iter()
+            .flat_map_iter(|source| {
+                trusted_macro_binding_ambiguities(
+                    source,
+                    &index.package_names,
+                    NON_RETURNING_MACROS,
+                )
+            })
+            .collect()
+    };
+    // One foreign glob import, `#[macro_use]` or unparsable file makes
+    // every trusted name ambiguous, and most workspaces have one. Scan
+    // the files that can do that first; once every name is ambiguous
+    // the other files cannot change the union, so they are skipped.
+    let (likely, rest): (Vec<&str>, Vec<&str>) = index
+        .files()
+        .values()
+        .map(|facts| facts.data().source.as_str())
+        .partition(|source| may_saturate_macro_ambiguity(source));
+    let mut ambiguous = scan(&likely);
+    if ambiguous.len() < NON_RETURNING_MACROS.len() {
+        ambiguous.extend(scan(&rest));
+    }
+    ambiguous
+}
+
+/// Scan-order hint for the trusted-macro ambiguity scan, never its answer:
+/// a glob import not rooted at `super`/`self`/`crate`, `#[macro_use]` or
+/// `no_implicit_prelude`. `use super::*;` in nearly every test module is
+/// workspace-owned and would otherwise put every file first.
+fn may_saturate_macro_ambiguity(source: &str) -> bool {
+    source.contains("macro_use")
+        || source.contains("no_implicit_prelude")
+        || source.match_indices("::*").any(|(offset, _)| {
+            let before = source[..offset].trim_end_matches(|character: char| {
+                character.is_ascii_alphanumeric() || character == '_'
+            });
+            !matches!(&source[before.len()..offset], "super" | "self" | "crate")
+        })
 }
 
 /// Whether a test file imports a name from outside the workspace; the

@@ -22,6 +22,8 @@ pub(crate) struct PilotOptions {
     pub(crate) explicit: CheckInputExplicit,
     pub(crate) max_seams: usize,
     pub(crate) timeout_ms: u64,
+    /// `--timeout-ms` was given, so `timeout_ms` is a hard limit.
+    pub(crate) timeout_explicit: bool,
     pub(crate) quiet: bool,
 }
 #[derive(Debug, PartialEq, Eq)]

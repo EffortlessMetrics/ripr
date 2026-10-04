@@ -2221,8 +2221,9 @@ pub(crate) fn inventory_seams_from_index(
         let Some(facts) = index.files().get(path) else {
             continue;
         };
+        let owners = rust_index::FileOwnerLookup::new(facts.functions.iter());
         for shape in &facts.probe_shapes {
-            let Some(seam) = build_seam_from_shape(path, shape, index) else {
+            let Some(seam) = build_seam_from_shape(path, shape, &owners) else {
                 continue;
             };
             seams.push(seam);
@@ -2259,10 +2260,10 @@ pub(crate) fn inventory_seams_from_index(
 fn build_seam_from_shape(
     path: &Path,
     shape: &ProbeShapeFact,
-    index: &RustIndex,
+    owners: &rust_index::FileOwnerLookup<'_>,
 ) -> Option<RepoSeam> {
     let kind = seam_kind_from_probe_shape(&shape.kind)?;
-    let owner_fact = rust_index::find_owner_function(index, path, shape.start_line)?;
+    let owner_fact = owners.owner(shape.start_line)?;
     // Skip shapes whose owner is itself a test function (e.g.,
     // `#[test] fn ...` inside an in-file `#[cfg(test)] mod tests`).
     // the source-role model already excludes physical test files;

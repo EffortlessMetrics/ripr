@@ -304,7 +304,7 @@ fn evidence_for_seam_with_context(
         .iter()
         .map(|(indexed, reason)| related_test_grip(seam, indexed.test, *reason, context))
         .collect();
-    let new_test_target = new_test_target_admission(seam, context.index);
+    let new_test_target = new_test_target_admission(seam, context);
 
     TestGripEvidence {
         seam_id: seam.id().clone(),
@@ -320,13 +320,20 @@ fn evidence_for_seam_with_context(
     }
 }
 
-fn new_test_target_admission(seam: &RepoSeam, index: &RustIndex) -> Option<NewTestTargetAdmission> {
+fn new_test_target_admission(
+    seam: &RepoSeam,
+    context: &CompactGripContext<'_>,
+) -> Option<NewTestTargetAdmission> {
     match seam.kind() {
         SeamKind::PredicateBoundary
         | SeamKind::ErrorVariant
         | SeamKind::ReturnValue
         | SeamKind::FieldConstruction
-        | SeamKind::MatchArm => Some(new_test_target::admit_new_test_target(seam, index)),
+        | SeamKind::MatchArm => Some(new_test_target::admit_new_test_target(
+            seam,
+            context.index,
+            &context.inline_unit_layouts,
+        )),
         SeamKind::SideEffect | SeamKind::CallPresence => None,
     }
 }

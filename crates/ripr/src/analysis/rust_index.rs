@@ -248,6 +248,50 @@ pub fn find_owner_function<'a>(
         .max_by_key(|f| f.start_line)
 }
 
+/// `find_owner_function` for many lines of one file.
+///
+/// The plain lookup scans every function in the file, so resolving every
+/// probe shape of a file with n functions costs O(n^2): on a generated
+/// 200k-function file seam inventory alone outlasted pilot's 270s budget,
+/// with no cancellation checkpoint inside. This sorts the functions once and walks
+/// back from the last one starting at or before the line, stopping once no
+/// earlier function reaches that far. Answers are identical, including the
+/// tie rule: among containing functions with the latest start, the one
+/// listed last wins, as with `max_by_key`.
+pub(crate) struct FileOwnerLookup<'a> {
+    /// Functions ordered by (start_line, position in the file's list).
+    by_start: Vec<&'a FunctionSummary>,
+    /// `reach[i]`: the largest end_line among `by_start[..=i]`.
+    reach: Vec<usize>,
+}
+
+impl<'a> FileOwnerLookup<'a> {
+    pub(crate) fn new(functions: impl IntoIterator<Item = &'a FunctionSummary>) -> Self {
+        // A stable sort keeps list order inside one start line.
+        let mut by_start: Vec<&FunctionSummary> = functions.into_iter().collect();
+        by_start.sort_by_key(|function| function.start_line);
+        let reach = by_start
+            .iter()
+            .scan(0, |reach, function| {
+                *reach = (*reach).max(function.end_line);
+                Some(*reach)
+            })
+            .collect();
+        Self { by_start, reach }
+    }
+
+    pub(crate) fn owner(&self, line: usize) -> Option<&'a FunctionSummary> {
+        let after = self
+            .by_start
+            .partition_point(|function| function.start_line <= line);
+        (0..after)
+            .rev()
+            .take_while(|&i| self.reach[i] >= line)
+            .map(|i| self.by_start[i])
+            .find(|function| line <= function.end_line)
+    }
+}
+
 /// Every indexed function whose line span contains `line`, outermost and
 /// nested alike. `find_owner_function` names only the innermost one; review
 /// placement needs the whole chain to know whether a seam owner's span
@@ -338,6 +382,77 @@ mod tests {
         // direct lookup misses and the normalized fallback must resolve.
         let owner = find_owner_function(&index, Path::new("src/pricing.rs"), 1);
         assert_eq!(owner.map(|f| f.name.as_str()), Some("apply_discount"));
+    }
+
+    #[test]
+    fn file_owner_lookup_matches_the_per_line_scan() -> Result<(), String> {
+        let template = summarize_file(PathBuf::from("src/lib.rs"), "fn t() {}\n".to_string())
+            .functions
+            .into_iter()
+            .next()
+            .ok_or("template function not parsed")?;
+        let function = |name: &str, start_line: usize, end_line: usize| FunctionSummary {
+            name: name.to_string(),
+            start_line,
+            end_line,
+            ..template.clone()
+        };
+        // Listed out of start order, with nesting, a gap, two functions
+        // opening on one line (the later-listed one must win, as with
+        // `max_by_key`), a long outer function whose nested children end
+        // before its tail, and a function after every other one ends.
+        let functions = vec![
+            function("tail", 40, 41),
+            function("outer", 2, 30),
+            function("child_a", 3, 5),
+            function("child_b", 7, 9),
+            function("grandchild", 8, 8),
+            function("same_line_first", 12, 12),
+            function("same_line_second", 12, 12),
+            function("same_start_wide", 14, 20),
+            function("same_start_narrow", 14, 15),
+            function("lone", 33, 35),
+        ];
+        // Enough functions, in mixed order, that an unstable sort reorders
+        // equal start lines (checked: `sort_unstable_by_key` fails here).
+        let mut functions = functions;
+        for i in 0..32 {
+            functions.insert(0, function(&format!("pad_{i}"), 100 - i, 100 - i));
+            functions.push(function(&format!("tie_{i}"), 44, 45 - i % 2));
+        }
+        let lookup = FileOwnerLookup::new(&functions);
+        let mut owned = 0;
+        for line in 0..=101 {
+            let expected = functions
+                .iter()
+                .filter(|f| f.start_line <= line && line <= f.end_line)
+                .max_by_key(|f| f.start_line);
+            let actual = lookup.owner(line);
+            assert_eq!(
+                actual.map(|f| f.name.as_str()),
+                expected.map(|f| f.name.as_str()),
+                "line {line}"
+            );
+            owned += usize::from(actual.is_some());
+        }
+        // The layout exercises owners, gaps and ties, not an empty file.
+        assert_eq!(
+            lookup.owner(12).map(|f| f.name.as_str()),
+            Some("same_line_second")
+        );
+        assert_eq!(
+            lookup.owner(15).map(|f| f.name.as_str()),
+            Some("same_start_narrow")
+        );
+        assert_eq!(
+            lookup.owner(16).map(|f| f.name.as_str()),
+            Some("same_start_wide")
+        );
+        assert_eq!(lookup.owner(25).map(|f| f.name.as_str()), Some("outer"));
+        assert_eq!(lookup.owner(31), None);
+        assert_eq!(lookup.owner(45).map(|f| f.name.as_str()), Some("tie_30"));
+        assert!(owned > 30, "only {owned} lines had an owner");
+        Ok(())
     }
 
     #[test]

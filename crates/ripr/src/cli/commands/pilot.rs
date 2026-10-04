@@ -115,53 +115,46 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     let artifacts = pilot_artifacts(&options.out_dir);
     output::file_write::create_output_dir(&options.out_dir, "--out")?;
 
-    let analysis_root = input.root.clone();
-    let analysis_config = config.clone();
     // #5019: pilot's repo inventory is the same multi-minute walk `ripr
     // check` projects progress for, so route it through the shared
     // app-layer progress-bearing entry point instead of calling the
-    // analyzer directly. Each attempt gets a fresh sink: a timed-out
-    // attempt ends its run as a `cancelled` terminal, which is terminal
-    // for the projection, and the #2424 cold-cache retry is a new run
-    // with its own stage clock.
-    let mut progress = pilot_progress_sink(options.quiet);
-    let mut analysis_result = run_pilot_analysis_with_timeout(options.timeout_ms, {
-        let root = analysis_root.clone();
-        let cfg = analysis_config.clone();
-        let sink = progress.as_ref().map(Arc::clone);
-        move || run_pilot_inventory(&root, &cfg, sink.as_ref())
-    })?;
-
-    // Auto-retry at a higher budget when the default timeout fires and the
-    // user did not pass an explicit --timeout-ms (#2424). A cold fact cache
-    // on a multi-crate workspace can need ~155s; the 30s default is too low
-    // for first-run. The retry gives a complete result on the first
-    // invocation — just slower.
-    if matches!(analysis_result, PilotAnalysisResult::TimedOut)
-        && options.timeout_ms == DEFAULT_PILOT_TIMEOUT_MS
-    {
-        eprintln!(
-            "ripr: pilot timed out at {}ms; retrying at {}ms (cold cache needs more time)...",
-            DEFAULT_PILOT_TIMEOUT_MS, PILOT_RETRY_TIMEOUT_MS
-        );
-        progress = pilot_progress_sink(options.quiet);
-        analysis_result = run_pilot_analysis_with_timeout(PILOT_RETRY_TIMEOUT_MS, {
-            let root = analysis_root.clone();
-            let cfg = analysis_config.clone();
+    // analyzer directly.
+    //
+    // When the default deadline fires and the user did not pass an explicit
+    // --timeout-ms (#2424), the deadline extends on the same run instead of
+    // cancelling it and starting over. A cold fact cache on a multi-crate
+    // workspace can need minutes, and a cancelled first attempt leaves
+    // nothing the restart can reuse, so restarting redid the first 30s of
+    // work (serde cold: 75s with the restart, 44s without, identical
+    // output).
+    let extension_ms = pilot_deadline_extension_ms(&options);
+    let progress = pilot_progress_sink(options.quiet);
+    let analysis_result = run_pilot_analysis_with_timeout(
+        options.timeout_ms,
+        extension_ms,
+        || {
+            eprintln!(
+                "ripr: pilot still running after {}ms; extending the deadline by {}ms (a cold cache needs more time)...",
+                DEFAULT_PILOT_TIMEOUT_MS, PILOT_RETRY_TIMEOUT_MS
+            );
+        },
+        {
+            let root = input.root.clone();
+            let cfg = config.clone();
             let sink = progress.as_ref().map(Arc::clone);
             move || run_pilot_inventory(&root, &cfg, sink.as_ref())
-        })?;
-        // Update timeout_ms so the retry hint (if it times out again) uses the
-        // retry budget, not the original default.
-        // (context struct reads options.timeout_ms for the hint)
-    }
+        },
+    )?;
+    // The timeout hint scales from the budget actually spent, so an
+    // extended run does not suggest a smaller --timeout-ms than it used.
+    let spent_timeout_ms = options.timeout_ms.saturating_add(extension_ms.unwrap_or(0));
     let PilotAnalysisResult::Complete(report) = analysis_result else {
         let context = output::pilot::PilotSummaryContext {
             root: &input.root,
             mode: &input.mode,
             config_path: config.source_path(),
             max_seams: options.max_seams,
-            timeout_ms: options.timeout_ms,
+            timeout_ms: spent_timeout_ms,
             artifacts: &artifacts,
             python_first_use: None,
             language_routes: None,
@@ -340,6 +333,7 @@ fn parse_pilot_options(args: &[String]) -> Result<PilotOptions, String> {
         explicit: CheckInputExplicit::default(),
         max_seams: 5,
         timeout_ms: DEFAULT_PILOT_TIMEOUT_MS,
+        timeout_explicit: false,
         quiet: false,
     };
     let mut i = 0usize;
@@ -367,6 +361,7 @@ fn parse_pilot_options(args: &[String]) -> Result<PilotOptions, String> {
                 i += 1;
                 options.timeout_ms =
                     parse_positive_u64(expect_value(args, i, "--timeout-ms")?, "--timeout-ms")?;
+                options.timeout_explicit = true;
             }
             "--quiet" => {
                 options.quiet = true;
@@ -378,13 +373,26 @@ fn parse_pilot_options(args: &[String]) -> Result<PilotOptions, String> {
     Ok(options)
 }
 
+/// The deadline extension applies only to the default budget. A typed
+/// `--timeout-ms`, even one equal to the default, is a hard limit.
+fn pilot_deadline_extension_ms(options: &PilotOptions) -> Option<u64> {
+    (!options.timeout_explicit).then_some(PILOT_RETRY_TIMEOUT_MS)
+}
+
 enum PilotAnalysisResult {
     Complete(analysis::ClassifiedSeamsReport),
     TimedOut,
 }
 
+/// Run the pilot analysis on a worker thread under a deadline.
+///
+/// When `extension_ms` is set and the first deadline passes, `on_extend` runs
+/// once and the same analysis keeps going for `extension_ms` more; work done
+/// before the first deadline is never thrown away.
 fn run_pilot_analysis_with_timeout<F>(
     timeout_ms: u64,
+    extension_ms: Option<u64>,
+    on_extend: impl FnOnce(),
     runner: F,
 ) -> Result<PilotAnalysisResult, String>
 where
@@ -398,17 +406,20 @@ where
         let _ignored = tx.send(result);
     });
 
-    match rx.recv_timeout(Duration::from_millis(timeout_ms)) {
+    let mut outcome = rx.recv_timeout(Duration::from_millis(timeout_ms));
+    if let (Err(mpsc::RecvTimeoutError::Timeout), Some(extension_ms)) = (&outcome, extension_ms) {
+        on_extend();
+        outcome = rx.recv_timeout(Duration::from_millis(extension_ms));
+    }
+    match outcome {
         Ok(result) => result.map(PilotAnalysisResult::Complete),
         Err(mpsc::RecvTimeoutError::Timeout) => {
             cancellation_token
                 .cancel(crate::analysis::cancellation::AnalysisAbortKind::DeadlineExceeded);
             // #5019: the detached worker owns its progress run's terminal
-            // (`cancelled`), and the caller opens a retry run or exits soon
-            // after this return. Give the worker a bounded window to reach a
-            // cancellation checkpoint and finish, so the attempt's progress
-            // stream closes before the next one starts instead of
-            // heartbeating into it, and the terminal is not lost to process
+            // (`cancelled`), and the caller exits soon after this return.
+            // Give the worker a bounded window to reach a cancellation
+            // checkpoint and finish, so the terminal is not lost to process
             // exit. A worker stuck past the window cannot be forced (it is
             // a detached thread): a known, bounded limitation.
             let _ignored = rx.recv_timeout(Duration::from_secs(5));
@@ -521,26 +532,105 @@ mod tests {
                 },
                 max_seams: 3,
                 timeout_ms: 120_000,
+                timeout_explicit: true,
                 quiet: true,
             })
         );
     }
 
     #[test]
+    fn explicit_default_timeout_is_a_hard_limit() -> Result<(), String> {
+        // Only an omitted --timeout-ms earns the cold-run extension; typing
+        // the default value must not turn a 30s limit into 270s.
+        let omitted = parse_pilot_options(&args(&["--quiet"]))?;
+        assert_eq!(
+            pilot_deadline_extension_ms(&omitted),
+            Some(PILOT_RETRY_TIMEOUT_MS)
+        );
+        let explicit = parse_pilot_options(&args(&["--timeout-ms", "30000"]))?;
+        assert_eq!(explicit.timeout_ms, DEFAULT_PILOT_TIMEOUT_MS);
+        assert_eq!(pilot_deadline_extension_ms(&explicit), None);
+        Ok(())
+    }
+
+    #[test]
     fn pilot_analysis_timeout_cancels_worker() {
         let (cancelled_tx, cancelled_rx) = mpsc::channel();
-        let result = run_pilot_analysis_with_timeout(1, move || {
-            loop {
-                if crate::analysis::cancellation::checkpoint().is_err() {
-                    let _ignored = cancelled_tx.send(());
-                    return Err("analysis cancelled".to_string());
+        let result = run_pilot_analysis_with_timeout(
+            1,
+            None,
+            || {},
+            move || {
+                loop {
+                    if crate::analysis::cancellation::checkpoint().is_err() {
+                        let _ignored = cancelled_tx.send(());
+                        return Err("analysis cancelled".to_string());
+                    }
+                    std::thread::sleep(Duration::from_millis(1));
                 }
-                std::thread::sleep(Duration::from_millis(1));
-            }
-        });
+            },
+        );
 
         assert!(matches!(result, Ok(PilotAnalysisResult::TimedOut)));
         assert_eq!(cancelled_rx.recv_timeout(Duration::from_secs(1)), Ok(()));
+    }
+
+    #[test]
+    fn pilot_deadline_extension_keeps_the_running_analysis() {
+        // #2424: when the default deadline passes, the same analysis keeps
+        // running under the extension. A restart would invoke the runner a
+        // second time and redo the work done before the first deadline.
+        let runs = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let worker_runs = std::sync::Arc::clone(&runs);
+        let extended = std::cell::Cell::new(0);
+        let result = run_pilot_analysis_with_timeout(
+            20,
+            Some(5_000),
+            || extended.set(extended.get() + 1),
+            move || {
+                worker_runs.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                std::thread::sleep(Duration::from_millis(200));
+                crate::analysis::cancellation::checkpoint()?;
+                Ok(analysis::ClassifiedSeamsReport {
+                    classified: Vec::new(),
+                    limit_info: None,
+                    skipped_generated: Vec::new(),
+                    naming_only_skips: Vec::new(),
+                })
+            },
+        );
+
+        assert!(
+            matches!(result, Ok(PilotAnalysisResult::Complete(_))),
+            "the extended run must complete instead of timing out"
+        );
+        assert_eq!(extended.get(), 1, "the extension notice prints once");
+        assert_eq!(
+            runs.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "the analysis must run once, not restart"
+        );
+    }
+
+    #[test]
+    fn pilot_deadline_without_extension_still_cancels() {
+        // Negative control for the extension: an explicit --timeout-ms
+        // passes no extension, so the first deadline cancels the run and
+        // the extension callback never fires.
+        let extended = std::cell::Cell::new(false);
+        let result = run_pilot_analysis_with_timeout(
+            20,
+            None,
+            || extended.set(true),
+            || {
+                std::thread::sleep(Duration::from_millis(200));
+                crate::analysis::cancellation::checkpoint()?;
+                Err("analysis was not cancelled".to_string())
+            },
+        );
+
+        assert!(matches!(result, Ok(PilotAnalysisResult::TimedOut)));
+        assert!(!extended.get());
     }
 
     #[derive(Clone)]
@@ -587,22 +677,27 @@ mod tests {
             ProgressPolicy::STANDARD,
         ));
         let (done_tx, done_rx) = mpsc::channel();
-        let result = run_pilot_analysis_with_timeout(3_000, move || {
-            let result = app::repo_inventory_with_progress(
-                Some(&*sink),
-                || -> Result<analysis::ClassifiedSeamsReport, String> {
-                    loop {
-                        if crate::analysis::cancellation::checkpoint().is_err() {
-                            return Err("analysis cancelled".to_string());
+        let result = run_pilot_analysis_with_timeout(
+            3_000,
+            None,
+            || {},
+            move || {
+                let result = app::repo_inventory_with_progress(
+                    Some(&*sink),
+                    || -> Result<analysis::ClassifiedSeamsReport, String> {
+                        loop {
+                            if crate::analysis::cancellation::checkpoint().is_err() {
+                                return Err("analysis cancelled".to_string());
+                            }
+                            std::thread::sleep(Duration::from_millis(10));
                         }
-                        std::thread::sleep(Duration::from_millis(10));
-                    }
-                },
-                Ok,
-            );
-            let _ignored = done_tx.send(());
-            result
-        });
+                    },
+                    Ok,
+                );
+                let _ignored = done_tx.send(());
+                result
+            },
+        );
 
         assert!(matches!(result, Ok(PilotAnalysisResult::TimedOut)));
         // The bounded handoff joins the cancelled worker before returning,
@@ -649,20 +744,25 @@ mod tests {
         );
         assert!(pilot_progress_sink(false).is_some());
 
-        let result = run_pilot_analysis_with_timeout(50, || {
-            app::repo_inventory_with_progress(
-                None,
-                || -> Result<analysis::ClassifiedSeamsReport, String> {
-                    loop {
-                        if crate::analysis::cancellation::checkpoint().is_err() {
-                            return Err("analysis cancelled".to_string());
+        let result = run_pilot_analysis_with_timeout(
+            50,
+            None,
+            || {},
+            || {
+                app::repo_inventory_with_progress(
+                    None,
+                    || -> Result<analysis::ClassifiedSeamsReport, String> {
+                        loop {
+                            if crate::analysis::cancellation::checkpoint().is_err() {
+                                return Err("analysis cancelled".to_string());
+                            }
+                            std::thread::sleep(Duration::from_millis(5));
                         }
-                        std::thread::sleep(Duration::from_millis(5));
-                    }
-                },
-                Ok,
-            )
-        });
+                    },
+                    Ok,
+                )
+            },
+        );
         assert!(
             matches!(result, Ok(PilotAnalysisResult::TimedOut)),
             "removing the sink must not change the timeout behavior"

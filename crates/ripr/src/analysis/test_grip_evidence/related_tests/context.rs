@@ -34,6 +34,10 @@ pub(crate) struct CompactGripContext<'a> {
     evidence_functions_by_line_cache: RefCell<BTreeMap<&'a Path, BTreeMap<usize, Vec<usize>>>>,
     /// Run-scoped parser reuse for owner-result binding inspection.
     parsed_sources: RefCell<BTreeMap<&'a Path, Option<Parse<SourceFile>>>>,
+    /// Per production file: the parser-backed module layout new-test-target
+    /// admission reads. File-bounded and small, so it survives windows.
+    pub(in crate::analysis::test_grip_evidence) inline_unit_layouts:
+        crate::analysis::new_test_target::InlineUnitLayoutMemo,
 }
 
 /// Candidate generation only: the existing `contains` and `same_module`
@@ -451,6 +455,7 @@ impl<'a> CompactGripContext<'a> {
             source_digest_cache: RefCell::new(BTreeMap::new()),
             evidence_functions_by_line_cache: RefCell::new(BTreeMap::new()),
             parsed_sources: RefCell::new(BTreeMap::new()),
+            inline_unit_layouts: Default::default(),
         })
     }
 

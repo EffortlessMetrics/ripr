@@ -52,7 +52,9 @@ Options:
   --out PATH        Output directory for the pilot packet. Defaults to target/ripr/pilot.
   --mode MODE       instant, draft, fast, deep, or ready. Defaults to draft unless ripr.toml sets one.
   --max-seams N     Maximum ranked seams in the pilot summary. Defaults to 5.
-  --timeout-ms MS   Maximum analysis budget before writing a partial summary. Defaults to 30000.
+  --timeout-ms MS   Maximum analysis budget before writing a partial summary. Defaults to
+                    30000; when the default passes, the same run continues for up to
+                    240000 more. An explicit value is a hard limit.
   --quiet           Suppress analysis progress and heartbeats on stderr. Does not
                     change the pilot packet, exit codes, or error reporting.
 
@@ -62,8 +64,8 @@ Progress:
   `still active after <elapsed class>` heartbeats, exactly as `ripr check`
   reports them. Non-TTY / CI output is newline-delimited with no control
   sequences; stdout and the pilot packet stay byte-clean. When the default
-  timeout fires, the cold-cache retry continues under the same progress
-  stream. `--quiet` turns this stream off.
+  timeout passes, the same run continues under the same progress stream.
+  `--quiet` turns this stream off.
 
 Environment variables:
   RIPR_PILOT_SEAM_BUDGET   Maximum seams written to pilot artifacts (repo-exposure.json,

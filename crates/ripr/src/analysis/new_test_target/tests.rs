@@ -9,7 +9,9 @@ use crate::analysis::seam_inventory::{
     inventory_classified_seams_at, inventory_compact_classified_seams_at_with_config,
 };
 use crate::analysis::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
-use crate::analysis::syntax::{governed_cfg_test_modules, production_owner_module_path};
+use crate::analysis::syntax::{
+    governed_cfg_test_modules, inline_unit_module_layout, production_owner_module_path,
+};
 use crate::config::RiprConfig;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -256,6 +258,71 @@ mod inner {
         .ok_or_else(|| "owner on line 3 should resolve".to_string())?;
     if path != ["inner".to_string()] {
         return Err(format!("expected [inner], got {path:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn inline_unit_module_layout_matches_the_per_seam_queries_from_one_parse() -> Result<(), String> {
+    // The memoized layout replaces one `governed_cfg_test_modules` and one
+    // `production_owner_module_path` parse per seam. Pin the answers the
+    // per-seam queries gave: cfg-test modules excluded from owner paths,
+    // nested production modules kept in order, and the first function in
+    // source order winning when two start on one line.
+    let source = r#"
+mod outer {
+    mod inner {
+        fn deep(amount: i32) -> i32 { amount }
+    }
+    fn first() -> i32 { 1 } mod same_line { fn second() {} }
+
+    #[cfg(test)]
+    mod tests {
+        fn helper() {}
+    }
+}
+fn top() {}
+"#;
+    let layout = inline_unit_module_layout(source)
+        .ok_or_else(|| "parser-valid source should yield a layout".to_string())?;
+    let (modules, paths) = (layout.modules, layout.owner_module_paths);
+    let expected_modules = governed_cfg_test_modules(source)
+        .ok_or_else(|| "parser-valid source should yield governed modules".to_string())?;
+    if modules != expected_modules {
+        return Err(format!(
+            "modules diverged: {modules:?} vs {expected_modules:?}"
+        ));
+    }
+    let owned = |names: &[&str]| {
+        names
+            .iter()
+            .map(|name| name.to_string())
+            .collect::<Vec<_>>()
+    };
+    let expected = [
+        (4, owned(&["outer", "inner"])),
+        (6, owned(&["outer"])),
+        (10, owned(&["outer"])),
+        (13, owned(&[])),
+    ];
+    for (line, path) in &expected {
+        if paths.get(line) != Some(path) {
+            return Err(format!(
+                "line {line}: expected {path:?}, got {:?}",
+                paths.get(line)
+            ));
+        }
+        if production_owner_module_path(source, *line).as_ref() != Some(path) {
+            return Err(format!(
+                "line {line}: per-seam query disagrees with the layout"
+            ));
+        }
+    }
+    if paths.len() != expected.len() {
+        return Err(format!("unexpected function lines: {paths:?}"));
+    }
+    if inline_unit_module_layout("fn broken( {").is_some() {
+        return Err("a parse failure must yield no layout".to_string());
     }
     Ok(())
 }

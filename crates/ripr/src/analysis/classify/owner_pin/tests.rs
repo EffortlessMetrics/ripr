@@ -858,3 +858,81 @@ fn owner_pin_requires_test_item_ancestry_and_enabled_cfg() {
         assert_eq!(weight_admitted(&tests).len(), 1, "{attribute}");
     }
 }
+
+#[test]
+fn trusted_macro_scan_skips_files_only_once_every_name_is_ambiguous() {
+    let full_scan = |index: &RustIndex| {
+        index
+            .files()
+            .values()
+            .flat_map(|facts| {
+                trusted_macro_binding_ambiguities(
+                    &facts.data().source,
+                    &index.package_names,
+                    NON_RETURNING_MACROS,
+                )
+            })
+            .collect::<BTreeSet<_>>()
+    };
+    let shadowing = "macro_rules! assert_eq { ($($tokens:tt)*) => {} }\n";
+    for (files, saturated, assert_eq_ambiguous) in [
+        // A foreign glob saturates the set before the defining file is read.
+        (
+            vec![
+                ("src/a.rs", "use std::io::prelude::*;\n"),
+                ("src/b.rs", shadowing),
+            ],
+            true,
+            true,
+        ),
+        // Workspace-owned globs do not saturate it, so the later file counts.
+        (
+            vec![
+                ("src/a.rs", "use super::*;\nfn f() {}\n"),
+                ("src/b.rs", shadowing),
+            ],
+            false,
+            true,
+        ),
+        (
+            vec![("src/a.rs", "fn f() { assert_eq!(1, 1); }\n")],
+            false,
+            false,
+        ),
+    ] {
+        let index = index(&files);
+        let ambiguous = trusted_macro_ambiguities_in(&index);
+        assert_eq!(ambiguous, full_scan(&index), "{files:?}");
+        assert_eq!(
+            ambiguous.len() == NON_RETURNING_MACROS.len(),
+            saturated,
+            "{files:?}"
+        );
+        assert_eq!(
+            ambiguous.contains("assert_eq"),
+            assert_eq_ambiguous,
+            "{files:?}"
+        );
+    }
+}
+
+#[test]
+fn trusted_macro_names_are_distinct_so_a_full_set_means_saturated() {
+    let distinct = NON_RETURNING_MACROS.iter().collect::<BTreeSet<_>>();
+    assert_eq!(distinct.len(), NON_RETURNING_MACROS.len());
+}
+
+#[test]
+fn saturation_hint_skips_workspace_owned_globs() {
+    for (source, hinted) in [
+        ("use super::*;\n", false),
+        ("use self::*;\nuse crate::*;\n", false),
+        ("use std::io::prelude::*;\n", true),
+        ("use super::*;\nuse rayon::prelude::*;\n", true),
+        ("#[macro_use]\nmod macros;\n", true),
+        ("#![no_implicit_prelude]\n", true),
+        ("fn f(x: &i32) -> i32 { *x }\n", false),
+    ] {
+        assert_eq!(may_saturate_macro_ambiguity(source), hinted, "{source}");
+    }
+}

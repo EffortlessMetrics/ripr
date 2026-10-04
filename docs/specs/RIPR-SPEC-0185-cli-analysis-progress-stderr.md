@@ -54,7 +54,7 @@ second stage vocabulary.
    `ripr progress: <stage> [<scope>]` and, while a stage stays active,
    `ripr progress: <stage> still active after <elapsed class>`.
    `ripr pilot` projects the same producer-owned stream at repo scope while
-   its repo inventory runs, including the cold-cache auto-retry, so the
+   its repo inventory runs, including the cold-cache deadline extension, so the
    primary first-run command is never minutes of unexplained silence
    (#5019). Pilot adds no stage vocabulary of its own.
 3. Non-TTY / CI lines are newline-delimited and contain no ANSI or carriage
@@ -176,7 +176,7 @@ second stage vocabulary.
 - `crates/ripr/src/cli/progress.rs` — stderr projection, heartbeat, TTY policy
 - `crates/ripr/src/cli/commands/check.rs` — `--quiet` and sink wiring
 - `crates/ripr/src/cli/commands/pilot.rs` — `--quiet` and sink wiring on the
-  pilot repo inventory, including the cold-cache retry (#5019)
+  pilot repo inventory, including the cold-cache deadline extension (#5019)
 - `crates/ripr/src/cli/help/core.rs` — user-facing contract
 
 ## Metrics

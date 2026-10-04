@@ -953,7 +953,31 @@ pub(crate) struct GovernedCfgTestModule {
 /// guessing from line text.
 pub(crate) fn governed_cfg_test_modules(source: &str) -> Option<Vec<GovernedCfgTestModule>> {
     let parse = parse_clean_source_file(source)?;
+    Some(governed_cfg_test_modules_in(&parse.tree()))
+}
+
+/// Module facts new-test-target admission reads from one source file.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct InlineUnitModuleLayout {
+    /// [`governed_cfg_test_modules`] for the file.
+    pub(crate) modules: Vec<GovernedCfgTestModule>,
+    /// Every function's enclosing non-cfg-test module names, keyed by start
+    /// line, as [`production_owner_module_path`] answers one line at a time.
+    pub(crate) owner_module_paths: BTreeMap<usize, Vec<String>>,
+}
+
+/// [`InlineUnitModuleLayout`] from one parse of `source`. `None` when the
+/// file is not parser-valid.
+pub(crate) fn inline_unit_module_layout(source: &str) -> Option<InlineUnitModuleLayout> {
+    let parse = parse_clean_source_file(source)?;
     let file = parse.tree();
+    Some(InlineUnitModuleLayout {
+        modules: governed_cfg_test_modules_in(&file),
+        owner_module_paths: production_owner_module_paths_in(&file, &LineIndex::new(source)),
+    })
+}
+
+fn governed_cfg_test_modules_in(file: &ast::SourceFile) -> Vec<GovernedCfgTestModule> {
     let mut modules = Vec::new();
     for module in file.syntax().descendants().filter_map(ast::Module::cast) {
         if module
@@ -1008,41 +1032,51 @@ pub(crate) fn governed_cfg_test_modules(source: &str) -> Option<Vec<GovernedCfgT
             .then(left.name.cmp(&right.name))
             .then(left.item_start.cmp(&right.item_start))
     });
-    Some(modules)
+    modules
 }
 
 /// Enclosing module names of the production function on `start_line`, excluding
 /// cfg-test modules. `None` when the file does not parse or the function is
 /// missing.
+#[cfg(test)]
 pub(crate) fn production_owner_module_path(source: &str, start_line: usize) -> Option<Vec<String>> {
     let parse = parse_clean_source_file(source)?;
-    let line_index = LineIndex::new(source);
-    parse.tree().syntax().descendants().find_map(|node| {
-        let function = ast::Fn::cast(node)?;
+    production_owner_module_paths_in(&parse.tree(), &LineIndex::new(source)).remove(&start_line)
+}
+
+/// Enclosing non-cfg-test module names of every function, keyed by start
+/// line. When two functions start on one line, the first in source order
+/// wins, matching a preorder search for that line.
+fn production_owner_module_paths_in(
+    file: &ast::SourceFile,
+    line_index: &LineIndex,
+) -> BTreeMap<usize, Vec<String>> {
+    let mut paths = BTreeMap::new();
+    for function in file.syntax().descendants().filter_map(ast::Fn::cast) {
         let line = function
             .fn_token()
             .map(|token| line_index.line(token.text_range().start()))
             .unwrap_or_else(|| line_index.line(function.syntax().text_range().start()));
-        if line != start_line {
-            return None;
-        }
-        let mut modules = Vec::new();
-        for module in function
-            .syntax()
-            .ancestors()
-            .skip(1)
-            .filter_map(ast::Module::cast)
-        {
-            if module_attributes_require_test(&module) {
-                continue;
+        paths.entry(line).or_insert_with(|| {
+            let mut modules = Vec::new();
+            for module in function
+                .syntax()
+                .ancestors()
+                .skip(1)
+                .filter_map(ast::Module::cast)
+            {
+                if module_attributes_require_test(&module) {
+                    continue;
+                }
+                if let Some(name) = module.name() {
+                    modules.push(name.text().to_string());
+                }
             }
-            if let Some(name) = module.name() {
-                modules.push(name.text().to_string());
-            }
-        }
-        modules.reverse();
-        Some(modules)
-    })
+            modules.reverse();
+            modules
+        });
+    }
+    paths
 }
 
 fn module_attributes_require_test(module: &ast::Module) -> bool {
