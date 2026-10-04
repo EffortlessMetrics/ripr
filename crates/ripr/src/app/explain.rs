@@ -60,7 +60,14 @@ pub(crate) fn explain_finding_with_config_and_navigation_mode(
 /// from the caller's directory and default base, and without `--worktree`
 /// it omits the findings only the uncommitted edits produce.
 pub(crate) fn no_finding_matched(selector: &str, list_command: &str) -> String {
-    format!("no finding matched {selector:?}; run `{list_command}` to list available finding ids")
+    let syntax_hint = if super::selector::location_selector_needs_syntax_hint(selector) {
+        " for a file location, use file:line with a nonempty path and a positive decimal line number without leading zeros (for example src/lib.rs:12);"
+    } else {
+        ""
+    };
+    format!(
+        "no finding matched {selector:?};{syntax_hint} run `{list_command}` to list available finding ids"
+    )
 }
 
 /// Like [`explain_finding_with_config`] but loads the finding set from a
@@ -109,9 +116,7 @@ pub(crate) fn explain_finding_from_artifact_with_navigation_mode(
             config,
             &navigation.context_command(selector),
         )),
-        None => Err(format!(
-            "no finding matched {selector:?}; run `ripr check --json` to list available finding ids"
-        )),
+        None => Err(no_finding_matched(selector, "ripr check --json")),
     }
 }
 #[cfg(test)]

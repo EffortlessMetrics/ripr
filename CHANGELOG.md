@@ -240,6 +240,10 @@ are scoped or reviewed.
   by, what a test would need to change the verdict, and what each stop reason
   means (#5356). No verdict changes.
 
+- `ripr explain` and `ripr context` explain `file:line` syntax after a malformed
+  location misses and retain the scoped listing command for recovery. Finding
+  IDs remain opaque; selection and exit status are unchanged (#5581, #5252).
+
 ### Changed
 
 - Performance: cold `ripr pilot` parses each production file once for

@@ -246,9 +246,15 @@ metrics = [
 id = "RIPR-SPEC-0003"
 name = "agent context packet"
 spec = "docs/specs/RIPR-SPEC-0003-agent-context.md"
-tests = []
+tests = [
+  "crates/ripr/src/app/selector.rs::tests::malformed_location_misses_get_syntax_guidance_without_classifying_ids",
+  "crates/ripr/tests/cli_smoke.rs::selector_location_misses_explain_syntax_and_preserve_retry_scope"
+]
 code = [
   "crates/ripr/src/app.rs",
+  "crates/ripr/src/app/selector.rs",
+  "crates/ripr/src/app/explain.rs",
+  "crates/ripr/src/app/context.rs",
   "crates/ripr/src/output/json/context_packet.rs",
   "crates/ripr/src/lsp"
 ]

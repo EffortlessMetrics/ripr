@@ -9,6 +9,25 @@ pub(in crate::app) fn select_finding<'a>(
         .find(|finding| finding.id == selector || selector_matches_location(selector, finding))
 }
 
+/// Add location syntax guidance only after selection misses. Finding IDs are
+/// opaque: this helper never rejects a matched ID or changes locator matching.
+pub(in crate::app) fn location_selector_needs_syntax_hint(selector: &str) -> bool {
+    if selector.starts_with("probe:") || selector.starts_with("repo-probe:") {
+        return false;
+    }
+    let Some((file, line)) = selector.rsplit_once(':') else {
+        return selector.contains(['/', '\\']);
+    };
+    let looks_like_location = file.is_empty()
+        || file.contains(['/', '\\', '.'])
+        || selector.chars().all(|character| character == ':');
+    looks_like_location
+        && (file.is_empty()
+            || !line
+                .parse::<usize>()
+                .is_ok_and(|number| number > 0 && line == number.to_string()))
+}
+
 pub(in crate::app) fn selector_matches_location(selector: &str, finding: &Finding) -> bool {
     // Match the spelling renderers show (stable text, %XX for invalid
     // bytes), not a lossy re-render that a raw-byte path could never
@@ -53,7 +72,9 @@ fn normalize_locator_path(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_locator_path, selector_matches_file_line};
+    use super::{
+        location_selector_needs_syntax_hint, normalize_locator_path, selector_matches_file_line,
+    };
 
     // Stored form mirrors real `check` output: a `.\` prefix and forward slashes.
     const STORED: &str = ".\\crates/ripr/examples/sample/src/lib.rs";
@@ -108,6 +129,33 @@ mod tests {
         assert!(!selector_matches_file_line(STORED, 8, "src/lib.rs"));
         // Empty file component.
         assert!(!selector_matches_file_line(STORED, 8, ":8"));
+    }
+
+    #[test]
+    fn malformed_location_misses_get_syntax_guidance_without_classifying_ids() {
+        for selector in [
+            ":::",
+            ":12",
+            "src/lib.rs",
+            "src/lib.rs:abc",
+            "lib.rs:0",
+            "src\\lib.rs:+2",
+            "src/lib.rs:02",
+        ] {
+            assert!(location_selector_needs_syntax_hint(selector), "{selector}");
+        }
+        for selector in [
+            "src/lib.rs:12",
+            "lib.rs:12",
+            "repo\\lib.rs:12",
+            "path:with:colon.rs:12",
+            "probe:src/lib.rs:predicate:missing",
+            "repo-probe:src_lib.rs:error_path:3bf8c64c",
+            "repo-probe:src_lib.rs:error_path:3bf8c64c.2",
+            "missing-finding-id",
+        ] {
+            assert!(!location_selector_needs_syntax_hint(selector), "{selector}");
+        }
     }
 
     #[test]

@@ -2070,6 +2070,125 @@ fn config_validate_discovers_parent_config_from_nested_directory() -> Result<(),
 }
 
 #[test]
+fn selector_location_misses_explain_syntax_and_preserve_retry_scope()
+-> Result<(), Box<dyn std::error::Error>> {
+    let (root, diff) = agent_brief_sample_workspace("selector-location-recovery")?;
+    let foreign = root.join("foreign");
+    std::fs::create_dir_all(&foreign)?;
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let root_arg = root.display().to_string();
+    let diff_arg = diff.display().to_string();
+    let expected_listing = format!(
+        "ripr check --root {} --diff {} --json",
+        renderer_shell_arg(&root_arg),
+        renderer_shell_arg(&diff_arg)
+    );
+    let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+        let listed = run_command(
+            bin,
+            Some(&foreign),
+            &["check", "--root", &root_arg, "--diff", &diff_arg, "--json"],
+        )?;
+        if !listed.status.success() {
+            return Err(format!(
+                "selector fixture did not analyze: {}",
+                String::from_utf8_lossy(&listed.stderr)
+            )
+            .into());
+        }
+        let packet: serde_json::Value = serde_json::from_slice(&listed.stdout)?;
+        let findings = packet["findings"]
+            .as_array()
+            .ok_or("selector fixture must carry a finding set")?;
+        // Producer-shaped ID from probes::repo's retained emission control.
+        let missing_repo_id = "repo-probe:src_lib.rs:error_path:3bf8c64c";
+        if findings
+            .iter()
+            .any(|finding| finding["id"].as_str() == Some(missing_repo_id))
+        {
+            return Err("repo-probe negative control must be absent from this fixture".into());
+        }
+        let finding = findings
+            .first()
+            .ok_or("selector fixture must produce a nonempty finding set")?;
+        let id = finding["id"].as_str().ok_or("finding must carry an id")?;
+        let line = finding["probe"]["line"]
+            .as_u64()
+            .ok_or("finding must carry its source line")?;
+        let locator = format!("src/lib.rs:{line}");
+
+        for command in ["explain", "context"] {
+            for (selector, needs_hint, success) in [
+                ("src/lib.rs:abc", true, false),
+                (":::", true, false),
+                ("probe:not-a-real-id", false, false),
+                (missing_repo_id, false, false),
+                ("src/lib.rs:999999", false, false),
+                (id, false, true),
+                (locator.as_str(), false, true),
+            ] {
+                let mut args = vec![command, "--root", &root_arg, "--diff", &diff_arg];
+                if command == "context" {
+                    args.push("--at");
+                }
+                args.push(selector);
+                let output = run_command(bin, Some(&foreign), &args)?;
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                if success {
+                    if !output.status.success() {
+                        return Err(format!(
+                            "valid {command} selector {selector:?} failed: {stderr}"
+                        )
+                        .into());
+                    }
+                    if command == "context" {
+                        let selected: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+                        if selected["probe"]["id"].as_str() != Some(id) {
+                            return Err(format!(
+                                "valid locator selected another finding: {selected}"
+                            )
+                            .into());
+                        }
+                    } else if !String::from_utf8_lossy(&output.stdout).contains(id) {
+                        return Err("explain did not render the selected finding identity".into());
+                    }
+                } else {
+                    if output.status.code() != Some(2) || !output.stdout.is_empty() {
+                        return Err(format!(
+                            "selector miss changed the CLI failure contract: {output:?}"
+                        )
+                        .into());
+                    }
+                    if stderr.contains("file:line with a nonempty path") != needs_hint {
+                        return Err(format!(
+                            "wrong syntax guidance for {command} {selector:?}: {stderr}"
+                        )
+                        .into());
+                    }
+                    let listing = stderr
+                        .split('`')
+                        .find(|part| part.starts_with("ripr check "))
+                        .ok_or_else(|| {
+                            format!("selector miss omitted its retry command: {stderr}")
+                        })?;
+                    if listing != expected_listing || !stderr.contains("list available finding ids")
+                    {
+                        return Err(
+                            format!("selector retry lost the requested scope: {stderr}").into()
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
+    })();
+    let cleanup = std::fs::remove_dir_all(&root);
+    result?;
+    cleanup?;
+    Ok(())
+}
+
+#[test]
 fn check_human_navigation_commands_replay_custom_scope() -> Result<(), String> {
     let root = ".";
     let diff = "crates/ripr/examples/sample/example.diff";
