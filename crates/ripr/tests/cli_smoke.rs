@@ -11435,7 +11435,27 @@ fn run_size_limited_init(root: &str, force: bool) -> Result<Output, String> {
     if force {
         args.push("--force");
     }
-    run_command("sh", None, &args).map_err(|e| format!("spawn size-limited init: {e}"))
+    run_size_limited(&args).map_err(|e| format!("spawn size-limited init: {e}"))
+}
+
+/// Spawns `sh` with `args` for a child that runs under `ulimit -f`. The file
+/// size limit applies to every regular file the child writes, including the
+/// LLVM coverage profile an instrumented `ripr` writes at exit. Under
+/// `cargo llvm-cov` that profile would be cut short in the shared profile
+/// directory, and `llvm-profdata merge` rejects the whole run on one corrupt
+/// header ("no profile can be merged", #4978). The capped child's profile can
+/// never be complete, so it goes to `/dev/null` (not a regular file, so not
+/// capped) and every other process keeps its profile.
+#[cfg(unix)]
+fn run_size_limited(args: &[&str]) -> Result<Output, std::io::Error> {
+    spawn_command(
+        "sh",
+        None,
+        args,
+        &[("LLVM_PROFILE_FILE", "/dev/null")],
+        None,
+        None,
+    )
 }
 
 #[cfg(unix)]
@@ -20904,7 +20924,7 @@ fn interrupted_report_write_keeps_the_previous_complete_report()
         env!("CARGO_BIN_EXE_ripr"),
     ];
     limited.extend(ledger_arg_refs.iter().copied());
-    let interrupted = run_command("sh", None, &limited)?;
+    let interrupted = run_size_limited(&limited)?;
     assert!(
         !interrupted.status.success(),
         "the size-limited write must not succeed: {interrupted:?}"
