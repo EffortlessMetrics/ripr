@@ -678,6 +678,14 @@ are scoped or reviewed.
   directory ripr creates and writes outside the checkout. The cache directory
   now resolves under the analyzed root rather than the working directory, so
   `--root <checkout>` cannot place it elsewhere either (#4745).
+- A Python or TypeScript `ripr agent packet` built from a check-output gap
+  ledger (the `first-pr` preview route) printed refresh commands for the
+  Rust-only repo-exposure route. Running them overwrote `check.json` and
+  rebuilt the ledger without any Python or TypeScript records, so the same
+  packet command then failed with "gap_id ... was not found". The refresh now
+  reruns `ripr check --json` with the base the check output recorded and
+  rebuilds the ledger with `--check-output`. The blocked reason says the
+  record's repair route stays usable as advisory guidance.
 - Security: `ripr doctor` probes every language runtime (`node`, `bun`,
   `pnpm`, `python3`, `pytest`) outside the checkout, as it already did for
   `yarn`. Run inside it, pnpm fetched and ran the release a project's

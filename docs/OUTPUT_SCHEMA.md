@@ -13942,7 +13942,14 @@ matching repository root, exact clean HEAD, producer input identity, content
 commitment, and GapRecords. The input identity is recomputed from the current
 producer-consumed configuration, including an untracked `ripr.toml`; a changed
 or invalid relevant configuration therefore fails closed as stale or
-`not_evaluated`.
+`not_evaluated`. `refresh_commands` replay the ledger's own source route. A
+repo-exposure ledger gets `ripr check --format repo-exposure-json` and
+`ripr reports gap-ledger --repo-exposure`. A check-output ledger (the
+Python/TypeScript preview route) gets `ripr check --json` with the base its
+check output recorded and `ripr reports gap-ledger --check-output`; it stays
+`not_evaluated` because check output carries no producer snapshot identity.
+Check output does not record a `--diff` scope, so a check run from a diff file
+must be rerun with the same `--diff`; the blocked reason says so.
 
 `staleness_status = "not_evaluated"` is a stop-and-refresh state, not freshness
 proof. Stale or mismatched sources use `queue_state = "blocked_stale"`, while

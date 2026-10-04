@@ -17,6 +17,8 @@ pub(super) const QUEUED: &str = "queued";
 pub(super) const BLOCKED_STALE: &str = "blocked_stale";
 pub(super) const BLOCKED_NOT_EVALUATED: &str = "blocked_not_evaluated";
 const DEFAULT_REPO_EXPOSURE_PATH: &str = "target/ripr/reports/repo-exposure.json";
+const DEFAULT_CHECK_OUTPUT_PATH: &str = "target/ripr/reports/check.json";
+const CHECK_OUTPUT_SOURCE_KIND: &str = "check_output";
 
 pub(crate) struct GapRecordSourceInput<'a> {
     pub(crate) root: &'a Path,
@@ -111,7 +113,12 @@ impl GapRecordSourceCurrentness {
 pub(crate) fn evaluate_gap_record_source_currentness(
     input: GapRecordSourceInput<'_>,
 ) -> GapRecordSourceCurrentness {
-    let refresh_commands = refresh_commands(input.root, input.gap_ledger_path, input.records_path);
+    let refresh_commands = refresh_commands(
+        input.root,
+        input.gap_ledger_path,
+        input.source_kind,
+        input.records_path,
+    );
     let source_kind_owned = input.source_kind.map(ToString::to_string);
     let source_path_owned = input.records_path.map(ToString::to_string);
 
@@ -166,6 +173,18 @@ pub(crate) fn evaluate_gap_record_source_currentness(
     if let Some(error) = input.source_identity_error {
         return GapRecordSourceCurrentness::not_evaluated(
             format!("gap ledger producer identity is incomplete: {error}"),
+            refresh_commands,
+            source_kind_owned,
+            source_path_owned,
+        );
+    }
+    if input.source_kind == Some(CHECK_OUTPUT_SOURCE_KIND) {
+        // The check-output route (the Python/TypeScript preview path) carries
+        // no producer snapshot identity, so it stays non-assignable. Its
+        // refresh replays the same route instead of steering to the Rust-only
+        // repo-exposure route, which would drop the preview records.
+        return GapRecordSourceCurrentness::not_evaluated(
+            "gap ledger source kind check_output has no live snapshot authority, so this packet cannot be assigned; the ledger record's repair_route stays usable as advisory guidance, and refresh_commands rebuild the check output and ledger after the checkout changes; they replay the recorded Git base, so a check run from --diff must instead be rerun with the same --diff",
             refresh_commands,
             source_kind_owned,
             source_path_owned,
@@ -389,22 +408,57 @@ fn resolve_declared_path(root: &Path, declared: &str) -> PathBuf {
     }
 }
 
-fn refresh_commands(root: &Path, gap_ledger_path: &Path, source_path: Option<&str>) -> Vec<String> {
+fn refresh_commands(
+    root: &Path,
+    gap_ledger_path: &Path,
+    source_kind: Option<&str>,
+    source_path: Option<&str>,
+) -> Vec<String> {
     let root_display = bound_root(&crate::output::outcome::display_path(root));
+    let check_output = source_kind == Some(CHECK_OUTPUT_SOURCE_KIND);
     // The source artifact is anchored to the same bound root as `--root`, so
-    // the generated `--repo-exposure` path stays absolute and names the
-    // selected repository from any working directory (#3999). The ledger
-    // output path is the caller's own path and is rendered unchanged.
+    // the generated source path stays absolute and names the selected
+    // repository from any working directory (#3999). The ledger output path
+    // is the caller's own path and is rendered unchanged.
     let command_root = bound_root_path(root);
+    let default_source = if check_output {
+        DEFAULT_CHECK_OUTPUT_PATH
+    } else {
+        DEFAULT_REPO_EXPOSURE_PATH
+    };
     let source_path = source_path
         // Clean `.`/`..` lexically before the containment check:
         // `Path::starts_with` is component-wise on the raw path, so an
         // un-normalized `<root>/../outside.json` would otherwise pass it.
         .map(|path| lexically_clean(&resolve_declared_path(&command_root, path)))
         .filter(|path| path.starts_with(&command_root))
-        .unwrap_or_else(|| command_root.join(DEFAULT_REPO_EXPOSURE_PATH));
+        .unwrap_or_else(|| command_root.join(default_source));
     let source_display = crate::output::outcome::display_path(&source_path);
     let ledger_display = crate::output::outcome::display_path(gap_ledger_path);
+    if check_output {
+        // Replay the base the existing check output recorded, so the refresh
+        // compares the same diff; without one, `ripr check` resolves its
+        // default base as the original first-pr route would. Check output
+        // does not record whether its scope came from `--diff`, so that case
+        // cannot be replayed here; the blocked reason names it instead.
+        let base_arg = recorded_check_base(&source_path)
+            .map(|base| format!(" --base {}", shell_arg(&base)))
+            .unwrap_or_default();
+        return vec![
+            format!(
+                "ripr check --root {}{} --json > {}",
+                shell_arg(&root_display),
+                base_arg,
+                shell_arg(&source_display)
+            ),
+            format!(
+                "ripr reports gap-ledger --check-output {} --root {} --out {}",
+                shell_arg(&source_display),
+                shell_arg(&root_display),
+                shell_arg(&ledger_display)
+            ),
+        ];
+    }
     vec![
         check_repo_exposure_command(&root_display, "draft", &source_display),
         format!(
@@ -414,6 +468,16 @@ fn refresh_commands(root: &Path, gap_ledger_path: &Path, source_path: Option<&st
             shell_arg(&ledger_display)
         ),
     ]
+}
+
+fn recorded_check_base(check_output: &Path) -> Option<String> {
+    let contents = std::fs::read_to_string(check_output).ok()?;
+    let json = serde_json::from_str::<Value>(&contents).ok()?;
+    json.get("base")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|base| !base.is_empty())
+        .map(ToString::to_string)
 }
 
 #[cfg(test)]
@@ -540,7 +604,7 @@ mod tests {
             (Some("../outside.json"), default_source.clone()),
             (Some("reports/../../outside.json"), default_source.clone()),
         ] {
-            let commands = refresh_commands(relative_root, ledger, declared);
+            let commands = refresh_commands(relative_root, ledger, Some("repo_exposure"), declared);
             let source_display = crate::output::outcome::display_path(&expected_source);
             let root_display = bound_root(&crate::output::outcome::display_path(relative_root));
             let expected_ledger_command = format!(
@@ -567,6 +631,63 @@ mod tests {
                 commands[1]
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn check_output_refresh_replays_the_check_output_route() -> Result<(), String> {
+        let root = unique_test_dir("check-output-refresh");
+        let reports = root.join("target/ripr/reports");
+        std::fs::create_dir_all(&reports).map_err(|error| format!("create reports: {error}"))?;
+        let ledger = Path::new("out/gap-ledger.json");
+        let bound = bound_root_path(&root);
+        let check = bound.join(DEFAULT_CHECK_OUTPUT_PATH);
+        let check_display = crate::output::outcome::display_path(&check);
+        let root_display = bound_root(&crate::output::outcome::display_path(&root));
+        let expected_ledger = format!(
+            "ripr reports gap-ledger --check-output {} --root {} --out {}",
+            shell_arg(&check_display),
+            shell_arg(&root_display),
+            shell_arg("out/gap-ledger.json")
+        );
+
+        // No readable check output yet: no base to replay.
+        let commands = refresh_commands(&root, ledger, Some("check_output"), None);
+        assert_eq!(
+            commands,
+            vec![
+                format!(
+                    "ripr check --root {} --json > {}",
+                    shell_arg(&root_display),
+                    shell_arg(&check_display)
+                ),
+                expected_ledger.clone(),
+            ]
+        );
+
+        // The recorded base is replayed; an escaping declared path falls
+        // back to the default check output under the bound root.
+        std::fs::write(&check, r#"{"base":"origin/trunk","findings":[]}"#)
+            .map_err(|error| format!("write check: {error}"))?;
+        let commands =
+            refresh_commands(&root, ledger, Some("check_output"), Some("../outside.json"));
+        assert_eq!(
+            commands,
+            vec![
+                format!(
+                    "ripr check --root {} --base origin/trunk --json > {}",
+                    shell_arg(&root_display),
+                    shell_arg(&check_display)
+                ),
+                expected_ledger,
+            ]
+        );
+        assert!(
+            commands
+                .iter()
+                .all(|command| !command.contains("repo-exposure"))
+        );
+        std::fs::remove_dir_all(&root).map_err(|error| format!("remove root: {error}"))?;
         Ok(())
     }
 
