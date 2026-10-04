@@ -2568,3 +2568,36 @@ Treat the retired commands in those entries as historical record only — do not
 copy them into new playbooks, and replay the premise check with
 `git fetch origin`, `git status --short`, `gh issue list --state open`,
 and `gh pr list --state open` instead.
+
+## 2026-10-04: A shallow glob manufactures a false capability claim (Windows PowerShell)
+
+While implementing #5213 I searched the vendored `winsafe-0.0.29` crate with
+`Select-String -Path "$w/src/**/*.rs"` and concluded that Windows had no safe
+per-process CPU or memory counter, publishing that claim in a module doc, an
+unavailable-state enum, and `docs/OUTPUT_SCHEMA.md`. It was false.
+`winsafe-0.0.29/src/kernel/handles/hprocess.rs:115` has
+`HPROCESS::GetProcessTimes() -> SysResult<(FILETIME, FILETIME, FILETIME, FILETIME)>`
+and `src/psapi/handles/hprocess.rs:126` has
+`HPROCESS::GetProcessMemoryInfo() -> SysResult<PROCESS_MEMORY_COUNTERS_EX>`.
+Both are safe `fn`; the `unsafe` lives inside `winsafe`.
+
+The cause was the search, not the crate. On Windows PowerShell, `**` in a
+`-Path` argument is not recursive, so `src/**/*.rs` expanded to one directory
+level and read only `src/kernel/ffi.rs` and `src/psapi/ffi.rs` - the raw
+extern declarations - while skipping every `handles/` wrapper. The evidence
+looked like a thorough sweep and supported the opposite of the truth.
+
+Durable rules:
+
+- A capability-absence claim needs a search that provably covered the tree.
+  `Get-ChildItem -Recurse -File | Select-String` does; a `**` glob passed to
+  `-Path` does not. On PowerShell, use `-Path (Get-ChildItem -Recurse -Filter
+  '*.rs').FullName` or `git grep` rather than a shell glob.
+- "The grep found no implementation" and "the API does not exist" are
+  different claims. Only the second may reach published documentation.
+- When a review or a later read contradicts a published absence claim, fix the
+  claim before optimizing the explanation of it. An unreachable enum variant
+  plus docs describing it is the same defect one layer down.
+- Prefer proving a negative twice on two independent paths - e.g. the safe
+  wrapper listing and a compile attempt that uses it - before writing that a
+  capability is unavailable.

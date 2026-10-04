@@ -81,7 +81,18 @@ use crate::app::repair_attempt::BeforeArtifactSource;
 use std::fs::File;
 use std::path::Path;
 
-pub fn run(mut args: Vec<String>) -> Result<(), CommandError> {
+pub fn run(args: Vec<String>) -> Result<(), CommandError> {
+    let outcome = run_command(args);
+    // #5213: observe this process's own CPU time and peak resident memory
+    // once the command has finished, so the peak covers rendering and
+    // serialization instead of stopping at the analysis boundary. Emits
+    // nothing unless the existing opt-in trace family is enabled, so the
+    // default stdout JSON and default stderr stay byte-identical.
+    crate::analysis::resource_cost::emit_run_resource_cost();
+    outcome
+}
+
+fn run_command(mut args: Vec<String>) -> Result<(), CommandError> {
     let version_requested = parse::top_level_version_requested(&args);
     // #2610: the global --verbose/-v spelling is extracted before command
     // dispatch so it works with any subcommand. #5009: the extraction has

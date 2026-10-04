@@ -63,8 +63,6 @@ pub(crate) const PILOT_SEAM_BUDGET_ENV: &str = "RIPR_PILOT_SEAM_BUDGET";
 /// Operators can raise or remove the cap via `RIPR_PILOT_SEAM_BUDGET`.
 pub(crate) const DEFAULT_PILOT_SEAM_BUDGET: usize = 2_000;
 
-const LATENCY_TRACE_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TRACE";
-
 /// Walk production Rust files at `root` and emit the raw seam inventory.
 /// Used by the `repo-seams-*` formats; the classified inventory used by
 /// `repo-exposure-*` formats lives in [`inventory_classified_seams_at`].
@@ -383,16 +381,14 @@ pub(crate) fn workspace_cache_key_at_with_config(
     Ok(key)
 }
 
-fn trace_latency_phase(phase: &str, status: &str, duration: Duration) {
-    if std::env::var_os(LATENCY_TRACE_ENV).is_some() {
-        eprintln!("{}", latency_trace_line(phase, status, duration));
-    }
-}
+/// The one owner of the wall-clock phase line and of the end-of-run
+/// resource-cost receipt (#5213).
+use super::resource_cost::{self as latency_trace, trace_latency_phase};
 
 /// A bounded, typed diagnostic channel for the latency runner. The ordinary
 /// human phase label cannot represent failure identities or overflow.
 fn trace_file_fact_cache(stats: &FileFactCacheStats) {
-    if std::env::var_os(LATENCY_TRACE_ENV).is_none() {
+    if !latency_trace::latency_trace_enabled() {
         return;
     }
     eprintln!(
@@ -455,13 +451,6 @@ fn cache_store_status_label(reason: &str) -> String {
         }
     }
     label
-}
-
-fn latency_trace_line(phase: &str, status: &str, duration: Duration) -> String {
-    format!(
-        "ripr_repo_exposure_latency phase={phase} status={status} duration_ms={}",
-        duration.as_millis()
-    )
 }
 
 /// Cold-path inventory + classify with no cache. Used by the cached
@@ -3321,28 +3310,6 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
         }
         out.sort();
         Ok(out)
-    }
-
-    #[test]
-    fn latency_trace_line_formats_phase_status_and_duration() {
-        let line = latency_trace_line("cache_load", "hit", Duration::from_millis(7));
-        assert_eq!(
-            line,
-            "ripr_repo_exposure_latency phase=cache_load status=hit duration_ms=7"
-        );
-    }
-
-    #[test]
-    fn latency_trace_line_can_report_start_input_context() {
-        let line = latency_trace_line(
-            "file_fact_cache",
-            "start_files_42_production_7",
-            Duration::ZERO,
-        );
-        assert_eq!(
-            line,
-            "ripr_repo_exposure_latency phase=file_fact_cache status=start_files_42_production_7 duration_ms=0"
-        );
     }
 
     #[test]

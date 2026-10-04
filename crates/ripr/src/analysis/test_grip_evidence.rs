@@ -25,6 +25,7 @@ use related_tests::{
 use super::classify::{assertion_observes_direct_collection, direct_collection_mutation_receiver};
 use super::facts::CallFact;
 use super::new_test_target::{self, NewTestTargetAdmission};
+use super::resource_cost::trace_latency_phase;
 use super::rust_index::{
     self, FunctionSummary, OracleFact, RustIndex, TestSummary, extract_call_facts,
     extract_identifier_tokens,
@@ -64,7 +65,6 @@ pub(crate) struct TestGripEvidence {
 }
 
 const COMPACT_RELATED_TEST_LIMIT: usize = 12;
-const LATENCY_TRACE_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TRACE";
 const EVIDENCE_PROGRESS_CHUNK: usize = 500;
 const HELPER_OWNER_CALL_GRAPH_MAX_HOPS: usize = 3;
 
@@ -329,19 +329,6 @@ fn new_test_target_admission(seam: &RepoSeam, index: &RustIndex) -> Option<NewTe
         | SeamKind::MatchArm => Some(new_test_target::admit_new_test_target(seam, index)),
         SeamKind::SideEffect | SeamKind::CallPresence => None,
     }
-}
-
-fn trace_latency_phase(phase: &str, status: &str, duration: Duration) {
-    if std::env::var_os(LATENCY_TRACE_ENV).is_some() {
-        eprintln!("{}", latency_trace_line(phase, status, duration));
-    }
-}
-
-fn latency_trace_line(phase: &str, status: &str, duration: Duration) -> String {
-    format!(
-        "ripr_repo_exposure_latency phase={phase} status={status} duration_ms={}",
-        duration.as_millis()
-    )
 }
 
 /// Build compact evidence for a single seam. The returned

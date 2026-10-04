@@ -1042,9 +1042,12 @@ fn call_arguments_uses_identifier_boundary_for_callee_name() {
     );
 }
 
+/// The evidence phases ride the shared trace-line owner (#5213), so these
+/// assert the *evidence* phase labels reach the wire in that one shape rather
+/// than pinning a second copy of the format.
 #[test]
 fn latency_trace_line_uses_repo_exposure_trace_shape() {
-    let line = latency_trace_line(
+    let line = crate::analysis::resource_cost::latency_trace_line(
         "evidence_for_seams_progress",
         "processed_500_of_12337",
         Duration::from_millis(42),
@@ -1058,7 +1061,11 @@ fn latency_trace_line_uses_repo_exposure_trace_shape() {
 
 #[test]
 fn latency_trace_line_can_report_evidence_context_start() {
-    let line = latency_trace_line("evidence_context", "start_seams_12337", Duration::ZERO);
+    let line = crate::analysis::resource_cost::latency_trace_line(
+        "evidence_context",
+        "start_seams_12337",
+        Duration::ZERO,
+    );
 
     assert_eq!(
         line,

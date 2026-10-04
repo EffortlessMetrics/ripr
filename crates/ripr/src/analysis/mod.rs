@@ -17,6 +17,11 @@ pub(crate) mod path_glob;
 mod pipeline;
 mod probes;
 pub(crate) mod repair_route;
+/// Process CPU time and peak resident memory observability (#5213). One
+/// owner for the whole `RIPR_REPO_EXPOSURE_LATENCY_TRACE` family: the
+/// wall-clock phase line and the end-of-run resource-cost receipt both live
+/// here, so a new phase cannot invent a parallel spelling.
+pub(crate) mod resource_cost;
 mod rust_index;
 pub(crate) mod seam_cache;
 mod seam_classification;

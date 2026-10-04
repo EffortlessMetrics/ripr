@@ -75,7 +75,14 @@ tower = { version = "0.5", default-features = false }
 unicode-ident = { version = "=1.0.24", optional = true }
 
 [target.'cfg(windows)'.dependencies]
-winsafe = { version = "0.0.29", default-features = false, features = ["kernel"] }
+# #5213: `kernel` for HPROCESS::GetProcessTimes (per-process user/kernel CPU
+# time); `psapi` for HPROCESS::GetProcessMemoryInfo (per-process
+# PeakWorkingSetSize). Both are safe `fn` wrappers - the `unsafe` lives inside
+# winsafe, which is what this crate's `unsafe_code = "forbid"` posture needs.
+winsafe = { version = "0.0.29", default-features = false, features = [
+  "kernel",
+  "psapi",
+] }
 # #3803: safe Job Object process-tree ownership (assign-before-execution) for
 # every shipped bounded subprocess path. winsafe exposes no Job Object APIs,
 # and the windows/windows-sys crates are `unsafe fn` surfaces excluded by the
