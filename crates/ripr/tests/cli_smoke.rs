@@ -20311,6 +20311,37 @@ fn impacted_evidence_refuses_missing_pr_evidence_and_writes_nothing() -> Result<
     Ok(())
 }
 
+#[test]
+fn impacted_evidence_failure_removes_stale_outputs() -> Result<(), String> {
+    struct Scratch(PathBuf);
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            ignore_remove_dir_all(&self.0);
+        }
+    }
+    let dir = unique_temp_workspace("impacted-stale");
+    let out_dir = dir.join("target/xtask/impacted-evidence");
+    std::fs::create_dir_all(&out_dir).map_err(|err| err.to_string())?;
+    let _cleanup = Scratch(dir.clone());
+    std::fs::write(out_dir.join("latest.json"), "{}").map_err(|err| err.to_string())?;
+    std::fs::write(out_dir.join("latest.md"), "old").map_err(|err| err.to_string())?;
+    let output = run_command(
+        env!("CARGO_BIN_EXE_ripr"),
+        Some(&dir),
+        &["impacted-evidence", "--pr-evidence", "missing.json"],
+    )
+    .map_err(|err| err.to_string())?;
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    assert_eq!(output.status.code(), Some(2), "{stderr}");
+    assert!(stderr.contains("Removed stale"), "{stderr}");
+    assert!(!out_dir.join("latest.json").exists(), "stale JSON must go");
+    assert!(
+        !out_dir.join("latest.md").exists(),
+        "stale Markdown must go"
+    );
+    Ok(())
+}
+
 // ── ripr plus (binary-first RIPR+ repo receipt, composition-only) ──
 
 #[test]
