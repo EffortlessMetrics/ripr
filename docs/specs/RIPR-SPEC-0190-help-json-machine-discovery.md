@@ -9,6 +9,7 @@ Created: 2026-10-03
 Linked issues:
 
 - #4825 (command-discovery C4)
+- #5066 (typed 0/2/3 exit contract on the machine document)
 - #1770 (parent controller under #1613; this is the final chain slice)
 - #1613 (progressive discovery theme)
 
@@ -43,7 +44,7 @@ non-claims.
 authorities into one strict JSON document on `ripr help --json`. The
 document carries:
 
-- `schema_version` (integer, currently `1`; bumped on any material DTO shape
+- `schema_version` (integer, currently `2`; bumped on any material DTO shape
   change, pinned by tests, and registered in `docs/OUTPUT_SCHEMA.md`),
   `product_version`, and `catalog_contract_version`;
 - `commands`: one row per C1 catalog entry joined to its C2 metadata row on
@@ -52,7 +53,9 @@ document carries:
   `retired` with an optional replacement), aliases, summary, task label,
   workflow tags, operation, cost, all six side-effect flags, primary inputs,
   output roles, state target, JSON support, example, next routes, stop
-  states, limitations, and the not-applicable reason;
+  states, a typed `exit` object (closed `kind` plus the implemented 0/2/3
+  codes, and stdout-on-refusal disclosure where a command can exit 3),
+  limitations, and the not-applicable reason;
 - `workflows`: one row per C3 workflow entry — identity, aliases, command
   tag, purpose, applicability, prerequisites, first command, required and
   optional steps (each projecting its command's governed side effects from
@@ -116,6 +119,18 @@ Authority:
 12. Schema, documentation, and producer agree: the schema version constant,
     the `docs/OUTPUT_SCHEMA.md` registry row, and the emitted document carry
     the same version bytes, and the version is pinned by unit tests.
+13. Typed exit contract: every command row carries a closed `exit` object
+    whose numeric codes are the implemented `CommandError` mapping
+    (`docs/EXIT_CODES.md`). Orchestrator-branching rows are pinned:
+    `check` findings including `exposed` complete with 0; `gate evaluate`
+    maps `config_error` to 2 and `blocked` to 3; `agent verify` / `agent
+    card` / `agent stub` refuse with 3 and empty stdout; `agent
+    verify-execute` refuses with 3 and a stdout document; `agent repair`
+    refuses with 3 and json-optional stdout; `receipt check` orphan or gap
+    mismatch is 2, not 3. A metadata row that contradicts that mapping is a
+    catalog integrity failure. `stop_states` remains free-text and is not
+    the exit authority. The document does not prove a given invocation's
+    status.
 
 `help --json` serializes existing catalog authority only. It never parses
 human help, executes commands, inspects a repository, or strengthens any
@@ -124,7 +139,7 @@ command or workflow claim.
 ## Required Evidence
 
 - Production document integrity is empty of violations and the document is
-  valid JSON with `schema_version` 1, non-empty `commands` and `workflows`,
+  valid JSON with `schema_version` 2, non-empty `commands` and `workflows`,
   and a 64-hex-character sha256 digest.
 - Determinism fixtures: reversing the source table order normalizes to the
   same digest; the rendered bytes are stable across builds of the same
@@ -152,12 +167,20 @@ command or workflow claim.
   color/width/locale environment cases, empty stderr, a host-path-free
   document, a usage error for `help --json --quiet`, the versioned shape,
   and byte-identical tree state across all runs.
+- Exit-contract fixtures: every command row carries a typed `exit` object
+  whose `completed` code is 0; `check`, `gate evaluate`, `agent verify`,
+  `agent verify-execute`, `agent repair`, and `receipt check` project the
+  implemented mapping; a metadata row that assigns the wrong contract (gate
+  evaluate as completed-or-failed, check without advisory findings, verify
+  claiming a stdout document, receipt check claiming a decision exit, or
+  `help` claiming gate-evaluate exits) is a catalog integrity failure.
 
 ## Non-Goals
 
 - No command execution API, shell plan, or query engine over the catalog.
 - No change to the default help screen, `help --all`, `help workflow`, or
-  any golden output.
+  any golden output. Human help screens naming the exit contract remain
+  #5065.
 - No new command, workflow, analyzer, durable-attempt, release, publication,
   credential, or repository-setting change.
 - No consumption surface is added beyond this document; agent/editor
@@ -165,9 +188,13 @@ command or workflow claim.
 
 ## Acceptance Examples
 
-1. `ripr help --json` prints one JSON line carrying `schema_version` 1,
+1. `ripr help --json` prints one JSON line carrying `schema_version` 2,
    every catalog command row, every workflow row, and the catalog digest;
-   stderr is empty and the workspace is untouched.
+   stderr is empty and the workspace is untouched. The `cmd:check` row's
+   `exit` object names findings including `exposed` as completed (0); the
+   `cmd:gate.evaluate` row names `config_error` 2 and `blocked` 3; the
+   `cmd:agent.verify` row names decision-or-refusal 3 with
+   `stdout_on_refusal: empty`.
 2. `ripr help --json extra`, `ripr help --json --quiet`, and `ripr help
    --json --all` exit nonzero with the same usage line.
 3. The same binary run in two different fresh git repositories produces
@@ -184,8 +211,11 @@ command or workflow claim.
   normalization, duplicate-identity and zero-row fail-closed behavior,
   workflow reference resolution, command row isolation, workflow row
   isolation, human-wording exclusion, classification/alias projection,
-  compatibility relation projection, digest scope, and supplied-table step
-  effect consistency.
+  compatibility relation projection, digest scope, supplied-table step
+  effect consistency, and the typed exit-contract projection against the
+  implemented 0/2/3 mapping.
+- `crates/ripr/src/cli/command_metadata.rs` unit tests reject a metadata row
+  whose `exit` field contradicts the implemented mapping.
 - `crates/ripr/src/cli/command.rs` unit tests pin the strict `help --json`
   parser grammar, including the usage-error family for extra arguments and
   the precedence of the `--json` intercept over the `help <command>`
@@ -205,9 +235,10 @@ command or workflow claim.
 | `crates/ripr/src/cli/help_json.rs` | versioned DTO, catalog projection, digest, fail-closed document validation, render/print entry points, tests |
 | `crates/ripr/src/cli/command.rs` | `CliCommand::HelpJson` variant and the strict `help --json` parser route |
 | `crates/ripr/src/cli/execute.rs` | dispatch of `HelpJson` to the document printer |
-| `crates/ripr/src/cli/mod.rs` | rejection of the global verbosity flag combined with the machine route |
+| `crates/ripr/src/cli/mod.rs` | rejection of the global verbosity flag combined with the machine route; 0/2/3 exit constants |
 | `crates/ripr/src/cli/command_catalog.rs` | `CATALOG_CONTRACT_VERSION` constant naming the catalog contract generation |
-| `crates/ripr/src/cli/command_metadata.rs` | `as_str()` projections of the cost/operation enums consumed by the DTO |
+| `crates/ripr/src/cli/command_metadata.rs` | `as_str()` projections of the cost/operation enums consumed by the DTO; typed `CommandExitContract` field and mapping validator |
+| `crates/ripr/src/cli/commands/gate.rs` | `gate evaluate` status-to-`CommandError` mapping consumed by the exit object |
 | `crates/ripr/src/cli/workflow_catalog.rs` | unchanged C3 table consumed by the projection (RIPR-SPEC-0189) |
 
 ## Metrics

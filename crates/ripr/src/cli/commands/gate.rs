@@ -14,6 +14,19 @@ use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use super::{non_empty_path_arg, non_empty_string_arg, write_text_file};
+use crate::output::gate::GATE_STATUS_CONFIG_ERROR;
+
+/// Map a failing gate-evaluate status onto the process exit contract.
+/// The producer tokens live on `output::gate`; `config_error` is
+/// could-not-complete and `blocked` is a completed blocking decision.
+/// Callers only pass statuses `gate_decision_should_fail` already accepted.
+pub(crate) fn gate_evaluate_exit_error(status: &str, message: String) -> CommandError {
+    if status == GATE_STATUS_CONFIG_ERROR {
+        CommandError::Failure(message)
+    } else {
+        CommandError::Decision(message)
+    }
+}
 
 pub(in crate::cli) fn gate(args: &[String]) -> Result<(), CommandError> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
@@ -66,13 +79,10 @@ pub(in crate::cli) fn gate(args: &[String]) -> Result<(), CommandError> {
         // A config_error means the evaluation could not complete (exit 2);
         // only a completed evaluation reaching its blocking decision is a
         // Decision (exit 3).
-        return Err(
-            if output::gate::gate_decision_status(&report) == "config_error" {
-                CommandError::Failure(message)
-            } else {
-                CommandError::Decision(message)
-            },
-        );
+        return Err(gate_evaluate_exit_error(
+            output::gate::gate_decision_status(&report),
+            message,
+        ));
     }
     Ok(())
 }
@@ -233,6 +243,27 @@ fn default_visible_only_warning(
 mod tests {
     use super::super::tests::{args, unique_command_test_dir};
     use super::*;
+    use crate::output::gate::{GATE_STATUS_BLOCKED, GATE_STATUS_CONFIG_ERROR};
+
+    #[test]
+    fn gate_evaluate_exit_mapping_matches_the_typed_contract() {
+        assert_eq!(
+            gate_evaluate_exit_error(GATE_STATUS_CONFIG_ERROR, "config".to_string()).exit_code(),
+            crate::cli::EXIT_COULD_NOT_COMPLETE
+        );
+        assert_eq!(
+            gate_evaluate_exit_error(GATE_STATUS_BLOCKED, "blocked".to_string()).exit_code(),
+            crate::cli::EXIT_DECISION_OR_REFUSAL
+        );
+        assert_eq!(
+            gate_evaluate_exit_error(GATE_STATUS_CONFIG_ERROR, "config".to_string()),
+            CommandError::Failure("config".to_string())
+        );
+        assert_eq!(
+            gate_evaluate_exit_error(GATE_STATUS_BLOCKED, "blocked".to_string()),
+            CommandError::Decision("blocked".to_string())
+        );
+    }
 
     /// Removes owned temporary roots when the test returns, including `?`
     /// failures and assertion panics.
@@ -492,7 +523,7 @@ mod tests {
         assert_eq!(decision.exit_code(), 3);
         let json_text =
             std::fs::read_to_string(&out).map_err(|err| format!("read gate json: {err}"))?;
-        assert!(json_text.contains("\"status\": \"blocked\""));
+        assert!(json_text.contains(&format!("\"status\": \"{GATE_STATUS_BLOCKED}\"")));
         assert!(json_text.contains("\"decision\": \"blocking\""));
         // Prove no outside mutation: the ambient residue is byte-identical,
         // and no canonical-delta was created from or written outside the
@@ -500,6 +531,42 @@ mod tests {
         let ambient_after = std::fs::read_to_string(ambient_pr.join("canonical-delta.json"))
             .map_err(|err| format!("re-read ambient residue: {err}"))?;
         assert_eq!(ambient_after, stale);
+        Ok(())
+    }
+
+    #[test]
+    fn gate_command_maps_producer_config_error_to_failure() -> Result<(), CommandError> {
+        let dir = unique_command_test_dir("gate-config-error");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create gate dir: {err}"))?;
+        let _owned = TempRootGuard {
+            roots: vec![dir.clone()],
+        };
+        let out = dir.join("gate-decision.json");
+        let missing = dir.join("missing-guidance.json");
+        let result = gate(&args(&[
+            "evaluate",
+            "--root",
+            &dir.display().to_string(),
+            "--pr-guidance",
+            &missing.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+        ]));
+
+        let Err(error) = result else {
+            return Err(CommandError::Failure(
+                "expected a config_error failure, got Ok".to_string(),
+            ));
+        };
+        assert!(
+            matches!(&error, CommandError::Failure(message) if message.contains(GATE_STATUS_CONFIG_ERROR)),
+            "config_error must carry the Failure variant: {error:?}"
+        );
+        assert_eq!(error.exit_code(), crate::cli::EXIT_COULD_NOT_COMPLETE);
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read gate json: {err}"))?;
+        assert!(json_text.contains(&format!("\"status\": \"{GATE_STATUS_CONFIG_ERROR}\"")));
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove gate dir: {err}"))?;
         Ok(())
     }
 }

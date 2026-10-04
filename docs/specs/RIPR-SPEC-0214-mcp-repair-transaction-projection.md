@@ -116,6 +116,15 @@ read-only and without execution authority (ADR 0022):
   `shell_required` / `manual` modes visibly non-direct), limitations,
   non-claims, and after-phase bindings. The host-local root path is
   intentionally not projected (ADR 0022 hashing posture).
+- At a current HEAD, a durable attempt's `next_command` uses the shared
+  application selected-attempt action behind `ripr agent status --attempt`.
+  Current awaiting work retains its after continuation. A finished current
+  result offers no command; failed, incomparable and open-gap work offers the
+  same new before-attempt recovery as CLI. Retained packet `command_routes`
+  are available only for the selected current after action, never as a
+  restart authority. A restart display string is not parsed into typed
+  command authority. Historical or unknown HEAD still offers no command or
+  routes. Receipt classification, identity and retained bytes are unchanged.
 - `ripr_get_receipt_status` and the `ripr://receipt/{receipt_id}` resource
   project the current receipt state for one attempt identity (receipt ids
   are attempt-bound). The status vocabulary is `awaiting_edit`,

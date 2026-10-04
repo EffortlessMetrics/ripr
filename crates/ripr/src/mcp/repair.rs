@@ -307,12 +307,27 @@ fn durable_attempt_document(
     root_identity: Option<&str>,
 ) -> Value {
     let current_head = crate::agent::artifact::current_git_head(root).ok();
-    let head_reading = repair_attempt_head_reading(root, manifest, current_head.as_deref());
-    let (command_routes, route_limitations) = if head_reading.head_current == Some(true) {
+    let selected = crate::app::agent_status::selected_attempt_status_reading(
+        root,
+        root,
+        crate::app::repair_attempt::REPAIR_ATTEMPT_DIRECTORY,
+        "",
+        manifest,
+        current_head.as_deref(),
+    );
+    // Historical/unknown reads keep the freshness refusal. At a current HEAD,
+    // use the shared selected action: a finished result has none, and failed
+    // or open-gap work restarts before instead of repeating the old after.
+    let next_action = selected
+        .next_action
+        .as_ref()
+        .filter(|_| selected.view.head_current == Some(true));
+    let continues_after = next_action.is_some_and(|action| action.step == "repair_attempt_after");
+    let (command_routes, route_limitations) = if continues_after {
         durable_command_routes(root, manifest)
     } else {
         (Vec::new(), vec![
-            "live HEAD applicability is historical or unknown; retained commands are not offered as current continuation".to_string(),
+            "this selected attempt has no current after continuation; retained packet routes are not a restart authority".to_string(),
         ])
     };
     let terminal_receipt = match &manifest.state {
@@ -351,12 +366,12 @@ fn durable_attempt_document(
             "sha256": artifact.sha256,
             "bytes": artifact.bytes,
         })).collect::<Vec<_>>(),
-        "next_command": (head_reading.head_current == Some(true)).then_some(&manifest.next_command),
+        "next_command": next_action.map(|action| &action.command),
         "after": after,
         "currentness": {
-            "state": head_reading.currentness(),
-            "head_current": head_reading.head_current,
-            "evidence_head": head_reading.evidence_head,
+            "state": selected.currentness,
+            "head_current": selected.view.head_current,
+            "evidence_head": selected.view.evidence_head,
             "basis": "shared read-time HEAD applicability; awaiting attempts use after-phase lineage admission and terminal evidence requires its exact after HEAD",
         },
         "terminal_receipt": terminal_receipt,

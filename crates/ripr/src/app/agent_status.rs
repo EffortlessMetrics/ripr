@@ -1711,11 +1711,64 @@ fn attempt_currentness_label(head_current: Option<bool>) -> &'static str {
     }
 }
 
+/// Read-only selected-attempt facts and its exact next/recovery action.
+pub(crate) struct SelectedAttemptStatusReading {
+    pub(crate) view: AgentStatusRepairAttempt,
+    pub(crate) status_class: &'static str,
+    pub(crate) currentness: &'static str,
+    pub(crate) next_action: Option<AgentStatusCommand>,
+}
+
+/// One validated manifest's selected-attempt interpretation, shared by CLI
+/// status and durable MCP reads. HEAD applicability, retained receipt state
+/// and the exact next/recovery action are composed here; adapters never use
+/// the stored after command as a substitute for this decision.
+pub(crate) fn selected_attempt_status_reading(
+    root: &Path,
+    root_argument: &Path,
+    store_locator: &str,
+    store_flag: &str,
+    manifest: &RepairAttemptManifest,
+    current_head: Option<&str>,
+) -> SelectedAttemptStatusReading {
+    let command_root = bound_root(&display_path(root_argument));
+    let workflow_receipt = read_workflow_receipt(root);
+    let view = status_repair_attempt(
+        root,
+        &command_root,
+        store_locator,
+        store_flag,
+        manifest,
+        current_head,
+        &workflow_receipt,
+    );
+    let status_class = attempt_status_class(manifest, &view);
+    let manifest_label = format!(
+        "{}/{}/attempt.json",
+        store_locator,
+        manifest.repair_attempt_id.as_str()
+    );
+    let next_action = attempt_next_action(
+        manifest,
+        &view,
+        status_class,
+        &command_root,
+        &manifest_label,
+        store_flag,
+    );
+    SelectedAttemptStatusReading {
+        currentness: attempt_currentness_label(view.head_current),
+        view,
+        status_class,
+        next_action,
+    }
+}
+
 /// Builds the one-attempt status DTO behind `ripr agent status --attempt
 /// <id>`. Read-only: nothing here finishes, restarts, rewrites, or deletes
 /// an attempt. A store-level failure (an escaping or missing explicit store)
 /// is an error: there is no attempt view to type. A missing, malformed, or
-/// unbound attempt record is not an error either — it is the typed
+/// unbound attempt record is not an error either - it is the typed
 /// `corrupt_or_unavailable` result, so a caller scripting a resume never has
 /// to parse prose to tell "no such attempt" apart from "attempt is fine",
 /// and one malformed row never weakens or strengthens another row.
@@ -1751,30 +1804,23 @@ pub(crate) fn build_agent_attempt_status(
         }
     };
     let current_head = crate::agent::artifact::current_git_head(root).ok();
-    let workflow_receipt = read_workflow_receipt(root);
     let store_flag = resolved.quoted_store_flag();
     // #3999: restart and recovery commands bind the selected repository, not
     // the invocation spelling, so a command pasted from any working directory
     // resumes this attempt. The report's `root` field keeps the user's
     // spelling.
-    let command_root = bound_root(&root_display);
-    let view = status_repair_attempt(
+    let SelectedAttemptStatusReading {
+        view,
+        status_class,
+        currentness,
+        next_action,
+    } = selected_attempt_status_reading(
         root,
-        &command_root,
+        root_argument,
         resolved.locator(),
         &store_flag,
         &manifest,
         current_head.as_deref(),
-        &workflow_receipt,
-    );
-    let status_class = attempt_status_class(&manifest, &view);
-    let next_action = attempt_next_action(
-        &manifest,
-        &view,
-        status_class,
-        &command_root,
-        &manifest_label,
-        &store_flag,
     );
     let test_run = match &view.receipt {
         AgentStatusAttemptReceipt::Issued { reading, .. } if reading.test_not_run() => {
@@ -1816,7 +1862,7 @@ pub(crate) fn build_agent_attempt_status(
             state: Some(repair_attempt_state_label(&manifest.state)),
             status_class,
             head_current: view.head_current,
-            currentness: attempt_currentness_label(view.head_current),
+            currentness,
             evidence_head: Some(view.evidence_head.clone()),
             receipt: Some(view.receipt.clone()),
             last_after_refusal: view.last_after_refusal.clone(),

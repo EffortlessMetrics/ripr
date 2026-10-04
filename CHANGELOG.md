@@ -49,6 +49,15 @@ are scoped or reviewed.
   Publication uses the registered PyPI trusted publisher without rebuilding;
   qualification alone does not publish a release.
 
+### Added
+
+- `ripr help --json` now projects a typed per-command `exit` object for the
+  0/2/3 process contract (`schema_version` 2). Orchestrators can branch on
+  `check` findings still completing with 0, `gate evaluate` `config_error`=2
+  versus `blocked`=3, and `agent verify`'s empty-stdout refusal without
+  scraping `stop_states` (#5066).
+
+### Fixed
 
 - Preview-language refusals (parse budget, read caps, walk cap) no longer
   downgrade a diff that touches none of that language. A Rust-only change in a
@@ -213,6 +222,13 @@ are scoped or reviewed.
   remain unchanged. Durable reads run off the async executor; supported stdio
   request admission remains serialized through reply flush (#5399).
 
+- MCP durable attempts at a current HEAD use the selected CLI attempt's next
+  action: a finished result offers none, and failed or open-gap work starts a
+  new before phase. Retained typed packet routes remain available only for a
+  current after continuation; a restart display never supplies typed command
+  authority. Retained receipts and freshness refusals are unchanged (#5413).
+
+### Changed
 
 - Performance: cold `ripr pilot` parses each production file once for
   new-test placement instead of twice per seam, and a run that passes the

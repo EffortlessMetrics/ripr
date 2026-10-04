@@ -1520,11 +1520,11 @@ fn help_json_is_deterministic_across_roots_env_and_side_effect_free() -> Result<
             }
         }
 
-        // Versioned-shape contract: schema_version 1, nonempty sections, and a
+        // Versioned-shape contract: schema_version 2, nonempty sections, and a
         // sha256 hex digest. A partial document must not pass as complete.
         let value: serde_json::Value = serde_json::from_slice(&baseline_stdout)
             .map_err(|error| format!("help --json is not valid JSON: {error}"))?;
-        if value["schema_version"] != serde_json::json!(1) {
+        if value["schema_version"] != serde_json::json!(2) {
             return Err(format!(
                 "help --json schema_version moved: {}",
                 value["schema_version"]
@@ -1544,6 +1544,20 @@ fn help_json_is_deterministic_across_roots_env_and_side_effect_free() -> Result<
             if row.get("relation").is_none() || row.get("discovery").is_none() {
                 return Err(format!(
                     "help --json command row {} lost its relation/discovery projection",
+                    row["id"]
+                )
+                .into());
+            }
+            let Some(exit) = row.get("exit") else {
+                return Err(format!(
+                    "help --json command row {} lost its typed exit contract",
+                    row["id"]
+                )
+                .into());
+            };
+            if exit.get("kind").is_none() || exit.get("completed") != Some(&serde_json::json!(0)) {
+                return Err(format!(
+                    "help --json command row {} exit object is not a typed 0/2/3 contract: {exit}",
                     row["id"]
                 )
                 .into());

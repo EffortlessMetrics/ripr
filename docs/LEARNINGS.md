@@ -3,6 +3,21 @@
 This log captures repo knowledge that should survive individual PRs and chat
 sessions. It is intentionally short and actionable.
 
+## 2026-10-04: `help --json` must project the typed 0/2/3 exit contract (#5066)
+
+`stop_states` is free-text. An orchestrator that branches on process status
+cannot recover that `ripr check` exits 0 on `exposed` findings, that
+`gate evaluate` maps `config_error` to 2 and `blocked` to 3, or that
+standalone `agent verify` refuses with exit 3 and empty stdout. Put a closed
+`exit` object on every command row, pin the orchestrator-branching rows to
+the implemented `CommandError` / `gate evaluate` mapping, and bump
+`HELP_JSON_SCHEMA_VERSION`. The `config_error` / `blocked` tokens are owned
+by `output::gate` (`top_level_status`); the CLI exit map consumes those
+bytes. `ExitJson::GateEvaluate` still declares those names as fixed serde
+keys; a compile-time assertion requires the keys to match the producer
+tokens. Do not treat a limitation sentence or a "non-zero" stop-state as
+the contract.
+
 ## 2026-10-04: `help --json` must be named and self-reported (#5266)
 
 A machine-only route that human `ripr help` does not name is undiscoverable.

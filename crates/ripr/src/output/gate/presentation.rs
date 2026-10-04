@@ -149,7 +149,7 @@ pub(crate) fn render_gate_decision_markdown(report: &GateDecisionReport) -> Stri
 }
 
 pub(crate) fn gate_decision_should_fail(report: &GateDecisionReport) -> bool {
-    matches!(report.status.as_str(), "blocked" | "config_error")
+    report.status == super::GATE_STATUS_BLOCKED || report.status == super::GATE_STATUS_CONFIG_ERROR
 }
 
 pub(crate) fn gate_decision_status(report: &GateDecisionReport) -> &str {
@@ -169,12 +169,12 @@ pub(crate) fn gate_decision_status(report: &GateDecisionReport) -> &str {
 /// exception-policy violation.
 /// Returns an empty string when no useful detail is available.
 pub(crate) fn gate_decision_inline_detail(report: &GateDecisionReport) -> String {
-    if report.status == "config_error"
+    if report.status == super::GATE_STATUS_CONFIG_ERROR
         && let Some(first) = report.config_errors.first()
     {
         return format!(": {first}");
     }
-    if report.status == "blocked" {
+    if report.status == super::GATE_STATUS_BLOCKED {
         let blocking: Vec<&GateDecision> = report
             .decisions
             .iter()

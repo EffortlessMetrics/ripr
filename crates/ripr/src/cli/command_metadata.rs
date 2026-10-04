@@ -25,7 +25,12 @@
 //!   task map (one vocabulary, checked here in both directions);
 //! - workflow memberships: a closed tag set in [`WORKFLOW_TAGS`], promoted to
 //!   the typed workflow catalog by #4824
-//!   ([`crate::cli::workflow_catalog`]) and never re-derived from prose.
+//!   ([`crate::cli::workflow_catalog`]) and never re-derived from prose;
+//! - process exit contract: [`CommandExitContract`], projected into
+//!   `help --json` (RIPR-SPEC-0190 / #5066). Orchestrator-branching rows
+//!   must match the implemented `CommandError` / `gate evaluate` mapping
+//!   in `docs/EXIT_CODES.md`; other described rows are completed-or-failed
+//!   (0/2, never 3). Human help screens do not render this field.
 //!
 //! The #4825 `help --json` child (RIPR-SPEC-0190) is the second production
 //! consumer: it projects this table into the versioned machine-discovery
@@ -131,6 +136,82 @@ pub(crate) struct CommandOutputs {
     pub(crate) optional: &'static [&'static str],
 }
 
+/// Per-command process-exit contract projected into `help --json` (#5066).
+///
+/// The numeric 0/2/3 mapping is owned by [`crate::cli::CommandError`] and
+/// `docs/EXIT_CODES.md`. This enum names which of those codes a command can
+/// emit and the stdout disclosure an orchestrator must know. It is not a
+/// runtime mutation of any command's exit path.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CommandExitContract {
+    /// Standard contract: `0` completed, `2` could not complete. Never `3`.
+    CompletedOrFailed,
+    /// `ripr check`: findings, including `exposed`, still complete with `0`.
+    AdvisoryFindings,
+    /// `ripr gate evaluate`: `config_error` is `2`, `blocked` is `3`.
+    GateEvaluate,
+    /// Typed refusal or blocking decision that can exit `3`.
+    DecisionOrRefusal { stdout_on_refusal: RefusalStdout },
+    /// `ripr receipt check`: `orphan_receipt` / `receipt_gap_mismatch` are
+    /// could-not-complete (`2`), not a decision (`3`).
+    ReceiptCheck,
+}
+
+/// What stdout carries when a command exits `3`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RefusalStdout {
+    /// Artifact stream stays empty (`agent verify`, `agent card`, `agent stub`).
+    Empty,
+    /// Refusal JSON document is on stdout (`agent verify-execute`).
+    Document,
+    /// Refusal JSON is on stdout only with `--json` (`agent repair`).
+    JsonOptional,
+}
+
+impl RefusalStdout {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Empty => "empty",
+            Self::Document => "document",
+            Self::JsonOptional => "json_optional",
+        }
+    }
+}
+
+/// Standard 0/2 mapping used by commands that never emit a decision exit.
+const EXIT_COMPLETED_OR_FAILED: CommandExitContract = CommandExitContract::CompletedOrFailed;
+const EXIT_ADVISORY_FINDINGS: CommandExitContract = CommandExitContract::AdvisoryFindings;
+const EXIT_GATE_EVALUATE: CommandExitContract = CommandExitContract::GateEvaluate;
+const EXIT_TYPED_REFUSAL_EMPTY_STDOUT: CommandExitContract =
+    CommandExitContract::DecisionOrRefusal {
+        stdout_on_refusal: RefusalStdout::Empty,
+    };
+const EXIT_TYPED_REFUSAL_STDOUT_DOCUMENT: CommandExitContract =
+    CommandExitContract::DecisionOrRefusal {
+        stdout_on_refusal: RefusalStdout::Document,
+    };
+const EXIT_TYPED_REFUSAL_JSON_OPTIONAL_STDOUT: CommandExitContract =
+    CommandExitContract::DecisionOrRefusal {
+        stdout_on_refusal: RefusalStdout::JsonOptional,
+    };
+const EXIT_RECEIPT_CHECK: CommandExitContract = CommandExitContract::ReceiptCheck;
+
+/// Implemented mapping an orchestrator actually branches on. A metadata row
+/// whose `exit` field disagrees is a catalog integrity failure (#5066).
+fn required_exit_contract(id: &str) -> Option<CommandExitContract> {
+    match id {
+        "cmd:check" => Some(EXIT_ADVISORY_FINDINGS),
+        "cmd:gate.evaluate" => Some(EXIT_GATE_EVALUATE),
+        "cmd:agent.verify" | "cmd:agent.card" | "cmd:agent.stub" => {
+            Some(EXIT_TYPED_REFUSAL_EMPTY_STDOUT)
+        }
+        "cmd:agent.verify-execute" => Some(EXIT_TYPED_REFUSAL_STDOUT_DOCUMENT),
+        "cmd:agent.repair" => Some(EXIT_TYPED_REFUSAL_JSON_OPTIONAL_STDOUT),
+        "cmd:receipt.check" => Some(EXIT_RECEIPT_CHECK),
+        _ => None,
+    }
+}
+
 /// Rich metadata for one catalog row, keyed by the catalog identity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct CommandMetadata {
@@ -161,6 +242,8 @@ pub(crate) struct CommandMetadata {
     pub(crate) next_routes: &'static [&'static str],
     /// Explicit stop or terminal states the command names.
     pub(crate) stop_states: &'static [&'static str],
+    /// Typed 0/2/3 process-exit contract for machine discovery (#5066).
+    pub(crate) exit: CommandExitContract,
     /// Advisory boundaries and non-claims; never empty for a described row.
     pub(crate) limitations: &'static str,
     /// Explicit not-applicable reason. When set, the content fields above are
@@ -259,6 +342,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr help <command>",
         next_routes: &["help", "doctor", "check"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "prints text and, with --json, the versioned machine command catalog; performs no analysis, compilation, test, process, network, mutation, or product-artifact work.",
         not_applicable_reason: None,
     },
@@ -285,6 +369,7 @@ const METADATA: &[CommandMetadata] = &[
             "explicit refusal",
             "existing workflow kept when writing cannot finish",
         ],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "writes ripr.toml by default and an advisory, non-blocking workflow only with --ci github; never edits source, gates merges, or contacts the network.",
         not_applicable_reason: None,
     },
@@ -306,6 +391,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr config",
         next_routes: &["config validate", "doctor"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "prints the config surface; validation lives in `ripr config validate`.",
         not_applicable_reason: None,
     },
@@ -327,6 +413,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr config validate --root PATH",
         next_routes: &["doctor", "check"],
         stop_states: &["explicit refusal on invalid configuration"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "checks configuration only; it does not analyze, compile, or run tests.",
         not_applicable_reason: None,
     },
@@ -351,6 +438,7 @@ const METADATA: &[CommandMetadata] = &[
             "no actionable gap",
             "partial summary when the budget is reached",
         ],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "bounded by --timeout-ms and writes a partial summary rather than exceeding it; points to one next action and does not run mutation testing.",
         not_applicable_reason: None,
     },
@@ -372,6 +460,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr outcome --before PATH --after PATH",
         next_routes: &["first-pr", "check"],
         stop_states: &["explicit refusal on malformed snapshots"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "compares two saved snapshots; it does not rerun analysis.",
         not_applicable_reason: None,
     },
@@ -396,6 +485,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr evidence-health --root PATH",
         next_routes: &["check", "reports index"],
         stop_states: &["explicit refusal on unreadable inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "an advisory analyzer-health projection over saved artifacts; imported calibration availability is disclosed, not re-measured.",
         not_applicable_reason: None,
     },
@@ -420,6 +510,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr review-comments --root . --base SHA --head SHA",
         next_routes: &["pr-comments plan", "annotations"],
         stop_states: &["explicit refusal on unresolvable revisions"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "bounded by the cooperative budget; drafts stay advisory and are never posted.",
         not_applicable_reason: None,
     },
@@ -441,6 +532,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr gate",
         next_routes: &["gate evaluate", "baseline create"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "prints the gate surface; evaluation lives in `ripr gate evaluate`.",
         not_applicable_reason: None,
     },
@@ -465,7 +557,8 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr gate evaluate --pr-guidance PATH",
         next_routes: &["baseline create", "policy readiness", "zero status"],
         stop_states: &["no actionable gap"],
-        limitations: "advisory gate evaluation over supplied guidance; acknowledgeable mode only blocks eligible gaps when the configured waiver label is present, and nothing here makes CI blocking.",
+        exit: EXIT_GATE_EVALUATE,
+        limitations: "advisory gate evaluation over supplied guidance; acknowledgeable mode only blocks eligible gaps when the configured waiver label is present. The command does not install a CI required check by itself.",
         not_applicable_reason: None,
     },
     CommandMetadata {
@@ -486,6 +579,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr baseline",
         next_routes: &["baseline create", "baseline diff"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "prints the baseline surface; create, diff, and update carry the behavior.",
         not_applicable_reason: None,
     },
@@ -507,6 +601,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr baseline create --from target/ripr/reports/gate-decision.json",
         next_routes: &["baseline diff", "gate evaluate"],
         stop_states: &["explicit refusal without --force when a baseline exists"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "--dry-run previews the write; without --force an existing baseline is kept rather than overwritten.",
         not_applicable_reason: None,
     },
@@ -528,6 +623,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr baseline diff --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json",
         next_routes: &["zero status", "policy readiness", "baseline update"],
         stop_states: &["explicit refusal on a missing or malformed baseline"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "a projection over two gate artifacts; it does not rerun analysis or mutate the baseline.",
         not_applicable_reason: None,
     },
@@ -549,6 +645,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr baseline update --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json --remove-resolved",
         next_routes: &["baseline diff", "zero status"],
         stop_states: &["explicit refusal without --force"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "rewrites the durable baseline the next runs consume; --dry-run previews the change.",
         not_applicable_reason: None,
     },
@@ -570,6 +667,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr zero",
         next_routes: &["zero status", "policy readiness"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "prints the zero surface; status carries the behavior.",
         not_applicable_reason: None,
     },
@@ -594,6 +692,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr zero status --delta target/ripr/reports/baseline-debt-delta.json",
         next_routes: &["policy readiness", "policy operations"],
         stop_states: &["explicit refusal on missing inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "a projection over saved policy artifacts; it does not rerun analysis or change gate authority.",
         not_applicable_reason: None,
     },
@@ -615,6 +714,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr policy",
         next_routes: &["policy readiness", "policy operations", "policy history"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "prints the policy surface; the subcommands carry the behavior.",
         not_applicable_reason: None,
     },
@@ -636,6 +736,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr policy readiness",
         next_routes: &["policy operations", "policy promote"],
         stop_states: &["explicit refusal on malformed inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "advisory readiness projection; it does not change gate authority or make CI blocking.",
         not_applicable_reason: None,
     },
@@ -660,6 +761,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr policy operations --policy-readiness target/ripr/reports/policy-readiness.json",
         next_routes: &["policy history", "policy promote", "policy readiness"],
         stop_states: &["explicit refusal on malformed inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "a projection over saved policy artifacts; it does not change gate authority.",
         not_applicable_reason: None,
     },
@@ -684,6 +786,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr policy history --current target/ripr/reports/policy-operations.json",
         next_routes: &["policy operations", "policy readiness"],
         stop_states: &["explicit refusal on malformed inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "appends to the durable history ledger only when --out-jsonl names it; without that flag it writes the rendered reports and no history.",
         not_applicable_reason: None,
     },
@@ -705,6 +808,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr policy promote --to baseline-check --operations target/ripr/reports/policy-operations.json",
         next_routes: &["policy readiness", "gate evaluate"],
         stop_states: &["explicit refusal on malformed inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "renders a promotion view for review; it does not itself change gate authority.",
         not_applicable_reason: None,
     },
@@ -726,6 +830,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr policy preview-promote --language typescript --class boundary_gap",
         next_routes: &["policy promote", "policy readiness"],
         stop_states: &["explicit refusal on malformed inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "preview-limited evidence stays syntax-first and advisory; promotion does not change analyzer behavior.",
         not_applicable_reason: None,
     },
@@ -747,6 +852,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr policy waiver-aging",
         next_routes: &["policy operations", "pr-ledger record"],
         stop_states: &["explicit refusal on malformed inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "an aging projection over saved evidence; it does not expire waivers on its own.",
         not_applicable_reason: None,
     },
@@ -771,6 +877,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr policy suppression-health --root .",
         next_routes: &["policy operations", "policy readiness"],
         stop_states: &["explicit refusal on malformed inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "reports stale or uncovered suppressions; it does not edit the manifest.",
         not_applicable_reason: None,
     },
@@ -792,6 +899,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr pr-ledger",
         next_routes: &["pr-ledger record"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "prints the ledger surface; record carries the behavior.",
         not_applicable_reason: None,
     },
@@ -825,6 +933,7 @@ const METADATA: &[CommandMetadata] = &[
             "coverage-grip frontier",
         ],
         stop_states: &["explicit refusal on malformed inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "appends history only when --out-jsonl is explicit; generated CI never passes that flag.",
         not_applicable_reason: None,
     },
@@ -846,6 +955,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr pr-comments",
         next_routes: &["pr-comments plan"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "prints the comments surface; plan carries the behavior.",
         not_applicable_reason: None,
     },
@@ -870,6 +980,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr pr-comments plan --pr-guidance target/ripr/review/comments.json",
         next_routes: &["review-comments", "pr-review front-panel"],
         stop_states: &["blocked operations stay visible in the plan instead of posting"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "a read-only advisory projection; it never posts comments or calls GitHub.",
         not_applicable_reason: None,
     },
@@ -891,6 +1002,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr pr-review",
         next_routes: &["pr-review front-panel"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "prints the review surface; front-panel carries the behavior.",
         not_applicable_reason: None,
     },
@@ -914,6 +1026,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr pr-review front-panel --pr-guidance target/ripr/review/comments.json",
         next_routes: &["pr-comments plan", "first-action"],
         stop_states: &["explicit refusal on malformed inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "a projection over named review artifacts; flag examples document inputs, not defaults that are read for you.",
         not_applicable_reason: None,
     },
@@ -935,6 +1048,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr coverage-grip",
         next_routes: &["coverage-grip frontier"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "prints the coverage-grip surface; frontier carries the behavior.",
         not_applicable_reason: None,
     },
@@ -959,6 +1073,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr coverage-grip frontier --ledger target/ripr/reports/pr-evidence-ledger.json",
         next_routes: &["zero status", "policy readiness"],
         stop_states: &["explicit refusal on malformed inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "advisory frontier projection; it does not run coverage or mutation tooling.",
         not_applicable_reason: None,
     },
@@ -980,6 +1095,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr assistant-loop",
         next_routes: &["assistant-loop proof", "assistant-loop health"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "prints the assistant-loop surface; proof and health carry the behavior.",
         not_applicable_reason: None,
     },
@@ -1003,6 +1119,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json",
         next_routes: &["assistant-loop health", "pr-review front-panel"],
         stop_states: &["explicit refusal on malformed inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "a composition over named artifacts; it does not rerun the assistant loop.",
         not_applicable_reason: None,
     },
@@ -1024,6 +1141,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr assistant-loop health --proof target/ripr/reports/test-oracle-assistant-proof.json",
         next_routes: &["pr-review front-panel"],
         stop_states: &["explicit refusal on malformed inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "health counts stay advisory; it does not gate the assistant loop.",
         not_applicable_reason: None,
     },
@@ -1047,6 +1165,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr first-pr --root . --base BASE --head HEAD",
         next_routes: &["agent repair", "reports index"],
         stop_states: &["--check fails when the composed bundle is stale"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "projection-only composition (#1572); it does not run analysis or repair a gap.",
         not_applicable_reason: None,
     },
@@ -1068,6 +1187,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr start-here [same options as first-pr]",
         next_routes: &["first-pr"],
         stop_states: &["--check fails when the composed bundle is stale"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "same composition as first-pr; kept for existing docs and scripts during the rename.",
         not_applicable_reason: None,
     },
@@ -1089,6 +1209,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr first-action --pr-guidance target/ripr/review/comments.json",
         next_routes: &["agent repair", "pr-review front-panel"],
         stop_states: &["no-action is an explicit terminal state"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "names repair one gap, regenerate an artifact, or stop; it does not execute the action.",
         not_applicable_reason: None,
     },
@@ -1110,6 +1231,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr reports",
         next_routes: &["reports index", "reports gap-ledger"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "prints the reports surface; index, gap-ledger, and the audits carry the behavior.",
         not_applicable_reason: None,
     },
@@ -1131,6 +1253,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr reports index",
         next_routes: &["reports gap-ledger", "pr-summary"],
         stop_states: &["explicit refusal on unreadable inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "an index of what exists; it does not judge report freshness.",
         not_applicable_reason: None,
     },
@@ -1158,6 +1281,7 @@ const METADATA: &[CommandMetadata] = &[
             "advisory steps log a failure and continue",
             "a failed diff capture, gate evaluation, or blocking-mode producer exits nonzero after the packet is written",
         ],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "runs the same ripr commands the workflow steps ran; it reads no token and posts no PR comments.",
         not_applicable_reason: None,
     },
@@ -1179,6 +1303,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr reports ci-summary --root . --base-ref main >> \"$GITHUB_STEP_SUMMARY\"",
         next_routes: &["reports index", "first-pr"],
         stop_states: &["a missing or malformed artifact prints its regeneration route"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "renders what earlier steps wrote; it does not rerun analysis or decide pass/fail.",
         not_applicable_reason: None,
     },
@@ -1200,6 +1325,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr reports gap-ledger --check-output target/ripr/reports/check.json",
         next_routes: &["plus", "swarm queue", "receipt write"],
         stop_states: &["explicit refusal on malformed inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "aggregation over named inputs; it does not rerun analysis.",
         not_applicable_reason: None,
     },
@@ -1221,6 +1347,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr reports ts-limitations --check-output target/ripr/reports/check.json",
         next_routes: &["reports index"],
         stop_states: &["explicit refusal on malformed inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "counts limitations in one artifact; it does not re-analyze TypeScript.",
         not_applicable_reason: None,
     },
@@ -1242,6 +1369,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr reports ts-false-actionable --corpus target/ripr/reports/typescript-false-actionable-corpus.json",
         next_routes: &["reports index"],
         stop_states: &["explicit refusal on malformed inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "audits the named corpus; it does not widen the corpus.",
         not_applicable_reason: None,
     },
@@ -1263,6 +1391,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr calibrate",
         next_routes: &["calibrate cargo-mutants"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "prints the calibration surface; cargo-mutants carries the behavior.",
         not_applicable_reason: None,
     },
@@ -1289,6 +1418,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH",
         next_routes: &["evidence-health", "reports index"],
         stop_states: &["explicit refusal on malformed inputs"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "reads mutation output produced elsewhere; it does not run mutants.",
         not_applicable_reason: None,
     },
@@ -1310,6 +1440,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr receipt",
         next_routes: &["receipt write", "receipt check"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "prints the receipt surface; write and check carry the behavior.",
         not_applicable_reason: None,
     },
@@ -1334,6 +1465,7 @@ const METADATA: &[CommandMetadata] = &[
             "fail-closed refusal on missing gap, verify-command, or status",
             "--current-head mismatch against the actual HEAD is rejected when --root is provided",
         ],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "a receipt records what ran; it does not prove runtime outcomes or gate approval.",
         not_applicable_reason: None,
     },
@@ -1354,7 +1486,8 @@ const METADATA: &[CommandMetadata] = &[
         json_support: true,
         example: "ripr receipt check --path PATH",
         next_routes: &["receipt write", "reports gap-ledger"],
-        stop_states: &["orphan_receipt and receipt_gap_mismatch exit non-zero"],
+        stop_states: &["orphan_receipt and receipt_gap_mismatch refuse the receipt"],
+        exit: EXIT_RECEIPT_CHECK,
         limitations: "structural and ledger cross-reference only; without --ledger the cross-reference stays not_available.",
         not_applicable_reason: None,
     },
@@ -1376,6 +1509,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr feedback",
         next_routes: &["feedback record", "feedback export"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "prints the feedback surface; record and export carry the behavior.",
         not_applicable_reason: None,
     },
@@ -1403,6 +1537,7 @@ const METADATA: &[CommandMetadata] = &[
             "fail-closed refusal on known secret patterns in --note",
             "same key with a different payload is a conflict",
         ],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "feedback changes no classification, policy, or gate state; silence is not a vote.",
         not_applicable_reason: None,
     },
@@ -1429,6 +1564,7 @@ const METADATA: &[CommandMetadata] = &[
         stop_states: &[
             "missing route-quality input reports unmatched receipts without inventing movement",
         ],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "keeps objective counts separate from subjective usefulness; unreviewed states are counts, not percentages.",
         not_applicable_reason: None,
     },
@@ -1450,6 +1586,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr agent",
         next_routes: &["agent repair", "agent status"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "prints the agent surface; repair and status carry the loop.",
         not_applicable_reason: None,
     },
@@ -1476,6 +1613,7 @@ const METADATA: &[CommandMetadata] = &[
         stop_states: &[
             "--phase verify refuses without --verify-authorized and a matching authority",
         ],
+        exit: EXIT_TYPED_REFUSAL_JSON_OPTIONAL_STDOUT,
         limitations: "before and after phases record static snapshots and the verify phase composes `ripr agent verify` snapshot comparison; ripr never compiles or runs tests itself (test execution stays outside ripr). No network, no mutation, no source edits by ripr itself.",
         not_applicable_reason: None,
     },
@@ -1497,6 +1635,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr agent status --root .",
         next_routes: &["agent repair", "agent review-summary"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "reads workflow state; it does not resume or mutate the loop.",
         not_applicable_reason: None,
     },
@@ -1518,6 +1657,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr agent start --root . --seam-id ID",
         next_routes: &["agent brief", "agent packet"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "writes command templates only; it does not call an LLM API, generate tests, or edit files.",
         not_applicable_reason: None,
     },
@@ -1539,6 +1679,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr agent brief --root . --diff PATH --json",
         next_routes: &["agent packet", "agent repair"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "--json is required until a human brief surface exists.",
         not_applicable_reason: None,
     },
@@ -1560,6 +1701,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr agent packet --root . --seam-id ID --json",
         next_routes: &["agent verify", "swarm queue"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "--json is required until a human packet surface exists.",
         not_applicable_reason: None,
     },
@@ -1581,6 +1723,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr agent card --root . --seam-id ID",
         next_routes: &["agent packet", "agent repair"],
         stop_states: &[],
+        exit: EXIT_TYPED_REFUSAL_EMPTY_STDOUT,
         limitations: "the complete canonical packet stays behind the explicit `ripr agent packet` route; the card never embeds it.",
         not_applicable_reason: None,
     },
@@ -1604,6 +1747,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr agent stub --root . --at src/lib.rs:12",
         next_routes: &["agent repair"],
         stop_states: &[],
+        exit: EXIT_TYPED_REFUSAL_EMPTY_STDOUT,
         limitations: "the stub stops at a labelled todo!() for the expected value; --write is the only path that edits files, and only the owner file's test module or a new tests/ file.",
         not_applicable_reason: None,
     },
@@ -1625,6 +1769,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr agent verify --root . --before before.json --after after.json --json",
         next_routes: &["agent verify-execute", "agent receipt"],
         stop_states: &[],
+        exit: EXIT_TYPED_REFUSAL_EMPTY_STDOUT,
         limitations: "direct, no-network, no-write comparison; it does not run the verify command.",
         not_applicable_reason: None,
     },
@@ -1646,6 +1791,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr agent verify-execute --root . --packet packet.json --result-json result.json --authorize --json",
         next_routes: &["agent receipt"],
         stop_states: &["refusal without --authorize and a matching authority"],
+        exit: EXIT_TYPED_REFUSAL_STDOUT_DOCUMENT,
         limitations: "executes exactly one bounded `ripr agent verify --json` child projection over saved snapshots; it compiles nothing, runs no tests, and uses no network.",
         not_applicable_reason: None,
     },
@@ -1667,6 +1813,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr agent receipt --root . --verify-json agent-verify.json --seam-id ID --json",
         next_routes: &["receipt write"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "legacy alias during the receipt transition (#1123); new emitters use receipt write.",
         not_applicable_reason: None,
     },
@@ -1688,6 +1835,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr agent review-summary --root .",
         next_routes: &["agent status", "pr-summary"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "read-only summary; it does not change loop state.",
         not_applicable_reason: None,
     },
@@ -1709,6 +1857,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr swarm",
         next_routes: &["swarm queue", "swarm ingest"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "prints the swarm surface; queue and ingest carry the behavior.",
         not_applicable_reason: None,
     },
@@ -1732,6 +1881,7 @@ const METADATA: &[CommandMetadata] = &[
         stop_states: &[
             "malformed ledgers and root mismatches emit blocked envelopes instead of queue rows",
         ],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "queues only live-current assignable records; blocked candidates stay visible with their refresh route.",
         not_applicable_reason: None,
     },
@@ -1753,6 +1903,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr swarm ingest --root . --result target/ripr/workflow/agent-result.json",
         next_routes: &["agent status", "swarm queue"],
         stop_states: &["missing verify evidence is never classified as success"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "classification only; it does not trust or execute the result's claims.",
         not_applicable_reason: None,
     },
@@ -1774,6 +1925,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr diff --root . --base REV --head HEAD --json",
         next_routes: &["check", "explain"],
         stop_states: &["explicit refusal on unresolvable revisions"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "delivers JSON on stdout; redirect to a file when a report artifact is needed.",
         not_applicable_reason: None,
     },
@@ -1795,7 +1947,8 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr check --base REV",
         next_routes: &["explain", "context", "agent repair"],
         stop_states: &["explicit refusal when no diff can be resolved"],
-        limitations: "writes results to stdout by convention; shell redirection to target/ripr/reports/check.json is the report path and --write-artifact PATH also saves the reusable findings artifact.",
+        exit: EXIT_ADVISORY_FINDINGS,
+        limitations: "writes results to stdout by convention; shell redirection to target/ripr/reports/check.json is the report path and --write-artifact PATH also saves the reusable findings artifact. Findings, including exposed, do not fail the process.",
         not_applicable_reason: None,
     },
     CommandMetadata {
@@ -1819,6 +1972,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr explain ABC123 --base REV",
         next_routes: &["context", "check"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "recomputes analysis context for the finding; it does not change analysis scope.",
         not_applicable_reason: None,
     },
@@ -1843,6 +1997,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr context --at <finding-id>",
         next_routes: &["explain", "agent repair"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "bounded by --max-related-tests; it is context collection, not a fix.",
         not_applicable_reason: None,
     },
@@ -1864,6 +2019,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr doctor",
         next_routes: &["init", "config validate"],
         stop_states: &["missing tools print as skipped with the reason and do not fail the run"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "reports environment readiness; it does not run verification.",
         not_applicable_reason: None,
     },
@@ -1885,6 +2041,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr lsp --stdio",
         next_routes: &["mcp", "doctor"],
         stop_states: &["server exits when the client disconnects"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "on-demand refresh re-runs analysis; merely starting the server is immediate.",
         not_applicable_reason: None,
     },
@@ -1906,6 +2063,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr cache",
         next_routes: &["cache status", "cache clear"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "prints the cache surface; status and clear carry the behavior.",
         not_applicable_reason: None,
     },
@@ -1927,6 +2085,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr cache status --json",
         next_routes: &["cache clear"],
         stop_states: &[],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "read-only; it does not evict entries.",
         not_applicable_reason: None,
     },
@@ -1948,6 +2107,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr cache clear --dry-run",
         next_routes: &["cache status"],
         stop_states: &["refusal without --force when entries would be removed"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "--dry-run previews; real eviction requires --force.",
         not_applicable_reason: None,
     },
@@ -1975,6 +2135,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr pr-summary",
         next_routes: &["pr-evidence", "reports index"],
         stop_states: &["--check fails when the summary is stale"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "a projection over saved artifacts; it does not rerun analysis.",
         not_applicable_reason: None,
     },
@@ -1996,6 +2157,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr annotations --check",
         next_routes: &["review-comments"],
         stop_states: &["a missing comments file yields empty output, not an error"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "renders annotation lines only; it does not publish them.",
         not_applicable_reason: None,
     },
@@ -2017,6 +2179,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr pr-evidence --base origin/main",
         next_routes: &["pr-summary", "impacted-evidence"],
         stop_states: &["unresolvable revisions are an explicit error"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "diff-scoped and advisory; it does not post review comments or change gate semantics.",
         not_applicable_reason: None,
     },
@@ -2038,6 +2201,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr impacted-evidence --label ripr-targeted",
         next_routes: &["pr-evidence"],
         stop_states: &["--check fails when the outputs are stale"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "routes mutation work produced elsewhere; it does not run mutants.",
         not_applicable_reason: None,
     },
@@ -2052,7 +2216,11 @@ const METADATA: &[CommandMetadata] = &[
         primary_inputs: &["repo-exposure summary JSON or gap decision ledger"],
         outputs: CommandOutputs {
             default: Some("target/ripr/reports/ripr-plus.json"),
-            optional: &["target/ripr/reports/ripr-plus.md"],
+            optional: &[
+                "target/ripr/reports/ripr-plus.md",
+                "target/ripr/reports/ripr-plus.last-good.json",
+                "target/ripr/reports/ripr-plus.last-good.md",
+            ],
         },
         state_target: None,
         json_support: true,
@@ -2061,6 +2229,7 @@ const METADATA: &[CommandMetadata] = &[
         stop_states: &[
             "exit 2 when the artifact cannot be composed or --check cannot establish zero",
         ],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "informational legacy composition; complete test-quality and current-candidate zero are not established.",
         not_applicable_reason: None,
     },
@@ -2085,6 +2254,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr rerun --changed-test PATH[::TEST_NODE]",
         next_routes: &["check", "receipt write"],
         stop_states: &["explicit refusal when the changed test cannot be resolved"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "recomputes static evidence only; it never compiles or runs the edited test. --out PATH saves the report JSON, stdout is the default surface.",
         not_applicable_reason: None,
     },
@@ -2106,6 +2276,7 @@ const METADATA: &[CommandMetadata] = &[
         example: "ripr mcp --stdio",
         next_routes: &["lsp"],
         stop_states: &["server exits when the client disconnects"],
+        exit: EXIT_COMPLETED_OR_FAILED,
         limitations: "read-only adapter; it carries no edit or execute authority.",
         not_applicable_reason: None,
     },
@@ -2270,6 +2441,30 @@ fn described_row_violations(
         ));
     }
     let _ = effects.may_use_network;
+    violations.extend(exit_contract_violations(row));
+    violations
+}
+
+/// A metadata row must declare the implemented exit mapping for commands
+/// an orchestrator branches on, and must not invent a special contract for
+/// any other described command (#5066).
+fn exit_contract_violations(row: &CommandMetadata) -> Vec<String> {
+    let mut violations = Vec::new();
+    match required_exit_contract(row.id) {
+        Some(required) if row.exit != required => {
+            violations.push(format!(
+                "{} exit contract {:?} contradicts the implemented mapping {:?}",
+                row.id, row.exit, required
+            ));
+        }
+        None if row.exit != EXIT_COMPLETED_OR_FAILED => {
+            violations.push(format!(
+                "{} uses special exit contract {:?} but is not an orchestrator-branching command",
+                row.id, row.exit
+            ));
+        }
+        _ => {}
+    }
     violations
 }
 
@@ -2645,6 +2840,46 @@ mod tests {
             row.summary = "reports survived mutants"; // ripr-allow: static-language: contradiction fixture must name a prohibited token to prove the validator rejects it
         })?;
         expect_single_violation(&rows, "uses runtime-mutation claim token")
+    }
+
+    #[test]
+    fn gate_evaluate_row_cannot_drop_the_blocked_decision_exit() -> Result<(), String> {
+        let rows = with_mutated_row("cmd:gate.evaluate", |row| {
+            row.exit = EXIT_COMPLETED_OR_FAILED;
+        })?;
+        expect_single_violation(&rows, "contradicts the implemented mapping")
+    }
+
+    #[test]
+    fn check_row_cannot_drop_advisory_findings() -> Result<(), String> {
+        let rows = with_mutated_row("cmd:check", |row| {
+            row.exit = EXIT_COMPLETED_OR_FAILED;
+        })?;
+        expect_single_violation(&rows, "contradicts the implemented mapping")
+    }
+
+    #[test]
+    fn agent_verify_row_cannot_claim_stdout_document_on_refusal() -> Result<(), String> {
+        let rows = with_mutated_row("cmd:agent.verify", |row| {
+            row.exit = EXIT_TYPED_REFUSAL_STDOUT_DOCUMENT;
+        })?;
+        expect_single_violation(&rows, "contradicts the implemented mapping")
+    }
+
+    #[test]
+    fn receipt_check_row_cannot_claim_a_decision_exit() -> Result<(), String> {
+        let rows = with_mutated_row("cmd:receipt.check", |row| {
+            row.exit = EXIT_TYPED_REFUSAL_EMPTY_STDOUT;
+        })?;
+        expect_single_violation(&rows, "contradicts the implemented mapping")
+    }
+
+    #[test]
+    fn unrelated_row_cannot_claim_gate_evaluate_exits() -> Result<(), String> {
+        let rows = with_mutated_row("cmd:help", |row| {
+            row.exit = EXIT_GATE_EVALUATE;
+        })?;
+        expect_single_violation(&rows, "is not an orchestrator-branching command")
     }
 
     #[test]
