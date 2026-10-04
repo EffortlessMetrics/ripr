@@ -450,6 +450,27 @@ mod tests {
         build_document(catalog(), metadata(), workflow_catalog()).map_err(|error| error.to_string())
     }
 
+    /// The machine catalog must advertise its own route. `cmd:help` is the
+    /// command that emits this document; reporting `json_support: false` for
+    /// it made `ripr help --json` undiscoverable from the catalog (#5266).
+    #[test]
+    fn help_command_reports_json_support_in_the_machine_catalog() -> Result<(), String> {
+        let document = production_document()?;
+        let Some(help) = document.commands.iter().find(|row| row.id == "cmd:help") else {
+            return Err("cmd:help row missing from the machine catalog".to_string());
+        };
+        if !help.json_support {
+            return Err(
+                "cmd:help must report json_support: true because ripr help --json emits this document"
+                    .to_string(),
+            );
+        }
+        if help.path != "help" {
+            return Err(format!("cmd:help path misprojected: {}", help.path));
+        }
+        Ok(())
+    }
+
     #[test]
     fn production_document_is_valid_and_nonempty() -> Result<(), String> {
         let rendered = render_help_json()?;

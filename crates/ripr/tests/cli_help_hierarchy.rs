@@ -193,6 +193,7 @@ fn default_help_keeps_the_task_roles_distinct() -> Result<(), String> {
             "Compose PR evidence ripr first-pr",
             "Adopt advisory CI ripr init --ci github",
             "ripr help --all",
+            "ripr help --json",
         ] {
             assert_contains(
                 "default help (`ripr --help` / `ripr help`)",
@@ -216,6 +217,9 @@ fn exhaustive_help_keeps_the_same_roles_and_boundaries() -> Result<(), String> {
         "Adopt advisory CI ripr init --ci github",
         "`ripr check` is the ordinary first-value analysis; `ripr pilot` is the guided repo-adoption workflow.",
         "`ripr first-pr` and `ripr start-here` compose `target/ripr/reports/start-here.{json,md}` from existing artifacts; they do not run analysis or repair a gap.",
+        "ripr help --json",
+        "this route accepts no other arguments",
+        "except on ripr help --json",
     ] {
         assert_contains("exhaustive help (`ripr help --all`)", &stdout, needle)?;
     }

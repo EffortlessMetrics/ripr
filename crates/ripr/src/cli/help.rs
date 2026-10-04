@@ -521,6 +521,60 @@ mod tests {
         assert!(HELP.contains("does not run mutants"));
     }
 
+    /// The machine catalog is a first-screen discovery route (#5266). A
+    /// mention buried in the advisory footer would still satisfy a whole-file
+    /// `contains`; this pins the `More:` block itself.
+    #[test]
+    fn help_overview_more_block_names_the_machine_catalog() -> Result<(), String> {
+        let Some(after_more) = HELP.split("\nMore:\n").nth(1) else {
+            return Err("default help lost its More: block".to_string());
+        };
+        let Some(more_block) = after_more.split("\n\n").next() else {
+            return Err("More: block should be a contiguous route list".to_string());
+        };
+        for needle in ["ripr help <command>", "ripr help --all", "ripr help --json"] {
+            if !more_block.contains(needle) {
+                return Err(format!(
+                    "the More: block should name {needle}, got:\n{more_block}"
+                ));
+            }
+        }
+        if more_block.contains("does not run mutants") {
+            return Err(
+                "the More: block should stay a route list, not absorb the advisory footer"
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    /// `ripr help --all` documents `help` in its header rather than as a
+    /// catalog listing row. The machine route must appear there so the
+    /// exhaustive screen is not a dead end (#5266), and the header must
+    /// except the route from the global `-v` claim.
+    #[test]
+    fn help_all_header_names_the_machine_catalog() -> Result<(), String> {
+        let Some(header) = HELP_ALL.split("\nSetup:\n").next() else {
+            return Err("help --all should keep a header before the Setup: listing".to_string());
+        };
+        if !header.contains("ripr help --json") {
+            return Err("the help --all header should name the machine catalog".to_string());
+        }
+        if !header.contains("this route accepts no other arguments") {
+            return Err(
+                "the help --all header should name the machine catalog's strict grammar"
+                    .to_string(),
+            );
+        }
+        if !header.contains("except on ripr help --json") {
+            return Err(
+                "the help --all global-flags paragraph should except the machine catalog route"
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
+
     /// `ripr help --all` claims to be every command, so it is checked against
     /// the parser's own list rather than a hand-kept copy. The previous overview
     /// had already drifted: `pr-summary`, `annotations`, `pr-evidence`, and

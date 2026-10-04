@@ -11,6 +11,10 @@ are scoped or reviewed.
 
 ### Fixed
 
+- `ripr help --all` now names `ripr help --json` and excepts that route
+  from the global `-v` claim. The default `More:` line and `cmd:help`
+  `json_support: true` already landed with #5398; the exhaustive screen
+  was still a discovery dead end (#5266 residual).
 - Calibration: `ripr calibrate cargo-mutants` reads real cargo-mutants
   `mutants.out` output. Outcomes nested under `scenario.Mutant` with
   `CaughtMutant`/`MissedMutant`/`Timeout`/`Unviable` summaries now import as

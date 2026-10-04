@@ -3,6 +3,18 @@
 This log captures repo knowledge that should survive individual PRs and chat
 sessions. It is intentionally short and actionable.
 
+## 2026-10-04: `help --json` must be named and self-reported (#5266)
+
+A machine-only route that human `ripr help` does not name is undiscoverable.
+`json_support` is the catalog's own authority: if `ripr help --json` parses
+and emits the document, `cmd:help` cannot report `json_support: false` or
+claim it prints text only. #5398 landed the default-screen `More:` line
+and `json_support: true`. That is not enough: `ripr help --all` was still
+a discovery dead end, and naming the route next to "global flags accepted
+in any position" is a second honesty hole because `help --json` rejects
+`-v`/`--verbose`. Pin the `More:` line, the `--all` header, and the
+projected catalog row together, and qualify the adjacent `-v` claim with
+the same usage phrase the parser already emits.
 ## 2026-10-04: A recorded timeout is not process-group-gone (#5382)
 
 `capture_output_with_timeout` used to set `timed_out: true` after the first

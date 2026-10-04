@@ -239,7 +239,7 @@ const CI_PACKET_RUNNER: CommandEffects = CommandEffects {
 const METADATA: &[CommandMetadata] = &[
     CommandMetadata {
         id: "cmd:help",
-        summary: "Route to per-command options and the exhaustive reference.",
+        summary: "Route to per-command options, the exhaustive reference, and the versioned machine catalog.",
         task: "Read detailed help",
         workflows: &["setup"],
         operation: CommandOperation::ReadOnly,
@@ -2552,6 +2552,12 @@ mod tests {
             return Err(format!(
                 "cmd:help limitations {:?} do not name the --json catalog route",
                 row.limitations
+            ));
+        }
+        if !row.summary.contains("machine catalog") {
+            return Err(format!(
+                "cmd:help summary {:?} still omits the machine catalog route",
+                row.summary
             ));
         }
         Ok(())
