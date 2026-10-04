@@ -7916,16 +7916,29 @@ fn routed_rust_job_block_any(
 }
 
 fn routed_rust_concurrency_group_matches(workflow: &str, expected: &str) -> bool {
+    routed_rust_concurrency_value_matches(workflow, "group", expected)
+}
+
+/// Match one direct plain-scalar field in workflow-level concurrency.
+/// A comment, nested mapping, block scalar, or duplicate field cannot serve
+/// as the actual concurrency control.
+fn routed_rust_concurrency_value_matches(workflow: &str, key: &str, expected: &str) -> bool {
+    let prefix = format!("  {key}: ");
     let mut in_concurrency = false;
+    let mut matched = None;
     for line in workflow.lines() {
-        if !line.is_empty() && !line.starts_with(' ') && !line.starts_with('#') {
-            in_concurrency = line.trim() == "concurrency:";
+        if line.trim().is_empty() || line.trim_start().starts_with('#') {
             continue;
         }
-        if in_concurrency && let Some(value) = line.strip_prefix("  group: ") {
+        if !line.starts_with(' ') {
+            in_concurrency = line.trim_end() == "concurrency:";
+            continue;
+        }
+        if in_concurrency && let Some(value) = line.strip_prefix(prefix.as_str()) {
+            if matched.is_some() {
+                return false;
+            }
             let value = value.trim_start();
-            // Only the workflow's plain scalar style is supported. Text in
-            // a YAML comment must never satisfy the isolation contract.
             if value.starts_with(['\'', '"', '|', '>']) {
                 return false;
             }
@@ -7939,10 +7952,10 @@ fn routed_rust_concurrency_group_matches(workflow: &str, expected: &str) -> bool
                 .then_some(index)
             });
             let value = &value[..comment.unwrap_or(value.len())];
-            return value.trim_end() == expected;
+            matched = Some(value.trim_end() == expected);
         }
     }
-    false
+    matched.unwrap_or(false)
 }
 
 fn routed_rust_job_block_has_deadline(workflow: &str, job: &str) -> bool {
@@ -7981,20 +7994,43 @@ const ROUTED_RUST_IGNORED_LABEL_RESULT_NAME: &str = "Ripr Rust Small Ignored Lab
 const ROUTED_RUST_DRAFT_GUARD_SNIPPET: &str = "github.event.pull_request.draft";
 
 fn routed_rust_pull_request_types(workflow: &str) -> Option<Vec<String>> {
-    workflow.lines().map(str::trim).find_map(|line| {
-        line.strip_prefix("types:")
-            .map(str::trim)
-            .filter(|rest| rest.starts_with('['))
-            .map(|rest| {
-                rest.trim_start_matches('[')
-                    .trim_end_matches(']')
+    let mut in_events = false;
+    let mut in_pull_request = false;
+    for line in workflow.lines() {
+        if line.trim().is_empty() || line.trim_start().starts_with('#') {
+            continue;
+        }
+        if !line.starts_with(' ') {
+            in_events = line.trim_end() == "on:";
+            in_pull_request = false;
+            continue;
+        }
+        if !in_events {
+            continue;
+        }
+        if line.starts_with("  ") && !line.starts_with("   ") {
+            in_pull_request = line.trim_end() == "pull_request:";
+            continue;
+        }
+        if !in_pull_request || !line.starts_with("    ") || line.starts_with("     ") {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("    types:") {
+            // This contract deliberately admits the workflow's exact inline
+            // array style. Other events, comments and block scalars cannot
+            // provide the pull_request admission declaration.
+            let values = rest.trim().strip_prefix('[')?.strip_suffix(']')?;
+            return Some(
+                values
                     .split(',')
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
                     .map(ToOwned::to_owned)
-                    .collect()
-            })
-    })
+                    .collect(),
+            );
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -8058,7 +8094,11 @@ fn routed_rust_ready_event_contract_violations(workflow: &str) -> Vec<String> {
             ".github/workflows/routed-rust.yml must keep the event-qualified concurrency group `${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}` so push and manual work cannot replace each other (#4986)".to_string(),
         );
     }
-    if !workflow.contains(ROUTED_RUST_READY_CANCEL_SNIPPET) {
+    let expected_cancellation = ROUTED_RUST_READY_CANCEL_SNIPPET
+        .strip_prefix("cancel-in-progress: ")
+        .unwrap_or("");
+    if !routed_rust_concurrency_value_matches(workflow, "cancel-in-progress", expected_cancellation)
+    {
         violations.push(
             ".github/workflows/routed-rust.yml must keep `cancel-in-progress: ${{ github.event_name == 'pull_request' }}` so a second Ready transition replaces the prior admission attempt without cancelling push or manual runs (#4986)".to_string(),
         );

@@ -3015,7 +3015,7 @@ pub fn unrelated_total(amount: i32) -> i32 {
 "#;
         let index = index_from_files(&[(path.clone(), source)])?;
         let changed_owner = index
-            .functions
+            .functions()
             .iter()
             .find(|function| function.name == "changed_total")
             .map(|function| function.id.0.replace('\\', "/"))
@@ -3086,7 +3086,7 @@ pub fn caller(amount: i32) -> i32 {
             (caller_path.clone(), caller_source),
         ])?;
         let changed_owner = index
-            .functions
+            .functions()
             .iter()
             .find(|function| function.file == changed_path && function.name == "process")
             .map(|function| function.id.0.clone())

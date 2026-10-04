@@ -95,7 +95,6 @@ pub(crate) use seam_inventory::{
     inventory_classified_seams_at_with_config, inventory_classified_seams_report_at_with_config,
     inventory_compact_classified_seams_at_with_config,
     inventory_diff_scoped_classified_seams_at_with_config,
-    inventory_diff_scoped_classified_seams_at_with_config_and_lines,
     inventory_diff_scoped_streamed_seams_at_with_config, inventory_seams_at_with_config,
     pilot_seam_budget, workspace_cache_key_at_with_config,
 };

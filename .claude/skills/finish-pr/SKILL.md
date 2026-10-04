@@ -38,7 +38,7 @@ Routine publication and convergence inside the selected repository claim—push 
    - limitations and non-claims;
    - rollback boundary;
    - exact candidate SHA.
-3. Inspect current reviews, inline threads, required and advisory checks, mergeability, and head identity. The required `Ripr Rust Small Result` check runs only on the Draft -> Ready transition: publish as Draft, mark Ready once the head is final, and after any push to a Ready PR convert it to Draft and mark it Ready again. Before re-toggling, confirm no Ready-triggered `routed-rust.yml` run is still queued or in progress on that head, because the toggle cancels it ([CI](../../../docs/CI.md)).
+3. Inspect current reviews, inline threads, required and advisory checks, mergeability, and head identity. The `routed-rust.yml` context `Ripr Rust Small Result` runs only on the Draft -> Ready transition: publish as Draft, mark Ready once the head is final, and after any push to a Ready PR convert it to Draft and mark it Ready again. Before re-toggling, confirm no Ready-triggered `routed-rust.yml` run is still queued or in progress on that head, because the toggle cancels it ([CI](../../../docs/CI.md)). The destination repository's actual protected checks retain their own authorities and triggers; the public source `ci.yml` jobs remain unchanged, and a workflow context is required only when live protection requires it.
 4. Locate the current-head `review-pr` record. If it is missing, stale, covers only automated comments/CI, or is anchored to another head, run `review-pr` before treating the candidate as merge-ready.
 5. Classify every automated or human finding as:
    - valid source defect;

@@ -176,7 +176,14 @@ function hostPlatformOrSkip(t) {
 
 test("validates the exact five-target contract", () => {
   const contract = launcher.validateLauncherManifest(manifest);
-  assert.equal(contract.version, "0.11.0");
+  // The workspace owns current development version identity; the launcher
+  // must preserve it, including a prerelease suffix, rather than pin a release.
+  const workspace = fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "Cargo.toml"), "utf8");
+  const packageSection = workspace.match(/(?:^|\n)\[workspace\.package\]\r?\n([\s\S]*?)(?=\r?\n\[|$)/);
+  assert.ok(packageSection, "workspace package version authority must exist");
+  const version = packageSection[1].match(/^version = "([^"]+)"\r?$/m);
+  assert.ok(version, "workspace version must be explicit");
+  assert.equal(contract.version, version[1]);
   assert.deepEqual(
     contract.platforms.map((entry) => launcher.platformKey(entry.nodePlatform, entry.nodeArch, entry.libc)),
     ["darwin/arm64/none", "darwin/x64/none", "linux/arm64/glibc", "linux/x64/glibc", "win32/x64/none"],
@@ -499,7 +506,8 @@ test("runs a real synthetic executable and preserves argv, cwd, env, stdout, std
 });
 
 test("source bin missing-package failure never falls back to PATH or writes stdout", (t) => {
-  if (!hostPlatformOrSkip(t)) {
+  const selected = hostPlatformOrSkip(t);
+  if (!selected) {
     return;
   }
   const fakePath = fixtureRoot("path-fallback");
@@ -517,7 +525,7 @@ test("source bin missing-package failure never falls back to PATH or writes stdo
     assert.equal(result.status, 1);
     assert.equal(result.stdout, "");
     assert.doesNotMatch(result.stdout + result.stderr, /PATH-FALLBACK/);
-    assert.match(result.stderr, /required native package .*@0\.11\.0 is missing/);
+    assert.ok(result.stderr.includes(`required native package ${selected.package}@${manifest.version} is missing`));
   } finally {
     cleanup(fakePath);
     cleanup(foreignCwd);

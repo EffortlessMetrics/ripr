@@ -241,7 +241,7 @@ fn default_visible_only_warning(
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::{args, unique_command_test_dir};
+    use super::super::tests::{args, repo_root, unique_command_test_dir};
     use super::*;
     use crate::output::gate::{GATE_STATUS_BLOCKED, GATE_STATUS_CONFIG_ERROR};
 

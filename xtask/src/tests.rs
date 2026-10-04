@@ -11687,6 +11687,82 @@ fn source_routed_rust_controls_reject_wrong_yaml_scope() -> Result<(), String> {
 }
 
 #[test]
+fn source_routed_rust_ready_types_and_cancellation_reject_wrong_yaml_scope() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?.replace("\r\n", "\n");
+    let wrong_event = workflow
+        .replacen("    types: [ready_for_review]\n", "", 1)
+        .replacen(
+            "  push:\n",
+            "  repository_dispatch:\n    types: [ready_for_review]\n  push:\n",
+            1,
+        );
+    assert_ne!(wrong_event, workflow);
+    assert!(wrong_event.contains("    types: [ready_for_review]"));
+    assert!(crate::routed_rust_pull_request_types(&wrong_event).is_none());
+    assert!(
+        routed_rust_ready_event_contract_violations(&wrong_event)
+            .iter()
+            .any(|violation| violation.contains("inline pull_request types array")),
+        "repository_dispatch types must not stand in for omitted pull_request types"
+    );
+    assert_eq!(
+        routed_rust_event_route(&wrong_event, "pull_request", Some("opened"), None),
+        RoutedRustEventRoute::LaunchFullGate,
+        "an omitted pull_request types declaration has broad default activity"
+    );
+
+    let cancellation = "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}";
+    let cancelled_off = workflow.replacen(cancellation, "  cancel-in-progress: false", 1);
+    assert_ne!(cancelled_off, workflow);
+    let wrong_scopes = [
+        format!("{cancelled_off}\n# {cancellation}\n"),
+        cancelled_off.replacen(
+            "  cancel-in-progress: false",
+            &format!("  cancel-in-progress: false # {}", cancellation.trim()),
+            1,
+        ),
+        cancelled_off.replacen("env:\n", &format!("env:\n{cancellation}\n"), 1),
+        cancelled_off.replacen(
+            "        run: |\n",
+            &format!("        run: |\n        {cancellation}\n"),
+            1,
+        ),
+    ];
+    for wrong in wrong_scopes {
+        assert_ne!(wrong, cancelled_off);
+        assert!(wrong.contains(crate::ROUTED_RUST_READY_CANCEL_SNIPPET));
+        assert!(
+            routed_rust_ready_event_contract_violations(&wrong)
+                .iter()
+                .any(|violation| violation.contains("cancel-in-progress")),
+            "wrong-scope cancellation must not establish the actual field"
+        );
+    }
+    for replacement in [
+        "  cancel-in-progress: >-\n    ${{ github.event_name == 'pull_request' }}".to_string(),
+        format!("{cancellation}\n  cancel-in-progress: false"),
+    ] {
+        let wrong = workflow.replacen(cancellation, &replacement, 1);
+        assert_ne!(wrong, workflow);
+        assert!(
+            routed_rust_ready_event_contract_violations(&wrong)
+                .iter()
+                .any(|violation| violation.contains("cancel-in-progress")),
+            "unsupported scalar or duplicate cancellation must fail closed"
+        );
+    }
+    let annotated = workflow.replacen(
+        cancellation,
+        &format!("{cancellation} # actual direct field"),
+        1,
+    );
+    assert_ne!(annotated, workflow);
+    assert!(routed_rust_ready_event_contract_violations(&annotated).is_empty());
+    assert!(routed_rust_ready_event_contract_violations(&workflow).is_empty());
+    Ok(())
+}
+
+#[test]
 fn routed_rust_workflow_contract_rejects_self_hosted_reintroduction() {
     // ripr#1446: self-hosted runner authority belongs to ripr-swarm. The source
     // contract must reject any attempt to bring it back, including a lane that is

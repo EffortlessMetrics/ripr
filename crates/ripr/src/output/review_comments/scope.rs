@@ -67,16 +67,15 @@ impl ReviewCommentsAnalysisScope {
         working_set: &AgentBriefResolvedWorkingSet,
         reviewed_count: usize,
     ) -> Self {
-        // The pre-#3285 `is_production_rust_path` predicate is retired: route
-        // through the producer-owned source-role model with an empty context
-        // (no declared targets), which carries the same exclusions forward.
+        // Reuse the producer's changed-file authority, including bounded
+        // repository automation and fixture/test exclusions. This projection
+        // does not build a repo index or invent target metadata; its empty
+        // context is the same bounded layout fallback as the diff producer.
         let role_context = crate::analysis::SourceRoleContext::empty();
         let production_files = working_set
             .files
             .iter()
-            .filter(|path| {
-                crate::analysis::classify_with(path, &role_context).seeds_production_findings()
-            })
+            .filter(|path| crate::analysis::seeds_diff_probes(path, &role_context))
             .cloned()
             .collect::<Vec<_>>();
         Self {
@@ -93,6 +92,10 @@ impl ReviewCommentsAnalysisScope {
             total_production_files: None,
             production_files_considered: production_files.len(),
             classified_seams_considered: reviewed_count,
+            // Only complete producer output is admitted on this route; it
+            // neither stages live seam evaluation nor admits absent-file limits.
+            unevaluated_seams: 0,
+            absent_changed_files: Vec::new(),
             downstream_consumable: true,
             limitation: "review_comments_producer_projection_only",
             repair_route: "analysis/review-comments-producer-projection",
@@ -170,5 +173,55 @@ impl ReviewCommentsAnalysisScope {
             limitation: "review_comments_gap_ledger_artifact_scope_only",
             repair_route: "reports/gap-decision-ledger",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn producer_projection_preserves_changed_file_roles_and_complete_denominator() {
+        let working_set = AgentBriefResolvedWorkingSet::files(
+            [
+                "src/pricing.rs",
+                "src/pricing_tests.rs",
+                "tests/pricing.rs",
+                "xtask/src/main.rs",
+                "xtask/tests/control.rs",
+                "xtask/fixtures/src/sample.rs",
+                "fixtures/xtask/src/sample.rs",
+                "build.rs",
+            ]
+            .into_iter()
+            .map(PathBuf::from)
+            .collect(),
+        );
+        // The complete producer's reviewed denominator is independent of
+        // the projected file count and any later comment-rendering cap.
+        let scope = ReviewCommentsAnalysisScope::producer_projection(&working_set, 23);
+        assert_eq!(
+            scope.changed_production_files,
+            [
+                "src/pricing.rs",
+                "src/pricing_tests.rs",
+                "xtask/src/main.rs"
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>(),
+        );
+        assert_eq!(
+            scope.scoped_production_files,
+            scope.changed_production_files
+        );
+        assert_eq!(scope.production_files_considered, 3);
+        assert_eq!(scope.classified_seams_considered, 23);
+        assert_eq!(scope.total_rust_files, None);
+        assert_eq!(scope.total_production_files, None);
+        assert_eq!(scope.unevaluated_seams, 0);
+        assert!(scope.absent_changed_files.is_empty());
+        assert_eq!(scope.limitation, "review_comments_producer_projection_only");
     }
 }
