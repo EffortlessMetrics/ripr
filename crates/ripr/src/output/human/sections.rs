@@ -262,16 +262,30 @@ fn wrapped_fragment(label: &str, value: &str) -> String {
     // under the value rather than under the field name.
     let indent = " ".repeat(label.chars().count());
     let budget = LINE_BUDGET.saturating_sub(indent.chars().count()).max(1);
-    let chars: Vec<char> = value.chars().collect();
-    if chars.len() <= budget {
-        return format!("{label}{value}\n");
-    }
+    // Wrap each source line on its own. Chunking the whole value would count
+    // the embedded newlines toward the budget and cut a short line mid-token
+    // (`BuildMetadata::EM` / `PTY,`) once a multi-line fragment's total length
+    // passed the budget. A source line keeps its own leading whitespace and
+    // starts at the left margin, as before; only a chunk split off an
+    // over-budget line takes the continuation indent.
     let mut out = String::new();
-    for (index, chunk) in chars.chunks(budget).enumerate() {
-        let prefix = if index == 0 { label } else { indent.as_str() };
-        out.push_str(prefix);
-        out.extend(chunk.iter());
-        out.push('\n');
+    for (line_index, line) in value.split('\n').enumerate() {
+        let chars: Vec<char> = line.chars().collect();
+        if chars.is_empty() {
+            out.push_str(if line_index == 0 { label } else { "" });
+            out.push('\n');
+            continue;
+        }
+        for (chunk_index, chunk) in chars.chunks(budget).enumerate() {
+            let prefix = match (line_index, chunk_index) {
+                (0, 0) => label,
+                (_, 0) => "",
+                _ => indent.as_str(),
+            };
+            out.push_str(prefix);
+            out.extend(chunk.iter());
+            out.push('\n');
+        }
     }
     out
 }

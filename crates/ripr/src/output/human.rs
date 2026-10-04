@@ -3615,6 +3615,39 @@ mod tests {
         );
     }
 
+    /// A multi-line struct literal whose total length passes the budget while
+    /// every source line stays short must render line for line. Chunking the
+    /// whole value cut `BuildMetadata::EMPTY` into `EM` / `PTY,` on a real
+    /// `return_value` probe.
+    #[test]
+    fn render_finding_keeps_short_source_lines_of_a_long_multiline_fragment_whole() {
+        let field = "            build: BuildMetadata::EMPTY,";
+        let after = format!("Version {{\n{}\n        }}", [field; 6].join("\n"));
+        assert!(
+            after.chars().count() > 180,
+            "fixture must exceed the display budget in total, got {}",
+            after.chars().count()
+        );
+        let mut finding = sample_finding();
+        finding.probe.before = None;
+        finding.probe.after = Some(after.clone());
+
+        let rendered = render_finding(&finding);
+
+        let block: Vec<&str> = rendered
+            .lines()
+            .skip_while(|line| !line.starts_with("  after:  "))
+            .take(8)
+            .collect();
+        assert_eq!(block.first().copied(), Some("  after:  Version {"));
+        assert_eq!(
+            block.iter().filter(|line| **line == field).count(),
+            6,
+            "each short source line must survive intact; got:\n{rendered}"
+        );
+        assert_eq!(block.last().copied(), Some("        }"));
+    }
+
     #[test]
     fn render_finding_uses_expr_and_fallback_evidence_when_no_before_after() {
         let mut finding = sample_finding();

@@ -296,6 +296,7 @@ Current explanation docs:
 - [Support tiers](status/SUPPORT_TIERS.md)
 - [Learnings](LEARNINGS.md)
 - [Friction log](FRICTION_LOG.md)
+- [Agent-as-user runs](AGENT_AS_USER_RUNS.md)
 - [Deferred decisions](DEFERRED.md)
 - [Agent handoff protocol](reference/AGENT_HANDOFF_PROTOCOL.md)
 - [Handoff ledger](handoffs/README.md)
