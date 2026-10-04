@@ -482,12 +482,13 @@ fn finding_hover_markdown(diagnostic: &Diagnostic, finding: &Finding) -> String 
                 test,
                 &finding.activation.missing_discriminators,
             );
+            let label = crate::output::related_test_miss::related_test_miss_label(test);
             let oracle_text = match (&why, &test.oracle) {
                 (Some(why), Some(oracle)) => format!(
-                    " misses: {why}; checked `{}`",
+                    " {label}: {why}; checked `{}`",
                     crate::output::related_test_miss::checked_assertion_text(oracle)
                 ),
-                (Some(why), None) => format!(" misses: {why}"),
+                (Some(why), None) => format!(" {label}: {why}"),
                 (None, Some(oracle)) => format!(
                     " \u{2014} {} {} oracle: {}",
                     test.oracle_strength.as_str(),

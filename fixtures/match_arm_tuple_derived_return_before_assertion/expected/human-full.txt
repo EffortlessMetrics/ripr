@@ -29,9 +29,9 @@ Evidence
   - observation yes: A related test observes a value or effect near the changed behavior
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches match arm result: (true, false) => (line 27)
-  - related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal.len(), 1); misses: assertion does not mention the changed expression
-  - related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal[0].0.id, "receipt-1"); misses: assertion does not mention the changed expression
-  - related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal[0].1, "request_identity_v2"); misses: assertion does not mention the changed expression
+  - related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal.len(), 1); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
+  - related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal[0].0.id, "receipt-1"); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
+  - related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal[0].1, "request_identity_v2"); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - source assertion argument value 1 at line 21
   - source assertion argument value "receipt-1" at line 22
   - source assertion argument value 0 at line 22
@@ -71,9 +71,9 @@ Evidence
   - observation yes: A related test observes a value or effect near the changed behavior
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches match arm result: "request_identity_v1" (line 27)
-  - related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal.len(), 1); misses: assertion does not mention the changed expression
-  - related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal[0].0.id, "receipt-1"); misses: assertion does not mention the changed expression
-  - related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal[0].1, "request_identity_v2"); misses: assertion does not mention the changed expression
+  - related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal.len(), 1); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
+  - related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal[0].0.id, "receipt-1"); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
+  - related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal[0].1, "request_identity_v2"); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - source assertion argument value 1 at line 21
   - source assertion argument value "receipt-1" at line 22
   - source assertion argument value 0 at line 22

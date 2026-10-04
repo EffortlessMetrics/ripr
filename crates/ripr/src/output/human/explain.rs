@@ -88,7 +88,10 @@ pub(crate) fn render_verdict_explanation(finding: &Finding) -> String {
 /// What ripr concluded about one assertion row.
 fn row_verdict(row: &RelatedTest, finding: &Finding) -> String {
     match related_test_miss_reason(row, &finding.activation.missing_discriminators) {
-        Some(why) => format!("misses: {why}"),
+        Some(why) => format!(
+            "{}: {why}",
+            crate::output::related_test_miss::related_test_miss_label(row)
+        ),
         None => match &row.oracle {
             Some(_) => format!(
                 "{} {} oracle",
@@ -283,5 +286,25 @@ mod tests {
             text.contains("      checked: assert_eq!(parse(\"a\"), Ok(1))\n"),
             "{text}"
         );
+    }
+
+    /// #5508: a Perl row whose observation ripr could not confirm is an
+    /// unknown, so the explanation does not introduce it as a miss.
+    #[test]
+    fn an_unconfirmed_observation_is_not_labelled_a_miss() {
+        let mut finding = sample_perl_finding();
+        finding.related_tests = vec![row(
+            "is(My::App::discount(100), 10, 'discount threshold')",
+            OracleStrength::Strong,
+            RelatedTestMiss::ObservationUnconfirmed,
+        )];
+        let text = render_verdict_explanation(&finding);
+        assert!(
+            text.contains(
+                "  - tests/parse.rs:7 parses_empty: unconfirmed: ripr could not confirm that this assertion observes the changed behavior\n"
+            ),
+            "{text}"
+        );
+        assert!(!text.contains("misses: ripr could not confirm"), "{text}");
     }
 }

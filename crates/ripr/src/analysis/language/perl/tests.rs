@@ -5,6 +5,7 @@
 //! only the production (cfg-test-gated) adapter code.
 
 use super::*;
+use crate::domain::RelatedTestMiss;
 
 fn complete_perl_actionability_context() -> PerlActionabilityContext {
     PerlActionabilityContext {
@@ -3993,5 +3994,251 @@ fn streamed_file_digest_matches_in_memory_digest() -> Result<(), String> {
             super::hex_sha256_file(&path).map_err(|err| format!("hash {name}: {err}"))?;
         assert_eq!(streamed, super::hex_sha256(&contents), "{name}");
     }
+    Ok(())
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// #5498 — current-v1 Perl related-test misses (RIPR-SPEC-0224).
+//
+// On a weakly exposed finding from a complete, unblocked packet (with or
+// without a concrete discriminator), only a row whose own direct, strong
+// exact, owner-targeted oracle earned the weak exposure, with no established sink alignment, says
+// observation is unconfirmed. Every other row keeps no miss.
+// ──────────────────────────────────────────────────────────────────────
+
+/// The class and per-row misses of the first finding a packet projects.
+fn first_finding_misses(
+    text: &str,
+) -> Result<(crate::domain::ExposureClass, Vec<Option<RelatedTestMiss>>), String> {
+    let findings = findings_from_packet(text)?;
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding".to_string())?;
+    Ok((
+        finding.class.clone(),
+        finding.related_tests.iter().map(|test| test.miss).collect(),
+    ))
+}
+
+fn with_sinks(changed_observable: &str, observed_sink: Option<&str>) -> String {
+    let packet = EXACT_RETURN_PACKET.replace(
+        "\"changed_text_digest\": \"sha256:return\",",
+        &format!(
+            "\"changed_text_digest\": \"sha256:return\",\n      \"changed_observable\": \"{changed_observable}\","
+        ),
+    );
+    match observed_sink {
+        Some(sink) => packet.replace(
+            "\"expression\": \"is($got, 10, 'discount threshold')\",",
+            &format!(
+                "\"expression\": \"is($got, 10, 'discount threshold')\",\n      \"observed_sink\": \"{sink}\","
+            ),
+        ),
+        None => packet,
+    }
+}
+
+#[test]
+fn perl_direct_strong_row_without_sink_alignment_is_observation_unconfirmed() -> Result<(), String>
+{
+    use crate::domain::ExposureClass;
+    let unconfirmed = vec![Some(RelatedTestMiss::ObservationUnconfirmed)];
+
+    // Aligned sinks, exact or through the `return` normalization: exposed,
+    // no miss.
+    for packet in [
+        with_sinks("$amount / 2", Some("$amount / 2")),
+        with_sinks("return $amount / 2", Some("$amount / 2")),
+    ] {
+        assert_eq!(
+            first_finding_misses(&packet)?,
+            (ExposureClass::Exposed, vec![None])
+        );
+    }
+    // No observed sink (also the shape of an older packet) and textually
+    // different sinks are unconfirmed, never `assertion_not_observing`.
+    for packet in [
+        EXACT_RETURN_PACKET.to_string(),
+        with_sinks("$amount / 2", None),
+        with_sinks("$rate * 0.9", Some("$amount / 2")),
+    ] {
+        assert_eq!(
+            first_finding_misses(&packet)?,
+            (ExposureClass::WeaklyExposed, unconfirmed.clone())
+        );
+    }
+    // A finding-wide discriminator is not lent to the row as an input or
+    // exact-assertion miss.
+    let with_discriminator = EXACT_RETURN_PACKET.replace(
+        "\"changed_text_digest\": \"sha256:return\"",
+        "\"changed_text_digest\": \"discriminator:$amount == 100\"",
+    );
+    let findings = findings_from_packet(&with_discriminator)?;
+    let finding = findings.first().ok_or("expected one finding")?;
+    assert!(!finding.activation.missing_discriminators.is_empty());
+    assert_eq!(
+        finding
+            .related_tests
+            .iter()
+            .map(|test| test.miss)
+            .collect::<Vec<_>>(),
+        unconfirmed
+    );
+    Ok(())
+}
+
+#[test]
+fn perl_rows_without_an_established_defect_keep_no_miss() -> Result<(), String> {
+    use crate::domain::ExposureClass;
+    // Advisory relation with a strong oracle: capped class, no miss.
+    let (class, misses) = first_finding_misses(
+        &EXACT_RETURN_PACKET.replace("\"direct_owner_call\"", "\"file_proximity\""),
+    )?;
+    assert_ne!(class, ExposureClass::Exposed);
+    assert_eq!(misses, vec![None]);
+    // Direct relation with a weak oracle: no miss.
+    let (class, misses) =
+        first_finding_misses(&EXACT_RETURN_PACKET.replace("\"strong_exact\"", "\"weak_broad\""))?;
+    assert_eq!(class, ExposureClass::ReachableUnrevealed);
+    assert_eq!(misses, vec![None]);
+    // A partial packet keeps its class but explains no row.
+    let (class, misses) = first_finding_misses(&EXACT_RETURN_PACKET.replace(
+        "\"packet_status\": \"complete\"",
+        "\"packet_status\": \"partial\"",
+    ))?;
+    assert_eq!(class, ExposureClass::WeaklyExposed);
+    assert_eq!(misses, vec![None]);
+    Ok(())
+}
+
+/// Two rows on one finding: only the direct strong-exact row is explained;
+/// the advisory row beside it borrows nothing.
+#[test]
+fn perl_unconfirmed_observation_stays_on_its_own_row() -> Result<(), String> {
+    let fixture = include_str!(
+        "../../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
+    );
+    let advisory = r#""relations": [
+    {
+      "relation_id": "relation:return:helper-proximity",
+      "change_id": "change:lib/My/App.pm:8:return",
+      "owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "test_id": "test:t/app_helper.t:helper_indirection",
+      "oracle_id": null,
+      "relation_kind": "file_proximity",
+      "reachability_hint": "weakly_reachable",
+      "confidence": "low",
+      "provenance_refs": [
+        "prov:relation:return"
+      ]
+    },"#;
+    let packet = fixture.replacen("\"relations\": [", advisory, 1);
+    let findings = findings_from_packet(&packet)?;
+    let finding = findings
+        .iter()
+        .find(|finding| finding.probe.family == crate::domain::ProbeFamily::ReturnValue)
+        .ok_or("the return change should project a finding")?;
+    assert_eq!(finding.class, crate::domain::ExposureClass::WeaklyExposed);
+    let mut rows = finding
+        .related_tests
+        .iter()
+        .map(|test| (test.name.as_str(), test.miss))
+        .collect::<Vec<_>>();
+    rows.sort_by_key(|(name, _)| *name);
+    assert_eq!(
+        rows,
+        vec![
+            (
+                "discount_smoke",
+                Some(RelatedTestMiss::ObservationUnconfirmed)
+            ),
+            ("helper_indirection", None),
+        ]
+    );
+    Ok(())
+}
+
+/// An advisory row is never explained, even when its relation is reachable
+/// and links a strong exact oracle on the changed owner in its own test.
+#[test]
+fn perl_advisory_row_with_strong_oracle_keeps_no_miss() -> Result<(), String> {
+    let fixture = include_str!(
+        "../../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
+    );
+    let strong_helper_oracle = r#""oracles": [
+    {
+      "oracle_id": "oracle:t/app_helper.t:8:is",
+      "test_id": "test:t/app_helper.t:helper_indirection",
+      "kind": "exact_return_assertion",
+      "strength": "strong_exact",
+      "target_owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "expression": "is(My::App::discount(100), 10, 'helper discount')",
+      "range": {"start_line": 8, "start_column": 1, "end_line": 8, "end_column": 52},
+      "confidence": "medium",
+      "provenance_refs": ["prov:relation:return"]
+    },"#;
+    let reachable_proximity = r#""relations": [
+    {
+      "relation_id": "relation:return:helper-proximity",
+      "change_id": "change:lib/My/App.pm:8:return",
+      "owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "test_id": "test:t/app_helper.t:helper_indirection",
+      "oracle_id": "oracle:t/app_helper.t:8:is",
+      "relation_kind": "file_proximity",
+      "reachability_hint": "reachable",
+      "confidence": "medium",
+      "provenance_refs": [
+        "prov:relation:return"
+      ]
+    },"#;
+    let packet = fixture
+        .replacen("\"oracles\": [", strong_helper_oracle, 1)
+        .replacen("\"relations\": [", reachable_proximity, 1);
+    let findings = findings_from_packet(&packet)?;
+    let finding = findings
+        .iter()
+        .find(|finding| finding.probe.family == crate::domain::ProbeFamily::ReturnValue)
+        .ok_or("the return change should project a finding")?;
+    assert_eq!(finding.class, crate::domain::ExposureClass::WeaklyExposed);
+    let mut rows = finding
+        .related_tests
+        .iter()
+        .map(|test| (test.name.as_str(), test.miss))
+        .collect::<Vec<_>>();
+    rows.sort_by_key(|(name, _)| *name);
+    assert_eq!(
+        rows,
+        vec![
+            (
+                "discount_smoke",
+                Some(RelatedTestMiss::ObservationUnconfirmed)
+            ),
+            ("helper_indirection", None),
+        ]
+    );
+    Ok(())
+}
+
+/// A limitation that blocks actionability but not the class keeps the
+/// finding weakly exposed and explains no row.
+#[test]
+fn perl_actionability_blocked_packet_explains_no_row() -> Result<(), String> {
+    use crate::domain::ExposureClass;
+    let packet = EXACT_RETURN_PACKET.replace(
+        "\"limitations\": [],",
+        r#""limitations": [
+    {
+      "limitation_id": "limitation:missing-runner",
+      "kind": "missing_test_runner",
+      "message": "no test runner was found",
+      "evidence_refs": []
+    }
+  ],"#,
+    );
+    assert_ne!(packet, EXACT_RETURN_PACKET);
+    assert_eq!(
+        first_finding_misses(&packet)?,
+        (ExposureClass::WeaklyExposed, vec![None])
+    );
     Ok(())
 }

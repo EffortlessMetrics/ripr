@@ -166,7 +166,7 @@
           "relation_reason": "owner_named_test",
           "relation_confidence": "medium",
           "miss": "observation_unconfirmed",
-          "why": "assertion does not mention the changed expression"
+          "why": "ripr could not confirm that this assertion observes the changed behavior"
         },
         {
           "name": "try_parse_summary_pins_malformed_source",
@@ -178,7 +178,7 @@
           "relation_reason": "owner_named_test",
           "relation_confidence": "medium",
           "miss": "observation_unconfirmed",
-          "why": "assertion does not mention the changed expression"
+          "why": "ripr could not confirm that this assertion observes the changed behavior"
         }
       ],
       "stop_reasons": [],

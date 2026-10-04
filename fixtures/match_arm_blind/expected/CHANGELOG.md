@@ -271,3 +271,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — match_arm_blind (9)
+
+Reason:
+RIPR-SPEC-0224, #5508: observation_unconfirmed now reads 'ripr could not confirm that this assertion observes the changed behavior', an unknown rather than a claim that the assertion misses. The miss token and every decision field are unchanged.
+
+Command:
+`cargo xtask goldens bless match_arm_blind --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

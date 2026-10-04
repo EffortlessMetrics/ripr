@@ -29,10 +29,10 @@ Evidence
   - observation yes: A related test observes a value or effect near the changed behavior
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches returned value: (0, Some(self.remaining)) (line 22)
-  - related test tests/size_hints.rs:4 combinations_inexact_size_hints uses strong exact value oracle: assert_eq!(it.size_hint().1, Some(3)); misses: assertion does not mention the changed expression
-  - related test tests/size_hints.rs:4 combinations_inexact_size_hints uses strong exact value oracle: assert_eq!(it.size_hint().0, 3); misses: assertion does not mention the changed expression
+  - related test tests/size_hints.rs:4 combinations_inexact_size_hints uses strong exact value oracle: assert_eq!(it.size_hint().1, Some(3)); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
+  - related test tests/size_hints.rs:4 combinations_inexact_size_hints uses strong exact value oracle: assert_eq!(it.size_hint().0, 3); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - related test tests/size_hints.rs:4 combinations_inexact_size_hints uses smoke smoke only oracle: assert!(it.size_hint().1.is_some()); misses: assertion too weak to tell the old behavior from the new
-  - related test tests/size_hints.rs:4 combinations_inexact_size_hints uses strong exact value oracle: assert_eq!(it.size_hint(), (3, Some(3))); misses: assertion does not mention the changed expression
+  - related test tests/size_hints.rs:4 combinations_inexact_size_hints uses strong exact value oracle: assert_eq!(it.size_hint(), (3, Some(3))); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - related test tests/size_hints.rs:4 combinations_inexact_size_hints uses weak relational check oracle: assert!(it.size_hint().1 == Some(3)); misses: assertion too weak to tell the old behavior from the new
   - source assertion argument value 3 at line 6
   - source assertion argument value 3 at line 7
@@ -70,10 +70,10 @@ Evidence
   - observation yes: A related test observes a value or effect near the changed behavior
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches returned value: (0, Some(self.remaining)) (line 22)
-  - related test tests/size_hints.rs:4 combinations_inexact_size_hints uses strong exact value oracle: assert_eq!(it.size_hint().1, Some(3)); misses: assertion does not mention the changed expression
-  - related test tests/size_hints.rs:4 combinations_inexact_size_hints uses strong exact value oracle: assert_eq!(it.size_hint().0, 3); misses: assertion does not mention the changed expression
+  - related test tests/size_hints.rs:4 combinations_inexact_size_hints uses strong exact value oracle: assert_eq!(it.size_hint().1, Some(3)); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
+  - related test tests/size_hints.rs:4 combinations_inexact_size_hints uses strong exact value oracle: assert_eq!(it.size_hint().0, 3); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - related test tests/size_hints.rs:4 combinations_inexact_size_hints uses smoke smoke only oracle: assert!(it.size_hint().1.is_some()); misses: assertion too weak to tell the old behavior from the new
-  - related test tests/size_hints.rs:4 combinations_inexact_size_hints uses strong exact value oracle: assert_eq!(it.size_hint(), (3, Some(3))); misses: assertion does not mention the changed expression
+  - related test tests/size_hints.rs:4 combinations_inexact_size_hints uses strong exact value oracle: assert_eq!(it.size_hint(), (3, Some(3))); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - related test tests/size_hints.rs:4 combinations_inexact_size_hints uses weak relational check oracle: assert!(it.size_hint().1 == Some(3)); misses: assertion too weak to tell the old behavior from the new
   - source assertion argument value 3 at line 6
   - source assertion argument value 3 at line 7

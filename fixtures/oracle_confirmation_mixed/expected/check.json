@@ -82,7 +82,7 @@
           "relation_reason": "same_test_file",
           "relation_confidence": "medium",
           "miss": "observation_unconfirmed",
-          "why": "assertion does not mention the changed expression"
+          "why": "ripr could not confirm that this assertion observes the changed behavior"
         },
         {
           "name": "unrelated_exact_oracle",

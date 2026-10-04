@@ -29,7 +29,7 @@ Evidence
   - observation yes: A related test observes a value or effect near the changed behavior
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches match arm result: "sensor" => (line 3)
-  - related test tests/route.rs:7 sibling_proof_arm_is_observed uses strong exact value oracle: assert_eq!(route("focused-test"), "sensor-v2"); misses: assertion does not mention the changed expression
+  - related test tests/route.rs:7 sibling_proof_arm_is_observed uses strong exact value oracle: assert_eq!(route("focused-test"), "sensor-v2"); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - source assertion argument value "sensor-v2" at line 8
   - source function argument value kind = "focused-test" at line 8
 

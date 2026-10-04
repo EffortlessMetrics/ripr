@@ -2652,7 +2652,11 @@ fn examined_test_related_information(
                         test.line.saturating_sub(1) as u32,
                     ),
                 },
-                message: format!("Related test `{}` misses: {why}", test.name),
+                message: format!(
+                    "Related test `{}` {}: {why}",
+                    test.name,
+                    crate::output::related_test_miss::related_test_miss_label(test)
+                ),
             })
         })
         .take(MAX_EXAMINED_TEST_ROWS)

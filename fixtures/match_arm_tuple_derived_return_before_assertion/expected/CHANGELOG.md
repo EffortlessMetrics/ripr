@@ -136,3 +136,29 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — match_arm_tuple_derived_return_before_assertion (11)
+
+Reason:
+RIPR-SPEC-0224, #5508: observation_unconfirmed now reads 'ripr could not confirm that this assertion observes the changed behavior'; human-full re-blessed after rebase onto #5424. No verdict change.
+
+Command:
+`cargo xtask goldens bless match_arm_tuple_derived_return_before_assertion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — match_arm_tuple_derived_return_before_assertion (12)
+
+Reason:
+RIPR-SPEC-0224, #5508: an observation_unconfirmed row is labelled 'unconfirmed:' instead of 'misses:' in human-full. No verdict change.
+
+Command:
+`cargo xtask goldens bless match_arm_tuple_derived_return_before_assertion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

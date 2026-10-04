@@ -29,7 +29,7 @@ Evidence
   - observation yes: A related test observes a value or effect near the changed behavior
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches error variant: let n = rdr.read(&mut buf)? (line 5)
-  - related test src/lib.rs:14 reads_successfully uses strong exact value oracle: assert_eq!(rdr.len(), 10, "read error"); misses: assertion does not mention the changed expression
+  - related test src/lib.rs:14 reads_successfully uses strong exact value oracle: assert_eq!(rdr.len(), 10, "read error"); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - source assertion argument value 10 at line 17
   - source assertion argument value "read error" at line 18
   - source assertion argument value 10 at line 18

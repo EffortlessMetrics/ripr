@@ -101,7 +101,7 @@
           "relation_reason": "direct_owner_call",
           "relation_confidence": "high",
           "miss": "observation_unconfirmed",
-          "why": "assertion does not mention the changed expression"
+          "why": "ripr could not confirm that this assertion observes the changed behavior"
         }
       ],
       "stop_reasons": [],
