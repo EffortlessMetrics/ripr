@@ -19240,6 +19240,41 @@ fn pr_summary_root_from_foreign_cwd_anchors_artifacts_and_baseline() -> Result<(
 }
 
 #[test]
+fn pr_summary_refuses_missing_or_file_root_without_creating_it() -> Result<(), String> {
+    let scratch = unique_temp_workspace("pr-summary-missing-root");
+    std::fs::create_dir(&scratch).map_err(|error| error.to_string())?;
+    let _cleanup = PrSummaryScratch(scratch.clone());
+    let missing = scratch.join("missing").join("repo");
+    let file_root = scratch.join("Cargo.toml");
+    std::fs::write(&file_root, "[package]\n").map_err(|error| error.to_string())?;
+    for (label, root) in [("missing", &missing), ("file", &file_root)] {
+        let root_arg = root
+            .to_str()
+            .ok_or_else(|| format!("{label} root is not UTF-8"))?;
+        for extra in [None, Some("--check")] {
+            let mut args = vec!["pr-summary", "--root", root_arg];
+            args.extend(extra);
+            let output = run_command(env!("CARGO_BIN_EXE_ripr"), Some(&scratch), &args)
+                .map_err(|error| error.to_string())?;
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if output.status.code() != Some(2)
+                || !stderr.contains("pr-summary root")
+                || !stderr.contains("is not a directory")
+                || !output.stdout.is_empty()
+            {
+                return Err(format!(
+                    "{label} root {args:?} was not refused as a non-directory: {output:?}"
+                ));
+            }
+        }
+    }
+    if scratch.join("missing").exists() || scratch.join("target").exists() {
+        return Err("refused pr-summary root still created directories".to_string());
+    }
+    Ok(())
+}
+
+#[test]
 fn pr_summary_rejects_malformed_path_flags_without_outputs() -> Result<(), String> {
     let scratch = unique_temp_workspace("pr-summary-malformed-root");
     std::fs::create_dir(&scratch).map_err(|error| error.to_string())?;

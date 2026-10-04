@@ -58,6 +58,15 @@ pub(crate) fn run_pr_summary(args: &[String]) -> Result<(), String> {
     }
     let options = parse_options(args)?;
     let repo = repo_root(&options.root)?;
+    // The selected root owns every input and output. A missing or file-typed
+    // root must refuse before any write: `create_dir_all` below would
+    // otherwise conjure the missing tree and report a summary of nothing.
+    if !repo.is_dir() {
+        return Err(format!(
+            "pr-summary root {} is not a directory; pass `--root` naming an existing repository directory",
+            options.root.display()
+        ));
+    }
     let summary = summary_text(&repo);
     let path = repo.join(PR_SUMMARY_MD);
     if options.check {
