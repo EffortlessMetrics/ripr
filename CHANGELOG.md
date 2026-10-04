@@ -169,6 +169,16 @@ are scoped or reviewed.
   about 1,150. The new command prints the same Markdown from the same
   artifacts and can be run locally against a `target/ripr` tree.
 
+- Classified seam-cache publication serializes borrowed records through a
+  bounded atomic writer. Encoded bytes are the primary single-entry/shard
+  ceiling (`RIPR_CLASSIFIED_SEAM_CACHE_SHARD_BYTES`, default 8 MiB); record
+  count remains a secondary cap. Ordinary store no longer deep-clones a shard
+  or retains the complete encoded `Vec<u8>`. One oversized record skips with
+  `skipped_oversized_record_index_*` instead of claiming a populated cache
+  (#4999). Combined-tree store after #5291 serializes borrowed envelopes
+  through the related-test table the loader expects. Cache load/decode bounds
+  remain #5124. Host-scoped store-phase RSS remains `not_established` (#3794).
+
 - LSP: the actionable-profile line-findings hover names the editor-neutral
   `diagnosticProfile` key and `[lsp] diagnostic_profile = "full"` in
   `ripr.toml`, and labels `ripr.diagnosticProfile` as the VS Code setting,

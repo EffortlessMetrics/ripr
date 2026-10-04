@@ -27,6 +27,36 @@ slash-split rewrite dropped Windows drive-relative and rooted identities.
 Paths remain the limitation-path rule: they are identities, not prose. Do not
 add a second filesystem authority in a renderer or `lsp/diagnostics.rs`.
 
+## 2026-10-03: record-count sharding is not a byte bound (#4999)
+
+`RIPR_REPO_SEAM_CACHE_LIMIT` / `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS` cap
+how many `ClassifiedSeam` records share one file. They do not cap encoded
+bytes. On `origin/main` `3fb4f1675` the sharded path still did `chunk.to_vec()`
+and `codec::encode(&_shard)` into a full `Vec<u8>`; the single-entry path did
+the same two representation classes with `seams.to_vec()`. That is the
+`cache_store` amplification previously OOM-killed around #4291 (~5.2 GB cache,
+~11.7 GB anonymous RSS). Record-count sharding can still emit one huge shard
+when records are large.
+
+The write-side repair is borrowed serde plus a bounded IO buffer into the
+existing atomic temp-file protocol, with an encoded-byte ceiling on both the
+single-entry and sharded paths. Size planning may use a same-length
+placeholder digest so planning does not retain a second encoded body.
+Generation-atomic shard names keep a failed replacement from mixing
+manifests. Load prefers any non-`Miss` single entry over a sharded
+manifest, and `publish_single_entry` currently leaves the previous
+sharded manifest in place. A parked restore therefore cannot treat
+`manifest.exists()` as “newer shards”: that leftover file is not a
+newer generation. Compare the parked-at snapshot; restore when it is
+unchanged, and refuse restore when the bytes changed or the file is
+unreadable. Load/decode auxiliary memory is a separate claim (#5124).
+A passing record-count test is not RSS proof; host-scoped 10k/self-dogfood
+store-phase RSS stays `not_established` until #3794 observes it. After
+#5291, owned envelopes serialize `classified_seams` through
+`related_test_table`. Borrowed store envelopes must use the same adapter
+(`serialize_with = related_test_table::serialize`); a sequence body is
+load-incompatible even when checksums are well-formed.
+
 ## 2026-10-03: `Path::is_dir()` is not a missing-path probe (#5101)
 
 `Path::is_dir()` is false for a missing path and for an existing file. Doctor

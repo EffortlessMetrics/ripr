@@ -46,21 +46,41 @@ fn write_with_sync(
     sync_before_publish: bool,
     error_path_policy: ErrorPathPolicy,
 ) -> Result<(), String> {
-    replace_with(path, sync_before_publish, |file| file.write_all(bytes)).map_err(|failure| {
-        let subject = error_path_policy.suffix(&failure.subject);
-        let err = failure.error;
-        match failure.stage {
-            Stage::CreateDirectory => format!("failed to create {label} directory{subject}: {err}"),
-            Stage::NoFileName => format!("atomic write path{subject} has no file name"),
-            Stage::CreateTemp => format!("failed to create {label} temp file{subject}: {err}"),
-            Stage::Fill => format!("failed to write {label} temp file{subject}: {err}"),
-            Stage::Permissions => {
-                format!("failed to preserve {label} permissions for{subject}: {err}")
-            }
-            Stage::Sync => format!("failed to fsync {label} temp file{subject}: {err}"),
-            Stage::Finalize => format!("failed to finalize {label}{subject}: {err}"),
+    replace_with(path, sync_before_publish, |file| file.write_all(bytes))
+        .map_err(|failure| map_replace_failure(failure, label, error_path_policy))
+}
+
+/// Stream `fill` into a cache entry through the same atomic temporary-file
+/// protocol as [`write_cache`], without retaining the complete payload as a
+/// `Vec<u8>` in the caller. Cache writes still skip fsync; rename remains the
+/// reader-visible publication.
+pub(crate) fn write_cache_streamed(
+    path: &Path,
+    label: &str,
+    fill: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> Result<(), String> {
+    replace_with(path, false, fill)
+        .map_err(|failure| map_replace_failure(failure, label, ErrorPathPolicy::Omit))
+}
+
+fn map_replace_failure(
+    failure: ReplaceFailure,
+    label: &str,
+    error_path_policy: ErrorPathPolicy,
+) -> String {
+    let subject = error_path_policy.suffix(&failure.subject);
+    let err = failure.error;
+    match failure.stage {
+        Stage::CreateDirectory => format!("failed to create {label} directory{subject}: {err}"),
+        Stage::NoFileName => format!("atomic write path{subject} has no file name"),
+        Stage::CreateTemp => format!("failed to create {label} temp file{subject}: {err}"),
+        Stage::Fill => format!("failed to write {label} temp file{subject}: {err}"),
+        Stage::Permissions => {
+            format!("failed to preserve {label} permissions for{subject}: {err}")
         }
-    })
+        Stage::Sync => format!("failed to fsync {label} temp file{subject}: {err}"),
+        Stage::Finalize => format!("failed to finalize {label}{subject}: {err}"),
+    }
 }
 
 /// Stream `fill` into a same-directory temporary file, then atomically

@@ -555,6 +555,17 @@ pub(crate) const CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV: &str = "RIPR_REPO_SEAM_C
 pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT: usize = 100_000;
 pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV: &str =
     "RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS";
+/// Ordinary encoded single-entry or shard ceiling. Named store-path bound for
+/// #4999 / #3794; not a process-RSS guarantee and not a load/decode bound.
+pub(crate) const CLASSIFIED_SEAM_CACHE_ENCODED_SHARD_CEILING_BYTES: usize = 8 * 1024 * 1024;
+pub(crate) const CLASSIFIED_SEAM_CACHE_ENCODED_SHARD_CEILING_ENV: &str =
+    "RIPR_CLASSIFIED_SEAM_CACHE_SHARD_BYTES";
+pub(crate) const CLASSIFIED_SEAM_CACHE_STORE_IO_BUFFER_BYTES: usize = 64 * 1024;
+const CACHE_ENVELOPE_DIGEST_DOMAIN: &str = "ripr-cache:CacheEnvelope:v1";
+const SHARDED_ENVELOPE_DIGEST_DOMAIN: &str = "ripr-cache:ShardedCacheEnvelope:v1";
+const SHARDED_MANIFEST_DIGEST_DOMAIN: &str = "ripr-cache:ShardedCacheManifest:v1";
+
+mod store;
 
 /// Environment variable that relocates the cache base directory. When set
 /// to a non-empty path, all cache reads and writes use that path as the
@@ -728,6 +739,22 @@ fn parse_positive_seam_cache_store_limit(value: &str, env_name: &str) -> Result<
         return Err(format!("{env_name} must be a positive integer"));
     }
     Ok(parsed)
+}
+
+pub(crate) fn classified_seam_cache_encoded_shard_ceiling_bytes() -> Result<usize, String> {
+    classified_seam_cache_encoded_shard_ceiling_from_env(std::env::var(
+        CLASSIFIED_SEAM_CACHE_ENCODED_SHARD_CEILING_ENV,
+    ))
+}
+
+fn classified_seam_cache_encoded_shard_ceiling_from_env(
+    value: Result<String, std::env::VarError>,
+) -> Result<usize, String> {
+    seam_cache_store_limit_from_env(
+        value,
+        CLASSIFIED_SEAM_CACHE_ENCODED_SHARD_CEILING_ENV,
+        CLASSIFIED_SEAM_CACHE_ENCODED_SHARD_CEILING_BYTES,
+    )
 }
 
 /// Aggregate cache key — every field that, when changed, must invalidate
@@ -1384,32 +1411,16 @@ impl RepoSeamFactCache {
         lexical_fallback_files: &[PathBuf],
         store_limit: usize,
     ) -> Result<CacheStoreStatus, String> {
-        if store_limit == 0 {
-            return Err("classified seam cache store limit must be positive".to_string());
-        }
-        if seams.len() > store_limit {
-            return self.store_sharded_classified_seams_with_limit(
-                key,
-                seams,
-                limit_info,
-                lexical_fallback_files,
-                store_limit,
-            );
-        }
-        std::fs::create_dir_all(&self.dir)
-            .map_err(|err| format!("create cache dir failed: {err}"))?;
-        let envelope = CacheEnvelope::new_with_fallback(
-            key.clone(),
-            seams.to_vec(),
-            limit_info.cloned(),
-            lexical_fallback_files.to_vec(),
-        );
-        let bytes = codec::encode(&envelope)?;
-        let path = self.entry_path(key);
-        crate::atomic_file::write_cache(&path, &bytes, "cache")?;
-        Ok(CacheStoreStatus {
-            label: "ok".to_string(),
-        })
+        let byte_ceiling = classified_seam_cache_encoded_shard_ceiling_bytes()?;
+        store::publish_classified_generation(
+            self,
+            key,
+            seams,
+            limit_info,
+            lexical_fallback_files,
+            store_limit,
+            byte_ceiling,
+        )
     }
 
     fn entry_path(&self, key: &RepoSeamCacheKey) -> PathBuf {
@@ -1499,7 +1510,11 @@ impl RepoSeamFactCache {
                     ),
                 };
             }
-            let shard_path = self.sharded_entry_dir(key).join(&shard.file);
+            let shard_path =
+                match resolve_sharded_cache_file(&self.sharded_entry_dir(key), &shard.file) {
+                    Ok(path) => path,
+                    Err(reason) => return CacheLoad::CorruptIgnored { reason },
+                };
             let bytes = match std::fs::read(&shard_path) {
                 Ok(bytes) => bytes,
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
@@ -1559,52 +1574,6 @@ impl RepoSeamFactCache {
             manifest.seam_limit_info,
             manifest.lexical_fallback_files,
         ))
-    }
-
-    fn store_sharded_classified_seams_with_limit(
-        &self,
-        key: &RepoSeamCacheKey,
-        seams: &[ClassifiedSeam],
-        limit_info: Option<&CachedSeamLimitInfo>,
-        lexical_fallback_files: &[PathBuf],
-        store_limit: usize,
-    ) -> Result<CacheStoreStatus, String> {
-        std::fs::create_dir_all(self.sharded_entry_dir(key))
-            .map_err(|err| format!("create sharded cache dir failed: {err}"))?;
-        let shard_count = seams.len().div_ceil(store_limit);
-        let mut shard_refs = Vec::with_capacity(shard_count);
-        for (index, chunk) in seams.chunks(store_limit).enumerate() {
-            let file = format!("shard-{index:05}.json");
-            let envelope =
-                ShardedCacheEnvelope::new(key.clone(), index, shard_count, chunk.to_vec());
-            let bytes = codec::encode_shard(&envelope)?;
-            let path = self.sharded_entry_dir(key).join(&file);
-            crate::atomic_file::write_cache(&path, &bytes, "sharded cache file")?;
-            shard_refs.push(ShardedCacheShardRef {
-                index,
-                file,
-                seams: chunk.len(),
-            });
-        }
-        let manifest = ShardedCacheManifest::new(
-            key.clone(),
-            seams.len(),
-            shard_count,
-            shard_refs,
-            limit_info.cloned(),
-            lexical_fallback_files.to_vec(),
-        );
-        let bytes = codec::encode_sharded_manifest(&manifest)?;
-        let manifest_path = self.sharded_manifest_path(key);
-        crate::atomic_file::write_cache(&manifest_path, &bytes, "sharded cache manifest")?;
-        Ok(CacheStoreStatus {
-            label: format!(
-                "sharded_ok_seams_{}_shards_{}_limit_{}",
-                seams.len(),
-                shard_count,
-                store_limit
-            ),
-        })
     }
 
     fn sharded_entry_dir(&self, key: &RepoSeamCacheKey) -> PathBuf {
@@ -2084,6 +2053,7 @@ impl CacheEnvelope {
         Self::new_with_fallback(key, classified_seams, seam_limit_info, Vec::new())
     }
 
+    #[cfg(test)]
     fn new_with_fallback(
         key: RepoSeamCacheKey,
         classified_seams: Vec<ClassifiedSeam>,
@@ -2228,6 +2198,7 @@ impl ShardedCacheManifest {
 }
 
 impl ShardedCacheEnvelope {
+    #[cfg(test)]
     fn new(
         key: RepoSeamCacheKey,
         shard_index: usize,
@@ -2274,6 +2245,91 @@ impl ShardedCacheEnvelope {
 std::thread_local! {
     // Thread-owned counters observe real codec work without interference from parallel tests.
     static INTEGRITY_WORK: std::cell::Cell<(usize, usize, usize)> = const { std::cell::Cell::new((0, 0, 0)) };
+    static INTEGRITY_VEC_HIGH_WATER: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+fn note_integrity_envelope() {
+    INTEGRITY_WORK.with(|work| {
+        let (hashes, bodies, envelopes) = work.get();
+        work.set((hashes, bodies, envelopes.saturating_add(1)));
+    });
+}
+
+#[cfg(not(test))]
+fn note_integrity_envelope() {}
+
+#[cfg(test)]
+fn record_integrity_vec_len(len: usize) {
+    INTEGRITY_VEC_HIGH_WATER.with(|water| water.set(water.get().max(len)));
+}
+
+#[cfg(not(test))]
+fn record_integrity_vec_len(_len: usize) {}
+
+#[cfg(test)]
+pub(super) fn integrity_vec_high_water() -> usize {
+    INTEGRITY_VEC_HIGH_WATER.with(std::cell::Cell::get)
+}
+
+#[cfg(test)]
+pub(super) fn reset_integrity_vec_high_water() {
+    INTEGRITY_VEC_HIGH_WATER.with(|water| water.set(0));
+}
+
+const PLACEHOLDER_PAYLOAD_DIGEST: &str =
+    "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+
+fn placeholder_payload_digest() -> String {
+    PLACEHOLDER_PAYLOAD_DIGEST.to_string()
+}
+
+fn resolve_sharded_cache_file(dir: &Path, file: &str) -> Result<PathBuf, String> {
+    let mut path = dir.to_path_buf();
+    let mut saw_component = false;
+    for component in file.split('/') {
+        if component.is_empty() || component == "." || component == ".." {
+            return Err(format!("unsafe sharded cache file {file}"));
+        }
+        if component.contains('\\') || component.contains(':') {
+            return Err(format!("unsafe sharded cache file {file}"));
+        }
+        let mut parts = Path::new(component).components();
+        if !matches!(
+            (parts.next(), parts.next()),
+            (Some(std::path::Component::Normal(_)), None)
+        ) {
+            return Err(format!("unsafe sharded cache file {file}"));
+        }
+        path.push(component);
+        saw_component = true;
+    }
+    if !saw_component {
+        return Err("sharded cache file is empty".to_string());
+    }
+    Ok(path)
+}
+
+#[derive(serde::Serialize)]
+struct ChecksummedBody<'a, T> {
+    #[serde(flatten)]
+    body: &'a T,
+    payload_digest: String,
+}
+
+fn encode_checksummed_pretty_to_writer<T: serde::Serialize, W: std::io::Write>(
+    body: &T,
+    payload_digest: String,
+    writer: W,
+) -> Result<(), String> {
+    serde_json::to_writer_pretty(
+        writer,
+        &ChecksummedBody {
+            body,
+            payload_digest,
+        },
+    )
+    .map_err(|err| format!("encode checksummed cache body failed: {err}"))
 }
 
 /// Unkeyed checksum integrity does not authenticate a writer who can recompute the digest.
@@ -2311,28 +2367,17 @@ fn encode_integrity_body<T: serde::Serialize>(
     body: &T,
     payload_digest: String,
 ) -> Result<Vec<u8>, String> {
-    #[derive(serde::Serialize)]
-    struct ChecksummedBody<'a, T> {
-        #[serde(flatten)]
-        body: &'a T,
-        payload_digest: String,
-    }
-    #[cfg(test)]
-    INTEGRITY_WORK.with(|work| {
-        let (hashes, bodies, envelopes) = work.get();
-        work.set((hashes, bodies, envelopes.saturating_add(1)));
-    });
-    serde_json::to_vec_pretty(&ChecksummedBody {
-        body,
-        payload_digest,
-    })
-    .map_err(|err| format!("encode checksummed cache body failed: {err}"))
+    note_integrity_envelope();
+    let mut bytes = Vec::new();
+    encode_checksummed_pretty_to_writer(body, payload_digest, &mut bytes)?;
+    record_integrity_vec_len(bytes.len());
+    Ok(bytes)
 }
 impl CacheEnvelope {
     /// Unsigned typed body binds identity and all serialized served fields in fixed order.
     /// Nested serde-skipped derived state is excluded by the existing serialization contract.
     fn expected_digest(&self) -> Result<String, String> {
-        semantic_body_digest("ripr-cache:CacheEnvelope:v1", self)
+        semantic_body_digest(CACHE_ENVELOPE_DIGEST_DOMAIN, self)
     }
     fn validate_integrity(&self) -> Result<(), String> {
         let expected = self.expected_digest()?;
@@ -2364,7 +2409,7 @@ impl ShardedCacheManifest {
     /// Unsigned typed body binds identity and all serialized served fields in fixed order.
     /// Nested serde-skipped derived state is excluded by the existing serialization contract.
     fn expected_digest(&self) -> Result<String, String> {
-        semantic_body_digest("ripr-cache:ShardedCacheManifest:v1", self)
+        semantic_body_digest(SHARDED_MANIFEST_DIGEST_DOMAIN, self)
     }
     fn validate_integrity(&self) -> Result<(), String> {
         let expected = self.expected_digest()?;
@@ -2380,7 +2425,7 @@ impl ShardedCacheEnvelope {
     /// Unsigned typed body binds identity and all serialized served fields in fixed order.
     /// Nested serde-skipped derived state is excluded by the existing serialization contract.
     fn expected_digest(&self) -> Result<String, String> {
-        semantic_body_digest("ripr-cache:ShardedCacheEnvelope:v1", self)
+        semantic_body_digest(SHARDED_ENVELOPE_DIGEST_DOMAIN, self)
     }
     fn validate_integrity(&self) -> Result<(), String> {
         let expected = self.expected_digest()?;
@@ -2419,6 +2464,7 @@ mod codec {
         ShardedCacheManifest,
     };
 
+    #[cfg(test)]
     pub(super) fn encode(envelope: &CacheEnvelope) -> Result<Vec<u8>, String> {
         super::encode_integrity_body(envelope, envelope.expected_digest()?)
     }
@@ -2427,6 +2473,7 @@ mod codec {
         serde_json::from_slice(bytes).map_err(|err| format!("decode failed: {err}"))
     }
 
+    #[cfg(test)]
     pub(super) fn encode_sharded_manifest(
         manifest: &ShardedCacheManifest,
     ) -> Result<Vec<u8>, String> {
@@ -2438,6 +2485,7 @@ mod codec {
             .map_err(|err| format!("decode sharded manifest failed: {err}"))
     }
 
+    #[cfg(test)]
     pub(super) fn encode_shard(envelope: &ShardedCacheEnvelope) -> Result<Vec<u8>, String> {
         super::encode_integrity_body(envelope, envelope.expected_digest()?)
     }
@@ -4302,7 +4350,7 @@ mod tests {
             return Err("edited manifest provenance must reject complete shard set".to_owned());
         }
         std::fs::write(&manifest, original_manifest).map_err(|err| err.to_string())?;
-        let shard = cache.sharded_entry_dir(&key).join("shard-00000.json");
+        let shard = cache.sharded_shard_path(&key, 0)?;
         let original = std::fs::read(&shard).map_err(|err| err.to_string())?;
         edit_integrity_payload(&shard, "classified_seams")?;
         if !matches!(
@@ -4543,10 +4591,7 @@ mod tests {
                     }
                     if sharded {
                         cache.store_classified_seams_with_limit(&key, &seams, None, 1)?;
-                        write_invalid_integrity(
-                            &cache.sharded_entry_dir(&key).join("shard-00001.json"),
-                            digest,
-                        )?;
+                        write_invalid_integrity(&cache.sharded_shard_path(&key, 1)?, digest)?;
                         if !matches!(
                             cache.load_classified_seams_with_fallback(&key),
                             CacheLoad::CorruptIgnored { .. }
@@ -4823,16 +4868,16 @@ mod tests {
         );
         assert!(
             cache
-                .sharded_entry_dir(&key)
-                .join("shard-00000.json")
-                .exists(),
+                .sharded_shard_path(&key, 0)
+                .ok()
+                .is_some_and(|path| path.exists()),
             "sharded cache store should write the first shard"
         );
         assert!(
             cache
-                .sharded_entry_dir(&key)
-                .join("shard-00001.json")
-                .exists(),
+                .sharded_shard_path(&key, 1)
+                .ok()
+                .is_some_and(|path| path.exists()),
             "sharded cache store should write the second shard"
         );
 
@@ -5017,7 +5062,7 @@ mod tests {
         cache
             .store_classified_seams_with_limit(&key, &seams, None, 1)
             .map_err(|err| format!("large classified seam cache should shard: {err}"))?;
-        std::fs::remove_file(cache.sharded_entry_dir(&key).join("shard-00001.json"))
+        std::fs::remove_file(cache.sharded_shard_path(&key, 1)?)
             .map_err(|err| format!("remove shard fixture: {err}"))?;
 
         match cache.load_classified_seams(&key) {

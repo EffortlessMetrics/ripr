@@ -4273,8 +4273,9 @@ Field contract:
   `lane1_repo_exposure_large_cache_preflight_skip` with `run_status =
   "limited_large_cache_skip"`, `downstream_consumable = false`, and a repair
   route through `cargo xtask cache report` and `cargo xtask cache gc --dry-run`.
-  Current repo seam cache writes entries larger than
-  `RIPR_REPO_SEAM_CACHE_LIMIT` as bounded shard files under `target/ripr/cache`.
+  Current repo seam cache writes entries that exceed the encoded-byte ceiling
+  (`RIPR_CLASSIFIED_SEAM_CACHE_SHARD_BYTES`) or the secondary record cap
+  (`RIPR_REPO_SEAM_CACHE_LIMIT`) as bounded shard files under `target/ripr/cache`.
   Older audit artifacts or older cache-store implementations may still report
   `lane1_repo_exposure_cache_store_skipped_large_entry` when the live
   repo-exposure run emitted complete evidence but skipped a full classified

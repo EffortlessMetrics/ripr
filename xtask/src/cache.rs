@@ -347,7 +347,7 @@ fn build_shard_summary(files: &[CacheFile]) -> CacheShardSummary {
         if !is_manifest && !is_shard {
             continue;
         }
-        let Some(set_path) = file.relative_path.parent().map(Path::to_path_buf) else {
+        let Some(set_path) = shard_set_path(&file.relative_path, is_shard) else {
             continue;
         };
         let builder = builders
@@ -426,6 +426,44 @@ fn build_shard_summary(files: &[CacheFile]) -> CacheShardSummary {
     summary
 }
 
+/// The shard set a cache file belongs to. A manifest names its own
+/// directory. A shard sits either beside the manifest (pre-RIPR-SPEC-0222
+/// layout, `<entry>/shard-NNNNN.json`) or in a publication generation
+/// directory (`<entry>/g<publication-id>/shard-NNNNN.json`); both belong to
+/// `<entry>`, so the report compares them with the manifest's `file` entries.
+fn shard_set_path(relative_path: &Path, is_shard: bool) -> Option<PathBuf> {
+    let parent = relative_path.parent()?;
+    if is_shard
+        && parent
+            .file_name()
+            .is_some_and(|name| is_generation_dir_name(&name.to_string_lossy()))
+        && let Some(entry) = parent.parent()
+    {
+        return Some(entry.to_path_buf());
+    }
+    Some(parent.to_path_buf())
+}
+
+/// `g<pid>-<nanos>-<seq>`, as written by the classified-cache store.
+fn is_generation_dir_name(name: &str) -> bool {
+    name.strip_prefix('g').is_some_and(|rest| {
+        !rest.is_empty()
+            && rest.chars().any(|c| c.is_ascii_digit())
+            && rest.chars().all(|c| c.is_ascii_digit() || c == '-')
+    })
+}
+
+/// A shard's name relative to its set, with `/` separators, matching the
+/// manifest's `file` spelling on every host.
+fn shard_key(set_path: &Path, shard: &Path) -> Option<String> {
+    let relative = shard.strip_prefix(set_path).ok()?;
+    let parts = relative
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    (!parts.is_empty()).then(|| parts.join("/"))
+}
+
 fn cache_shard_set_from_builder(mut builder: CacheShardSetBuilder) -> CacheShardSet {
     builder.shards.sort_by(|left, right| {
         left.relative_path
@@ -444,8 +482,7 @@ fn cache_shard_set_from_builder(mut builder: CacheShardSetBuilder) -> CacheShard
     let actual_shards = builder
         .shards
         .iter()
-        .filter_map(|shard| shard.relative_path.file_name())
-        .map(|name| name.to_string_lossy().into_owned())
+        .filter_map(|shard| shard_key(&builder.relative_path, &shard.relative_path))
         .collect::<BTreeSet<_>>();
 
     let mut manifest_declared_shards = None;
@@ -1090,7 +1127,8 @@ mod tests {
     use super::{
         GcOptions, ShardSetStatus, build_cache_report, build_cache_report_from_env, build_gc_plan,
         build_gc_plan_from_env, cache_gc_markdown, cache_report_json, cache_report_markdown,
-        cache_root_from_env, deletion_path, is_recognized_cache_root, parse_gc_options,
+        cache_root_from_env, deletion_path, is_generation_dir_name, is_recognized_cache_root,
+        parse_gc_options,
     };
     use ripr::analysis::cache_layer_names;
     use std::fs;
@@ -1229,6 +1267,73 @@ mod tests {
 
         cleanup(root)?;
         Ok(())
+    }
+
+    #[test]
+    fn cache_report_groups_generation_shards_with_their_manifest() -> Result<(), String> {
+        let root = temp_root("sharded-generation-report")?;
+        let entry =
+            root.join("target/ripr/cache/repo-seam-facts-sharded/0.2/0.1/generation-cache-key");
+        write_text(
+            &entry.join("manifest.json"),
+            r#"{
+  "total_seams": 3,
+  "shard_count": 2,
+  "shards": [
+    { "index": 0, "file": "g41-1700000000-7/shard-00000.json", "seams": 2 },
+    { "index": 1, "file": "g41-1700000000-7/shard-00001.json", "seams": 1 }
+  ]
+}"#,
+        )?;
+        write_bytes(&entry.join("g41-1700000000-7/shard-00000.json"), 11)?;
+        write_bytes(&entry.join("g41-1700000000-7/shard-00001.json"), 13)?;
+
+        let report = build_cache_report(&root)?;
+        assert_eq!(report.sharded_cache.shard_sets, 1);
+        assert_eq!(report.sharded_cache.complete_sets, 1);
+        assert_eq!(report.sharded_cache.orphan_sets, 0);
+        assert_eq!(report.sharded_cache.incomplete_sets, 0);
+        assert_eq!(report.sharded_cache.shard_files, 2);
+        let set = report
+            .sharded_cache
+            .largest_sets
+            .first()
+            .ok_or_else(|| "generation shard set should be reported".to_string())?;
+        assert!(set.relative_path.ends_with("generation-cache-key"));
+        assert_eq!(set.status, ShardSetStatus::Complete);
+        assert_eq!(set.bytes, 24 + set.manifest_bytes);
+
+        // A leaked generation the manifest no longer names is still visible,
+        // attributed to its entry rather than reported as a separate orphan set.
+        write_bytes(&entry.join("g41-1600000000-3/shard-00000.json"), 17)?;
+        let report = build_cache_report(&root)?;
+        assert_eq!(report.sharded_cache.shard_sets, 1);
+        assert_eq!(report.sharded_cache.orphan_sets, 0);
+        assert_eq!(report.sharded_cache.incomplete_sets, 1);
+        let leaked = report
+            .sharded_cache
+            .problem_sets
+            .first()
+            .ok_or_else(|| "leaked generation should be a problem set".to_string())?;
+        assert_eq!(leaked.status, ShardSetStatus::Incomplete);
+        assert_eq!(
+            leaked.extra_shards,
+            vec!["g41-1600000000-3/shard-00000.json".to_string()]
+        );
+        assert!(leaked.missing_shards.is_empty());
+
+        cleanup(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn generation_dir_names_require_the_store_spelling() {
+        assert!(is_generation_dir_name("g41-1700000000-7"));
+        assert!(is_generation_dir_name("g7"));
+        assert!(!is_generation_dir_name("g"));
+        assert!(!is_generation_dir_name("g-"));
+        assert!(!is_generation_dir_name("generation-cache-key"));
+        assert!(!is_generation_dir_name("complete-cache-key"));
     }
 
     #[test]

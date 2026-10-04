@@ -30,16 +30,45 @@ use super::test_grip_evidence::TestGripEvidence;
 use crate::domain::StageState;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
+use std::cell::Cell;
+#[cfg(test)]
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 /// A seam paired with its evidence and the resulting grip class.
 /// Crate-private; the report PR consumes `Vec<ClassifiedSeam>` directly.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct ClassifiedSeam {
     pub(crate) seam: RepoSeam,
     pub(crate) evidence: TestGripEvidence,
     pub(crate) class: SeamGripClass,
+}
+
+#[cfg(test)]
+thread_local! {
+    static CLASSIFIED_SEAM_CLONES: Cell<usize> = const { Cell::new(0) };
+}
+
+impl Clone for ClassifiedSeam {
+    fn clone(&self) -> Self {
+        #[cfg(test)]
+        CLASSIFIED_SEAM_CLONES.with(|count| count.set(count.get().saturating_add(1)));
+        Self {
+            seam: self.seam.clone(),
+            evidence: self.evidence.clone(),
+            class: self.class,
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn classified_seam_clone_count() -> usize {
+    CLASSIFIED_SEAM_CLONES.with(Cell::get)
+}
+
+#[cfg(test)]
+pub(crate) fn reset_classified_seam_clone_count() {
+    CLASSIFIED_SEAM_CLONES.with(|count| count.set(0));
 }
 
 /// Compact per-class count summary for repo-scoped consumers that only

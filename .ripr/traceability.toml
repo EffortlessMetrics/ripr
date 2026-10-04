@@ -12082,3 +12082,44 @@ outputs = [
 metrics = [
   "unit_test_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0222"
+name = "Byte-bounded classified-cache store publication"
+spec = "docs/specs/RIPR-SPEC-0222-byte-bounded-classified-cache-store.md"
+tests = [
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::borrowed_single_entry_matches_owned_codec_bytes",
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::borrowed_shard_matches_owned_codec_bytes",
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::borrowed_writers_match_owned_bytes_with_shared_related_tests",
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::below_exactly_and_one_byte_over_the_encoded_ceiling",
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::variable_size_records_force_byte_shards_when_record_count_would_not",
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::many_small_records_empty_and_multi_shard_round_trip",
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::store_high_water_is_independent_of_total_shard_payload",
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::oversized_record_skips_without_claiming_a_populated_cache",
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::failed_replacement_keeps_the_previous_valid_generation",
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::injected_fill_failure_does_not_admit_a_partial_generation",
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::failed_sharded_replace_restores_the_previous_single_entry",
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::parked_restore_does_not_replace_a_newer_single_entry",
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::parked_restore_does_not_hide_a_newer_sharded_manifest",
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::parked_restore_keeps_a_stale_leftover_manifest_from_blocking_restore",
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::cancellation_before_manifest_preserves_the_prior_generation",
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::encoded_byte_ceiling_defaults_and_rejects_invalid_env",
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::publication_ids_stay_unique_across_concurrent_calls",
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::size_probe_stops_once_the_encoded_ceiling_is_exceeded",
+  "crates/ripr/src/analysis/seam_cache/store.rs::tests::sharded_cache_paths_reject_drive_prefix_and_parent_components",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/seam_cache/store.rs",
+  "crates/ripr/src/analysis/seam_cache.rs",
+  "crates/ripr/src/atomic_file.rs",
+  "crates/ripr/src/analysis/seam_classification.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0222-byte-bounded-classified-cache-store.md",
+  "docs/CONFIGURATION.md",
+]
+metrics = [
+  "classified_cache_encoded_shard_ceiling_bytes",
+  "classified_cache_store_io_buffer_bytes",
+]
