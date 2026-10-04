@@ -321,4 +321,6 @@ unsupported or discovery-only requested version is answered with
 `2025-11-25`, or with `server/discover`, where every request carries
 `io.modelcontextprotocol/protocolVersion` and
 `io.modelcontextprotocol/clientCapabilities` in `params._meta` and an
-unsupported version is refused.
+unsupported version is refused. After `initialize`, `ping` returns an empty
+result even when `params._meta` carries that handshake shape; after
+`server/discover`, `ping` remains method-not-found.

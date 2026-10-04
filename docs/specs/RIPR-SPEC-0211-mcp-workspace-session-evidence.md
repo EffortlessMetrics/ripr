@@ -13,6 +13,9 @@ Linked issues:
 - #5267 (every pre-initialize typed-shape violation recovers with the
   SDK's Invalid Request answer on the same connection instead of
   terminating the server process)
+- #6022 (post-initialize `ping` with handshake `params._meta` returns an
+  empty result; pre-initialize ping+_meta and discovery-lifecycle ping
+  rejection stay with #5267 / ADR 0022)
 - #3087 (parent standard MCP server epic)
 - #3088 (transport/discovery/read-only boundary slice; this slice keeps its
   SDK-owned dispatch and bounded framing)
@@ -65,6 +68,16 @@ official SDK transport:
   session for one message; a normal `initialize` still completes afterwards,
   and stdin EOF remains the clean exit. Each attempt consumes at least one
   inbound frame, so recovery always makes progress and never spins.
+- After a successful `initialize` handshake, `ping` is routed by method
+  name. A request whose `params._meta` carries the handshake fields this
+  server requires pre-init (`io.modelcontextprotocol/protocolVersion`,
+  `io.modelcontextprotocol/clientCapabilities`,
+  `io.modelcontextprotocol/clientInfo`) is answered with an empty result
+  `{}`, the same as `ping` with empty `params` or omitted `params`. That
+  `_meta` shape must not be read as a `2026-07-28` discovery-lifecycle
+  request and must not produce `-32601` method-not-found. Pre-initialize
+  ping with the same `_meta` remains the handshake path (#5267). After
+  `server/discover`, `ping` stays method-not-found.
 - `ripr_workspace_status` returns the startup workspace block (root
   discovery, configuration presence, trust, authority — all unchanged from
   #3088) plus a `ripr-mcp-session-v1` session block: current desired input
@@ -221,7 +234,9 @@ official SDK transport:
 - `crates/ripr/src/mcp/protocol.rs::tests` + `server_tests.rs` —
   descriptor and dispatch contracts.
 - `crates/ripr/tests/mcp_sdk.rs`, `crates/ripr/tests/mcp_stdio.rs` —
-  hosted wire interop controls.
+  hosted wire interop controls, including
+  `post_initialize_ping_with_handshake_meta_returns_an_empty_result`
+  (empty-params ping is not sufficient proof).
 
 ## Implementation Mapping
 
@@ -230,7 +245,7 @@ official SDK transport:
 | `crates/ripr/src/mcp/workspace.rs` | session state machine, snapshot binding, typed failures, bounded documents, `run_check` bridge to `app::check_workspace` |
 | `crates/ripr/src/mcp/gaps.rs` | canonical item projection, budget items, resource-URI parsing |
 | `crates/ripr/src/mcp/protocol.rs` | tool/resource descriptors, schemas, instructions, status document |
-| `crates/ripr/src/mcp/server.rs` | SDK adapter dispatch, refresh single-flight, resource reads |
+| `crates/ripr/src/mcp/server.rs` | SDK adapter dispatch, initialize-session ping-by-method, refresh single-flight, resource reads |
 | `crates/ripr/src/mcp/transport.rs` + `workspace_status.rs` | retained canonical root for in-process refresh (never serialized) |
 | `docs/interop/mcp.md`, `docs/adr/0022` (Slice B note) | operator-facing surface and authority boundary record |
 | `docs/specs/README.md` + `.ripr/traceability.toml` | spec registration and test traceability |

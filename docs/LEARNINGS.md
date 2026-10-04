@@ -3,6 +3,19 @@
 This log captures repo knowledge that should survive individual PRs and chat
 sessions. It is intentionally short and actionable.
 
+## 2026-10-04: Initialize-session `ping` is the method name, not `params._meta` (#6022)
+
+Pinned `rmcp` 3.5.0 answers pre-init `ping` in the handshake loop (any
+params, including handshake `_meta`) with `{}`. After `initialize`, the
+same SDK classifies a ping whose `params._meta` names `2026-07-28` as a
+discovery-lifecycle request and returns `-32601` with message `"ping"`.
+Empty-params ping on that session still succeeds, so that control is not
+proof. Route initialize-session ping from the negotiated peer version
+(`has_initialize`), not `RequestContext::protocol_version()` — that helper
+prefers request `_meta` over the session. Do not change
+`server/discover` ping rejection. Do not treat this as a `#5267` pre-init
+repair.
+
 ## 2026-10-04: `help --json` must project the typed 0/2/3 exit contract (#5066)
 
 `stop_states` is free-text. An orchestrator that branches on process status

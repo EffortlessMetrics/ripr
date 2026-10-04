@@ -1,6 +1,6 @@
 use super::{
     framing::{FrameRead, FrameReader},
-    server::McpServer,
+    server::InitializeSessionService,
     writer::FrameWriter,
 };
 use crate::workspace_status::WorkspaceStatus;
@@ -288,7 +288,7 @@ where
     // least one frame, so the loop always makes progress toward a real
     // initialize, a valid-meta request, or stdin EOF.
     loop {
-        let server = McpServer::new(status.clone(), analysis_root.clone())
+        let server = InitializeSessionService::new(status.clone(), analysis_root.clone())
             .map_err(|_error| "MCP status projection failed".to_owned())?;
         let transport = BoundedTransport {
             reader: reader.clone(),
