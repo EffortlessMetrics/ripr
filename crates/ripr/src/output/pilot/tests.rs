@@ -252,6 +252,166 @@ fn pilot_ranking_uses_evidence_tie_breakers_then_stable_location() {
     assert_eq!(display_path(ranked[3].seam.file()), "src/d.rs");
 }
 
+/// A seam of `owner` in `file`; the shared `seam` helper fixes one owner.
+fn classified_in_owner(
+    class: SeamGripClass,
+    file: &str,
+    owner: &str,
+    line: usize,
+) -> ClassifiedSeam {
+    let mut entry = classified_with(class, file, line, Vec::new(), Vec::new());
+    entry.seam = RepoSeam::new(
+        file,
+        owner,
+        SeamKind::PredicateBoundary,
+        line * 10,
+        line,
+        "amount >= discount_threshold",
+        RequiredDiscriminator::BoundaryValue {
+            description: "amount >= discount_threshold".to_string(),
+        },
+        ExpectedSink::ReturnValue,
+    );
+    entry.evidence.seam_id = entry.seam.id().clone();
+    entry
+}
+
+fn ranked_places(ranked: &[&ClassifiedSeam]) -> Vec<(String, usize)> {
+    ranked
+        .iter()
+        .map(|entry| (entry.seam.owner().to_string(), entry.seam.display_line()))
+        .collect()
+}
+
+#[test]
+fn pilot_ranking_takes_one_seam_per_owner_before_a_second() {
+    // #5770: three adjacent seams of one function sorted ahead of another
+    // function's seam by location alone; each owner now gets one pick first.
+    let entries = [
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 10),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 11),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 12),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::as_str", 40),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/b.rs", "b::parse", 5),
+    ];
+
+    assert_eq!(
+        ranked_places(&top_actionable_seams(&entries, 3)),
+        [
+            ("a::clone".to_string(), 10),
+            ("a::as_str".to_string(), 40),
+            ("b::parse".to_string(), 5),
+        ]
+    );
+    // Past one round, the owner's remaining seams follow in location order.
+    assert_eq!(
+        ranked_places(&top_actionable_seams(&entries, 5))[3..],
+        [("a::clone".to_string(), 11), ("a::clone".to_string(), 12)]
+    );
+}
+
+#[test]
+fn pilot_ranking_spreads_owners_without_crossing_class_order() {
+    // The same owner name in another file is another function.
+    let entries = [
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "fmt", 1),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "fmt", 2),
+        classified_in_owner(SeamGripClass::Ungripped, "src/b.rs", "parse", 1),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/c.rs", "fmt", 1),
+    ];
+
+    let ranked = top_actionable_seams(&entries, 4);
+    assert_eq!(
+        ranked
+            .iter()
+            .map(|entry| (display_path(entry.seam.file()), entry.seam.display_line()))
+            .collect::<Vec<_>>(),
+        [
+            ("src/a.rs".to_string(), 1),
+            ("src/c.rs".to_string(), 1),
+            ("src/a.rs".to_string(), 2),
+            ("src/b.rs".to_string(), 1),
+        ]
+    );
+}
+
+#[test]
+fn pilot_ranking_counts_owner_rounds_across_classes() {
+    // A function already listed for a weak seam does not get a fresh first
+    // pick among the opaque ones: the other function's two opaque seams lead.
+    let entries = [
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/z.rs", "z::fmt", 1),
+        classified_in_owner(SeamGripClass::Opaque, "src/z.rs", "z::fmt", 9),
+        classified_in_owner(SeamGripClass::Opaque, "src/b.rs", "b::parse", 1),
+        classified_in_owner(SeamGripClass::Opaque, "src/b.rs", "b::parse", 2),
+    ];
+
+    assert_eq!(
+        ranked_places(&top_actionable_seams(&entries, 4)),
+        [
+            ("z::fmt".to_string(), 1),
+            ("b::parse".to_string(), 1),
+            ("b::parse".to_string(), 2),
+            ("z::fmt".to_string(), 9),
+        ]
+    );
+}
+
+#[test]
+fn pilot_summary_md_names_unlisted_seams_on_an_owners_first_pick_only() {
+    // a::clone is listed twice (rounds 0 and 1) with two seams left over.
+    let entries = [
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 10),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 11),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 12),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 13),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/b.rs", "b::parse", 5),
+    ];
+    let artifacts = pilot_artifacts();
+    let mut context = pilot_context(&artifacts);
+    context.max_seams = 3;
+    let md = render_pilot_summary_md(&entries, context);
+
+    let note = "   - Also in this function: 2 more actionable seams not listed here\n";
+    assert_eq!(md.matches(note).count(), 1, "{md}");
+    // In the ranked list, the note sits inside entry 1 (a::clone at line 10),
+    // before entry 2 (b::parse) and entry 3 (a::clone's second pick).
+    let ranked = md.find("## Ranked Seams").map_or("", |start| &md[start..]);
+    let entry = |prefix: &str| ranked.find(prefix).unwrap_or(usize::MAX);
+    let at = ranked.find(note).unwrap_or(usize::MAX);
+    assert!(ranked.contains("src/a.rs:10"), "{md}");
+    assert!(entry("1. `") < at && at < entry("2. `"), "{md}");
+    assert!(entry("3. `") > entry("2. `"), "{md}");
+}
+
+#[test]
+fn pilot_summary_md_counts_an_owners_unlisted_seams_once() {
+    let entries = [
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 10),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 11),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 12),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/b.rs", "b::parse", 5),
+        // Solved seams are not "more to do" in the function.
+        classified_in_owner(SeamGripClass::StronglyGripped, "src/b.rs", "b::parse", 6),
+    ];
+    let artifacts = pilot_artifacts();
+    let mut context = pilot_context(&artifacts);
+    context.max_seams = 2;
+    let md = render_pilot_summary_md(&entries, context);
+
+    assert_eq!(
+        md.matches("   - Also in this function: 2 more actionable seams not listed here\n")
+            .count(),
+        1,
+        "{md}"
+    );
+    assert!(!md.contains("more actionable seam not listed"), "{md}");
+
+    context.max_seams = 5;
+    let md = render_pilot_summary_md(&entries, context);
+    assert!(!md.contains("Also in this function"), "{md}");
+}
+
 #[test]
 fn pilot_ranking_excludes_solved_governed_classes() {
     let strong = classified_with(

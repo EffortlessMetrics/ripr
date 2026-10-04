@@ -2,6 +2,8 @@ use crate::analysis::ClassifiedSeam;
 use crate::analysis::seams::SeamGripClass;
 use crate::output::agent_seam_packets::suggested_assertion_for_classified_seam;
 use crate::output::path::display_path;
+use std::collections::BTreeMap;
+use std::path::Path;
 
 pub(crate) fn top_actionable_seams(
     classified: &[ClassifiedSeam],
@@ -17,8 +19,52 @@ pub(crate) fn top_actionable_seams(
     // warm `ripr pilot` on a 900-seam crate (#5348). Compute it once per
     // seam; `sort_by_cached_key` is stable, like the `sort_by` it replaces.
     actionable.sort_by_cached_key(|entry| RankKey::of(entry));
+    spread_across_owners(&mut actionable);
     actionable.truncate(max_seams);
     actionable
+}
+
+/// Within each actionable class, rank every function's first seam ahead of
+/// any function's second (#5770). Adjacent seams of one owner share its
+/// tests, so when those tests are good every one of them is wrong together;
+/// ranked by location alone they filled the top ten (8 of semver's 10 sat in
+/// two `Identifier` methods). The class still leads, so a weak seam is never
+/// pushed below an unknown one, and `RankKey` order holds inside each round.
+///
+/// Rounds count across classes on purpose: a function already listed for a
+/// weak seam does not get a fresh first pick among the unknown ones, so one
+/// function cannot claim a slot per class.
+fn spread_across_owners(ranked: &mut Vec<&ClassifiedSeam>) {
+    let mut taken: BTreeMap<(&Path, &str), usize> = BTreeMap::new();
+    let mut keyed = ranked
+        .drain(..)
+        .map(|entry| {
+            let round = taken
+                .entry((entry.seam.file(), entry.seam.owner()))
+                .or_default();
+            let key = (class_rank(entry.class), *round);
+            *round += 1;
+            (key, entry)
+        })
+        .collect::<Vec<_>>();
+    // Stable, so seams with the same class and round keep `RankKey` order.
+    keyed.sort_by_key(|(key, _)| *key);
+    ranked.extend(keyed.into_iter().map(|(_, entry)| entry));
+}
+
+/// Actionable seams that share an owning function with `entry`, itself
+/// included, so a renderer can say how many more a ranked seam stands for.
+/// Pass the same slice `top_actionable_seams` ranked: the renderer subtracts
+/// the listed seams from this count, so a narrower slice would undercount.
+pub(super) fn actionable_in_owner(classified: &[ClassifiedSeam], entry: &ClassifiedSeam) -> usize {
+    classified
+        .iter()
+        .filter(|other| {
+            class_rank(other.class).is_some()
+                && other.seam.file() == entry.seam.file()
+                && other.seam.owner() == entry.seam.owner()
+        })
+        .count()
 }
 
 /// The pilot ranking order, ascending: actionable class first, then seams
