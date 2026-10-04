@@ -3,9 +3,11 @@
 //! RIPR-SPEC-0190 / issue #4825 (command-discovery C4): `ripr help --json`
 //! projects the accepted typed authorities — the C1 command catalog, the C2
 //! metadata table, and the C3 workflow catalog — into one strict, byte-stable
-//! JSON document. It serializes existing catalog authority only: it never
-//! parses human help, executes commands, inspects a repository, or strengthens
-//! any command or workflow claim.
+//! JSON document. Issue #5066 adds the typed per-command 0/2/3 exit contract
+//! so an orchestrator can branch without scraping `stop_states`. It
+//! serializes existing catalog authority only: it never parses human help,
+//! executes commands, inspects a repository, or strengthens any command or
+//! workflow claim.
 //!
 //! Determinism and identity law (issue #4825): identical catalog inputs
 //! produce byte-identical JSON across equivalent checkout roots, terminal
@@ -23,15 +25,18 @@ use sha2::{Digest, Sha256};
 use crate::cli::command_catalog::{
     CATALOG_CONTRACT_VERSION, CommandCatalogEntry, catalog, catalog_violations,
 };
-use crate::cli::command_metadata::{CommandMetadata, metadata, metadata_violations};
+use crate::cli::command_metadata::{
+    CommandExitContract, CommandMetadata, metadata, metadata_violations,
+};
 use crate::cli::workflow_catalog::{
     WorkflowCatalogEntry, WorkflowNext, workflow_catalog, workflow_catalog_violations,
 };
+use crate::output::gate::{GATE_STATUS_BLOCKED, GATE_STATUS_CONFIG_ERROR};
 
 /// Schema version of the `help --json` document. Bump on any material shape
 /// change to the DTO; the value is pinned by unit tests and documented in
 /// `docs/OUTPUT_SCHEMA.md`.
-pub(crate) const HELP_JSON_SCHEMA_VERSION: u64 = 1;
+pub(crate) const HELP_JSON_SCHEMA_VERSION: u64 = 2;
 
 /// Top-level limitations of the machine document: what governs its identity
 /// and what a consumer must not infer from it.
@@ -39,6 +44,7 @@ const DOCUMENT_LIMITATIONS: &[&str] = &[
     "ordering is explicit: commands and workflows sort by identity key, and every embedded string list is sorted",
     "the catalog digest covers the sorted command rows, workflow rows, and catalog contract version only; product version, human help wording, and renderer layout are excluded",
     "the document is advisory discovery data; it does not prove command outcomes or workflow success",
+    "per-command exit objects name the typed 0/2/3 process contract from docs/EXIT_CODES.md; they do not prove a given invocation's status",
 ];
 
 /// Explicit non-claims: the discovery route touches nothing outside the
@@ -84,6 +90,7 @@ struct CommandJsonRow {
     example: &'static str,
     next_routes: Vec<&'static str>,
     stop_states: Vec<&'static str>,
+    exit: ExitJson,
     limitations: &'static str,
     not_applicable_reason: Option<&'static str>,
 }
@@ -113,6 +120,96 @@ struct EffectsJson {
 struct OutputsJson {
     default: Option<&'static str>,
     optional: Vec<&'static str>,
+}
+
+/// Per-command process-exit contract. Numeric codes are the implemented
+/// [`crate::cli::CommandError`] mapping; `kind` names the command-specific
+/// branching an orchestrator must make without scraping `stop_states`.
+#[derive(Serialize, Debug)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum ExitJson {
+    CompletedOrFailed {
+        completed: i32,
+        could_not_complete: i32,
+    },
+    AdvisoryFindings {
+        completed: i32,
+        could_not_complete: i32,
+        findings_including_exposed: i32,
+    },
+    GateEvaluate {
+        completed: i32,
+        config_error: i32,
+        blocked: i32,
+    },
+    DecisionOrRefusal {
+        completed: i32,
+        could_not_complete: i32,
+        decision_or_refusal: i32,
+        stdout_on_refusal: &'static str,
+    },
+    ReceiptCheck {
+        completed: i32,
+        could_not_complete: i32,
+        orphan_or_gap_mismatch: i32,
+    },
+}
+
+const fn str_bytes_eq(left: &str, right: &str) -> bool {
+    let left = left.as_bytes();
+    let right = right.as_bytes();
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut index = 0;
+    while index < left.len() {
+        if left[index] != right[index] {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
+/// `ExitJson::GateEvaluate` serde keys must be the producer status tokens
+/// `output::gate::top_level_status` writes and the CLI maps onto `CommandError`.
+const GATE_EXIT_JSON_KEYS_MATCH_STATUS_TOKENS: () = {
+    assert!(str_bytes_eq(GATE_STATUS_CONFIG_ERROR, "config_error"));
+    assert!(str_bytes_eq(GATE_STATUS_BLOCKED, "blocked"));
+};
+const _: () = GATE_EXIT_JSON_KEYS_MATCH_STATUS_TOKENS;
+
+fn exit_json(contract: CommandExitContract) -> ExitJson {
+    use crate::cli::{EXIT_COMPLETED, EXIT_COULD_NOT_COMPLETE, EXIT_DECISION_OR_REFUSAL};
+    match contract {
+        CommandExitContract::CompletedOrFailed => ExitJson::CompletedOrFailed {
+            completed: EXIT_COMPLETED,
+            could_not_complete: EXIT_COULD_NOT_COMPLETE,
+        },
+        CommandExitContract::AdvisoryFindings => ExitJson::AdvisoryFindings {
+            completed: EXIT_COMPLETED,
+            could_not_complete: EXIT_COULD_NOT_COMPLETE,
+            findings_including_exposed: EXIT_COMPLETED,
+        },
+        CommandExitContract::GateEvaluate => ExitJson::GateEvaluate {
+            completed: EXIT_COMPLETED,
+            config_error: EXIT_COULD_NOT_COMPLETE,
+            blocked: EXIT_DECISION_OR_REFUSAL,
+        },
+        CommandExitContract::DecisionOrRefusal { stdout_on_refusal } => {
+            ExitJson::DecisionOrRefusal {
+                completed: EXIT_COMPLETED,
+                could_not_complete: EXIT_COULD_NOT_COMPLETE,
+                decision_or_refusal: EXIT_DECISION_OR_REFUSAL,
+                stdout_on_refusal: stdout_on_refusal.as_str(),
+            }
+        }
+        CommandExitContract::ReceiptCheck => ExitJson::ReceiptCheck {
+            completed: EXIT_COMPLETED,
+            could_not_complete: EXIT_COULD_NOT_COMPLETE,
+            orphan_or_gap_mismatch: EXIT_COULD_NOT_COMPLETE,
+        },
+    }
 }
 
 #[derive(Serialize)]
@@ -243,6 +340,7 @@ fn command_row(entry: &CommandCatalogEntry, metadata_row: &CommandMetadata) -> C
         example: metadata_row.example,
         next_routes: sorted_strings(metadata_row.next_routes),
         stop_states: sorted_strings(metadata_row.stop_states),
+        exit: exit_json(metadata_row.exit),
         limitations: metadata_row.limitations,
         not_applicable_reason: metadata_row.not_applicable_reason,
     }
@@ -815,6 +913,108 @@ mod tests {
         };
         if command.effects.may_use_network != step.effects.may_use_network {
             return Err("command and step projections disagree".to_string());
+        }
+        Ok(())
+    }
+
+    fn command_exit_json(id: &str) -> Result<serde_json::Value, String> {
+        let document = production_document()?;
+        let Some(row) = document.commands.iter().find(|row| row.id == id) else {
+            return Err(format!("{id} missing from the machine catalog"));
+        };
+        serde_json::to_value(&row.exit).map_err(|error| format!("serialize {id} exit: {error}"))
+    }
+
+    #[test]
+    fn orchestrator_exit_contracts_match_the_implemented_mapping() -> Result<(), String> {
+        use crate::cli::{
+            CommandError, EXIT_COMPLETED, EXIT_COULD_NOT_COMPLETE, EXIT_DECISION_OR_REFUSAL,
+        };
+        use crate::output::gate::{GATE_STATUS_BLOCKED, GATE_STATUS_CONFIG_ERROR};
+
+        let check = command_exit_json("cmd:check")?;
+        if check["kind"] != "advisory_findings" {
+            return Err(format!("cmd:check kind misprojected: {check}"));
+        }
+        if check["findings_including_exposed"] != EXIT_COMPLETED
+            || check["completed"] != EXIT_COMPLETED
+            || check["could_not_complete"] != EXIT_COULD_NOT_COMPLETE
+        {
+            return Err(format!("cmd:check codes contradict CommandError: {check}"));
+        }
+
+        let gate = command_exit_json("cmd:gate.evaluate")?;
+        if gate["kind"] != "gate_evaluate" {
+            return Err(format!("cmd:gate.evaluate kind misprojected: {gate}"));
+        }
+        if gate[GATE_STATUS_CONFIG_ERROR] != CommandError::Failure("config".to_string()).exit_code()
+            || gate[GATE_STATUS_BLOCKED]
+                != CommandError::Decision("blocked".to_string()).exit_code()
+        {
+            return Err(format!(
+                "cmd:gate.evaluate codes contradict gate.rs mapping: {gate}"
+            ));
+        }
+
+        let verify = command_exit_json("cmd:agent.verify")?;
+        if verify["kind"] != "decision_or_refusal"
+            || verify["decision_or_refusal"] != EXIT_DECISION_OR_REFUSAL
+            || verify["stdout_on_refusal"] != "empty"
+        {
+            return Err(format!(
+                "cmd:agent.verify must be exit-3 with empty stdout: {verify}"
+            ));
+        }
+
+        let execute = command_exit_json("cmd:agent.verify-execute")?;
+        if execute["stdout_on_refusal"] != "document" {
+            return Err(format!(
+                "cmd:agent.verify-execute must disclose stdout document: {execute}"
+            ));
+        }
+
+        let repair = command_exit_json("cmd:agent.repair")?;
+        if repair["stdout_on_refusal"] != "json_optional" {
+            return Err(format!(
+                "cmd:agent.repair must disclose json-optional stdout: {repair}"
+            ));
+        }
+
+        let receipt = command_exit_json("cmd:receipt.check")?;
+        if receipt["kind"] != "receipt_check"
+            || receipt["orphan_or_gap_mismatch"] != EXIT_COULD_NOT_COMPLETE
+        {
+            return Err(format!(
+                "cmd:receipt.check mismatch must stay could-not-complete: {receipt}"
+            ));
+        }
+
+        let help = command_exit_json("cmd:help")?;
+        if help["kind"] != "completed_or_failed" || help.get("decision_or_refusal").is_some() {
+            return Err(format!("cmd:help must stay completed-or-failed: {help}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn every_command_row_projects_a_typed_exit_object() -> Result<(), String> {
+        let rendered = render_help_json()?;
+        let value: serde_json::Value = serde_json::from_str(&rendered)
+            .map_err(|error| format!("document is not valid JSON: {error}"))?;
+        let commands = value["commands"].as_array().ok_or("commands missing")?;
+        for row in commands {
+            let Some(exit) = row.get("exit") else {
+                return Err(format!("command {} lost its exit object", row["id"]));
+            };
+            if exit.get("kind").and_then(|kind| kind.as_str()).is_none() {
+                return Err(format!("command {} exit has no kind: {exit}", row["id"]));
+            }
+            if exit.get("completed").and_then(|code| code.as_i64()) != Some(0) {
+                return Err(format!(
+                    "command {} completed code is not 0: {exit}",
+                    row["id"]
+                ));
+            }
         }
         Ok(())
     }

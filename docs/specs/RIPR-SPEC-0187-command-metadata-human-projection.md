@@ -50,7 +50,8 @@ Each row is keyed by the C1 catalog identity and carries:
 - primary inputs, output roles (default and optional), and the durable state a
   state-changing command mutates;
 - JSON support, an example synopsis, next routes (catalog paths only),
-  explicit stop states, advisory limitations, and an explicit
+  explicit stop states, a typed process-exit contract (`CommandExitContract`)
+  for machine discovery, advisory limitations, and an explicit
   not-applicable reason when a row intentionally carries no content.
 
 Authority:
@@ -77,6 +78,10 @@ Authority:
 6. `docs/COMMAND_HIERARCHY.md` command spans resolve to catalog identities
    with metadata rows, and the eight pinned task rows keep their documented
    task labels in the metadata table.
+7. Orchestrator-branching rows declare the implemented process-exit
+   contract (`docs/EXIT_CODES.md` / `CommandError`); other described rows
+   use completed-or-failed. A contradicting `exit` field is a catalog
+   integrity failure. Human help screens do not render this field (#5065).
 
 Metadata lookup is static data. It does not run analysis, spawn a process,
 open a network, mutate a workspace, or write a product artifact.
@@ -88,8 +93,9 @@ open a network, mutate a workspace, or write a product artifact.
 - Contradiction fixtures reject, one at a time: a read-only row declaring a
   product write, a write claim without an output role, a state change without
   a state target, a mutation claim, projection cost with analysis work, a
-  test run without its compile, a next route outside the catalog, and a
-  prohibited runtime-outcome token in a summary.
+  test run without its compile, a next route outside the catalog, a
+  prohibited runtime-outcome token in a summary, and an `exit` field that
+  contradicts the implemented 0/2/3 mapping.
 - The rendered default screen and `help --all` agree with the typed tables
   (identity, class markers, uniqueness, no hidden/internal leaks).
 - The hierarchy documentation resolves to catalog rows and the pinned task
@@ -126,7 +132,8 @@ open a network, mutate a workspace, or write a product artifact.
 ## Test Mapping
 
 - `crates/ripr/src/cli/command_metadata.rs` unit tests cover production-table
-  integrity, full public-row coverage, the eight contradiction fixtures, the
+  integrity, full public-row coverage, the contradiction fixtures (including
+  an `exit` field that contradicts the implemented mapping), the
   rendered-surface agreement check (including the negative fixture that an
   identical duplicated `help --all` listing line is reported), and the
   hierarchy-doc resolution and pinned-label checks.
@@ -137,7 +144,7 @@ open a network, mutate a workspace, or write a product artifact.
 
 | Surface | Responsibility |
 | --- | --- |
-| `crates/ripr/src/cli/command_metadata.rs` | metadata types, governed table, fail-closed validators, projection-agreement check, tests |
+| `crates/ripr/src/cli/command_metadata.rs` | metadata types including `CommandExitContract`, governed table, fail-closed validators, projection-agreement check, tests |
 | `crates/ripr/src/cli/command_catalog.rs` | unchanged C1 identity table consumed by the join (RIPR-SPEC-0184) |
 | `crates/ripr/src/cli/help/overview.rs` | `help --all` grouped listing carries the class markers |
 | `crates/ripr/src/cli/help.rs` | test-only `discovery_surfaces()` accessor for the agreement check |

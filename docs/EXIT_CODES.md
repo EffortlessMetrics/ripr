@@ -37,6 +37,10 @@ verify-execute` declining a packet (the refusal JSON document is on stdout)
 - `2`: the invocation or operation failed; retrying differently is
   appropriate.
 
+`ripr help --json` projects this same mapping as a typed per-command `exit`
+object (RIPR-SPEC-0190). Orchestrators that discover commands from that
+document should branch on `exit`, not on free-text `stop_states`.
+
 ## When you see exit code 2
 
 - **Analysis error**: the diff could not be read (a missing or unreadable

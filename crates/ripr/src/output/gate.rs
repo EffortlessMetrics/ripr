@@ -27,6 +27,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub(crate) const DEFAULT_GATE_OUT: &str = "target/ripr/reports/gate-decision.json";
+/// Top-level report status when evaluation could not complete. The CLI maps
+/// this token to process exit 2 (`docs/EXIT_CODES.md`); `help --json` uses
+/// the same bytes as the `gate_evaluate` serde key.
+pub(crate) const GATE_STATUS_CONFIG_ERROR: &str = "config_error";
+/// Top-level report status when evaluation completed and blocked. The CLI
+/// maps this token to process exit 3 (`docs/EXIT_CODES.md`); `help --json`
+/// uses the same bytes as the `gate_evaluate` serde key.
+pub(crate) const GATE_STATUS_BLOCKED: &str = "blocked";
 const SCHEMA_VERSION: &str = "0.1";
 const DEFAULT_THRESHOLD: &str = "high_confidence_new_gap";
 const DEFAULT_ACKNOWLEDGEMENT_LABEL: &str = "ripr-waive";
@@ -1074,9 +1082,9 @@ fn top_level_status(
     exception_blocking: usize,
 ) -> &'static str {
     if !config_errors.is_empty() {
-        "config_error"
+        GATE_STATUS_CONFIG_ERROR
     } else if summary.blocking > 0 || exception_blocking > 0 {
-        "blocked"
+        GATE_STATUS_BLOCKED
     } else if summary.acknowledged > 0 {
         "acknowledged"
     } else if mode == GateMode::VisibleOnly

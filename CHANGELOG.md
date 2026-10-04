@@ -9,6 +9,14 @@ are scoped or reviewed.
 
 ## Unreleased
 
+### Added
+
+- `ripr help --json` now projects a typed per-command `exit` object for the
+  0/2/3 process contract (`schema_version` 2). Orchestrators can branch on
+  `check` findings still completing with 0, `gate evaluate` `config_error`=2
+  versus `blocked`=3, and `agent verify`'s empty-stdout refusal without
+  scraping `stop_states` (#5066).
+
 ### Fixed
 
 - Preview-language refusals (parse budget, read caps, walk cap) no longer
