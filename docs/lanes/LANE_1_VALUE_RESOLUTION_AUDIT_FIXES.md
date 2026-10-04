@@ -65,7 +65,9 @@ Lane 1 does not own:
 
 ## Source-Of-Truth Stack
 
-- active manifest: `.ripr/goals/active.toml`;
+- repository tracking: GitHub issues and PRs per
+  [Repository Tracking Model](../REPO_TRACKING_MODEL.md) (the former
+  `.ripr/goals/active.toml` manifest was retired in #1701);
 - implementation plan:
   [Lane 1 Value Resolution Audit Fixes plan](../../plans/lane1-value-resolution-audit-fixes/implementation-plan.md);
 - finding-alignment contract:
@@ -209,5 +211,5 @@ Close this rail only after:
 - analyzer movement, if any, has before/after audit and scorecard proof;
 - dogfood receipts record the material movement and non-claims;
 - downstream consumers know whether any claim boundary changed;
-- `.ripr/goals/active.toml` records the next successor or
-  `no_current_goal = true`.
+- repository tracking records the next successor or closeout per
+  [Repository Tracking Model](../REPO_TRACKING_MODEL.md).

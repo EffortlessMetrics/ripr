@@ -40,9 +40,10 @@ This lane may change:
 - static limitation taxonomy;
 - imported static/runtime calibration confidence.
 
-This tracker does not make `.ripr/goals/active.toml` the whole product board.
-Do not update `.ripr/goals/active.toml` unless the repo-wide operator sequence
-explicitly makes Lane 1 active.
+This tracker does not replace the repo-wide execution state. Live execution
+state is governed by GitHub issues, PRs, and worktree state per
+[Repository Tracking Model](../REPO_TRACKING_MODEL.md) (the former
+`.ripr/goals/active.toml` manifest was retired in #1701).
 
 ## Source-Of-Truth Stack
 

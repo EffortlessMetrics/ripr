@@ -1,9 +1,9 @@
 # Campaign 27 Plans
 
 This folder holds campaign-specific implementation plans that need more
-sequencing detail than the campaign ledger or active manifest should carry.
+sequencing detail than the campaign ledger should carry.
 Plans here are execution guides only; they do not replace proposals, specs,
-ADRs, the Campaign 27 ledger, or `.ripr/goals/active.toml`.
+ADRs, the Campaign 27 ledger, or the repository tracking model.
 
 For Lane 3 editor preview routing, use the layers this way:
 
@@ -11,7 +11,7 @@ For Lane 3 editor preview routing, use the layers this way:
 - spec: what routing, labels, static limits, and fail-closed states must do;
 - ADR: the durable projection-only architecture decision;
 - plan: PR sequence, acceptance, proof commands, and rollback per slice;
-- active manifest: current machine-readable execution state only;
+- live tracking: current execution state per [Repo tracking model](../../docs/REPO_TRACKING_MODEL.md);
 - lane tracker: Lane 3 scope, readiness, blockers, and maintenance evidence;
 - closeout: final proof, landed scope, gaps, and future editor campaigns.
 

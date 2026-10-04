@@ -1307,7 +1307,7 @@ evidence = [
   "docs/PR_INLINE_COMMENT_PUBLISHER_PROPOSAL.md records Campaign 26's proposal and non-goals",
   "fixtures/boundary_gap/expected/pr-inline-comment-publisher/ pins publishable changed-line, summary-only excluded, cap overflow, dedupe/upsert, stale-existing, fork or no-token, and missing-input publish-plan cases",
   "xtask/src/main.rs validates the PR inline comment publisher fixture corpus through check-fixture-contracts and dogfood receipts",
-  ".ripr/goals/active.toml marks Campaign 26 complete after closeout",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md marks Campaign 26 complete after closeout",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/pr-inline-comment-publisher"

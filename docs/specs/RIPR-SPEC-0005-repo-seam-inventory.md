@@ -317,7 +317,7 @@ classification rules and headline mapping.
 
 ## Implementation Mapping
 
-Planned implementation work items (from `.ripr/goals/active.toml`):
+Planned implementation work items (historical; retired from `.ripr/goals/active.toml` in #1701):
 
 1. `analysis/repo-seam-model-v1`: introduces `RepoSeam`, `SeamId`, `SeamKind`,
 `RequiredDiscriminator`, `TestGripEvidence`, `SeamGripClass` as crate-private

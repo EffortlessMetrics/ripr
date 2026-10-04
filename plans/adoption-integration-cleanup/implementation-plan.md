@@ -55,8 +55,9 @@ The cleanup issue map has been reconciled:
 - Start-Here Surface Convergence, First Useful PR Loop, Editor First-PR Bridge,
   and Editor Actionable Gap Queue are closed in their own source-of-truth
   stacks;
-- `.ripr/goals/active.toml` remains the only machine-readable current-goal
-  source and currently records `no_current_goal = true`.
+- Live execution state is governed by GitHub issues, PRs, and worktree state
+  per [Repository Tracking Model](../../docs/REPO_TRACKING_MODEL.md) (the former
+  `.ripr/goals/active.toml` manifest was retired in #1701).
 
 Do not reactivate this plan for new behavior. Future adoption, output-state,
 or start-here work needs a fresh issue-backed successor campaign.

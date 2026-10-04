@@ -268,7 +268,7 @@ Add `.ripr/goals/lanes/lane4-pr-ci-review-cockpit.toml` or another manifest
 path supported by the current goals tooling.
 
 Non-goals:
-No overwrite of `.ripr/goals/active.toml` while Campaign 27 remains active. No
+No overwrite of active tracking state while Campaign 27 remains active (historical; `.ripr/goals/active.toml` retired in #1701). No
 new goals command behavior unless explicitly selected.
 
 Acceptance:

@@ -4849,9 +4849,9 @@ Non-claims:
 
 Campaign ID: `cross-language-evidence-router-ux`
 
-Status: active. `.ripr/goals/active.toml` selects this campaign after live queue
-inspection closed the current dangling analysis PR (#982) and
-`cargo xtask goals next` reported `no_current_goal = true`.
+Status: complete. The retired `.ripr/goals/active.toml` manifest (deleted in
+#2056) selected this campaign after live queue inspection closed the current
+dangling analysis PR (#982).
 
 This campaign turns the calibrated TypeScript/Bun graph path into a repeatable
 mixed TypeScript plus Rust operating loop. It preserves preview/advisory

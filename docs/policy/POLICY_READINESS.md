@@ -4,8 +4,10 @@ GitHub tracker: [#755](https://github.com/EffortlessMetrics/ripr/issues/755)
 
 This is the focused Lane 2 tracker for recommendation trust and policy. It is
 not the global active campaign manifest. Campaign 28 is now closed and
-archived, and `.ripr/goals/active.toml` records `no_current_goal = true` until a
-successor is selected. This tracker defines the policy boundaries Campaign 27
+archived; live execution state is governed by GitHub issues, PRs, and worktree
+state per [Repository Tracking Model](../REPO_TRACKING_MODEL.md) (the former
+`.ripr/goals/active.toml` manifest was retired in #1701). This tracker defines
+the policy boundaries Campaign 27
 and later policy work must respect.
 
 ## Mission
