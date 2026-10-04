@@ -44,6 +44,16 @@ import {
   type CockpitRequestAbsence,
   type CockpitRequestResult
 } from './cockpitRequest';
+import {
+  parseAgentAttemptStatus,
+  parseAttemptInventory,
+  presentAttemptStatus,
+  resolveActiveAttempt,
+  type ActiveAttemptResolution,
+  type AgentAttemptStatus,
+  type AttemptInventoryRow,
+  type AttemptStatusPresentation
+} from './attemptStatus';
 
 // Re-export for backward compatibility: the picker test imports these symbols
 // from '../../src/client'. They now live in workspaceHelpers.ts (#2553).
@@ -52,6 +62,44 @@ export type { WorkspaceRootPickItem };
 
 // Re-export public first-PR types that moved to firstPrProjection.ts (#2543).
 export type { RiprFirstPrPacketState, RiprFirstPrPacketStatus };
+
+/**
+ * Durable workspaceState key for the per-root explicit repair-attempt
+ * selection (#4643). The value is a `Record<normalizedRoot, attemptId>`; it
+ * survives extension restart/deactivation and is only ever honored while the
+ * id is still one of the inventory rows for that root.
+ */
+const ATTEMPT_SELECTION_STATE_KEY = 'ripr.activeAttemptSelection.v1';
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Status-bar colour pair for one attempt-status tone, or `undefined` for the
+ * theme default (pass/info). Mirrors the main status bar's convention:
+ * `statusBarItem.*Background`, error for refused/failed, warning for degraded
+ * or historical states. Never invoked with a stronger tone than the typed
+ * class carries.
+ */
+function attemptStatusBarColors(
+  tone: AttemptStatusPresentation['tone']
+): StatusBarColors | undefined {
+  switch (tone) {
+    case 'error':
+      return {
+        background: new vscode.ThemeColor('statusBarItem.errorBackground'),
+        foreground: new vscode.ThemeColor('statusBarItem.errorForeground')
+      };
+    case 'warning':
+      return {
+        background: new vscode.ThemeColor('statusBarItem.warningBackground'),
+        foreground: new vscode.ThemeColor('statusBarItem.warningForeground')
+      };
+    default:
+      return undefined;
+  }
+}
 
 export const RIPR_DOCUMENT_SELECTORS: Array<{ language: string; scheme: 'file' }> = [
   { language: 'rust', scheme: 'file' },
@@ -421,7 +469,8 @@ export class RiprClientController {
     private readonly context: vscode.ExtensionContext,
     private readonly output: vscode.LogOutputChannel,
     private readonly runtime: RiprClientRuntime = defaultRuntime,
-    private readonly statusBar?: vscode.StatusBarItem
+    private readonly statusBar?: vscode.StatusBarItem,
+    private readonly attemptStatusBar?: vscode.StatusBarItem
   ) {
     this.updateStatus(this.status);
   }
@@ -846,6 +895,7 @@ export class RiprClientController {
     this.typedAnalysisStatusState = undefined;
     this.firstUsefulAction = undefined;
     this.dirtyRiprDocuments.clear();
+    this.clearAttemptStatusBar();
     this.updateStatus({
       kind: 'stopped',
       summary: 'ripr server has stopped.',
@@ -1717,6 +1767,256 @@ export class RiprClientController {
     }
     this.output.show();
     this.runtime.showInformationMessage(statusSummary(this.status, this.firstUsefulAction));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Shared repair-attempt status (RIPR-SPEC-0220, #4643)
+  //
+  // The CLI `agent_attempt_status` DTO (RIPR-SPEC-0217, #4798) is the semantic
+  // authority; src/attemptStatus.ts is the only parser. This command is
+  // read-only: it never starts, finishes, restarts, or edits an attempt, and
+  // the presentation can never strengthen the typed status_class.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Read and present the shared repair-attempt status for the workspace.
+   * An optional explicit attempt id (forwarded from the command
+   * registration) wins over any remembered or single-row resolution; an id
+   * absent from the inventory stays an exact query so the CLI reports the
+   * typed `corrupt_or_unavailable` document for it, never a substitution.
+   */
+  async showAttemptStatus(explicitAttemptId?: string): Promise<void> {
+    if (!this.runtime.isWorkspaceTrusted()) {
+      // #4643: untrusted workspaces never read repair authority.
+      this.runtime.showInformationMessage(
+        'ripr repair-attempt status is unavailable in an untrusted workspace; trust the workspace to read shared attempt state.'
+      );
+      return;
+    }
+    const root = this.workspaceRoot ?? this.runtime.workspaceRootState().root;
+    if (!root) {
+      this.runtime.showInformationMessage(
+        'Open a workspace folder (or run ripr: Select Workspace Root) to read repair-attempt status.'
+      );
+      return;
+    }
+    const config = this.runtime.getConfig();
+    const server = this.server ?? await this.resolveServerForCommand(config);
+    if (!server) {
+      return;
+    }
+    // A stop() during either CLI read invalidates the render: the status bar
+    // item is session-scoped and must not be repainted from a dead session.
+    const generation = this.startGeneration;
+    const rows = await this.readAttemptInventory(server.command, root);
+    if (generation !== this.startGeneration) {
+      this.output.appendLine('ripr attempt status read abandoned: the server session stopped during the inventory read.');
+      return;
+    }
+    if (rows === undefined) {
+      this.failAttemptStatus(
+        'ripr repair-attempt status is unavailable: the CLI schema is unrecognized or older than RIPR-SPEC-0217.'
+      );
+      return;
+    }
+    const explicit = explicitAttemptId && explicitAttemptId.trim() !== '' ? explicitAttemptId : undefined;
+    const remembered = this.readRememberedAttempt(root);
+    const rememberedStillValid = remembered !== undefined
+      && rows.some((row) => row.attemptId === remembered);
+    if (remembered && !rememberedStillValid) {
+      // A remembered id that no longer resolves is stale: discard it, never
+      // replace it with a guess. (#4643)
+      this.rememberAttempt(root, undefined);
+    }
+    let resolution: ActiveAttemptResolution = resolveActiveAttempt(rows, {
+      explicitAttemptId: explicit,
+      rememberedAttemptId: rememberedStillValid ? remembered : undefined
+    });
+    if (resolution.kind === 'no_attempts') {
+      this.clearAttemptStatusBar();
+      this.runtime.showInformationMessage(
+        'No shared repair attempts exist for this workspace yet.'
+      );
+      return;
+    }
+    if (resolution.kind === 'selection_required') {
+      const rowById = new Map(rows.map((row) => [row.attemptId, row]));
+      const pick = await this.runtime.showQuickPick(
+        resolution.attemptIds.map((attemptId) => {
+          const row = rowById.get(attemptId);
+          return {
+            label: row?.seamId ? `${attemptId} — seam ${row.seamId}` : attemptId,
+            description: row?.state ?? undefined,
+            attemptId
+          };
+        }),
+        {
+          placeHolder:
+            'Several repair attempts are current — select the exact one to inspect (ripr never picks for you).'
+        }
+      );
+      if (!pick) {
+        // Never guess: several current attempts require an explicit pick, and
+        // a dismissed pick must not leave the previous attempt presented.
+        this.clearAttemptStatusBar();
+        return;
+      }
+      resolution = resolveActiveAttempt(rows, { explicitAttemptId: pick.attemptId });
+      this.rememberAttempt(root, pick.attemptId);
+    }
+    if (resolution.kind === 'no_attempts' || resolution.kind === 'selection_required') {
+      return;
+    }
+    const status = await this.readSelectedAttemptStatus(server.command, root, resolution.attemptId);
+    if (generation !== this.startGeneration) {
+      this.output.appendLine('ripr attempt status read abandoned: the server session stopped during the selected read.');
+      return;
+    }
+    if (!status) {
+      this.failAttemptStatus(`ripr could not read the selected repair attempt ${resolution.attemptId}.`);
+      return;
+    }
+    if (status.attemptId !== resolution.attemptId) {
+      // Bind the presentation to the requested identity: a document for any
+      // other attempt is refused, never re-labelled. (#4643)
+      this.failAttemptStatus(
+        `ripr attempt status for ${resolution.attemptId} returned a document for ${status.attemptId}; refusing mismatched attempt state.`
+      );
+      return;
+    }
+    if (explicit) {
+      // An explicit id is user intent: remember it even when the id is not a
+      // current inventory row (it may name a historical/ended attempt the
+      // inventory no longer lists). The picker path remembers its own pick.
+      this.rememberAttempt(root, resolution.attemptId);
+    }
+    const presentation = presentAttemptStatus(status);
+    this.renderAttemptStatusBar(presentation);
+    this.output.appendLine(`ripr attempt status:\n${presentation.summaryLines.join('\n')}`);
+    this.runtime.showInformationMessage(`ripr attempt ${presentation.label}: ${status.attemptId}`);
+  }
+
+  private async readAttemptInventory(
+    command: string,
+    root: string
+  ): Promise<AttemptInventoryRow[] | undefined> {
+    let raw: string;
+    try {
+      raw = await this.runtime.runRipr(command, ['agent', 'status', '--root', root, '--json'], root);
+    } catch (error) {
+      this.output.appendLine(`ripr agent status inventory failed: ${errorMessage(error)}`);
+      return undefined;
+    }
+    return this.parseAttemptDocument(raw, parseAttemptInventory);
+  }
+
+  private async readSelectedAttemptStatus(
+    command: string,
+    root: string,
+    attemptId: string
+  ): Promise<AgentAttemptStatus | undefined> {
+    let raw: string;
+    try {
+      raw = await this.runtime.runRipr(
+        command,
+        ['agent', 'status', '--root', root, '--attempt', attemptId, '--json'],
+        root
+      );
+    } catch (error) {
+      this.output.appendLine(`ripr agent status --attempt failed: ${errorMessage(error)}`);
+      return undefined;
+    }
+    return this.parseAttemptDocument(raw, parseAgentAttemptStatus);
+  }
+
+  private parseAttemptDocument<T>(
+    raw: string,
+    parse: (value: unknown) => T | undefined
+  ): T | undefined {
+    let value: unknown;
+    try {
+      value = JSON.parse(raw);
+    } catch (error) {
+      this.output.appendLine(`ripr attempt status returned non-JSON output: ${errorMessage(error)}`);
+      return undefined;
+    }
+    return parse(value);
+  }
+
+  private readRememberedAttempt(root: string): string | undefined {
+    const state = this.attemptSelectionState();
+    return state[normalizePath(root)];
+  }
+
+  private rememberAttempt(root: string, attemptId: string | undefined): void {
+    const memento = this.context.workspaceState;
+    if (!memento) {
+      return;
+    }
+    const key = normalizePath(root);
+    const state = this.attemptSelectionState();
+    if (attemptId === undefined) {
+      if (!(key in state)) {
+        return;
+      }
+      delete state[key];
+    } else {
+      state[key] = attemptId;
+    }
+    void memento.update(ATTEMPT_SELECTION_STATE_KEY, state).then(
+      () => undefined,
+      (error: unknown) => {
+        this.output.appendLine(`ripr attempt selection persistence failed: ${errorMessage(error)}`);
+      }
+    );
+  }
+
+  private attemptSelectionState(): Record<string, string> {
+    const memento = this.context.workspaceState;
+    if (!memento) {
+      return {};
+    }
+    const stored = memento.get<Record<string, unknown>>(ATTEMPT_SELECTION_STATE_KEY);
+    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) {
+      return {};
+    }
+    const state: Record<string, string> = {};
+    for (const [root, attemptId] of Object.entries(stored)) {
+      if (typeof attemptId === 'string' && attemptId.trim() !== '') {
+        state[root] = attemptId;
+      }
+    }
+    return state;
+  }
+
+  private renderAttemptStatusBar(presentation: AttemptStatusPresentation): void {
+    if (!this.attemptStatusBar) {
+      return;
+    }
+    this.attemptStatusBar.text = presentation.statusBarText;
+    this.attemptStatusBar.tooltip = presentation.summaryLines.join('\n');
+    this.attemptStatusBar.command = 'ripr.showAttemptStatus';
+    const colors = attemptStatusBarColors(presentation.tone);
+    this.attemptStatusBar.backgroundColor = colors?.background;
+    this.attemptStatusBar.color = colors?.foreground;
+    this.attemptStatusBar.show();
+  }
+
+  private failAttemptStatus(message: string): void {
+    this.output.appendLine(message);
+    if (this.attemptStatusBar) {
+      this.attemptStatusBar.text = '$(warning) ripr: attempt status unavailable';
+      this.attemptStatusBar.tooltip = message;
+      this.attemptStatusBar.command = 'ripr.showAttemptStatus';
+      this.attemptStatusBar.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+      this.attemptStatusBar.color = new vscode.ThemeColor('statusBarItem.warningForeground');
+      this.attemptStatusBar.show();
+    }
+    this.warnWithOutput(message);
+  }
+
+  private clearAttemptStatusBar(): void {
+    this.attemptStatusBar?.hide();
   }
 
   // ---------------------------------------------------------------------------

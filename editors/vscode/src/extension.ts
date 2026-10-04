@@ -51,12 +51,18 @@ export async function startAfterWorkspaceTrust(
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel('ripr', { log: true });
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+  // Second, independent item for the shared repair-attempt status (#4643,
+  // RIPR-SPEC-0220). It renders only the CLI's typed attempt state and is
+  // hidden whenever the server session stops; the durable per-root selection
+  // lives in workspaceState, not in this item.
+  const attemptStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
   lifecycleCoordinator = new ExtensionLifecycleCoordinator();
-  controller = new RiprClientController(context, output, undefined, status);
+  controller = new RiprClientController(context, output, undefined, status, attemptStatus);
 
   context.subscriptions.push(
     output,
     status,
+    attemptStatus,
     vscode.commands.registerCommand('ripr.restartServer', async () => {
       try {
         await restartServerOnce(controller);
@@ -81,6 +87,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ),
     vscode.commands.registerCommand('ripr.showOutput', () => controller?.showOutput()),
     vscode.commands.registerCommand('ripr.showStatus', () => controller?.showStatus()),
+    vscode.commands.registerCommand('ripr.showAttemptStatus', async (attemptId?: unknown) =>
+      // VS Code may pass a non-string first argument (menu, keybinding, URI):
+      // never forward it into the trim() guard inside showAttemptStatus.
+      controller?.showAttemptStatus(typeof attemptId === 'string' ? attemptId : undefined)
+    ),
     vscode.commands.registerCommand('ripr.diagnoseSetup', () => controller?.diagnoseSetup()),
     vscode.commands.registerCommand('ripr.startCurrentRepair', async () =>
       controller?.startCurrentRepair()

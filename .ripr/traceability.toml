@@ -12052,3 +12052,27 @@ metrics = [
   "issue_lifecycle_scorecard_real_lifecycles",
   "issue_lifecycle_scorecard_implementation_success_rate_state",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0220"
+name = "VS Code shared repair-attempt status and active-attempt resolution"
+spec = "docs/specs/RIPR-SPEC-0220-vscode-shared-attempt-status.md"
+tests = [
+  "editors/vscode/test/suite/attempt_status.test.ts::Agent attempt status adapter parity (#4643)",
+  "editors/vscode/test/suite/attempt_status.test.ts::Active attempt resolution law (#4643)",
+  "editors/vscode/test/suite/attempt_status.test.ts::Show Repair Attempt Status command (#4643)",
+]
+fixtures = [
+  "editors/vscode/test-fixtures/attempt-status",
+]
+code = [
+  "editors/vscode/src/attemptStatus.ts",
+  "editors/vscode/src/client.ts",
+  "editors/vscode/src/extension.ts",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0220-vscode-shared-attempt-status.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+]

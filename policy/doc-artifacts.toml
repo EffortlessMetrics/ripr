@@ -1195,3 +1195,11 @@ path = "docs/specs/RIPR-SPEC-0219-labeled-rust-verdict-corpus.md"
 status = "proposed"
 owner = "product-eval"
 standalone_reason = "Records the labeled Rust verdict corpus: one-line edits in pinned real crates labeled by running mutants against each crate's own tests, a fixed truth-to-verdict table, and cargo xtask verdict-corpus, which scores ripr's anchored verdicts and reports false-verdict and contradiction rates without running mutation testing or network access."
+
+[[artifact]]
+id = "RIPR-SPEC-0220"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0220-vscode-shared-attempt-status.md"
+status = "proposed"
+owner = "editor"
+standalone_reason = "Issue #4643 records the VS Code slice of the #2928 editor shell: one typed adapter (`src/attemptStatus.ts`) parses the RIPR-SPEC-0217 `agent_attempt_status` DTO and attempt inventory as the sole editor authority — fail-closed on any document outside the pinned envelope or status-class vocabulary (a strengthening class such as `passed` is refused, never projected); deterministic active-attempt resolution (explicit selection wins, an unknown explicit id stays an exact query for the typed corrupt_or_unavailable result, a remembered per-root selection is honored only while it is still an inventory row and discarded when stale, several current attempts require an explicit quick pick whose dismissal presents nothing, and newest/first-folder/most-recently-modified heuristics do not exist); the selection persists in workspaceState across restart/deactivation while in-memory presentation is discarded on stop; class-to-tone presentation never strengthens (`finished_historical` remains a warning, `corrupt_or_unavailable` and `failed` are errors, only `finished_current` passes, failed reads render unavailable); untrusted workspaces refuse before any CLI invocation; and the command is read-only end to end with parity fixtures under `editors/vscode/test-fixtures/attempt-status/` whose suite fails if the adapter is removed."

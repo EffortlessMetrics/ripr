@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- `ripr: Show Repair Attempt Status` projects the shared CLI repair-attempt
+  DTO (`ripr agent status --attempt <id> --json`, RIPR-SPEC-0217) into a
+  dedicated status-bar item without re-deriving state: all ten typed status
+  classes render at exactly the strength the CLI reports, several current
+  attempts require an explicit pick (never a newest/first guess), the
+  per-root selection survives restarts, and untrusted workspaces refuse
+  before any read ([#4643](https://github.com/EffortlessMetrics/ripr-swarm/issues/4643)).
+
 ### Fixed
 
 - Start the server when Workspace Trust is granted or a first folder is added.
