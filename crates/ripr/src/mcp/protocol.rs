@@ -365,6 +365,11 @@ fn refresh_tool_descriptor() -> Value {
         "outputSchema": refresh_output_schema(),
         "annotations": {
             "title": "RIPR refresh",
+            // #5192: readOnlyHint is scoped to the user's world (source,
+            // tests, processes, external state). Committing the completed
+            // snapshot mutates only in-memory session state, so the
+            // annotation stands; idempotentHint:false discloses that
+            // repeat calls advance the session.
             "readOnlyHint": true,
             "destructiveHint": false,
             "idempotentHint": false,
@@ -438,6 +443,10 @@ fn prepare_repair_tool_descriptor() -> Value {
         "outputSchema": repair_packet_output_schema(),
         "annotations": {
             "title": "RIPR prepare repair",
+            // #5192: readOnlyHint is scoped to the user's world (source,
+            // tests, processes, external state). The transaction is
+            // in-memory, deterministic, and replayed identically, so the
+            // annotation stands alongside idempotentHint:true.
             "readOnlyHint": true,
             "destructiveHint": false,
             "idempotentHint": true,

@@ -39,6 +39,49 @@ fn sdk_server_metadata_preserves_bounded_status_instructions() -> Result<(), Str
 }
 
 #[test]
+fn sdk_session_mutating_tools_pin_user_world_readonly_scope() -> Result<(), String> {
+    // #5192 decision: readOnlyHint covers the user's world (no source
+    // edits, no launched processes, no verification/mutation execution).
+    // Session-scoped in-memory state (the committed snapshot, the
+    // deterministic replayed transaction) does not revoke it. Refresh
+    // additionally pins idempotentHint:false because repeat calls advance
+    // the committed snapshot; prepare_repair pins idempotentHint:true
+    // because replays return the identical document.
+    let server = McpServer::new(WorkspaceStatus::resolve_with_root(None).0, None)
+        .map_err(|error| error.to_string())?;
+    for (name, idempotent) in [
+        (protocol::REFRESH_TOOL_NAME, false),
+        (protocol::PREPARE_REPAIR_TOOL_NAME, true),
+    ] {
+        let tool = server
+            .tools
+            .tools
+            .iter()
+            .find(|tool| tool.name == name)
+            .ok_or_else(|| format!("{name} tool missing"))?;
+        let document = serde_json::to_value(tool).map_err(|error| error.to_string())?;
+        let annotations = document
+            .pointer("/annotations")
+            .ok_or_else(|| format!("{name} tool lost annotations"))?;
+        if annotations
+            .pointer("/readOnlyHint")
+            .and_then(serde_json::Value::as_bool)
+            != Some(true)
+        {
+            return Err(format!("{name} tool lost user-world read-only annotation"));
+        }
+        if annotations
+            .pointer("/idempotentHint")
+            .and_then(serde_json::Value::as_bool)
+            != Some(idempotent)
+        {
+            return Err(format!("{name} tool changed idempotency disclosure"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn sdk_server_declares_snapshot_and_gap_resource_templates() -> Result<(), String> {
     let server = McpServer::new(WorkspaceStatus::resolve_with_root(None).0, None)
         .map_err(|error| error.to_string())?;
