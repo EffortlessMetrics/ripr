@@ -10,6 +10,11 @@
 //! display it. Wording is reused from its existing owners: the
 //! `typescript_diff_first` guidance from the repo-exposure renderer and the
 //! unavailable-adapter notice from [`LanguageId`].
+//!
+//! #5205: when Rust itself is disabled in `[languages] enabled`, pilot's
+//! Rust-only scan ranks nothing. That exclusion is a scope fact, not a route
+//! elsewhere, so it travels as `rust_excluded_file_count` and renders in all
+//! three surfaces; `None` keeps default-scope output byte-identical.
 
 use crate::agent::loop_commands::shell_path;
 use crate::domain::LanguageId;
@@ -23,6 +28,13 @@ const ROUTED_LANGUAGE_ORDER: &[LanguageId] = &[
     LanguageId::Python,
     LanguageId::Perl,
 ];
+
+/// Remedy when Rust files exist but Rust is not enabled (#5205). Shared by
+/// the terminal, Markdown, and JSON renderers so the three surfaces cannot
+/// disagree. `ripr check` is deliberately not the remedy: it honors the same
+/// config, so routing there would loop.
+pub(crate) const RUST_EXCLUDED_GUIDANCE: &str =
+    "add \"rust\" to [languages] enabled in ripr.toml and rerun pilot to rank Rust seams";
 
 /// Whether the language routes change what the pilot's result means.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -97,6 +109,11 @@ pub(crate) struct PilotLanguageRoutes {
     pub(crate) routes: Vec<PilotLanguageRoute>,
     /// Source files per language name that no ripr adapter reads.
     pub(crate) unanalyzed: Vec<(&'static str, usize)>,
+    /// Rust files pilot did not analyze because Rust is not in the effective
+    /// `[languages] enabled` set (#5205). `Some(count)` only when the
+    /// exclusion changed the result meaning (files present but disabled);
+    /// `None` renders nothing anywhere.
+    pub(crate) rust_excluded_file_count: Option<usize>,
     rust_seams_present: bool,
 }
 
@@ -132,6 +149,7 @@ impl PilotLanguageRoutes {
             state,
             routes,
             unanalyzed: Vec::new(),
+            rust_excluded_file_count: None,
             rust_seams_present,
         }
     }
@@ -155,6 +173,20 @@ impl PilotLanguageRoutes {
         }
         self.unanalyzed = unanalyzed;
         self
+    }
+
+    /// Record Rust files excluded by `[languages] enabled` (#5205). Pass
+    /// `Some(count)` only when Rust is disabled and Rust files exist; `None`
+    /// (Rust enabled, or no Rust files) renders nothing anywhere.
+    pub(crate) fn with_rust_exclusion(mut self, excluded_file_count: Option<usize>) -> Self {
+        self.rust_excluded_file_count = excluded_file_count;
+        self
+    }
+
+    /// Rust files the human output must name: only when the exclusion
+    /// emptied a ranking Rust files would otherwise fill.
+    pub(crate) fn rust_exclusion(&self) -> Option<usize> {
+        self.rust_excluded_file_count
     }
 
     /// The unanalyzed languages the human output must show: only when they

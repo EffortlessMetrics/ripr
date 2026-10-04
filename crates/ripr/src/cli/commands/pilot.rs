@@ -127,24 +127,47 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     // nothing the restart can reuse, so restarting redid the first 30s of
     // work (serde cold: 75s with the restart, 44s without, identical
     // output).
+    //
+    // #5205: pilot ranks Rust seams only, so without Rust enabled it ranks
+    // nothing. Determine that BEFORE the inventory (Codex P1): the walk
+    // would analyze a disabled language for minutes, and on a large
+    // workspace it can exhaust the deadline and return through the timeout
+    // branch without ever emitting the exclusion. The bypassed report is
+    // exactly what the post-inventory filter produced (empty classified,
+    // no limit, no skips), so downstream artifacts are identical; only the
+    // wasted walk is gone. Preview-language work is unaffected: it runs
+    // its own checks below, outside the inventory.
+    let rust_enabled = config
+        .languages()
+        .enabled()
+        .contains(&crate::domain::LanguageId::Rust);
     let extension_ms = pilot_deadline_extension_ms(&options);
     let progress = pilot_progress_sink(options.quiet);
-    let analysis_result = run_pilot_analysis_with_timeout(
-        options.timeout_ms,
-        extension_ms,
-        || {
-            eprintln!(
-                "ripr: pilot still running after {}ms; extending the deadline by {}ms (a cold cache needs more time)...",
-                DEFAULT_PILOT_TIMEOUT_MS, PILOT_RETRY_TIMEOUT_MS
-            );
-        },
-        {
-            let root = input.root.clone();
-            let cfg = config.clone();
-            let sink = progress.as_ref().map(Arc::clone);
-            move || run_pilot_inventory(&root, &cfg, sink.as_ref())
-        },
-    )?;
+    let analysis_result = if rust_enabled {
+        run_pilot_analysis_with_timeout(
+            options.timeout_ms,
+            extension_ms,
+            || {
+                eprintln!(
+                    "ripr: pilot still running after {}ms; extending the deadline by {}ms (a cold cache needs more time)...",
+                    DEFAULT_PILOT_TIMEOUT_MS, PILOT_RETRY_TIMEOUT_MS
+                );
+            },
+            {
+                let root = input.root.clone();
+                let cfg = config.clone();
+                let sink = progress.as_ref().map(Arc::clone);
+                move || run_pilot_inventory(&root, &cfg, sink.as_ref())
+            },
+        )?
+    } else {
+        PilotAnalysisResult::Complete(analysis::ClassifiedSeamsReport {
+            classified: Vec::new(),
+            limit_info: None,
+            skipped_generated: Vec::new(),
+            naming_only_skips: Vec::new(),
+        })
+    };
     // The timeout hint scales from the budget actually spent, so an
     // extended run does not suggest a smaller --timeout-ms than it used.
     let spent_timeout_ms = options.timeout_ms.saturating_add(extension_ms.unwrap_or(0));
@@ -170,6 +193,13 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
         print!("{}", output::pilot::render_pilot_timeout_terminal(context));
         return Ok(());
     };
+
+    // #5205: the inventory was bypassed above when Rust is disabled, so a
+    // disabled run always arrives here with an empty report. Disclose only
+    // when the exclusion changed the result meaning: Rust files exist but
+    // were not analyzed.
+    let rust_files = analysis::workspace_rust_files(&input.root);
+    let rust_excluded = (!rust_enabled && !rust_files.is_empty()).then_some(rust_files.len());
 
     // Apply the pilot artifact seam budget.  The inventory may already have
     // been capped by the repo-exposure seam limit; we then further cap the
@@ -202,8 +232,9 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     )
     .with_unanalyzed(
         analysis::workspace_unanalyzed_source_languages(&input.root),
-        !analysis::workspace_rust_files(&input.root).is_empty(),
-    );
+        !rust_files.is_empty(),
+    )
+    .with_rust_exclusion(rust_excluded);
     let context = output::pilot::PilotSummaryContext {
         root: &input.root,
         mode: &input.mode,

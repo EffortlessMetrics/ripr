@@ -16,7 +16,7 @@ use crate::output::pilot::commands::{
 use crate::output::pilot::ranking::{actionable_total, top_actionable_seams};
 use crate::output::pilot::{
     PILOT_SUMMARY_SCHEMA_VERSION, PilotLanguageRoute, PilotLanguageRoutes, PilotPythonFirstUse,
-    PilotSummaryContext,
+    PilotSummaryContext, RUST_EXCLUDED_GUIDANCE,
 };
 use crate::output::python_repair_card::PythonRepairCard;
 
@@ -138,7 +138,8 @@ pub(crate) fn render_pilot_summary_json(
     ));
     // An unanalyzed-only workspace has no seam to snapshot or measure, so
     // offering the follow-up commands would send the reader into a loop.
-    if unanalyzed_only(context).is_some() {
+    // A Rust exclusion likewise emptied the ranking (#5205).
+    if unanalyzed_only(context).is_some() || rust_excluded(context).is_some() {
         out.push_str("    \"after_snapshot_command\": null,\n");
         out.push_str("    \"outcome_command\": null,\n");
     } else {
@@ -195,6 +196,11 @@ pub(crate) fn render_pilot_summary_md(
         out.push_str("## Top Recommendation\n\n");
         if let Some(card) = python_top {
             push_python_repair_card_md(&mut out, card);
+        } else if let Some(excluded) = rust_excluded(context) {
+            out.push_str(&format!(
+                "Pilot ranks Rust seams, but Rust is not enabled in `ripr.toml [languages]` ({} not analyzed). This is not a clean result; see Excluded From Pilot's Rust Seam Scan.\n\n",
+                file_count_label(excluded)
+            ));
         } else if required_routes(context).is_some() {
             out.push_str(
                 "Pilot ranks Rust seams and found none in this repository. This is not a clean result for the languages listed under Languages Outside The Rust Seam Scan.\n\n",
@@ -253,6 +259,9 @@ pub(crate) fn render_pilot_summary_md(
 
     if let Some(first_use) = context.python_first_use {
         push_python_first_use_md(&mut out, first_use);
+    }
+    if let Some(excluded) = rust_excluded(context) {
+        push_rust_exclusion_md(&mut out, excluded);
     }
     if let Some(routes) = required_routes(context) {
         push_language_routes_md(&mut out, routes);
@@ -326,6 +335,13 @@ pub(crate) fn render_pilot_summary_md(
             }
             None => Vec::new(),
         },
+        // #5205: see the terminal renderer: check honors the same config,
+        // so only the config edit unblocks Rust ranking.
+        (None, _) if rust_excluded(context).is_some() => {
+            out.push_str("To rank Rust seams:\n\n");
+            out.push_str(&format!("- {}\n", capitalized(RUST_EXCLUDED_GUIDANCE)));
+            return out;
+        }
         (None, Some(routes)) => {
             let commands = PilotLanguageRoutes::commands(routes);
             if commands.is_empty() {
@@ -479,6 +495,15 @@ pub(crate) fn render_pilot_terminal(
         push_python_repair_card_terminal(&mut out, card);
         out.push('\n');
         false
+    } else if let Some(excluded) = rust_excluded(context) {
+        // #5205: the exclusion explains the empty ranking, so it outranks
+        // the routed-languages pointer; those sections still render below.
+        out.push_str("Top recommendation:\n");
+        out.push_str(&format!(
+            "  none: pilot ranks Rust seams, but Rust is not enabled in ripr.toml [languages] ({} not analyzed); see the excluded scope below\n\n",
+            file_count_label(excluded)
+        ));
+        false
     } else if required_routes(context).is_some() {
         out.push_str("Top recommendation:\n");
         out.push_str(
@@ -500,6 +525,9 @@ pub(crate) fn render_pilot_terminal(
 
     if let Some(first_use) = context.python_first_use {
         push_python_first_use_terminal(&mut out, first_use);
+    }
+    if let Some(excluded) = rust_excluded(context) {
+        push_rust_exclusion_terminal(&mut out, excluded);
     }
     let routes = required_routes(context);
     if let Some(routes) = routes {
@@ -559,6 +587,14 @@ pub(crate) fn render_pilot_terminal(
             out.push_str(&format!("  3. {}\n", card.verify_command));
             out.push_str("  4. run the receipt command step 1 printed\n");
         }
+        return out;
+    }
+    // #5205: Rust files exist but Rust is disabled, so no seam could rank.
+    // Routing to `ripr check` would loop (check honors the same config);
+    // the only unblock is the config edit.
+    if rust_excluded(context).is_some() {
+        out.push_str("Next, to rank Rust seams:\n");
+        out.push_str(&format!("  {}\n", capitalized(RUST_EXCLUDED_GUIDANCE)));
         return out;
     }
     if let Some(routes) = routes {
@@ -635,6 +671,14 @@ fn required_routes<'a>(context: PilotSummaryContext<'a>) -> Option<&'a [PilotLan
         .and_then(PilotLanguageRoutes::required)
 }
 
+/// Rust files excluded by `[languages] enabled`, when the exclusion emptied
+/// the ranking (#5205).
+fn rust_excluded(context: PilotSummaryContext<'_>) -> Option<usize> {
+    context
+        .language_routes
+        .and_then(PilotLanguageRoutes::rust_exclusion)
+}
+
 fn route_status_label(route: &PilotLanguageRoute) -> &'static str {
     match (route.available, route.enabled) {
         (false, _) => "not available in this build",
@@ -669,6 +713,23 @@ fn push_language_routes_terminal(out: &mut String, routes: &[PilotLanguageRoute]
         }
     }
     out.push('\n');
+}
+
+fn push_rust_exclusion_terminal(out: &mut String, file_count: usize) {
+    out.push_str("Excluded from pilot's Rust seam scan:\n");
+    out.push_str(&format!(
+        "  rust: {} (not enabled in ripr.toml [languages])\n",
+        file_count_label(file_count)
+    ));
+    out.push_str(&format!("    {RUST_EXCLUDED_GUIDANCE}\n\n"));
+}
+
+fn push_rust_exclusion_md(out: &mut String, file_count: usize) {
+    out.push_str("## Excluded From Pilot's Rust Seam Scan\n\n");
+    out.push_str(&format!(
+        "- `rust`: {} (not enabled in `ripr.toml [languages]`)\n  - {RUST_EXCLUDED_GUIDANCE}\n\n",
+        file_count_label(file_count)
+    ));
 }
 
 fn push_language_routes_md(out: &mut String, routes: &[PilotLanguageRoute]) {
@@ -732,6 +793,16 @@ fn push_language_routes_json(out: &mut String, routes: Option<&PilotLanguageRout
             ));
         }
         out.push_str("\n    ]");
+    }
+    // Omitted when Rust is enabled (or no Rust files exist), so pilot JSON
+    // for supported repositories is unchanged (#5205).
+    if let Some(file_count) = routes.rust_exclusion() {
+        out.push_str(",\n    \"rust_excluded_from_scope\": {\n");
+        json_string_field(out, 6, "language", "rust", true);
+        out.push_str(&format!("      \"file_count\": {file_count},\n"));
+        out.push_str("      \"enabled\": false,\n");
+        json_string_field(out, 6, "guidance", RUST_EXCLUDED_GUIDANCE, false);
+        out.push_str("    }");
     }
     out.push('\n');
     out.push_str("  },\n");

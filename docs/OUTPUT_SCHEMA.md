@@ -15337,13 +15337,19 @@ Field contract:
   ripr adapter reads (Go, Java, C, shell and others); the empty ranking is then
   a non-claim, and no follow-up command applies. `unanalyzed_languages` —
   additive, present only when such source exists — lists `{language,
-  file_count}` per language name.
+  file_count}` per language name. `rust_excluded_from_scope` — additive,
+  present only when Rust files exist but Rust is not in the effective
+  `[languages] enabled` set (#5205) — carries `{language: "rust",
+  file_count, enabled: false, guidance}`; pilot bypasses the Rust inventory
+  in that state, so the empty ranking discloses the exclusion rather than a
+  clean result, on the terminal and Markdown as well as here.
 - `next` — advisory follow-up commands. Complete summaries include the public
   `ripr outcome` before/after receipt command, and `repair_command`: the
   `ripr agent repair --seam-id <id> --phase before` command for the top seam
   when its repair-packet eligibility flip holds, otherwise `null` (#3906).
-  When `language_routes.state` is `unanalyzed_only`, `after_snapshot_command`
-  and `outcome_command` are `null`: there is no seam to snapshot or measure.
+  When `language_routes.state` is `unanalyzed_only`, or when
+  `rust_excluded_from_scope` is present, `after_snapshot_command` and
+  `outcome_command` are `null`: there is no seam to snapshot or measure.
   Partial summaries include a retry command with a larger explicit timeout.
 
 The Markdown sibling prints the same summary, puts the top recommendation first,
