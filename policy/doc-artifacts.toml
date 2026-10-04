@@ -1228,3 +1228,43 @@ path = "docs/specs/RIPR-SPEC-0221-agent-surface-benchmark.md"
 status = "proposed"
 owner = "xtask"
 standalone_reason = "Issue #5257 records the cross-surface agent-experience benchmark: cargo xtask bench-agent-surfaces measures CLI, MCP stdio, and LSP stdio latency plus envelope actionability and output determinism over content-pinned offline corpora in one identity-bound advisory receipt, with typed validity gates, --compare regression flagging, and recorded structural limitations where a population cannot exist on large checkouts; no new CI gate."
+
+[[artifact]]
+id = "RIPR-SPEC-0225"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0225-whole-value-equality-field-credit.md"
+status = "proposed"
+owner = "product-analysis"
+standalone_reason = "Records when a whole-value assert_eq! against a struct literal naming the changed field confirms a Rust field_construction probe, gated on derived PartialEq and RIPR-SPEC-0197 call identity, and makes the whole_object_equality oracle kind parser-backed."
+
+[[artifact]]
+id = "RIPR-SPEC-0226"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0226-same-line-finding-agreement.md"
+status = "proposed"
+owner = "product-analysis"
+standalone_reason = "Records which facts findings on one changed line and owner must agree on (reach, related tests, observation of one call) and which family evidence may differ, with a goldens-wide contradiction check."
+
+[[artifact]]
+id = "RIPR-SPEC-0227"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0227-result-side-oracles.md"
+status = "proposed"
+owner = "product-analysis"
+standalone_reason = "Records one contract for oracles that observe only the Ok/Err side of a Result: never a variant or value discriminator, and a proposed same-test side-flip credit for guards and the ? operator."
+
+[[artifact]]
+id = "RIPR-SPEC-0228"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0228-rust-field-write-observation.md"
+status = "proposed"
+owner = "product-analysis"
+standalone_reason = "Records how changed Rust field assignments are probed and observed: typed field_construction probes, same-test field reads after the owner call, resolved-body getters, and named limits for &mut aliasing."
+
+[[artifact]]
+id = "RIPR-SPEC-0229"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0229-match-arm-selection-discriminator.md"
+status = "proposed"
+owner = "product-analysis"
+standalone_reason = "Records how ripr decides which match arm a test input selects, names the unselected changed arm as a missing discriminator (#5432), and credits a selecting call paired with an exact oracle."

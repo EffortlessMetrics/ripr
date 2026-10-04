@@ -12229,6 +12229,105 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0225"
+name = "Whole-value equality credit for constructed fields"
+spec = "docs/specs/RIPR-SPEC-0225-whole-value-equality-field-credit.md"
+tests = []
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/extract/oracles/classify.rs",
+  "crates/ripr/src/analysis/extract/oracles/patterns.rs",
+  "crates/ripr/src/analysis/classify/activation.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0225-whole-value-equality-field-credit.md",
+]
+metrics = [
+  "field_construction_whole_value_credit",
+  "whole_object_equality_lexical_only",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0226"
+name = "Findings on one line agree on shared facts"
+spec = "docs/specs/RIPR-SPEC-0226-same-line-finding-agreement.md"
+tests = []
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/classify/related_tests.rs",
+  "crates/ripr/src/analysis/classify/reveal.rs",
+  "crates/ripr/src/analysis/classify/flow.rs",
+  "xtask/src/reports/verdict_corpus.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0226-same-line-finding-agreement.md",
+]
+metrics = [
+  "same_line_reach_contradictions",
+  "duplicate_related_test_entries",
+  "same_call_effect_deletion_disagreements",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0227"
+name = "Result-side oracles (is_err, is_ok, unwrap_err, should_panic)"
+spec = "docs/specs/RIPR-SPEC-0227-result-side-oracles.md"
+tests = []
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/extract/oracles/scan.rs",
+  "crates/ripr/src/analysis/extract/oracles/classify.rs",
+  "crates/ripr/src/analysis/classify/boundary_pairing.rs",
+  "crates/ripr/src/analysis/classify/reveal.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0227-result-side-oracles.md",
+]
+metrics = [
+  "result_side_oracle_variant_credit",
+  "result_side_oracle_side_flip_credit",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0228"
+name = "Rust field writes are probed and observed, not unknown"
+spec = "docs/specs/RIPR-SPEC-0228-rust-field-write-observation.md"
+tests = []
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/syntax/ra.rs",
+  "crates/ripr/src/analysis/probes/diff.rs",
+  "crates/ripr/src/analysis/probes/lexical.rs",
+  "crates/ripr/src/analysis/classify/activation.rs",
+  "crates/ripr/src/analysis/classify/propagation_witness.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0228-rust-field-write-observation.md",
+]
+metrics = [
+  "rust_field_write_static_unknown",
+  "rust_field_write_direct_read_credit",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0229"
+name = "Match-arm selection names the unselected arm"
+spec = "docs/specs/RIPR-SPEC-0229-match-arm-selection-discriminator.md"
+tests = []
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/classify/activation.rs",
+  "crates/ripr/src/analysis/classify/reveal.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0229-match-arm-selection-discriminator.md",
+]
+metrics = [
+  "match_arm_unselected_arm_named",
+  "match_arm_selected_arm_credit",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0230"
 name = "Seam reach unknown, not ungripped"
 spec = "docs/specs/RIPR-SPEC-0230-seam-reach-unknown-not-ungripped.md"
