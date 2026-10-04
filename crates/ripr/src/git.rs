@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 use crate::core_error::CoreError;
 use crate::process_owner::OwnedProcess;
 
-/// Grace period for draining stdout/stderr after a timed process-tree kill.
+/// Grace period for draining stdout/stderr after owned process-tree cleanup.
 ///
 /// A descendant can briefly retain an inherited pipe handle after the parent
 /// is terminated. The bounded drain keeps a Windows timeout from blocking the
@@ -544,11 +544,15 @@ fn collect_output_with_optional_deadline_and_limit(
 
     let wait = poll_child(&mut child, timeout, describe);
     let timed_out = !matches!(&wait, ChildWait::Exited(_));
-    let drain_deadline = timed_out.then(|| Instant::now() + POST_KILL_DRAIN_GRACE);
+    let drain_deadline = Some(Instant::now() + POST_KILL_DRAIN_GRACE);
     let stdout_result =
         drain_bounded_pipe_reader(stdout_reader, timed_out, drain_deadline, "stdout", describe);
     let stderr_result =
         drain_bounded_pipe_reader(stderr_reader, timed_out, drain_deadline, "stderr", describe);
+    // Cleanup failure is primary even when a pipe reader also failed.
+    if let ChildWait::CleanupFailed(message) = &wait {
+        return Err(CoreError::message(message.clone()));
+    }
     let stdout = stdout_result?;
     let stderr = stderr_result?;
 
@@ -887,7 +891,7 @@ impl CatFileBatch {
         drop(self.stdin);
         let wait = poll_child(&mut self.child, Some(remaining), &self.describe);
         let timed_out = !matches!(&wait, ChildWait::Exited(_));
-        let drain_deadline = timed_out.then(|| Instant::now() + POST_KILL_DRAIN_GRACE);
+        let drain_deadline = Some(Instant::now() + POST_KILL_DRAIN_GRACE);
         let stderr = drain_bounded_pipe_reader(
             self.stderr.take(),
             timed_out,
@@ -897,6 +901,8 @@ impl CatFileBatch {
         );
         match wait {
             ChildWait::Exited(status) if status.success() => {
+                // A bounded pipe-drain failure cannot become batch success.
+                let _stderr = stderr?;
                 // A child that exited before the deadline but was reaped
                 // after it has still overrun the budget: accept no success
                 // past the overall deadline. Field accesses only — stdin is
@@ -1122,11 +1128,15 @@ fn collect_output_with_deadline(
 
     let wait = poll_child(&mut child, timeout, describe);
     let timed_out = !matches!(&wait, ChildWait::Exited(_));
-    let drain_deadline = timed_out.then(|| Instant::now() + POST_KILL_DRAIN_GRACE);
+    let drain_deadline = Some(Instant::now() + POST_KILL_DRAIN_GRACE);
     let stdout_result =
         drain_pipe_reader(stdout_reader, timed_out, drain_deadline, "stdout", describe);
     let stderr_result =
         drain_pipe_reader(stderr_reader, timed_out, drain_deadline, "stderr", describe);
+    // Cleanup failure is primary even when a pipe reader also failed.
+    if let ChildWait::CleanupFailed(message) = &wait {
+        return Err(CoreError::message(message.clone()));
+    }
     let stdout = stdout_result?;
     let stderr = stderr_result?;
 
@@ -1190,7 +1200,9 @@ impl ChildWait {
 /// kill/reap behavior is unchanged. A failed termination is never folded
 /// into a `Cancelled`/`TimedOut`/`WaitFailed` arm — the contract that every
 /// such arm already terminated and reaped stays true because the caller
-/// instead receives [`ChildWait::CleanupFailed`].
+/// instead receives [`ChildWait::CleanupFailed`]. A primary exit also completes
+/// owned-tree cleanup before returning `Exited`, so descendants cannot keep
+/// a later stdout/stderr drain waiting indefinitely.
 pub(crate) fn poll_child(
     child: &mut OwnedProcess,
     timeout: Option<Duration>,
@@ -1200,7 +1212,16 @@ pub(crate) fn poll_child(
     let mut backoff = crate::process_owner::PollBackoff::new();
     loop {
         match child.try_wait() {
-            Ok(Some(status)) => return ChildWait::Exited(status),
+            Ok(Some(status)) => {
+                // The primary may exit while a descendant still holds a pipe.
+                // Complete owned-tree cleanup before any caller waits for EOF.
+                return terminate_then_classify(
+                    describe,
+                    "completion",
+                    ChildWait::Exited(status),
+                    || child.terminate_tree(),
+                );
+            }
             Ok(None) => {
                 if let Err(cancelled) = crate::analysis::cancellation::checkpoint() {
                     return terminate_then_classify(
@@ -2178,6 +2199,118 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
     }
 
     #[cfg(windows)]
+    struct PipeDescendantFixture {
+        root: PathBuf,
+    }
+
+    #[cfg(windows)]
+    impl PipeDescendantFixture {
+        fn new(label: &str) -> Result<Self, String> {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|err| format!("clock failed: {err}"))?
+                .as_nanos();
+            let root = std::env::temp_dir()
+                .join(format!("ripr-pipe-{label}-{}-{nanos}", std::process::id()));
+            // Atomic creation makes this guard the sole owner of the root.
+            std::fs::create_dir(&root).map_err(|err| format!("create fixture root: {err}"))?;
+            Ok(Self { root })
+        }
+
+        fn marker(&self) -> PathBuf {
+            self.root.join("descendant.pid")
+        }
+
+        fn natural_exit_marker(&self) -> PathBuf {
+            self.root.join("descendant-natural-exit")
+        }
+    }
+
+    #[cfg(windows)]
+    impl Drop for PipeDescendantFixture {
+        fn drop(&mut self) {
+            // Emergency harness cleanup on every early error. Production
+            // containment continues to belong to the shared Job Object owner.
+            if let Ok(pid) = read_pipe_descendant_pid(&self.marker()) {
+                emergency_stop_pipe_descendant(pid);
+            }
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[cfg(windows)]
+    fn read_pipe_descendant_pid(marker_path: &Path) -> Result<u32, String> {
+        std::fs::read_to_string(marker_path)
+            .map_err(|err| format!("descendant PID marker was not written: {err}"))?
+            .trim()
+            .parse::<u32>()
+            .map_err(|err| format!("descendant PID marker was invalid: {err}"))
+    }
+
+    #[cfg(windows)]
+    fn pipe_inheriting_descendant_command(
+        marker_path: &Path,
+        natural_exit_marker: Option<&Path>,
+        wait_for_descendant: bool,
+    ) -> Command {
+        let marker_path_text = marker_path.display().to_string().replace('\'', "''");
+        let descendant_script = "Start-Sleep -Seconds 60; if ($env:RIPR_GIT_DESCENDANT_NATURAL_EXIT_MARKER) { Set-Content -LiteralPath $env:RIPR_GIT_DESCENDANT_NATURAL_EXIT_MARKER -Value natural_exit }";
+        let finish = if wait_for_descendant {
+            "Wait-Process -Id $p.Id"
+        } else {
+            "Write-Output 'primary-completed'; exit 0"
+        };
+        let mut command = Command::new("powershell");
+        command.args([
+            "-NoProfile",
+            "-Command",
+            &format!(
+                "$p = Start-Process -FilePath powershell -ArgumentList @('-NoProfile','-Command','{descendant_script}') -NoNewWindow -PassThru; Set-Content -LiteralPath '{marker_path_text}' -Value $p.Id; {finish}"
+            ),
+        ]);
+        command.env_remove("RIPR_GIT_DESCENDANT_NATURAL_EXIT_MARKER");
+        if let Some(path) = natural_exit_marker {
+            command.env("RIPR_GIT_DESCENDANT_NATURAL_EXIT_MARKER", path);
+        }
+        command
+    }
+
+    #[cfg(windows)]
+    fn emergency_stop_pipe_descendant(descendant_pid: u32) {
+        let _ = Command::new("taskkill")
+            .args(["/PID", &descendant_pid.to_string(), "/T", "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+
+    #[cfg(windows)]
+    fn assert_pipe_descendant_stopped(marker_path: &Path, trigger: &str) -> Result<(), String> {
+        let descendant_pid = read_pipe_descendant_pid(marker_path)?;
+        let process_check = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                &format!(
+                    "if (Get-Process -Id {descendant_pid} -ErrorAction SilentlyContinue) {{ exit 0 }} else {{ exit 1 }}"
+                ),
+            ])
+            .status()
+            .map_err(|err| format!("failed to inspect descendant process: {err}"))?;
+        if process_check.success() {
+            emergency_stop_pipe_descendant(descendant_pid);
+            let _ = std::fs::remove_file(marker_path);
+            return Err(format!(
+                "pipe-inheriting descendant {descendant_pid} remained alive after {trigger}; tree termination was not established"
+            ));
+        }
+        // Confirmed dead: disarm the PID fallback before PID reuse.
+        std::fs::remove_file(marker_path)
+            .map_err(|err| format!("remove descendant PID marker: {err}"))?;
+        Ok(())
+    }
+
+    #[cfg(windows)]
     #[test]
     #[serial]
     fn deadline_kills_pipe_inheriting_descendants_without_blocking_the_reader() -> Result<(), String>
@@ -2185,22 +2318,11 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
         if reexec_harness() {
             return Ok(());
         }
-        let marker_path =
-            std::env::temp_dir().join(format!("ripr-pipe-descendant-{}.pid", std::process::id()));
-        let _ = std::fs::remove_file(&marker_path);
-        let marker_path_text = marker_path.display().to_string().replace('\'', "''");
-        let mut command = Command::new("powershell");
-        command.args([
-            "-NoProfile",
-            "-Command",
-            &format!(
-                "$p = Start-Process -FilePath powershell -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 60') -NoNewWindow -PassThru; Set-Content -LiteralPath '{marker_path_text}' -Value $p.Id; Wait-Process -Id $p.Id"
-            ),
-        ]);
-        // The deadline must outlast two cold PowerShell starts, or the kill
-        // lands before the descendant exists and the marker is never written
-        // (seen on a loaded runner at 5s, #3922). The descendant still sleeps
-        // 60s, so the timeout remains the discriminating input.
+        let fixture = PipeDescendantFixture::new("timeout")?;
+        let marker_path = fixture.marker();
+        let command = pipe_inheriting_descendant_command(&marker_path, None, true);
+        // Retain the swarm's20s allowance for two cold PowerShell starts;
+        // the descendant sleeps60s, so timeout remains discriminating.
         let result = collect_output_with_deadline(
             command,
             Some(Duration::from_secs(20)),
@@ -2220,40 +2342,97 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
                 "timeout error should name the deadline, got: {err}"
             ));
         }
-        let descendant_pid = std::fs::read_to_string(&marker_path)
-            .map_err(|read_error| format!("descendant PID marker was not written: {read_error}"))?
-            .trim()
-            .parse::<u32>()
-            .map_err(|parse_error| format!("descendant PID marker was invalid: {parse_error}"))?;
-        let process_check = Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-Command",
-                &format!(
-                    "if (Get-Process -Id {descendant_pid} -ErrorAction SilentlyContinue) {{ exit 0 }} else {{ exit 1 }}"
-                ),
-            ])
-            .status()
-            .map_err(|check_error| format!("failed to inspect descendant process: {check_error}"))?;
-        let _ = std::fs::remove_file(&marker_path);
-        if process_check.success() {
-            let _ = Command::new("taskkill")
-                .args(["/PID", &descendant_pid.to_string(), "/T", "/F"])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status();
-            return Err(format!(
-                "pipe-inheriting descendant {descendant_pid} remained alive after timeout; tree termination was not established"
-            ));
+        assert_pipe_descendant_stopped(&marker_path, "timeout")?;
+        // PID disappearance proves termination; drain bounds alone do not.
+        // No elapsed assertion: retain tolerance of runner scheduling and
+        // cold PowerShell startup in this existing timeout control.
+        Ok(())
+    }
+
+    /// A successful primary must not strand an inherited writer. The natural
+    /// expiry marker discriminates the old code, which waited60s for EOF and
+    /// only then dropped the owner: eventual PID absence alone would pass.
+    #[cfg(windows)]
+    #[test]
+    #[serial]
+    fn completed_primary_cleans_pipe_inheriting_descendants_before_drain() -> Result<(), String> {
+        if reexec_harness() {
+            return Ok(());
         }
-        // The descendant lives for 60 seconds; the PID check above is the
-        // discriminator (bounded pipe draining alone can return without
-        // proving that the inherited writer was terminated). No wall-clock
-        // bound: drain time past the kill is capped by
-        // POST_KILL_DRAIN_GRACE inside the drain path, and the
-        // "exceeded the 20000ms deadline" assert above pins the 20s
-        // discriminating input. An elapsed assert would only add flake
-        // surface under parallel load.
+        for bounded in [false, true] {
+            let fixture = PipeDescendantFixture::new(if bounded {
+                "success-bounded"
+            } else {
+                "success"
+            })?;
+            let marker_path = fixture.marker();
+            let natural_exit_marker = fixture.natural_exit_marker();
+            let command =
+                pipe_inheriting_descendant_command(&marker_path, Some(&natural_exit_marker), false);
+            let output = if bounded {
+                collect_output_with_deadline_and_limit(
+                    command,
+                    Duration::from_secs(20),
+                    4096,
+                    "completed-pipe-descendant-bounded",
+                )
+            } else {
+                collect_output_with_deadline(
+                    command,
+                    Some(Duration::from_secs(20)),
+                    "completed-pipe-descendant",
+                )
+            }
+            .map_err(|err| format!("a completed primary must collect successfully: {err}"))?;
+            if !output.status.success() {
+                return Err(format!(
+                    "primary did not exit successfully: {}",
+                    output.status
+                ));
+            }
+            if !String::from_utf8_lossy(&output.stdout).contains("primary-completed") {
+                return Err("completed-primary stdout was lost".to_string());
+            }
+            if natural_exit_marker.exists() {
+                // Disarm cleanup of an already naturally exited PID.
+                let _ = std::fs::remove_file(&marker_path);
+                return Err("descendant survived primary exit until natural expiry; owned cleanup did not precede drain".to_string());
+            }
+            assert_pipe_descendant_stopped(&marker_path, "successful primary completion")?;
+        }
+        Ok(())
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn cleanup_failure_replaces_a_successfully_exited_wait_arm() -> Result<(), String> {
+        #[cfg(unix)]
+        let status = {
+            use std::os::unix::process::ExitStatusExt;
+            std::process::ExitStatus::from_raw(0)
+        };
+        #[cfg(windows)]
+        let status = {
+            use std::os::windows::process::ExitStatusExt;
+            std::process::ExitStatus::from_raw(0)
+        };
+        let wait = terminate_then_classify(
+            "completed stub child",
+            "completion",
+            ChildWait::Exited(status),
+            || Err("incomplete tree cleanup: refused completion cleanup".to_string()),
+        );
+        let ChildWait::CleanupFailed(message) = &wait else {
+            return Err(format!(
+                "completion cleanup failure became success: {}",
+                wait.summary()
+            ));
+        };
+        assert!(message.contains("incomplete tree cleanup"), "{message}");
+        assert!(
+            message.contains("suppressed wait outcome: child exited"),
+            "{message}"
+        );
         Ok(())
     }
 
