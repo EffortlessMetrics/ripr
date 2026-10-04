@@ -46,6 +46,7 @@ input.
 | Max framing header block | 8 KiB | Legitimate headers are under ~100 bytes (`Content-Length` plus optional `Content-Type`); bounds a client streaming header bytes forever. |
 | In-flight request concurrency | 4 | tower-lsp's own implicit default, made explicit. Must stay above 1 so the built-in `$/cancelRequest` notification and lifecycle messages stay serviceable under load. |
 | Write-stall deadline | 120 s | Any successful write resets the clock; only a reader that has completely stopped draining stdout trips it. Converts a permanent bounded-memory wedge into clean process termination. |
+| Server→client request liveness (#5278) | 30 s | One bound per outstanding ripr-issued client request (`workspace/configuration`, `client/registerCapability`, refresh/lens refresh requests, `workspace/workspaceFolders`). A client that never answers — a desynced or dead proxy — must not pin a handler task forever: after a framing violation the read loop has fused, so a response can never arrive, and an unbounded await left the sidecar alive but permanently silent mid-session. Expiry fails the one request through its ordinary error arm (logged, and the configuration pull records `ConfigPullState::Failed`); notifications are not requests and are bounded by the write-stall deadline instead. |
 | `initialization_options` | 64 KiB (size estimate) | Only a handful of known keys are read (`lsp/config.rs`). |
 | `previousResultIds` | 4096 entries; 4096 B/URI; 1024 B/value | One entry per tracked document must tolerate monorepo pull-diagnostic sessions; bounds the URI-set clone and per-document scan. |
 | `executeCommand` arguments | 8 entries; 64 KiB total (size estimate) | Every RIPR command takes zero or one argument object; bounds all downstream identifiers (gap/seam/snapshot ids) transitively. |
@@ -102,6 +103,18 @@ These bounds compose with, and do not duplicate, the existing authorities:
   including an ingress bound trip — ends the session after one bounded
   `-32700`. This is deliberate ("terminate cleanly when framing cannot be
   recovered") and pinned by tests.
+- **The session-end contract is uniform across lifecycle stages (#5278).**
+  Any framing violation — before `initialize`, after `initialized`, at any
+  request — produces the same observable outcome: one bounded `-32700`
+  response, then prompt session end and process exit (code 0; the pinned
+  divergence from LSP §exit's non-zero recommendation is unchanged). Before
+  #5278 the mid-session stage could wedge alive-but-silent: ripr's
+  `initialized`/root-transition handlers awaited server→client requests with
+  no timeout, the fused transport could never deliver their responses, and
+  the outstanding handler tasks pinned tower-lsp-server's task pipeline.
+  The server→client request liveness bound above removes that wedge; the
+  documented recovery rule for any desynced transport is: **restart the
+  process**.
 - **Duplicate `Content-Length` headers are last-wins** in the vendored codec;
   `BoundedStdinReader` mirrors last-wins so both layers agree on which value
   governs the cap.
@@ -128,10 +141,12 @@ These bounds compose with, and do not duplicate, the existing authorities:
 ## Evidence
 
 - `crates/ripr/src/lsp/transport_bounds.rs::tests` — adapter unit tests plus
-  two in-process end-to-end tests over the real `serve_streams` composition:
-  an oversized frame yields one bounded `-32700` then a clean stop, and a
-  client that stops reading trips the write-stall deadline and ends the
-  session instead of wedging it.
+  in-process end-to-end tests over the real `serve_streams` composition:
+  an oversized frame yields one bounded `-32700` then a clean stop; a client
+  that stops reading trips the write-stall deadline and ends the session
+  instead of wedging it; and a mid-session framing violation with a
+  `workspace/configuration` request left unanswered ends the session (#5278,
+  the stage that previously wedged).
 - `crates/ripr/src/lsp/payload_bounds.rs::tests` — typed bound unit tests.
 - `crates/ripr/tests/lsp_lifecycle.rs` section 9 (issue #2034) — real-binary
   adversarial cases: oversized declared `Content-Length` with no body,

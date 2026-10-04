@@ -118,21 +118,32 @@ pub(super) fn canonicalize_diagnostic_batches(
 /// the CLI/report alignment layer. Findings without that identity remain
 /// individual report items; LSP must not invent a semantic grouping key.
 pub(super) fn canonical_finding_groups(findings: &[Finding]) -> Vec<(Finding, Vec<Finding>)> {
-    let mut grouped = BTreeMap::<String, Vec<Finding>>::new();
+    canonical_group_members(findings)
+        .into_iter()
+        .map(|(primary, members)| (primary.clone(), members.into_iter().cloned().collect()))
+        .collect()
+}
+
+/// Borrowing form of [`canonical_finding_groups`]: the same grouping key,
+/// primary selection, and ordering without cloning the findings, so count
+/// and class summaries can read the same group structure the listing and
+/// publishing paths see.
+pub(super) fn canonical_group_members(findings: &[Finding]) -> Vec<(&Finding, Vec<&Finding>)> {
+    let mut grouped = BTreeMap::<String, Vec<&Finding>>::new();
     for finding in findings {
         let key = finding
             .canonical_gap
             .as_ref()
             .map(|gap| format!("canonical:{}", gap.id))
             .unwrap_or_else(|| format!("raw:{}", finding.id));
-        grouped.entry(key).or_default().push(finding.clone());
+        grouped.entry(key).or_default().push(finding);
     }
 
     grouped
         .into_values()
         .filter_map(|mut group| {
-            group.sort_by_key(finding_primary_sort_key);
-            let primary = group.first().cloned()?;
+            group.sort_by_key(|finding| finding_primary_sort_key(finding));
+            let primary = *group.first()?;
             Some((primary, group))
         })
         .collect()

@@ -19,7 +19,7 @@ use crate::config::LspDiagnosticProfile;
 use crate::domain::SourceCurrentness;
 use std::fs;
 use std::path::Path;
-use tower_lsp_server::ls_types::{Diagnostic, PositionEncodingKind};
+use tower_lsp_server::ls_types::{Diagnostic, Position, PositionEncodingKind};
 
 const PREDICATE: &str = "montant_é > discount_threshold";
 
@@ -415,7 +415,7 @@ fn crlf_file_covers_the_predicate() -> Result<(), String> {
 }
 
 #[test]
-fn base_deleted_finding_is_zero_width_on_the_current_line() -> Result<(), String> {
+fn base_deleted_finding_projects_the_current_line_span() -> Result<(), String> {
     let root = unique_lsp_test_root("origin-deleted")?;
     fs::create_dir_all(root.path().join("src")).map_err(|err| format!("create src: {err}"))?;
     fs::write(
@@ -459,7 +459,7 @@ fn base_deleted_finding_is_zero_width_on_the_current_line() -> Result<(), String
         .iter()
         .find(|batch| !batch.diagnostics.is_empty())
         .ok_or_else(|| "no diagnostic batch".to_string())?;
-    let mut saw_zero_width = false;
+    let mut saw_line_span = false;
     for diagnostic in &batch.diagnostics {
         let Some(id) = diagnostic
             .data
@@ -472,25 +472,40 @@ fn base_deleted_finding_is_zero_width_on_the_current_line() -> Result<(), String
         if !ids.contains(&id) {
             continue;
         }
-        if diagnostic.range.start.character != diagnostic.range.end.character {
+        // #5277: the coarse BaseDeleted record still owns its projection —
+        // the stored current line, never a saved-line search — but its
+        // empty span projects the line's full span so the finding hover
+        // gate (`start <= pos < end`) is enterable mid-line.
+        if diagnostic.range.start.line != diagnostic.range.end.line
+            || diagnostic.range.start.character != 0
+            || diagnostic.range.end.character != super::position::MAX_LINE_SPAN_WIDTH
+        {
             return Err(format!(
-                "BaseDeleted diagnostic must be zero-width, got {:?}",
+                "BaseDeleted diagnostic must project its stored line span, got {:?}",
                 diagnostic.range
             ));
         }
-        let line_text = current
-            .lines()
-            .nth(diagnostic.range.start.line as usize)
-            .ok_or_else(|| "deleted diagnostic line missing from current source".to_string())?;
-        let _ = covered_text(
-            line_text,
-            diagnostic.range.start.character,
-            diagnostic.range.end.character,
-            &PositionEncodingKind::UTF16,
-        )?;
-        saw_zero_width = true;
+        if diagnostic.range.start.line as usize >= current.lines().count() {
+            return Err(format!(
+                "BaseDeleted diagnostic must stay on a current line, got {:?}",
+                diagnostic.range
+            ));
+        }
+        if !super::hover::diagnostic_covers_position(
+            diagnostic,
+            &Position {
+                line: diagnostic.range.start.line,
+                character: 2,
+            },
+        ) {
+            return Err(format!(
+                "a mid-line position must reach the BaseDeleted finding hover: {:?}",
+                diagnostic.range
+            ));
+        }
+        saw_line_span = true;
     }
-    if !saw_zero_width {
+    if !saw_line_span {
         return Err("BaseDeleted finding did not reach a diagnostic".to_string());
     }
     Ok(())
@@ -703,12 +718,29 @@ fn stored_coarse_origin_is_not_replaced_by_saved_line_search() -> Result<(), Str
     let diagnostic = diagnostics
         .first()
         .ok_or_else(|| "coarse origin did not project".to_string())?;
+    // The coarse record still owns the projection: the stored line is kept
+    // and no saved-line search runs. Since #5277 the empty stored span
+    // projects the stored line's full span instead of `start == end`, so the
+    // finding hover gate (`start <= pos < end`) is enterable mid-line.
     if diagnostic.range.start.line != line
+        || diagnostic.range.end.line != line
         || diagnostic.range.start.character != 0
-        || diagnostic.range.end.character != 0
+        || diagnostic.range.end.character != super::position::MAX_LINE_SPAN_WIDTH
     {
         return Err(format!(
-            "coarse origin was replaced by a saved-line search on {source:?}: {:?}",
+            "coarse origin did not project its stored line span on {source:?}: {:?}",
+            diagnostic.range
+        ));
+    }
+    if !super::hover::diagnostic_covers_position(
+        diagnostic,
+        &Position {
+            line,
+            character: 20,
+        },
+    ) {
+        return Err(format!(
+            "a mid-line position on the coarse finding's line must reach the finding hover: {:?}",
             diagnostic.range
         ));
     }
@@ -719,8 +751,11 @@ fn stored_coarse_origin_is_not_replaced_by_saved_line_search() -> Result<(), Str
         &encoding,
         source.lines().nth(line as usize),
     );
-    if heuristic.start.character == 0 && heuristic.end.character == 0 {
-        return Err("heuristic fixture is already zero-width; not a discriminator".to_string());
+    if heuristic == diagnostic.range {
+        return Err(
+            "coarse projection matched the saved-line heuristic; fixture is not a discriminator"
+                .to_string(),
+        );
     }
     Ok(())
 }

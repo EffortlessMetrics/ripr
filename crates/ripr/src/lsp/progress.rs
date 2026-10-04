@@ -201,16 +201,30 @@ pub(super) struct AnalysisProgressTracker {
     sink: Mutex<Arc<dyn ProgressSink>>,
     supported: AtomicBool,
     tokens: Mutex<BTreeMap<u64, TokenRecord>>,
+    /// Liveness bound for the `window/workDoneProgress/create` round trip
+    /// (#5278). `begin` runs on the interactive refresh path inside the
+    /// transport's task pipeline, so an unanswered create must fail like
+    /// every other server→client request instead of pinning the pipeline
+    /// alive-but-silent.
+    client_request_timeout: std::time::Duration,
 }
 
 impl AnalysisProgressTracker {
     pub(super) fn new(client: Client) -> Self {
+        Self::with_client_request_timeout(client, super::transport_bounds::CLIENT_REQUEST_TIMEOUT)
+    }
+
+    pub(super) fn with_client_request_timeout(
+        client: Client,
+        client_request_timeout: std::time::Duration,
+    ) -> Self {
         let sink: Arc<dyn ProgressSink> = Arc::new(client.clone());
         Self {
             client,
             sink: Mutex::new(sink),
             supported: AtomicBool::new(false),
             tokens: Mutex::new(BTreeMap::new()),
+            client_request_timeout,
         }
     }
 
@@ -282,7 +296,21 @@ impl AnalysisProgressTracker {
             return;
         };
         let token = progress_token(request.generation);
-        if let Err(error) = sink.create(token.clone()).await {
+        // #5278: the create is a server→client request whose response can
+        // never arrive once the transport read loop has fused (or if the
+        // client simply never answers). Expiry takes the same drop-and-log
+        // path as any other create failure; analysis state is unaffected.
+        let created =
+            match tokio::time::timeout(self.client_request_timeout, sink.create(token.clone()))
+                .await
+            {
+                Ok(result) => result,
+                Err(_) => Err(format!(
+                    "no response within its {}s liveness bound (#5278)",
+                    self.client_request_timeout.as_secs()
+                )),
+            };
+        if let Err(error) = created {
             if let Ok(mut tokens) = self.tokens.lock() {
                 tokens.remove(&request.generation);
             }
@@ -796,6 +824,64 @@ mod tests {
             };
             if tokens.contains_key(&7) {
                 return Err("unstarted token was not removed by end".to_string());
+            }
+            Ok(())
+        })
+    }
+
+    /// #5278: a create that never resolves (a client that never answers
+    /// `window/workDoneProgress/create`) must expire through the same
+    /// drop-and-log path as a failed create instead of pinning the refresh
+    /// path — and with it the transport's task pipeline — forever.
+    #[test]
+    fn unanswered_progress_create_expires_and_drops_the_token() -> Result<(), String> {
+        struct PendingCreateSink;
+        impl ProgressSink for PendingCreateSink {
+            fn create(&self, _token: String) -> BoxFuture<'_, Result<(), String>> {
+                Box::pin(std::future::pending())
+            }
+            fn notify(
+                &self,
+                _token: String,
+                _value: ProgressNotificationValue,
+            ) -> BoxFuture<'_, ()> {
+                Box::pin(async {})
+            }
+        }
+        runtime()?.block_on(async {
+            let tracker = Arc::new(AnalysisProgressTracker::with_client_request_timeout(
+                test_client(),
+                std::time::Duration::from_millis(100),
+            ));
+            tracker.set_supported(true);
+            tracker.set_sink(Arc::new(PendingCreateSink));
+            let request = test_request(11);
+            tracker
+                .begin(&request, AnalysisProgressPhase::Analyzing)
+                .await;
+            {
+                let Ok(tokens) = tracker.tokens.lock() else {
+                    return Err("tracker lock poisoned".to_string());
+                };
+                if tokens.contains_key(&11) {
+                    return Err(
+                        "an expired create left a placeholder token that would leak or block retry"
+                            .to_string(),
+                    );
+                }
+            }
+            // The generation recovers once the client answers creates again.
+            tracker.set_sink(Arc::new(RecordingSink::default()));
+            tracker
+                .begin(&request, AnalysisProgressPhase::Analyzing)
+                .await;
+            {
+                let Ok(tokens) = tracker.tokens.lock() else {
+                    return Err("tracker lock poisoned".to_string());
+                };
+                if !tokens.contains_key(&11) {
+                    return Err("a healthy retry must register the token".to_string());
+                }
             }
             Ok(())
         })

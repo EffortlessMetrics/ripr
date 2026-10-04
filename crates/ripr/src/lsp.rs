@@ -99,7 +99,7 @@ where
     O: tokio::io::AsyncWrite + Unpin,
 {
     let (stdin, stdout) = bounds.wrap(stdin, stdout);
-    let (service, socket) = build_service(root.clone());
+    let (service, socket) = build_service(root.clone(), bounds.client_request_timeout);
 
     Server::new(stdin, stdout, socket)
         .concurrency_level(bounds.request_concurrency)
@@ -115,12 +115,19 @@ where
 /// untyped params and validates them manually (a typed-params parse failure
 /// would be dropped silently). The framed duplex tests use this same
 /// constructor so the trace contract is exercised through the wire harness.
-fn build_service(root: std::path::PathBuf) -> (LspService<Backend>, ClientSocket) {
-    LspService::build(|client| Backend::new(client, root))
-        .custom_method("$/setTrace", Backend::set_trace)
-        .custom_method(
-            "ripr/listActionableItems",
-            Backend::ripr_list_actionable_items,
-        )
-        .finish()
+/// `client_request_timeout` is the backend's server→client request liveness
+/// bound (#5278); the reviewed default lives in `transport_bounds`.
+fn build_service(
+    root: std::path::PathBuf,
+    client_request_timeout: std::time::Duration,
+) -> (LspService<Backend>, ClientSocket) {
+    LspService::build(|client| {
+        Backend::new(client, root).with_client_request_timeout(client_request_timeout)
+    })
+    .custom_method("$/setTrace", Backend::set_trace)
+    .custom_method(
+        "ripr/listActionableItems",
+        Backend::ripr_list_actionable_items,
+    )
+    .finish()
 }

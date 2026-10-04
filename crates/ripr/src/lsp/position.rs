@@ -146,6 +146,15 @@ fn first_non_whitespace_byte(line: &str) -> usize {
 }
 
 /// Select stored producer-owned endpoints for the negotiated encoding.
+///
+/// A coarse refusal record (`OriginKind::CoarseZeroWidth`, #4464) carries the
+/// stored line but no exact expression geometry. Projecting its empty span
+/// verbatim yields a zero-width range, which the hover gate
+/// (`start <= pos < end`) can never cover and no editor renders as a
+/// squiggle (#5277). Such a span therefore projects the stored line's full
+/// [`line_span_range`] instead. This stays numeric-only: the line and the
+/// decision come from the stored record; no saved-line search replaces a
+/// coarse record.
 pub(crate) fn range_from_encoded_origin(
     origin: &crate::analysis::diagnostic_origin::EncodedOrigin,
     encoding: &PositionEncodingKind,
@@ -157,6 +166,11 @@ pub(crate) fn range_from_encoded_origin(
     } else {
         origin.for_utf16()
     };
+    if origin.kind == crate::analysis::diagnostic_origin::OriginKind::CoarseZeroWidth
+        && span.start == span.end
+    {
+        return line_span_range(origin.line);
+    }
     Range {
         start: Position {
             line: origin.line,
@@ -306,6 +320,61 @@ mod tests {
         assert_eq!(range.start.character, 0);
         assert_eq!(range.end.line, 42);
         assert_eq!(range.end.character, MAX_LINE_SPAN_WIDTH);
+    }
+
+    #[test]
+    fn coarse_zero_width_origin_projects_its_stored_line_span() {
+        // #5277: a coarse refusal record carries no expression geometry; the
+        // projected range must still be enterable by the hover gate
+        // (`start <= pos < end`), so an empty stored span projects the
+        // stored line's full span instead of `start == end`.
+        use crate::analysis::diagnostic_origin::{EncodedOrigin, EncodedSpan, OriginKind};
+        let coarse = |line: u32| EncodedOrigin {
+            line,
+            utf8: EncodedSpan { start: 0, end: 0 },
+            utf16: EncodedSpan { start: 0, end: 0 },
+            utf32: EncodedSpan { start: 0, end: 0 },
+            kind: OriginKind::CoarseZeroWidth,
+        };
+        for encoding in [
+            PositionEncodingKind::UTF8,
+            PositionEncodingKind::UTF16,
+            PositionEncodingKind::UTF32,
+        ] {
+            let range = range_from_encoded_origin(&coarse(3), &encoding);
+            assert_eq!(range.start.line, 3);
+            assert_eq!(range.start.character, 0);
+            assert_eq!(range.end.line, 3);
+            assert_eq!(range.end.character, MAX_LINE_SPAN_WIDTH);
+            assert_ne!(
+                range.start, range.end,
+                "a coarse finding must not publish an unreachable zero-width range"
+            );
+        }
+        // The missing-input record also carries kind CoarseZeroWidth and an
+        // empty span at line 0: the same line-span projection applies (the
+        // published line is unchanged; it only gains a visible extent).
+        let range = range_from_encoded_origin(&coarse(0), &PositionEncodingKind::UTF16);
+        assert_eq!(range.end.character, MAX_LINE_SPAN_WIDTH);
+    }
+
+    #[test]
+    fn exact_origin_span_projects_verbatim_unchanged() {
+        // Regression control for the coarse projection: an exact producer
+        // origin keeps its stored endpoints byte-for-byte.
+        use crate::analysis::diagnostic_origin::{EncodedOrigin, EncodedSpan, OriginKind};
+        let origin = EncodedOrigin {
+            line: 7,
+            utf8: EncodedSpan { start: 4, end: 10 },
+            utf16: EncodedSpan { start: 4, end: 10 },
+            utf32: EncodedSpan { start: 4, end: 10 },
+            kind: OriginKind::Exact,
+        };
+        let range = range_from_encoded_origin(&origin, &PositionEncodingKind::UTF16);
+        assert_eq!(range.start.line, 7);
+        assert_eq!(range.start.character, 4);
+        assert_eq!(range.end.line, 7);
+        assert_eq!(range.end.character, 10);
     }
 
     #[test]

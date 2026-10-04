@@ -30,6 +30,13 @@
 //!   internal 100 with read-loop backpressure; expensive analysis work is
 //!   already funneled through the refresh scheduler (one active attempt plus
 //!   coalesced pending), so no second queue authority is introduced here.
+//! - Server→client *requests* issued by ripr handlers are bounded by
+//!   [`CLIENT_REQUEST_TIMEOUT`] in the backend (#5278). After a framing
+//!   violation the read loop fuses and a client response can never arrive;
+//!   the bound lets every handler task finish so the sidecar ends the
+//!   session promptly instead of wedging alive-but-silent. The uniform
+//!   recovery contract is: one bounded `-32700`, then the session ends;
+//!   restart the process.
 //!
 //! Named residuals (documented, not silently absent):
 //!
@@ -88,6 +95,23 @@ pub(crate) const WRITE_STALL_TIMEOUT: Duration = Duration::from_mins(2);
 /// `$/cancelRequest` and lifecycle notifications remain serviceable while
 /// requests execute.
 pub(crate) const REQUEST_CONCURRENCY_LIMIT: usize = 4;
+
+/// Maximum duration one server→client *request* round-trip
+/// (`workspace/configuration`, `client/registerCapability`,
+/// `workspace/diagnostic/refresh`, ...) may stay unanswered (#5278).
+///
+/// A client that never answers — a desynced or dead proxy — must not pin a
+/// ripr handler task forever. After a framing violation the transport read
+/// loop fuses (tokio-util `has_errored`), so a response can never arrive;
+/// tower-lsp-server's `Server::serve` join! then waits on the task pipeline
+/// until every outstanding handler future completes, and an unbounded await
+/// leaves the sidecar alive but permanently silent. Expiring the request
+/// through its ordinary error path lets every handler task finish, so the
+/// session ends promptly at every lifecycle stage. Expiry is disclosed
+/// through the same error arm as any other request failure. Notifications
+/// (log/message/publish) are not requests and stay unbounded; a client that
+/// stops reading is bounded by [`WRITE_STALL_TIMEOUT`] instead.
+pub(crate) const CLIENT_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Shared session-liveness flag between the stdin and stdout adapters.
 ///
@@ -392,6 +416,10 @@ pub(crate) struct TransportBounds {
     pub(crate) max_message_bytes: usize,
     pub(crate) write_stall_timeout: Duration,
     pub(crate) request_concurrency: usize,
+    /// The server→client request liveness bound handed to the backend
+    /// (#5278); carried here so the in-process composition tests can
+    /// shorten it alongside the other session bounds.
+    pub(crate) client_request_timeout: Duration,
 }
 
 impl Default for TransportBounds {
@@ -401,6 +429,7 @@ impl Default for TransportBounds {
             max_message_bytes: MAX_MESSAGE_BYTES,
             write_stall_timeout: WRITE_STALL_TIMEOUT,
             request_concurrency: REQUEST_CONCURRENCY_LIMIT,
+            client_request_timeout: CLIENT_REQUEST_TIMEOUT,
         }
     }
 }
@@ -464,6 +493,7 @@ mod tests {
             max_message_bytes: 256,
             write_stall_timeout: Duration::from_millis(50),
             request_concurrency: REQUEST_CONCURRENCY_LIMIT,
+            client_request_timeout: Duration::from_millis(200),
         }
     }
 
@@ -727,6 +757,21 @@ mod tests {
         )
     }
 
+    fn initialize_pull_mode_frame(root: &std::path::Path) -> Result<Vec<u8>, String> {
+        // `workspace.configuration` selects the pull configuration mode, so
+        // `initialized` issues a real `workspace/configuration` request
+        // (#2031), and `didChangeWatchedFiles.dynamicRegistration` makes it
+        // issue `client/registerCapability` — the two awaits that wedged the
+        // transport before #5278. The rootUri points at a real directory so
+        // the pull actually sends instead of deferring.
+        let uri = tower_lsp_server::ls_types::Uri::from_file_path(root)
+            .ok_or_else(|| "test root is not convertible to a file URI".to_string())?;
+        let root_uri = uri.as_str().to_owned();
+        Ok(frame(&format!(
+            r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"processId":null,"rootUri":"{root_uri}","capabilities":{{"workspace":{{"configuration":true,"didChangeWatchedFiles":{{"dynamicRegistration":true,"relativePatternSupport":false}}}}}}}}}}"#
+        )))
+    }
+
     fn hover_frame(id: u64) -> Vec<u8> {
         frame(&format!(
             r#"{{"jsonrpc":"2.0","id":{id},"method":"textDocument/hover","params":{{"textDocument":{{"uri":"file:///nonexistent.rs"}},"position":{{"line":0,"character":0}}}}}}"#
@@ -739,6 +784,7 @@ mod tests {
             max_message_bytes: 1024,
             write_stall_timeout: Duration::from_millis(200),
             request_concurrency: REQUEST_CONCURRENCY_LIMIT,
+            client_request_timeout: Duration::from_millis(300),
         }
     }
 
@@ -837,6 +883,101 @@ mod tests {
             .await
             .map_err(|err| {
                 format!("server wedged: a stopped reader must trip the write-stall deadline: {err}")
+            })?
+            .map_err(|err| format!("server task failed: {err}"))?;
+        drop(client_write);
+        drop(client_read);
+        outcome.map_err(|err| format!("serve_streams returned an error: {err}"))
+    }
+
+    /// Reads framed server output until one frame contains `needle`. A hard
+    /// outer bound keeps a silent-open server a test failure instead of a
+    /// hang: the inner deadline can only fire after a read returns.
+    async fn read_frame_containing<R: AsyncRead + Unpin>(
+        reader: &mut R,
+        needle: &str,
+        what: &str,
+    ) -> Result<String, String> {
+        match tokio::time::timeout(Duration::from_secs(15), async {
+            loop {
+                let frame = read_frame(reader).await?;
+                if frame.contains(needle) {
+                    return Ok(frame);
+                }
+            }
+        })
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => Err(format!("timed out waiting for {what}")),
+        }
+    }
+
+    #[tokio::test]
+    async fn mid_session_framing_violation_ends_the_session_despite_an_unanswered_client_request()
+    -> Result<(), String> {
+        // #5278 red witness. After a completed handshake, the backend's
+        // `initialized` handler awaits server-to-client request responses
+        // (`client/registerCapability` via dynamic registration, plus the
+        // `workspace/configuration` pull with a real root). Before the
+        // #5278 bound those awaits were unbounded: a mid-session framing
+        // violation fused the read loop, the responses could never arrive,
+        // the handler tasks pinned tower-lsp-server's task pipeline, and
+        // the sidecar stayed alive but permanently silent. The bound lets
+        // every handler task finish, so the session must end promptly at
+        // this stage exactly like the pre-initialize stage does.
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+        let (server_read, server_write) = tokio::io::split(server_io);
+        let (mut client_read, mut client_write) = tokio::io::split(client_io);
+        let root = std::env::temp_dir();
+        let initialize = initialize_pull_mode_frame(&root)?;
+        let server = tokio::spawn(async move {
+            super::super::serve_streams(server_read, server_write, root, &e2e_bounds()).await
+        });
+        client_write
+            .write_all(&initialize)
+            .await
+            .map_err(|err| format!("writing initialize: {err}"))?;
+        let initialize_response = read_frame(&mut client_read).await?;
+        assert!(
+            initialize_response.contains("\"capabilities\""),
+            "expected an initialize result, got: {initialize_response}"
+        );
+        client_write
+            .write_all(&frame(
+                r#"{"jsonrpc":"2.0","method":"initialized","params":{}}"#,
+            ))
+            .await
+            .map_err(|err| format!("writing initialized: {err}"))?;
+        // A server-to-client request goes out; the client reads it and
+        // never answers, mirroring the exercise driver that reproduced the
+        // wedge.
+        read_frame_containing(
+            &mut client_read,
+            "client/registerCapability",
+            "the registerCapability request",
+        )
+        .await?;
+        // Mid-session framing violation: unframed garbage after the
+        // completed handshake.
+        client_write
+            .write_all(b"\x00\x01\x02garbage!garbage!\r\n\r\n")
+            .await
+            .map_err(|err| format!("writing garbage: {err}"))?;
+        let parse_error =
+            read_frame_containing(&mut client_read, "-32700", "the bounded parse error").await?;
+        assert!(
+            parse_error.contains("-32700"),
+            "expected the bounded -32700 parse error, got: {parse_error}"
+        );
+        // The discriminator: the session must END. On the pre-#5278 behavior
+        // the wedged handler task pinned `Server::serve` forever and this
+        // await timed out with the server still alive.
+        let outcome = tokio::time::timeout(Duration::from_secs(10), server)
+            .await
+            .map_err(|_elapsed| {
+                "server wedged: a mid-session framing violation must end the session even with a server-to-client request unanswered (#5278)"
+                    .to_string()
             })?
             .map_err(|err| format!("server task failed: {err}"))?;
         drop(client_write);
