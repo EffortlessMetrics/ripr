@@ -1230,6 +1230,14 @@ owner = "product-analysis"
 standalone_reason = "Issue #5411 records the seam side of the unknown-not-a-gap rule: a repo seam with no related test reads reach opaque, and classifies opaque instead of ungripped, when a bounded transitive or macro witness or trait dispatch from a type test-reached code names leaves the no-reach negative unestablished. The ripr check side is #5416; crediting the reach is #5334."
 
 [[artifact]]
+id = "RIPR-SPEC-0231"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0231-rust-oracle-kind-admission.md"
+status = "proposed"
+owner = "product-analysis"
+standalone_reason = "Makes the Rust oracle kind and strength precedence chain normative and narrows what each step admits, so assert_ne!, guarded Err(e) patterns, wildcard-only patterns, substring identifier matches and inequality helper names stop reading as strong or effect oracles (#5513)."
+
+[[artifact]]
 id = "RIPR-SPEC-0221"
 kind = "spec"
 path = "docs/specs/RIPR-SPEC-0221-agent-surface-benchmark.md"

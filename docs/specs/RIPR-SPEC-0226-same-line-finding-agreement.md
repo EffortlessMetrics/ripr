@@ -121,20 +121,25 @@ to the family, which may differ.
    discriminator, oracle kind). Every finding stays in every per-finding
    surface.
 
-### Decisions for the owner
+### Decisions
 
-1. **Line verdict in human output and LSP hover.** Recommended: when findings
+Steven delegated these choices on 2026-10-04 ("make reasonable documented
+decisions and proceed"). Each records the adopted option, why, and the
+rejected alternative. Any can be reversed later without touching the rest.
+
+1. **Line verdict in human output and LSP hover.** Adopted: when findings
    on one line read different classes, human output and LSP hover print one
    line-level summary that uses the RIPR-SPEC-0219 precedence (gap over
-   credit over limit), followed by each finding. JSON, SARIF, annotations and
-   gates stay per finding. Alternative: no line-level summary anywhere.
+   credit over limit), followed by each finding, because a reader of one
+   line should not have to reconcile disagreeing classes alone. JSON, SARIF, annotations and gates
+   stay per finding. Rejected: no line-level summary anywhere.
 2. **Catch-all beside a typed finding.** When a lexical `static_unknown`
    finding shares the exact expression span of a typed finding with a
-   definite class, recommended: keep it on every per-finding surface (JSON,
+   definite class, adopted: keep it on every per-finding surface (JSON,
    SARIF, annotations, diagnostics, gates, PR comments), as rule 5 requires,
    and drop it only from human output and LSP hover, which are not
    per-finding surfaces, because it adds no evidence the typed finding
-   lacks. Alternative: keep it everywhere.
+   lacks. Rejected: keep it everywhere.
 
 ## Required Evidence
 

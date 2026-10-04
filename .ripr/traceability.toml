@@ -12432,3 +12432,21 @@ outputs = [
 metrics = [
   "ungripped_seams_with_unresolved_reach",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0231"
+name = "Rust oracle kind and strength admission"
+spec = "docs/specs/RIPR-SPEC-0231-rust-oracle-kind-admission.md"
+tests = []
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/extract/oracles/classify.rs",
+  "crates/ripr/src/analysis/extract/oracles/patterns.rs",
+  "crates/ripr/src/analysis/extract/oracles/scan.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0231-rust-oracle-kind-admission.md",
+]
+metrics = [
+  "rust_oracle_strength_overstated",
+]

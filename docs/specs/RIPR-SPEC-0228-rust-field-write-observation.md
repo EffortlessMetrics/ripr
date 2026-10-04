@@ -156,16 +156,20 @@ in the owner. This is new behavior, not reuse.
   `static_unknown` with the proposed `static_limit_kind`
   `rust_mut_reference_alias_unresolved`.
 
-### Decisions for the owner
+### Decisions
 
-1. **Family.** Recommended: `field_construction`, matching the Python and
+Steven delegated these choices on 2026-10-04 ("make reasonable documented
+decisions and proceed"). Each records the adopted option, why, and the
+rejected alternative. Any can be reversed later without touching the rest.
+
+1. **Family.** Adopted: `field_construction`, matching the Python and
    TypeScript previews and reusing the `FieldValue` discriminator.
-   Alternative: `side_effect` with sink `state_write`.
-2. **Getter credit.** Recommended: resolved-body rule above, fail closed as
-   `static_unknown`. Alternative: credit on a name match (`count()` for
+   Rejected: `side_effect` with sink `state_write`.
+2. **Getter credit.** Adopted: resolved-body rule above, fail closed as
+   `static_unknown`. Rejected: credit on a name match (`count()` for
    `count`), which a getter returning another field would fool.
-3. **Unread writes.** Recommended: `reachable_unrevealed` when no oracle reads
-   the receiver after the call, matching constructed fields. Alternative:
+3. **Unread writes.** Adopted: `reachable_unrevealed` when no oracle reads
+   the receiver after the call, matching constructed fields. Rejected:
    keep them non-actionable until the read set is established another way.
 
 ## Required Evidence
