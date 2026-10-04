@@ -1564,16 +1564,48 @@ fn substitution_is_quoted(command: &str) -> bool {
 }
 
 fn command_program_is_allowed(tokens: &[String]) -> bool {
-    match tokens.first().map(String::as_str) {
-        Some("cargo" | "ripr" | "pytest") => true,
-        Some("python") => {
-            tokens.get(1).map(String::as_str) == Some("-m")
-                && matches!(
-                    tokens.get(2).map(String::as_str),
-                    Some("unittest" | "pytest")
-                )
+    let words = tokens.iter().map(String::as_str).collect::<Vec<_>>();
+    if matches!(words.as_slice(), ["cargo" | "ripr", ..]) {
+        return true;
+    }
+    // A producer's test-runner command names package-relative test paths and
+    // node ids only; an option token could load a config, plugin or module,
+    // and an absolute or parent path could run tests outside the package.
+    test_runner_arguments(&words).is_some_and(|arguments| {
+        arguments
+            .iter()
+            .all(|word| test_argument_is_package_local(word))
+    })
+}
+
+fn test_argument_is_package_local(word: &str) -> bool {
+    let drive_path = matches!(word.as_bytes(), [letter, b':', ..] if letter.is_ascii_alphabetic());
+    // `../` inside an argument is already refused for the whole command.
+    !(word.starts_with(['-', '/', '\\', '~']) || drive_path || word == "..")
+}
+
+/// The arguments after a test-runner verify command's program, or `None` when
+/// the command is not one of the runners the preview-language producers emit.
+fn test_runner_arguments<'a>(words: &'a [&'a str]) -> Option<&'a [&'a str]> {
+    match words {
+        ["pytest", arguments @ ..] | ["python", "-m", "unittest" | "pytest", arguments @ ..] => {
+            Some(arguments)
         }
-        _ => false,
+        // TypeScript verify commands (RIPR-SPEC-0085). Package scripts first,
+        // so `yarn test` is not read as a `yarn <bin>` launch.
+        ["bun" | "yarn", "test", arguments @ ..]
+        | ["npm" | "pnpm", "test", "--", arguments @ ..]
+        | ["node", "--test", arguments @ ..] => Some(arguments),
+        // Only launchers that run the package's installed binary: `npx`
+        // without `--no-install` and `bunx` fetch a missing package.
+        ["npx", "--no-install", binary @ ..]
+        | ["pnpm", "exec", binary @ ..]
+        | ["bun", "run", binary @ ..]
+        | ["yarn", binary @ ..] => match binary {
+            ["jest" | "ava", arguments @ ..] | ["vitest", "run", arguments @ ..] => Some(arguments),
+            _ => None,
+        },
+        _ => None,
     }
 }
 
@@ -3254,6 +3286,66 @@ mod tests {
         assert!(looks_like_command_payload(
             "python -m unittest tests.test_pricing.TestDiscount.test_boundary"
         ));
+    }
+
+    #[test]
+    fn command_payload_accepts_typescript_local_runner_verify_commands() {
+        let workspace = root();
+
+        // Every form `verify_command_for_discovery` emits (RIPR-SPEC-0085).
+        for command in [
+            "npx --no-install jest tests/discount.test.ts",
+            "npx --no-install vitest run src/util.test.ts",
+            "npx --no-install ava tests/math.test.ts",
+            "pnpm exec jest tests/token.test.ts",
+            "pnpm exec vitest run src/util.test.ts",
+            "yarn jest tests/math.test.ts",
+            "yarn ava tests/math.test.ts",
+            "bun run vitest run src/foo.test.ts",
+            "bun test tests/math.test.ts",
+            "node --test tests/math.test.ts",
+            "npm test -- tests/math.test.ts",
+            "pnpm test -- tests/math.test.ts",
+            "yarn test tests/math.test.ts",
+            "npx --no-install jest 'tests/my file.test.ts'",
+        ] {
+            assert!(command_payload_is_safe(&workspace, command), "{command}");
+        }
+        // Launchers that can fetch a registry package, other binaries, and
+        // the shared path and metacharacter refusals.
+        for command in [
+            "npx jest tests/discount.test.ts",
+            "npx --yes jest tests/discount.test.ts",
+            "npx --no-install some-tool tests/discount.test.ts",
+            "bunx vitest run src/foo.test.ts",
+            "pnpm dlx jest tests/discount.test.ts",
+            "yarn dlx jest tests/discount.test.ts",
+            "pnpm exec rimraf .",
+            "yarn add jest",
+            "bun run build",
+            "npm exec jest tests/discount.test.ts",
+            "npm install",
+            "node -e process.exit()",
+            "vitest tests/discount.test.ts",
+            "npx --no-install jest ../outside/discount.test.ts",
+            "npx --no-install jest tests/a.test.ts; rm -rf target",
+            // Runner options can load a config, plugin or module beyond the
+            // one test the packet names.
+            "npx --no-install jest --config other.config.js tests/a.test.ts",
+            "node --test --import ./setup.mjs tests/math.test.ts",
+            "npm test -- --watch tests/math.test.ts",
+            "python -m pytest -p plugin tests/test_pricing.py",
+            // Absolute and parent paths run tests outside the package.
+            "node --test /tmp/outside.test.js",
+            "python -m pytest ..",
+            "npx --no-install jest ~/outside.test.ts",
+        ] {
+            assert!(!command_payload_is_safe(&workspace, command), "{command}");
+        }
+        // Built at runtime so the local-context policy does not read the
+        // fixture as a machine path.
+        let drive_command = format!("pytest {}:/outside/test_pricing.py", 'C');
+        assert!(!command_payload_is_safe(&workspace, &drive_command));
     }
 
     /// #4544: the shared validator recomputes the `source_subject` digests.

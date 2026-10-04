@@ -674,8 +674,8 @@ suite('Extension Smoke', () => {
         recovery_route?: string;
       };
       assert.strictEqual(stalePacket.status, 'stale');
-      assert.strictEqual(stalePacket.recovery_command, 'ripr.refreshDiagnostics');
-      assert.strictEqual(stalePacket.recovery_route, 'ripr.refreshDiagnostics');
+      assert.strictEqual(stalePacket.recovery_command, 'ripr.refresh');
+      assert.strictEqual(stalePacket.recovery_route, 'ripr.refresh');
 
       await vscode.commands.executeCommand(secondContext.command, ...(secondContext.arguments ?? []));
       const currentPacket = JSON.parse(await waitForClipboardText((text) => text.includes('"seam_id"'))) as {
@@ -2308,6 +2308,44 @@ suite('Extension Smoke', () => {
     }));
     assert.strictEqual(unsafeCommand.state, 'unsafeCommand');
 
+    // Python and TypeScript first-PR packets carry the test runner's own verify
+    // command; TypeScript's must run the installed binary, never fetch one.
+    const verifyPacketState = async (verify: string) => {
+      const packet = JSON.parse(firstPrPacket({ commands: { verify } })) as Record<string, unknown>;
+      (packet.selected as Record<string, unknown>).verify_command = verify;
+      return (await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+        'target/ripr/reports/start-here.json': JSON.stringify(packet)
+      }))).state;
+    };
+    for (const verify of [
+      'python -m pytest tests/test_pricing.py::test_calculate_discount_smoke',
+      'npx --no-install jest tests/discount.test.ts',
+      'pnpm exec vitest run src/util.test.ts',
+      'yarn ava tests/math.test.ts',
+      'bun run jest tests/discount.test.ts',
+      'npm test -- tests/math.test.ts'
+    ]) {
+      assert.strictEqual(await verifyPacketState(verify), 'topRepairableGap', verify);
+    }
+    for (const verify of [
+      'npx jest tests/discount.test.ts',
+      'bunx vitest run src/util.test.ts',
+      'pnpm dlx jest tests/discount.test.ts',
+      'yarn add jest',
+      'npx --no-install jest ../outside/discount.test.ts',
+      'python -m pytest ../outside/test_pricing.py',
+      'npx --no-install jest --config other.config.js tests/discount.test.ts',
+      'node --test --import ./setup.mjs tests/math.test.ts',
+      'npm test -- --watch tests/math.test.ts',
+      'node --test /tmp/outside.test.js',
+      'python -m pytest ..',
+      // Built at runtime so the local-context policy does not read the
+      // fixture as a machine path.
+      `npx --no-install jest ${'C'}:/outside/discount.test.ts`
+    ]) {
+      assert.strictEqual(await verifyPacketState(verify), 'unsafeCommand', verify);
+    }
+
     // #4265: the CLI anchors the packet redirect at --root; a redirect that
     // leaves the workspace is refused even though no metacharacter is.
     const agentPacketTo = (target: string) => firstPrPacket({
@@ -2476,6 +2514,20 @@ suite('Extension Smoke', () => {
       'target/ripr/reports/actionable-gaps.json': JSON.stringify(unsafeCommandPacket)
     }));
     assert.strictEqual(unsafeCommand.state, 'unsafeCommand');
+
+    const queueVerifyState = async (verify: string) => {
+      const queue = JSON.parse(actionableGapsReport({})) as Record<string, unknown>;
+      (queue.packets as Array<Record<string, unknown>>)[0].verify_command = verify;
+      return (await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+        'target/ripr/reports/actionable-gaps.json': JSON.stringify(queue)
+      }))).state;
+    };
+    assert.notStrictEqual(await queueVerifyState('npx --no-install jest tests/discount.test.ts'), 'unsafeCommand');
+    assert.notStrictEqual(await queueVerifyState('python -m pytest tests/test_pricing.py::test_smoke'), 'unsafeCommand');
+    assert.strictEqual(await queueVerifyState('npx jest tests/discount.test.ts'), 'unsafeCommand');
+    assert.strictEqual(await queueVerifyState('bunx vitest run src/util.test.ts'), 'unsafeCommand');
+    assert.strictEqual(await queueVerifyState('npx --no-install jest ../outside/discount.test.ts'), 'unsafeCommand');
+    assert.strictEqual(await queueVerifyState('python -m pytest -p plugin tests/test_pricing.py'), 'unsafeCommand');
 
     // #4265: a queue command may redirect into the workspace, not out of it.
     const queueVerifyTo = async (target: string) => {

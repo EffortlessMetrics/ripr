@@ -15462,8 +15462,14 @@ Seam diagnostics also drive editor code actions:
 Validated GapRecord diagnostics use the same code-action surface for
 repair-routing records. Python preview GapRecords accept bounded
 `python -m pytest ...` (and the earlier bare `pytest ...` form) and
-`python -m unittest ...` verification commands, expose verify and receipt
-copy actions when those commands are safe, expose `Agent handoff: copy Python
+`python -m unittest ...` verification commands, and TypeScript preview
+GapRecords accept the local-only launcher forms (`npx --no-install`,
+`pnpm exec`, `yarn`, `bun run` followed by `jest`, `vitest run` or `ava`, plus
+`bun test`, `node --test`, `npm|pnpm test --` and `yarn test`). After the
+runner, a verify command may name only package-relative test paths and node
+ids: an option token (`--config`, `-p`), an absolute or home path (`/`, `C:`,
+`~`) or a `..` path is refused. Both expose
+verify and receipt copy actions when those commands are safe, expose `Agent handoff: copy Python
 packet` to copy the same GapRecord-backed agent packet as `ripr agent packet
 --gap-ledger ... --gap-id ...`, expose `Copy Python repair card` to copy a
 current validated GapRecord repair-card brief for safe target-file routes through

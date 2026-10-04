@@ -20,7 +20,9 @@ import {
   stringValues,
   rootMatchesWorkspace,
   hasUnsafeShellMetacharacter,
-  redirectStaysInWorkspace
+  redirectStaysInWorkspace,
+  TEST_RUNNER_VERIFY_COMMAND_PREFIXES,
+  testRunnerCommandLeavesScope
 } from './packetJson';
 
 const FIRST_PR_STATIC_EVIDENCE_BOUNDARY = 'static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.';
@@ -409,6 +411,7 @@ export function firstPrCommandIsSafe(command: string, redirectRoots: readonly st
   const normalized = command.trim().replace(/\s+/g, ' ');
   return normalized !== ''
     && !hasUnsafeShellMetacharacter(normalized)
+    && !testRunnerCommandLeavesScope(normalized)
     && redirectStaysInWorkspace(normalized, redirectRoots)
     && FIRST_PR_SAFE_COMMAND_PREFIXES.some((prefix) =>
       normalized === prefix || normalized.startsWith(`${prefix} `)
@@ -428,7 +431,8 @@ const FIRST_PR_SAFE_COMMAND_PREFIXES = [
   'ripr agent verify',
   'ripr agent receipt',
   'ripr gate evaluate',
-  'ripr outcome'
+  'ripr outcome',
+  ...TEST_RUNNER_VERIFY_COMMAND_PREFIXES
 ];
 
 export function firstPrPathIsWorkspaceLocal(value: string): boolean {

@@ -61,6 +61,19 @@ are scoped or reviewed.
   the session up, discloses the `repo` or `default` fallback, and emits one
   `window/logMessage` warning naming the rejected key (#5092).
 
+- Editors: the LSP and VS Code accept the TypeScript verify commands ripr
+  emits (`npx --no-install jest <file>`, `pnpm exec vitest run <file>`,
+  `yarn ava <file>`, `bun run …`, `bun test`, `node --test`, and the
+  `npm|pnpm test --` / `yarn test` scripts), so a TypeScript repair no longer
+  reads as an unsafe command and loses its copy actions. VS Code's first-PR
+  view and actionable-gaps queue also accept the Python `python -m pytest`,
+  `pytest` and `python -m unittest` verify commands. `npx` without
+  `--no-install`, `bunx` and `dlx` stay refused, because they can fetch a
+  package from the registry. A test path that is absolute or leaves the
+  package through `..`, or a runner option such as `--config` or `-p`, is
+  refused too, since ripr's own verify commands name only package-relative
+  test paths and node ids.
+
 - Source-subject stamps keep whitespace-bearing path identity, so a check JSON
   stamp for ` leading.py` does not collapse onto `leading.py`, omit a Git-quoted
   tab path, or treat a correct whitespace stamp as malformed. Parent, root, and
