@@ -149,16 +149,26 @@ enabled = ["rust"]
 # cache_dir = "target/ripr/perl-facts"  # Fact cache location
 "#;
 
+/// Whether a `ripr.toml` entry exists at `path`, without following links.
+/// `Path::exists` follows them, so a dangling or self-referencing symlink read
+/// as "no config" and the run silently used defaults. The entry is present;
+/// reading it reports the real failure.
+fn config_entry_present(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok()
+}
+
 fn discover_config_path(root: &Path) -> Option<PathBuf> {
     let direct = root.join(CONFIG_FILE_NAME);
-    if direct.exists() {
-        return std::fs::canonicalize(direct).ok();
+    if config_entry_present(&direct) {
+        // A link that cannot be resolved keeps its own path so the read below
+        // names it instead of the search moving on to an ancestor.
+        return Some(std::fs::canonicalize(&direct).unwrap_or(direct));
     }
 
     let search_root = std::fs::canonicalize(root).ok()?;
     for ancestor in search_root.ancestors() {
         let path = ancestor.join(CONFIG_FILE_NAME);
-        if path.exists() {
+        if config_entry_present(&path) {
             return Some(path);
         }
         if is_repository_boundary(ancestor) {

@@ -11,6 +11,10 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Config: a `ripr.toml` that is a dangling or self-referencing symlink is
+  reported as an unreadable config naming the file. It was treated as absent,
+  so the run silently used built-in defaults while a directory or non-UTF-8
+  `ripr.toml` already failed loudly.
 - `ripr first-pr` and `ripr reports gap-ledger` exit 2 and write nothing when
   `--root` is not a directory or the gap-ledger input cannot be read, instead
   of exiting 0 after writing a `wrong_root` or `blocked` packet. The refusal
