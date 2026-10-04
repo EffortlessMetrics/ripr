@@ -102,6 +102,35 @@ fn expect_fail(result: Result<(), String>, needle: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Fail-closed with `needle`, and the generic envelope unknown-field
+/// diagnostic must not be the selected message. Discriminates the
+/// schema-0.2 mixed-shape checks from falling through to the generic loop.
+fn expect_fail_without_generic_envelope(
+    result: Result<(), String>,
+    needle: &str,
+) -> Result<(), String> {
+    let error = match result {
+        Ok(()) => {
+            return Err(format!(
+                "expected failure containing `{needle}`, got success"
+            ));
+        }
+        Err(error) => error,
+    };
+    if !error.contains(needle) {
+        return Err(format!("failure `{error}` must mention `{needle}`"));
+    }
+    if error.contains("unknown envelope field") {
+        return Err(format!(
+            "failure `{error}` must not use the generic unknown-field diagnostic"
+        ));
+    }
+    if !error.contains(RERUN_COMMAND) {
+        return Err(format!("failure `{error}` must carry the rerun command"));
+    }
+    Ok(())
+}
+
 fn validate_manifest_value(value: &Value) -> Result<(), String> {
     validate_accepted_manifest(value, String::new()).map(|_| ())
 }
@@ -480,6 +509,72 @@ fn historical_receipt_validates_incomplete_without_rewrite() -> Result<(), Strin
             .iter()
             .any(|diagnostic| diagnostic.field == "manifest_digest")
     );
+    Ok(())
+}
+
+#[test]
+fn schema_0_2_receipt_with_ripr_emits_specific_currentness_diagnostic() -> Result<(), String> {
+    let (manifest, sha) = accepted_manifest(&alternate_manifest())?;
+    let mut receipt = historical_receipt_0_2(&alternate_manifest());
+    if let Some(object) = receipt.as_object_mut() {
+        object.insert(
+            "ripr".to_string(),
+            json!({
+                "version": "0.0.0",
+                "features": [],
+                "build_profile": "debug",
+            }),
+        );
+    }
+    expect_fail_without_generic_envelope(
+        validate_receipt_value(&receipt, &manifest, &sha).map(|_| ()),
+        "schema-0.2 receipts must not carry the 0.3 currentness block",
+    )
+}
+
+#[test]
+fn schema_0_2_receipt_with_manifest_digest_emits_specific_binding_diagnostic() -> Result<(), String>
+{
+    let (manifest, sha) = accepted_manifest(&alternate_manifest())?;
+    let mut receipt = historical_receipt_0_2(&alternate_manifest());
+    if let Some(object) = receipt.as_object_mut() {
+        object.insert("manifest_digest".to_string(), json!(DIGEST_ONE));
+    }
+    expect_fail_without_generic_envelope(
+        validate_receipt_value(&receipt, &manifest, &sha).map(|_| ()),
+        "schema-0.2 receipts must not carry the 0.3 manifest binding",
+    )
+}
+
+#[test]
+fn schema_0_2_receipt_with_unknown_envelope_key_still_uses_generic_diagnostic() -> Result<(), String>
+{
+    let (manifest, sha) = accepted_manifest(&alternate_manifest())?;
+    let mut receipt = historical_receipt_0_2(&alternate_manifest());
+    if let Some(object) = receipt.as_object_mut() {
+        object.insert("notes".to_string(), json!("unexpected"));
+    }
+    let error = match validate_receipt_value(&receipt, &manifest, &sha) {
+        Ok(_) => {
+            return Err(
+                "expected 0.2 receipt with unknown envelope key `notes` to fail".to_string(),
+            );
+        }
+        Err(error) => error,
+    };
+    if !error.contains("unknown envelope field `notes` for receipt schema 0.2") {
+        return Err(format!(
+            "failure `{error}` must use the generic unknown-field diagnostic for `notes`"
+        ));
+    }
+    if error.contains("schema-0.2 receipts must not carry") {
+        return Err(format!(
+            "failure `{error}` must not steal a mixed-shape diagnostic for an unrelated key"
+        ));
+    }
+    if !error.contains(RERUN_COMMAND) {
+        return Err(format!("failure `{error}` must carry the rerun command"));
+    }
     Ok(())
 }
 

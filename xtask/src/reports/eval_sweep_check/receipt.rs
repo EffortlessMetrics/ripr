@@ -361,20 +361,9 @@ fn reject_unknown_envelope_keys(top: &serde_json::Map<String, Value>) -> Result<
         .get("schema_version")
         .and_then(Value::as_str)
         .unwrap_or("?");
-    for key in top.keys() {
-        let allowed = matches!(
-            key.as_str(),
-            "schema_version" | "kind" | "spec" | "tier" | "summary" | "repos"
-        ) || (version == RECEIPT_SCHEMA_0_3
-            && matches!(key.as_str(), "manifest_digest" | "ripr"));
-        if !allowed {
-            return Err(fail(
-                "receipt",
-                key,
-                format!("unknown envelope field `{key}` for receipt schema {version}"),
-            ));
-        }
-    }
+    // Mixed-shape 0.2-plus-0.3 fields must name the schema-0.2 diagnostic
+    // before the generic unknown-key loop, which would otherwise reject
+    // `ripr` / `manifest_digest` as unknown envelope fields.
     if version == RECEIPT_SCHEMA_0_2 && top.contains_key("ripr") {
         return Err(fail(
             "receipt",
@@ -388,6 +377,20 @@ fn reject_unknown_envelope_keys(top: &serde_json::Map<String, Value>) -> Result<
             "manifest_digest",
             "schema-0.2 receipts must not carry the 0.3 manifest binding",
         ));
+    }
+    for key in top.keys() {
+        let allowed = matches!(
+            key.as_str(),
+            "schema_version" | "kind" | "spec" | "tier" | "summary" | "repos"
+        ) || (version == RECEIPT_SCHEMA_0_3
+            && matches!(key.as_str(), "manifest_digest" | "ripr"));
+        if !allowed {
+            return Err(fail(
+                "receipt",
+                key,
+                format!("unknown envelope field `{key}` for receipt schema {version}"),
+            ));
+        }
     }
     Ok(())
 }
