@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 8282a55..ed209d0 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -82,7 +82,7 @@ impl Inventory {
+         Ok(Receipt {
+             sku: sku.to_string(),
+             qty,
+-            remaining,
++            remaining: available - qty,
+         })
+     }
+ 

@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 1282397..6090416 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -2,7 +2,7 @@
+ //! shipping fees and quotes. All amounts are integer cents.
+ 
+ /// Flat shipping fee charged below the free-shipping threshold.
+-pub const FLAT_SHIPPING_CENTS: u64 = 499;
++pub const FLAT_SHIPPING_CENTS: u64 = 599;
+ 
+ /// Subtotal at which shipping becomes free.
+ pub const FREE_SHIPPING_CENTS: u64 = 5000;

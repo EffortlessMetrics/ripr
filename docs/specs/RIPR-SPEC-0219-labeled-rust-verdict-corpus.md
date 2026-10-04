@@ -62,11 +62,24 @@ out, so a fix to one verdict cannot show it did not break another.
 `fixtures/rust-verdict-corpus/corpus.json` (`ripr_verdict_corpus.v1`) holds
 subjects and cases.
 
-A subject is one pinned upstream repository: URL, 40-hex commit, version
-label, license, an optional reference into the shared Rust corpus manifest
-(`corpus_version` `2026-10-04.1`), and the retained excerpt files under
-`subjects/<id>/` with their sha256. Retained files are byte-identical to the
-upstream commit and include its license files.
+A subject has an `origin`. An `upstream` subject (the default) is one
+pinned upstream repository: URL, 40-hex commit, version label, license, an
+optional reference into the shared Rust corpus manifest (`corpus_version`
+`2026-10-04.1`), and the retained excerpt files under `subjects/<id>/` with
+their sha256. Retained files are byte-identical to the upstream commit and
+include its license files.
+
+An `authored` subject is a small crate written for this corpus to fill a
+verdict or probe-family cell the upstream cases leave empty. Its id starts
+with `authored-` (an upstream id may not), it carries no upstream URL,
+commit, or shared-corpus reference, its license is this repository's
+(`MIT OR Apache-2.0`), it retains no license file of its own, and the whole
+crate is retained. Its cases carry runtime truth exactly as upstream cases
+do, with the whole stored crate standing in for the pinned checkout.
+Authored cases are chosen to fill cells, so their rates are not real-world
+rates: the report gives the false-verdict, false-actionable, false-exposed,
+false-silent, ideal, and abstention rates again per origin under
+`by_origin`, and a row names its origin.
 
 A case is one edit in one subject: a unified diff under `cases/`, the
 anchored file and line the diff adds, the edit kind, behavior family, test
@@ -101,7 +114,17 @@ Expected verdicts follow one table the validator enforces:
 The observed verdict reads only candidate-current findings on the anchor:
 `exposed` is credited; a named `static_limit_kind` or a `no_static_path`,
 `infection_unknown`, `propagation_unknown`, or `static_unknown` class is
-limited; any other class is a gap; no anchored finding is silent. A gap on
+limited; any other class is a gap; no anchored finding is silent. When the
+anchor is a changed single-line `let`, RIPR-SPEC-0157 moves ripr's probe to
+the predicate that uses the binding, so the projection also reads
+candidate-current findings in the anchor file whose evidence carries
+``binding_predicate_relation: changed binding `<name>` `` for the binding the
+anchor declares, with the anchor's initializer as the new initializer, and
+the row records `followed_retarget`. The case keeps the line its diff adds as
+its anchor. Only a plain `let name` (optionally `mut`) is followed; patterns
+fail closed. This couples the projection to the wording of that evidence
+line: a wording change stops the following, and a retargeting case then
+reads silent until the projection is updated. A gap on
 the line outranks credit, and credit outranks a limit. The per-finding
 reading mirrors the human "Start here" triage. The line-level precedence is
 this corpus's own policy, not triage's ranking: triage orders findings to
@@ -134,7 +157,8 @@ differs from `expected/report.md`. It refuses an
 
 The report states false-verdict, false-actionable (over discriminated
 cases), false-exposed and false-silent (over the rest), ideal, abstention,
-and contradiction rates as exact fractions, plus one row per case with a
+and contradiction rates as exact fractions, the verdict rates again per
+subject origin, and one row per case with its origin and a
 `changed_since_labeling` flag.
 
 The contradiction rate counts candidate-current findings across each case's
@@ -152,6 +176,13 @@ the distinct codes seen in that case's run.
 - The scoring table, verdict projection, contradiction codes, and rate
   arithmetic are pinned by unit tests.
 - The committed expected report agrees with the corpus labels row by row.
+- The validator holds upstream subjects to a pinned URL, commit, and license
+  file, and authored subjects to the `authored-` id prefix, no upstream
+  provenance, no license file, and this repository's license; the report
+  keeps authored rates apart from upstream rates. Relabeling a vendored
+  excerpt as authored therefore means renaming the subject and every case
+  that names it, which review sees; the validator cannot detect a rename
+  that also strips the license file.
 
 ## Non-Goals
 
@@ -180,6 +211,12 @@ the distinct codes seen in that case's run.
   value of exactly 0.7. The case uses threshold shifts instead: 0.75 fails a
   test and 0.65 does not, so the truth is `partially_discriminated` and ripr's `weakly_exposed` scores
   `ideal`.
+- authored `pricing-quote-total-field` (`subtotal + shipping` rewritten as
+  `shipping + subtotal` in a struct literal): the only test asserting
+  `total_cents` uses a free-shipping order, so dropping the shipping term
+  passes while dropping the subtotal fails. The truth is
+  `partially_discriminated`, and ripr's `exposed` scores `false_exposed`, in
+  the authored rates only.
 - semver `op()` at 1.0.23 `src/parse.rs:272`: ripr says a related test
   reaches `op` while `related_tests_total` is 0, recorded as
   `reach_yes_without_related_tests`.
@@ -191,6 +228,8 @@ Tests live in `xtask/src/reports/verdict_corpus_tests.rs`:
 - `score_follows_the_truth_table_in_both_error_directions`
 - `finding_verdict_mirrors_triage_classes_and_named_limits`
 - `anchored_findings_keep_only_candidate_current_findings_on_the_anchor`
+- `declared_binding_reads_only_a_let_declaration`
+- `anchored_findings_follow_a_retarget_only_for_the_anchor_binding`
 - `case_verdict_ranks_gap_over_credit_over_limit`
 - `contradictions_flag_each_internal_inconsistency_and_pass_a_clean_finding`
 - `summary_contradictions_compare_counts_with_the_findings_list`
@@ -213,13 +252,15 @@ Tests live in `xtask/src/reports/verdict_corpus_tests.rs`:
 - `build_report_counts_rates_over_the_right_denominators`
 - `contradiction_counts_use_one_per_finding_unit`
 - `stored_paths_keep_vendored_rust_out_of_the_workspace`
+- `validator_holds_each_subject_origin_to_its_own_provenance`
+- `report_keeps_authored_rates_apart_from_upstream_rates`
 
 ## Implementation Mapping
 
 - `xtask/src/reports/verdict_corpus.rs` owns validation, materialization,
   scoring, and rendering.
-- `fixtures/rust-verdict-corpus/` holds the corpus, retained subjects, case
-  diffs, and the expected report.
+- `fixtures/rust-verdict-corpus/` holds the corpus, retained upstream and
+  authored subjects, case diffs, and the expected report.
 
 ## Metrics
 

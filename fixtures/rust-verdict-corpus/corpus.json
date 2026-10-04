@@ -2,14 +2,15 @@
   "schema_version": "ripr_verdict_corpus.v1",
   "kind": "ripr_verdict_corpus",
   "spec": "RIPR-SPEC-0219",
-  "corpus_version": "2026-10-04.3",
-  "description": "Hand-labeled Rust verdict corpus: one-line edits in pinned real crates, each labeled with what the crate's own tests actually discriminate, so ripr's verdicts can be scored as false actionable, false exposed, false silent, abstained, or ideal.",
-  "label_method": "For each case the edit was applied to the full pinned checkout, the crate's own test command was run to confirm the edit keeps tests green (behavior_preserving_rewrite) or breaks them (behavior_change), and each listed mutant of the edited expression was applied on top and the same test command run. A mutant counts as detected (`tests_failed`) when the test command fails after compiling. Each mutant was reviewed by hand for equivalence before its outcome counted. Truth is derived from the count of mutants with tests_failed: all is discriminated, none is not_discriminated, otherwise partially_discriminated.",
-  "verdict_projection": "Only candidate_current findings on the anchor file and line count. exposed is credited; a named static_limit_kind or a no_static_path, infection_unknown, propagation_unknown or static_unknown class is limited; any other class (weakly_exposed, reachable_unrevealed) is a gap. A gap on the line outranks credit, and credit outranks a limit. No anchored finding is silent. The per-finding reading mirrors crates/ripr/src/output/human/triage.rs; the line-level precedence is this corpus's own policy.",
+  "corpus_version": "2026-10-04.4",
+  "description": "Hand-labeled Rust verdict corpus: one-line edits in pinned real crates, plus small authored crates that fill cells the real crates leave empty, each labeled with what the crate's own tests actually discriminate, so ripr's verdicts can be scored as false actionable, false exposed, false silent, abstained, or ideal.",
+  "label_method": "For each case the edit was applied to the full pinned checkout (for an authored subject, the whole crate is retained), the crate's own test command was run to confirm the edit keeps tests green (behavior_preserving_rewrite) or to record whether it breaks them (behavior_change, where the edit is its own single mutant), and each listed mutant of the edited expression was applied on top and the same test command run. A mutant counts as detected (`tests_failed`) when the test command fails after compiling. Each mutant was reviewed by hand for equivalence before its outcome counted. Truth is derived from the count of mutants with tests_failed: all is discriminated, none is not_discriminated, otherwise partially_discriminated.",
+  "verdict_projection": "Only candidate_current findings on the anchor file and line count, plus, when the anchor is a plain `let name = init;` or `let mut name = init;`, candidate_current findings in the anchor file whose binding_predicate_relation evidence names that binding with init as its new initializer (the RIPR-SPEC-0157 retarget). exposed is credited; a named static_limit_kind or a no_static_path, infection_unknown, propagation_unknown or static_unknown class is limited; any other class (weakly_exposed, reachable_unrevealed) is a gap. A gap on the line outranks credit, and credit outranks a limit. No anchored finding is silent. The per-finding reading mirrors crates/ripr/src/output/human/triage.rs; the line-level precedence is this corpus's own policy.",
   "non_claims": [
     "Rates describe this corpus only; they are not a population estimate for Rust code or for ripr in general.",
+    "Authored cases were written to fill verdict and probe-family cells the upstream cases leave empty; their rates are reported separately under by_origin and are not real-world rates.",
     "Truth comes from the listed mutants, not from exhaustive mutation; a discriminated label means every listed mutant made the test command fail.",
-    "The harness runs ripr on retained upstream excerpts; excerpt findings matched the full pinned checkout at labeling time and must be re-checked when a verdict changes.",
+    "The harness runs ripr on retained upstream excerpts and on whole authored crates; excerpt findings matched the full pinned checkout at labeling time and must be re-checked when a verdict changes.",
     "The harness does not run mutation testing, cargo test, or any network access."
   ],
   "subjects": [
@@ -444,6 +445,61 @@
         {
           "path": "crates/atuin/src/logs/otel/enabled.rs",
           "sha256": "5ebc7b6d5667b07adfb602e6fab555cae12e295fb463505339de133d7e314cc5"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-pricing",
+      "origin": "authored",
+      "version_label": "authored@75e23f2",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "d3b1d593787498f0459a35ecdbc917d9ed7fd0e487f3145ae7c23b22fb500e0b"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "4b194ab15c7451f7268c7a7e875be7ce154413793614da6d969aabfef98b6a58"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-ledger",
+      "origin": "authored",
+      "version_label": "authored@18cc13d",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "e1a22dbb6a38a514794e9a990e7067f8895a4438225fe81a68094c7d090e7fda"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "782bb3ff326326e09c029477e04474d7323518e842dec2b708dbe5dad99b4a21"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-config",
+      "origin": "authored",
+      "version_label": "authored@d2138f3",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "db62da76c86ede8271abd1e6aafacab9ab76858b8eb92bd30eb00c29827a00c2"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "b90d9efc9fbe488eba4ec1dd0d8616c8d5ca393afc099cccc5b4ec24c7b8b0d2"
+        },
+        {
+          "path": "tests/config.rs",
+          "sha256": "b53f22ae50d8c644eb28d8d9f8f64044e84ed8e43de98a69a99f2f1872c21c6e"
         }
       ]
     }
@@ -2079,6 +2135,1107 @@
       "reasoning": "The spot-check's missed outcome is uninformative: under --workspace default features enabled.rs is not compiled, so the mutant is dead code there. With --features profiling-traced the file compiles, but no test sets ATUIN_OTEL or calls OtelCtx::try_enable (LogCtx::try_enable is only called from command dispatch), so both non-equivalent mutants pass and the line is not discriminated. Diff-mode ripr reports infection_unknown (limited), with two daemon.rs tests linked only by a shared name token and observe/discriminate = no. An acceptable abstention; a gap would be ideal. Repo mode's strongly_gripped is not reproduced in diff mode.",
       "labeling_observation": {
         "ripr_commit": "7a6d4b7a5",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "infection_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "pricing-gold-threshold",
+      "subject_id": "authored-pricing",
+      "diff": "cases/pricing-gold-threshold.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 19
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "unit_test_assert_eq_boundary_pinned",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "if points > 5000 {",
+            "outcome": "tests_failed",
+            "failing_test": "tests::tiers_change_exactly_at_their_thresholds",
+            "equivalence_review": "not equivalent: 5000 points becomes Silver instead of Gold"
+          },
+          {
+            "replacement": "if points > 4998 {",
+            "outcome": "tests_failed",
+            "failing_test": "tests::tiers_change_exactly_at_their_thresholds",
+            "equivalence_review": "not equivalent: 4999 points becomes Gold instead of Silver"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "tiers_change_exactly_at_their_thresholds pins 4999 and 5000 with assert_eq, so both boundary shifts fail it. ripr reports exposed on the predicate, the ideal credit.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "credited",
+        "full_checkout_classifications": [
+          "exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "pricing-free-shipping-boundary",
+      "subject_id": "authored-pricing",
+      "diff": "cases/pricing-free-shipping-boundary.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 45
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "unit_test_assert_eq_off_boundary",
+      "hard_case": null,
+      "truth": {
+        "state": "partially_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "subtotal_cents > FREE_SHIPPING_CENTS",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: a subtotal of exactly 5000 cents pays shipping instead of shipping free"
+          },
+          {
+            "replacement": "subtotal_cents < FREE_SHIPPING_CENTS",
+            "outcome": "tests_failed",
+            "failing_test": "tests::large_orders_ship_free",
+            "equivalence_review": "not equivalent: 12000 cents pays shipping and 1500 ships free"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "large_orders_ship_free asserts exact booleans but only at 12000 and 1500, so moving the boundary off 5000 passes while inverting it fails. ripr reports weakly_exposed on the predicate (beside an exposed return_value probe), which the gap-first rule makes an ideal gap.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "exposed",
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "pricing-gold-discount-rate",
+      "subject_id": "authored-pricing",
+      "diff": "cases/pricing-gold-discount-rate.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 33
+      },
+      "edit_kind": "behavior_change",
+      "behavior_family": "return_value",
+      "test_shape": "unit_test_assert_eq",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "Tier::Gold => 15,",
+            "outcome": "tests_failed",
+            "failing_test": "tests::discounts_apply_per_tier",
+            "equivalence_review": "the edit itself: Gold customers get 15 percent off, so 10000 cents becomes 8500 instead of 9000"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "discounts_apply_per_tier asserts discounted_cents(10_000, Tier::Gold) == 9_000, so the new rate fails it and quote_combines_discount_and_shipping. ripr reports weakly_exposed on the match arm despite naming the exact assertion, a false actionable gap.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "pricing-flat-shipping-fee",
+      "subject_id": "authored-pricing",
+      "diff": "cases/pricing-flat-shipping-fee.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 5
+      },
+      "edit_kind": "behavior_change",
+      "behavior_family": "return_value",
+      "test_shape": "unit_test_relational_assert",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "pub const FLAT_SHIPPING_CENTS: u64 = 599;",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "the edit itself: an order under 5000 cents is charged 599 instead of 499"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "small_orders_pay_shipping only asserts shipping_cents(1_000) > 0, and the quote test ships free, so a different flat fee passes. ripr reports static_unknown on the const line, an acceptable limit where a gap is ideal.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "static_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "pricing-tier-label-gold",
+      "subject_id": "authored-pricing",
+      "diff": "cases/pricing-tier-label-gold.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 62
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value",
+      "test_shape": "unit_test_assert_eq",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "Tier::Gold => \"Gold\".to_string(),",
+            "outcome": "tests_failed",
+            "failing_test": "tests::tier_labels_are_lowercase_names",
+            "equivalence_review": "not equivalent: the Gold label reads \"Gold\" instead of \"gold\""
+          },
+          {
+            "replacement": "Tier::Gold => String::new(),",
+            "outcome": "tests_failed",
+            "failing_test": "tests::tier_labels_are_lowercase_names",
+            "equivalence_review": "not equivalent: the Gold label is empty instead of \"gold\""
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "tier_labels_are_lowercase_names compares every tier's label with assert_eq, so both wrong strings fail it. ripr reports exposed on the match arm, the ideal credit.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "credited",
+        "full_checkout_classifications": [
+          "exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "pricing-quote-total-field",
+      "subject_id": "authored-pricing",
+      "diff": "cases/pricing-quote-total-field.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 84
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction",
+      "test_shape": "unit_test_assert_eq_field_one_branch",
+      "hard_case": null,
+      "truth": {
+        "state": "partially_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "total_cents: subtotal,",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: quote(1_000, 1, 0) totals 1000 instead of 1499 because shipping is dropped"
+          },
+          {
+            "replacement": "total_cents: shipping,",
+            "outcome": "tests_failed",
+            "failing_test": "tests::quote_combines_discount_and_shipping",
+            "equivalence_review": "not equivalent: quote(2_500, 4, 6_000) totals 0 instead of 9000"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "quote_combines_discount_and_shipping asserts total_cents exactly but only for a free-shipping order, so dropping the shipping term passes while dropping the subtotal fails. ripr credits the field construction as exposed, a false exposed verdict.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "credited",
+        "full_checkout_classifications": [
+          "exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "ledger-ship-log-push",
+      "subject_id": "authored-ledger",
+      "diff": "cases/ledger-ship-log-push.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 80
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "call_deletion",
+      "test_shape": "unit_test_assert_eq_history",
+      "hard_case": "call-deletion mutant is the statement removed (replacement is the empty line)",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "",
+            "outcome": "tests_failed",
+            "failing_test": "tests::history_records_every_movement_in_order",
+            "equivalence_review": "not equivalent: shipping leaves no Shipped event, so history() holds only the Received event"
+          },
+          {
+            "replacement": "self.log.push(Event::Received { sku: sku.to_owned(), qty });",
+            "outcome": "tests_failed",
+            "failing_test": "tests::history_records_every_movement_in_order",
+            "equivalence_review": "not equivalent: a shipment is logged as Received { qty: 2 } instead of Shipped { qty: 2 }"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "history_records_every_movement_in_order compares the whole event log with assert_eq, so removing or retargeting the push fails it. ripr reports call_deletion exposed but also weakly_exposed field_construction and side_effect probes on the same line, so the line reads as a false actionable gap.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "exposed",
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "ledger-receive-refresh-low-stock",
+      "subject_id": "authored-ledger",
+      "diff": "cases/ledger-receive-refresh-low-stock.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 63
+      },
+      "edit_kind": "behavior_change",
+      "behavior_family": "call_deletion",
+      "test_shape": "no_test_observes_effect",
+      "hard_case": "the edit inserts a call; the base is the call-deleted variant",
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.refresh_low_stock(sku);",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "the edit itself: receive(\"BOLT-M8\", 2) with threshold 5 now flags BOLT-M8 low, and restocking above the threshold clears the flag, where the base left the watch list unchanged on receipt"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "No test reads is_low after a receive; shipping_below_threshold_flags_low_stock only observes the flag set by ship, so adding the call changes nothing the tests see. ripr reports call_deletion exposed, citing the whole-log equality in history_records_every_movement_in_order, a false exposed verdict.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "credited",
+        "full_checkout_classifications": [
+          "exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "ledger-receipt-remaining",
+      "subject_id": "authored-ledger",
+      "diff": "cases/ledger-receipt-remaining.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 85
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction",
+      "test_shape": "unit_test_assert_eq_whole_struct",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "remaining: available,",
+            "outcome": "tests_failed",
+            "failing_test": "tests::shipping_returns_a_receipt_and_lowers_stock",
+            "equivalence_review": "not equivalent: shipping 3 of 10 reports remaining 10 instead of 7"
+          },
+          {
+            "replacement": "remaining: qty,",
+            "outcome": "tests_failed",
+            "failing_test": "tests::shipping_returns_a_receipt_and_lowers_stock",
+            "equivalence_review": "not equivalent: shipping 3 of 10 reports remaining 3 instead of 7"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "shipping_returns_a_receipt_and_lowers_stock compares the whole Receipt with assert_eq, so either wrong remaining value fails it. ripr reports weakly_exposed ('no field-value assertion observes the constructed field'), missing the whole-struct equality, a false actionable gap.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "ledger-insufficient-available",
+      "subject_id": "authored-ledger",
+      "diff": "cases/ledger-insufficient-available.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 74
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction",
+      "test_shape": "unit_test_matches_variant_only",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "available: qty,",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: shipping 9 of 4 reports available 9 instead of 4"
+          },
+          {
+            "replacement": "available: 0,",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: shipping 9 of 4 reports available 0 instead of 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "shipping_more_than_on_hand_is_refused only checks matches!(err, StockError::Insufficient { .. }), so the available field is never read. ripr reports weakly_exposed on the field, the ideal gap.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "ledger-shipped-total",
+      "subject_id": "authored-ledger",
+      "diff": "cases/ledger-shipped-total.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 79
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "side_effect",
+      "test_shape": "unit_test_relational_assert",
+      "hard_case": null,
+      "truth": {
+        "state": "partially_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.shipped_total = qty as u64;",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: shipping 3 then 4 leaves a total of 4 instead of 7"
+          },
+          {
+            "replacement": "self.shipped_total -= qty as u64;",
+            "outcome": "tests_failed",
+            "failing_test": "tests::history_records_every_movement_in_order",
+            "equivalence_review": "not equivalent: shipping 3 from a zero total underflows and panics in the debug test build instead of recording 3"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "shipments_count_towards_the_total only asserts shipped_total() > 0 after one shipment, so overwriting the total passes and only the underflowing subtraction fails. ripr reports static_unknown, an acceptable limit where a gap is ideal.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "static_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "ledger-stock-insert",
+      "subject_id": "authored-ledger",
+      "diff": "cases/ledger-stock-insert.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 78
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "side_effect",
+      "test_shape": "unit_test_assert_eq_accessor",
+      "hard_case": "call-deletion mutant is the statement removed (replacement is the empty line)",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.stock.insert(sku.to_owned(), available);",
+            "outcome": "tests_failed",
+            "failing_test": "tests::shipping_below_threshold_flags_low_stock",
+            "equivalence_review": "not equivalent: shipping 3 of 10 leaves 10 on hand instead of 7"
+          },
+          {
+            "replacement": "",
+            "outcome": "tests_failed",
+            "failing_test": "tests::shipping_below_threshold_flags_low_stock",
+            "equivalence_review": "not equivalent: with the insert removed, shipping 3 of 10 leaves 10 on hand instead of 7"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "shipping_returns_a_receipt_and_lowers_stock asserts on_hand == 7 and shipping_below_threshold_flags_low_stock asserts the SKU is flagged low after shipping 8 of 10, so keeping the old level or dropping the insert fails both. ripr reports call_deletion exposed but a weakly_exposed side_effect probe on the same line, so the line reads as a false actionable gap.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "exposed",
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "ledger-ship-exact-stock",
+      "subject_id": "authored-ledger",
+      "diff": "cases/ledger-ship-exact-stock.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 70
+      },
+      "edit_kind": "behavior_change",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "unit_test_off_boundary",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "if qty >= available {",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "the edit itself: shipping all 10 of 10 units is refused as Insufficient instead of succeeding with remaining 0"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "Every test ships strictly less or strictly more than on hand, so refusing an exact full shipment passes all of them. ripr reports infection_unknown, an acceptable limit where a gap is ideal.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "infection_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "ledger-sku-family-unsafe",
+      "subject_id": "authored-ledger",
+      "diff": "cases/ledger-sku-family-unsafe.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 33
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "static_unknown",
+      "test_shape": "unit_test_assert_eq",
+      "hard_case": "unsafe block; ripr probes it as an unsafe boundary (static_unknown) beside a return_value probe",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "unsafe { sku.get_unchecked(1..end) }",
+            "outcome": "tests_failed",
+            "failing_test": "tests::sku_family_is_the_text_before_the_first_dash",
+            "equivalence_review": "not equivalent: sku_family(\"BOLT-M8\") returns \"OLT\" instead of \"BOLT\""
+          },
+          {
+            "replacement": "unsafe { sku.get_unchecked(..end.saturating_sub(1)) }",
+            "outcome": "tests_failed",
+            "failing_test": "tests::sku_family_is_the_text_before_the_first_dash",
+            "equivalence_review": "not equivalent: sku_family(\"BOLT-M8\") returns \"BOL\" instead of \"BOLT\""
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "sku_family_is_the_text_before_the_first_dash asserts exact strings, so both slice changes fail it. ripr credits the return_value probe as exposed and marks the unsafe boundary static_unknown; credit outranks the limit, so the line is the ideal credit.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "credited",
+        "full_checkout_classifications": [
+          "exposed",
+          "static_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "ledger-sku-variant-unsafe",
+      "subject_id": "authored-ledger",
+      "diff": "cases/ledger-sku-variant-unsafe.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 40
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "static_unknown",
+      "test_shape": "unit_test_assert_not_empty",
+      "hard_case": "unsafe block; the only test asserts non-emptiness, which ripr labels a whole-object equality oracle",
+      "truth": {
+        "state": "partially_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "unsafe { sku.get_unchecked(start.saturating_sub(1)..sku.len()) }",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: sku_variant(\"BOLT-M8\") returns \"-M8\" instead of \"M8\""
+          },
+          {
+            "replacement": "unsafe { sku.get_unchecked(sku.len()..sku.len()) }",
+            "outcome": "tests_failed",
+            "failing_test": "tests::dashed_skus_have_a_variant",
+            "equivalence_review": "not equivalent: sku_variant(\"BOLT-M8\") returns \"\" instead of \"M8\""
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "dashed_skus_have_a_variant only asserts !sku_variant(\"BOLT-M8\").is_empty(), so keeping the dash passes and an empty slice fails. ripr credits the return_value probe as exposed with a 'whole-object equality' oracle, a false exposed verdict.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "credited",
+        "full_checkout_classifications": [
+          "exposed",
+          "static_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "config-missing-equals-line",
+      "subject_id": "authored-config",
+      "diff": "cases/config-missing-equals-line.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 50
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "error_path",
+      "test_shape": "integration_test_assert_eq_error",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "return Err(ConfigError::MissingEquals { line: idx });",
+            "outcome": "tests_failed",
+            "failing_test": "missing_equals_reports_its_line",
+            "equivalence_review": "not equivalent: a missing '=' on line 2 reports line 1"
+          },
+          {
+            "replacement": "return Err(ConfigError::EmptyKey { line: line_no });",
+            "outcome": "tests_failed",
+            "failing_test": "missing_equals_reports_its_line",
+            "equivalence_review": "not equivalent: a missing '=' on line 2 reports EmptyKey instead of MissingEquals"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "missing_equals_reports_its_line compares the whole Err value with assert_eq, so the wrong line or wrong variant fails it. ripr reports weakly_exposed on the error_path, field_construction and return_value probes, a false actionable gap.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "config-empty-key-error",
+      "subject_id": "authored-config",
+      "diff": "cases/config-empty-key-error.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 54
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "error_path",
+      "test_shape": "integration_test_is_err_only",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "return Err(ConfigError::EmptyKey { line: idx });",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: \"= 5\" reports EmptyKey { line: 0 } instead of line 1"
+          },
+          {
+            "replacement": "return Err(ConfigError::MissingEquals { line: line_no });",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: \"= 5\" reports MissingEquals instead of EmptyKey"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "empty_key_is_rejected only checks is_err(), so a wrong line number or wrong variant passes. ripr reports weakly_exposed on the error path, the ideal gap.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "config-log-level-warn",
+      "subject_id": "authored-config",
+      "diff": "cases/config-log-level-warn.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 80
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value",
+      "test_shape": "integration_test_assert_eq_each_variant",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "\"warning\" | \"warn\" => Ok(LogLevel::Info),",
+            "outcome": "tests_failed",
+            "failing_test": "every_log_level_spelling_parses",
+            "equivalence_review": "not equivalent: \"warn\" parses as Info instead of Warn"
+          },
+          {
+            "replacement": "\"warning\" => Ok(LogLevel::Warn),",
+            "outcome": "tests_failed",
+            "failing_test": "every_log_level_spelling_parses",
+            "equivalence_review": "not equivalent: \"WARN\" (lowercased to \"warn\") becomes UnknownLogLevel"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "every_log_level_spelling_parses asserts each spelling with assert_eq, so both changes fail it. ripr credits the match arm as exposed but leaves a weakly_exposed return_value probe on the same line, so the line reads as a false actionable gap.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "exposed",
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "config-bool-false-arm",
+      "subject_id": "authored-config",
+      "diff": "cases/config-bool-false-arm.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 91
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value",
+      "test_shape": "integration_test_assert_eq_one_branch",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "\"0\" | \"false\" | \"no\" | \"off\" => Some(true),",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: parse_bool(\"no\") returns Some(true) instead of Some(false)"
+          },
+          {
+            "replacement": "\"0\" | \"false\" | \"no\" | \"off\" => None,",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: parse_bool(\"no\") returns None instead of Some(false)"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "flags_accept_common_spellings asserts exact values but only for true spellings and an unknown word, so the false arm's value is never checked. ripr reports weakly_exposed, the ideal gap.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "config-port-zero",
+      "subject_id": "authored-config",
+      "diff": "cases/config-port-zero.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 70
+      },
+      "edit_kind": "behavior_change",
+      "behavior_family": "match_arm",
+      "test_shape": "integration_test_off_boundary",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "Err(_) => Err(ConfigError::InvalidPort {",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "the edit itself: parse_port(\"0\") returns Ok(0) instead of InvalidPort"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "ports_must_be_numeric checks 9000 and a non-numeric value but never 0, so accepting port 0 passes. ripr reports weakly_exposed on the match arm, the ideal gap.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "config-default-host",
+      "subject_id": "authored-config",
+      "diff": "cases/config-default-host.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 31
+      },
+      "edit_kind": "behavior_change",
+      "behavior_family": "field_construction",
+      "test_shape": "integration_test_overrides_default",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "host: \"localhost\".to_string(),",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "the edit itself: load(\"\") yields host \"localhost\" instead of \"127.0.0.1\""
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "load_applies_known_keys_over_defaults sets every key, so the default host is never observed and the change passes. ripr reports weakly_exposed on the field, the ideal gap.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "config-duplicate-key-case",
+      "subject_id": "authored-config",
+      "diff": "cases/config-duplicate-key-case.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 56
+      },
+      "edit_kind": "behavior_change",
+      "behavior_family": "predicate",
+      "test_shape": "integration_test_same_case_only",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "if pairs.iter().any(|(seen, _)| seen.eq_ignore_ascii_case(key)) {",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "the edit itself: \"port = 1\\nPort = 2\" is rejected as DuplicateKey instead of yielding both pairs"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "duplicate_keys_name_the_key_and_line repeats the key in the same case, so case-insensitive matching passes every test. ripr reports infection_unknown, an acceptable limit where a gap is ideal.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "infection_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "ledger-sku-family-end",
+      "subject_id": "authored-ledger",
+      "diff": "cases/ledger-sku-family-end.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 31
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value",
+      "test_shape": "unit_test_assert_eq",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "let end = sku.find('-').unwrap_or_else(|| 0);",
+            "outcome": "tests_failed",
+            "failing_test": "tests::sku_family_is_the_text_before_the_first_dash",
+            "equivalence_review": "not equivalent: sku_family(\"WASHER\") returns \"\" instead of \"WASHER\""
+          },
+          {
+            "replacement": "let end = sku.find('_').unwrap_or_else(|| sku.len());",
+            "outcome": "tests_failed",
+            "failing_test": "tests::sku_family_is_the_text_before_the_first_dash",
+            "equivalence_review": "not equivalent: sku_family(\"BOLT-M8\") returns \"BOLT-M8\" instead of \"BOLT\""
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "sku_family_is_the_text_before_the_first_dash asserts both the dashed and undashed SKU exactly, so either change fails it. ripr reports infection_unknown on the line, an acceptable limit where credit is ideal.",
+      "labeling_observation": {
+        "ripr_commit": "62fb7aaa5",
         "full_checkout_verdict": "limited",
         "full_checkout_classifications": [
           "infection_unknown"

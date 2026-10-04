@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 8282a55..5b7bc58 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -60,6 +60,7 @@ impl Inventory {
+     pub fn receive(&mut self, sku: &str, qty: u32) {
+         *self.stock.entry(sku.to_string()).or_insert(0) += qty;
+         self.log.push(Event::Received { sku: sku.to_string(), qty });
++        self.refresh_low_stock(sku);
+     }
+ 
+     pub fn ship(&mut self, sku: &str, qty: u32) -> Result<Receipt, StockError> {

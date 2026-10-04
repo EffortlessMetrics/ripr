@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index c2dc09a..1874cc7 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -51,7 +51,7 @@ pub fn parse_pairs(text: &str) -> Result<Vec<(String, String)>, ConfigError> {
+         };
+         let key = key.trim();
+         if key.is_empty() {
+-            return Err(ConfigError::EmptyKey { line: line_no });
++            return Err(ConfigError::EmptyKey { line: idx + 1 });
+         }
+         if pairs.iter().any(|(seen, _)| seen == key) {
+             return Err(ConfigError::DuplicateKey {

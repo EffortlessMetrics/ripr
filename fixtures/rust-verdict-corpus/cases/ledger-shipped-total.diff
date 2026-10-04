@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 8282a55..e3b721d 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -76,7 +76,7 @@ impl Inventory {
+         }
+         let remaining = available - qty;
+         self.stock.insert(sku.to_string(), remaining);
+-        self.shipped_total += u64::from(qty);
++        self.shipped_total += qty as u64;
+         self.log.push(Event::Shipped { sku: sku.to_string(), qty });
+         self.refresh_low_stock(sku);
+         Ok(Receipt {
