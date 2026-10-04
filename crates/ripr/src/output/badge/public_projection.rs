@@ -256,6 +256,21 @@ fn classify(input: &PublicBadgeInput, stale_age_secs: Option<u64>) -> PublicBadg
 /// `generated_at` inputs; the pure [`project_public_badge`] already implements
 /// and tests those states.
 pub(crate) fn attach_public_projection(summary: &mut BadgeSummary, source_report: &str) {
+    attach_public_projection_with_run_status(summary, source_report, RUN_STATUS_FULL, None)
+}
+
+/// Projection with the producing run's completeness state (#5263 review): a
+/// seam-capped classified inventory must not project its partial count as a
+/// clean full-run count. A `limited_*` run status resolves to the `limited`
+/// public state (fail-closed precedence keeps it over the count), and any
+/// unrecognized status fails closed to `unknown` rather than claiming a
+/// count.
+pub(crate) fn attach_public_projection_with_run_status(
+    summary: &mut BadgeSummary,
+    source_report: &str,
+    run_status: &str,
+    limited_reason: Option<String>,
+) {
     // Only repo-scoped public-basis badges carry a projection. Diff-scoped and
     // internal badges are left byte-identical so their native JSON and Shields
     // message do not change.
@@ -266,13 +281,13 @@ pub(crate) fn attach_public_projection(summary: &mut BadgeSummary, source_report
     let input = PublicBadgeInput {
         basis: summary.basis.as_str(),
         scope: summary.scope.as_str(),
-        run_status: RUN_STATUS_FULL.to_string(),
+        run_status: run_status.to_string(),
         actionable_count: summary.counts.unsuppressed_exposure_gaps,
         generated_at_unix_ms: Some(now),
         now_unix_ms: now,
         max_age_secs: DEFAULT_BADGE_MAX_AGE_SECS,
         source_report: Some(source_report.to_string()),
-        limited_reason: None,
+        limited_reason,
     };
     let projection = project_public_badge(&input);
     summary.message = projection.shields_message.clone();

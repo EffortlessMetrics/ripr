@@ -2,13 +2,70 @@ use super::model::*;
 use super::{display_path, read_json_value_with_display, resolve_root_path, string_field};
 use crate::output::gap_decision_ledger::{self, GapRecord};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Digests of the exact bytes each decision-affecting reader parsed, keyed
+/// by input name for the subject block (#5263 review round 2): a reader that
+/// consumed a file records the hash of those bytes, so the receipt cannot
+/// bind the decision to contents it never evaluated. Warn-only inputs that
+/// no reader parses are absent here and hash from a fresh read at
+/// subject-build time instead.
+#[derive(Default)]
+pub(super) struct ConsumedInputHashes {
+    pub(super) gap_ledger: Option<String>,
+    pub(super) labels_json: Option<String>,
+    pub(super) recommendation_calibration: Option<String>,
+    pub(super) mutation_calibration: Option<String>,
+    pub(super) baseline: Option<String>,
+    pub(super) exception_policy: Option<String>,
+}
+
+impl ConsumedInputHashes {
+    /// Bytes-once helper: reads the file and returns the parsed JSON value
+    /// together with `sha256:<hex>` of the exact bytes parsed. The caller
+    /// records the digest under its own input name.
+    fn read_json_and_record(
+        &self,
+        resolved: &Path,
+        display: &Path,
+    ) -> Result<(Value, String), String> {
+        let bytes = fs::read(resolved).map_err(|err| {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                format!("read {} failed: not found", display_path(display))
+            } else {
+                format!("read {} failed: {err}", display_path(display))
+            }
+        })?;
+        let digest = format!("sha256:{:x}", Sha256::digest(&bytes));
+        let value = serde_json::from_slice(&bytes)
+            .map_err(|err| format!("parse {} failed: {err}", display_path(display)))?;
+        Ok((value, digest))
+    }
+
+    /// Bytes-once helper for the TOML exception ledger: returns the file
+    /// text for the caller's TOML parse together with `sha256:<hex>` of the
+    /// exact bytes read.
+    pub(super) fn read_toml_text_and_record(
+        &self,
+        resolved: &Path,
+        display: &str,
+    ) -> Result<(String, String), String> {
+        let bytes = fs::read(resolved)
+            .map_err(|err| format!("failed to read exception policy `{display}`: {err}"))?;
+        let digest = format!("sha256:{:x}", Sha256::digest(&bytes));
+        let text = String::from_utf8(bytes)
+            .map_err(|err| format!("exception policy `{display}` is not valid UTF-8: {err}"))?;
+        Ok((text, digest))
+    }
+}
+
 pub(super) fn read_labels_impl(
     input: &GateEvaluateInput,
     warnings: &mut Vec<String>,
+    consumed: &mut ConsumedInputHashes,
 ) -> Vec<String> {
     let mut labels = input
         .labels
@@ -18,8 +75,9 @@ pub(super) fn read_labels_impl(
         .collect::<BTreeSet<_>>();
     if let Some(path) = &input.labels_json {
         let resolved = resolve_root_path(&input.root, path);
-        match read_json_value_with_display(&resolved, path) {
-            Ok(value) => {
+        match consumed.read_json_and_record(&resolved, path) {
+            Ok((value, digest)) => {
+                consumed.labels_json = Some(digest);
                 for label in labels_from_value(&value) {
                     labels.insert(label);
                 }
@@ -53,14 +111,30 @@ pub(super) fn warn_for_optional_json_impl(
 pub(super) fn read_gap_ledger_impl(
     input: &GateEvaluateInput,
     config_errors: &mut Vec<String>,
+    consumed: &mut ConsumedInputHashes,
 ) -> Option<Vec<GapRecord>> {
     let path = input.gap_ledger.as_ref()?;
     let resolved = resolve_root_path(&input.root, path);
-    let text = match fs::read_to_string(&resolved) {
-        Ok(text) => text,
+    // Read once: the subject hash is computed from exactly the bytes parsed
+    // here, so the receipt cannot bind the decision to other contents
+    // (review round 1, #5263).
+    let bytes = match fs::read(&resolved) {
+        Ok(bytes) => bytes,
         Err(error) => {
             config_errors.push(format!(
                 "required gap decision ledger input {} is invalid: read failed: {error}",
+                display_path(path)
+            ));
+            return Some(Vec::new());
+        }
+    };
+    let consumed_hash = format!("sha256:{:x}", Sha256::digest(&bytes));
+    consumed.gap_ledger = Some(consumed_hash);
+    let text = match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(error) => {
+            config_errors.push(format!(
+                "required gap decision ledger input {} is invalid: not valid UTF-8: {error}",
                 display_path(path)
             ));
             return Some(Vec::new());
@@ -127,14 +201,18 @@ pub(super) fn read_gap_ledger_impl(
 pub(super) fn read_recommendation_calibration_impl(
     input: &GateEvaluateInput,
     warnings: &mut Vec<String>,
+    consumed: &mut ConsumedInputHashes,
 ) -> CalibrationIndex {
     let mut index = CalibrationIndex::default();
     let Some(path) = &input.recommendation_calibration else {
         return index;
     };
     let resolved = resolve_root_path(&input.root, path);
-    let value = match read_json_value_with_display(&resolved, path) {
-        Ok(v) => v,
+    let value = match consumed.read_json_and_record(&resolved, path) {
+        Ok((v, digest)) => {
+            consumed.recommendation_calibration = Some(digest);
+            v
+        }
         Err(error) => {
             warnings.push(format!(
                 "optional recommendation_calibration {} is unavailable: {error}",
@@ -170,14 +248,18 @@ pub(super) fn read_recommendation_calibration_impl(
 pub(super) fn read_mutation_calibration_impl(
     input: &GateEvaluateInput,
     warnings: &mut Vec<String>,
+    consumed: &mut ConsumedInputHashes,
 ) -> CalibrationIndex {
     let mut index = CalibrationIndex::default();
     let Some(path) = &input.mutation_calibration else {
         return index;
     };
     let resolved = resolve_root_path(&input.root, path);
-    let value = match read_json_value_with_display(&resolved, path) {
-        Ok(v) => v,
+    let value = match consumed.read_json_and_record(&resolved, path) {
+        Ok((v, digest)) => {
+            consumed.mutation_calibration = Some(digest);
+            v
+        }
         Err(error) => {
             warnings.push(format!(
                 "optional mutation_calibration {} is unavailable: {error}",
@@ -244,6 +326,7 @@ pub(super) fn read_baseline_impl(
     input: &GateEvaluateInput,
     warnings: &mut Vec<String>,
     config_errors: &mut Vec<String>,
+    consumed: &mut ConsumedInputHashes,
 ) -> BaselineIndex {
     if input.mode.requires_baseline() && input.baseline.is_none() {
         config_errors.push(format!(
@@ -256,8 +339,9 @@ pub(super) fn read_baseline_impl(
         return BaselineIndex::default();
     };
     let resolved = resolve_root_path(&input.root, path);
-    match read_json_value_with_display(&resolved, path) {
-        Ok(value) => {
+    match consumed.read_json_and_record(&resolved, path) {
+        Ok((value, digest)) => {
+            consumed.baseline = Some(digest);
             // #5203: a baseline built from a findings-bounded run is a
             // bounded denominator — fail closed instead of diffing against
             // it. Checked before the older limited states so a bounded

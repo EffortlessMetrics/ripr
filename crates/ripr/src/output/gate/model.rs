@@ -66,6 +66,10 @@ pub(crate) struct GateDecisionReport {
     pub(super) mode: GateMode,
     pub(super) root: String,
     pub(super) inputs: GateDecisionInputs,
+    /// Subject identity of the evaluation (#5263): which build produced the
+    /// decision and which input bytes it consumed, so a stale gate receipt is
+    /// distinguishable from a fresh one by the artifact itself.
+    pub(super) subject: GateSubject,
     pub(super) policy: GatePolicy,
     pub(super) summary: GateSummary,
     pub(super) new_unsuppressed: NewUnsuppressed,
@@ -114,6 +118,56 @@ pub(super) struct GateDecisionInputs {
     /// Present only when `--exception-policy` was supplied (#1442), keeping
     /// existing gate-decision JSON byte-identical without the flag.
     pub(super) exception_policy: Option<String>,
+}
+
+/// Subject identity of one gate evaluation (#5263). Every field is either
+/// measured here (build identity, input content hashes) or copied verbatim
+/// from the input document's own producer receipt — never inferred and never
+/// re-resolved, so the artifact records what this evaluation actually saw.
+///
+/// There is deliberately no timestamp: two identical evaluations stay
+/// byte-identical, and staleness is carried by the content hashes and the
+/// producer SHAs instead. There is deliberately no absolute checkout path:
+/// the caller-relative `root` field already names the evaluated root, and
+/// portable identity fields carry no machine-specific spelling.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct GateSubject {
+    /// Build identity of the writing binary (version plus commit or source
+    /// digest; `build_identity::cache_identity`), the same analyzer stamp
+    /// `check --write-artifact` records.
+    pub(super) analyzer_version: String,
+    /// One entry per consumed input, keyed by input name — every
+    /// CLI-supplied input that can change the decision, not only the
+    /// candidate sources (review round 1, #5263).
+    pub(super) inputs: BTreeMap<String, GateSubjectInput>,
+    /// `sha256` over the caller-supplied `--labels` strings (joined with NUL
+    /// separators), present only when labels were supplied on the command
+    /// line rather than through `--labels-json`.
+    pub(super) labels_sha256: Option<String>,
+}
+
+/// Identity of one consumed gate input document (#5263).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct GateSubjectInput {
+    /// `sha256:<hex>` of the exact bytes the evaluation consumed; `None` only
+    /// when the bytes could not be read for hashing (the read failure itself
+    /// already surfaces as a `config_error` or warning).
+    pub(super) content_hash: Option<String>,
+    /// The input document's own producer receipt, copied verbatim when the
+    /// producer recorded one (`run_receipt` on a review-comments guidance
+    /// document): the resolved base/head SHAs and root identity that producer
+    /// evaluated, so a `pr-ledger`'s asserted base/head can be cross-checked
+    /// against what the gate actually consumed.
+    pub(super) producer_subject: Option<GateProducerSubject>,
+}
+
+/// The producer identity carried by an input document's `run_receipt`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct GateProducerSubject {
+    pub(super) root_identity: Option<String>,
+    pub(super) base_sha: String,
+    pub(super) head_sha: String,
+    pub(super) reusable_cache_identity: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

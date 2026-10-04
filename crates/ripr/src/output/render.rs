@@ -62,28 +62,36 @@ pub(crate) fn render_check_with_config_and_progress(
             let summary = ripr_summary_with_suppressions(output, config)?;
             Ok(badge::render_native_json(&summary))
         }
-        OutputFormat::RepoBadgeJson => {
-            let mut summary = ripr_repo_canonical_actionable_summary(output, config)?;
-            badge::attach_public_projection(&mut summary, REPO_RIPR_BADGE_SOURCE_REPORT);
-            Ok(badge::render_native_json(&summary))
-        }
+        OutputFormat::RepoBadgeJson => repo_inventory_with_progress(
+            progress,
+            || ripr_repo_canonical_actionable_summary(output, config),
+            |(mut summary, limit_info)| {
+                attach_repo_badge_projection(&mut summary, limit_info.as_ref());
+                Ok(badge::render_native_json(&summary))
+            },
+        ),
         OutputFormat::BadgeShields => {
             let summary = ripr_summary_with_suppressions(output, config)?;
             Ok(badge::render_shields_json(&summary))
         }
-        OutputFormat::RepoBadgeShields => {
-            let mut summary = ripr_repo_canonical_actionable_summary(output, config)?;
-            badge::attach_public_projection(&mut summary, REPO_RIPR_BADGE_SOURCE_REPORT);
-            Ok(badge::render_shields_json(&summary))
-        }
+        OutputFormat::RepoBadgeShields => repo_inventory_with_progress(
+            progress,
+            || ripr_repo_canonical_actionable_summary(output, config),
+            |(mut summary, limit_info)| {
+                attach_repo_badge_projection(&mut summary, limit_info.as_ref());
+                Ok(badge::render_shields_json(&summary))
+            },
+        ),
         OutputFormat::BadgePlusJson | OutputFormat::RepoBadgePlusJson => {
-            let mut summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
-            maybe_attach_repo_plus_projection(&mut summary, output, format);
+            let (mut summary, limit_info) =
+                ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
+            maybe_attach_repo_plus_projection(&mut summary, output, format, limit_info.as_ref());
             Ok(badge::render_native_json(&summary))
         }
         OutputFormat::BadgePlusShields | OutputFormat::RepoBadgePlusShields => {
-            let mut summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
-            maybe_attach_repo_plus_projection(&mut summary, output, format);
+            let (mut summary, limit_info) =
+                ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
+            maybe_attach_repo_plus_projection(&mut summary, output, format, limit_info.as_ref());
             Ok(badge::render_shields_json(&summary))
         }
         OutputFormat::RepoSeamsJson => repo_inventory_with_progress(
@@ -357,10 +365,22 @@ fn maybe_attach_repo_plus_projection(
     summary: &mut badge::BadgeSummary,
     output: &CheckOutput,
     format: &OutputFormat,
+    limit_info: Option<&analysis::SeamLimitInfo>,
 ) {
     let report_present = output.root.join(TEST_EFFICIENCY_REPORT_RELATIVE).exists();
     if format.is_repo_scope() && report_present {
-        badge::attach_public_projection(summary, REPO_RIPR_PLUS_BADGE_SOURCE_REPORT);
+        match limit_info {
+            Some(limit) => badge::attach_public_projection_with_run_status(
+                summary,
+                REPO_RIPR_PLUS_BADGE_SOURCE_REPORT,
+                "limited_seam_cap",
+                Some(format!(
+                    "seam limit applied: analyzed {} of {} seams; unscanned seams are not counted",
+                    limit.analyzed, limit.total
+                )),
+            ),
+            None => badge::attach_public_projection(summary, REPO_RIPR_PLUS_BADGE_SOURCE_REPORT),
+        }
     }
 }
 
@@ -382,27 +402,59 @@ fn ripr_summary_with_suppressions(
     ))
 }
 
+/// The repo badge's `canonical_actionable_gap` basis derives from the same
+/// full classified seam inventory `repo-exposure-json` renders (#5261). The
+/// compact classified walk zeroes the related-test and observed-value
+/// evidence payload and approximates activation for several seam kinds, so
+/// evidence records projected from it reclassify actionable gaps as
+/// `unknown` and the badge rendered a clean `0 actionable` beside an
+/// actionable repo-exposure record on the same tree. Agreement with
+/// repo-exposure outranks the compact walk's cost saving: a wrong clean
+/// signal on the public projection is the same harm as a wrong repair
+/// signal on the other side, and the full classified inventory is the
+/// cache-backed walk the audit-path disclosure already names.
 fn ripr_repo_canonical_actionable_summary(
     output: &CheckOutput,
     config: &RiprConfig,
-) -> Result<badge::BadgeSummary, String> {
-    let classified =
-        analysis::inventory_compact_classified_seams_at_with_config(&output.root, config)?;
+) -> Result<(badge::BadgeSummary, Option<analysis::SeamLimitInfo>), String> {
+    let report = analysis::inventory_classified_seams_report_at_with_config(&output.root, config)?;
     let policy = badge::BadgePolicy {
         suppressions_path: config.suppressions().display_path(),
         ..badge::BadgePolicy::default()
     };
-    Ok(badge::ripr_canonical_actionable_gap_badge_summary(
-        &classified,
-        policy,
-    ))
+    let summary = badge::ripr_canonical_actionable_gap_badge_summary(&report.classified, policy);
+    // A seam-capped inventory must not project its partial count as a clean
+    // full-run badge (review round 1, #5261): the limit travels with the
+    // summary so the public projection resolves to the limited state.
+    Ok((summary, report.limit_info))
+}
+
+/// The seam-native repo badge's public projection, honoring the producing
+/// walk's completeness: a capped inventory projects `limited` (with the cap
+/// named) instead of a count that would read as a full-scan result.
+fn attach_repo_badge_projection(
+    summary: &mut badge::BadgeSummary,
+    limit_info: Option<&analysis::SeamLimitInfo>,
+) {
+    match limit_info {
+        Some(limit) => badge::attach_public_projection_with_run_status(
+            summary,
+            REPO_RIPR_BADGE_SOURCE_REPORT,
+            "limited_seam_cap",
+            Some(format!(
+                "seam limit applied: analyzed {} of {} seams; unscanned seams are not counted",
+                limit.analyzed, limit.total
+            )),
+        ),
+        None => badge::attach_public_projection(summary, REPO_RIPR_BADGE_SOURCE_REPORT),
+    }
 }
 
 fn ripr_plus_summary_from_disk(
     output: &CheckOutput,
     repo_scope: bool,
     config: &RiprConfig,
-) -> Result<badge::BadgeSummary, String> {
+) -> Result<(badge::BadgeSummary, Option<analysis::SeamLimitInfo>), String> {
     let report_path = output.root.join(TEST_EFFICIENCY_REPORT_RELATIVE);
     if !report_path.exists() {
         let warning = format!(
@@ -410,8 +462,9 @@ fn ripr_plus_summary_from_disk(
             report_path.display()
         );
         eprintln!("ripr: {warning}; rendering neutral ripr+ badge");
-        return Ok(missing_test_efficiency_badge_summary(
-            repo_scope, config, warning,
+        return Ok((
+            missing_test_efficiency_badge_summary(repo_scope, config, warning),
+            None,
         ));
     }
     let text = std::fs::read_to_string(&report_path)
@@ -438,20 +491,24 @@ fn ripr_plus_summary_from_disk(
         ..badge::BadgePolicy::default()
     };
     if repo_scope {
-        let exposure = ripr_repo_canonical_actionable_summary(output, config)?;
-        Ok(badge::ripr_plus_canonical_actionable_gap_badge_summary(
+        let (exposure, limit_info) = ripr_repo_canonical_actionable_summary(output, config)?;
+        let summary = badge::ripr_plus_canonical_actionable_gap_badge_summary(
             exposure,
             test_efficiency,
             policy,
-        ))
+        );
+        Ok((summary, limit_info))
     } else {
-        Ok(badge::ripr_plus_badge_summary_with_suppressions(
-            output,
-            test_efficiency,
-            &suppressions,
-            &today,
-            policy,
-            scope,
+        Ok((
+            badge::ripr_plus_badge_summary_with_suppressions(
+                output,
+                test_efficiency,
+                &suppressions,
+                &today,
+                policy,
+                scope,
+            ),
+            None,
         ))
     }
 }
@@ -730,6 +787,157 @@ mod tests {
 
         assert!(native.contains("\"kind\""));
         assert!(shields.contains("\"schemaVersion\": 1"));
+        Ok(())
+    }
+
+    /// #5261: the repo badge's `canonical_actionable_gap` count must agree
+    /// with `repo-exposure-json` on the same tree. The compact classified
+    /// walk this badge used to consume drops the related-test and
+    /// observed-value payload and approximates activation for several seam
+    /// kinds, so actionable gaps reclassified as `unknown` rendered a clean
+    /// `0 actionable` beside an actionable exposure record. A workspace
+    /// whose only tests reach the boundary but never exercise it pins the
+    /// agreement: both surfaces must count the same canonical actionable
+    /// gaps, and a zero badge beside a nonzero exposure count fails.
+    #[test]
+    fn repo_badge_actionable_count_agrees_with_repo_exposure_on_the_same_tree() -> Result<(), String>
+    {
+        let root = temp_root("ripr-render-badge-agreement")?;
+        std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
+        std::fs::create_dir_all(root.join("tests"))
+            .map_err(|err| format!("create tests dir: {err}"))?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]
+name=\"ripr-badge-agreement\"
+version=\"0.1.0\"
+edition=\"2021\"
+",
+        )
+        .map_err(|err| format!("write Cargo.toml: {err}"))?;
+        std::fs::write(
+            root.join("src/lib.rs"),
+            "pub fn over_threshold(amount: i32, threshold: i32) -> bool {
+    amount >= threshold
+}
+
+pub fn discounted_total(amount: i32, threshold: i32) -> i32 {
+    if amount >= threshold {
+        amount - 10
+    } else {
+        amount
+    }
+}
+",
+        )
+        .map_err(|err| format!("write lib.rs: {err}"))?;
+        std::fs::write(
+            root.join("tests/pricing.rs"),
+            "use ripr_badge_agreement::{discounted_total, over_threshold};
+
+#[test]
+fn below_threshold_has_no_discount() {
+    assert_eq!(discounted_total(50, 100), 50);
+}
+
+#[test]
+fn happy_path_passes() {
+    assert!(over_threshold(5, 3));
+}
+",
+        )
+        .map_err(|err| format!("write tests/pricing.rs: {err}"))?;
+
+        let mut output = check_output_with(Vec::new());
+        output.root = root.clone();
+        let config = RiprConfig::default();
+
+        let exposure = render_check_with_config(&output, &OutputFormat::RepoExposureJson, &config)?;
+        let exposure_value: serde_json::Value = serde_json::from_str(&exposure)
+            .map_err(|err| format!("repo-exposure JSON should parse: {err}"))?;
+        let exposure_actionable: Vec<String> = exposure_value["seams"]
+            .as_array()
+            .ok_or_else(|| "repo-exposure JSON should carry a seams array".to_string())?
+            .iter()
+            .filter(|seam| {
+                let item = &seam["evidence_record"]["canonical_item"];
+                item["gap_state"] == "actionable"
+                    && !item["repair_route"].is_null()
+                    && !item["verify_command"].is_null()
+            })
+            .filter_map(|seam| {
+                seam["evidence_record"]["canonical_item"]["canonical_gap_id"]
+                    .as_str()
+                    .map(str::to_string)
+            })
+            .collect();
+
+        let badge = render_check_with_config(&output, &OutputFormat::RepoBadgeJson, &config)?;
+        let badge_value: serde_json::Value = serde_json::from_str(&badge)
+            .map_err(|err| format!("repo-badge JSON should parse: {err}"))?;
+        let badge_count = badge_value["counts"]["unsuppressed_exposure_gaps"]
+            .as_u64()
+            .ok_or_else(|| "badge should carry unsuppressed_exposure_gaps".to_string())?;
+
+        assert!(
+            !exposure_actionable.is_empty(),
+            "fixture must produce at least one actionable canonical gap with a complete              repair route on the exposure path, or the agreement proves nothing"
+        );
+        assert_eq!(
+            badge_count as usize,
+            exposure_actionable.len(),
+            "badge actionable count {badge_count} must equal the repo-exposure canonical              actionable gap count {} on the same tree",
+            exposure_actionable.len()
+        );
+
+        remove_temp_root(&root)?;
+        Ok(())
+    }
+
+    use super::attach_repo_badge_projection;
+    use crate::output::badge;
+
+    /// #5263 review: a seam-capped classified inventory must not project a
+    /// partial count as a clean full-run badge. The public projection
+    /// resolves to the `limited` state with the cap named, and the badge
+    /// message can no longer read `0 actionable` for a truncated scan.
+    #[test]
+    fn repo_badge_projects_limited_when_the_seam_cap_truncates_the_scan() -> Result<(), String> {
+        let classified: Vec<crate::analysis::ClassifiedSeam> = Vec::new();
+        let mut summary = badge::ripr_canonical_actionable_gap_badge_summary(
+            &classified,
+            badge::BadgePolicy::default(),
+        );
+        let limit = crate::analysis::SeamLimitInfo {
+            analyzed: 500,
+            total: 501,
+            source: crate::analysis::SeamLimitSource::Default,
+        };
+        attach_repo_badge_projection(&mut summary, Some(&limit));
+        let projection = summary
+            .projection
+            .as_ref()
+            .ok_or("the limited run must still carry a public projection")?;
+        assert_eq!(
+            projection.state.as_str(),
+            "limited",
+            "{:?}",
+            projection.state
+        );
+        assert_eq!(summary.message, "limited", "{}", summary.message);
+        assert_eq!(
+            projection.run_status, "limited_seam_cap",
+            "{}",
+            projection.run_status
+        );
+        assert!(
+            projection
+                .limited_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("analyzed 500 of 501 seams")),
+            "the limited reason must name the cap: {:?}",
+            projection.limited_reason
+        );
         Ok(())
     }
 

@@ -20,6 +20,7 @@ pub(crate) fn render_gate_decision_json(report: &GateDecisionReport) -> Result<S
         "mode": report.mode.as_str(),
         "root": report.root,
         "inputs": inputs_json(&report.inputs),
+        "subject": subject_json(&report.subject),
         "policy": policy_json(&report.policy),
         "summary": summary_json(&report.summary),
         "new_unsuppressed": new_unsuppressed_json(&report.new_unsuppressed),
@@ -45,6 +46,49 @@ pub(crate) fn render_gate_decision_json(report: &GateDecisionReport) -> Result<S
     }
     serde_json::to_string_pretty(&document)
         .map_err(|err| format!("failed to render gate decision JSON: {err}"))
+}
+
+/// Subject identity block (#5263): which build produced the decision and
+/// which input bytes it consumed. `content_hash` stays null when the bytes
+/// could not be read, and `producer_subject` appears only when the input
+/// document itself carried a resolved producer receipt.
+fn subject_json(subject: &super::model::GateSubject) -> Value {
+    let inputs = subject
+        .inputs
+        .iter()
+        .map(|(name, input)| {
+            let mut entry = json!({
+                "content_hash": input.content_hash,
+            });
+            if let Some(producer) = &input.producer_subject
+                && let Some(object) = entry.as_object_mut()
+            {
+                object.insert(
+                    "producer_subject".to_string(),
+                    json!({
+                        "root_identity": producer.root_identity,
+                        "base_sha": producer.base_sha,
+                        "head_sha": producer.head_sha,
+                        "reusable_cache_identity": producer.reusable_cache_identity,
+                    }),
+                );
+            }
+            (name.clone(), entry)
+        })
+        .collect::<serde_json::Map<String, Value>>();
+    let mut rendered = json!({
+        "analyzer_version": subject.analyzer_version,
+        "inputs": Value::Object(inputs),
+    });
+    if let Some(labels_sha256) = &subject.labels_sha256
+        && let Some(object) = rendered.as_object_mut()
+    {
+        object.insert(
+            "labels_sha256".to_string(),
+            Value::String(labels_sha256.clone()),
+        );
+    }
+    rendered
 }
 
 fn exception_policy_json(report: &ExceptionPolicyReport) -> Value {

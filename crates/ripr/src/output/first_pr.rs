@@ -1236,6 +1236,28 @@ fn select_from_gap_ledger(gap_ledger: &Value, root: &Path, options: &FirstPrOpti
             Some(regenerate_blocked_gap_ledger_command(root, options)),
         );
     }
+    if ledger_check_output_projected_nothing(gap_ledger) {
+        // #5264: a clean-parse zero-record ledger from the --check-output
+        // route means the route projected nothing for this PR's language
+        // (it projects Python/TypeScript/Perl only), not that the evidence
+        // is corrupt. Recovery is the same regeneration compound the
+        // blocked state offers; the ledger's own warning names the coverage.
+        let message = first_string_array_item(gap_ledger, &["warnings"]).map_or_else(
+            || {
+                "The check-output gap ledger parsed but projected no records for this PR's language; regenerate the ledger from the workspace evidence.".to_string()
+            },
+            |warning| {
+                format!(
+                    "The check-output gap ledger parsed but projected no records: {warning}. Regenerate the ledger from the workspace evidence."
+                )
+            },
+        );
+        return Selection::blocked(
+            "blocked_artifact",
+            message,
+            Some(regenerate_blocked_gap_ledger_command(root, options)),
+        );
+    }
     if ledger_reports_empty_diff(gap_ledger) {
         return Selection::no_action(
             "empty_diff",
@@ -1835,6 +1857,16 @@ fn ledger_reports_blocked(value: &Value) -> bool {
             .as_deref(),
         Some("blocked")
     )
+}
+
+/// #5264: `no_records` from a `--check-output` ledger is the honest healthy
+/// no-op for languages that route cannot project. first-pr must still
+/// recover (the route did not see this PR's language), but only for that
+/// source: `no_records` from a repo-exposure or records ledger is a genuine
+/// empty result, not a recoverable projection miss.
+fn ledger_check_output_projected_nothing(value: &Value) -> bool {
+    string_path(value, &["status"]).as_deref() == Some("no_records")
+        && string_path(value, &["inputs", "source_kind"]).as_deref() == Some("check_output")
 }
 
 fn root_mismatch(expected_root: &Path, expected_arg: &str, observed_root: &str) -> bool {
@@ -3190,6 +3222,60 @@ mod tests {
             violations,
             vec!["selected top_gap must name changed behavior"]
         );
+    }
+
+    /// #5264: a check-output ledger that parsed cleanly but projected zero
+    /// records (the route projects Python/TypeScript/Perl only) recovers
+    /// through the same blocked-artifact regeneration compound; the same
+    /// `no_records` status from any other source is a genuine empty result
+    /// and must not trigger the recovery.
+    #[test]
+    fn no_records_check_output_ledger_recovers_through_regeneration_compound() -> Result<(), String>
+    {
+        let ledger_value = |status: &str, source_kind: &str| {
+            serde_json::json!({
+                "status": status,
+                "inputs": {"source_kind": source_kind},
+                "records": [],
+                "warnings": ["check output contained 3 findings, but the --check-output route projects Python/TypeScript/Perl findings only; no gap records were derived from them"]
+            })
+        };
+        let root = temp_repo("first-pr-no-records-recovery")?;
+        let options = FirstPrOptions::default();
+
+        let selection =
+            select_from_gap_ledger(&ledger_value("no_records", "check_output"), &root, &options);
+        match &selection {
+            Selection::Blocked {
+                state,
+                next_command,
+                ..
+            } => {
+                assert_eq!(state, "blocked_artifact");
+                let command = next_command
+                    .as_deref()
+                    .ok_or("the projection-miss recovery must carry a next command")?;
+                assert!(
+                    command.contains("repo-exposure"),
+                    "the Rust-root recovery compound regenerates repo-exposure evidence: {command}"
+                );
+            }
+            other => return Err(format!("expected a blocked recovery, got {other:?}")),
+        }
+
+        let genuine_empty = select_from_gap_ledger(
+            &ledger_value("no_records", "repo_exposure"),
+            &root,
+            &options,
+        );
+        if let Selection::Blocked { state, .. } = &genuine_empty {
+            return Err(format!(
+                "a repo-exposure no_records ledger is a genuine empty result, not a recoverable projection miss; got blocked {state}"
+            ));
+        }
+
+        let _ = fs::remove_dir_all(&root);
+        Ok(())
     }
 
     #[test]

@@ -172,6 +172,14 @@
   "root": ".",
   "schema_version": "0.1",
   "status": "advisory",
+  "subject": {
+    "analyzer_version": "0.0.0+pinned-golden-analyzer-version",
+    "inputs": {
+      "pr_guidance": {
+        "content_hash": "sha256:a32a26e5210468948278138ab5c89414ff4d35aa83da5f864daecf9aeb759797"
+      }
+    }
+  },
   "summary": {
     "acknowledged": 0,
     "advisory": 1,

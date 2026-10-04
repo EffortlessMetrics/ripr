@@ -169,13 +169,12 @@ Options:
                              Badge (diff-scoped, for README status):
                                badge-json, badge-shields,
                                badge-plus-json, badge-plus-shields
-                             Badge (repo-scoped, from gap ledger):
-                               repo-badge-json, repo-badge-shields,
-                               repo-badge-plus-json, repo-badge-plus-shields
                              Repo-scope (full-repo analysis):
                                repo-seams-json, repo-seams-md,
                                repo-exposure-json, repo-exposure-summary-json,
-                               repo-exposure-md, repo-sarif
+                               repo-exposure-md, repo-sarif,
+                               repo-badge-json, repo-badge-shields,
+                               repo-badge-plus-json, repo-badge-plus-shields
                              Agent (machine-readable repair evidence):
                                agent-seam-packets-json
                            badge-plus-* and repo-badge-plus-* formats read
