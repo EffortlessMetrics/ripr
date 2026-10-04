@@ -1280,7 +1280,7 @@ mod tests {
         #[cfg(windows)]
         {
             use std::os::windows::process::ExitStatusExt;
-            ExitStatus::from_raw(code as u32)
+            ExitStatus::from_raw(code.cast_unsigned())
         }
     }
 
