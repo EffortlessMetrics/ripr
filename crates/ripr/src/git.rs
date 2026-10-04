@@ -51,9 +51,6 @@ pub(crate) fn is_git_not_found_on_path(error: &str) -> bool {
     error == GIT_NOT_FOUND_ON_PATH_MESSAGE
 }
 
-/// Poll interval for the deadline/cancellation wait loop.
-const POLL_INTERVAL: Duration = Duration::from_millis(50);
-
 /// Run `git -C <root> <args...>` with no deadline and return trimmed stdout
 /// on success.
 ///
@@ -1200,6 +1197,7 @@ pub(crate) fn poll_child(
     describe: &str,
 ) -> ChildWait {
     let deadline = timeout.map(|limit| Instant::now() + limit);
+    let mut backoff = crate::process_owner::PollBackoff::new();
     loop {
         match child.try_wait() {
             Ok(Some(status)) => return ChildWait::Exited(status),
@@ -1223,7 +1221,7 @@ pub(crate) fn poll_child(
                         || child.terminate_tree(),
                     );
                 }
-                std::thread::sleep(POLL_INTERVAL);
+                backoff.sleep(deadline);
             }
             Err(err) => {
                 return terminate_then_classify(
@@ -1855,6 +1853,50 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
                 drop(child);
             }
         }
+    }
+
+    /// #5348: a child that exits in a few milliseconds must not cost a full
+    /// 50 ms poll interval. Up to 20 trials, stopping at the first under the
+    /// bound, absorb load spikes. The child sleeps 10 ms so the first
+    /// `try_wait` sees it running unless the test thread stalls for longer;
+    /// an `exit 0` child could be reaped before that first poll and pass
+    /// without exercising the backoff. Negative experiment: with the
+    /// pre-#5348 fixed 50 ms sleep restored in `poll_child`, each such trial
+    /// takes >= 50 ms (observed: fastest of 20 was 50.5 ms). Unix only: a Windows `cmd`
+    /// start can itself take tens of milliseconds.
+    #[cfg(unix)]
+    #[test]
+    fn poll_child_returns_promptly_for_a_fast_exiting_child() -> Result<(), String> {
+        let bound = crate::process_owner::POLL_BACKOFF_CEILING;
+        // The old fixed 50 ms sleep can never come in under the bound, so
+        // more attempts cost no discrimination and absorb a loaded runner.
+        let mut best = Duration::MAX;
+        for _ in 0..20 {
+            if best < bound {
+                break;
+            }
+            let mut command = Command::new("sh");
+            command
+                .args(["-c", "sleep 0.01"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+            let started = Instant::now();
+            let mut child =
+                OwnedProcess::spawn(command).map_err(|err| format!("spawn fast child: {err}"))?;
+            let wait = poll_child(&mut child, Some(Duration::from_mins(2)), "fast-child");
+            let elapsed = started.elapsed();
+            if !matches!(wait, ChildWait::Exited(status) if status.success()) {
+                return Err("fast child did not exit successfully".to_string());
+            }
+            best = best.min(elapsed);
+        }
+        if best >= bound {
+            return Err(format!(
+                "fastest poll of a fast-exiting child took {best:?}; bound {bound:?}"
+            ));
+        }
+        Ok(())
     }
 
     /// Deterministic kill+reap proof for a hung fixture child (#3742

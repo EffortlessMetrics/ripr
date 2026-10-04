@@ -43,6 +43,9 @@ impl ProgressPolicy {
     };
 }
 
+/// Wake interval of the heartbeat thread between throttled ticks.
+const HEARTBEAT_TICK: Duration = Duration::from_millis(50);
+
 /// Elapsed classes used in heartbeat lines. Raw millisecond counts never
 /// appear in the projection.
 pub(crate) fn elapsed_class(elapsed: Duration) -> Option<&'static str> {
@@ -176,6 +179,10 @@ struct SinkInner {
     state: Mutex<Projection>,
     stop: Arc<AtomicBool>,
     heartbeat: Mutex<Option<JoinHandle<()>>>,
+    /// Set by the heartbeat thread just before it waits out a tick, so the
+    /// shutdown-timing test measures only joins of a thread already waiting.
+    #[cfg(test)]
+    heartbeat_waiting: AtomicBool,
 }
 
 pub(crate) struct CliProgressSink {
@@ -241,6 +248,8 @@ impl CliProgressSink {
                 }),
                 stop: Arc::new(AtomicBool::new(false)),
                 heartbeat: Mutex::new(None),
+                #[cfg(test)]
+                heartbeat_waiting: AtomicBool::new(false),
             }),
         }
     }
@@ -399,7 +408,13 @@ impl CliProgressSink {
         let inner = Arc::clone(&self.inner);
         *slot = Some(thread::spawn(move || {
             while !inner.stop.load(Ordering::Relaxed) {
-                thread::sleep(Duration::from_millis(50));
+                // Parked rather than slept: `stop_heartbeat` unparks the
+                // thread so a terminal stage joins it at once instead of
+                // waiting out the tick (#5348). A spurious or early wakeup
+                // only runs one more throttled tick.
+                #[cfg(test)]
+                inner.heartbeat_waiting.store(true, Ordering::Release);
+                thread::park_timeout(HEARTBEAT_TICK);
                 if inner.stop.load(Ordering::Relaxed) {
                     break;
                 }
@@ -415,6 +430,7 @@ impl CliProgressSink {
             Err(poisoned) => poisoned.into_inner(),
         };
         if let Some(handle) = slot.take() {
+            handle.thread().unpark();
             let _ = handle.join();
         }
     }
@@ -640,6 +656,67 @@ mod tests {
         }
         assert!(tty_buf.text().contains('\r'));
         assert!(!ci_buf.text().contains('\r'));
+    }
+
+    /// #5348: a terminal stage must join the heartbeat thread at once. The
+    /// thread used to `sleep` its whole tick, so every command paid up to
+    /// one tick (50 ms) at exit waiting for the join. Negative experiment:
+    /// with `thread::sleep(HEARTBEAT_TICK)` restored (and no unpark), a
+    /// trial timed once the thread has signalled its wait owes nearly the
+    /// whole tick unless the test thread itself stalls past the bound
+    /// (observed: best of 20 was 49.9 ms against 25 ms).
+    #[test]
+    fn terminal_stage_joins_the_heartbeat_thread_without_waiting_out_a_tick() {
+        let bound = HEARTBEAT_TICK / 2;
+        // A sleeping heartbeat thread can never come in under the bound, so
+        // more attempts cost no discrimination and absorb a loaded runner.
+        let mut best = Duration::MAX;
+        for _ in 0..20 {
+            if best < bound {
+                break;
+            }
+            let sink =
+                CliProgressSink::with_writer(Box::new(Buffer::new()), false, non_tty_policy());
+            sink.emit(event(AnalysisProgressStage::Analyzing));
+            {
+                let slot = sink
+                    .inner
+                    .heartbeat
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                assert!(
+                    slot.is_some(),
+                    "a non-terminal stage must start the heartbeat thread"
+                );
+            }
+            // Time only a join of a thread that has reached its wait: a
+            // thread stopped before its loop starts exits at once whether
+            // it parks or sleeps, so such a sample cannot discriminate.
+            let ready_by = Instant::now() + Duration::from_secs(10);
+            while !sink.inner.heartbeat_waiting.load(Ordering::Acquire) {
+                assert!(
+                    Instant::now() < ready_by,
+                    "heartbeat thread never reached its wait"
+                );
+                thread::yield_now();
+            }
+            let started = Instant::now();
+            sink.emit(event(AnalysisProgressStage::Completed));
+            best = best.min(started.elapsed());
+            let slot = sink
+                .inner
+                .heartbeat
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            assert!(
+                slot.is_none(),
+                "a terminal stage must join the heartbeat thread"
+            );
+        }
+        assert!(
+            best < bound,
+            "terminal stage took {best:?} to stop the heartbeat; bound {bound:?}"
+        );
     }
 
     #[test]

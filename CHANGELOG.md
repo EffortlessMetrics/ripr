@@ -81,7 +81,21 @@ are scoped or reviewed.
   provider, and `ripr agent repair --phase before` without `--seam-id` points
   to `ripr pilot --root .` and says the `probe:...` IDs from `ripr check` are
   not seam IDs.
-
+- Tiny repositories are fast again: `ripr check` on a ~20-file crate no
+  longer pays ~0.3 s of fixed waiting. Every `git`/`cargo` subprocess wait
+  slept a fixed 50 ms after spawn although the probes exit in ~3 ms (8 probes
+  per `check`); the wait now backs off from 1 ms to the same 50 ms ceiling.
+  The progress heartbeat thread is woken on the terminal stage instead of
+  finishing its 50 ms tick, `pilot` renders each `repo-exposure.json` seam
+  once instead of once per pass (subject, hash, write) for the first 64 MiB
+  of rendered seams (only seams past that are rendered per pass), and pilot
+  ranking computes each seam's rank key once.
+  Median of 5, before -> after, on semver 1.0.23 / fastrand 2.3.0 /
+  bytesize 1.3.0 (warm cache): `check` 0.46/0.36/0.46 s -> 0.05/0.03/0.05 s,
+  `check --format json` 0.46/0.36/0.46 s -> 0.05/0.03/0.05 s, `explain`
+  0.38/0.26/0.38 s -> 0.04/0.03/0.05 s, `doctor` 0.21 s -> 0.07 s, `pilot`
+  0.65/0.28/0.30 s -> 0.29/0.07/0.11 s; cold-cache `pilot` 0.73/0.30/0.30 s
+  -> 0.35/0.12/0.13 s. Output bytes are unchanged (#5348).
 
 - `ripr agent card` and the `ripr agent repair` / `ripr agent receipt`
   recovery messages bind a relative `--root` to the selected directory in the

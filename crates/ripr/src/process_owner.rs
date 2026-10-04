@@ -38,10 +38,54 @@ use std::time::{Duration, Instant};
 #[cfg(windows)]
 use process_wrap::std::{ChildWrapper, CommandWrap, JobObject};
 
-/// Poll interval for the owner's bounded reap loop. Matches the shared
-/// deadline poll in [`crate::git`] so a terminating tree is reaped on the
-/// same cadence the callers already budget for.
-const WAIT_POLL_INTERVAL: Duration = Duration::from_millis(50);
+/// First sleep of a child-exit poll. Short-lived probes (`git rev-parse`,
+/// `git diff` on a small repository) exit within a few milliseconds, so the
+/// first re-check must come back on that scale (#5348).
+const POLL_BACKOFF_FIRST: Duration = Duration::from_millis(1);
+
+/// Ceiling of the child-exit poll backoff. A long-running child is still
+/// re-checked (and cancellation/deadline observed) at least this often.
+pub(crate) const POLL_BACKOFF_CEILING: Duration = Duration::from_millis(50);
+
+/// Exponential sleep schedule for `try_wait` poll loops: 1 ms, doubling, up
+/// to [`POLL_BACKOFF_CEILING`].
+///
+/// A fixed 50 ms interval made every short subprocess cost at least 50 ms of
+/// wall time because the first `try_wait` right after spawn practically
+/// always sees a running child; `ripr check` on a tiny crate spent ~0.35 s of
+/// its ~0.4 s sleeping on eight `git` probes that had each exited in ~3 ms
+/// (#5348). The ceiling keeps the long-running cadence (and the number of
+/// wakeups for a slow child) where it was.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PollBackoff {
+    next: Duration,
+}
+
+impl PollBackoff {
+    pub(crate) const fn new() -> Self {
+        Self {
+            next: POLL_BACKOFF_FIRST,
+        }
+    }
+
+    /// The delay to sleep before the next poll; advances the schedule.
+    pub(crate) fn next_delay(&mut self) -> Duration {
+        let delay = self.next;
+        self.next = self.next.saturating_mul(2).min(POLL_BACKOFF_CEILING);
+        delay
+    }
+
+    /// Sleep for the next delay, never past `deadline` when one is given.
+    pub(crate) fn sleep(&mut self, deadline: Option<Instant>) {
+        let mut delay = self.next_delay();
+        if let Some(deadline) = deadline {
+            delay = delay.min(deadline.saturating_duration_since(Instant::now()));
+        }
+        if !delay.is_zero() {
+            std::thread::sleep(delay);
+        }
+    }
+}
 
 /// Budget for the best-effort primary reap after a failed tree-termination
 /// request. Long enough to observe a dying primary on a loaded host, short
@@ -147,11 +191,12 @@ impl OwnedProcess {
     /// the wait stays bounded by the caller's termination decisions and can
     /// never hang on queued job notifications.
     pub fn wait(&mut self) -> std::io::Result<ExitStatus> {
+        let mut backoff = PollBackoff::new();
         loop {
             if let Some(status) = self.child.try_wait()? {
                 return Ok(status);
             }
-            std::thread::sleep(WAIT_POLL_INTERVAL);
+            backoff.sleep(None);
         }
     }
 
@@ -254,6 +299,7 @@ impl OwnedProcess {
     /// the termination cannot hang the cleanup reporter.
     fn reap_within(&mut self, budget: Duration) -> bool {
         let deadline = Instant::now() + budget;
+        let mut backoff = PollBackoff::new();
         loop {
             match self.child.try_wait() {
                 Ok(Some(_)) => return true,
@@ -261,7 +307,7 @@ impl OwnedProcess {
                     if Instant::now() >= deadline {
                         return false;
                     }
-                    std::thread::sleep(WAIT_POLL_INTERVAL);
+                    backoff.sleep(Some(deadline));
                 }
                 Err(_) => return false,
             }
@@ -370,6 +416,39 @@ mod tests {
             let _ = pid;
             false
         }
+    }
+
+    /// #5348: the child-exit poll starts at 1 ms and doubles to the 50 ms
+    /// ceiling. Negative experiment: a constant 50 ms schedule (the
+    /// pre-#5348 `WAIT_POLL_INTERVAL`) fails the first-delay assertion.
+    #[test]
+    fn poll_backoff_starts_at_one_millisecond_and_caps_at_the_ceiling() {
+        let mut backoff = PollBackoff::new();
+        let delays: Vec<Duration> = (0..10).map(|_| backoff.next_delay()).collect();
+        assert_eq!(delays[0], Duration::from_millis(1));
+        assert_eq!(
+            &delays[..6],
+            &[1, 2, 4, 8, 16, 32].map(Duration::from_millis),
+            "schedule must double from 1 ms"
+        );
+        assert!(
+            delays[6..]
+                .iter()
+                .all(|delay| *delay == POLL_BACKOFF_CEILING)
+        );
+    }
+
+    /// A deadline already in the past makes the backoff sleep return at
+    /// once instead of sleeping the scheduled delay past it.
+    #[test]
+    fn poll_backoff_sleep_never_passes_the_deadline() {
+        let mut backoff = PollBackoff::new();
+        for _ in 0..8 {
+            let _ = backoff.next_delay();
+        }
+        let started = Instant::now();
+        backoff.sleep(Some(started));
+        assert!(started.elapsed() < POLL_BACKOFF_CEILING / 2);
     }
 
     /// Normal completion, captured output and pipe teardown through the
