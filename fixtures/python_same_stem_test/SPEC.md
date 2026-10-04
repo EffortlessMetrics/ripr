@@ -5,7 +5,8 @@ Spec: RIPR-SPEC-0028
 ## Given
 
 A Python production function changes a return value, and a same-stem pytest
-file exists without a syntactic call to the changed owner.
+file references the changed owner (`handler = reconcile_total`) without a
+syntactic call to it.
 
 The fixture workspace enables the Python preview adapter explicitly:
 
@@ -34,7 +35,9 @@ ripr check \
 The Python preview adapter:
 
 - finds the `reconcile_total` function owner,
-- relates the pytest test by same-stem file proximity,
+- relates the pytest test by same-stem file proximity, because the test
+  references the owner (a same-stem test that never references the owner is
+  not related; RIPR-SPEC-0028),
 - keeps the relation weak and does not promote the exact assertion to a
   strong discriminator,
 - emits Python preview metadata.
@@ -43,4 +46,5 @@ The Python preview adapter:
 
 - Treat file proximity as runtime proof.
 - Upgrade same-stem proximity alone to `exposed`.
+- Relate a same-stem test that does not reference the changed owner.
 - Execute pytest.

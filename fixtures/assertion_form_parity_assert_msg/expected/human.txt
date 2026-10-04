@@ -2,31 +2,35 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/assertion_form_parity_assert_msg/input
 
-Summary: 7 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 6 unknown
+Summary: 3 probe(s), 0 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 2 static_unknown; 3 of 3 finding(s) unsuppressed
 
-Analysis outcome: complete_with_findings (analysis complete).
-  Counts: 2 changed file(s), 15 changed line(s), 7 candidate line(s), 7 probe(s), 7 finding(s).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
+  Counts: 2 changed file(s), 15 changed line(s), 3 candidate line(s), 3 probe(s), 3 finding(s).
 
 Start here:
-  State: top_gap
+  State: a test gap to inspect or repair (top_gap)
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/assertion_form_parity_assert_msg/input/src/lib.rs:2
-  Static exposure: weakly_exposed (warning, confidence 0.92)
-  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Static exposure: weak (weakly_exposed, warning, confidence 0.92)
+  Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: amount >= discount_threshold
   Missing discriminator: No strong discriminator was detected
   Related test: tests/pricing.rs:4 boundary_matches_expected
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach discounted_total: boundary_matches_expected
     - infection yes: Detected related test input at the changed boundary
-    - 9 more evidence line(s) hidden
+    - 9 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/assertion_form_parity_assert_msg/input --diff fixtures/assertion_form_parity_assert_msg/diff.patch --mode fast probe:src_lib.rs:predicate:c80557eb
   ripr context --root fixtures/assertion_form_parity_assert_msg/input --diff fixtures/assertion_form_parity_assert_msg/diff.patch --mode fast --at probe:src_lib.rs:predicate:c80557eb
+Write a test for it:
+  ripr agent stub --root fixtures/assertion_form_parity_assert_msg/input --at src/lib.rs:2
 
 Hidden:
-  6 lower-priority finding(s) omitted from default human output.
+  2 lower-priority finding(s) omitted from default human output.
+    - fixtures/assertion_form_parity_assert_msg/input/src/lib.rs:3 (static_unknown)
+    - fixtures/assertion_form_parity_assert_msg/input/src/lib.rs:5 (static_unknown)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

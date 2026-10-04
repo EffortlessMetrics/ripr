@@ -45,6 +45,7 @@
     "onCommand:ripr.restartServer",
     "onCommand:ripr.refreshDiagnostics",
     "onCommand:ripr.showStatus",
+    "onCommand:ripr.showAttemptStatus",
     "onCommand:ripr.showOutput",
     "onCommand:ripr.diagnoseSetup",
     "onCommand:ripr.startCurrentRepair",
@@ -75,11 +76,11 @@
     "test:e2e": "cargo xtask vscode-test-e2e"
   },
   "dependencies": {
-    "vscode-languageclient": "10.1.1"
+    "vscode-languageclient": "10.1.2"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "^24.13.3",
+    "@types/node": "^24.13.6",
     "@types/vscode": "~1.90.0",
     "@vscode/test-electron": "^2.4.1",
     "@vscode/vsce": "^3.9.2",
@@ -256,6 +257,10 @@
         "title": "ripr: Show Status"
       },
       {
+        "command": "ripr.showAttemptStatus",
+        "title": "ripr: Show Repair Attempt Status"
+      },
+      {
         "command": "ripr.diagnoseSetup",
         "title": "ripr: Diagnose Setup"
       },
@@ -312,6 +317,10 @@
         "title": "ripr: Write Targeted Test - Copy Brief"
       },
       {
+        "command": "ripr.copyAgentRepairCommand",
+        "title": "ripr: Start Repair - Copy Repair Command"
+      },
+      {
         "command": "ripr.copyAgentPacketCommand",
         "title": "ripr: Agent Handoff - Copy Packet Command"
       },
@@ -345,7 +354,7 @@
       },
       {
         "command": "ripr.copyTopVerifyCommand",
-        "title": "ripr: Copy Verify Command"
+        "title": "ripr: Copy Verify Command (Top Repair Packet)"
       },
       {
         "command": "ripr.copyTopReceiptCommand",
@@ -454,7 +463,7 @@
               "markdown": "walkthrough/trust.md"
             },
             "completionEvents": [
-              "onContext:workspaceTrusted"
+              "onContext:isWorkspaceTrusted"
             ]
           },
           {

@@ -8,6 +8,14 @@
 //! range and then report a clean graph over issues it never saw. Comparing the
 //! manifest against live milestones is Slice C's separate, explicitly
 //! network-owned job.
+//!
+//! The same check owns candidate-artifact lifecycle for
+//! `docs/release-candidates/` (#3842) through [`candidate_registry`]: the
+//! registry's releases and current-row controllers are bound to this
+//! manifest's `[[release]]` records, so artifact lifecycle extends the one
+//! checked release graph instead of declaring a second one.
+
+mod candidate_registry;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -53,6 +61,116 @@ const PREREQUISITE_KEYS: &[&str] = &["issue", "requires", "justification"];
 const ROLLING_KEYS: &[&str] = &["issue", "justification"];
 
 const KNOWN_TABLE_HEADERS: &[&str] = &["release", "parent", "prerequisite", "rolling"];
+
+/// Validated controller bytes, distinct from the immutable source checkout.
+/// No caller can construct this custody from identity strings.
+pub(crate) struct CandidateAuthoritySnapshot {
+    root: std::path::PathBuf,
+    release: String,
+    artifact_path: String,
+    manifest: Vec<u8>,
+    artifact_tree: candidate_registry::ArtifactTree,
+    grant: candidate_registry::CandidateGrant,
+}
+
+impl CandidateAuthoritySnapshot {
+    pub(crate) fn root(&self) -> &std::path::Path {
+        &self.root
+    }
+    pub(crate) fn candidate_sha(&self) -> Result<&str, String> {
+        self.grant
+            .candidate_sha()
+            .ok_or_else(|| "validated pin lacks source SHA".to_string())
+    }
+    pub(crate) fn candidate_tree(&self) -> Result<&str, String> {
+        self.grant
+            .candidate()
+            .and_then(|value| value.tree.as_deref())
+            .ok_or_else(|| "validated pin lacks source tree".to_string())
+    }
+    pub(crate) fn candidate_ref(&self) -> Result<&str, String> {
+        self.grant
+            .candidate()
+            .and_then(|value| value.git_ref.as_deref())
+            .ok_or_else(|| "validated pin lacks immutable ref".to_string())
+    }
+    pub(crate) fn revalidate(&self) -> Result<(), String> {
+        let fresh = capture_candidate_authority(&self.root, &self.release, &self.artifact_path)?;
+        if self.manifest != fresh.manifest || self.artifact_tree != fresh.artifact_tree {
+            return Err(
+                "controller policy/registry/artifact bytes changed after admission".to_string(),
+            );
+        }
+        Ok(())
+    }
+    pub(crate) fn custody_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "controller_root": self.root,
+            "release": self.release,
+            "registered_artifact": self.artifact_path,
+            "policy_sha256": candidate_registry::sha256_hex(&self.manifest),
+            "registry_sha256": self.artifact_tree.files.get(candidate_registry::REGISTRY_PATH)
+                .map(|bytes| candidate_registry::sha256_hex(bytes)),
+            "artifact_sha256": self.artifact_tree.files.get(&self.artifact_path)
+                .map(|bytes| candidate_registry::sha256_hex(bytes)),
+            "candidate_sha": self.grant.candidate_sha(),
+            "candidate_tree": self.grant.candidate().and_then(|value| value.tree.as_deref()),
+            "candidate_ref": self.grant.candidate().and_then(|value| value.git_ref.as_deref()),
+        })
+    }
+}
+
+pub(crate) fn capture_candidate_authority(
+    root: &std::path::Path,
+    release: &str,
+    artifact_path: &str,
+) -> Result<CandidateAuthoritySnapshot, String> {
+    let root = root
+        .canonicalize()
+        .map_err(|error| format!("resolve controller root: {error}"))?;
+    if root.to_str().is_none() {
+        return Err("qualification controller root must be UTF-8".to_string());
+    }
+    let manifest = std::fs::read(root.join(RELEASE_TARGETS_MANIFEST_PATH))
+        .map_err(|error| format!("read controller release policy: {error}"))?;
+    let text =
+        std::str::from_utf8(&manifest).map_err(|error| format!("release policy UTF-8: {error}"))?;
+    let mut outcome = evaluate_release_targets(RELEASE_TARGETS_MANIFEST_PATH, text);
+    let artifact_tree = candidate_registry::read_artifact_tree(&root);
+    attach_candidate_registry_from_tree(&mut outcome, &artifact_tree);
+    if !outcome.violations.is_empty() {
+        return Err(format!(
+            "controller policy/registry is not established: {:?}",
+            outcome.violations
+        ));
+    }
+    let registry = outcome
+        .candidate_registry
+        .as_ref()
+        .ok_or_else(|| "controller candidate registry missing".to_string())?
+        .validated()?;
+    let bytes = artifact_tree
+        .files
+        .get(artifact_path)
+        .ok_or_else(|| "explicit candidate artifact is not in controller snapshot".to_string())?;
+    let grant = candidate_registry::resolve_candidate_authority(
+        &registry,
+        release,
+        bytes,
+        candidate_registry::CandidateOperation::ExactCandidate,
+    )?;
+    if grant.registered_path() != artifact_path {
+        return Err("explicit artifact must name its exact registered row".to_string());
+    }
+    Ok(CandidateAuthoritySnapshot {
+        root,
+        release: release.to_string(),
+        artifact_path: artifact_path.to_string(),
+        manifest,
+        artifact_tree,
+        grant,
+    })
+}
 
 /// The four committed roles. `conditional_issues` is deliberately absent: a
 /// conditional issue carries an intended destination without entering the
@@ -110,6 +228,7 @@ struct RollingRecord {
 #[derive(Clone, Debug)]
 pub(crate) struct ReleaseTargetsOutcome {
     violations: Vec<String>,
+    candidate_registry: Option<candidate_registry::CandidateRegistryOutcome>,
     releases: Vec<ReleaseSummary>,
     parents_outside_committed_sets: usize,
     prerequisite_edges: usize,
@@ -138,6 +257,7 @@ pub(crate) fn check_release_targets() -> Result<(), String> {
                 "release-targets.json",
                 &release_targets_json(&ReleaseTargetsOutcome {
                     violations: violations.clone(),
+                    candidate_registry: None,
                     releases: Vec::new(),
                     parents_outside_committed_sets: 0,
                     prerequisite_edges: 0,
@@ -148,22 +268,57 @@ pub(crate) fn check_release_targets() -> Result<(), String> {
         }
     };
 
-    let outcome = evaluate_release_targets(path, &text);
+    let mut outcome = evaluate_release_targets(path, &text);
+    attach_candidate_registry(&mut outcome, std::path::Path::new("."));
+    if let Some(registry) = &outcome.candidate_registry {
+        write_report(
+            candidate_registry::PROJECTION_REPORT_FILE,
+            &registry.projection,
+        )?;
+    }
     write_report("release-targets.json", &release_targets_json(&outcome))?;
     finish_policy_report(report_spec(), &outcome.violations)
+}
+
+/// Evaluate the candidate-artifact registry under `root` against the
+/// manifest's releases and fold its violations into the one check result.
+fn attach_candidate_registry(outcome: &mut ReleaseTargetsOutcome, root: &std::path::Path) {
+    let tree = candidate_registry::read_artifact_tree(root);
+    attach_candidate_registry_from_tree(outcome, &tree);
+}
+
+fn attach_candidate_registry_from_tree(
+    outcome: &mut ReleaseTargetsOutcome,
+    tree: &candidate_registry::ArtifactTree,
+) {
+    let controllers = outcome
+        .releases
+        .iter()
+        .map(|release| candidate_registry::ReleaseController {
+            version: release.version.clone(),
+            goal_issue: release.goal_issue,
+        })
+        .collect::<Vec<_>>();
+    let registry = candidate_registry::evaluate_candidate_registry(tree, &controllers);
+    outcome
+        .violations
+        .extend(registry.violations.iter().cloned());
+    outcome.candidate_registry = Some(registry);
 }
 
 fn report_spec() -> PolicyReportSpec<'static> {
     PolicyReportSpec {
         report_file: "release-targets.md",
         check: "check-release-targets",
-        why_it_matters: "Milestone membership is the committed candidate denominator. When the manifest, the release-goal graph, and milestone objects drift apart, progress counts stop meaning what they claim and conditional or umbrella work silently inflates a release promise. This check keeps the checked-in membership graph internally coherent offline; it does not read GitHub and does not qualify or publish any candidate.",
+        why_it_matters: "Milestone membership is the committed candidate denominator. When the manifest, the release-goal graph, and milestone objects drift apart, progress counts stop meaning what they claim and conditional or umbrella work silently inflates a release promise. This check keeps the checked-in membership graph internally coherent offline; it does not read GitHub and does not qualify or publish any candidate. It also classifies every retained artifact under docs/release-candidates/ through the digest-bound lifecycle registry, so a superseded receipt cannot be reused as current authority from its filename or wording.",
         fix_kind: FixKind::AuthorDecisionRequired,
         recommended_fixes: &[
             "Give every issue exactly one role in exactly one release; conditional and rolling work belongs outside every committed set.",
             "Record an umbrella parent as `[[parent]]` with `counted_in = \"none\"` unless it owns distinct final acceptance beyond its leaves, and then state that acceptance in `justification`.",
             "Declare every prerequisite endpoint in the manifest and keep a prerequisite in the same or an earlier release than the issue consuming it.",
             "Update policy/release-targets.toml rather than a release-goal issue body: the manifest is the parsed authority and the goal bodies are human-validated documentation.",
+            "Register every file under docs/release-candidates/ in docs/release-candidates/index.json with its raw-byte sha256 and lifecycle state; never rewrite a historical receipt to change its state.",
+            "Replace docs/release-candidates/README.md with target/ripr/reports/release-candidate-registry.md when the registry projection is stale.",
         ],
         rerun_command: "cargo xtask check-release-targets",
         exception_template: None,
@@ -206,6 +361,7 @@ fn evaluate_release_targets(path: &str, text: &str) -> ReleaseTargetsOutcome {
 
     ReleaseTargetsOutcome {
         violations,
+        candidate_registry: None,
         releases: releases.iter().map(release_summary).collect(),
         parents_outside_committed_sets: parents
             .iter()
@@ -1071,6 +1227,10 @@ fn release_targets_json(outcome: &ReleaseTargetsOutcome) -> String {
         "parents_outside_committed_sets": outcome.parents_outside_committed_sets,
         "prerequisite_edges": outcome.prerequisite_edges,
         "rolling_issues": outcome.rolling_issues,
+        "candidate_registry": outcome
+            .candidate_registry
+            .as_ref()
+            .map(candidate_registry::registry_json),
         "violations": outcome.violations,
         "non_claim": "Offline manifest integrity only. This report does not read GitHub, does not establish milestone parity, and does not qualify or publish any release candidate.",
     });

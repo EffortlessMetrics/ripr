@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 7bf251d..752b54c 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -321,7 +321,7 @@ pub fn decode<T: AsRef<[u8]>>(data: T) -> Result<Vec<u8>, FromHexError> {
+ pub fn decode_to_slice<T: AsRef<[u8]>>(data: T, out: &mut [u8]) -> Result<(), FromHexError> {
+     let data = data.as_ref();
+ 
+-    if data.len() % 2 != 0 {
++    if data.len() % 2 == 1 {
+         return Err(FromHexError::OddLength);
+     }
+     if data.len() / 2 != out.len() {

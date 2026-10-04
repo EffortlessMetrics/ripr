@@ -1,11 +1,16 @@
+mod agentic_bench;
 mod annotations;
 mod back_sync;
 mod badges;
+mod bench_agent_surfaces;
+mod blind_journey;
+mod blind_journey_execute;
 mod bun;
 mod candidate_control;
 mod ci_budget;
 pub(crate) mod distribution_catalog;
 mod dogfood;
+mod dx_scoreboard;
 mod eval_sweep;
 mod eval_sweep_check;
 mod eval_sweep_refresh;
@@ -13,14 +18,18 @@ mod eval_sweep_report;
 mod first_hour;
 mod first_pr;
 mod fixtures;
-mod impacted_evidence;
 mod index;
 mod issue_intake;
+mod issue_lifecycle;
 mod lsp;
+mod lsp_performance;
+mod merge_queue;
 mod metrics;
 mod module_health;
 mod mutation;
+mod mutation_spot_check;
 mod operator;
+mod orchestration;
 mod perl_migration;
 mod pr;
 mod pr_causal_delta;
@@ -43,12 +52,16 @@ mod release_negative;
 mod release_scope;
 pub(crate) mod release_server;
 pub(crate) mod release_vsix;
+mod repair_card_usability;
 mod repo;
 #[cfg(test)]
 mod reverse_authorization;
 mod review_comments;
+mod rust_corpus;
 mod rust_repair_trust;
 mod sarif;
+mod scale_cliff;
+mod seam_inventory_scaling;
 mod source_promotion;
 mod source_promotion_acceptance;
 mod source_promotion_admission_fixture;
@@ -62,7 +75,9 @@ mod spec_receipts;
 mod targeted_rerun;
 mod targeted_test;
 mod test_oracles;
+mod verdict_corpus;
 
+pub(crate) use agentic_bench::agentic_bench;
 pub(crate) use annotations::ripr_annotations;
 pub(crate) use back_sync::back_sync;
 #[cfg(test)]
@@ -80,22 +95,31 @@ pub(crate) use badges::{
     extract_json_object_usize_map, extract_json_string, extract_json_warnings,
     limited_badge_artifacts_json, limited_badge_artifacts_markdown,
     parse_repo_badge_artifact_options, parse_repo_exposure_summary_counts,
-    read_repo_exposure_summary_artifact, repo_badge_artifact_command_args,
-    repo_badge_artifact_jobs, repo_badge_artifact_stdout_from_output,
-    repo_badge_artifact_timeout_ms_from_env, repo_badge_artifacts_summary_markdown,
-    ripr_plus_receipt_from_badge, ripr_plus_receipt_from_options,
-    ripr_plus_receipt_from_repo_badge_json, ripr_plus_receipt_from_repo_exposure_summary_json,
+    read_badge_artifact_diff_governed, read_repo_exposure_summary_artifact,
+    repo_badge_artifact_command_args, repo_badge_artifact_jobs,
+    repo_badge_artifact_stdout_from_output, repo_badge_artifact_timeout_ms_from_env,
+    repo_badge_artifacts_summary_markdown, ripr_plus_receipt_from_badge,
+    ripr_plus_receipt_from_options, ripr_plus_receipt_from_repo_badge_json,
+    ripr_plus_receipt_from_repo_exposure_summary_json,
     ripr_plus_receipt_from_repo_exposure_summary_json_with_source, ripr_plus_receipt_markdown,
     run_repo_badge_artifact_command, validate_shields_endpoint_bytes,
-    write_badge_artifacts_after_build, write_badge_artifacts_from_diff,
+    write_badge_artifacts_after_build, write_badge_artifacts_from_diff, write_badge_input_identity,
 };
 pub(crate) use badges::{
     badge_artifacts, badge_basis, check_badge_diff_policy, check_badge_endpoints,
     repo_badge_artifacts, ripr_plus, update_badge_endpoints,
 };
+pub(crate) use bench_agent_surfaces::bench_agent_surfaces;
+pub(crate) use blind_journey::{
+    assess_blind_journey_fixture_corpus, blind_journey_contract_report,
+};
+pub(crate) use blind_journey_execute::{
+    assess_blind_journey_execute_corpus, blind_journey_execute_report,
+};
 pub(crate) use bun::{bun_ub_calibration, bun_ub_preview_summary, configured_bridge_inventory};
 pub(crate) use ci_budget::ci_budget;
 pub(crate) use dogfood::dogfood;
+pub(crate) use dx_scoreboard::dx_scoreboard;
 pub(crate) use eval_sweep::eval_sweep;
 pub(crate) use first_hour::{first_hour, first_hour_controls};
 pub(crate) use first_pr::first_pr;
@@ -112,10 +136,14 @@ pub(crate) use fixtures::{
     json_string_values_for_key, next_pending_heading, normalize_golden_text, parse_reason,
     run_fixture, run_fixture_outputs, validate_bless_reason,
 };
-pub(crate) use impacted_evidence::impacted_evidence;
 pub(crate) use index::{reports, reports_index};
 pub(crate) use issue_intake::issue_intake;
+pub(crate) use issue_lifecycle::{
+    assess_issue_lifecycle_fixture_corpus, issue_lifecycle_scorecard_report,
+};
 pub(crate) use lsp::lsp_cockpit_report;
+pub(crate) use lsp_performance::lsp_performance_report;
+pub(crate) use merge_queue::merge_queue;
 pub(crate) use metrics::metrics_report;
 pub(crate) use module_health::module_health;
 pub(crate) use mutation::mutation_calibration;
@@ -126,7 +154,11 @@ pub(crate) use mutation::{
     mutation_calibration_report_markdown, parse_mutation_calibration_args,
     parse_mutation_outcomes_json, read_mutation_input_json,
 };
+pub(crate) use mutation_spot_check::mutation_spot_check;
 pub(crate) use operator::operator_cockpit_report;
+pub(crate) use orchestration::{
+    assess_orchestration_fixture_corpus, orchestration_scorecard_report,
+};
 pub(crate) use pr::{critic, gh_pr_status, pr_summary, pr_triage_report};
 pub(crate) use pr_evidence::ripr_pr;
 pub(crate) use pr_evidence_summary::ripr_pr_summary;
@@ -139,6 +171,7 @@ pub(crate) use release_control::release_control;
 pub(crate) use release_denominator::release_denominator;
 pub(crate) use release_negative::release_negative_corpus;
 pub(crate) use release_scope::release_scope;
+pub(crate) use repair_card_usability::repair_card_usability_report;
 pub(crate) use repo::{
     actionable_gap_outcomes_report, agent_seam_packets_report, evidence_health_report,
     evidence_quality_scorecard_report, evidence_quality_trend_report, lane1_evidence_audit_report,
@@ -146,6 +179,7 @@ pub(crate) use repo::{
     repo_seam_inventory,
 };
 pub(crate) use review_comments::ripr_review_comments;
+pub(crate) use rust_corpus::rust_corpus;
 pub(crate) use rust_repair_trust::{rust_repair_trust_report, rust_repair_trust_report_value_at};
 pub(crate) use sarif::sarif_policy;
 #[cfg(test)]
@@ -154,6 +188,8 @@ pub(crate) use sarif::{
     build_sarif_policy_report, parse_sarif_policy_args, parse_sarif_policy_results,
     sarif_policy_report_json, sarif_policy_report_markdown,
 };
+pub(crate) use scale_cliff::scale_cliff_benchmark;
+pub(crate) use seam_inventory_scaling::seam_inventory_scaling_benchmark;
 pub(crate) use source_promotion::source_promotion;
 pub(crate) use source_promotion_admission_workflow::{
     source_promotion_admission_workflow, source_promotion_admission_workflow_handles,
@@ -180,6 +216,7 @@ pub(crate) use test_oracles::{test_efficiency_report, test_oracle_report};
 pub(crate) use test_oracles::{
     test_oracle_report_impl_for_roots, test_oracle_report_json, test_oracle_report_markdown,
 };
+pub(crate) use verdict_corpus::verdict_corpus;
 
 fn ensure_parent_dir(path: &std::path::Path, label: &str) -> Result<(), String> {
     let Some(parent) = path.parent() else {

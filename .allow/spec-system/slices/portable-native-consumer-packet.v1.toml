@@ -1,0 +1,59 @@
+schema_version = "2.0"
+id = "ripr.slice.portable-native-consumer-packet.v1"
+generation = 1
+
+source_issue = "issue:4713"
+design_reference = "RIPR-SPEC-0191#portable-native-consumer"
+change_class = "behavior_change"
+
+claim_boundary = """
+Adds a stdlib Python 3.11+ portable consumer that verifies a mounted native
+ripr packet, launches only the packet-relative payload by absolute path, and
+emits a fail-closed consumption receipt. Product JSON meaning stays in
+existing ripr contracts. This slice does not publish packages, download
+payloads, or absorb wheel/npm (#4493), final payload identity (#4521), or
+precompiled Rust-test replay (#4714).
+"""
+
+non_goals = [
+  "PyPI/npm publication",
+  "public import ripr",
+  "downloader",
+  "support-tier promotion",
+  "wheel/npm qualification",
+  "final native payload identity",
+  "precompiled Rust-test replay",
+]
+
+return_conditions = [
+  "Return to root if run.py searches PATH for the payload.",
+  "Return to root if run.py invokes a compiler or downloads.",
+  "Return to root if a digest mismatch still launches the payload.",
+  "Return to root if product classifications are rewritten.",
+]
+
+owned_seams = [
+  "seam:ripr:tooling:portable-native-consumer",
+]
+
+shared_seams = [
+  "seam:ripr:cli:check-json",
+]
+
+forbidden_seams = [
+  "seam:ripr:distribution:pypi-npm",
+  "seam:ripr:agent:command-runner",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0191#portable-native-consumer"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

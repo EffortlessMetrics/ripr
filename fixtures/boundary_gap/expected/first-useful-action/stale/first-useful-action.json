@@ -25,6 +25,7 @@
     "path": "src/lib.rs",
     "line": 2,
     "classification": "weakly_exposed",
+    "current_evidence_strength": "Static evidence found related test context, but the current check is weak because the discriminator is missing.",
     "missing_discriminator": "input that hits the boundary: amount >= discount_threshold"
   },
   "title": "Refresh RIPR evidence before acting",
@@ -39,7 +40,7 @@
     "after_snapshot": null,
     "verify": null,
     "receipt": null,
-    "status": "ripr agent status --root fixtures/boundary_gap/input --json"
+    "status": "ripr agent status --root <cwd>/fixtures/boundary_gap/input --json"
   },
   "evidence": {
     "pr_guidance": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",

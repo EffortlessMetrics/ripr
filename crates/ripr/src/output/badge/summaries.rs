@@ -13,7 +13,6 @@ use crate::output::evidence_record::evidence_record_for;
 use crate::output::gap_decision_ledger;
 use crate::output::suppressions::{
     CheckSuppressionCandidate, SuppressionEntry, apply_check_suppressions,
-    root_relative_finding_path,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -97,7 +96,7 @@ pub fn ripr_badge_summary_with_suppressions(
     today: &str,
     policy: BadgePolicy,
 ) -> BadgeSummary {
-    let mut candidates: Vec<CheckSuppressionCandidate> = Vec::new();
+    let mut gap_findings = Vec::new();
     let mut unknowns = 0usize;
     let mut unique_tests: BTreeSet<(String, String, usize)> = BTreeSet::new();
 
@@ -120,11 +119,7 @@ pub fn ripr_badge_summary_with_suppressions(
             ExposureClass::WeaklyExposed
             | ExposureClass::ReachableUnrevealed
             | ExposureClass::NoStaticPath => {
-                candidates.push(CheckSuppressionCandidate {
-                    finding_id: finding.id.clone(),
-                    path: root_relative_finding_path(&output.root, &finding.probe.location.file),
-                    class: finding.class.as_str().to_string(),
-                });
+                gap_findings.push(finding);
             }
             ExposureClass::InfectionUnknown
             | ExposureClass::PropagationUnknown
@@ -142,6 +137,8 @@ pub fn ripr_badge_summary_with_suppressions(
         }
     }
 
+    let candidates =
+        CheckSuppressionCandidate::for_findings(&output.root, gap_findings, suppressions);
     let (suppressed_findings, warnings) =
         apply_check_suppressions(&candidates, suppressions, today);
     let suppressed = suppressed_findings.len();

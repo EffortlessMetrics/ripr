@@ -7,6 +7,24 @@ use crate::output::json::escape as json_escape;
 use crate::output::path::{display_path, display_path_text};
 use std::path::Path;
 
+/// Human text for a top seam with no repair target. The typed producer reason
+/// (`recommended_test.reason`) stays in the JSON packets; people reading the
+/// terminal or the brief get what it means for them instead (#4216 row 3).
+/// `ripr agent repair` needs a test in the seam's own package, so a test that
+/// reaches the seam from another crate is not a target.
+pub(super) const NO_REPAIR_TARGET_FOCUSED_TEST: &str = "none: this seam has no test target that `ripr agent repair` can use (for example, the only tests are in another crate, or static evidence names no exact discriminator), so it will not start a repair attempt here";
+
+/// The hand step that replaces a repair start when the top seam has no
+/// repair target: a test in the seam's own crate. Never a pilot rerun, which
+/// would only rank the same seam again.
+pub(super) fn no_repair_target_hand_step(entry: &ClassifiedSeam) -> String {
+    format!(
+        "add a test for `{}` in the crate that owns {}",
+        entry.seam.owner(),
+        display_path(entry.seam.file())
+    )
+}
+
 pub(super) fn push_top_seam_json(out: &mut String, entry: &ClassifiedSeam) {
     out.push_str("    {\n");
     out.push_str(&format!(
@@ -63,19 +81,18 @@ pub(super) fn push_top_seam_json(out: &mut String, entry: &ClassifiedSeam) {
 pub(super) fn push_markdown_recommendation(out: &mut String, entry: &ClassifiedSeam) {
     let outline = targeted_test_brief_outline_for_classified_seam(entry);
     out.push_str(&format!(
-        "- Inspected seam: `{}` {}:{} `{}` in `{}` (`{}`)\n",
+        "- Inspected seam: `{}` {}:{} `{}` in `{}` ({})\n",
         entry.seam.id().as_str(),
         display_path(entry.seam.file()),
         entry.seam.display_line(),
         entry.seam.kind().as_str(),
         entry.seam.owner(),
-        entry.class.as_str()
+        entry.class.human_label()
     ));
     out.push_str(&format!("- Why it matters: {}\n", why_line(entry)));
     if outline.is_not_applicable() {
         out.push_str(&format!(
-            "- Focused test: not applicable (route limited: {})\n",
-            outline.suggested_reason
+            "- Focused test: {NO_REPAIR_TARGET_FOCUSED_TEST}\n"
         ));
     } else {
         out.push_str(&format!(
@@ -109,8 +126,12 @@ pub(super) fn push_path_field(out: &mut String, name: &str, path: &Path, trailin
 pub(super) fn why_line(entry: &ClassifiedSeam) -> String {
     if let Some(missing) = entry.evidence.missing_discriminators.first() {
         return format!(
-            "missing discriminator: {} ({})",
-            missing.value, missing.reason
+            // #4381: name the value with the shared canonical label rather
+            // than a per-surface retype of it.
+            "{}: {} ({})",
+            crate::output::gap_vocabulary::MISSING_DISCRIMINATOR_LABEL,
+            missing.value,
+            missing.reason
         );
     }
     let summary = entry.evidence.discriminate.summary.trim();

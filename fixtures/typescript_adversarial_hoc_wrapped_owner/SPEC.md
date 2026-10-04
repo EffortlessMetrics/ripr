@@ -38,10 +38,10 @@ variant of this family is already pinned by
 
 ## Then
 
-ripr classifies the change `weakly_exposed`. The test never names
-`computeTotal`, so no direct or imported owner-call relation fires; the only
-link is the same-file-stem proximity heuristic, which is advisory-only and
-cannot borrow the wrapper's strong assertion as proof.
+ripr classifies the change `no_static_path`. The test never names
+`computeTotal`, so no direct or imported owner-call relation fires, and a
+same-file-stem test that does not reference the owner is not related at all
+(RIPR-SPEC-0027), so the wrapper's strong assertion is never borrowed.
 
 **This fixture must NEVER read `exposed`.** Crediting the wrapped call's
 oracle as observing the obscured inner owner would be exactly the

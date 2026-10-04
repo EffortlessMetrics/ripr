@@ -63,22 +63,32 @@ OFF preserves the existing conservative behavior.
 `root/tsconfig.json` then `root/jsconfig.json`. It is **fail-closed** on
 every ambiguity:
 
-- Missing file, JSON parse error, or missing `compilerOptions.baseUrl` → `None`.
+- Missing file, JSONC parse error, or missing `compilerOptions.baseUrl` → `None`.
 - `extends` or `references` present → `None` (no transitive following).
-- `paths` value array with length > 1 → entry excluded (multi-entry
-  fail-closed).
-- Template contains more than one `*` → entry excluded.
+- Empty or multi-entry `paths` value array, or a template with more than one
+  `*` → retain the literal/single-wildcard key as an unresolved blocker. A
+  broader alias must not take over the blocked key's imports.
 
 `TsAliasMap::resolve(specifier) -> Option<PathBuf>` returns a workspace-
 relative path ONLY when ALL of:
 
 1. Specifier is non-relative (does not start with `./` or `../`).
-2. A literal or single-`*` glob key matches.
+2. An exact key matches, or there is a unique matching single-`*` key with
+   the longest prefix before `*`. Exact keys take priority over all globs.
 3. The matched value array has exactly one entry.
 4. The value template has at most one `*`.
 5. After substituting the captured `*`, the candidate path resolves to
-   EXACTLY ONE existing workspace file (`.ts`/`.tsx`/`.js`/`.jsx`).
-   Zero or >1 matches → `None`.
+   EXACTLY ONE existing workspace file (`.ts`/`.tsx`/`.mts`/`.cts`/`.js`/`.jsx`/`.mjs`/`.cjs`).
+   Zero or >1 matches → `None`. Ambiguity is never broken by suffix
+   preference: two existing candidates for one alias (`src/owner.mts` and
+   `src/owner.cts`) resolve to `None`, and a near-miss suffix that is not a
+   routed source extension is not a candidate.
+
+Amendment (#4549): the config is read as JSONC, matching `tsc`. `//` and
+`/* */` comments and trailing commas before `}` / `]` are removed outside
+string literals, then the text is parsed strictly. An unterminated block
+comment or string literal, and any other syntax error, still fails closed
+with the `ConfigUnparseable` gap; the advice no longer asks for strict JSON.
 
 ### 3. Resolver threading
 
@@ -97,12 +107,17 @@ relative path ONLY when ALL of:
 ### 4. Always-on honesty disclosure
 
 Regardless of the `resolve_tsconfig_paths` flag,
-`named_limitations_for_alias_unresolved` fires whenever a test has a
+`alias_gap_for_unresolved_import` fires whenever a test has a
 non-relative, name-matched import that was NOT credited as an owner relation.
 The limitation `typescript_path_alias_unresolved` is emitted as additive
 evidence on the finding and is CLASSIFICATION-NEUTRAL (does not flip
 `no_static_path` to `exposed`). It explains to the user that an aliased
 import plausibly targets the owner but could not be resolved.
+
+Amendment (#4550): when the finding has no related test, the disclosure also
+replaces the generic "No test references `owner(`" missing summary and next
+step. Both name the importing test, the specifier, and the limitation's own
+typed cause and recovery hint. The class stays `no_static_path`.
 
 Scope: name-matched non-relative imports only. Third-party imports (e.g.
 `lodash`, `react`) whose imported symbol name does NOT match the owner's
@@ -140,7 +155,7 @@ Given:
 - Test imports owner from `@/owner`.
 - `resolve_tsconfig_paths = true`.
 
-Then: alias map excludes the multi-entry key → resolution returns `None` →
+Then: alias map retains the multi-entry key as a blocker → resolution returns `None` →
 `finding.class == NoStaticPath`, AND
 `typescript_limitation: typescript_path_alias_unresolved` IS emitted.
 
@@ -152,6 +167,28 @@ Given:
 - No `resolve_tsconfig_paths` flag.
 
 Then: NO `typescript_path_alias_unresolved` limitation is emitted.
+
+### AC-5 (ALIAS PRECEDENCE AND WRONG-OWNER CONTROL)
+
+An exact key wins over wildcard keys. Otherwise select the matching key with
+the longest prefix before `*`, independently of hash-map iteration order.
+Selection happens before checking the target's existence or supported shape:
+a missing, ambiguous, or unsupported winning target returns `None` rather
+than falling back to a broader key.
+
+Equal longest-prefix matches remain unresolved because the loader does not
+retain declaration order. A unique longer match still wins over ties among
+shorter prefixes. The suffix must match before a key competes on prefix length.
+
+With `"@/*": ["fallback/*"]` and `"@/feature/*": ["src/*"]`, an import of
+`@/feature/cart` resolves to `src/cart.ts`, not `fallback/feature/cart.ts`.
+A test must not be credited to a same-named owner in the fallback file, through
+either a direct alias import or a single-hop barrel re-export. When the winning
+key is unsupported, neither owner gains a relation from that import.
+
+This is a bounded preview resolver, not full TypeScript module resolution.
+The longest-prefix rule follows the TypeScript
+[module reference](https://www.typescriptlang.org/docs/handbook/modules/reference.html#wildcard-substitutions).
 
 ## Behavior
 
@@ -168,14 +205,49 @@ follow `extends` or `references`.
 specifier starts with "./" or "../"  →  existing relative resolver (no change)
 alias_map is None (flag OFF)         →  None (fail-closed, no guessing)
 alias_map is Some:
-  specifier matches a literal key    →  try unique_file_for(template)
-  specifier matches a glob key       →  expand template, try unique_file_for
-  no key matches                     →  None
+  specifier matches a literal key    →  select it, including a blocked key
+  otherwise matching glob keys      →  select unique longest prefix
+  longest-prefix tie / no match      →  None
+selected key:
+  unsupported template              →  None (no broader-key fallback)
+  supported template                →  expand, then unique_file_for
 unique_file_for:
   0 files found                      →  None
   1 file found                       →  Some(workspace-relative path)
   2+ files found                     →  None (ambiguous, fail-closed)
 ```
+
+Relative-resolver amendment (#4546): the bare specifiers `.` and `..`
+(`require('..')`, `import x from '.'`) are relative, like `./` and `../`.
+With a known workspace root, an extensionless relative specifier whose
+in-root join names a real directory with no sibling file module
+(`<path>.{ts,tsx,mts,cts,js,jsx,mjs,cjs}`) resolves to that directory's
+`package.json` `main` (a string, in-root, resolving to a supported file or
+a directory index) when the manifest exists, else to `<dir>/index`. An
+unreadable or invalid manifest, a non-string, absolute, root-escaping or
+unresolvable `main`, a symlink, or a join that escaped the root keeps the
+lexical module (fail-closed). The alias branch is unchanged.
+
+Build-output amendment (#4551): with a known workspace root, a relative
+import whose in-root join lies under the root `tsconfig.json`'s own
+`compilerOptions.outDir`, and for which nothing (file, directory or symlink)
+exists at the join and no file module exists for it, maps back through the
+`tsc` emit layout: the `outDir` prefix is replaced by the root file's own
+`rootDir` and the emitted extension by its
+source extension (`.js` → `.ts`/`.tsx`, `.jsx` → `.tsx`, `.mjs` → `.mts`,
+`.cjs` → `.cts`, extensionless → `.ts`/`.tsx`). It is accepted only when
+exactly one such source file exists. The config is read once per run as
+JSONC; `extends` is not followed, but the root file's own `outDir`/`rootDir`
+override any extended value, so they are read even when `extends` is
+present. Both must be the root file's own: without an own `rootDir`, `tsc`
+infers the common directory of its inputs or inherits one, which this reader
+does not model, so no mapping is made. A built tree (a real emitted file at
+the import) also disables the mapping for that import. An absent,
+unreadable or unparseable config, an absent `outDir` or `rootDir`, an
+absolute, root-escaping or root-identical `outDir`, an absolute or
+root-escaping `rootDir`, a real emitted file, or a missing or ambiguous
+source keeps the lexical module. This is independent of
+`resolve_tsconfig_paths`, which governs non-relative aliases only.
 
 ### Disclosure limitation scope
 
@@ -202,12 +274,20 @@ Unit tests in `crates/ripr/src/analysis/language/typescript/tests.rs`:
    no_static_path`, `typescript_path_alias_unresolved` present in evidence.
 
 3. `tsconfig_alias_resolution_multi_entry_value_fails_closed` — AMBIGUOUS
-   FAIL-CLOSED (AC-3): multi-entry value array, flag ON → alias excluded
-   from map → `class: no_static_path`, disclosure present.
+   FAIL-CLOSED (AC-3): multi-entry value array, flag ON → alias blocked
+   without falling back to a broader key → `class: no_static_path`, disclosure present.
 
 4. `tsconfig_alias_non_owner_import_emits_no_limitation` — NON-MATCH
    NEGATIVE (AC-4): third-party import `lodash/cloneDeep`, name mismatch →
    NO `typescript_path_alias_unresolved` emitted.
+
+Alias-precedence controls (AC-5) in
+`crates/ripr/src/analysis/language/typescript/tsconfig/precedence_tests.rs`
+exercise all storage permutations of the two/three-key cases, exact-key
+priority, unsupported winning keys, missing/ambiguous targets, equal-prefix
+ties, lower-prefix ties, suffix matching, and direct/barrel wrong-owner
+attribution. Fixture creation is checked, and the consumer control requires
+nonempty extracted owners and tests.
 
 ## Non-Goals
 
@@ -230,7 +310,7 @@ Unit tests in `crates/ripr/src/analysis/language/typescript/tests.rs`:
 | `crates/ripr/src/analysis/language/typescript/tsconfig.rs` | NEW: alias loader |
 | `crates/ripr/src/analysis/language/typescript/related_tests.rs` | Thread `Option<&TsAliasMap>` |
 | `crates/ripr/src/analysis/language/typescript/classifier.rs` | Thread alias map; collect alias limitations |
-| `crates/ripr/src/analysis/language/typescript/static_limit.rs` | `named_limitations_for_alias_unresolved` |
+| `crates/ripr/src/analysis/language/typescript/static_limit.rs` | `alias_gap_for_unresolved_import` |
 | `crates/ripr/src/analysis/language/typescript/mod.rs` | Build alias map; register tsconfig module |
 | `crates/ripr/src/analysis/language/typescript/tests.rs` | AC-1 through AC-4 tests |
 
@@ -276,11 +356,23 @@ result:    NO typescript_path_alias_unresolved limitation emitted
 - `crates/ripr/src/analysis/language/typescript/tests.rs::tests::tsconfig_alias_resolution_multi_entry_value_fails_closed`
 - `crates/ripr/src/analysis/language/typescript/tests.rs::tests::tsconfig_alias_non_owner_import_emits_no_limitation`
 
+- `crates/ripr/src/analysis/language/typescript/tsconfig/precedence_tests.rs::longest_prefix_wins_independently_of_storage_order`
+- `crates/ripr/src/analysis/language/typescript/tsconfig/precedence_tests.rs::exact_key_wins_over_matching_globs`
+- `crates/ripr/src/analysis/language/typescript/tsconfig/precedence_tests.rs::unsupported_winning_keys_block_broader_aliases`
+- `crates/ripr/src/analysis/language/typescript/tsconfig/precedence_tests.rs::unresolved_winner_does_not_fall_back_to_an_existing_broader_target`
+- `crates/ripr/src/analysis/language/typescript/tsconfig/precedence_tests.rs::equal_longest_prefixes_remain_unresolved`
+- `crates/ripr/src/analysis/language/typescript/tsconfig/precedence_tests.rs::lower_prefix_ties_do_not_block_a_unique_longer_prefix`
+- `crates/ripr/src/analysis/language/typescript/tsconfig/precedence_tests.rs::suffix_must_match_before_prefix_precedence_applies`
+- `crates/ripr/src/analysis/language/typescript/tsconfig/precedence_tests.rs::direct_and_barrel_relations_do_not_borrow_a_same_named_fallback_owner`
+
+- `crates/ripr/src/analysis/language/typescript/tsconfig.rs::tests::jsonc_tsconfig_with_comments_and_trailing_commas_resolves`
+- `crates/ripr/src/analysis/language/typescript/tsconfig.rs::tests::unterminated_block_comment_fails_closed_as_unparseable`
+
 ## Implementation Mapping
 
 - `crates/ripr/src/analysis/language/typescript/tsconfig.rs` — `TsAliasMap`, `load_alias_map`, `parse_alias_map`, `GlobEntry`, `TsAliasMap::resolve`, `TsAliasMap::unique_file_for`
 - `crates/ripr/src/analysis/language/typescript/related_tests.rs` — `normalized_relative_import_module` (non-relative arm), all downstream callers threaded with `alias_map`
-- `crates/ripr/src/analysis/language/typescript/static_limit.rs` — `named_limitations_for_alias_unresolved`
+- `crates/ripr/src/analysis/language/typescript/static_limit.rs` — `alias_gap_for_unresolved_import`
 - `crates/ripr/src/analysis/language/typescript/classifier.rs` — `classify_change` alias limitation collection; `#[allow(clippy::too_many_arguments)]`
 - `crates/ripr/src/analysis/language/typescript/mod.rs` — alias map construction in `analyze_diff`
 - `crates/ripr/src/config.rs` + `crates/ripr/src/config/model.rs` — `RawTypescriptConfig`, `TypescriptConfig`

@@ -1,7 +1,7 @@
 use crate::agent::loop_commands::{
     WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_SEAM_PACKETS_ARTIFACT,
     WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_seam_packets_command, agent_verify_command,
-    check_repo_exposure_command, display_path,
+    anchored_redirect_target, bound_root, check_repo_exposure_command, display_path, shell_arg,
 };
 use crate::analysis::canonical_gap::canonical_gap_identities;
 use crate::app::Mode;
@@ -15,6 +15,8 @@ use serde_json::{Value, json};
 use std::path::Path;
 
 pub(crate) const AGENT_BRIEF_SCHEMA_VERSION: &str = "0.1";
+
+const WORKFLOW_DIR: &str = "target/ripr/workflow";
 
 pub(crate) fn render_agent_brief_json(
     root: &Path,
@@ -49,12 +51,12 @@ pub(crate) fn render_agent_brief_json(
             .collect::<Vec<_>>(),
         "next": {
             "inspect_packet": agent_seam_packets_command(
-                &display_path(root),
+                &bound_root(&display_path(root)),
                 mode.as_str(),
                 WORKFLOW_AGENT_SEAM_PACKETS_ARTIFACT,
             ),
             "verify_after_edit": agent_verify_command(
-                &display_path(root),
+                &bound_root(&display_path(root)),
                 WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
                 WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
                 None,
@@ -175,12 +177,14 @@ fn top_seam_json(
 }
 
 fn verification_json(root: &Path, mode: &Mode, recommended_name: &str) -> Value {
-    let root = display_path(root);
+    let root = bound_root(&display_path(root));
     json!({
-        "before_snapshot_command": check_repo_exposure_command(
-            &root,
-            mode.as_str(),
-            WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+        // The before snapshot is the loop's first write, so the command
+        // creates its directory; in a fresh checkout the redirect alone fails.
+        "before_snapshot_command": format!(
+            "mkdir -p {} && {}",
+            shell_arg(&anchored_redirect_target(&root, WORKFLOW_DIR)),
+            check_repo_exposure_command(&root, mode.as_str(), WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT),
         ),
         "after_snapshot_command": check_repo_exposure_command(
             &root,
@@ -275,6 +279,7 @@ mod tests {
                     reason: "observed values do not include the equality-boundary case".to_string(),
                     flow_sink: None,
                 }],
+                new_test_target: None,
             },
         }
     }
@@ -342,6 +347,26 @@ mod tests {
                 .as_str()
                 .is_some_and(|command| command.contains("--format repo-exposure-json"))
         );
+        // A fresh checkout has no target/ripr/workflow, so the first write
+        // must create the directory its redirect targets.
+        let before = value["top_seams"][0]["verification"]["before_snapshot_command"]
+            .as_str()
+            .ok_or("before_snapshot_command is a string")?;
+        let (prepare, check) = before
+            .split_once(" && ")
+            .ok_or_else(|| format!("before command prepares nothing: {before}"))?;
+        let workflow_dir = prepare
+            .strip_prefix("mkdir -p ")
+            .ok_or_else(|| format!("unexpected prepare step: {prepare}"))?;
+        let redirect = check
+            .rsplit_once(" > ")
+            .map(|(_, target)| target)
+            .ok_or_else(|| format!("before command has no redirect: {check}"))?;
+        assert_eq!(
+            Path::new(redirect).parent(),
+            Some(Path::new(workflow_dir)),
+            "{before}"
+        );
         Ok(())
     }
 
@@ -382,12 +407,17 @@ mod tests {
         assert_eq!(value["working_set"]["files"][0], "./src/pricing.rs");
         assert_eq!(value["limits"]["requested"], 0);
         assert_eq!(value["warnings"][0], "configured-off seam omitted");
+        // Issue #3872: the redirect anchors at the resolved --root, so the
+        // expectation builds from the same builder the renderer uses (the
+        // anchor math itself is pinned in loop_commands tests).
         assert_eq!(
             value["next"]["inspect_packet"],
-            format!(
-                "ripr check --root {} --mode fast --format agent-seam-packets-json > target/ripr/workflow/agent-seam-packets.json",
-                root.to_string_lossy().replace('\\', "/")
+            agent_seam_packets_command(
+                &display_path(&root),
+                Mode::Fast.as_str(),
+                WORKFLOW_AGENT_SEAM_PACKETS_ARTIFACT,
             )
+            .as_str()
         );
         Ok(())
     }

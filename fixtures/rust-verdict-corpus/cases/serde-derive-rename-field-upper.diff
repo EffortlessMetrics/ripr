@@ -1,0 +1,13 @@
+diff --git a/serde_derive/src/internals/case.rs b/serde_derive/src/internals/case.rs
+index 8c8c02e..722e021 100644
+--- a/serde_derive/src/internals/case.rs
++++ b/serde_derive/src/internals/case.rs
+@@ -82,7 +82,7 @@ impl RenameRule {
+     pub fn apply_to_field(self, field: &str) -> String {
+         match self {
+             None | LowerCase | SnakeCase => field.to_owned(),
+-            UpperCase => field.to_ascii_uppercase(),
++            UpperCase => str::to_ascii_uppercase(field),
+             PascalCase => {
+                 let mut pascal = String::new();
+                 let mut capitalize = true;

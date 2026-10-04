@@ -1,6 +1,6 @@
 --- a/lib/Pricing.pm
 +++ b/lib/Pricing.pm
-@@ -7,7 +7,7 @@
+@@ -7,5 +7,5 @@
  sub calculate_discount {
      my ($amount) = @_;
 -    if ($amount >= 100) {

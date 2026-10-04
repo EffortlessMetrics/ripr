@@ -1,0 +1,15 @@
+id = "ripr-lsp"
+name = "ripr"
+# Keep equal to Cargo.toml; independent of the ripr release version.
+version = "0.1.0"
+schema_version = 1
+authors = ["ripr contributors"]
+description = "Static mutation-exposure diagnostics for changed code, from the ripr language server on your PATH."
+repository = "https://github.com/EffortlessMetrics/ripr"
+
+# Zed's names for the languages the VS Code extension also selects
+# (editors/vscode/src/client.ts RIPR_DOCUMENT_SELECTORS). JSX and TSX files are
+# "JavaScript" and "TSX" in Zed.
+[language_servers.ripr]
+name = "ripr"
+languages = ["Rust", "Python", "TypeScript", "TSX", "JavaScript"]

@@ -14,7 +14,7 @@ Start here:
 - Focused proof intent: assert_eq!(gone(), 2)
 - Suggested focused test: assert_eq!(gone(), 2)
 - Related test: tests/gone.rs::boundary
-- Verify command: not_available
+- Verify after the test edit: not_available
 - Receipt: receipt_not_applicable
 - Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.
 

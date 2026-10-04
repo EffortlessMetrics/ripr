@@ -18,8 +18,10 @@ use crate::run::{
 
 const DEFAULT_OUTPUT: &str = "target/ripr/rust-judged-panel";
 const RUN_TIMEOUT: Duration = Duration::from_mins(2);
-const BUILD_ENV_REMOVE: [&str; 10] = [
+const BUILD_ENV_REMOVE: [&str; 11] = [
     "CARGO_TARGET_DIR",
+    // A private final-output target does not override shared intermediates.
+    "CARGO_BUILD_BUILD_DIR",
     "CARGO_BUILD_TARGET",
     "CARGO_ENCODED_RUSTFLAGS",
     "RUSTFLAGS",
@@ -167,6 +169,16 @@ struct CurrentRun {
     index_sha256: String,
 }
 
+/// Caller-owned context, never inferred from the build receipt's path strings.
+#[derive(Clone, Copy)]
+pub(super) enum BuildLocation<'a> {
+    Attempt(&'a Path),
+    Retained {
+        output_relative: &'a Path,
+        run_id: &'a str,
+    },
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct ValidatedHostRun {
     pub(super) current_ref: String,
@@ -294,7 +306,7 @@ pub(super) fn run(
     let final_run =
         publish_complete_generation(&output_root, &attempt, &run_id, source, build, &receipts)?;
     let current = read_strict_json::<CurrentRun>(&output_root.join("current.json"), "current run")?;
-    validate_current(&output_root, &current)?;
+    validate_current(&output_root, Path::new(output_text), &current)?;
     println!(
         "Rust judged-panel host run complete: cases={} run={} current={}",
         receipts.len(),
@@ -312,6 +324,8 @@ pub(super) fn write_test_host_run(
     let output_root = root.join("target/ripr/rust-judged-panel");
     let attempt = output_root.join(".staging-run-fixture");
     fs::create_dir_all(&attempt).map_err(|error| error.to_string())?;
+    let target =
+        std::path::absolute(attempt.join("build-target")).map_err(|error| error.to_string())?;
 
     let source = SourceIdentity {
         head: "1".repeat(40),
@@ -338,7 +352,9 @@ pub(super) fn write_test_host_run(
             "--locked".to_string(),
             "--offline".to_string(),
             "--target-dir".to_string(),
-            "build-target".to_string(),
+            target.display().to_string(),
+            "--config".to_string(),
+            build_dir_config(&target)?,
         ],
         package: "ripr".to_string(),
         profile: "dev".to_string(),
@@ -349,7 +365,7 @@ pub(super) fn write_test_host_run(
         rustc_verbose_version: "rustc fixture".to_string(),
         host_target: "fixture-host".to_string(),
         cargo_home: None,
-        executed_binary_path: "build-target/debug/ripr".to_string(),
+        executed_binary_path: target.join("debug/ripr").display().to_string(),
         retained_binary_path: "build-target/debug/ripr".to_string(),
         binary_sha256: sha256_bytes(binary),
         binary_bytes: binary.len() as u64,
@@ -493,7 +509,8 @@ fn run_id(source: &SourceIdentity) -> String {
 }
 
 fn build_fresh_binary(root: &Path, attempt: &Path) -> Result<BuildIdentity, String> {
-    let target = attempt.join("build-target");
+    let target = std::path::absolute(attempt.join("build-target"))
+        .map_err(|error| format!("resolve fresh build target: {error}"))?;
     if target.exists() {
         return Err(format!(
             "fresh build target already exists: `{}`",
@@ -508,6 +525,8 @@ fn build_fresh_binary(root: &Path, attempt: &Path) -> Result<BuildIdentity, Stri
         "--offline".to_string(),
         "--target-dir".to_string(),
         target.display().to_string(),
+        "--config".to_string(),
+        build_dir_config(&target)?,
     ];
     let output = capture_bytes_in_dir_with_timeout(
         Path::new("cargo"),
@@ -586,6 +605,22 @@ fn build_fresh_binary(root: &Path, attempt: &Path) -> Result<BuildIdentity, Stri
         build_stdout_sha256: sha256_bytes(&output.stdout),
         build_stderr_sha256: sha256_bytes(&output.stderr),
     })
+}
+
+/// The command-line value outranks environment and Cargo config files without
+/// replacing unrelated configuration. Cargo 1.95 expands braces in build-dir
+/// even inside a quoted TOML string, so such paths must fail before execution.
+fn build_dir_config(target: &Path) -> Result<String, String> {
+    let target = target
+        .to_str()
+        .ok_or("fresh build target must be UTF-8 for Cargo configuration; use a UTF-8 checkout/output path")?;
+    if target.contains(['{', '}']) {
+        return Err("fresh build target cannot contain Cargo build-dir template braces; choose a checkout/output path without braces".to_string());
+    }
+    Ok(format!(
+        "build.build-dir={}",
+        toml::Value::String(target.to_string())
+    ))
 }
 
 fn execute_case(
@@ -808,6 +843,13 @@ fn publish_complete_generation(
     receipts: &[CaseReceipt],
 ) -> Result<PathBuf, String> {
     validate_case_set(receipts)?;
+    validate_run_id(run_id)?;
+    let expected_attempt = output_root.join(format!(".staging-{run_id}"));
+    if std::path::absolute(attempt).map_err(|error| error.to_string())?
+        != std::path::absolute(expected_attempt).map_err(|error| error.to_string())?
+    {
+        return Err("host run staging path does not belong to its run id".to_string());
+    }
     let mut cases = Vec::new();
     for receipt in receipts {
         validate_case_receipt(attempt, receipt, &source, &build)?;
@@ -838,7 +880,7 @@ fn publish_complete_generation(
     };
     let index_bytes = pretty_json(&index)?;
     atomic_write(&attempt.join("run-index.json"), &index_bytes)?;
-    validate_generation(attempt)?;
+    validate_generation(attempt, run_id, BuildLocation::Attempt(attempt))?;
 
     let runs = output_root.join("runs");
     fs::create_dir_all(&runs).map_err(|error| format!("create immutable run root: {error}"))?;
@@ -996,15 +1038,23 @@ fn validate_case_receipt(
     Ok(())
 }
 
-fn validate_generation(run_root: &Path) -> Result<(), String> {
+pub(super) fn validate_generation(
+    run_root: &Path,
+    run_id: &str,
+    location: BuildLocation<'_>,
+) -> Result<(), String> {
+    validate_run_id(run_id)?;
     let index: HostRunIndex = read_strict_json(&run_root.join("run-index.json"), "host run index")?;
+    if index.run_id != run_id {
+        return Err("host current and run index authority do not agree".to_string());
+    }
     if index.publication_state != "complete" || index.cases.len() != 3 {
         return Err("host run index is not a complete three-case generation".to_string());
     }
     if index.source.dirty {
         return Err("host run index cannot publish dirty build source".to_string());
     }
-    validate_build_identity(run_root, &index.build)?;
+    validate_build_identity(run_root, &index.build, location)?;
     let mut seen = BTreeSet::new();
     for entry in &index.cases {
         if !seen.insert(entry.case_id.as_str()) {
@@ -1032,13 +1082,16 @@ fn validate_generation(run_root: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_build_identity(run_root: &Path, build: &BuildIdentity) -> Result<(), String> {
+fn validate_build_identity(
+    run_root: &Path,
+    build: &BuildIdentity,
+    location: BuildLocation<'_>,
+) -> Result<(), String> {
     let expected_target = Path::new(&build.executed_binary_path)
         .parent()
         .and_then(Path::parent)
         .map(|path| path.display().to_string());
-    let command_matches = build.command.len() == 8
-        && build.command.first().is_some_and(|value| value == "cargo")
+    let historical_prefix_matches = build.command.first().is_some_and(|value| value == "cargo")
         && build.command.get(1).is_some_and(|value| value == "build")
         && build.command.get(2).is_some_and(|value| value == "-p")
         && build.command.get(3).is_some_and(|value| value == "ripr")
@@ -1055,6 +1108,55 @@ fn validate_build_identity(run_root: &Path, build: &BuildIdentity) -> Result<(),
             .get(6)
             .is_some_and(|value| value == "--target-dir")
         && build.command.get(7) == expected_target.as_ref();
+    if historical_prefix_matches && build.command.len() == 8 {
+        return Err(
+            "historical host build receipt does not bind intermediate storage; rebuild with \"cargo xtask rust-judged-panel replay\" before admitting or exporting this run (retained evidence is unchanged)"
+                .to_string(),
+        );
+    }
+    let expected_attempt = match location {
+        BuildLocation::Attempt(attempt) => {
+            std::path::absolute(attempt).map_err(|error| error.to_string())?
+        }
+        BuildLocation::Retained {
+            output_relative,
+            run_id,
+        } => {
+            validate_output_relative(output_relative)?;
+            validate_run_id(run_id)?;
+            output_relative.join(format!(".staging-{run_id}"))
+        }
+    };
+    let executed = Path::new(&build.executed_binary_path);
+    let expected_execution = expected_attempt.join(&build.retained_binary_path);
+    // After publication only the checkout prefix may relocate. The validated
+    // output/run identity and exact retained artifact suffix stay fixed. This
+    // checks logical membership, not authenticity of historical execution.
+    if !matches!(
+        build.retained_binary_path.as_str(),
+        "build-target/debug/ripr" | "build-target/debug/ripr.exe"
+    ) || !executed.is_absolute()
+        || build
+            .executed_binary_path
+            .split(std::path::is_separator)
+            .any(|part| part == "." || part == "..")
+        || (expected_attempt.is_absolute() && executed != expected_execution)
+        || (!expected_attempt.is_absolute() && !executed.ends_with(&expected_execution))
+    {
+        return Err("host run build path is not bound to the owned attempt".to_string());
+    }
+    let expected_config = expected_target
+        .as_deref()
+        .map(Path::new)
+        .map(build_dir_config)
+        .transpose()?;
+    let command_matches = historical_prefix_matches
+        && build.command.len() == 10
+        && build
+            .command
+            .get(8)
+            .is_some_and(|value| value == "--config")
+        && build.command.get(9) == expected_config.as_ref();
     if build.package != "ripr"
         || build.profile != "dev"
         || build.features != ["default"]
@@ -1087,14 +1189,35 @@ fn validate_build_identity(run_root: &Path, build: &BuildIdentity) -> Result<(),
     Ok(())
 }
 
-fn validate_current(output_root: &Path, current: &CurrentRun) -> Result<(), String> {
-    if current.run_id.is_empty()
-        || current.run_id.contains('/')
-        || current.run_id.contains('\\')
-        || current.run_id.contains(':')
-    {
+fn validate_run_id(run_id: &str) -> Result<(), String> {
+    if !super::is_confined_relative_path(Path::new(run_id)) || run_id.contains(['/', '\\']) {
         return Err("current host-run run id is not a single safe path component".to_string());
     }
+    Ok(())
+}
+
+fn validate_output_relative(output: &Path) -> Result<(), String> {
+    let value = output.to_str().ok_or("host output path must be UTF-8")?;
+    safe_relative(value)?;
+    if value.contains('\\')
+        || !super::is_confined_relative_path(output)
+        || !output.starts_with(Path::new("target/ripr"))
+    {
+        return Err(
+            "host output must be normalized repository-relative text under `target/ripr/`"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn validate_current(
+    output_root: &Path,
+    output_relative: &Path,
+    current: &CurrentRun,
+) -> Result<(), String> {
+    validate_run_id(&current.run_id)?;
+    validate_output_relative(output_relative)?;
     safe_relative(&current.index_path)?;
     let expected_path = format!("runs/{}/run-index.json", current.run_id);
     if current.index_path != expected_path {
@@ -1110,7 +1233,14 @@ fn validate_current(output_root: &Path, current: &CurrentRun) -> Result<(), Stri
     let run_root = path
         .parent()
         .ok_or_else(|| "current host-run index has no run parent".to_string())?;
-    validate_generation(run_root)
+    validate_generation(
+        run_root,
+        &current.run_id,
+        BuildLocation::Retained {
+            output_relative,
+            run_id: &current.run_id,
+        },
+    )
 }
 
 pub(super) fn load_validated_current(
@@ -1146,7 +1276,10 @@ pub(super) fn load_validated_current(
     if current.schema_version != "0.1" || current.kind != "rust_judged_panel_current_host_run" {
         return Err("host current has an unsupported schema or kind".to_string());
     }
-    validate_current(output_root, &current)?;
+    let output_relative = relative
+        .parent()
+        .ok_or_else(|| "host current has no relative output root".to_string())?;
+    validate_current(output_root, output_relative, &current)?;
 
     let index_path = output_root.join(&current.index_path);
     let index: HostRunIndex = read_strict_json(&index_path, "host run index")?;
@@ -1160,9 +1293,6 @@ pub(super) fn load_validated_current(
     let run_root = index_path
         .parent()
         .ok_or_else(|| "host run index has no generation root".to_string())?;
-    let output_relative = relative
-        .parent()
-        .ok_or_else(|| "host current has no relative output root".to_string())?;
     let run_relative = Path::new(&current.index_path)
         .parent()
         .ok_or_else(|| "host run index has no relative generation root".to_string())?;
@@ -1329,20 +1459,7 @@ fn acquire_lock(output_root: &Path) -> Result<RunLock, String> {
 }
 
 fn confined_output(root: &Path, value: &str) -> Result<PathBuf, String> {
-    safe_relative(value)?;
-    if value.contains("//") || value.contains(':') {
-        return Err(format!("host-run output `{value}` is not normalized"));
-    }
-    let components = Path::new(value)
-        .components()
-        .filter_map(|component| match component {
-            Component::Normal(value) => value.to_str(),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    if components.get(0..2) != Some(&["target", "ripr"]) {
-        return Err("host-run output must remain under `target/ripr/`".to_string());
-    }
+    validate_output_relative(Path::new(value))?;
     let root_canonical =
         fs::canonicalize(root).map_err(|error| format!("canonicalize repository root: {error}"))?;
     let output = root.join(value);
@@ -1460,6 +1577,9 @@ fn ensure_confined(root: &Path, path: &Path, label: &str) -> Result<(), String> 
 }
 
 #[cfg(test)]
+mod build_tests;
+
+#[cfg(test)]
 mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1479,7 +1599,7 @@ mod tests {
             .ok_or_else(|| "xtask manifest must have a repository parent".to_string())
     }
 
-    fn scratch(label: &str) -> Result<PathBuf, String> {
+    pub(super) fn scratch(label: &str) -> Result<PathBuf, String> {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|error| error.to_string())?
@@ -1621,7 +1741,7 @@ mod tests {
             index_path: "runs/run-b/run-index.json".to_string(),
             index_sha256: "sha256:index".to_string(),
         };
-        let rejected = validate_current(&root, &current).is_err();
+        let rejected = validate_current(&root, Path::new("target/ripr/fixture"), &current).is_err();
         fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
         if rejected {
             Ok(())
@@ -1769,5 +1889,267 @@ mod tests {
         } else {
             Err("partial generation changed current or lost diagnostic staging".to_string())
         }
+    }
+
+    #[test]
+    fn build_dir_config_preserves_literal_path_characters() -> Result<(), String> {
+        let windows_target = format!(
+            "{}:\\fixture\\λ\\quote's space\\build-target",
+            char::from(b'C')
+        );
+        for target in [
+            "/tmp/quote's \"double\" \\ café/build-target",
+            windows_target.as_str(),
+        ] {
+            let config = super::build_dir_config(Path::new(target))?;
+            let decoded: toml::Value =
+                toml::from_str(&config).map_err(|error| error.to_string())?;
+            if decoded["build"]["build-dir"].as_str() != Some(target) {
+                return Err(format!(
+                    "build-dir configuration changed path bytes: {config}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn build_dir_config_rejects_template_paths_before_cargo() -> Result<(), String> {
+        let root = scratch("build-dir-templates")?;
+        for name in [
+            "{workspace-root}",
+            "{cargo-cache-home}",
+            "{workspace-path-hash}",
+            "{ordinary}",
+            "opening{",
+            "closing}",
+        ] {
+            let attempt = root.join(name);
+            let error = super::build_fresh_binary(&root.join("absent-workspace"), &attempt)
+                .err()
+                .ok_or("template path unexpectedly accepted")?;
+            if !error.contains("template braces") || attempt.exists() {
+                return Err(format!("template path did not fail before Cargo: {error}"));
+            }
+        }
+        fs::remove_dir_all(root).map_err(|error| error.to_string())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn build_dir_config_rejects_non_utf8_before_cargo() -> Result<(), String> {
+        use std::os::unix::ffi::OsStrExt;
+
+        let root = scratch("build-dir-non-utf8")?;
+        let attempt = root.join(std::ffi::OsStr::from_bytes(b"invalid-\xff"));
+        let error = super::build_fresh_binary(&root.join("absent-workspace"), &attempt)
+            .err()
+            .ok_or("non-UTF-8 path unexpectedly accepted")?;
+        if !error.contains("UTF-8") || attempt.exists() {
+            return Err(format!("non-UTF-8 path did not fail before Cargo: {error}"));
+        }
+        fs::remove_dir_all(root).map_err(|error| error.to_string())
+    }
+
+    fn retained_build_fixture(root: &Path) -> Result<BuildIdentity, String> {
+        let target = root.join("build-target");
+        let binary = target.join("debug/ripr");
+        fs::create_dir_all(target.join("debug")).map_err(|error| error.to_string())?;
+        fs::create_dir_all(root.join("build")).map_err(|error| error.to_string())?;
+        fs::write(&binary, b"retained binary").map_err(|error| error.to_string())?;
+        fs::write(root.join("build/stdout.bin"), b"out").map_err(|error| error.to_string())?;
+        fs::write(root.join("build/stderr.bin"), b"err").map_err(|error| error.to_string())?;
+        let mut value = build();
+        value.command = [
+            "cargo",
+            "build",
+            "-p",
+            "ripr",
+            "--locked",
+            "--offline",
+            "--target-dir",
+        ]
+        .map(str::to_string)
+        .to_vec();
+        value.command.push(target.display().to_string());
+        value.executed_binary_path = binary.display().to_string();
+        value.binary_sha256 = sha256_bytes(b"retained binary");
+        value.binary_bytes = 15;
+        value.build_stdout_sha256 = sha256_bytes(b"out");
+        value.build_stderr_sha256 = sha256_bytes(b"err");
+        value.command.push("--config".to_string());
+        value.command.push(super::build_dir_config(&target)?);
+        Ok(value)
+    }
+
+    fn record_target(value: &mut BuildIdentity, target: &Path) -> Result<(), String> {
+        value.command[7] = target.display().to_string();
+        value.command[9] = super::build_dir_config(target)?;
+        value.executed_binary_path = target.join("debug/ripr").display().to_string();
+        Ok(())
+    }
+
+    #[test]
+    fn build_identity_requires_owned_intermediates_and_preserves_old_evidence() -> Result<(), String>
+    {
+        let root = scratch("build-recipe")?;
+        let target = root.join("build-target");
+        let binary = target.join("debug/ripr");
+        let mut value = retained_build_fixture(&root)?;
+        value.command.truncate(8);
+        let historical = super::pretty_json(&value)?;
+        let receipt_path = root.join("historical-build.json");
+        fs::write(&receipt_path, &historical).map_err(|error| error.to_string())?;
+        let location = super::BuildLocation::Attempt(&root);
+        let error = super::validate_build_identity(&root, &value, location)
+            .err()
+            .ok_or("historical receipt was silently accepted")?;
+        if !error.contains("rebuild") || !error.contains("cargo xtask rust-judged-panel replay") {
+            return Err(format!(
+                "historical receipt lacks rebuild guidance: {error}"
+            ));
+        }
+        if fs::read(&receipt_path).map_err(|error| error.to_string())? != historical
+            || fs::read(&binary).map_err(|error| error.to_string())? != b"retained binary"
+            || fs::read(root.join("build/stdout.bin")).map_err(|error| error.to_string())? != b"out"
+            || fs::read(root.join("build/stderr.bin")).map_err(|error| error.to_string())? != b"err"
+        {
+            return Err("historical rejection changed retained evidence".to_string());
+        }
+        value.command.push("--config".to_string());
+        value.command.push(super::build_dir_config(&target)?);
+        super::validate_build_identity(&root, &value, location)?;
+        let mut redirected = value.clone();
+        redirected.command[9] = super::build_dir_config(&root.join("shared"))?;
+        let mut extra_override = value.clone();
+        extra_override.command.extend([
+            "--config".to_string(),
+            "build.build-dir='shared'".to_string(),
+        ]);
+        let mut wrong_option = value.clone();
+        wrong_option.command[8] = "--features".to_string();
+        let mut wrong_locked = value;
+        wrong_locked.command[4] = "--frozen".to_string();
+        for invalid in [redirected, extra_override, wrong_option, wrong_locked] {
+            if super::validate_build_identity(&root, &invalid, location).is_ok() {
+                return Err("non-owned build recipe was accepted".to_string());
+            }
+        }
+        fs::remove_dir_all(root).map_err(|error| error.to_string())
+    }
+
+    #[test]
+    fn build_identity_rejects_coherent_unowned_paths() -> Result<(), String> {
+        let root = scratch("build-path-binding")?;
+        let value = retained_build_fixture(&root)?;
+        let location = super::BuildLocation::Attempt(&root);
+        super::validate_build_identity(&root, &value, location)?;
+        for target in [
+            PathBuf::from("build-target"),
+            root.join("shared/build-target"),
+            root.join("../foreign/build-target"),
+            root.join("./build-target"),
+        ] {
+            let mut changed = value.clone();
+            record_target(&mut changed, &target)?;
+            let error = super::validate_build_identity(&root, &changed, location)
+                .err()
+                .ok_or("coherent unowned build paths were accepted")?;
+            if !error.contains("build path is not bound") {
+                return Err(format!("wrong ownership discriminator: {error}"));
+            }
+        }
+        fs::remove_dir_all(root).map_err(|error| error.to_string())
+    }
+
+    #[test]
+    fn retained_build_paths_use_native_absolute_path_semantics() -> Result<(), String> {
+        let root = scratch("build-native-paths")?;
+        let mut value = retained_build_fixture(&root)?;
+        let output_relative = Path::new("target/ripr/fixture");
+        let location = super::BuildLocation::Retained {
+            output_relative,
+            run_id: "run-a",
+        };
+        let suffix = output_relative.join(".staging-run-a/build-target");
+        for (prefix, accepted) in [
+            (root.display().to_string(), true),
+            ("/fixture-root".to_string(), cfg!(unix)),
+            (
+                format!("{}:\\fixture-root", char::from(b'C')),
+                cfg!(windows),
+            ),
+            (format!("{}:/fixture-root", char::from(b'C')), cfg!(windows)),
+            (r"\\fixture-server\share".to_string(), cfg!(windows)),
+            (
+                format!(r"\\?\{}:\fixture-root", char::from(b'C')),
+                cfg!(windows),
+            ),
+            (r"\\?\UNC\fixture-server\share".to_string(), cfg!(windows)),
+            (format!("{}:fixture-root", char::from(b'C')), false),
+            (r"\fixture-root".to_string(), false),
+            ("relative-root".to_string(), false),
+        ] {
+            record_target(&mut value, &Path::new(&prefix).join(&suffix))?;
+            let result = super::validate_build_identity(&root, &value, location);
+            if result.is_ok() != accepted {
+                return Err(format!("native path admission for {prefix:?}: {result:?}"));
+            }
+        }
+        record_target(&mut value, &root.join(&suffix))?;
+        super::validate_build_identity(&root, &value, location)?;
+        // Admission still consumes the actual retained artifact after logical
+        // membership succeeds; neither its bytes nor confinement are optional.
+        fs::write(root.join(&value.retained_binary_path), b"changed")
+            .map_err(|error| error.to_string())?;
+        let error = super::validate_build_identity(&root, &value, location)
+            .err()
+            .ok_or("logical membership hid changed retained bytes")?;
+        if !error.contains("binary identity mismatch") {
+            return Err(format!("wrong retained-byte discriminator: {error}"));
+        }
+        fs::remove_dir_all(root).map_err(|error| error.to_string())
+    }
+
+    #[test]
+    fn retained_build_context_rejects_malformed_run_and_output_identity() -> Result<(), String> {
+        let root = scratch("build-context")?;
+        let mut value = retained_build_fixture(&root)?;
+        record_target(
+            &mut value,
+            &root.join("target/ripr/fixture/.staging-run-a/build-target"),
+        )?;
+        for run_id in ["", ".", "..", "run/a", "run\\a", "run:a"] {
+            let location = super::BuildLocation::Retained {
+                output_relative: Path::new("target/ripr/fixture"),
+                run_id,
+            };
+            let error = super::validate_build_identity(&root, &value, location)
+                .err()
+                .ok_or("malformed run context was accepted")?;
+            if !error.contains("run id") {
+                return Err(format!("wrong run-context discriminator: {error}"));
+            }
+        }
+        for output in [
+            "",
+            "/target/ripr/fixture",
+            "target/ripr-other/fixture",
+            "target//ripr/fixture",
+            "target/ripr/./fixture",
+            "target/ripr/../fixture",
+            "target\\ripr\\fixture",
+            "target/ripr/fixture/",
+            "target/ripr/fixture:stream",
+        ] {
+            let location = super::BuildLocation::Retained {
+                output_relative: Path::new(output),
+                run_id: "run-a",
+            };
+            if super::validate_build_identity(&root, &value, location).is_ok() {
+                return Err(format!("malformed output context was accepted: {output:?}"));
+            }
+        }
+        fs::remove_dir_all(root).map_err(|error| error.to_string())
     }
 }

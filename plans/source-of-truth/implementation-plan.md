@@ -72,7 +72,7 @@ The repo has the core source-of-truth stack in place:
 - [`policy/doc-artifacts.toml`](../../policy/doc-artifacts.toml);
 - `cargo xtask check-doc-artifacts`;
 - `cargo xtask check-support-tiers`;
-- `.ripr/goals/active.toml` validation through `cargo xtask check-goals`;
+- former `.ripr/goals/active.toml` validation (historical; retired in #1701);
 - source-of-truth PR and issue templates under [`.github/`](../../.github/);
 - advisory Source of Truth workflow under
   [`.github/workflows/source-of-truth.yml`](../../.github/workflows/source-of-truth.yml);
@@ -81,8 +81,9 @@ The repo has the core source-of-truth stack in place:
 - `cargo xtask closeout --goal <goal-id>`.
 
 The plan is intentionally descriptive for the closed lane state. It does not
-select a new active campaign; `.ripr/goals/active.toml` remains the active-goal
-manifest and currently records `no_current_goal = true`.
+select a new active campaign; live execution state is governed by GitHub
+issues, PRs, and worktree state per
+[Repository Tracking Model](../../docs/REPO_TRACKING_MODEL.md).
 
 ## Work items
 
@@ -287,4 +288,6 @@ git diff --check
 - The plan, support-tier row, policy ledger, advisory workflow, PR/issue
   templates, graph report, PR body generator, and closeout generator are
   verified current or explicitly left as remaining work.
-- `.ripr/goals/active.toml` intentionally records `no_current_goal = true`.
+- Live execution state is governed by GitHub issues and PRs per
+  [Repository Tracking Model](../../docs/REPO_TRACKING_MODEL.md) (the former
+  `.ripr/goals/active.toml` manifest was retired in #1701).

@@ -2,19 +2,18 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::run::{ProcessErrorKind, capture_output_with_timeout, capture_process_output};
+use crate::run::{ProcessErrorKind, capture_output_without_timeout, capture_process_output};
 
 #[cfg(test)]
 use crate::run::run_process_status;
 
 const REPORT_JSON: &str = "target/ripr/reports/precommit-v2.json";
 const REPORT_MARKDOWN: &str = "target/ripr/reports/precommit-v2.md";
-const PRECOMMIT_COMMAND_TIMEOUT: Duration = Duration::from_mins(15);
 
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -301,7 +300,7 @@ pub(super) fn run() -> Result<(), String> {
 
     if report.impact_plan.workspace_clippy {
         let args = workspace_clippy_args(&root);
-        run_clippy(&root, &mut report, args)?;
+        run_clippy(&root, &mut report, args, &[])?;
     } else if report.impact_plan.impacted_packages.is_empty() {
         let reason = report
             .impact_plan
@@ -310,8 +309,14 @@ pub(super) fn run() -> Result<(), String> {
             .unwrap_or_else(|| "no impacted package".to_string());
         report.skipped.push(reason);
     } else {
-        for package in report.impact_plan.impacted_packages.clone() {
-            run_clippy(&root, &mut report, package_clippy_args(&root, &package))?;
+        let packages = report.impact_plan.impacted_packages.clone();
+        for (index, package) in packages.iter().enumerate() {
+            run_clippy(
+                &root,
+                &mut report,
+                package_clippy_args(&root, package),
+                &packages[index + 1..],
+            )?;
         }
     }
 
@@ -327,10 +332,22 @@ fn fail_with_report(
     detail: impl Into<String>,
 ) -> Result<(), String> {
     let detail = detail.into();
+    let command = command.into();
     report.status = kind.status().to_string();
     report.failure_kind = Some(kind);
     report.limitations.push(detail.clone());
-    record_failure(report, &command.into(), &detail);
+    if !command.contains("clippy") && report.impact_plan.workspace_clippy {
+        report
+            .skipped
+            .push("workspace Clippy was not run".to_string());
+    } else if !command.contains("clippy") {
+        for package in &report.impact_plan.impacted_packages {
+            report
+                .skipped
+                .push(format!("Clippy for {package} was not run"));
+        }
+    }
+    record_failure(report, &command, &detail);
     let report_error = write_report(root, report).err();
     match report_error {
         Some(error) => Err(format!(
@@ -340,7 +357,12 @@ fn fail_with_report(
     }
 }
 
-fn run_clippy(root: &Path, report: &mut PrecommitReport, args: Vec<String>) -> Result<(), String> {
+fn run_clippy(
+    root: &Path,
+    report: &mut PrecommitReport,
+    args: Vec<String>,
+    remaining_packages: &[String],
+) -> Result<(), String> {
     let command = format_command(
         "cargo",
         &args.iter().map(String::as_str).collect::<Vec<_>>(),
@@ -351,7 +373,14 @@ fn run_clippy(root: &Path, report: &mut PrecommitReport, args: Vec<String>) -> R
             record_pass(report, &command);
             Ok(())
         }
-        Err(error) => fail_with_report(root, report, error.kind, command, error.message),
+        Err(error) => {
+            for package in remaining_packages {
+                report
+                    .skipped
+                    .push(format!("Clippy for {package} was not run"));
+            }
+            fail_with_report(root, report, error.kind, command, error.message)
+        }
     }
 }
 
@@ -804,20 +833,17 @@ fn git_bytes(root: &Path, args: &[&str], context: &str) -> Result<Vec<u8>, Preco
 }
 
 fn cargo_bytes(args: &[String], context: &str) -> Result<Vec<u8>, PrecommitError> {
-    let output =
-        capture_output_with_timeout("cargo", args, &[], PRECOMMIT_COMMAND_TIMEOUT, context)
-            .map_err(|message| {
-                PrecommitError::new(PrecommitFailureKind::Infrastructure, message)
-            })?;
-    if output.timed_out {
-        return Err(PrecommitError::new(
+    // No per-step wall-clock cap (#4150): a cold Cargo build may legitimately
+    // run longer than any fixed host-dependent cutoff.  The shared runner
+    // still owns the child process tree and keeps the post-exit pipe drain
+    // bounded, so a completed child with a lingering pipe-holding descendant
+    // cannot hang the run.
+    let output = capture_output_without_timeout("cargo", args, &[], context).map_err(|error| {
+        PrecommitError::new(
             PrecommitFailureKind::Infrastructure,
-            format!(
-                "{context} exceeded the {} second precommit timeout",
-                PRECOMMIT_COMMAND_TIMEOUT.as_secs()
-            ),
-        ));
-    }
+            format!("{context} could not run cargo: {error}"),
+        )
+    })?;
     let Some(status) = output.status else {
         return Err(PrecommitError::new(
             PrecommitFailureKind::Infrastructure,
@@ -839,24 +865,15 @@ fn cargo_bytes(args: &[String], context: &str) -> Result<Vec<u8>, PrecommitError
 }
 
 fn run_status(program: &str, args: &[String]) -> Result<(), PrecommitError> {
-    let output = capture_output_with_timeout(
-        program,
-        args,
-        &[],
-        PRECOMMIT_COMMAND_TIMEOUT,
-        "precommit command",
-    )
-    .map_err(|message| PrecommitError::new(PrecommitFailureKind::Infrastructure, message))?;
-    if output.timed_out {
-        return Err(PrecommitError::new(
-            PrecommitFailureKind::Infrastructure,
-            format!(
-                "{program} {} exceeded the {} second precommit timeout",
-                args.join(" "),
-                PRECOMMIT_COMMAND_TIMEOUT.as_secs()
-            ),
-        ));
-    }
+    // Same no-cap shared-runner path as `cargo_bytes` (#4150).
+    let output = capture_output_without_timeout(program, args, &[], "precommit command").map_err(
+        |error| {
+            PrecommitError::new(
+                PrecommitFailureKind::Infrastructure,
+                format!("{program} {} could not run: {error}", args.join(" ")),
+            )
+        },
+    )?;
     let Some(status) = output.status else {
         return Err(PrecommitError::new(
             PrecommitFailureKind::Infrastructure,
@@ -1008,6 +1025,20 @@ fn report_markdown(report: &PrecommitReport) -> String {
     for command in &report.commands {
         out.push_str(&format!("- `{}`: `{}`\n", command.command, command.outcome));
     }
+    if matches!(
+        report.failure_kind,
+        Some(PrecommitFailureKind::Infrastructure)
+    ) {
+        out.push_str("\nThe run stopped for an infrastructure reason; completed commands above passed, and no policy violation was established by the interrupted command. See Skipped for named work not run.\n");
+    }
+    out.push_str("\n## Skipped\n\n");
+    if report.skipped.is_empty() {
+        out.push_str("- none recorded\n");
+    } else {
+        for reason in &report.skipped {
+            out.push_str(&format!("- {reason}\n"));
+        }
+    }
     out.push_str("\n## Limitations\n\n");
     if report.limitations.is_empty() {
         out.push_str("- none\n");
@@ -1068,6 +1099,52 @@ mod tests {
             limitations: Vec::new(),
             report_digest: String::new(),
         }
+    }
+
+    #[test]
+    fn precommit_report_distinguishes_policy_failure_from_unavailable_command() -> Result<(), String>
+    {
+        let mut report = sample_report("running");
+        record_pass(&mut report, "earlier gate");
+        record_failure(&mut report, "cargo clippy", "could not start");
+        report.failure_kind = Some(PrecommitFailureKind::Infrastructure);
+        report.status = PrecommitFailureKind::Infrastructure.status().to_string();
+        report
+            .skipped
+            .push("later package Clippy not run".to_string());
+        let markdown = report_markdown(&report);
+        require(
+            markdown.contains("`cargo clippy`: `failed`")
+                && markdown.contains("no policy violation was established"),
+            "infrastructure summary could be read as a policy violation",
+        )?;
+        require(
+            markdown.contains("later package Clippy not run"),
+            "skipped step was hidden",
+        )?;
+
+        let failure = run_status("git", &["--definitely-not-a-git-option".to_string()])
+            .err()
+            .ok_or_else(|| "invalid git option was accepted".to_string())?;
+        require(
+            matches!(failure.kind, PrecommitFailureKind::SourceOrPolicy),
+            "real nonzero exit was not a gate failure",
+        )?;
+        record_failure(&mut report, "actual gate", &failure.message);
+        require(
+            report
+                .commands
+                .last()
+                .is_some_and(|entry| entry.outcome == "failed"),
+            "real gate failure changed the command outcome vocabulary",
+        )
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn precommit_step_waits_for_slow_success_without_a_wall_clock_cap() -> Result<(), String> {
+        let args = vec!["-c".to_string(), "sleep 1; exit 0".to_string()];
+        run_status("sh", &args).map_err(|error| error.message)
     }
 
     #[test]

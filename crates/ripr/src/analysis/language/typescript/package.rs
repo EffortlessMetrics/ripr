@@ -174,6 +174,19 @@ pub(crate) enum TsPackageLimitation {
     /// no framework was detected — genuinely no command can be derived.
     /// Wire name: `typescript_runner_hint_unresolved`.
     RunnerHintMissing,
+    /// Two or more distinct framework signals matched (e.g. both `jest` and
+    /// `vitest` in `devDependencies`). The reported runner is the first match
+    /// by fixed priority, which is arbitrary from the evidence — the
+    /// limitation discloses the ambiguity and caps confidence at `medium`.
+    /// Classification-neutral and additive: the priority pick is still
+    /// emitted as `typescript_test_runner: <name>`.
+    /// Wire name: `typescript_test_runner_ambiguous`.
+    FrameworkAmbiguous,
+    /// A `package.json` was found but exceeded the capped read limit, so its
+    /// manifest evidence could not be inspected. Fail-closed: no root, no
+    /// fabricated values.
+    /// Wire name: `typescript_package_manifest_read_capped`.
+    PackageManifestReadCapped,
 }
 
 impl TsPackageLimitation {
@@ -183,6 +196,8 @@ impl TsPackageLimitation {
             Self::FrameworkHintMissing => "typescript_framework_hint_unresolved",
             Self::PackageManagerUnresolved => "typescript_package_manager_unresolved",
             Self::RunnerHintMissing => "typescript_runner_hint_unresolved",
+            Self::FrameworkAmbiguous => "typescript_test_runner_ambiguous",
+            Self::PackageManifestReadCapped => "typescript_package_manifest_read_capped",
         }
     }
 }
@@ -235,23 +250,30 @@ pub(crate) fn resolve_package_discovery(
         };
     };
 
-    // Read the package.json at that root.
+    // Read the package.json at that root (capped: an over-limit manifest is
+    // disclosed as its own named limitation, not conflated with "not found").
     let pkg_json_path = pkg_root.join("package.json");
-    let pkg_json_text = match std::fs::read_to_string(&pkg_json_path) {
+    let pkg_json_text = match read_config_capped(&pkg_json_path) {
         Ok(text) => text,
-        Err(_) => {
+        Err(err) => {
+            let limitation = if err.is_size_limit() {
+                TsPackageLimitation::PackageManifestReadCapped
+            } else {
+                TsPackageLimitation::PackageRootNotFound
+            };
             return PackageDiscovery {
                 package_root: None,
                 workspace_root: None,
                 framework_hint: None,
                 runner_hint: None,
                 confidence: TsPackageConfidence::None,
-                limitations: vec![TsPackageLimitation::PackageRootNotFound],
+                limitations: vec![limitation],
             };
         }
     };
 
-    let framework_hint = detect_framework(&pkg_json_text);
+    let signals = detect_framework_signals(&pkg_json_text);
+    let framework_hint = signals.first().copied();
     let runner_hint_from_script = detect_runner_from_scripts(&pkg_json_text);
 
     // Detect monorepo workspace root: walk upward from pkg_root looking for
@@ -267,6 +289,12 @@ pub(crate) fn resolve_package_discovery(
     let mut limitations = Vec::new();
     if framework_hint.is_none() {
         limitations.push(TsPackageLimitation::FrameworkHintMissing);
+    } else if signals.len() >= 2 {
+        // Two or more DISTINCT framework signals matched (e.g. jest + vitest
+        // devDeps). The reported runner is the first by fixed priority, which
+        // is arbitrary from the evidence — disclose the ambiguity (additive,
+        // classification-neutral) and cap confidence at `medium` below.
+        limitations.push(TsPackageLimitation::FrameworkAmbiguous);
     }
     if runner_hint.is_none() {
         if framework_hint.is_some() {
@@ -283,10 +311,12 @@ pub(crate) fn resolve_package_discovery(
         }
     }
 
-    // Determine confidence.
+    // Determine confidence. Ambiguous framework evidence is capped at Medium:
+    // the priority pick is a guess from the manifest's point of view.
+    let ambiguous = signals.len() >= 2;
     let confidence = match (framework_hint.is_some(), runner_hint.is_some()) {
-        (true, true) => TsPackageConfidence::High,
-        (true, false) | (false, true) => TsPackageConfidence::Medium,
+        (true, true) if !ambiguous => TsPackageConfidence::High,
+        (true, _) | (_, true) => TsPackageConfidence::Medium,
         (false, false) => TsPackageConfidence::Low,
     };
 
@@ -347,7 +377,7 @@ fn find_workspace_root(pkg_root: &Path, stop_at: &Path) -> Option<PathBuf> {
         if current.join("pnpm-workspace.yaml").is_file() {
             return Some(current.clone());
         }
-        if let Ok(text) = std::fs::read_to_string(current.join("package.json"))
+        if let Ok(text) = read_config_capped(&current.join("package.json"))
             && json_has_workspaces_field(&text)
         {
             return Some(current.clone());
@@ -369,7 +399,7 @@ fn find_workspace_root(pkg_root: &Path, stop_at: &Path) -> Option<PathBuf> {
 /// then config-file markers, then the bun lockfile. Fail-closed: `None` when
 /// no signal matches — callers must report "not detected", never guess.
 pub(crate) fn detect_framework_for_root(root: &Path) -> Option<TsFramework> {
-    if let Ok(pkg_json) = std::fs::read_to_string(root.join("package.json"))
+    if let Ok(pkg_json) = read_config_capped(&root.join("package.json"))
         && let Some(framework) = detect_framework(&pkg_json)
     {
         return Some(framework);
@@ -399,6 +429,51 @@ pub(crate) fn detect_framework_for_root(root: &Path) -> Option<TsFramework> {
     None
 }
 
+/// Parsed view of the `package.json` fields this module consumes.
+///
+/// Built ONCE from the real manifest via `serde_json` so every downstream
+/// detector reads FIELDS, not substrings. This keeps detection honest:
+///
+/// - a `"test"` key OUTSIDE `scripts` is not the test script;
+/// - the word `"workspaces"` inside a string value does not mark a monorepo;
+/// - a framework name appearing only inside a free-text value
+///   (e.g. `"description": "jest"`) is not dependency evidence.
+///
+/// `None` when the manifest is not a parseable JSON object — every consumer
+/// fails closed in that case (no guessed framework, runner, or workspace).
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ManifestFacts {
+    /// Lowercased dependency names from `dependencies` + `devDependencies`.
+    dep_names: Vec<String>,
+    /// Lowercased `scripts.test` command, when present and a string.
+    test_script: Option<String>,
+    /// Whether a top-level `workspaces` field exists.
+    has_workspaces: bool,
+}
+
+fn parse_manifest_facts(pkg_json: &str) -> Option<ManifestFacts> {
+    let value: serde_json::Value = serde_json::from_str(pkg_json).ok()?;
+    let object = value.as_object()?;
+    let mut dep_names = Vec::new();
+    for section in ["dependencies", "devDependencies"] {
+        if let Some(deps) = object.get(section).and_then(serde_json::Value::as_object) {
+            dep_names.extend(deps.keys().map(|key| key.to_lowercase()));
+        }
+    }
+    let test_script = object
+        .get("scripts")
+        .and_then(serde_json::Value::as_object)
+        .and_then(|scripts| scripts.get("test"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_lowercase);
+    let has_workspaces = object.contains_key("workspaces");
+    Some(ManifestFacts {
+        dep_names,
+        test_script,
+        has_workspaces,
+    })
+}
+
 /// Detect the test framework from `package.json` content.
 ///
 /// Priority (first match wins): jest > vitest > bun-types > ava > mocha > @types/node.
@@ -412,56 +487,64 @@ pub(crate) fn detect_framework_for_root(root: &Path) -> Option<TsFramework> {
 /// when no dep match is found.  Fail-closed: `None` when neither signal
 /// matches a known framework.
 fn detect_framework(pkg_json: &str) -> Option<TsFramework> {
-    // Gather dep names from dependencies and devDependencies sections.
-    // We use simple string matching rather than full JSON parsing to keep
-    // dependencies minimal — we only need to know whether certain dep names
-    // appear as keys.
-    let lower = pkg_json.to_lowercase();
-    // Use key-pattern matching: `"<name>"` (quoted key) to avoid false
-    // positives in string values.
-    let has_dep = |name: &str| -> bool {
-        let pattern = format!("\"{name}\"");
-        lower.contains(&pattern)
+    detect_framework_signals(pkg_json).first().copied()
+}
+
+/// Push `framework` into `signals` unless an equal signal is already present.
+fn push_framework_signal(signals: &mut Vec<TsFramework>, framework: TsFramework) {
+    if !signals.contains(&framework) {
+        signals.push(framework);
+    }
+}
+
+/// Detect every DISTINCT framework signal in `package.json`, in priority order.
+///
+/// Unlike [`detect_framework`] (first match wins), this returns ALL matched
+/// frameworks (deduplicated). When two or more signals match — e.g. both
+/// `jest` and `vitest` in `devDependencies` — the caller can disclose the
+/// ambiguity instead of silently resolving by fixed priority. Fail-closed:
+/// empty when the manifest is unparseable or no signal matches.
+fn detect_framework_signals(pkg_json: &str) -> Vec<TsFramework> {
+    let Some(facts) = parse_manifest_facts(pkg_json) else {
+        return Vec::new();
     };
+    let has_dep = |name: &str| facts.dep_names.iter().any(|dep| dep == name);
+    let mut signals: Vec<TsFramework> = Vec::new();
 
     // ── Dependency-signal priority (most reliable) ──────────────────────────
     if has_dep("jest") || has_dep("@types/jest") || has_dep("ts-jest") || has_dep("babel-jest") {
-        return Some(TsFramework::Jest);
+        push_framework_signal(&mut signals, TsFramework::Jest);
     }
     if has_dep("vitest") {
-        return Some(TsFramework::Vitest);
+        push_framework_signal(&mut signals, TsFramework::Vitest);
     }
     if has_dep("bun-types") {
-        return Some(TsFramework::Bun);
+        push_framework_signal(&mut signals, TsFramework::Bun);
     }
     if has_dep("ava") {
-        return Some(TsFramework::Ava);
+        push_framework_signal(&mut signals, TsFramework::Ava);
     }
     if has_dep("mocha") || has_dep("@types/mocha") {
-        return Some(TsFramework::Mocha);
+        push_framework_signal(&mut signals, TsFramework::Mocha);
     }
-    if has_dep("@types/node") {
-        return Some(TsFramework::NodeTest);
+    // `@types/node` is typings, not a runner: nearly every jest/vitest/mocha
+    // project carries it, so it counts only when no runner dependency does.
+    // Counting it beside `vitest` reported most projects as ambiguous and
+    // capped their confidence (#4762).
+    if signals.is_empty() && has_dep("@types/node") {
+        push_framework_signal(&mut signals, TsFramework::NodeTest);
+    }
+    if !signals.is_empty() {
+        return signals;
     }
 
     // ── Script-name fallback (handles composite scripts like "xo && ava") ───
-    // Only activates when no dep match was found above (fail-closed).
-    detect_framework_from_test_script(pkg_json)
-}
-
-/// Secondary framework detector: scan `scripts.test` for known framework
-/// invocation names.  Called only when dep-key detection yields `None`.
-///
-/// Inspects the raw (case-folded) script command; first confident match wins.
-/// "ava" is the primary new target (Ky: `"xo && npm run build && ava"`),
-/// but all known frameworks are checked so the fallback is symmetric.
-fn detect_framework_from_test_script(pkg_json: &str) -> Option<TsFramework> {
-    let lower = pkg_json.to_lowercase();
-    let test_script = extract_test_script_value(&lower)?;
-
-    // Check for whole-word occurrences using simple word-boundary heuristics
-    // (space/start/end/& before and after).  Avoid matching e.g. "java" for
-    // "jest" or "avante" for "ava".
+    // Only activates when no dep match was found above (fail-closed). All
+    // matched words are collected so a composite script mentioning two
+    // frameworks (e.g. `"jest && vitest run"`) discloses its ambiguity.
+    let Some(test_script) = facts.test_script else {
+        return signals;
+    };
     let script_has_word = |word: &str| -> bool {
         let mut haystack: &str = test_script.as_str();
         while let Some(pos) = haystack.find(word) {
@@ -483,48 +566,33 @@ fn detect_framework_from_test_script(pkg_json: &str) -> Option<TsFramework> {
         }
         false
     };
-
     if script_has_word("jest") {
-        return Some(TsFramework::Jest);
+        push_framework_signal(&mut signals, TsFramework::Jest);
     }
     if script_has_word("vitest") {
-        return Some(TsFramework::Vitest);
+        push_framework_signal(&mut signals, TsFramework::Vitest);
     }
     if script_has_word("ava") {
-        return Some(TsFramework::Ava);
+        push_framework_signal(&mut signals, TsFramework::Ava);
     }
     if script_has_word("mocha") {
-        return Some(TsFramework::Mocha);
+        push_framework_signal(&mut signals, TsFramework::Mocha);
     }
     // "node --test" or "node:test" patterns
     if test_script.contains("node --test") || test_script.contains("node:test") {
-        return Some(TsFramework::NodeTest);
+        push_framework_signal(&mut signals, TsFramework::NodeTest);
     }
     // "bun test" pattern (script-only; dep signal already caught bun-types above)
     if test_script.contains("bun test") || test_script.starts_with("bun ") {
-        return Some(TsFramework::Bun);
+        push_framework_signal(&mut signals, TsFramework::Bun);
     }
-    None
-}
-
-/// Extract the lowercased value of `scripts.test` from a package.json string.
-///
-/// Returns `None` when the key is absent or the value is not a quoted string.
-fn extract_test_script_value(lower_pkg_json: &str) -> Option<String> {
-    let key_idx = lower_pkg_json.find("\"test\":")?;
-    let after_key = &lower_pkg_json[key_idx + "\"test\":".len()..];
-    let trimmed = after_key.trim_start();
-    let inner = trimmed.strip_prefix('"')?;
-    let end = inner.find('"')?;
-    Some(inner[..end].to_string())
+    signals
 }
 
 /// Detect the runner from `scripts.test` in `package.json`.
 fn detect_runner_from_scripts(pkg_json: &str) -> Option<TsRunner> {
-    // Look for the "test" script entry.  We search for `"test":` then extract
-    // the command string that follows.
-    let lower = pkg_json.to_lowercase();
-    let script = extract_test_script_value(&lower)?;
+    let facts = parse_manifest_facts(pkg_json)?;
+    let script = facts.test_script?;
 
     if script.contains("bun ") || script.starts_with("bun") {
         return Some(TsRunner::Bun);
@@ -564,10 +632,12 @@ fn detect_runner_from_lockfile(workspace_root: &Path, pkg_root: &Path) -> Option
     None
 }
 
-/// Very cheap check: does the `package.json` text contain a `"workspaces"`
-/// key?  We do NOT need to parse JSON — just check if the key appears.
+/// Field check: does the parsed `package.json` object carry a top-level
+/// `workspaces` key?  Uses the serde parse (see [`parse_manifest_facts`]) so
+/// the word `"workspaces"` inside an unrelated string value does NOT mark a
+/// monorepo root. Fail-closed: `false` for unparseable manifests.
 fn json_has_workspaces_field(pkg_json: &str) -> bool {
-    pkg_json.to_lowercase().contains("\"workspaces\"")
+    parse_manifest_facts(pkg_json).is_some_and(|facts| facts.has_workspaces)
 }
 
 // ─── Verify-command inference ─────────────────────────────────────────────────
@@ -578,14 +648,30 @@ fn json_has_workspaces_field(pkg_json: &str) -> bool {
 /// Command mapping (framework takes priority over runner):
 /// ```text
 /// framework Bun      -> bun test <file>
-/// framework Vitest   -> vitest run <file>
-/// framework Jest     -> jest <file>
+/// framework Vitest   -> <launch> vitest run <file>
+/// framework Jest     -> <launch> jest <file>
+/// framework Ava      -> <launch> ava <file>
 /// framework NodeTest -> node --test <file>
 /// (no framework) runner Bun  -> bun test <file>
 /// (no framework) runner Npm  -> npm test -- <file>
 /// (no framework) runner Pnpm -> pnpm test -- <file>
 /// (no framework) runner Yarn -> yarn test <file>
 /// ```
+///
+/// `<launch>` is the package runner's local-binary launcher, because a
+/// devDependency binary lives in `node_modules/.bin`, which is not on `PATH`
+/// (a bare `vitest run <file>` fails with "command not found"):
+/// ```text
+/// runner Npm or unresolved -> npx --no-install
+/// runner Pnpm              -> pnpm exec
+/// runner Yarn              -> yarn
+/// runner Bun               -> bun run
+/// ```
+///
+/// Every launcher resolves only the package's installed binary. A launcher that
+/// can fetch a missing package (`npx` without `--no-install`, `bunx`) would run
+/// a registry version instead of the locked one when dependencies are not
+/// installed, and a non-interactive shell skips npx's install prompt.
 ///
 /// `<file>` is the test file path normalized (`\` → `/`) and expressed
 /// relative to `package_root` so the command is runnable from there.
@@ -611,15 +697,24 @@ pub(crate) fn verify_command_for_discovery(
 
     // Normalize separators: CRITICAL for Windows-blessed goldens to pass
     // Linux CI.
-    let file_str = normalized_path(&rel_file);
+    let file_str = shell_quote_file_arg(&normalized_path(&rel_file));
 
     // Framework takes priority over runner.
     let cmd = match discovery.framework_hint {
         Some(TsFramework::Bun) => format!("bun test {file_str}"),
-        Some(TsFramework::Vitest) => format!("vitest run {file_str}"),
-        Some(TsFramework::Jest) => format!("jest {file_str}"),
+        Some(TsFramework::Vitest) => {
+            let launch = local_binary_launcher(discovery.runner_hint);
+            format!("{launch} vitest run {file_str}")
+        }
+        Some(TsFramework::Jest) => {
+            let launch = local_binary_launcher(discovery.runner_hint);
+            format!("{launch} jest {file_str}")
+        }
         Some(TsFramework::NodeTest) => format!("node --test {file_str}"),
-        Some(TsFramework::Ava) => format!("ava {file_str}"),
+        Some(TsFramework::Ava) => {
+            let launch = local_binary_launcher(discovery.runner_hint);
+            format!("{launch} ava {file_str}")
+        }
         // Mocha does not have a simple file-target form in the spec table;
         // fall through to runner fallback.
         Some(TsFramework::Mocha) | None => {
@@ -635,6 +730,40 @@ pub(crate) fn verify_command_for_discovery(
         }
     };
     Some(cmd)
+}
+
+/// The package runner's launcher for a binary installed in the package's
+/// `node_modules/.bin`, never one that downloads a missing package. `npx` is
+/// npm's default and the fallback when no runner resolves; `--no-install`
+/// makes it fail instead of fetching (npm 7+ reads it as `--no`). `pnpm exec`,
+/// `yarn <bin>` (classic and Berry) and `bun run <bin>` only run local binaries.
+fn local_binary_launcher(runner: Option<TsRunner>) -> &'static str {
+    match runner {
+        Some(TsRunner::Npm) | None => "npx --no-install",
+        Some(TsRunner::Pnpm) => "pnpm exec",
+        Some(TsRunner::Yarn) => "yarn",
+        Some(TsRunner::Bun) => "bun run",
+    }
+}
+
+/// Shell-quote a test-file argument for the suggested verify command.
+///
+/// The primary consumer of the suggested command is an agent that may run it
+/// verbatim in a POSIX-like shell, so a hostile file name such as
+/// `x$(evil-cmd|sh).test.ts` (legal on Linux) must not become a
+/// copy-paste code-execution vector. Plain alphanumeric/relative paths pass
+/// through unchanged so the common command stays readable; anything else is
+/// single-quoted with embedded single quotes escaped POSIX-style (`'\''`),
+/// which suppresses all shell expansion.
+fn shell_quote_file_arg(file_str: &str) -> String {
+    if !file_str.is_empty()
+        && file_str
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '/' | '-'))
+    {
+        return file_str.to_string();
+    }
+    format!("'{}'", file_str.replace('\'', "'\\''"))
 }
 
 /// Convert an absolute path back to a path relative to `base`.  If the
@@ -819,6 +948,31 @@ mod tests {
     }
 
     #[test]
+    fn string_value_equal_to_framework_name_not_credited() {
+        // `"jest"` here is a string VALUE, not a dependency key; it must not
+        // be credited as framework evidence.
+        let pkg = r#"{"name":"demo","description":"jest"}"#;
+        let result = detect_framework(pkg);
+        assert_eq!(
+            result, None,
+            "a framework name appearing as a string value must not be credited"
+        );
+    }
+
+    #[test]
+    fn spaced_dependency_key_still_credited() {
+        // JSON keys may have whitespace before the colon; the quoted-key
+        // heuristic must still credit them.
+        let pkg = r#"{"devDependencies":{ "vitest" : "^1.0.0" }}"#;
+        let result = detect_framework(pkg);
+        assert_eq!(
+            result,
+            Some(TsFramework::Vitest),
+            "spaced dependency keys must still be credited"
+        );
+    }
+
+    #[test]
     fn detect_framework_mocha() {
         let result = detect_framework(r#"{"devDependencies":{"mocha":"^10.0.0"}}"#);
         assert_eq!(result, Some(TsFramework::Mocha));
@@ -828,6 +982,19 @@ mod tests {
     fn detect_framework_node_test() {
         let result = detect_framework(r#"{"devDependencies":{"@types/node":"^20.0.0"}}"#);
         assert_eq!(result, Some(TsFramework::NodeTest));
+    }
+
+    #[test]
+    fn detect_framework_signals_types_node_beside_a_runner_is_not_a_second_signal() {
+        // zustand / date-fns shape: vitest plus the ubiquitous `@types/node`.
+        let signals = detect_framework_signals(
+            r#"{"devDependencies":{"@types/node":"^25.0.0","vitest":"^4.0.0"}}"#,
+        );
+        assert_eq!(signals, vec![TsFramework::Vitest]);
+        let signals = detect_framework_signals(
+            r#"{"devDependencies":{"@types/node":"^25.0.0","jest":"^29.0.0","vitest":"^4.0.0"}}"#,
+        );
+        assert_eq!(signals, vec![TsFramework::Jest, TsFramework::Vitest]);
     }
 
     #[test]
@@ -881,6 +1048,74 @@ mod tests {
         let pkg = r#"{"scripts":{"test":"node --test"}}"#;
         let result = detect_framework(pkg);
         assert_eq!(result, Some(TsFramework::NodeTest));
+    }
+
+    #[test]
+    fn detect_framework_signals_single_match_has_no_ambiguity() {
+        // One distinct framework signal → no ambiguity evidence.
+        let signals = detect_framework_signals(jest_pkg_json());
+        assert_eq!(signals, vec![TsFramework::Jest]);
+    }
+
+    #[test]
+    fn detect_framework_signals_jest_vitest_collects_both_matches() {
+        // Two distinct framework signals → both collected (priority order),
+        // so the caller can disclose the ambiguity instead of silently
+        // resolving by fixed priority.
+        let pkg = r#"{"devDependencies":{"jest":"^29.0.0","vitest":"^1.0.0"}}"#;
+        let signals = detect_framework_signals(pkg);
+        assert_eq!(signals, vec![TsFramework::Jest, TsFramework::Vitest]);
+        // First-match-wins resolution is unchanged for single consumers.
+        assert_eq!(detect_framework(pkg), Some(TsFramework::Jest));
+    }
+
+    #[test]
+    fn detect_framework_jest_and_types_jest_count_as_one_signal() {
+        // `jest` + `@types/jest` are two dep names for ONE framework — they
+        // must NOT be reported as ambiguous.
+        let signals = detect_framework_signals(jest_pkg_json());
+        assert_eq!(signals, vec![TsFramework::Jest]);
+    }
+
+    #[test]
+    fn detect_framework_string_value_mentioning_jest_is_not_evidence() {
+        // A framework name inside a free-text string value ("description")
+        // must NOT be treated as a dependency. The old quoted-key substring
+        // scan false-detected jest here.
+        let pkg = r#"{"name":"x","description":"jest","private":true}"#;
+        let result = detect_framework(pkg);
+        assert_eq!(
+            result, None,
+            "a framework name inside a string value is not dependency evidence"
+        );
+    }
+
+    #[test]
+    fn test_script_key_outside_scripts_is_not_the_test_script() {
+        // A `"test"` key nested outside `scripts` must not feed framework or
+        // runner script detection; only `scripts.test` is the test script.
+        let pkg = r#"{"config":{"test":"ava"},"scripts":{"test":"echo no-op"}}"#;
+        let result = detect_framework(pkg);
+        assert_eq!(
+            result, None,
+            "\"test\" key outside scripts must not be read as the test script"
+        );
+        let runner = detect_runner_from_scripts(pkg);
+        assert_eq!(runner, None);
+    }
+
+    #[test]
+    fn workspaces_word_inside_string_value_is_not_monorepo_root() {
+        // The word "workspaces" inside a string value must NOT mark a monorepo
+        // root; only a real top-level `workspaces` field counts.
+        let pkg = r#"{"name":"x","description":"uses workspaces for discovery"}"#;
+        assert!(
+            !json_has_workspaces_field(pkg),
+            "workspaces inside a string value must not mark a monorepo root"
+        );
+        // Positive control: a real top-level field is still detected.
+        let real = r#"{"name":"x","workspaces":["packages/*"]}"#;
+        assert!(json_has_workspaces_field(real));
     }
 
     #[test]
@@ -1013,6 +1248,58 @@ mod tests {
 
         assert_eq!(result.runner_hint, Some(TsRunner::Bun));
         assert_eq!(result.framework_hint, Some(TsFramework::Vitest));
+    }
+
+    #[test]
+    fn ts_package_discovery_jest_vitest_ambiguity_is_disclosed() {
+        let root = unique_test_dir("jest-vitest-ambiguous");
+        // Both jest and vitest present — two distinct framework signals.
+        let pkg = r#"{
+  "name": "multi-runner",
+  "devDependencies": {
+    "jest": "^29.0.0",
+    "vitest": "^1.0.0"
+  },
+  "scripts": {
+    "test": "vitest run"
+  }
+}"#;
+        setup_single_package(&root, pkg, Some("package-lock.json"));
+        let test_file = PathBuf::from("tests/math.test.ts");
+
+        let result = resolve_package_discovery(&test_file, &root);
+
+        // Fixed priority still picks the first signal for consumers that need
+        // a single runner name...
+        assert_eq!(result.framework_hint, Some(TsFramework::Jest));
+        // ...but the ambiguity is disclosed additively (classification-neutral).
+        assert!(
+            result
+                .limitations
+                .contains(&TsPackageLimitation::FrameworkAmbiguous),
+            "expected typescript_test_runner_ambiguous; got {:?}",
+            result.limitations
+        );
+        // Ambiguous evidence is capped at medium confidence.
+        assert_eq!(
+            result.confidence,
+            TsPackageConfidence::Medium,
+            "ambiguous runner evidence must not claim high confidence"
+        );
+        let lines = result.evidence_lines();
+        assert!(
+            lines
+                .iter()
+                .any(|l| l == "typescript_package_limitation: typescript_test_runner_ambiguous"),
+            "evidence lines missing typescript_test_runner_ambiguous: {:?}",
+            lines
+        );
+        // The resolved runner name is still emitted for consumers.
+        assert!(
+            lines.iter().any(|l| l == "typescript_test_runner: jest"),
+            "evidence lines missing typescript_test_runner: jest: {:?}",
+            lines
+        );
     }
 
     #[test]
@@ -1175,14 +1462,20 @@ mod tests {
     fn verify_command_framework_jest_produces_jest_command() {
         let discovery = make_discovery(Some("."), Some(TsFramework::Jest), Some(TsRunner::Npm));
         let result = verify_command_for_discovery(&discovery, Path::new("tests/math.test.ts"));
-        assert_eq!(result, Some("jest tests/math.test.ts".to_string()));
+        assert_eq!(
+            result,
+            Some("npx --no-install jest tests/math.test.ts".to_string())
+        );
     }
 
     #[test]
     fn verify_command_framework_vitest_produces_vitest_run_command() {
         let discovery = make_discovery(Some("."), Some(TsFramework::Vitest), Some(TsRunner::Pnpm));
         let result = verify_command_for_discovery(&discovery, Path::new("src/util.test.ts"));
-        assert_eq!(result, Some("vitest run src/util.test.ts".to_string()));
+        assert_eq!(
+            result,
+            Some("pnpm exec vitest run src/util.test.ts".to_string())
+        );
     }
 
     #[test]
@@ -1203,7 +1496,10 @@ mod tests {
     fn verify_command_framework_ava_produces_ava_command() {
         let discovery = make_discovery(Some("."), Some(TsFramework::Ava), None);
         let result = verify_command_for_discovery(&discovery, Path::new("tests/math.test.ts"));
-        assert_eq!(result, Some("ava tests/math.test.ts".to_string()));
+        assert_eq!(
+            result,
+            Some("npx --no-install ava tests/math.test.ts".to_string())
+        );
     }
 
     #[test]
@@ -1267,15 +1563,21 @@ mod tests {
             &discovery,
             Path::new("packages/auth/tests/token.test.ts"),
         );
-        assert_eq!(result, Some("jest tests/token.test.ts".to_string()));
+        assert_eq!(
+            result,
+            Some("pnpm exec jest tests/token.test.ts".to_string())
+        );
     }
 
     #[test]
     fn verify_command_framework_takes_priority_over_runner() {
-        // Vitest framework with Bun runner → vitest run (not bun test)
+        // Vitest framework with Bun runner → bun run vitest run (not bun test)
         let discovery = make_discovery(Some("."), Some(TsFramework::Vitest), Some(TsRunner::Bun));
         let result = verify_command_for_discovery(&discovery, Path::new("src/foo.test.ts"));
-        assert_eq!(result, Some("vitest run src/foo.test.ts".to_string()));
+        assert_eq!(
+            result,
+            Some("bun run vitest run src/foo.test.ts".to_string())
+        );
     }
 
     #[test]
@@ -1293,6 +1595,96 @@ mod tests {
         );
     }
 
+    #[test]
+    fn verify_command_hostile_filename_is_shell_quoted() {
+        // Security: a file name containing shell metacharacters is legal on
+        // Linux and must not become a code-exec vector when an agent runs the
+        // suggested command verbatim.
+        let discovery = make_discovery(Some("."), Some(TsFramework::Jest), None);
+        let result =
+            verify_command_for_discovery(&discovery, Path::new("tests/x$(evil-cmd|sh).test.ts"));
+        assert_eq!(
+            result,
+            Some("npx --no-install jest 'tests/x$(evil-cmd|sh).test.ts'".to_string()),
+            "metacharacters must be neutralized by single-quoting"
+        );
+    }
+
+    #[test]
+    fn verify_command_filename_with_space_is_shell_quoted() {
+        let discovery = make_discovery(Some("."), Some(TsFramework::Jest), None);
+        let result = verify_command_for_discovery(&discovery, Path::new("tests/my file.test.ts"));
+        assert_eq!(
+            result,
+            Some("npx --no-install jest 'tests/my file.test.ts'".to_string())
+        );
+    }
+
+    #[test]
+    fn verify_command_filename_with_single_quote_is_escaped() {
+        let discovery = make_discovery(Some("."), Some(TsFramework::Jest), None);
+        let result = verify_command_for_discovery(&discovery, Path::new("tests/o'brien.test.ts"));
+        assert_eq!(
+            result,
+            Some("npx --no-install jest 'tests/o'\\''brien.test.ts'".to_string()),
+            "embedded single quote must be escaped POSIX-style"
+        );
+    }
+
+    #[test]
+    fn verify_command_plain_filename_stays_unquoted() {
+        // Readability: the common case must not acquire quotes.
+        let discovery = make_discovery(Some("."), Some(TsFramework::Jest), None);
+        let result = verify_command_for_discovery(&discovery, Path::new("tests/math.test.ts"));
+        assert_eq!(
+            result,
+            Some("npx --no-install jest tests/math.test.ts".to_string())
+        );
+    }
+
+    #[test]
+    fn verify_command_launches_local_framework_binary_through_the_package_runner() {
+        // A devDependency binary lives in node_modules/.bin, which is not on
+        // PATH, so every runner x framework pair must launch it through the
+        // runner's local-binary launcher; bun test and node --test do not.
+        let runners = [
+            (Some(TsRunner::Npm), "npx --no-install"),
+            (None, "npx --no-install"),
+            (Some(TsRunner::Pnpm), "pnpm exec"),
+            (Some(TsRunner::Yarn), "yarn"),
+            (Some(TsRunner::Bun), "bun run"),
+        ];
+        let frameworks = [
+            (TsFramework::Vitest, "vitest run"),
+            (TsFramework::Jest, "jest"),
+            (TsFramework::Ava, "ava"),
+        ];
+        for (runner, launch) in runners {
+            for (framework, bin) in frameworks {
+                let discovery = make_discovery(Some("."), Some(framework), runner);
+                let result =
+                    verify_command_for_discovery(&discovery, Path::new("tests/math.test.ts"));
+                assert_eq!(
+                    result,
+                    Some(format!("{launch} {bin} tests/math.test.ts")),
+                    "runner {runner:?} framework {framework:?}"
+                );
+            }
+            let bun = make_discovery(Some("."), Some(TsFramework::Bun), runner);
+            assert_eq!(
+                verify_command_for_discovery(&bun, Path::new("tests/math.test.ts")),
+                Some("bun test tests/math.test.ts".to_string()),
+                "bun test stays unprefixed for runner {runner:?}"
+            );
+            let node = make_discovery(Some("."), Some(TsFramework::NodeTest), runner);
+            assert_eq!(
+                verify_command_for_discovery(&node, Path::new("tests/math.test.ts")),
+                Some("node --test tests/math.test.ts".to_string()),
+                "node --test stays unprefixed for runner {runner:?}"
+            );
+        }
+    }
+
     // ── Gap-3 honesty-clarity controls (RIPR-SPEC-0101) ──────────────────────
 
     /// Control 1: vitest devDep + no lockfile.
@@ -1300,7 +1692,7 @@ mod tests {
     /// Reproduces issue #1239: framework=Vitest, runner=None.
     /// `typescript_package_manager_unresolved` MUST be emitted (informational).
     /// `typescript_runner_hint_unresolved` MUST NOT be emitted (misleading).
-    /// A `vitest run` command MUST be available.
+    /// An `npx --no-install vitest run` command MUST be available.
     #[test]
     fn gap3_vitest_no_lockfile_emits_package_manager_unresolved_not_runner_unresolved() {
         let root = unique_test_dir("gap3-vitest-no-lockfile");
@@ -1343,8 +1735,8 @@ mod tests {
         );
         let cmd_str = cmd.unwrap_or_default();
         assert!(
-            cmd_str.starts_with("vitest run"),
-            "expected 'vitest run ...' command; got: {cmd_str}"
+            cmd_str.starts_with("npx --no-install vitest run"),
+            "expected 'npx --no-install vitest run ...' command; got: {cmd_str}"
         );
     }
 

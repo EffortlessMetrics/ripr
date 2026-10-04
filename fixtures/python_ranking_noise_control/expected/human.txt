@@ -2,43 +2,46 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/python_ranking_noise_control/input
 
-Summary: 4 probe(s), 1 exposed, 1 weak, 0 unrevealed, 1 no path, 1 unknown
+Summary: 4 probe(s), 1 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 1 no_static_path, 0 infection_unknown, 0 propagation_unknown, 1 static_unknown; 4 of 4 finding(s) unsuppressed
 
-Changed file(s) by language: python: 4, rust: 0.
+Changed file(s) by language: python: 4.
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 4 changed file(s), 4 changed line(s), 4 candidate line(s), 4 probe(s), 4 finding(s).
 
 Start here:
-  State: preview_limited
-  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  State: preview language, advisory only (preview_limited)
+  Safe next action: preview-language evidence is advisory; apply the next step below to the suggested test and run its verify command before relying on it.
   File: src/c_discount.py:2
   Language: python
   Language status: preview
-  Static exposure: weakly_exposed (warning, confidence 0.40)
-  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Static exposure: weak (weakly_exposed, warning, confidence 0.40)
+  Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/c_discount.py:calculate_discount:predicate_boundary:predicate:amount>=threshold
   Changed behavior: if amount >= threshold:
-  Missing discriminator: Related Python test reaches `calculate_discount` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary.
+  Missing discriminator (1 of 2): Related Python test reaches `calculate_discount` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary.
   Related test: tests/test_discount.py:4 test_calculate_discount_smoke
   Suggested test file: tests/test_discount.py
   Suggested test: test_calculate_discount_smoke
   Test node: tests/test_discount.py::test_calculate_discount_smoke
-  Verify command: pytest tests/test_discount.py::test_calculate_discount_smoke (high)
+  Verify command: python -m pytest tests/test_discount.py::test_calculate_discount_smoke (high)
   Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == threshold`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `calculate_discount`
     - infection yes: Changed Python predicate can alter branch selection: `if amount >= threshold:`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_ranking_noise_control/input --diff fixtures/python_ranking_noise_control/diff.patch --mode fast probe:src_c_discount.py:python_preview:91995184
   ripr context --root fixtures/python_ranking_noise_control/input --diff fixtures/python_ranking_noise_control/diff.patch --mode fast --at probe:src_c_discount.py:python_preview:91995184
 
 Hidden:
-  3 lower-priority finding(s) omitted from default human output.
+  3 lower-priority finding(s) omitted from default human output (Python preview: 3).
+    - src/b_observed.py:2 (exposed)
+    - src/d_isolated.py:2 (no_static_path)
+    - src/a_dynamic.py:2 (static_unknown)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 
 
-Note: 4 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 4 Python files analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

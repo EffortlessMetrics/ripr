@@ -28,7 +28,7 @@
       "summary": "1 seams; 1 weakly_gripped, 0 ungripped, 0 reachable_unrevealed."
     },
     {
-      "command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json",
+      "command": "ripr check --root . --mode draft --format repo-exposure-json > <cwd>/target/ripr/pilot/after.repo-exposure.json",
       "name": "after snapshot",
       "path": "target/ripr/pilot/after.repo-exposure.json",
       "required": true,
@@ -37,7 +37,7 @@
       "summary": "1 seams; 0 weakly_gripped, 0 ungripped, 0 reachable_unrevealed."
     },
     {
-      "command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json",
+      "command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > <cwd>/target/ripr/agent/agent-verify.json",
       "name": "agent verify",
       "path": "target/ripr/agent/agent-verify.json",
       "required": true,
@@ -105,11 +105,11 @@
       "reason": "Open the top actionable seam packet and write one focused targeted test."
     },
     {
-      "command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json",
+      "command": "ripr check --root . --mode draft --format repo-exposure-json > <cwd>/target/ripr/pilot/after.repo-exposure.json",
       "reason": "After adding the targeted test, capture the after repo-exposure snapshot."
     },
     {
-      "command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json",
+      "command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > <cwd>/target/ripr/agent/agent-verify.json",
       "reason": "Compare the before and after static evidence snapshots for the agent loop."
     },
     {
@@ -150,7 +150,7 @@
     },
     {
       "agreement": "after_snapshot_available",
-      "command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json",
+      "command": "ripr check --root . --mode draft --format repo-exposure-json > <cwd>/target/ripr/pilot/after.repo-exposure.json",
       "signal": "1 seams; 0 weakly_gripped, 0 ungripped, 0 reachable_unrevealed.",
       "state": "present",
       "status": "present",
@@ -158,7 +158,7 @@
     },
     {
       "agreement": "agent_verify_counts_available",
-      "command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json",
+      "command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > <cwd>/target/ripr/agent/agent-verify.json",
       "signal": "1 improved, 0 changed, 0 regressed, 0 unchanged seams.",
       "state": "present",
       "status": "advisory",

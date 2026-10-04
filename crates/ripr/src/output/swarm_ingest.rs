@@ -173,7 +173,10 @@ fn swarm_ingest_facts(value: &Value) -> SwarmIngestFacts {
             &["result", "verify", "status"],
             &["result", "verification", "status"],
         ],
-    );
+    )
+    // An agent receipt says `verification_not_run` (RIPR-SPEC-0135): nothing
+    // ran, so it is no verify evidence at all, not an unreadable result.
+    .filter(|status| !is_not_run_status(status));
     let verify_exit_code = first_i64(
         value,
         &[
@@ -574,6 +577,13 @@ fn is_failure_status(status: &str) -> bool {
     )
 }
 
+fn is_not_run_status(status: &str) -> bool {
+    matches!(
+        normalize_state(status).as_str(),
+        "verification_not_run" | "not_run"
+    )
+}
+
 fn is_stale_status(status: &str) -> bool {
     matches!(normalize_state(status).as_str(), "stale" | "stale_packet")
 }
@@ -644,6 +654,27 @@ mod tests {
         assert_eq!(
             value["classification"]["reason"].as_str(),
             Some(ingest_reason::MISSING_VERIFY)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ingest_treats_a_receipt_verification_not_run_as_missing_verify() -> Result<(), String> {
+        // #4234: an agent receipt carries `verification.status:
+        // "verification_not_run"`. Ingested as-is, that must read as absent
+        // verify evidence, never as a present verify result.
+        let value = render_value(
+            r#"{
+              "verification": {"status": "verification_not_run", "commands_run": []},
+              "provenance": {"movement": "improved"}
+            }"#,
+        )?;
+
+        assert_eq!(value["evidence"]["verify"]["present"], false);
+        assert_eq!(value["classification"]["state"], "uncertain");
+        assert_eq!(
+            value["next_action"]["summary"],
+            "Run the packet verify command and attach the result before judging closure."
         );
         Ok(())
     }

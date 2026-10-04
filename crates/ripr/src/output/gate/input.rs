@@ -270,6 +270,13 @@ pub(super) fn read_baseline_impl(
                 ));
                 return BaselineIndex::default();
             }
+            if let Some(defect) = baseline_document_defect(&value) {
+                config_errors.push(format!(
+                    "baseline {} is not a recognized gate baseline: {defect}",
+                    display_path(path),
+                ));
+                return BaselineIndex::default();
+            }
             baseline_index_from_value(&value)
         }
         Err(error) if input.mode.requires_baseline() => {
@@ -339,6 +346,66 @@ fn mutation_confidence_effect(outcome: Option<&str>) -> &'static str {
 fn is_runtime_gap_outcome(outcome: &str) -> bool {
     outcome == "missed" || outcome == "not_caught" || outcome == "uncaught" || outcome == "survived" // ripr-allow: static-language: runtime mutation-calibration import vocabulary, not static output
 }
+/// Kind marker `ripr baseline create` writes on a gate baseline ledger.
+const GATE_BASELINE_KIND: &str = "gate_baseline";
+
+/// Identity-bearing arrays the gate indexes from a baseline file. `entries`
+/// is the `ripr baseline create` ledger shape; `decisions`, `comments`,
+/// `summary_only`, and `suppressed` are the documented compatibility shapes
+/// for reviewed hand-built baselines (docs/CI.md, "Gate baseline workflow").
+const BASELINE_IDENTITY_ARRAYS: [&str; 5] = [
+    "entries",
+    "decisions",
+    "comments",
+    "summary_only",
+    "suppressed",
+];
+
+/// Returns `Some(defect)` when `value` is not a baseline the gate can index:
+/// not a JSON object, a `kind` other than
+/// `gate_baseline` (or a `gate_baseline` without an `entries` array), or no
+/// identity-bearing array at all. Such a file must not silently act as an
+/// empty baseline (every finding new) or as an unrelated document whose ids
+/// happen to be harvested. `schema_version` is not required because the
+/// documented hand-built compatibility baselines may omit it.
+fn baseline_document_defect(value: &Value) -> Option<String> {
+    let Some(object) = value.as_object() else {
+        return Some("expected a JSON object".to_string());
+    };
+    match object.get("kind") {
+        Some(Value::String(kind)) if kind == GATE_BASELINE_KIND => {
+            return if object.get("entries").is_some_and(Value::is_array) {
+                None
+            } else {
+                Some(format!(
+                    "`kind: {GATE_BASELINE_KIND}` requires an `entries` array"
+                ))
+            };
+        }
+        Some(other) => {
+            return Some(format!(
+                "field `kind` is {other}, expected \"{GATE_BASELINE_KIND}\""
+            ));
+        }
+        None => {}
+    }
+    if BASELINE_IDENTITY_ARRAYS
+        .iter()
+        .any(|field| object.get(*field).is_some_and(Value::is_array))
+    {
+        None
+    } else {
+        Some(format!(
+            "no identity array found (expected `kind: {GATE_BASELINE_KIND}` with `entries`, or one of {})",
+            BASELINE_IDENTITY_ARRAYS
+                .iter()
+                .map(|field| format!("`{field}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+    }
+}
+
 pub(super) fn baseline_index_from_value(value: &Value) -> BaselineIndex {
     let mut index = BaselineIndex::default();
     for item in value

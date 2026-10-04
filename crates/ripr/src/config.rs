@@ -11,15 +11,23 @@ use crate::domain::{LanguageId, OracleStrength};
 use serde::{Deserialize, Serialize};
 use std::path::{Component, Path, PathBuf};
 
+mod diagnostic;
 mod model;
 mod python;
+mod toolchain_file;
+#[cfg(feature = "lang-typescript")]
+mod typescript;
 
+pub(crate) use diagnostic::ConfigDiagnostic;
+#[cfg(test)]
+use diagnostic::ConfigLocationStatus;
 use model::{BunUbProfileConfig, FindingSeverityConfig, ProfilesConfig, SeamSeverityConfig};
 pub use model::{
     CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION, CheckInputExplicit, ConfigIdentityRole, ConfigSeverity,
     LspDiagnosticProfile, OraclePolicy, PerlConfig, RiprConfig, SeverityConfig, TestHarnessAdapter,
     TestHarnessKind, TestHarnessRegistration, TypescriptConfig,
 };
+pub(crate) use model::{PERL_EXECUTABLE_OPT_IN_ENV, RustLanguageConfig};
 #[cfg(test)]
 pub(crate) use python::{PYTHON_EXCLUDED_DIRS, PYTHON_VENDOR_DIR};
 pub(crate) use python::{
@@ -28,6 +36,12 @@ pub(crate) use python::{
     is_detectable_python_source_name, is_python_dir_pruned_from_repo_discovery,
     is_python_excluded_dir_everywhere, python_project_marker_name, python_source_dir_marker_name,
     source_dir_contains_detectable_python,
+};
+pub(crate) use toolchain_file::{repository_toolchain_path_pin, toolchain_path_pin_refusal};
+#[cfg(feature = "lang-typescript")]
+pub(crate) use typescript::{
+    is_detectable_excluded_typescript_path, is_detectable_generated_typescript_path,
+    is_typescript_dir_pruned_from_discovery,
 };
 
 pub(crate) const CONFIG_FILE_NAME: &str = "ripr.toml";
@@ -49,7 +63,7 @@ broad_error_strength = "weak"
 
 [severity.findings]
 # Valid severities: info, warning, note.
-exposed = "warning"
+exposed = "info"
 weakly_exposed = "warning"
 reachable_unrevealed = "warning"
 no_static_path = "warning"
@@ -101,11 +115,13 @@ path = ".ripr/suppressions.toml"
 # unavailable. See Campaign 31 #1379 + Support Tiers.)
 enabled = ["rust"]
 # Optional additive Rust generated-source globs. Built-in generated names and
-# directories remain excluded. A pattern without `/` matches any filename;
+# directories remain excluded unless declared in handwritten_files. A pattern without `/` matches any filename;
 # patterns with `/` match the repository-relative path.
 #
 # [languages.rust]
 # generated_file_patterns = ["*.gen.rs", "src/generated/**/*.rs"]
+# handwritten_files = ["tests/generated_workflow.rs"]
+# Exact paths exempt naming conventions only; patterns, headers and vendor markers win.
 
 # Optional Bun stable-byte UB advisory profile. Leave this commented unless the
 # repository wants TypeScript-family preview evidence for Bun Rust/FFI seams.
@@ -128,21 +144,31 @@ enabled = ["rust"]
 #
 # [perl]
 # producer = "perl-ripr-facts"  # canonical managed exporter; "perllsp"/"perl-lsp" are compatibility wrappers
-# executable = "perl"      # Perl binary path
+# executable = "perl-ripr-facts"  # Exporter path; honored only when RIPR_ALLOW_REPO_PERL_EXECUTABLE=1
 # timeout_ms = 30000       # Per-invocation timeout
 # cache_dir = "target/ripr/perl-facts"  # Fact cache location
 "#;
 
+/// Whether a `ripr.toml` entry exists at `path`, without following links.
+/// `Path::exists` follows them, so a dangling or self-referencing symlink read
+/// as "no config" and the run silently used defaults. The entry is present;
+/// reading it reports the real failure.
+fn config_entry_present(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok()
+}
+
 fn discover_config_path(root: &Path) -> Option<PathBuf> {
     let direct = root.join(CONFIG_FILE_NAME);
-    if direct.exists() {
-        return std::fs::canonicalize(direct).ok();
+    if config_entry_present(&direct) {
+        // A link that cannot be resolved keeps its own path so the read below
+        // names it instead of the search moving on to an ancestor.
+        return Some(std::fs::canonicalize(&direct).unwrap_or(direct));
     }
 
     let search_root = std::fs::canonicalize(root).ok()?;
     for ancestor in search_root.ancestors() {
         let path = ancestor.join(CONFIG_FILE_NAME);
-        if path.exists() {
+        if config_entry_present(&path) {
             return Some(path);
         }
         if is_repository_boundary(ancestor) {
@@ -174,7 +200,7 @@ pub fn load_for_root(root: &Path) -> Result<RiprConfig, String> {
     let Some(path) = discover_config_path(root) else {
         return default_config_for_root(root);
     };
-    let text = std::fs::read_to_string(&path)
+    let text = crate::bounded_input::read_to_string(&path)
         .map_err(|err| format!("read {} failed: {err}", path.display()))?;
     let mut config = parse_config(&text).map_err(|err| format!("{}: {err}", path.display()))?;
     config.source_path = Some(path);
@@ -203,10 +229,15 @@ pub(crate) fn generated_init_config() -> &'static str {
 }
 
 pub(crate) fn config_fingerprint(source_text: &str) -> String {
+    bytes_fingerprint(source_text.as_bytes())
+}
+
+/// [`config_fingerprint`] over raw bytes, for inputs that need not be UTF-8.
+pub(crate) fn bytes_fingerprint(bytes: &[u8]) -> String {
     const FNV_OFFSET: u64 = 0xcbf29ce484222325;
     const FNV_PRIME: u64 = 0x100000001b3;
     let mut hash = FNV_OFFSET;
-    for byte in source_text.as_bytes() {
+    for byte in bytes {
         hash ^= u64::from(*byte);
         hash = hash.wrapping_mul(FNV_PRIME);
     }
@@ -232,15 +263,15 @@ pub(crate) fn check_artifact_config_identity_hash(config: &RiprConfig) -> String
 /// The exact `ripr.toml` fields the repo-exposure producer (the seam
 /// inventory in `crates/ripr/src/analysis/seam_inventory.rs`) consumes
 /// semantically. Verified against the producer: the seam walker is Rust-only
-/// and reads only the oracle-strength policy (via
-/// `rust_index::apply_oracle_policy`); it does not read `languages.enabled`,
-/// `rust.generated_file_patterns`, or any typescript/perl field, so those
-/// SPEC-0140 finding-affecting fields must NOT move the repo-exposure input
-/// identity (#2823 — two runs differing only in an unconsumed setting stay
-/// comparable). Closed set: when the producer starts consuming another config
-/// field, add it here in the same PR; do not widen the filter to whole
-/// sections.
-pub(crate) const REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS: [&str; 5] = [
+/// and reads the oracle-strength policy (via `rust_index::apply_oracle_policy`),
+/// production-like / harness opt-ins, and `[languages.rust]
+/// generated_file_patterns` (#4788). It does not read `languages.enabled`
+/// or any typescript/perl field, so those SPEC-0140 finding-affecting
+/// fields must NOT move the repo-exposure input identity (#2823 — two runs
+/// differing only in an unconsumed setting stay comparable). Closed set:
+/// when the producer starts consuming another config field, add it here in
+/// the same PR; do not widen the filter to whole sections.
+pub(crate) const REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS: [&str; 7] = [
     "oracles.broad_error_strength",
     "oracles.mock_expectation_strength",
     "oracles.snapshot_strength",
@@ -251,6 +282,10 @@ pub(crate) const REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS: [&str; 5] = [
     // which functions are executable tests in the repo seam inventory
     // (#3532).
     "analysis.test_harnesses",
+    // Generated-file patterns change which Rust files become seams and
+    // which paths appear in `generated_rust_source_skipped` (#4788).
+    "languages.rust.generated_file_patterns",
+    "languages.rust.handwritten_files",
 ];
 
 /// Canonical config identity for the repo-exposure artifact input identity
@@ -262,7 +297,11 @@ pub(crate) const REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS: [&str; 5] = [
 /// pipeline and legitimately includes typescript/perl inputs the seam
 /// inventory never reads.
 pub fn repo_exposure_config_identity_hash(config: &RiprConfig) -> String {
-    let mut pairs = config
+    // This producer is Rust-only regardless of the diff adapter selection.
+    // Reuse the canonical field authority with its actual consumed language.
+    let mut consumed = config.clone();
+    consumed.languages.enabled = vec![LanguageId::Rust];
+    let mut pairs = consumed
         .check_artifact_identity_fields()
         .into_iter()
         .filter(|field| {
@@ -293,8 +332,79 @@ pub(crate) fn apply_to_check_input(
 }
 
 fn parse_config(text: &str) -> Result<RiprConfig, String> {
-    let raw: RawConfig = toml::from_str(text).map_err(|err| format!("invalid ripr.toml: {err}"))?;
-    RiprConfig::from_raw(raw)
+    parse_config_diagnostic(text).map_err(|diagnostic| diagnostic.message)
+}
+
+/// Preserve semantic source locations without changing the typed configuration
+/// authority. Consumers can project this diagnostic into their own transports.
+/// The diagnostic is boxed: it is deliberately rich (spans, expected values),
+/// which would otherwise trip `clippy::result_large_err` on every parser hop.
+pub(crate) fn parse_config_diagnostic(text: &str) -> Result<RiprConfig, Box<ConfigDiagnostic>> {
+    let raw: RawConfig = toml::from_str(text).map_err(|err| {
+        // A valid key in the wrong table names its table (#4534). The hint is
+        // built from the fixed KEY_HOME_TABLES allowlist, never from file text.
+        let err = err.to_string();
+        let hint = misplaced_key_hint(&err).unwrap_or_default();
+        Box::new(ConfigDiagnostic::structural(format!(
+            "invalid ripr.toml: {err}{hint}"
+        )))
+    })?;
+    RiprConfig::from_raw(raw, text)
+}
+
+/// Keys that belong to exactly one table, so a key found anywhere else was
+/// put in the wrong table rather than misspelled (#4534). Keys shared by two
+/// tables (the `[severity.findings]`/`[severity.seams]` classes) stay out:
+/// naming one table would be a guess.
+const KEY_HOME_TABLES: &[(&str, &str)] = &[
+    ("mode", "analysis"),
+    ("include_unchanged_tests", "analysis"),
+    ("production_like_targets", "analysis"),
+    ("test_harnesses", "analysis"),
+    ("snapshot_strength", "oracles"),
+    ("mock_expectation_strength", "oracles"),
+    ("broad_error_strength", "oracles"),
+    ("seam_diagnostics", "lsp"),
+    ("diagnostic_profile", "lsp"),
+    ("max_related_tests", "reports"),
+    ("enabled", "languages"),
+    ("generated_file_patterns", "languages.rust"),
+    ("resolve_tsconfig_paths", "typescript"),
+    ("bun_ub", "profiles"),
+    ("findings", "severity"),
+    ("seams", "severity"),
+];
+
+/// The table an unknown-field key belongs in, when serde rejected a real key
+/// that sits in the wrong table (for example a top-level `mode`).
+fn misplaced_key_hint(error: &str) -> Option<String> {
+    let (_, rest) = error.split_once("unknown field `")?;
+    let (key, _) = rest.split_once('`')?;
+    let (key, table) = KEY_HOME_TABLES.iter().find(|(known, _)| *known == key)?;
+    Some(format!("\n{}", misplaced_key_hint_line(key, table)))
+}
+
+fn misplaced_key_hint_line(key: &str, table: &str) -> String {
+    format!("`{key}` is a valid key, but it belongs under [{table}]")
+}
+
+/// A source-free summary of a config load error for surfaces that must not
+/// carry the TOML parser's source excerpt (doctor JSON, editor
+/// notifications; RIPR-SPEC-0007): the first line (path, parse location),
+/// plus the misplaced-key hint (#4534) when present. A hint line is kept
+/// only when it equals one built from the fixed key/table allowlist, so no
+/// file content passes through.
+pub(crate) fn config_error_summary(error: &str) -> String {
+    let first = error.lines().next().unwrap_or(error).trim();
+    let hint = error.lines().skip(1).map(str::trim).find(|line| {
+        KEY_HOME_TABLES
+            .iter()
+            .any(|(key, table)| *line == misplaced_key_hint_line(key, table))
+    });
+    match hint {
+        Some(hint) => format!("{first}; {hint}"),
+        None => first.to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -303,11 +413,14 @@ pub(crate) fn tests_only_parse(text: &str) -> Result<RiprConfig, String> {
 }
 
 impl RiprConfig {
-    fn from_raw(raw: RawConfig) -> Result<Self, String> {
+    fn from_raw(raw: RawConfig, text: &str) -> Result<Self, Box<ConfigDiagnostic>> {
         let mut config = RiprConfig::default();
         if let Some(analysis) = raw.analysis {
             if let Some(mode) = analysis.mode {
-                config.analysis.mode = Some(parse_mode_value(&mode)?);
+                config.analysis.mode =
+                    Some(parse_mode_value(mode.get_ref()).map_err(|message| {
+                        ConfigDiagnostic::at_value(message, "analysis.mode", mode.span(), text)
+                    })?);
             }
             config.analysis.include_unchanged_tests = analysis.include_unchanged_tests;
             if let Some(targets) = analysis.production_like_targets {
@@ -326,17 +439,46 @@ impl RiprConfig {
         }
         if let Some(oracles) = raw.oracles {
             if let Some(strength) = oracles.snapshot_strength {
-                config.oracles.snapshot_strength = parse_oracle_strength(&strength)?;
+                // The key-named message (#4534) rides in `message`; the
+                // diagnostic additionally carries the span and expected values.
+                config.oracles.snapshot_strength =
+                    parse_oracle_strength("oracles.snapshot_strength", strength.get_ref())
+                        .map_err(|message| {
+                            ConfigDiagnostic::at_value(
+                                message,
+                                "oracles.snapshot_strength",
+                                strength.span(),
+                                text,
+                            )
+                        })?;
             }
             if let Some(strength) = oracles.mock_expectation_strength {
-                config.oracles.mock_expectation_strength = parse_oracle_strength(&strength)?;
+                config.oracles.mock_expectation_strength =
+                    parse_oracle_strength("oracles.mock_expectation_strength", strength.get_ref())
+                        .map_err(|message| {
+                            ConfigDiagnostic::at_value(
+                                message,
+                                "oracles.mock_expectation_strength",
+                                strength.span(),
+                                text,
+                            )
+                        })?;
             }
             if let Some(strength) = oracles.broad_error_strength {
-                config.oracles.broad_error_strength = parse_oracle_strength(&strength)?;
+                config.oracles.broad_error_strength =
+                    parse_oracle_strength("oracles.broad_error_strength", strength.get_ref())
+                        .map_err(|message| {
+                            ConfigDiagnostic::at_value(
+                                message,
+                                "oracles.broad_error_strength",
+                                strength.span(),
+                                text,
+                            )
+                        })?;
             }
         }
         if let Some(severity) = raw.severity {
-            config.severity = merge_severity(config.severity, severity)?;
+            config.severity = merge_severity(config.severity, severity, text)?;
         }
         if let Some(lsp) = raw.lsp {
             if let Some(seam_diagnostics) = lsp.seam_diagnostics {
@@ -344,8 +486,14 @@ impl RiprConfig {
             }
             if let Some(profile) = lsp.diagnostic_profile {
                 config.lsp.diagnostic_profile = Some(
-                    LspDiagnosticProfile::parse(&profile)
-                        .map_err(|err| format!("{err} in [lsp]"))?,
+                    LspDiagnosticProfile::parse(profile.get_ref()).map_err(|err| {
+                        ConfigDiagnostic::at_value(
+                            format!("{err} in [lsp]"),
+                            "lsp.diagnostic_profile",
+                            profile.span(),
+                            text,
+                        )
+                    })?,
                 );
             }
         }
@@ -363,11 +511,14 @@ impl RiprConfig {
             if let Some(enabled) = languages.enabled {
                 config.languages.enabled = parse_languages_enabled(&enabled)?;
             }
-            if let Some(rust) = languages.rust
-                && let Some(patterns) = rust.generated_file_patterns
-            {
-                config.languages.rust.generated_file_patterns =
-                    parse_generated_file_patterns(&patterns)?;
+            if let Some(rust) = languages.rust {
+                if let Some(patterns) = rust.generated_file_patterns {
+                    config.languages.rust.generated_file_patterns =
+                        parse_generated_file_patterns(&patterns)?;
+                }
+                if let Some(paths) = rust.handwritten_files {
+                    config.languages.rust.handwritten_files = parse_handwritten_files(&paths)?;
+                }
             }
         }
         if let Some(profiles) = raw.profiles {
@@ -383,7 +534,12 @@ impl RiprConfig {
                 producer: perl.producer,
                 executable: perl.executable.map(PathBuf::from),
                 timeout_ms: perl.timeout_ms.unwrap_or(30_000),
-                cache_dir: perl.cache_dir.map(PathBuf::from),
+                // Repository config: ripr creates, writes and renames files
+                // here, so it must not name a directory outside the checkout.
+                cache_dir: perl
+                    .cache_dir
+                    .map(|path| parse_relative_path("perl.cache_dir", &path))
+                    .transpose()?,
             };
         }
         Ok(config)
@@ -400,7 +556,7 @@ fn parse_languages_enabled(values: &[String]) -> Result<Vec<LanguageId>, String>
             "perl" => LanguageId::Perl,
             other => {
                 return Err(format!(
-                    "languages.enabled lists unknown language `{other}`; valid values are rust, typescript, python, perl (Perl consumes externally-produced fact packets; use --perl-facts <path> or a configured managed [perl].producer — see Campaign 31 #1379)"
+                    "languages.enabled lists unknown language `{other}`; valid values are rust, typescript, python, perl (Perl consumes externally-produced fact packets; use --perl-facts <path> or a configured managed [perl].producer)"
                 ));
             }
         };
@@ -411,8 +567,9 @@ fn parse_languages_enabled(values: &[String]) -> Result<Vec<LanguageId>, String>
         }
         if !language.is_available() {
             return Err(format!(
-                "languages.enabled lists `{value}`, but this ripr binary was built without Cargo feature `{}`",
-                language.required_feature()
+                "languages.enabled lists `{value}`, but this ripr binary was built without Cargo feature `{}`; {}",
+                language.required_feature(),
+                language.unavailable_adapter_recovery()
             ));
         }
         parsed.push(language);
@@ -444,6 +601,34 @@ fn parse_generated_file_patterns(values: &[String]) -> Result<Vec<String>, Strin
         }
         parsed.push(trimmed.to_string());
     }
+    Ok(parsed)
+}
+
+fn parse_handwritten_files(values: &[String]) -> Result<Vec<String>, String> {
+    let field = "languages.rust.handwritten_files";
+    let mut parsed = Vec::with_capacity(values.len());
+    for value in values {
+        if value.chars().any(char::is_control) {
+            return Err(format!("{field} must not contain control characters"));
+        }
+        if value.contains(['*', '?', '[', ']']) {
+            return Err(format!(
+                "{field} must contain exact file paths, not glob patterns"
+            ));
+        }
+        let path = parse_relative_path(field, value)?;
+        if path.extension().is_none_or(|extension| extension != "rs") {
+            return Err(format!("{field} must identify a Rust `.rs` file"));
+        }
+        let normalized = path.to_string_lossy().replace('\\', "/");
+        if parsed.contains(&normalized) {
+            return Err(format!(
+                "{field} lists `{normalized}` more than once; remove the duplicate"
+            ));
+        }
+        parsed.push(normalized);
+    }
+    parsed.sort_unstable();
     Ok(parsed)
 }
 
@@ -513,6 +698,7 @@ struct RawLanguagesConfig {
 #[serde(deny_unknown_fields)]
 struct RawRustLanguageConfig {
     generated_file_patterns: Option<Vec<String>>,
+    handwritten_files: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -540,7 +726,7 @@ struct RawBunUbProfileConfig {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawAnalysisConfig {
-    mode: Option<String>,
+    mode: Option<toml::Spanned<String>>,
     include_unchanged_tests: Option<bool>,
     production_like_targets: Option<Vec<String>>,
     test_harnesses: Option<Vec<RawTestHarnessRegistration>>,
@@ -562,16 +748,16 @@ struct RawTestHarnessRegistration {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawOraclePolicy {
-    snapshot_strength: Option<String>,
-    mock_expectation_strength: Option<String>,
-    broad_error_strength: Option<String>,
+    snapshot_strength: Option<toml::Spanned<String>>,
+    mock_expectation_strength: Option<toml::Spanned<String>>,
+    broad_error_strength: Option<toml::Spanned<String>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawLspConfig {
     seam_diagnostics: Option<bool>,
-    diagnostic_profile: Option<String>,
+    diagnostic_profile: Option<toml::Spanned<String>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -596,40 +782,41 @@ struct RawSeverityConfig {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawFindingSeverityConfig {
-    exposed: Option<String>,
-    weakly_exposed: Option<String>,
-    reachable_unrevealed: Option<String>,
-    no_static_path: Option<String>,
-    infection_unknown: Option<String>,
-    propagation_unknown: Option<String>,
-    static_unknown: Option<String>,
+    exposed: Option<toml::Spanned<String>>,
+    weakly_exposed: Option<toml::Spanned<String>>,
+    reachable_unrevealed: Option<toml::Spanned<String>>,
+    no_static_path: Option<toml::Spanned<String>>,
+    infection_unknown: Option<toml::Spanned<String>>,
+    propagation_unknown: Option<toml::Spanned<String>>,
+    static_unknown: Option<toml::Spanned<String>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawSeamSeverityConfig {
-    strongly_gripped: Option<String>,
-    weakly_gripped: Option<String>,
-    ungripped: Option<String>,
-    reachable_unrevealed: Option<String>,
-    activation_unknown: Option<String>,
-    propagation_unknown: Option<String>,
-    observation_unknown: Option<String>,
-    discrimination_unknown: Option<String>,
-    opaque: Option<String>,
-    intentional: Option<String>,
-    suppressed: Option<String>,
+    strongly_gripped: Option<toml::Spanned<String>>,
+    weakly_gripped: Option<toml::Spanned<String>>,
+    ungripped: Option<toml::Spanned<String>>,
+    reachable_unrevealed: Option<toml::Spanned<String>>,
+    activation_unknown: Option<toml::Spanned<String>>,
+    propagation_unknown: Option<toml::Spanned<String>>,
+    observation_unknown: Option<toml::Spanned<String>>,
+    discrimination_unknown: Option<toml::Spanned<String>>,
+    opaque: Option<toml::Spanned<String>>,
+    intentional: Option<toml::Spanned<String>>,
+    suppressed: Option<toml::Spanned<String>>,
 }
 
 fn merge_severity(
     mut current: SeverityConfig,
     raw: RawSeverityConfig,
-) -> Result<SeverityConfig, String> {
+    text: &str,
+) -> Result<SeverityConfig, Box<ConfigDiagnostic>> {
     if let Some(findings) = raw.findings {
-        merge_finding_severity(&mut current.findings, findings)?;
+        merge_finding_severity(&mut current.findings, findings, text)?;
     }
     if let Some(seams) = raw.seams {
-        merge_seam_severity(&mut current.seams, seams)?;
+        merge_seam_severity(&mut current.seams, seams, text)?;
     }
     Ok(current)
 }
@@ -637,48 +824,56 @@ fn merge_severity(
 fn merge_finding_severity(
     current: &mut FindingSeverityConfig,
     raw: RawFindingSeverityConfig,
-) -> Result<(), String> {
+    text: &str,
+) -> Result<(), Box<ConfigDiagnostic>> {
     assign_severity(
         &mut current.exposed,
         raw.exposed,
         "severity.findings.exposed",
         false,
+        text,
     )?;
     assign_severity(
         &mut current.weakly_exposed,
         raw.weakly_exposed,
         "severity.findings.weakly_exposed",
         false,
+        text,
     )?;
     assign_severity(
         &mut current.reachable_unrevealed,
         raw.reachable_unrevealed,
         "severity.findings.reachable_unrevealed",
         false,
+        text,
     )?;
     assign_severity(
         &mut current.no_static_path,
         raw.no_static_path,
         "severity.findings.no_static_path",
         false,
+        text,
     )?;
     assign_severity(
         &mut current.infection_unknown,
         raw.infection_unknown,
         "severity.findings.infection_unknown",
         false,
+        text,
     )?;
     assign_severity(
         &mut current.propagation_unknown,
         raw.propagation_unknown,
         "severity.findings.propagation_unknown",
         false,
+        text,
     )?;
     assign_severity(
         &mut current.static_unknown,
         raw.static_unknown,
         "severity.findings.static_unknown",
         false,
+        text,
     )?;
     Ok(())
 }
@@ -686,84 +881,98 @@ fn merge_finding_severity(
 fn merge_seam_severity(
     current: &mut SeamSeverityConfig,
     raw: RawSeamSeverityConfig,
-) -> Result<(), String> {
+    text: &str,
+) -> Result<(), Box<ConfigDiagnostic>> {
     assign_severity(
         &mut current.strongly_gripped,
         raw.strongly_gripped,
         "severity.seams.strongly_gripped",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.weakly_gripped,
         raw.weakly_gripped,
         "severity.seams.weakly_gripped",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.ungripped,
         raw.ungripped,
         "severity.seams.ungripped",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.reachable_unrevealed,
         raw.reachable_unrevealed,
         "severity.seams.reachable_unrevealed",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.activation_unknown,
         raw.activation_unknown,
         "severity.seams.activation_unknown",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.propagation_unknown,
         raw.propagation_unknown,
         "severity.seams.propagation_unknown",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.observation_unknown,
         raw.observation_unknown,
         "severity.seams.observation_unknown",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.discrimination_unknown,
         raw.discrimination_unknown,
         "severity.seams.discrimination_unknown",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.opaque,
         raw.opaque,
         "severity.seams.opaque",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.intentional,
         raw.intentional,
         "severity.seams.intentional",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.suppressed,
         raw.suppressed,
         "severity.seams.suppressed",
         true,
+        text,
     )?;
     Ok(())
 }
 
 fn assign_severity(
     target: &mut ConfigSeverity,
-    raw: Option<String>,
+    raw: Option<toml::Spanned<String>>,
     field: &str,
     allow_off: bool,
-) -> Result<(), String> {
+    text: &str,
+) -> Result<(), Box<ConfigDiagnostic>> {
     if let Some(value) = raw {
-        *target = parse_severity(field, &value, allow_off)?;
+        *target = parse_severity(field, value.get_ref(), allow_off)
+            .map_err(|message| ConfigDiagnostic::at_value(message, field, value.span(), text))?;
     }
     Ok(())
 }
@@ -781,7 +990,7 @@ fn parse_mode_value(value: &str) -> Result<Mode, String> {
     }
 }
 
-fn parse_oracle_strength(value: &str) -> Result<OracleStrength, String> {
+fn parse_oracle_strength(field: &str, value: &str) -> Result<OracleStrength, String> {
     match value {
         "strong" => Ok(OracleStrength::Strong),
         "medium" => Ok(OracleStrength::Medium),
@@ -790,7 +999,7 @@ fn parse_oracle_strength(value: &str) -> Result<OracleStrength, String> {
         "none" => Ok(OracleStrength::None),
         "unknown" => Ok(OracleStrength::Unknown),
         _ => Err(format!(
-            "oracle strength `{value}` is not supported; expected strong, medium, weak, smoke, none, or unknown"
+            "{field} `{value}` is not supported; expected strong, medium, weak, smoke, none, or unknown"
         )),
     }
 }
@@ -943,6 +1152,10 @@ fn marker_path_is_exact(marker: &str) -> bool {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "Tests assert an expected config diagnostic via `.expect_err(\"why\")`; the closure-style helper makes the expected failure mode part of the assertion message."
+)]
 mod tests;
 
 /// The config a bound immutable-subject run uses (#3279 R4): the

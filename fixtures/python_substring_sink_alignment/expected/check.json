@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_substring_sink_alignment/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:4b59c1ed3fe4a7d5efe5f63170baa51da4b66f1928fd13bf939732764f8b089e","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:4b59c1ed3fe4a7d5efe5f63170baa51da4b66f1928fd13bf939732764f8b089e","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -43,16 +42,22 @@
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
         "discriminate": {"state":"weak","confidence":"low","summary":"Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `pack`", "infection yes: Changed Python predicate can alter branch selection: `if len(buffer) <= limit:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.", "local flow reaches unknown sink: if len(buffer) <= limit: (line 3)", "related test tests/test_pack.py:4 test_pack_returns_buffered_output uses strong exact value oracle: assert buffered_output == [1, 2]", "missing discriminator buffer == limit: changed Python equality-boundary at line 3 lacks a concrete repair discriminator"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `pack`", "infection yes: Changed Python predicate can alter branch selection: `if len(buffer) <= limit:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.", "local flow reaches unknown sink: if len(buffer) <= limit: (line 3)", "related test tests/test_pack.py:4 test_pack_returns_buffered_output uses strong exact value oracle: assert buffered_output == [1, 2]", "source function argument value limit = 5 at line 5", "missing discriminator buffer == limit: changed Python equality-boundary at line 3 lacks a concrete repair discriminator"],
       "flow_sinks": [
         {"kind":"unknown","text":"if len(buffer) <= limit:","line":3}
       ],
-      "evidence": ["owner: pack", "owner_kind: function", "missing_discriminator: buffer == limit", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_pack.py", "suggested_test_name: test_pack_returns_buffered_output", "suggested_test_node_id: tests/test_pack.py::test_pack_returns_buffered_output", "suggested_verify_command: pytest tests/test_pack.py::test_pack_returns_buffered_output", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_pack_returns_buffered_output)", "test_verify_command: pytest tests/test_pack.py::test_pack_returns_buffered_output (test_pack_returns_buffered_output)", "related_test_relation: syntactic_call (test_pack_returns_buffered_output)", "test_oracle: exact_value strong (test_pack_returns_buffered_output)"],
+      "evidence": ["owner: pack", "owner_kind: function", "missing_discriminator: buffer == limit", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_pack.py", "suggested_test_name: test_pack_returns_buffered_output", "suggested_test_node_id: tests/test_pack.py::test_pack_returns_buffered_output", "suggested_verify_command: python -m pytest tests/test_pack.py::test_pack_returns_buffered_output", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_pack_returns_buffered_output)", "test_verify_command: python -m pytest tests/test_pack.py::test_pack_returns_buffered_output (test_pack_returns_buffered_output)", "related_test_relation: syntactic_call (test_pack_returns_buffered_output)", "test_oracle: exact_value strong (test_pack_returns_buffered_output)"],
       "missing": ["A strong Python oracle reaches `pack`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
       "assertion_texts": {
+        "5": "buffered_output = list(pack([1, 2], 5))"
       },
       "activation": {
         "observed_values": [
+          {
+            "line": 5,
+            "value": "limit = 5",
+            "context": "function_argument"
+          }
         ],
         "missing_discriminators": [
           {
@@ -63,6 +68,11 @@
         ]
       },
       "observed_values": [
+        {
+          "line": 5,
+          "value": "limit = 5",
+          "context": "function_argument"
+        }
       ],
       "missing_discriminators": [
         {
@@ -86,7 +96,7 @@
         "suggested_test_file": "tests/test_pack.py",
         "suggested_test_name": "test_pack_returns_buffered_output",
         "suggested_test_node_id": "tests/test_pack.py::test_pack_returns_buffered_output",
-        "verify_command": "pytest tests/test_pack.py::test_pack_returns_buffered_output",
+        "verify_command": "python -m pytest tests/test_pack.py::test_pack_returns_buffered_output",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -109,7 +119,7 @@
           "pytest_node_id": "tests/test_pack.py::test_pack_returns_buffered_output"
          },
         "verify": {
-          "command": "pytest tests/test_pack.py::test_pack_returns_buffered_output",
+          "command": "python -m pytest tests/test_pack.py::test_pack_returns_buffered_output",
           "confidence": "high"
          },
         "receipt": {
@@ -145,5 +155,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/pack.py","digest":"sha256:2b5185a7ce7c4e8808bcd13b49d774236a7bad08dd94ad5c0b2e2812f8361743"},{"path":"tests/test_pack.py","digest":"sha256:b244b09344ee789a01d30dc48e5b81fbe03a1dac7232454800bcd76d1f6ec9d6"}]}
 }

@@ -10,6 +10,9 @@ use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::cli::unknown_argument;
+use crate::output::workflow_escape::{escape_data, escape_property};
+
 const DEFAULT_COMMENTS_JSON: &str = "target/ripr/review/comments.json";
 const DEFAULT_ANNOTATIONS_TXT: &str = "target/ripr/review/annotations.txt";
 
@@ -60,7 +63,7 @@ fn parse_options(args: &[String]) -> Result<AnnotationOptions, String> {
                 options.out = non_empty_arg(args, i, "--out")?.to_string();
             }
             "--check" => options.check = true,
-            other => return Err(format!("unknown annotations argument `{other}`")),
+            other => return Err(unknown_argument("annotations", other)),
         }
         i += 1;
     }
@@ -78,13 +81,21 @@ fn non_empty_arg<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a
 }
 
 fn print_help() {
-    println!("usage: ripr annotations [--comments <path>] [--out <path>] [--check]");
-    println!();
-    println!("Options:");
-    println!("  --comments <path>  Path to comments.json (default: {DEFAULT_COMMENTS_JSON})");
-    println!("  --out <path>       Output annotations path (default: {DEFAULT_ANNOTATIONS_TXT})");
-    println!("  --check            Verify the existing annotations are up to date.");
+    println!("{ANNOTATIONS_HELP}");
 }
+
+/// Help body for `ripr annotations`. Also the flag source for unknown-argument
+/// suggestions; keep accepted flags on option-list lines.
+pub(crate) const ANNOTATIONS_HELP: &str = "\
+Render review comments as GitHub Actions warning annotations.
+
+Usage: ripr annotations [--comments <path>] [--out <path>] [--check]
+
+Options:
+  --comments <path>  Path to comments.json (default: target/ripr/review/comments.json)
+  --out <path>       Output annotations path (default: target/ripr/review/annotations.txt)
+  --check            Verify the existing annotations are up to date.
+";
 
 fn render_annotations(
     repo: &Path,
@@ -172,12 +183,15 @@ fn annotation_from_comment(item: &Value) -> Result<String, String> {
         message.push_str(intent);
     }
     let title = format!("ripr {severity} {kind}");
+    // comments.json placement paths are raw text (never stable-encoded),
+    // so the full property encoding applies — unlike the raw-check
+    // renderer's stable `file=` input (#4065).
     Ok(format!(
         "::warning file={},line={},title={}::{}",
-        escape_cmd(&path),
+        escape_property(&path),
         line,
-        escape_cmd(&title),
-        escape_cmd(&message)
+        escape_property(&title),
+        escape_data(&message)
     ))
 }
 
@@ -219,7 +233,7 @@ fn write_annotations(
     };
     fs::create_dir_all(parent)
         .map_err(|err| format!("failed to create {}: {err}", parent.display()))?;
-    fs::write(path, &generated.text)
+    crate::output::file_write::write(path, generated.text.as_bytes())
         .map_err(|err| format!("failed to write {}: {err}", options.out))?;
     if generated.comments_missing {
         println!("RIPR annotations skipped: {} is missing", options.comments);
@@ -230,15 +244,6 @@ fn write_annotations(
     }
     println!("Wrote {}", options.out);
     Ok(())
-}
-
-fn escape_cmd(value: &str) -> String {
-    value
-        .replace('%', "%25")
-        .replace('\r', "%0D")
-        .replace('\n', "%0A")
-        .replace(',', "%2C")
-        .replace(':', "%3A")
 }
 
 fn repo_root() -> Result<PathBuf, String> {
@@ -297,6 +302,31 @@ mod tests {
     }
 
     #[test]
+    fn annotation_escapes_data_and_property_contracts() -> Result<(), String> {
+        // Shared wire authority (#4065): the message keeps comma/colon
+        // literal (data decoding), while the raw comments.json path takes
+        // the full property encoding — including `%`, which unlike the
+        // raw-check renderer is NOT pre-encoded here.
+        let item: Value = serde_json::from_str(
+            r#"{
+                "placement": {"path": "src/a,b:c%d.rs", "line": 7, "mode": "exact_seam_line"},
+                "severity": "warning",
+                "kind": "focused_test",
+                "reason": "Check Result::Err from assert_eq!(actual, expected)",
+                "suggested_test": {"intent": "cover 100%"}
+            }"#,
+        )
+        .map_err(|err| format!("fixture must parse: {err}"))?;
+        let annotation = annotation_from_comment(&item)?;
+        if annotation
+            != "::warning file=src/a%2Cb%3Ac%25d.rs,line=7,title=ripr warning focused_test::Check Result::Err from assert_eq!(actual, expected) Suggested test: cover 100%25"
+        {
+            return Err(format!("wire encoding mismatch: {annotation}"));
+        }
+        Ok(())
+    }
+
+    #[test]
     fn render_missing_comments_file_is_optional_state() -> Result<(), String> {
         let dir = unique_temp_dir("missing")?;
         let rendered = render_annotations(&dir, &options())?;
@@ -310,12 +340,19 @@ mod tests {
         let dir = unique_temp_dir("valid")?;
         std::fs::write(
             dir.join("comments.json"),
-            r#"{"comments":[{"placement":{"path":"src/lib.rs","line":3,"mode":"exact_seam_line"},"severity":"advisory","kind":"focused_test","reason":"pin the boundary"}]}"#,
+            r#"{"comments":[{"placement":{"path":"src/lib.rs","line":3,"mode":"exact_seam_line"},"severity":"advisory","kind":"focused_test","reason":"Pin: Result::Err, not Ok(100%).","suggested_test":{"intent":"assert_eq!(actual, expected)"}}]}"#,
         )
         .map_err(|err| format!("write comments.json: {err}"))?;
         let rendered = render_annotations(&dir, &options())?;
         assert!(!rendered.comments_missing);
-        assert!(rendered.text.contains("::warning file=src/lib.rs,line=3"));
+        assert_eq!(
+            rendered.text,
+            concat!(
+                "::warning file=src/lib.rs,line=3,title=ripr advisory focused_test::",
+                "Pin: Result::Err, not Ok(100%25).",
+                " Suggested test: assert_eq!(actual, expected)\n"
+            )
+        );
         Ok(())
     }
 
@@ -365,6 +402,59 @@ mod tests {
                 ));
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn annotation_uses_distinct_property_and_message_encoding() -> Result<(), String> {
+        let item = serde_json::json!({
+            "placement": {
+                "path": "src/pricing,edge:100%.rs",
+                "line": 42,
+                "mode": "exact_seam_line"
+            },
+            "severity": "medium",
+            "kind": "focused:test,case",
+            "reason": "Pin: Result::Err, not Ok(100%).",
+            "suggested_test": { "intent": "assert_eq!(actual, expected)" }
+        });
+        let annotation = annotation_from_comment(&item)?;
+        assert_eq!(
+            annotation,
+            concat!(
+                "::warning file=src/pricing%2Cedge%3A100%25.rs,line=42,",
+                "title=ripr medium focused%3Atest%2Ccase::",
+                "Pin: Result::Err, not Ok(100%25).",
+                " Suggested test: assert_eq!(actual, expected)"
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn annotation_preserves_literal_escapes_and_encodes_line_breaks() -> Result<(), String> {
+        let item = serde_json::json!({
+            "placement": {
+                "path": "src/é,%0A\r\n.rs",
+                "line": 7,
+                "mode": "same_file_changed_line"
+            },
+            "kind": "focused\r\ntest",
+            "reason": "literal %0A %0D %2C %3A %25\r\nnext: é, ok",
+            "suggested_test": { "intent": "assert_eq!(a,\nb)" }
+        });
+        let annotation = annotation_from_comment(&item)?;
+        assert_eq!(
+            annotation,
+            concat!(
+                "::warning file=src/é%2C%250A%0D%0A.rs,line=7,",
+                "title=ripr advisory focused%0D%0Atest::",
+                "literal %250A %250D %252C %253A %2525%0D%0Anext: é, ok",
+                " Suggested test: assert_eq!(a,%0Ab)"
+            )
+        );
+        assert_eq!(annotation.lines().count(), 1);
+        assert!(!annotation.contains('\r'));
         Ok(())
     }
 }

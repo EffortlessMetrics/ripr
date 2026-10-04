@@ -207,6 +207,10 @@ fn build_fixture(label: &str) -> Result<TempFixture, String> {
         .map_err(|error| format!("create tests: {error}"))?;
     std::fs::write(root.join("Cargo.toml"), "[workspace]\n")
         .map_err(|error| format!("write Cargo.toml: {error}"))?;
+    // This hybrid fixture prepares a Rust repair before binding Python trust.
+    // Satisfy the whole Cargo-directory prerequisite before its first commit.
+    std::fs::write(root.join(".gitignore"), "/target/\n")
+        .map_err(|error| format!("write Cargo build ignore: {error}"))?;
     std::fs::write(root.join(PRODUCTION_FILE), sample_src())
         .map_err(|error| format!("write baseline src: {error}"))?;
     std::fs::write(root.join(TARGET_TEST_FILE), SAMPLE_TEST)
@@ -218,6 +222,9 @@ fn build_fixture(label: &str) -> Result<TempFixture, String> {
     )?;
     run_git(&root, &["config", "user.name", "RIPR Test"])?;
     run_git(&root, &["config", "commit.gpgSign", "false"])?;
+    // The edit cage compares exact worktree bytes. Keep Git checkout from
+    // translating the fixture's LF baseline under a host autocrlf setting.
+    run_git(&root, &["config", "core.autocrlf", "false"])?;
     run_git(&root, &["add", "."])?;
     run_git(&root, &["commit", "-qm", "base"])?;
     run_git(&root, &["update-ref", "refs/remotes/origin/main", "HEAD"])?;
@@ -640,6 +647,209 @@ fn assert_prepare_record_identity(record: &Value) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
+// Published-schema conformance for real producer bytes
+// ---------------------------------------------------------------------------
+
+/// The published manifest schema, read from the repository.
+fn repair_attempt_schema() -> Result<Value, String> {
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schemas/ripr/repair-attempt.schema.json");
+    let text = std::fs::read_to_string(&path)
+        .map_err(|error| format!("read {}: {error}", path.display()))?;
+    parse_json(&text, "repair attempt schema")
+}
+
+/// Checks one emitted manifest against the published schema.
+///
+/// `target/ripr/repair-attempts/<id>/attempt.json` is a per-attempt runtime
+/// artifact, so no committed fixture can carry these bytes and the xtask
+/// contract table has nothing to register. This is the narrower authority
+/// named for `schemas/ripr/repair-attempt.schema.json` in
+/// `docs/verification/schema-producer-audit.md`: it reads the published
+/// schema and checks bytes the production path actually wrote, rather than
+/// asserting that the schema declares what the schema declares.
+///
+/// Boundary: this checks the closed property set, the required fields, the
+/// pinned `const` and `enum` values, and the state-to-`after` conditional. It
+/// does not evaluate the schema's `pattern` constraints; the identity shapes
+/// those pin (`repair-attempt-` plus 24 hex, 40-hex heads, `sha256:` digests)
+/// are enforced by their own producer-side parsers.
+fn assert_manifest_matches_published_schema(manifest: &Value) -> Result<(), String> {
+    let schema = repair_attempt_schema()?;
+    assert_object_matches_schema(manifest, &schema, "attempt manifest")?;
+
+    let state = manifest
+        .get("state")
+        .and_then(Value::as_str)
+        .ok_or("attempt manifest carries no state")?;
+    let after = manifest.get("after").unwrap_or(&Value::Null);
+    // The conditional the schema declares, checked against emitted bytes: a
+    // terminal state must carry a verdict, and a pre-edit state must not.
+    match state {
+        "prepared" | "awaiting_edit" => {
+            if !after.is_null() {
+                return Err(format!(
+                    "state `{state}` emitted a non-null after block: {after:?}"
+                ));
+            }
+        }
+        "ready_to_finish" | "stale" | "incomparable" | "failed" => {
+            if after.is_null() {
+                return Err(format!("terminal state `{state}` emitted no after block"));
+            }
+            let after_schema = schema
+                .pointer("/$defs/after")
+                .ok_or("schema defines no /$defs/after")?;
+            assert_object_matches_schema(after, after_schema, "attempt manifest after block")?;
+            let verdict_schema = after_schema
+                .pointer("/properties/verdict")
+                .ok_or("schema defines no after verdict")?;
+            let verdict = after
+                .get("verdict")
+                .ok_or("after block emitted no verdict")?;
+            assert_object_matches_schema(verdict, verdict_schema, "edit cage verdict")?;
+        }
+        other => return Err(format!("attempt manifest emitted unknown state `{other}`")),
+    }
+
+    for (index, artifact) in manifest
+        .get("artifacts")
+        .and_then(Value::as_array)
+        .ok_or("attempt manifest emitted no artifacts array")?
+        .iter()
+        .enumerate()
+    {
+        let artifact_schema = schema
+            .pointer("/$defs/artifact")
+            .ok_or("schema defines no /$defs/artifact")?;
+        assert_object_matches_schema(artifact, artifact_schema, &format!("artifact {index}"))?;
+    }
+    Ok(())
+}
+
+/// One object against one object subschema: closed properties, required
+/// fields, and the pinned `const` and `enum` values.
+fn assert_object_matches_schema(
+    value: &Value,
+    subschema: &Value,
+    label: &str,
+) -> Result<(), String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| format!("{label} is not a JSON object: {value:?}"))?;
+    let properties = subschema
+        .get("properties")
+        .and_then(Value::as_object)
+        .ok_or_else(|| format!("{label} schema declares no properties"))?;
+    for field in object.keys() {
+        if !properties.contains_key(field) {
+            return Err(format!(
+                "{label} emitted `{field}`, which the published schema does not declare"
+            ));
+        }
+    }
+    for required in subschema
+        .get("required")
+        .and_then(Value::as_array)
+        .ok_or_else(|| format!("{label} schema declares no required list"))?
+    {
+        let required = required
+            .as_str()
+            .ok_or_else(|| format!("{label} schema required entries must be strings"))?;
+        if !object.contains_key(required) {
+            return Err(format!(
+                "the published schema requires `{required}` but {label} omitted it"
+            ));
+        }
+    }
+    for (field, declared) in properties {
+        let Some(emitted) = object.get(field) else {
+            continue;
+        };
+        if let Some(pinned) = declared.get("const")
+            && emitted != pinned
+        {
+            return Err(format!(
+                "{label} emitted `{field}` as {emitted:?}, not the pinned {pinned:?}"
+            ));
+        }
+        if let Some(members) = declared.get("enum").and_then(Value::as_array)
+            && !members.contains(emitted)
+        {
+            return Err(format!(
+                "{label} emitted `{field}` as {emitted:?}, which the published enum omits"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn published_schema_conformance_rejects_manifests_the_schema_forbids() -> Result<(), String> {
+    // The negative experiment for the conformance helper itself. Without it a
+    // helper that silently accepted everything would still report every real
+    // manifest as schema-conformant.
+    let base = serde_json::json!({
+        "schema_version": "0.1",
+        "kind": "repair_attempt",
+        "repair_attempt_id": "repair-attempt-0123456789abcdef01234567",
+        "state": "awaiting_edit",
+        "root": "/tmp/fixture",
+        "repository_head": "0123456789abcdef0123456789abcdef01234567",
+        "producer_version": "0.11.0",
+        "seam_id": "seam:sample",
+        "created_unix_ms": 1,
+        "artifacts": [{
+            "role": "before",
+            "path": "artifacts/before.json",
+            "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "bytes": 2
+        }],
+        "next_command": "ripr agent repair --phase after",
+        "limitations": [],
+        "non_claims": ["no runtime mutation outcome"],
+        "after": Value::Null
+    });
+    assert_manifest_matches_published_schema(&base)
+        .map_err(|error| format!("a conformant manifest was rejected: {error}"))?;
+
+    let mut undeclared_field = base.clone();
+    undeclared_field["unexpected"] = Value::Bool(true);
+    let mut missing_required = base.clone();
+    if let Some(object) = missing_required.as_object_mut() {
+        object.remove("seam_id");
+    }
+    let mut unpinned_kind = base.clone();
+    unpinned_kind["kind"] = Value::String("something_else".to_string());
+    let mut unlisted_state = base.clone();
+    unlisted_state["state"] = Value::String("finished".to_string());
+    // A terminal state with the prepared manifest's null `after` block: the
+    // conditional the schema declares, violated.
+    let mut terminal_without_verdict = base.clone();
+    terminal_without_verdict["state"] = Value::String("ready_to_finish".to_string());
+
+    for (named, doctored) in [
+        ("unexpected", undeclared_field),
+        ("seam_id", missing_required),
+        ("kind", unpinned_kind),
+        ("state", unlisted_state),
+        ("after", terminal_without_verdict),
+    ] {
+        let Err(error) = assert_manifest_matches_published_schema(&doctored) else {
+            return Err(format!(
+                "a manifest doctored at `{named}` was accepted as schema-conformant"
+            ));
+        };
+        if !error.contains(named) {
+            return Err(format!(
+                "the rejection for `{named}` does not name it: {error}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Case matrix
 // ---------------------------------------------------------------------------
 
@@ -652,6 +862,7 @@ fn clean_test_only_edit_binds_prepare_and_apply() -> Result<(), String> {
     let attempt_id = sole_attempt(&fixture)?;
 
     let manifest = attempt_manifest(&fixture, &attempt_id)?;
+    assert_manifest_matches_published_schema(&manifest)?;
     if manifest.get("state").and_then(Value::as_str) != Some("awaiting_edit") {
         return Err(format!(
             "prepared attempt state is not awaiting_edit: {manifest:?}"
@@ -672,6 +883,45 @@ fn clean_test_only_edit_binds_prepare_and_apply() -> Result<(), String> {
             ));
         }
     }
+    let packet_path = fixture
+        .root
+        .join("target/ripr/repair-attempts")
+        .join(&attempt_id)
+        .join("artifacts/agent-packet.json");
+    let packet_text = std::fs::read_to_string(&packet_path)
+        .map_err(|error| format!("read retained prepared packet: {error}"))?;
+    let packet = parse_json(&packet_text, "retained prepared packet")?;
+    let continuation = packet
+        .pointer("/next/repair_after_command")
+        .and_then(Value::as_str)
+        .ok_or("prepared packet carries no durable continuation")?;
+    let selected_root_prefix = next_command
+        .split_once(" --attempt ")
+        .map(|(prefix, _)| prefix)
+        .ok_or("published command carries no exact attempt selector")?;
+    if continuation != next_command
+        || !continuation.starts_with(&format!("{selected_root_prefix} --attempt {attempt_id} "))
+        || !continuation
+            .ends_with(" --edit-authorized --edit-authority <operator-or-agent-identity>")
+        || !continuation.contains(" --phase after")
+    {
+        return Err(format!(
+            "retained Python packet lost selected root or required authorization: {continuation}"
+        ));
+    }
+    for field in [
+        "before_snapshot_command",
+        "after_snapshot_command",
+        "analysis_outcome_command",
+        "verify_after_edit",
+        "receipt_after_verify",
+    ] {
+        if packet.pointer(&format!("/next/{field}")) != Some(&Value::Null) {
+            return Err(format!(
+                "prepared Python packet advertises incompatible {field}"
+            ));
+        }
+    }
     let record = prepare_record(&fixture, &attempt_id)?;
     assert_prepare_record_identity(&record)?;
     if record
@@ -688,6 +938,9 @@ fn clean_test_only_edit_binds_prepare_and_apply() -> Result<(), String> {
     require_success(&applied, "bound after phase")?;
 
     let manifest = attempt_manifest(&fixture, &attempt_id)?;
+    // The terminal state is the other branch of the schema's state-to-`after`
+    // conditional, so both branches are checked against emitted bytes.
+    assert_manifest_matches_published_schema(&manifest)?;
     if manifest.get("state").and_then(Value::as_str) != Some("ready_to_finish") {
         return Err(format!(
             "applied attempt state is not ready_to_finish: {manifest:?}"
@@ -1285,11 +1538,12 @@ fn tampered_retained_binding_fails_closed() -> Result<(), String> {
 }
 
 #[test]
-fn deterministic_preparation_is_byte_identical() -> Result<(), String> {
+fn distinct_prepared_attempts_bind_their_exact_packet_inputs() -> Result<(), String> {
     let fixture = build_fixture("deterministic")?;
     let seam_id = find_seam_for_target(&fixture.root, TARGET_TEST_FILE)?;
-    // Two durable preparations binding the SAME selection: the row identity
-    // is fixed, and each prepare publishes its own durable attempt.
+    // The selection is identical, but each durable attempt owns a different
+    // exact continuation in its sealed packet. Those are different inputs,
+    // not telemetry that the binding may omit or normalize.
     let first = run_prepare(&fixture, &seam_id, "att-det")?;
     require_success(&first, "first bound before phase")?;
     let second = run_prepare(&fixture, &seam_id, "att-det")?;
@@ -1302,18 +1556,119 @@ fn deterministic_preparation_is_byte_identical() -> Result<(), String> {
             ids.len()
         ));
     }
-    if ids[0] == ids[1] {
+    let first_id = ids.first().ok_or("missing first durable attempt")?;
+    let second_id = ids.get(1).ok_or("missing second durable attempt")?;
+    if first_id == second_id {
         return Err("two preparations collided on one durable attempt identity".to_string());
     }
-    let first_record = std::fs::read(binding_artifact_path(&fixture, &ids[0])?)
-        .map_err(|error| format!("read first binding: {error}"))?;
-    let second_record = std::fs::read(binding_artifact_path(&fixture, &ids[1])?)
+    let packet_path = |id: &str| {
+        fixture
+            .root
+            .join("target/ripr/repair-attempts")
+            .join(id)
+            .join("artifacts/agent-packet.json")
+    };
+    let first_packet = std::fs::read(packet_path(first_id))
+        .map_err(|error| format!("read first sealed packet: {error}"))?;
+    let second_packet = std::fs::read(packet_path(second_id))
+        .map_err(|error| format!("read second sealed packet: {error}"))?;
+    if first_packet == second_packet || sha256_hex(&first_packet) == sha256_hex(&second_packet) {
+        return Err("distinct attempt continuations produced identical packet inputs".to_string());
+    }
+    let mut records = Vec::new();
+    for (id, bytes) in [(first_id, &first_packet), (second_id, &second_packet)] {
+        let packet: Value = serde_json::from_slice(bytes)
+            .map_err(|error| format!("parse sealed packet: {error}"))?;
+        let command = packet
+            .pointer("/next/repair_after_command")
+            .and_then(Value::as_str)
+            .ok_or("sealed packet lost continuation")?;
+        let manifest = attempt_manifest(&fixture, id)?;
+        if !command.contains(&format!(" --attempt {id} "))
+            || manifest.get("next_command").and_then(Value::as_str) != Some(command)
+        {
+            return Err(
+                "sealed packet continuation does not identify its own manifest".to_string(),
+            );
+        }
+        let mut record = prepare_record(&fixture, id)?;
+        let digest = sha256_hex(bytes);
+        if record
+            .pointer("/input/packet_sha256")
+            .and_then(Value::as_str)
+            != Some(digest.as_str())
+        {
+            return Err("binding does not pin its own sealed packet bytes".to_string());
+        }
+        // Only this explicitly different accepted input may differ. Every
+        // other field remains compared, including any unexpected nonce.
+        record
+            .get_mut("input")
+            .and_then(Value::as_object_mut)
+            .ok_or("binding input is not an object")?
+            .remove("packet_sha256")
+            .ok_or("binding input lost packet digest")?;
+        records.push(record);
+    }
+    if records.first() != records.get(1) {
+        return Err("equal non-packet inputs produced different binding fields".to_string());
+    }
+    let second_manifest = std::fs::read(
+        fixture
+            .root
+            .join("target/ripr/repair-attempts")
+            .join(second_id)
+            .join("attempt.json"),
+    )
+    .map_err(|error| format!("read second manifest: {error}"))?;
+    let second_binding = std::fs::read(binding_artifact_path(&fixture, second_id)?)
         .map_err(|error| format!("read second binding: {error}"))?;
-    if first_record != second_record {
-        return Err(
-            "equivalent preparations produced different binding records; only declared telemetry may differ and the record carries none"
-                .to_string(),
-        );
+    let first_binding = std::fs::read(binding_artifact_path(&fixture, first_id)?)
+        .map_err(|error| format!("read first binding before refusal: {error}"))?;
+    let authored_before = [PRODUCTION_FILE, TARGET_TEST_FILE]
+        .into_iter()
+        .map(|path| {
+            std::fs::read(fixture.root.join(path))
+                .map(|bytes| (path, bytes))
+                .map_err(|error| format!("read {path} before refusal: {error}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    // Do not reseal: an actual B packet cannot replace A's committed packet.
+    // The attempt artifact seal may refuse before Python binding validation.
+    std::fs::write(packet_path(first_id), &second_packet)
+        .map_err(|error| format!("substitute foreign-attempt packet: {error}"))?;
+    let refused = run_apply(&fixture, first_id, Some(AUTHORITY))?;
+    require_failure(
+        &refused,
+        "apply A with B's sealed packet",
+        "artifact binding failed",
+    )?;
+    for (path, before) in authored_before {
+        if std::fs::read(fixture.root.join(path)).map_err(|error| error.to_string())? != before {
+            return Err(format!("refusing the substituted packet changed {path}"));
+        }
+    }
+    if std::fs::read(binding_artifact_path(&fixture, first_id)?)
+        .map_err(|error| error.to_string())?
+        != first_binding
+    {
+        return Err("refusing the substituted packet changed A's retained binding".to_string());
+    }
+    if std::fs::read(packet_path(second_id)).map_err(|error| error.to_string())? != second_packet
+        || std::fs::read(binding_artifact_path(&fixture, second_id)?)
+            .map_err(|error| error.to_string())?
+            != second_binding
+        || std::fs::read(
+            fixture
+                .root
+                .join("target/ripr/repair-attempts")
+                .join(second_id)
+                .join("attempt.json"),
+        )
+        .map_err(|error| error.to_string())?
+            != second_manifest
+    {
+        return Err("refusing the substituted packet changed the second attempt".to_string());
     }
     Ok(())
 }

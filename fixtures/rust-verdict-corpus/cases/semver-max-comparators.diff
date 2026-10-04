@@ -1,0 +1,13 @@
+diff --git a/src/parse.rs b/src/parse.rs
+index e92d87a..26c220a 100644
+--- a/src/parse.rs
++++ b/src/parse.rs
+@@ -396,7 +396,7 @@ fn version_req(input: &str, out: &mut Vec<Comparator>, depth: usize) -> Result<u
+     };
+ 
+     const MAX_COMPARATORS: usize = 32;
+-    if depth + 1 == MAX_COMPARATORS {
++    if MAX_COMPARATORS == depth + 1 {
+         return Err(Error::new(ErrorKind::ExcessiveComparators));
+     }
+ 

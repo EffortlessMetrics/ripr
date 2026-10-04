@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_adversarial_same_method_other_class/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:ce509bf8ae6d91597e634de16b97cefa520ca0e76e8fcba96374d43c1dd3d2c4","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:ce509bf8ae6d91597e634de16b97cefa520ca0e76e8fcba96374d43c1dd3d2c4","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -43,11 +42,11 @@
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
         "discriminate": {"state":"weak","confidence":"low","summary":"Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `validate`", "infection yes: Changed Python return expression can alter the owner return value: `return token.strip() in self._valid`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.", "local flow reaches returned value: return token.strip() in self._valid (line 6)", "related test tests/test_billing.py:4 test_billing_validate uses strong exact value oracle: assert proc.validate(\"card1234 \") == True", "missing discriminator return value == token.strip() in self._valid: changed Python returned-value at line 6 lacks a concrete repair discriminator"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `validate`", "infection yes: Changed Python return expression can alter the owner return value: `return token.strip() in self._valid`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.", "local flow reaches returned value: return token.strip() in self._valid (line 6)", "related test tests/test_billing.py:4 test_billing_validate uses strong exact value oracle: assert proc.validate(\"card1234 \") == True", "missing discriminator return value == <expected value>: changed Python returned-value at line 6 lacks a concrete repair discriminator"],
       "flow_sinks": [
         {"kind":"return_value","text":"return token.strip() in self._valid","line":6}
       ],
-      "evidence": ["owner: TokenValidator.validate", "owner_kind: method", "missing_discriminator: return value == token.strip() in self._valid", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_billing.py", "suggested_test_name: test_billing_validate", "suggested_test_node_id: tests/test_billing.py::test_billing_validate", "suggested_verify_command: pytest tests/test_billing.py::test_billing_validate", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_billing_validate)", "test_verify_command: pytest tests/test_billing.py::test_billing_validate (test_billing_validate)", "related_test_relation: syntactic_call (test_billing_validate)", "test_oracle: exact_value strong (test_billing_validate)"],
+      "evidence": ["owner: TokenValidator.validate", "owner_kind: method", "missing_discriminator: return value == <expected value>", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_billing.py", "suggested_test_name: test_billing_validate", "suggested_test_node_id: tests/test_billing.py::test_billing_validate", "suggested_verify_command: python -m pytest tests/test_billing.py::test_billing_validate", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_billing_validate)", "test_verify_command: python -m pytest tests/test_billing.py::test_billing_validate (test_billing_validate)", "related_test_relation: syntactic_call (test_billing_validate)", "test_oracle: exact_value strong (test_billing_validate)"],
       "missing": ["A strong Python oracle reaches `validate`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
       "assertion_texts": {
       },
@@ -56,7 +55,7 @@
         ],
         "missing_discriminators": [
           {
-            "value": "return value == token.strip() in self._valid",
+            "value": "return value == <expected value>",
             "reason": "changed Python returned-value at line 6 lacks a concrete repair discriminator",
             "flow_sink": {"kind":"return_value","text":"return token.strip() in self._valid","line":6}
           }
@@ -66,7 +65,7 @@
       ],
       "missing_discriminators": [
         {
-          "value": "return value == token.strip() in self._valid",
+          "value": "return value == <expected value>",
           "reason": "changed Python returned-value at line 6 lacks a concrete repair discriminator",
           "flow_sink": {"kind":"return_value","text":"return token.strip() in self._valid","line":6}
         }
@@ -86,7 +85,7 @@
         "suggested_test_file": "tests/test_billing.py",
         "suggested_test_name": "test_billing_validate",
         "suggested_test_node_id": "tests/test_billing.py::test_billing_validate",
-        "verify_command": "pytest tests/test_billing.py::test_billing_validate",
+        "verify_command": "python -m pytest tests/test_billing.py::test_billing_validate",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -100,8 +99,8 @@
         "changed_owner": "TokenValidator.validate",
         "changed_behavior": "return_value changed at src/auth.py:6: `return token.strip() in self._valid`",
         "current_test_evidence": "tests/test_billing.py:4 test_billing_validate currently has oracle_strength=strong, oracle_kind=exact_value: assert proc.validate(\"card1234 \") == True",
-        "missing_discriminator": "return value == token.strip() in self._valid",
-        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == token.strip() in self._valid`.",
+        "missing_discriminator": "return value == <expected value>",
+        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == <expected value>`.",
         "suggested_assertion": "Assert the returned value equals the expected value for the changed inputs.",
         "suggested_location": {
           "test_file": "tests/test_billing.py",
@@ -109,7 +108,7 @@
           "pytest_node_id": "tests/test_billing.py::test_billing_validate"
          },
         "verify": {
-          "command": "pytest tests/test_billing.py::test_billing_validate",
+          "command": "python -m pytest tests/test_billing.py::test_billing_validate",
           "confidence": "high"
          },
         "receipt": {
@@ -123,8 +122,8 @@
       "stop_reasons": [],
       "oracle_kind": "exact_value",
       "oracle_strength": "strong",
-      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == token.strip() in self._valid`.",
-      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == token.strip() in self._valid`.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "method",
@@ -145,5 +144,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/auth.py","digest":"sha256:4c2a4b14bedf6bb09c3da8ebae36627e3f2cd1fa6f86c18b864f6445f54a9f9f"},{"path":"tests/test_billing.py","digest":"sha256:08a6c66ee6766ac1a9824ff369e6c01513f2a55c4ef102c7779447ce9588bcef"}]}
 }

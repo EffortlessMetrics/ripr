@@ -2,34 +2,34 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/python_adversarial_fstring_length_invariant_aggregate/input
 
-Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 1 probe(s), 0 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 1 of 1 finding(s) unsuppressed
 
-Changed file(s) by language: python: 1, rust: 0.
+Changed file(s) by language: python: 1.
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
 Start here:
-  State: preview_limited
-  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  State: preview language, advisory only (preview_limited)
+  Safe next action: preview-language evidence is advisory; apply the next step below to the suggested test and run its verify command before relying on it.
   File: src/status.py:2
   Language: python
   Language status: preview
-  Static exposure: weakly_exposed (warning, confidence 0.40)
-  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Static exposure: weak (weakly_exposed, warning, confidence 0.40)
+  Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/status.py:status_label:return_value:return_value:f_no_code
   Changed behavior: return f"NO:{code}"
-  Missing discriminator: A strong Python oracle reaches `status_label`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. …
+  Missing discriminator (1 of 2): A strong Python oracle reaches `status_label`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated.…
   Related test: tests/test_status.py:4 test_len
   Suggested test file: tests/test_status.py
   Suggested test: test_len
   Test node: tests/test_status.py::test_len
-  Verify command: pytest tests/test_status.py::test_len (high)
-  Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == f"NO:{code}"`.
-  Evidence:
+  Verify command: python -m pytest tests/test_status.py::test_len (high)
+  Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.
+  Evidence: reach yes · infection yes · propagation yes · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `status_label`
     - infection yes: Changed Python return expression can alter the owner return value: `return f"NO:{code}"`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_adversarial_fstring_length_invariant_aggregate/input --diff fixtures/python_adversarial_fstring_length_invariant_aggregate/diff.patch --mode fast probe:src_status.py:python_preview:f3e3e6b2
@@ -40,4 +40,4 @@ More:
   Machine data: rerun with --format json
 
 
-Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

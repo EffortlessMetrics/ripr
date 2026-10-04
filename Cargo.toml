@@ -6,9 +6,10 @@ resolver = "2"
 [workspace.package]
 # Single source of truth for the released version. `crates/ripr` inherits this
 # with `version.workspace = true`; the VS Code extension is compared against it
-# by `cargo xtask release-readiness` (`extension-version-match`). Bumping a
-# release means editing this line plus the two editor manifests, not three
-# scattered package versions (#2711).
+# by `cargo xtask release-readiness` (`extension-version-match`) and the npm
+# launcher contract. `cargo xtask bump-version` must update the workspace,
+# both editor manifests, development distribution descriptor, and npm launcher
+# atomically; release catalogs remain producer-owned.
 version = "0.11.0-alpha.2"
 edition = "2024"
 license = "MIT OR Apache-2.0"
@@ -77,7 +78,7 @@ cast_nan_to_int = "deny"
 # wildcard-discarded error loses evidence the analyzer cannot reconstruct.
 # `let_underscore_must_use` is intentionally deferred — best-effort cleanup
 # patterns like `let _ = fs::remove_dir_all(&dir)` are pervasive across the
-# test suite and are addressed in a follow-up PR.
+# test suite and are recorded as clippy-debt-0001 in policy/clippy-debt.toml.
 let_underscore_future = "deny"
 let_underscore_lock = "deny"
 unused_result_ok = "deny"

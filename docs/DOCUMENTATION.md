@@ -130,11 +130,14 @@ Current how-to docs:
 - [Source-promotion runbook](SOURCE_PROMOTION.md)
 - [Source-promotion verification contract](specs/RIPR-SPEC-0149-source-promotion-verifier.md)
 - [Source-promotion CI contract](specs/RIPR-SPEC-0177-source-promotion-ci-contract.md)
+- [Python wheelhouse qualification](PYTHON_WHEELHOUSE_QUALIFICATION.md) - exact
+  candidate local-wheelhouse pip/uv rehearsal with a fail-closed aggregate
 - [First successful PR workflow](FIRST_PR_WORKFLOW.md)
 - [First successful PR demo](demo/first-successful-pr.md)
 - [Start-here convergence receipts](handoffs/2026-05-22-start-here-surface-convergence-receipts.md)
 - [Start-here convergence closeout](handoffs/2026-05-22-start-here-surface-convergence-closeout.md)
 - [Publishing](PUBLISHING.md)
+- [Claim package registries](how-to/claim-package-registries.md) - maintainer setup for npm organization ownership, PyPI pending publishers, protected source environments, and first-publication ordering
 - [Editor extension](EDITOR_EXTENSION.md)
 - [Editor install to first PR](EDITOR_INSTALL_TO_FIRST_PR.md)
 - [Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md)
@@ -155,9 +158,14 @@ Reference docs define stable commands, schemas, config, and enum meanings.
 
 Current reference docs:
 
+- [Public command hierarchy](COMMAND_HIERARCHY.md)
 - [Output schema](OUTPUT_SCHEMA.md)
 - [Static exposure model](STATIC_EXPOSURE_MODEL.md)
 - [Configuration](CONFIGURATION.md)
+- [Exit codes](EXIT_CODES.md)
+- [Terminology](TERMINOLOGY.md)
+- [Repair attempt identity](REPAIR_ATTEMPT.md)
+- [MCP workspace status server](interop/mcp.md)
 - [Support tiers](status/SUPPORT_TIERS.md)
 - [Repo tracking model](REPO_TRACKING_MODEL.md)
 - [Context system](agent-context/CONTEXT_SYSTEM.md)
@@ -245,6 +253,7 @@ Current explanation docs:
 - [Charter](CHARTER.md)
 - [Architecture](ARCHITECTURE.md)
 - [Roadmap](ROADMAP.md)
+- [PyPI and npm distribution plan](PYPI_NPM_DISTRIBUTION.md) - proposed adapter architecture, package identities, qualification boundaries, and source-owned publication path
 - [Repo tracking model](REPO_TRACKING_MODEL.md)
 - [Repo context system](agent-context/CONTEXT_SYSTEM.md)
 - [Implementation plans index](../plans/README.md)
@@ -290,6 +299,7 @@ Current explanation docs:
 - [Support tiers](status/SUPPORT_TIERS.md)
 - [Learnings](LEARNINGS.md)
 - [Friction log](FRICTION_LOG.md)
+- [Agent-as-user runs](AGENT_AS_USER_RUNS.md)
 - [Deferred decisions](DEFERRED.md)
 - [Agent handoff protocol](reference/AGENT_HANDOFF_PROTOCOL.md)
 - [Handoff ledger](handoffs/README.md)

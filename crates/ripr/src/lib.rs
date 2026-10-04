@@ -55,6 +55,16 @@
 // deliberately carry the contract.
 mod analysis_outcome;
 mod atomic_file;
+// Crate-internal typed error authority (#4859). Git invocation timeout is
+// the first migrated family; later slices extend this enum.
+mod core_error;
+// Bounded reads for user-named CLI file and stdin inputs (#4480).
+mod bounded_input;
+// Commit record parser shared with build.rs; the crate only unit-tests it.
+#[cfg(test)]
+mod build_commit_record;
+// Build commit identity for `ripr --version` and `ripr doctor`.
+mod build_identity;
 // Staged RepairAttempt edit-cage contract. #3163 connects the repository
 // baseline/delta producer before any public receipt projection consumes it.
 #[cfg_attr(
@@ -65,6 +75,8 @@ mod atomic_file;
     )
 )]
 mod edit_cage;
+mod repair_card_budget;
+mod repair_card_digest;
 // Shared internal repair-guidance availability vocabulary for the agent packet
 // children under #2830. The public Rust API remains unchanged until those
 // consumers adopt and deliberately expose the contract.
@@ -76,6 +88,9 @@ mod edit_cage;
     )
 )]
 mod repair_guidance;
+// Test-only shared helpers (#3742); never part of the library surface.
+#[cfg(test)]
+pub(crate) mod testing;
 
 #[cfg(not(feature = "lang-rust"))]
 compile_error!(
@@ -88,6 +103,11 @@ pub(crate) mod agent;
 #[doc(hidden)]
 pub mod analysis;
 pub(crate) mod git;
+// Shared owned-subprocess authority (#3803): one Job-Object-backed owner for
+// every shipped bounded Windows subprocess path. `xtask` consumes the same
+// adapter so there is no second process-owner implementation; keep the
+// surface to the single owner type.
+pub mod process_owner;
 // Kept public for compatibility; prefer the crate-root re-exports for new
 // integrations.
 #[doc(hidden)]

@@ -28,7 +28,48 @@ Malformed non-empty diff input is a typed `malformed_diff` limitation at the
 diff-parse stage and produces `unsupported_input`; it is never represented as
 complete zero scope. Disabled preview-language files and configured generated
 source skips are typed limitations as well, while a producer-declared partial
-fact packet remains advisory rather than complete.
+fact packet remains advisory rather than complete. An EOL-only whole-file
+rewrite is a churn-shape typed limitation (`eol_only_churn`, diff-parse
+stage) that may ride on a complete outcome — the changed scope was fully
+analyzed, so it never makes the analysis incomplete — and a line-one BOM-only
+rewrite is excluded from that pairing so it is not disclosed as churn (#4952,
+#4959). A truncated producer stream
+(#4375) is the same malformed-input contract: a file section that parses a
+textual header but closes without a validated hunk body is typed
+`malformed_diff` at the diff-parse stage and produces `unsupported_input`,
+never a complete zero-changes result. The evidence is per-section, so a
+complete hunk in one file does not mask a later truncated section and a valid
+hunkless gitlink or binary section does not suppress truncation detection
+elsewhere in the same diff; a truncation observed beside an adapter
+limitation is independent evidence and survives into the typed outcome.
+
+For ordinary two-way hunks, malformed input includes invalid numeric ranges
+and a body that disagrees with the declared old/new line counts at EOF or a
+hunk/file boundary. Omitted counts mean one and explicit zero counts mean zero;
+the no-newline marker does not consume a source line. Coordinates and counts
+must use unsigned ASCII digits. Ranges with positive counts must start on a
+one-based line and may not reach an unusable `usize::MAX` coordinate.
+Zero-count sides may start at zero.
+If an excess body exhausts a coordinate counter, the counter backstop closes
+the hunk before emitting that unusable added/removed coordinate.
+An excess body line on a zero-count side must not emit primary line zero.
+Malformed diff input remains incomplete independently of enabled language
+adapters; language-scoped conflict and n-way exclusions remain unchanged.
+Previously parsed changes remain advisory evidence, carrying `malformed_diff`,
+`diff_parse`, and `retry` through the existing outcome projection. Existing
+metadata-only section handling is unchanged by span accounting.
+This detects declared-span mismatch, not an entirely missing later
+section after a complete hunk, and does not authenticate the input producer.
+Paired plain `---`/`+++` markers are ordinary body lines while both declared
+sides can consume them: a removal/addition of source text beginning `--`/`++`
+is indistinguishable from that pair. Truncation before such an ambiguous plain
+section cannot always be identified; unambiguous boundaries remain checked.
+
+Limitation paths retain filename whitespace, including leading and trailing
+whitespace. Portable slash and current-directory normalization must not collapse
+distinct filesystem names. The same path identity survives construction,
+sorting/deduplication, serialization and deserialization, so recovery names the
+actual unavailable file and preview counts exclude only that file (#5110).
 
 Human output must name incomplete or unsupported analysis before any empty
 finding message and must state that zero findings is not a clean result when a
@@ -93,6 +134,10 @@ projection does not analyze those regions.
 
 - combined hunk and conflict-marker parser limitations survive into the
   pipeline outcome;
+- a changed source file absent from the working tree (sparse checkout or
+  local delete) is a `changed_file_absent_from_worktree` limitation and a
+  `partial_with_limitations` outcome, not a complete `no_static_path`
+  finding; review-comments names the dropped file the same way;
 - ordinary zero-result input has a complete non-limitation kind distinct from
   unsupported or partial input;
 - human and JSON output carry the same limitation kind and recovery route;

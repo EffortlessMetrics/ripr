@@ -15,7 +15,11 @@
 //! 8. stdin EOF / malformed frames do not hang the server;
 //! 9. transport/typed-payload bounds stay bounded under adversarial input
 //!    (issue #2034);
-//! 10. the compatibility-command journey (`initialize` → server-executed
+//! 10. `ripr.collectContext` / `ripr.collectEvidenceContext` with a missing
+//!     or non-object first argument return JSON-RPC `-32602` InvalidParams
+//!     naming the accepted object shape, never silent `result: null`
+//!     (issue #4358);
+//! 11. the compatibility-command journey (`initialize` → server-executed
 //!     collect commands → `shutdown`/`exit`) runs over the real wire and
 //!     emits a bounded receipt (issue #1930).
 //!
@@ -368,6 +372,34 @@ fn expect_error(response: &serde_json::Value, method: &str, code: i64) -> Result
     ))
 }
 
+/// JSON-RPC 2.0 error object: `error` present, `result` absent. A silent
+/// `result: null` success (the #4358 hole) fails this check even when the
+/// body otherwise looks empty.
+fn expect_typed_invalid_params_naming(
+    response: &serde_json::Value,
+    case: &str,
+    expected_fragments: &[&str],
+) -> Result<(), String> {
+    if response.get("result").is_some() {
+        return Err(format!(
+            "{case}: must be a JSON-RPC error without `result` (not silent null): {response}"
+        ));
+    }
+    expect_error(response, case, INVALID_PARAMS)?;
+    let message = response
+        .pointer("/error/message")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("{case}: InvalidParams must carry a message: {response}"))?;
+    for fragment in expected_fragments {
+        if !message.contains(fragment) {
+            return Err(format!(
+                "{case}: error message must contain `{fragment}`: {message}"
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Full handshake: `initialize` request + `initialized` notification.
 fn handshake(session: &mut LspSession) -> Result<(), String> {
     let response = session.request("initialize", initialize_params())?;
@@ -453,6 +485,256 @@ fn shutdown_before_initialize_fails_server_not_initialized() -> Result<(), Strin
     exit_and_wait(&mut session)
 }
 
+// ── Shutdown clears pushed diagnostics (#5202) ──
+
+/// Grace window after a `shutdown` response for trailing
+/// `textDocument/publishDiagnostics` notifications. The server queues the
+/// clear-all publishes before answering `shutdown`, but the response frame
+/// may win the race to the test's reader thread.
+const SHUTDOWN_DRAIN_GRACE: Duration = Duration::from_secs(3);
+
+/// Drain `textDocument/publishDiagnostics` notifications until the response
+/// with `id` arrives, then keep draining through a grace window so
+/// publishes queued just before the response are still observed. Returns
+/// the collected `(uri, diagnostic count)` pairs plus the response.
+fn collect_publishes_until_response(
+    session: &mut LspSession,
+    id: u64,
+    what: &str,
+) -> Result<(Vec<(String, usize)>, serde_json::Value), String> {
+    let deadline = Instant::now() + ANALYSIS_TIMEOUT;
+    let mut published: Vec<(String, usize)> = Vec::new();
+    let mut record = |message: &serde_json::Value| {
+        if message.get("method").and_then(serde_json::Value::as_str)
+            == Some("textDocument/publishDiagnostics")
+        {
+            let uri = message
+                .pointer("/params/uri")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let count = message
+                .pointer("/params/diagnostics")
+                .and_then(serde_json::Value::as_array)
+                .map_or(0, Vec::len);
+            published.push((uri, count));
+        }
+    };
+    let response = loop {
+        let message = session.await_message(deadline, what)?;
+        record(&message);
+        // Match responses only: a server-to-client request (its own id
+        // space) with a colliding id must not end the loop early, or the
+        // caller fails on a non-response and skips earlier notifications.
+        let is_response = message.get("result").is_some() || message.get("error").is_some();
+        if is_response && message.get("id").and_then(serde_json::Value::as_u64) == Some(id) {
+            break message;
+        }
+    };
+    let grace_deadline = Instant::now() + SHUTDOWN_DRAIN_GRACE;
+    loop {
+        match session.events.try_recv() {
+            Ok(WireEvent::Message(message)) => record(&message),
+            Ok(WireEvent::Failed(err)) => {
+                return Err(format!(
+                    "stdout framing failed while awaiting {what}: {err}"
+                ));
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                if Instant::now() >= grace_deadline {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
+        }
+    }
+    Ok((published, response))
+}
+
+/// `shutdown` clears every tracked URI on a push client: after a refresh
+/// that publishes diagnostics, the shutdown drain must carry an empty
+/// diagnostic set for each URI that received a nonempty one (#5202,
+/// RIPR-SPEC-0124).
+/// Without the shutdown clear path this test observes no empty publishes
+/// and fails; it is the red half of the guarded-publish pair.
+#[test]
+fn shutdown_publishes_empty_diagnostics_for_tracked_uris() -> Result<(), String> {
+    let base = unique_compat_fixture_root("shutdown-clear")?;
+    let root = build_native_root_fixture(&base.path, "repo")?;
+    let root_uri = editor_file_uri(&root)?;
+    let mut session = LspSession::spawn()?;
+    let initialize = session.request(
+        "initialize",
+        serde_json::json!({
+            "processId": null,
+            "rootUri": root_uri,
+            "initializationOptions": {
+                "baseRef": "HEAD~1",
+                "checkMode": "instant",
+                "diagnosticProfile": "full"
+            },
+            "capabilities": {},
+        }),
+    )?;
+    expect_result(&initialize, "initialize")?;
+    session.notify("initialized", Some(serde_json::json!({})))?;
+
+    let refresh_id = fire(
+        &mut session,
+        "workspace/executeCommand",
+        serde_json::json!({"command": "ripr.refresh", "arguments": []}),
+    )?;
+    let (published, refresh) =
+        collect_publishes_until_response(&mut session, refresh_id, "ripr.refresh response")?;
+    expect_result(&refresh, "ripr.refresh")?;
+    let mut tracked: Vec<String> = published
+        .iter()
+        .filter(|(_, count)| *count > 0)
+        .map(|(uri, _)| uri.clone())
+        .collect();
+    tracked.sort();
+    tracked.dedup();
+    if tracked.is_empty() {
+        return Err(format!(
+            "fixture setup: refresh must publish diagnostics before shutdown can clear them: {published:?}"
+        ));
+    }
+
+    let shutdown_id = fire(&mut session, "shutdown", serde_json::Value::Null)?;
+    let (cleared, shutdown) =
+        collect_publishes_until_response(&mut session, shutdown_id, "shutdown response")?;
+    let result = expect_result(&shutdown, "shutdown")?;
+    if !result.is_null() {
+        return Err(format!("shutdown must answer null, got: {shutdown}"));
+    }
+    let mut missing = Vec::new();
+    for uri in &tracked {
+        let cleared_uri = cleared
+            .iter()
+            .any(|(cleared_uri, count)| cleared_uri == uri && *count == 0);
+        if !cleared_uri {
+            missing.push(uri.clone());
+        }
+    }
+    if !missing.is_empty() {
+        return Err(format!(
+            "shutdown must publish an empty diagnostic set for every tracked URI; missing {missing:?} (tracked: {tracked:?}, shutdown drain: {cleared:?})"
+        ));
+    }
+    exit_and_wait(&mut session)
+}
+
+/// A pull client (`textDocument.diagnostic` negotiated) receives no pushed
+/// diagnostics at all: neither the refresh nor `shutdown` may publish
+/// (#5202, RIPR-SPEC-0124). This is the guard half of the pair — an
+/// implementation that published unconditionally on shutdown would fail
+/// here.
+#[test]
+fn shutdown_publishes_nothing_for_pull_diagnostics_client() -> Result<(), String> {
+    let base = unique_compat_fixture_root("shutdown-pull")?;
+    let root = build_native_root_fixture(&base.path, "repo")?;
+    let root_uri = editor_file_uri(&root)?;
+    let mut session = LspSession::spawn()?;
+    let initialize = session.request(
+        "initialize",
+        serde_json::json!({
+            "processId": null,
+            "rootUri": root_uri,
+            "initializationOptions": {
+                "baseRef": "HEAD~1",
+                "checkMode": "instant",
+                "diagnosticProfile": "full"
+            },
+            "capabilities": {
+                "textDocument": { "diagnostic": {} }
+            },
+        }),
+    )?;
+    expect_result(&initialize, "initialize")?;
+    session.notify("initialized", Some(serde_json::json!({})))?;
+
+    let refresh_id = fire(
+        &mut session,
+        "workspace/executeCommand",
+        serde_json::json!({"command": "ripr.refresh", "arguments": []}),
+    )?;
+    let (published, refresh) =
+        collect_publishes_until_response(&mut session, refresh_id, "ripr.refresh response")?;
+    expect_result(&refresh, "ripr.refresh")?;
+    if !published.is_empty() {
+        return Err(format!(
+            "pull client must receive no pushed diagnostics during refresh: {published:?}"
+        ));
+    }
+    // The refresh still commits a full snapshot server-side: tracked URIs
+    // exist even though nothing is pushed, so the shutdown drain below is
+    // a real guard check, not a vacuous no-op.
+    let status = execute_compat_command(&mut session, "ripr.collectWorkspaceStatus")?;
+    check_workspace_status_envelope(&status, "pull shutdown")?;
+    if status.get("run_status").and_then(serde_json::Value::as_str) != Some("full") {
+        return Err(format!(
+            "pull-client refresh must commit a full snapshot: {status}"
+        ));
+    }
+
+    let shutdown_id = fire(&mut session, "shutdown", serde_json::Value::Null)?;
+    let (cleared, shutdown) =
+        collect_publishes_until_response(&mut session, shutdown_id, "shutdown response")?;
+    let result = expect_result(&shutdown, "shutdown")?;
+    if !result.is_null() {
+        return Err(format!("shutdown must answer null, got: {shutdown}"));
+    }
+    if !cleared.is_empty() {
+        return Err(format!(
+            "pull client must receive no pushed diagnostics on shutdown: {cleared:?}"
+        ));
+    }
+    exit_and_wait(&mut session)
+}
+
+/// `shutdown` with zero tracked URIs stays silent: no refresh ran, so no
+/// empty publishes are emitted and the handshake is unchanged (#5202,
+/// RIPR-SPEC-0124). Guards against a clear path that publishes for
+/// invented URIs instead of only previously published ones.
+#[test]
+fn shutdown_with_zero_tracked_uris_sends_no_publishes() -> Result<(), String> {
+    let base = unique_compat_fixture_root("shutdown-zero")?;
+    let root = build_native_root_fixture(&base.path, "repo")?;
+    let root_uri = editor_file_uri(&root)?;
+    let mut session = LspSession::spawn()?;
+    let initialize = session.request(
+        "initialize",
+        serde_json::json!({
+            "processId": null,
+            "rootUri": root_uri,
+            "initializationOptions": {
+                "baseRef": "HEAD~1",
+                "checkMode": "instant",
+                "diagnosticProfile": "full"
+            },
+            "capabilities": {},
+        }),
+    )?;
+    expect_result(&initialize, "initialize")?;
+    session.notify("initialized", Some(serde_json::json!({})))?;
+
+    // No refresh: nothing was ever published, so nothing is tracked.
+    let shutdown_id = fire(&mut session, "shutdown", serde_json::Value::Null)?;
+    let (cleared, shutdown) =
+        collect_publishes_until_response(&mut session, shutdown_id, "shutdown response")?;
+    let result = expect_result(&shutdown, "shutdown")?;
+    if !result.is_null() {
+        return Err(format!("shutdown must answer null, got: {shutdown}"));
+    }
+    if !cleared.is_empty() {
+        return Err(format!(
+            "shutdown with zero tracked URIs must publish nothing: {cleared:?}"
+        ));
+    }
+    exit_and_wait(&mut session)
+}
+
 // ── 2. `initialize` is accepted exactly once ──
 
 #[test]
@@ -470,6 +752,29 @@ fn initialize_is_accepted_exactly_once() -> Result<(), String> {
     // The server stays in the initialized state after rejecting the duplicate.
     let hover = session.request("textDocument/hover", hover_params())?;
     expect_result(&hover, "textDocument/hover")?;
+    exit_and_wait(&mut session)
+}
+
+#[test]
+fn initialize_advertises_incremental_sync_with_save_notifications() -> Result<(), String> {
+    // Saved content is ripr's analysis input. Under the LSP spec only the
+    // options form's `save` field opts a client into `textDocument/didSave`;
+    // the bare numeric kind does not. Edits arrive as incremental ranged
+    // changes (#1746), and `save: {includeText: false}` keeps that opt-in
+    // without the client resending the whole document — the shape the VS
+    // Code compatibility check accepts.
+    let mut session = LspSession::spawn()?;
+    let response = session.request("initialize", initialize_params())?;
+    let result = expect_result(&response, "initialize")?;
+    let sync = &result["capabilities"]["textDocumentSync"];
+    if sync["openClose"] != serde_json::json!(true)
+        || sync["change"] != serde_json::json!(2)
+        || sync["save"]["includeText"] != serde_json::json!(false)
+    {
+        return Err(format!(
+            "textDocumentSync must request open/close, incremental changes and didSave without text: {sync}"
+        ));
+    }
     exit_and_wait(&mut session)
 }
 
@@ -513,6 +818,27 @@ fn normal_request_after_initialize_returns_result() -> Result<(), String> {
     if !text.contains("ripr") {
         return Err(format!("hover contents should describe ripr, got: {text}"));
     }
+    exit_and_wait(&mut session)
+}
+
+/// LSP 3.17 "$ Notifications and Requests": a `$/` notification may be
+/// ignored, but a `$/` request must be answered with `MethodNotFound`
+/// (#4456). tower-lsp-server drops both unless ripr's layer answers.
+#[test]
+fn dollar_request_is_answered_method_not_found() -> Result<(), String> {
+    let mut session = LspSession::spawn()?;
+    handshake(&mut session)?;
+    session.notify("$/ripr-unknown", Some(serde_json::json!({})))?;
+    let response = session.request("$/ripr-unknown", serde_json::json!({}))?;
+    expect_error(&response, "$/ripr-unknown", -32601)?;
+    let data = response.pointer("/error/data");
+    if data != Some(&serde_json::json!("$/ripr-unknown")) {
+        return Err(format!(
+            "`$/` MethodNotFound should name the method like other unknown methods: {response}"
+        ));
+    }
+    let hover = session.request("textDocument/hover", hover_params())?;
+    expect_result(&hover, "textDocument/hover")?;
     exit_and_wait(&mut session)
 }
 
@@ -903,6 +1229,78 @@ fn oversized_execute_command_arguments_are_rejected() -> Result<(), String> {
     )?;
     expect_bounded_invalid_params(&mut session, id, "too many executeCommand arguments", "")?;
     // A legitimate command still runs; rejection did not poison the session.
+    let status = session.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "ripr.collectWorkspaceStatus", "arguments": []}),
+    )?;
+    expect_result(&status, "ripr.collectWorkspaceStatus")?;
+    exit_and_wait(&mut session)
+}
+
+#[test]
+fn collect_context_commands_reject_missing_or_malformed_first_argument_on_the_wire()
+-> Result<(), String> {
+    // #4358: a missing or non-object first argument is a typed bad request,
+    // not a successful null that a generic client cannot distinguish from
+    // "no evidence found". In-process handler tests are not this oracle —
+    // they never serialize the JSON-RPC envelope.
+    let mut session = LspSession::spawn()?;
+    handshake(&mut session)?;
+    let cases: [(&str, serde_json::Value); 8] = [
+        (
+            "ripr.collectContext omitted arguments",
+            serde_json::json!({"command": "ripr.collectContext"}),
+        ),
+        (
+            "ripr.collectContext empty arguments",
+            serde_json::json!({"command": "ripr.collectContext", "arguments": []}),
+        ),
+        (
+            "ripr.collectContext string first argument",
+            serde_json::json!({
+                "command": "ripr.collectContext",
+                "arguments": ["not-an-object"]
+            }),
+        ),
+        (
+            "ripr.collectContext null first argument",
+            serde_json::json!({
+                "command": "ripr.collectContext",
+                "arguments": [null]
+            }),
+        ),
+        (
+            "ripr.collectEvidenceContext omitted arguments",
+            serde_json::json!({"command": "ripr.collectEvidenceContext"}),
+        ),
+        (
+            "ripr.collectEvidenceContext empty arguments",
+            serde_json::json!({"command": "ripr.collectEvidenceContext", "arguments": []}),
+        ),
+        (
+            "ripr.collectEvidenceContext string first argument",
+            serde_json::json!({
+                "command": "ripr.collectEvidenceContext",
+                "arguments": ["not-an-object"]
+            }),
+        ),
+        (
+            "ripr.collectEvidenceContext null first argument",
+            serde_json::json!({
+                "command": "ripr.collectEvidenceContext",
+                "arguments": [null]
+            }),
+        ),
+    ];
+    for (case, params) in cases {
+        let command = params
+            .get("command")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| format!("{case}: fixture must name a command"))?
+            .to_string();
+        let response = session.request("workspace/executeCommand", params)?;
+        expect_typed_invalid_params_naming(&response, case, &[&command, "expects one object"])?;
+    }
     let status = session.request(
         "workspace/executeCommand",
         serde_json::json!({"command": "ripr.collectWorkspaceStatus", "arguments": []}),
@@ -1447,4 +1845,548 @@ fn compat_journey_collect_workspace_status_over_real_wire() -> Result<(), String
     );
     println!("{receipt}");
     Ok(())
+}
+
+// ── Native path roots (#3922) ──
+
+/// A `file:` URI spelled the way VS Code's `Uri.file(..).toString()` spells it:
+/// every byte outside `[A-Za-z0-9-._~/]` percent-encoded (so spaces, `'`, and
+/// UTF-8 become escapes) and a Windows drive written as `/c%3A/`. This is the
+/// form an editor client actually sends, unlike `compat_file_uri`.
+fn editor_file_uri(path: &Path) -> Result<String, String> {
+    let text = path
+        .to_str()
+        .ok_or_else(|| format!("fixture root is not UTF-8: {}", path.display()))?
+        .replace('\\', "/");
+    let mut absolute = if text.starts_with('/') {
+        text
+    } else {
+        format!("/{text}")
+    };
+    if absolute.as_bytes().get(2) == Some(&b':') {
+        absolute.replace_range(1..2, &absolute[1..2].to_ascii_lowercase());
+    }
+    let mut encoded = String::from("file://");
+    for byte in absolute.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'/') {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    Ok(encoded)
+}
+
+/// Decode a server-published `file:` URI back to a host path.
+fn editor_uri_path(uri: &str) -> Option<PathBuf> {
+    let rest = uri.strip_prefix("file://")?;
+    let mut bytes = Vec::with_capacity(rest.len());
+    let raw = rest.as_bytes();
+    let mut index = 0;
+    while index < raw.len() {
+        if raw[index] == b'%' {
+            let hex = std::str::from_utf8(raw.get(index + 1..index + 3)?).ok()?;
+            bytes.push(u8::from_str_radix(hex, 16).ok()?);
+            index += 3;
+        } else {
+            bytes.push(raw[index]);
+            index += 1;
+        }
+    }
+    let decoded = String::from_utf8(bytes).ok()?;
+    if cfg!(windows) {
+        Some(PathBuf::from(decoded.trim_start_matches('/')))
+    } else {
+        Some(PathBuf::from(decoded))
+    }
+}
+
+/// Initialize against `root` with an editor-encoded URI, run the explicit
+/// refresh, and require a full snapshot whose diagnostics are published for
+/// `root/src/lib.rs`. The root, the published URI, and the analysis all cross
+/// the same unusual path.
+fn assert_lsp_refresh_publishes_under_root(root: &Path) -> Result<(), String> {
+    let root_uri = editor_file_uri(root)?;
+    let mut session = LspSession::spawn()?;
+    let initialize = session.request(
+        "initialize",
+        serde_json::json!({
+            "processId": null,
+            "rootUri": root_uri,
+            "initializationOptions": {
+                "baseRef": "HEAD~1",
+                "checkMode": "instant",
+                "diagnosticProfile": "full"
+            },
+            "capabilities": {},
+        }),
+    )?;
+    expect_result(&initialize, "initialize")?;
+    session.notify("initialized", Some(serde_json::json!({})))?;
+
+    let refresh_id = fire(
+        &mut session,
+        "workspace/executeCommand",
+        serde_json::json!({"command": "ripr.refresh", "arguments": []}),
+    )?;
+    let deadline = Instant::now() + ANALYSIS_TIMEOUT;
+    let mut published: Vec<(String, usize)> = Vec::new();
+    loop {
+        let message = session.await_message(deadline, "ripr.refresh response")?;
+        if message.get("method").and_then(serde_json::Value::as_str)
+            == Some("textDocument/publishDiagnostics")
+        {
+            let uri = message
+                .pointer("/params/uri")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let count = message
+                .pointer("/params/diagnostics")
+                .and_then(serde_json::Value::as_array)
+                .map_or(0, Vec::len);
+            published.push((uri, count));
+            continue;
+        }
+        if message.get("id").and_then(serde_json::Value::as_u64) == Some(refresh_id) {
+            expect_result(&message, "ripr.refresh")?;
+            break;
+        }
+    }
+
+    let status = execute_compat_command(&mut session, "ripr.collectWorkspaceStatus")?;
+    check_workspace_status_envelope(&status, "native root")?;
+    if status.get("run_status").and_then(serde_json::Value::as_str) != Some("full") {
+        return Err(format!(
+            "refresh under {} must publish a full snapshot: {status}",
+            root.display()
+        ));
+    }
+    let expected = fs::canonicalize(root.join("src").join("lib.rs"))
+        .map_err(|err| format!("canonicalize fixture file failed: {err}"))?;
+    let hit = published.iter().any(|(uri, count)| {
+        *count > 0
+            && editor_uri_path(uri)
+                .and_then(|path| fs::canonicalize(path).ok())
+                .is_some_and(|path| path == expected)
+    });
+    if !hit {
+        return Err(format!(
+            "refresh must publish diagnostics for {}; published (uri, count): {published:?}",
+            expected.display()
+        ));
+    }
+    exit_and_wait(&mut session)
+}
+
+/// Build the compatibility fixture at `base/relative` with a committed base
+/// and a committed production change. Git commits at a short staging path;
+/// the completed repository then moves under the requested root.
+fn build_native_root_fixture(base: &Path, relative: &str) -> Result<PathBuf, String> {
+    let root = base.join(relative);
+    let staging = base.join("fixture-staging");
+    write_compat_fixture(&staging)?;
+    let git = |args: &[&str]| {
+        let mut full = vec!["-c", "core.longpaths=true", "-C", "fixture-staging"];
+        full.extend_from_slice(args);
+        run_compat_git(base, &full)
+    };
+    git(&["init", "-q"])?;
+    git(&["config", "core.longpaths", "true"])?;
+    git(&["config", "user.email", "ripr@example.invalid"])?;
+    git(&["config", "user.name", "RIPR Test"])?;
+    git(&["add", "Cargo.toml", "src/lib.rs", "tests/end_to_end.rs"])?;
+    git(&["commit", "-q", "-m", "base"])?;
+    fs::write(
+        staging.join("src/lib.rs"),
+        "pub fn gate_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+    )
+    .map_err(|err| format!("write changed production fixture failed: {err}"))?;
+    git(&["add", "src/lib.rs"])?;
+    git(&["commit", "-q", "-m", "change production"])?;
+    let parent = root
+        .parent()
+        .ok_or_else(|| format!("fixture setup: root has no parent: {}", root.display()))?;
+    fs::create_dir_all(parent)
+        .map_err(|err| format!("fixture setup: create {}: {err}", parent.display()))?;
+    fs::rename(&staging, &root).map_err(|err| {
+        format!(
+            "fixture setup: move {} to {}: {err}",
+            staging.display(),
+            root.display()
+        )
+    })?;
+    Ok(root)
+}
+
+#[test]
+fn refresh_publishes_diagnostics_under_a_spaced_unicode_root() -> Result<(), String> {
+    let base = unique_compat_fixture_root("native-unicode")?;
+    let root = build_native_root_fixture(&base.path, "it's ünïcødé 日本語 😀/repo")?;
+    assert_lsp_refresh_publishes_under_root(&root)
+}
+
+/// Refresh under a root past `MAX_PATH`. Windows cannot start git there and
+/// 0.11 does not claim it can (#4350, a 0.11 non-claim in #2766), so on
+/// Windows the control pins the actionable limitation the server reports;
+/// everywhere else the root must publish like any other.
+#[test]
+fn refresh_under_a_root_beyond_max_path_publishes_or_names_the_windows_path_limit()
+-> Result<(), String> {
+    let base = unique_compat_fixture_root("native-long")?;
+    let segment = "long-path-segment-0123456789-abcdefghijklmnopqrstuvwxyz";
+    let relative = format!("{segment}-0/{segment}-1/{segment}-2/{segment}-3/{segment}-4/repo");
+    let root = build_native_root_fixture(&base.path, &relative)?;
+    let length = root.as_os_str().len();
+    if length <= 260 {
+        return Err(format!(
+            "fixture setup: long root is only {length} bytes, not beyond MAX_PATH"
+        ));
+    }
+    if cfg!(windows) {
+        assert_lsp_refresh_names_the_windows_path_limit(&root)
+    } else {
+        assert_lsp_refresh_publishes_under_root(&root)
+    }
+}
+
+/// Refresh under an overlong Windows root commits no snapshot, publishes no
+/// diagnostic for the changed file, and reports the MAX_PATH limit as the
+/// analysis failure the editor shows.
+fn assert_lsp_refresh_names_the_windows_path_limit(root: &Path) -> Result<(), String> {
+    let root_uri = editor_file_uri(root)?;
+    let mut session = LspSession::spawn()?;
+    let initialize = session.request(
+        "initialize",
+        serde_json::json!({
+            "processId": null,
+            "rootUri": root_uri,
+            "initializationOptions": {
+                "baseRef": "HEAD~1",
+                "checkMode": "instant",
+                "diagnosticProfile": "full"
+            },
+            "capabilities": {},
+        }),
+    )?;
+    expect_result(&initialize, "initialize")?;
+    session.notify("initialized", Some(serde_json::json!({})))?;
+
+    let refresh_id = fire(
+        &mut session,
+        "workspace/executeCommand",
+        serde_json::json!({"command": "ripr.refresh", "arguments": []}),
+    )?;
+    let deadline = Instant::now() + ANALYSIS_TIMEOUT;
+    let mut nonempty_publications = Vec::new();
+    loop {
+        let message = session.await_message(deadline, "ripr.refresh response")?;
+        if message.get("method").and_then(serde_json::Value::as_str)
+            == Some("textDocument/publishDiagnostics")
+        {
+            if message
+                .pointer("/params/diagnostics")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|diagnostics| !diagnostics.is_empty())
+            {
+                nonempty_publications.push(message);
+            }
+            continue;
+        }
+        if message.get("id").and_then(serde_json::Value::as_u64) == Some(refresh_id) {
+            break;
+        }
+    }
+    if !nonempty_publications.is_empty() {
+        return Err(format!(
+            "refresh under an overlong Windows root must publish no diagnostics: \
+             {nonempty_publications:?}"
+        ));
+    }
+
+    let status = execute_compat_command(&mut session, "ripr.collectWorkspaceStatus")?;
+    check_workspace_status_envelope(&status, "overlong Windows root")?;
+    if status.get("run_status").and_then(serde_json::Value::as_str) != Some("no_snapshot") {
+        return Err(format!(
+            "refresh under a {}-byte root committed a snapshot; #4350's MAX_PATH non-claim no \
+             longer holds, so this control must assert publication again: {status}",
+            root.as_os_str().len()
+        ));
+    }
+    let message = status
+        .pointer("/analysis_status/failure/message")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("refresh failure must carry a message: {status}"))?;
+    // The server bounds client-visible failure text to 240 characters. The
+    // message leads with the remedy so the editor keeps it along with the
+    // limit (#4350; the earlier wording lost the remedy, observed natively on
+    // 0fc223b). Pin what the editor receives.
+    let named = message
+        .contains("failed to run git: clone or move the repository to a shorter path; ")
+        && message.contains("over the 258 Windows allows for a working directory (MAX_PATH)");
+    if !named {
+        return Err(format!(
+            "refresh failure must name the remedy and the MAX_PATH limit: {message}"
+        ));
+    }
+    exit_and_wait(&mut session)
+}
+
+// ── Startup disclosure of a blocked workspace root ──
+//
+// tower-lsp-server drops custom notifications while `initialize` runs, so a
+// root that blocks analysis must be disclosed from `initialized`. A generic
+// editor (no `riprEditor` block) sees nothing else: no diagnostics, and hover
+// falls back to generic text.
+
+/// Collects server notifications until `done` holds for the collected set,
+/// then keeps reading for `settle` so a negative assertion also sees any
+/// message the same handler sends right after the awaited one.
+fn collect_notifications(
+    session: &mut LspSession,
+    done: impl Fn(&[serde_json::Value]) -> bool,
+    settle: Duration,
+) -> Result<Vec<serde_json::Value>, String> {
+    let deadline = Instant::now() + RESPONSE_TIMEOUT;
+    let mut notifications = Vec::new();
+    while !done(&notifications) {
+        let message = session.await_message(deadline, "startup notifications")?;
+        if message.get("method").is_some() && message.get("id").is_none() {
+            notifications.push(message);
+        }
+    }
+    let settle_deadline = Instant::now() + settle;
+    while let Ok(message) = session.await_message(settle_deadline, "settle window") {
+        if message.get("method").is_some() && message.get("id").is_none() {
+            notifications.push(message);
+        }
+    }
+    Ok(notifications)
+}
+
+const STARTUP_SETTLE: Duration = Duration::from_secs(2);
+
+fn messages_of<'a>(notifications: &'a [serde_json::Value], method: &str) -> Vec<&'a str> {
+    notifications
+        .iter()
+        .filter(|message| message.get("method").and_then(serde_json::Value::as_str) == Some(method))
+        .filter_map(|message| {
+            message
+                .pointer("/params/message")
+                .and_then(serde_json::Value::as_str)
+        })
+        .collect()
+}
+
+fn startup_root_states(notifications: &[serde_json::Value]) -> Vec<&str> {
+    notifications
+        .iter()
+        .filter(|message| {
+            message.get("method").and_then(serde_json::Value::as_str) == Some("ripr/analysisStatus")
+        })
+        .filter_map(|message| {
+            message
+                .pointer("/params/root_state")
+                .and_then(serde_json::Value::as_str)
+        })
+        .collect()
+}
+
+fn initialize_with(
+    session: &mut LspSession,
+    params: serde_json::Value,
+    done: impl Fn(&[serde_json::Value]) -> bool,
+) -> Result<Vec<serde_json::Value>, String> {
+    let response = session.request("initialize", params)?;
+    expect_result(&response, "initialize")?;
+    session.notify("initialized", Some(serde_json::json!({})))?;
+    collect_notifications(session, done, STARTUP_SETTLE)
+}
+
+/// Native `Path::display()` uses `\` on Windows. The LSP warning lists folders
+/// with `/` even when the stored path came from a Windows URI decode. Match
+/// the warning against the slash-normalized display form so both platforms
+/// can pin that each named folder appears (#5241).
+fn slash_normalized_display(path: &Path) -> String {
+    path.display().to_string().replace('\\', "/")
+}
+
+fn warning_names_both_workspace_folders(warning: &str, first: &Path, second: &Path) -> bool {
+    let first_name = slash_normalized_display(first);
+    let second_name = slash_normalized_display(second);
+    first_name != second_name && warning.contains(&first_name) && warning.contains(&second_name)
+}
+
+/// Models the native-Windows `display()` / forward-slash warning mismatch on
+/// any host: a `PathBuf` built from backslash text still `display()`s those
+/// backslashes, so a naive `contains(display())` misses the `/` warning.
+/// Drive-letter shapes are assembled from parts: `check-local-context`
+/// forbids drive-letter path literals in tracked files.
+#[test]
+fn workspace_folder_warning_match_is_separator_safe_and_requires_both_names() {
+    let drive = "H:";
+    let first = PathBuf::from(format!("{drive}{}tmp{}ripr-lsp-ambiguous-a-1", '\\', '\\'));
+    let second = PathBuf::from(format!("{drive}{}tmp{}ripr-lsp-ambiguous-b-2", '\\', '\\'));
+    let first_listed = format!("{drive}/tmp/ripr-lsp-ambiguous-a-1");
+    let second_listed = format!("{drive}/tmp/ripr-lsp-ambiguous-b-2");
+    let warning = format!("Folders: {first_listed}, {second_listed}");
+    assert!(
+        first.display().to_string().contains('\\'),
+        "this control models Windows Path::display() backslashes"
+    );
+    assert!(
+        !warning.contains(&first.display().to_string()),
+        "raw display() must not match the forward-slash warning"
+    );
+    assert!(
+        !warning.contains(&second.display().to_string()),
+        "raw display() must not match the forward-slash warning"
+    );
+    assert!(warning_names_both_workspace_folders(
+        &warning, &first, &second
+    ));
+    assert!(!warning_names_both_workspace_folders(
+        &format!("Folders: {first_listed}"),
+        &first,
+        &second
+    ));
+    assert!(!warning_names_both_workspace_folders(
+        &format!("Folders: {second_listed}"),
+        &first,
+        &second
+    ));
+    assert!(!warning_names_both_workspace_folders(
+        &format!("Folders: {drive}/tmp"),
+        &first,
+        &second
+    ));
+    assert!(!warning_names_both_workspace_folders(
+        &warning, &first, &first
+    ));
+}
+
+#[test]
+fn two_workspace_folders_warn_a_generic_client_at_startup() -> Result<(), String> {
+    let first = unique_compat_fixture_root("ambiguous-a")?;
+    let second = unique_compat_fixture_root("ambiguous-b")?;
+    let mut session = LspSession::spawn()?;
+    let notifications = initialize_with(
+        &mut session,
+        serde_json::json!({
+            "processId": null,
+            "rootUri": compat_file_uri(&first.path)?,
+            "workspaceFolders": [
+                {"uri": compat_file_uri(&first.path)?, "name": "a"},
+                {"uri": compat_file_uri(&second.path)?, "name": "b"},
+            ],
+            "capabilities": {},
+        }),
+        |seen: &[serde_json::Value]| !messages_of(seen, "window/showMessage").is_empty(),
+    )?;
+    let shown = messages_of(&notifications, "window/showMessage");
+    if shown.len() != 1 || !shown[0].contains("workspace_ambiguous") {
+        return Err(format!(
+            "expected one workspace_ambiguous window/showMessage, got: {notifications:?}"
+        ));
+    }
+    if !warning_names_both_workspace_folders(shown[0], &first.path, &second.path) {
+        return Err(format!("warning must name the folders, got: {}", shown[0]));
+    }
+    if !messages_of(&notifications, "window/logMessage")
+        .iter()
+        .any(|message| message.contains("workspace_ambiguous"))
+    {
+        return Err(format!(
+            "expected the warning in the log too, got: {notifications:?}"
+        ));
+    }
+    if !startup_root_states(&notifications).contains(&"workspace_ambiguous") {
+        return Err(format!(
+            "expected a ripr/analysisStatus with root_state workspace_ambiguous, got: {notifications:?}"
+        ));
+    }
+    session.request("shutdown", serde_json::Value::Null)?;
+    exit_and_wait(&mut session)
+}
+
+#[test]
+fn missing_workspace_root_warns_a_generic_client_at_startup() -> Result<(), String> {
+    let mut session = LspSession::spawn()?;
+    let notifications = initialize_with(
+        &mut session,
+        initialize_params(),
+        |seen: &[serde_json::Value]| !messages_of(seen, "window/showMessage").is_empty(),
+    )?;
+    let shown = messages_of(&notifications, "window/showMessage");
+    if shown.len() != 1 || !shown[0].contains("root_unavailable") {
+        return Err(format!(
+            "expected one root_unavailable window/showMessage, got: {notifications:?}"
+        ));
+    }
+    if !startup_root_states(&notifications).contains(&"root_unavailable") {
+        return Err(format!(
+            "expected a ripr/analysisStatus with root_state root_unavailable, got: {notifications:?}"
+        ));
+    }
+    session.request("shutdown", serde_json::Value::Null)?;
+    exit_and_wait(&mut session)
+}
+
+#[test]
+fn ripr_editor_client_gets_the_blocked_root_in_the_log_only() -> Result<(), String> {
+    let mut session = LspSession::spawn()?;
+    let notifications = initialize_with(
+        &mut session,
+        serde_json::json!({
+            "processId": null,
+            "rootUri": null,
+            "capabilities": {"experimental": {"riprEditor": {"version": "0.1", "commands": []}}},
+        }),
+        |seen: &[serde_json::Value]| {
+            messages_of(seen, "window/logMessage")
+                .iter()
+                .any(|message| message.contains("root_unavailable"))
+        },
+    )?;
+    if !messages_of(&notifications, "window/showMessage").is_empty() {
+        return Err(format!(
+            "the riprEditor integration renders root state itself; no showMessage expected, got: {notifications:?}"
+        ));
+    }
+    if !messages_of(&notifications, "window/logMessage")
+        .iter()
+        .any(|message| message.contains("root_unavailable"))
+    {
+        return Err(format!("expected the log warning, got: {notifications:?}"));
+    }
+    session.request("shutdown", serde_json::Value::Null)?;
+    exit_and_wait(&mut session)
+}
+
+#[test]
+fn single_workspace_root_starts_without_a_root_warning() -> Result<(), String> {
+    let root = unique_compat_fixture_root("single-root")?;
+    let mut session = LspSession::spawn()?;
+    let notifications = initialize_with(
+        &mut session,
+        serde_json::json!({
+            "processId": null,
+            "rootUri": compat_file_uri(&root.path)?,
+            "workspaceFolders": [{"uri": compat_file_uri(&root.path)?, "name": "only"}],
+            "capabilities": {},
+        }),
+        |seen: &[serde_json::Value]| startup_root_states(seen).contains(&"selected_single_root"),
+    )?;
+    if !messages_of(&notifications, "window/showMessage").is_empty() {
+        return Err(format!(
+            "a single root must not warn, got: {notifications:?}"
+        ));
+    }
+    if !startup_root_states(&notifications).contains(&"selected_single_root") {
+        return Err(format!(
+            "expected the startup ripr/analysisStatus for the selected root, got: {notifications:?}"
+        ));
+    }
+    session.request("shutdown", serde_json::Value::Null)?;
+    exit_and_wait(&mut session)
 }

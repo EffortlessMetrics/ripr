@@ -1,279 +1,657 @@
-mod rpc;
-
-use super::protocol;
+use super::{gaps, protocol, repair, repair_card, workspace};
 use crate::workspace_status::WorkspaceStatus;
-use rpc::{
-    RpcError, error_response, inline_protocol_version, readable_id, require_object,
-    required_params_object, success_response,
-};
-use serde_json::{Map, Value};
+use rmcp::{ErrorData, RoleServer, ServerHandler, model::*, service::RequestContext};
+use serde::de::DeserializeOwned;
+use serde_json::Value;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
-pub(super) fn bounded_error_response(code: i64, message: &str, data: Option<Value>) -> Value {
-    rpc::bounded_error_response(code, message, data)
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum Lifecycle {
-    New,
-    Legacy {
-        protocol_version: String,
-        initialized: bool,
-    },
-    Inline,
-}
-
+/// Application adapter only. The SDK owns RPC dispatch and lifecycle.
 pub(super) struct McpServer {
-    lifecycle: Lifecycle,
+    tools: ListToolsResult,
+    resources: ListResourcesResult,
+    resource_templates: ListResourceTemplatesResult,
     status: WorkspaceStatus,
+    profile: workspace::SessionProfile,
+    analysis_root: Option<PathBuf>,
+    root_identity: Option<String>,
+    session: Arc<Mutex<workspace::WorkspaceSession>>,
 }
 
 impl McpServer {
-    pub(super) fn new(status: WorkspaceStatus) -> Self {
-        Self {
-            lifecycle: Lifecycle::New,
+    pub(super) fn new(
+        status: WorkspaceStatus,
+        analysis_root: Option<PathBuf>,
+    ) -> Result<Self, ErrorData> {
+        let mut server = Self {
+            tools: typed(protocol::tools_list_result())?,
+            resources: typed(protocol::resources_list_result())?,
+            resource_templates: typed(protocol::resource_templates_list_result())?,
+            profile: workspace::SessionProfile::built_in(),
+            root_identity: status.root.identity.clone(),
+            analysis_root,
             status,
-        }
+            session: Arc::new(Mutex::new(workspace::WorkspaceSession::default())),
+        };
+        // Domain JSON carries status/catalog data, not version-dependent SDK
+        // result metadata. SDK constructors supply current result fields and
+        // its handler owns stripping them for older peers.
+        server.tools = ListToolsResult::with_all_items(server.tools.tools)
+            .with_ttl_ms(0)
+            .with_cache_scope(CacheScope::Private);
+        server.resources = ListResourcesResult::with_all_items(server.resources.resources)
+            .with_ttl_ms(0)
+            .with_cache_scope(CacheScope::Private);
+        server.resource_templates = ListResourceTemplatesResult::with_all_items(
+            server.resource_templates.resource_templates,
+        )
+        .with_ttl_ms(0)
+        .with_cache_scope(CacheScope::Private);
+        Ok(server)
     }
 
-    pub(super) fn handle_frame(&mut self, frame: &[u8]) -> Option<Value> {
-        let message = match serde_json::from_slice::<Value>(frame) {
-            Ok(message) => message,
-            Err(_error) => {
-                return Some(error_response(
-                    None,
-                    protocol::ERROR_PARSE,
-                    "Parse error",
-                    None,
-                ));
-            }
-        };
-        self.handle_message(message)
+    async fn status_tool(&self) -> Result<CallToolResponse, ErrorData> {
+        let session = self.session.lock().await;
+        let result = protocol::status_tool_result(
+            &self.status,
+            &session,
+            &self.profile,
+            super::MAX_MESSAGE_BYTES,
+            super::MAX_RESPONSE_BYTES,
+        )
+        .map_err(|_error| ErrorData::internal_error("serialize workspace status", None))?;
+        let mut result: CallToolResult = typed(result)?;
+        result.result_type = Some(ResultType::COMPLETE);
+        Ok(result.into())
     }
 
-    fn handle_message(&mut self, message: Value) -> Option<Value> {
-        let Some(object) = message.as_object() else {
-            return Some(error_response(
-                None,
-                protocol::ERROR_INVALID_REQUEST,
-                "Invalid Request",
-                None,
-            ));
+    async fn refresh_tool(&self) -> Result<CallToolResponse, ErrorData> {
+        let Some(root) = self.analysis_root.clone() else {
+            let failure = workspace::AttemptFailure::new(
+                workspace::CODE_WORKSPACE_UNAVAILABLE,
+                "the workspace root is not usable, so no analysis can run",
+                "restart the server with `ripr mcp --stdio --root <repository>`",
+            );
+            return self.typed_failure(failure, workspace::REFRESH_SCHEMA_VERSION);
         };
-        if object.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
-            return Some(error_response(
-                readable_id(object),
-                protocol::ERROR_INVALID_REQUEST,
-                "Invalid Request",
-                None,
-            ));
-        }
-        let Some(method) = object.get("method").and_then(Value::as_str) else {
-            return Some(error_response(
-                readable_id(object),
-                protocol::ERROR_INVALID_REQUEST,
-                "Invalid Request",
-                None,
-            ));
-        };
-        let id = readable_id(object);
-        let is_notification = !object.contains_key("id");
-        if is_notification {
-            self.handle_notification(method);
-            return None;
-        }
-        let Some(id) = id else {
-            return Some(error_response(
-                None,
-                protocol::ERROR_INVALID_REQUEST,
-                "Invalid Request",
-                None,
-            ));
-        };
-
-        let result = match method {
-            "initialize" => self.initialize(object),
-            "server/discover" => self.discover(object),
-            "ping" if matches!(self.lifecycle, Lifecycle::New) => Ok(protocol::empty_result(false)),
-            _ => self.handle_ready_request(method, object),
-        };
-        Some(match result {
-            Ok(result) => success_response(id, result),
-            Err(error) => error_response(Some(id), error.code, error.message, error.data),
-        })
-    }
-
-    fn handle_notification(&mut self, method: &str) {
-        if method == "notifications/initialized"
-            && let Lifecycle::Legacy { initialized, .. } = &mut self.lifecycle
+        let root_identity = self.root_identity.clone();
+        let session = self.session.clone();
         {
-            *initialized = true;
-        }
-    }
-
-    fn initialize(&mut self, request: &Map<String, Value>) -> Result<Value, RpcError> {
-        if matches!(self.lifecycle, Lifecycle::Inline) {
-            return Err(RpcError::invalid_request(
-                "initialize cannot follow server/discover",
-            ));
-        }
-        let params = required_params_object(request)?;
-        let protocol_version = params
-            .get("protocolVersion")
-            .and_then(Value::as_str)
-            .ok_or_else(|| RpcError::invalid_params("initialize requires protocolVersion"))?;
-        require_object(params, "capabilities", "initialize requires capabilities")?;
-        require_object(params, "clientInfo", "initialize requires clientInfo")?;
-        let negotiated = if protocol::is_supported_protocol_version(protocol_version) {
-            protocol_version
-        } else {
-            protocol::CURRENT_PROTOCOL_VERSION
-        };
-        if let Lifecycle::Legacy {
-            protocol_version: previous,
-            ..
-        } = &self.lifecycle
-            && previous != negotiated
-        {
-            return Err(RpcError::invalid_request(
-                "initialize cannot renegotiate an active session",
-            ));
-        }
-        let initialized = matches!(
-            self.lifecycle,
-            Lifecycle::Legacy {
-                initialized: true,
-                ..
+            let mut session = session.lock().await;
+            if session.in_flight {
+                let failure = workspace::AttemptFailure::new(
+                    workspace::CODE_ANALYSIS_IN_FLIGHT,
+                    "an analysis attempt is already running",
+                    "poll ripr_workspace_status until attempt_state leaves in_flight",
+                );
+                return self.typed_failure(failure, workspace::REFRESH_SCHEMA_VERSION);
             }
-        );
-        self.lifecycle = Lifecycle::Legacy {
-            protocol_version: negotiated.to_string(),
-            initialized,
-        };
-        Ok(protocol::initialize_result(negotiated))
-    }
-
-    fn discover(&mut self, request: &Map<String, Value>) -> Result<Value, RpcError> {
-        if matches!(self.lifecycle, Lifecycle::Legacy { .. }) {
-            return Err(RpcError::invalid_request(
-                "server/discover cannot replace an initialized session",
-            ));
+            session.in_flight = true;
         }
-        inline_protocol_version(request)?;
-        self.lifecycle = Lifecycle::Inline;
-        Ok(protocol::discover_result())
-    }
-
-    fn handle_ready_request(
-        &self,
-        method: &str,
-        request: &Map<String, Value>,
-    ) -> Result<Value, RpcError> {
-        let protocol_version = self.request_protocol_version(request)?;
-        let current_protocol = protocol::is_current_protocol(protocol_version);
-        let ping_supported = matches!(
-            &self.lifecycle,
-            Lifecycle::Legacy {
-                protocol_version,
-                initialized: true,
-            } if !protocol::is_current_protocol(protocol_version)
-        );
-        match method {
-            "ping" if ping_supported => Ok(protocol::empty_result(false)),
-            "ping" => Err(RpcError::method_not_found(method)),
-            "tools/list" => Ok(protocol::tools_list_result(current_protocol)),
-            "tools/call" => self.call_tool(request, current_protocol),
-            "resources/list" => Ok(protocol::resources_list_result(current_protocol)),
-            "resources/templates/list" => {
-                Ok(protocol::resource_templates_list_result(current_protocol))
-            }
-            "resources/read" => self.read_resource(request, current_protocol),
-            _ => Err(RpcError::method_not_found(method)),
-        }
-    }
-
-    fn request_protocol_version<'a>(
-        &'a self,
-        request: &'a Map<String, Value>,
-    ) -> Result<&'a str, RpcError> {
-        match &self.lifecycle {
-            Lifecycle::New => Err(RpcError::invalid_request(
-                "MCP session is not initialized; call initialize or server/discover first",
+        let mut attempt = workspace::InFlightAttempt::new(session.clone());
+        let worker = tokio::task::spawn_blocking(move || {
+            workspace::run_check(&root, root_identity.as_deref())
+        });
+        let outcome = match worker.await {
+            Ok(outcome) => outcome,
+            Err(_join_error) => Err(workspace::AttemptFailure::new(
+                workspace::CODE_ANALYSIS_FAILED,
+                "the analysis worker terminated before producing a snapshot",
+                "retry with ripr_refresh",
             )),
-            Lifecycle::Legacy {
-                protocol_version,
-                initialized,
-            } => {
-                if !initialized {
-                    return Err(RpcError::invalid_request(
-                        "MCP session is waiting for notifications/initialized",
-                    ));
+        };
+        let document = {
+            let mut session = session.lock().await;
+            session.in_flight = false;
+            attempt.disarm();
+            match outcome {
+                Ok(snapshot) => {
+                    session.last_failure = None;
+                    session.last_good = Some(Arc::new(snapshot));
                 }
-                Ok(protocol_version.as_str())
+                Err(failure) => {
+                    // A failed attempt never replaces the last-known-good
+                    // snapshot and never commits a partial one.
+                    session.last_failure = Some(failure);
+                }
             }
-            Lifecycle::Inline => inline_protocol_version(request),
+            workspace::refresh_document(&session)
+        };
+        self.bounded_tool_result(
+            document,
+            workspace::REFRESH_SCHEMA_VERSION,
+            "serialize refresh result",
+        )
+    }
+
+    async fn list_gaps_tool(
+        &self,
+        arguments: Option<serde_json::Map<String, Value>>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        reject_unknown_arguments(&arguments, &["snapshot_id"])?;
+        let requested = optional_string_argument(&arguments, "snapshot_id")?;
+        let session = self.session.lock().await;
+        match session.list_gaps(requested.as_deref()) {
+            Ok(document) => self.bounded_tool_result(
+                document,
+                gaps::GAP_LIST_SCHEMA_VERSION,
+                "serialize gap list",
+            ),
+            Err(failure) => self.typed_failure(failure, gaps::GAP_LIST_SCHEMA_VERSION),
         }
     }
 
-    fn call_tool(
+    async fn get_gap_tool(
         &self,
-        request: &Map<String, Value>,
-        current_protocol: bool,
-    ) -> Result<Value, RpcError> {
-        let params = required_params_object(request)?;
-        let name = params
-            .get("name")
-            .and_then(Value::as_str)
-            .ok_or_else(|| RpcError::invalid_params("tools/call requires name"))?;
-        if name != protocol::STATUS_TOOL_NAME {
-            return Err(RpcError::invalid_params("unknown RIPR tool"));
+        arguments: Option<serde_json::Map<String, Value>>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        reject_unknown_arguments(&arguments, &["gap_id", "snapshot_id"])?;
+        let gap_id = required_string_argument(&arguments, "gap_id")?;
+        let requested = optional_string_argument(&arguments, "snapshot_id")?;
+        let session = self.session.lock().await;
+        match session.get_gap(&gap_id, requested.as_deref()) {
+            Ok(document) => self.bounded_tool_result(
+                document,
+                gaps::GAP_SCHEMA_VERSION,
+                "serialize gap evidence",
+            ),
+            Err(failure) => self.typed_failure(failure, gaps::GAP_SCHEMA_VERSION),
         }
-        if let Some(arguments) = params.get("arguments") {
-            let Some(arguments) = arguments.as_object() else {
-                return Err(RpcError::invalid_params(
-                    "ripr_workspace_status arguments must be an object",
-                ));
-            };
-            if !arguments.is_empty() {
-                return Err(RpcError::invalid_params(
-                    "ripr_workspace_status does not accept arguments",
-                ));
-            }
-        }
-        protocol::status_tool_result(
-            &self.status,
-            super::MAX_MESSAGE_BYTES,
-            super::MAX_RESPONSE_BYTES,
-            current_protocol,
-        )
-        .map_err(RpcError::internal)
     }
 
-    fn read_resource(
+    async fn prepare_repair_tool(
         &self,
-        request: &Map<String, Value>,
-        current_protocol: bool,
-    ) -> Result<Value, RpcError> {
-        let params = required_params_object(request)?;
-        let uri = params
-            .get("uri")
-            .and_then(Value::as_str)
-            .ok_or_else(|| RpcError::invalid_params("resources/read requires uri"))?;
-        if uri != protocol::STATUS_RESOURCE_URI {
-            return if current_protocol {
-                Err(RpcError::invalid_params("unknown RIPR resource"))
-            } else {
-                Err(RpcError::resource_not_found(uri))
-            };
+        arguments: Option<serde_json::Map<String, Value>>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        reject_unknown_arguments(&arguments, &["gap_id", "snapshot_id"])?;
+        let gap_id = required_string_argument(&arguments, "gap_id")?;
+        let requested = optional_string_argument(&arguments, "snapshot_id")?;
+        let mut session = self.session.lock().await;
+        match session.prepare_repair(&gap_id, requested.as_deref(), self.root_identity.as_deref()) {
+            Ok(document) => self.bounded_tool_result(
+                document,
+                repair::REPAIR_PACKET_SCHEMA_VERSION,
+                "serialize repair packet",
+            ),
+            Err(failure) => self.typed_failure(failure, repair::REPAIR_PACKET_SCHEMA_VERSION),
         }
-        protocol::status_resource_result(
-            &self.status,
-            super::MAX_MESSAGE_BYTES,
-            super::MAX_RESPONSE_BYTES,
-            current_protocol,
-        )
-        .map_err(RpcError::internal)
+    }
+
+    async fn get_repair_attempt_tool(
+        &self,
+        arguments: Option<serde_json::Map<String, Value>>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        reject_unknown_arguments(&arguments, &["attempt_id"])?;
+        let attempt_id = required_string_argument(&arguments, "attempt_id")?;
+        match self.repair_read_document(&attempt_id, false).await {
+            Ok(document) => self.bounded_tool_result(
+                document,
+                repair::REPAIR_ATTEMPT_SCHEMA_VERSION,
+                "serialize repair attempt",
+            ),
+            Err(failure) => self.typed_failure(failure, repair::REPAIR_ATTEMPT_SCHEMA_VERSION),
+        }
+    }
+
+    async fn get_receipt_status_tool(
+        &self,
+        arguments: Option<serde_json::Map<String, Value>>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        reject_unknown_arguments(&arguments, &["receipt_id"])?;
+        let receipt_id = required_string_argument(&arguments, "receipt_id")?;
+        match self.repair_read_document(&receipt_id, true).await {
+            Ok(document) => self.bounded_tool_result(
+                document,
+                repair::RECEIPT_STATUS_SCHEMA_VERSION,
+                "serialize receipt status",
+            ),
+            Err(failure) => self.typed_failure(failure, repair::RECEIPT_STATUS_SCHEMA_VERSION),
+        }
+    }
+
+    /// Resolve session identities under the lock; only the independent durable
+    /// fallback can perform Git/filesystem reads on the blocking worker. A
+    /// session clone evaluated later could mistake a superseded snapshot for
+    /// the current one, so session transactions never take that path.
+    /// Public requests use BoundedTransport's admission gate through reply
+    /// flush; a queued refresh cannot enter while this read is outstanding.
+    async fn repair_read_document(
+        &self,
+        id: &str,
+        receipt: bool,
+    ) -> Result<Value, workspace::AttemptFailure> {
+        let root = self.analysis_root.clone();
+        let root_identity = self.root_identity.clone();
+        let durable_id = id.to_string();
+        self.repair_read_document_with(id, receipt, move || {
+            repair_document_from_session(
+                &workspace::WorkspaceSession::default(),
+                &durable_id,
+                receipt,
+                root.as_deref(),
+                root_identity.as_deref(),
+            )
+        })
+        .await
+    }
+
+    async fn repair_read_document_with(
+        &self,
+        id: &str,
+        receipt: bool,
+        durable_read: impl FnOnce() -> Result<Value, workspace::AttemptFailure> + Send + 'static,
+    ) -> Result<Value, workspace::AttemptFailure> {
+        {
+            let session = self.session.lock().await;
+            if session.in_flight
+                || session.repairs.contains_key(id)
+                || session.superseded_attempts.contains_key(id)
+                || self.analysis_root.is_none()
+            {
+                return repair_document_from_session(
+                    &session,
+                    id,
+                    receipt,
+                    self.analysis_root.as_deref(),
+                    self.root_identity.as_deref(),
+                );
+            }
+        }
+        blocking_repair_read(durable_read).await
+    }
+
+    async fn get_repair_card_tool(
+        &self,
+        arguments: Option<serde_json::Map<String, Value>>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        reject_unknown_arguments(&arguments, &["gap_id", "snapshot_id"])?;
+        let gap_id = required_string_argument(&arguments, "gap_id")?;
+        let requested = optional_string_argument(&arguments, "snapshot_id")?;
+        let session = self.session.lock().await;
+        match session.repair_card_document(
+            &gap_id,
+            requested.as_deref(),
+            self.analysis_root.as_deref(),
+        ) {
+            Ok(document) => self.bounded_tool_result(
+                document,
+                repair_card::REPAIR_CARD_SCHEMA_VERSION,
+                "serialize repair card",
+            ),
+            Err(failure) => self.typed_failure(failure, repair_card::REPAIR_CARD_SCHEMA_VERSION),
+        }
+    }
+
+    fn typed_failure(
+        &self,
+        failure: workspace::AttemptFailure,
+        schema_version: &str,
+    ) -> Result<CallToolResponse, ErrorData> {
+        let result = protocol::tool_failure(&failure, schema_version)
+            .map_err(|_error| ErrorData::internal_error("serialize typed failure", None))?;
+        let mut result: CallToolResult = typed(result)?;
+        result.result_type = Some(ResultType::COMPLETE);
+        Ok(result.into())
+    }
+
+    /// Wrap a document in the tool envelope and fail closed when the final
+    /// serialized response exceeds the advertised bound: the envelope carries
+    /// the document twice (text and structured content), so a document that
+    /// fits the raw cap can still overflow the wire response.
+    fn bounded_tool_result(
+        &self,
+        document: Value,
+        failure_version: &'static str,
+        serialize_context: &'static str,
+    ) -> Result<CallToolResponse, ErrorData> {
+        let envelope = protocol::tool_result(document)
+            .map_err(|_error| ErrorData::internal_error(serialize_context, None))?;
+        let bytes = serde_json::to_vec(&envelope)
+            .map_err(|_error| ErrorData::internal_error(serialize_context, None))?;
+        if bytes.len() > super::MAX_RESPONSE_BYTES {
+            let failure = workspace::AttemptFailure::new(
+                workspace::CODE_RESULT_TOO_LARGE,
+                format!(
+                    "tool response is {} bytes; the MCP response bound is {}",
+                    bytes.len(),
+                    super::MAX_RESPONSE_BYTES
+                ),
+                "read narrower evidence (one item through ripr_get_gap) instead of widening the response",
+            );
+            return self.typed_failure(failure, failure_version);
+        }
+        let mut result: CallToolResult = typed(envelope)?;
+        result.result_type = Some(ResultType::COMPLETE);
+        Ok(result.into())
     }
 }
 
+fn optional_string_argument(
+    arguments: &Option<serde_json::Map<String, Value>>,
+    name: &str,
+) -> Result<Option<String>, ErrorData> {
+    let Some(arguments) = arguments else {
+        return Ok(None);
+    };
+    match arguments.get(name) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => Ok(Some(value.clone())),
+        Some(_other) => Err(ErrorData::invalid_params(
+            format!("{name} must be a string"),
+            None,
+        )),
+    }
+}
+
+/// The declared input schemas set `additionalProperties: false`; the adapter
+/// enforces the same bound at the dispatch edge instead of trusting the SDK
+/// or the client to reject unknown argument names.
+fn reject_unknown_arguments(
+    arguments: &Option<serde_json::Map<String, Value>>,
+    allowed: &[&str],
+) -> Result<(), ErrorData> {
+    let Some(arguments) = arguments else {
+        return Ok(());
+    };
+    for name in arguments.keys() {
+        if !allowed.contains(&name.as_str()) {
+            return Err(ErrorData::invalid_params(
+                format!("unknown argument {name:?}; allowed: {allowed:?}"),
+                None,
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn required_string_argument(
+    arguments: &Option<serde_json::Map<String, Value>>,
+    name: &str,
+) -> Result<String, ErrorData> {
+    let value = optional_string_argument(arguments, name)?;
+    value.filter(|value| !value.is_empty()).ok_or_else(|| {
+        ErrorData::invalid_params(
+            format!("{name} is required and must be a non-empty string"),
+            None,
+        )
+    })
+}
+
+fn typed<T: DeserializeOwned>(value: serde_json::Value) -> Result<T, ErrorData> {
+    serde_json::from_value(value)
+        .map_err(|_error| ErrorData::internal_error("invalid status projection", None))
+}
+
+fn repair_document_from_session(
+    session: &workspace::WorkspaceSession,
+    id: &str,
+    receipt: bool,
+    root: Option<&std::path::Path>,
+    root_identity: Option<&str>,
+) -> Result<Value, workspace::AttemptFailure> {
+    if receipt {
+        session.receipt_status_document(id, root, root_identity)
+    } else {
+        session.repair_attempt_document(id, root, root_identity)
+    }
+}
+
+async fn blocking_repair_read(
+    read: impl FnOnce() -> Result<Value, workspace::AttemptFailure> + Send + 'static,
+) -> Result<Value, workspace::AttemptFailure> {
+    tokio::task::spawn_blocking(read).await.map_err(|error| {
+        workspace::AttemptFailure::new(
+            workspace::CODE_ANALYSIS_FAILED,
+            format!("durable repair read worker failed: {error}"),
+            "retry the exact attempt or receipt read",
+        )
+    })?
+}
+
+impl ServerHandler for McpServer {
+    fn get_tool(&self, name: &str) -> Option<Tool> {
+        self.tools
+            .tools
+            .iter()
+            .find(|tool| tool.name == name)
+            .cloned()
+    }
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .build(),
+        )
+        .with_instructions(protocol::INSTRUCTIONS)
+        .with_server_info(Implementation::new("ripr", env!("CARGO_PKG_VERSION")))
+    }
+    async fn list_tools(
+        &self,
+        _: Option<PaginatedRequestParams>,
+        _: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        Ok(self.tools.clone())
+    }
+    async fn list_resources(
+        &self,
+        _: Option<PaginatedRequestParams>,
+        _: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, ErrorData> {
+        Ok(self.resources.clone())
+    }
+    async fn list_resource_templates(
+        &self,
+        _: Option<PaginatedRequestParams>,
+        _: RequestContext<RoleServer>,
+    ) -> Result<ListResourceTemplatesResult, ErrorData> {
+        Ok(self.resource_templates.clone())
+    }
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        _: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        match request.name.as_ref() {
+            protocol::STATUS_TOOL_NAME => {
+                if request
+                    .arguments
+                    .as_ref()
+                    .is_some_and(|arguments| !arguments.is_empty())
+                {
+                    return Err(ErrorData::invalid_params(
+                        "ripr_workspace_status does not accept arguments",
+                        None,
+                    ));
+                }
+                self.status_tool().await
+            }
+            protocol::REFRESH_TOOL_NAME => {
+                if request
+                    .arguments
+                    .as_ref()
+                    .is_some_and(|arguments| !arguments.is_empty())
+                {
+                    return Err(ErrorData::invalid_params(
+                        "ripr_refresh does not accept arguments",
+                        None,
+                    ));
+                }
+                self.refresh_tool().await
+            }
+            protocol::LIST_GAPS_TOOL_NAME => self.list_gaps_tool(request.arguments).await,
+            protocol::GET_GAP_TOOL_NAME => self.get_gap_tool(request.arguments).await,
+            protocol::PREPARE_REPAIR_TOOL_NAME => self.prepare_repair_tool(request.arguments).await,
+            protocol::GET_REPAIR_ATTEMPT_TOOL_NAME => {
+                self.get_repair_attempt_tool(request.arguments).await
+            }
+            protocol::GET_RECEIPT_STATUS_TOOL_NAME => {
+                self.get_receipt_status_tool(request.arguments).await
+            }
+            repair_card::GET_REPAIR_CARD_TOOL_NAME => {
+                self.get_repair_card_tool(request.arguments).await
+            }
+            _other => Err(ErrorData::new(
+                ErrorCode::METHOD_NOT_FOUND,
+                "unknown tool; available: ripr_workspace_status, ripr_refresh, ripr_list_gaps, ripr_get_gap, ripr_prepare_repair, ripr_get_repair_attempt, ripr_get_receipt_status, ripr_get_repair_card",
+                Some(serde_json::json!({
+                    "available": [
+                        protocol::STATUS_TOOL_NAME,
+                        protocol::REFRESH_TOOL_NAME,
+                        protocol::LIST_GAPS_TOOL_NAME,
+                        protocol::GET_GAP_TOOL_NAME,
+                        protocol::PREPARE_REPAIR_TOOL_NAME,
+                        protocol::GET_REPAIR_ATTEMPT_TOOL_NAME,
+                        protocol::GET_RECEIPT_STATUS_TOOL_NAME,
+                        repair_card::GET_REPAIR_CARD_TOOL_NAME,
+                    ]
+                })),
+            )),
+        }
+    }
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResponse, ErrorData> {
+        if request.uri == protocol::STATUS_RESOURCE_URI {
+            let session = self.session.lock().await;
+            let result = protocol::status_resource_result(
+                &self.status,
+                &session,
+                &self.profile,
+                super::MAX_MESSAGE_BYTES,
+                super::MAX_RESPONSE_BYTES,
+            )
+            .map_err(|_error| ErrorData::internal_error("serialize workspace status", None))?;
+            let result: ReadResourceResult = typed(result)?;
+            return Ok(ReadResourceResult::new(result.contents)
+                .with_ttl_ms(0)
+                .with_cache_scope(CacheScope::Private)
+                .into());
+        }
+        if let Some(snapshot_id) = gaps::snapshot_resource_id(&request.uri) {
+            let session = self.session.lock().await;
+            return match session.snapshot_document(snapshot_id) {
+                Ok(document) => self.resource_result(document, &request.uri),
+                Err(failure) => Err(resource_failure(
+                    "snapshot",
+                    &failure,
+                    session
+                        .last_good
+                        .as_ref()
+                        .map(|snapshot| snapshot.snapshot_id.as_str()),
+                )),
+            };
+        }
+        if let Some(gap_id) = gaps::gap_resource_id(&request.uri) {
+            let session = self.session.lock().await;
+            return match session.get_gap(gap_id, None) {
+                Ok(document) => self.resource_result(document, &request.uri),
+                Err(failure) => Err(resource_failure("gap", &failure, None)),
+            };
+        }
+        if let Some(attempt_id) = repair::repair_attempt_resource_id(&request.uri) {
+            return match self.repair_read_document(attempt_id, false).await {
+                Ok(document) => self.resource_result(document, &request.uri),
+                Err(failure) => Err(resource_failure("repair-attempt", &failure, None)),
+            };
+        }
+        if let Some(receipt_id) = repair::receipt_resource_id(&request.uri) {
+            return match self.repair_read_document(receipt_id, true).await {
+                Ok(document) => self.resource_result(document, &request.uri),
+                Err(failure) => Err(resource_failure("receipt", &failure, None)),
+            };
+        }
+        if let Some(item_id) = repair_card::repair_card_resource_id(&request.uri) {
+            let session = self.session.lock().await;
+            return match session.repair_card_document(item_id, None, self.analysis_root.as_deref())
+            {
+                Ok(document) => self.resource_result(document, &request.uri),
+                Err(failure) => Err(resource_failure("repair-card", &failure, None)),
+            };
+        }
+        Err(ErrorData::resource_not_found(
+            "unknown resource; available: ripr://workspace/status",
+            Some(serde_json::json!({
+                "available": [protocol::STATUS_RESOURCE_URI],
+                "resource_templates": [
+                    protocol::SNAPSHOT_RESOURCE_TEMPLATE,
+                    protocol::GAP_RESOURCE_TEMPLATE,
+                    repair::REPAIR_ATTEMPT_TEMPLATE,
+                    repair::RECEIPT_TEMPLATE,
+                    repair_card::REPAIR_CARD_TEMPLATE,
+                ],
+            })),
+        ))
+    }
+}
+
+impl McpServer {
+    fn resource_result(
+        &self,
+        document: Value,
+        uri: &str,
+    ) -> Result<ReadResourceResponse, ErrorData> {
+        let text = serde_json::to_string_pretty(&document)
+            .map_err(|_error| ErrorData::internal_error("serialize resource", None))?;
+        let envelope = json_envelope(uri, text);
+        let bytes = serde_json::to_vec(&envelope)
+            .map_err(|_error| ErrorData::internal_error("serialize resource", None))?;
+        if bytes.len() > super::MAX_RESPONSE_BYTES {
+            let failure = workspace::AttemptFailure::new(
+                workspace::CODE_RESULT_TOO_LARGE,
+                format!(
+                    "resource response is {} bytes; the MCP response bound is {}",
+                    bytes.len(),
+                    super::MAX_RESPONSE_BYTES
+                ),
+                "read narrower evidence (one item through ripr_get_gap) instead of widening the response",
+            );
+            return Err(resource_failure("bounded", &failure, None));
+        }
+        let result: ReadResourceResult = typed(envelope)?;
+        Ok(ReadResourceResult::new(result.contents)
+            .with_ttl_ms(0)
+            .with_cache_scope(CacheScope::Private)
+            .into())
+    }
+}
+
+fn json_envelope(uri: &str, text: String) -> Value {
+    serde_json::json!({
+        "contents": [{
+            "uri": uri,
+            "mimeType": "application/json",
+            "text": text
+        }]
+    })
+}
+
+/// Standard resource-miss semantics with the typed failure as data: the
+/// message stays bounded and human-readable, and `data.code` carries the
+/// typed state (`no_snapshot`, `stale_snapshot`, `item_not_found`, …).
+fn resource_failure(
+    kind: &str,
+    failure: &workspace::AttemptFailure,
+    current_snapshot_id: Option<&str>,
+) -> ErrorData {
+    let mut data = serde_json::json!({
+        "code": failure.code,
+        "recovery": failure.recovery,
+        "detail": failure.detail,
+        "failure": failure.value(),
+    });
+    if let Some(snapshot_id) = current_snapshot_id {
+        data["current_snapshot_id"] = Value::from(snapshot_id);
+    }
+    ErrorData::resource_not_found(
+        format!("unavailable {kind} resource: {}", failure.code),
+        Some(data),
+    )
+}
+
 #[cfg(test)]
+#[path = "server_tests.rs"]
 mod tests;

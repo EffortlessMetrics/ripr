@@ -12,8 +12,7 @@ RIPR-SPEC-0069, RIPR-SPEC-0070, RIPR-SPEC-0071, RIPR-SPEC-0072, RIPR-SPEC-0073
 Linked ADRs: n/a
 Linked issues: #1031 (large-repo diff-first), #1040 (spec lifecycle dashboard),
 #1041 (unsafe-review contract alignment)
-Historical active goal: `use-case-spec-spine`. The active manifest now routes
-through `.ripr/goals/active.toml` and RIPR-PLAN-0062.
+Historical active goal: `use-case-spec-spine` (historical; `.ripr/goals/active.toml` retired in #1701).
 
 ## Current State
 
@@ -912,8 +911,8 @@ consumer-owned classifications are not ripr promotion prerequisites.
   states RIPR-SPEC-0066 specifies, and no gate-mode rollout.
 - No new crates, binaries, export formats, daemons, or workspace-shape
   changes; the one-package surface holds.
-- No second tracker: sequencing lives here and in
-  `.ripr/goals/active.toml` once routed.
+- No second tracker: sequencing lives here and in GitHub issues/PRs per
+  [Repository Tracking Model](../../docs/REPO_TRACKING_MODEL.md).
 
 ## Exit Criteria
 
@@ -935,5 +934,6 @@ consumer-owned classifications are not ripr promotion prerequisites.
 - Preview authority is unchanged end to end: no preview surface emits a
   public repair packet, joins a gate, badge, or baseline, or moves support
   tier as a result of this plan.
-- `.ripr/goals/active.toml` routes through this plan while work is active
-  and records the closeout when the sequence completes.
+- Live execution routes through this plan via GitHub issues and PRs per
+  [Repository Tracking Model](../../docs/REPO_TRACKING_MODEL.md) (the former
+  `.ripr/goals/active.toml` manifest was retired in #1701).

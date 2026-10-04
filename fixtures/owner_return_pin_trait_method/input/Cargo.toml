@@ -1,0 +1,8 @@
+[package]
+name = "owner_return_pin_trait_method_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "owner_return_pin_trait_method_fixture"
+path = "src/lib.rs"

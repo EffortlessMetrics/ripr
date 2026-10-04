@@ -2,7 +2,7 @@ include!("queue.rs");
 
 pub(super) fn run_with_live_currentness(options: Options) -> Result<(), String> {
     ensure_command_root(&options.root, "swarm queue")?;
-    let contents = std::fs::read_to_string(&options.gap_ledger).map_err(|err| {
+    let contents = crate::bounded_input::read_to_string(&options.gap_ledger).map_err(|err| {
         format!(
             "swarm queue --gap-ledger {} is invalid: read failed: {err}",
             options.gap_ledger.display()

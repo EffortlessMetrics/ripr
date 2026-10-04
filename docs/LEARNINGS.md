@@ -3,6 +3,388 @@
 This log captures repo knowledge that should survive individual PRs and chat
 sessions. It is intentionally short and actionable.
 
+## 2026-10-04: `help --json` must be named and self-reported (#5266)
+
+A machine-only route that human `ripr help` does not name is undiscoverable.
+`json_support` is the catalog's own authority: if `ripr help --json` parses
+and emits the document, `cmd:help` cannot report `json_support: false` or
+claim it prints text only. #5398 landed the default-screen `More:` line
+and `json_support: true`. That is not enough: `ripr help --all` was still
+a discovery dead end, and naming the route next to "global flags accepted
+in any position" is a second honesty hole because `help --json` rejects
+`-v`/`--verbose`. Pin the `More:` line, the `--all` header, and the
+projected catalog row together, and qualify the adjacent `-v` claim with
+the same usage phrase the parser already emits.
+## 2026-10-04: A recorded timeout is not process-group-gone (#5382)
+
+`capture_output_with_timeout` used to set `timed_out: true` after the first
+Unix group-kill and a bounded pipe drain. Drain-truncated output proves the
+helper returned, not that every group member died. A descendant can miss the
+first `kill -KILL -- -<pgid>` by forking around it (GNU `time` starting `ripr`
+is the concrete case), keep running, and skew later timings on a shared runner.
+
+After reaping the direct child, the timeout path must confirm the process group
+is empty (re-sending SIGKILL while a short budget remains) or fail closed that
+it could not. Callers may record `timed_out` only when that confirmation
+succeeds. Do not treat Job Object containment on Windows as covering this Unix
+group-confirm gap, and do not fold the check into scale-cliff or another
+caller: the shared wait/timeout owner is the authority.
+
+On Linux, a complete `/proc` scan of every readable numeric pid is the member
+list so SIGKILL zombies are not "still running" and a live other-uid descendant
+is not hidden behind a same-uid zombie. An empty scan is not gone by itself:
+`kill -0` ESRCH (or a successful probe of a zombie) may confirm empty, while
+EPERM or an unreadable/unparseable `stat` must not. The probe runs under
+`LC_ALL=C` so ESRCH is English "No such process". A stdout-to-file capture must
+delete its temp file when confirmation fails.
+
+## 2026-10-03: Windows `where` is not a PATH probe (#5103)
+
+`where prove` searches the process current directory first. Doctor's Perl
+runner line printed "prove available on PATH" for a checkout `prove.cmd` that
+was never on PATH. Walk PATH entries only; skip empty and `.` components (cwd
+aliases). Keep a repo-local `prove.cmd` control that must stay missing, and a
+PATH `prove` control that must still count. Do not spawn `which`/`where` from
+the checkout cwd, and do not treat a cwd file as the displayed exporter path.
+
+## 2026-10-03: source-subject stamps must not trim path identity (#5128)
+
+`subject_relative_path` used to `trim()` a named file and then reject leftover
+whitespace. Valid paths such as ` leading.py` collapsed onto `leading.py`; a
+directory like ` spaced/discount.py` was rewritten; Git-quoted tab names were
+dropped. The currentness consumer then treated a correctly spelled whitespace
+stamp as `source_subject_malformed`.
+
+Keep filesystem identity in the source-subject owner. Split `path::test_name`
+selectors, but do not trim the file part or reject interior whitespace. Walk
+`Path` components so parent, root, and prefix segments stay rejected; a
+slash-split rewrite dropped Windows drive-relative and rooted identities.
+Paths remain the limitation-path rule: they are identities, not prose. Do not
+add a second filesystem authority in a renderer or `lsp/diagnostics.rs`.
+
+## 2026-10-03: record-count sharding is not a byte bound (#4999)
+
+`RIPR_REPO_SEAM_CACHE_LIMIT` / `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS` cap
+how many `ClassifiedSeam` records share one file. They do not cap encoded
+bytes. On `origin/main` `3fb4f1675` the sharded path still did `chunk.to_vec()`
+and `codec::encode(&_shard)` into a full `Vec<u8>`; the single-entry path did
+the same two representation classes with `seams.to_vec()`. That is the
+`cache_store` amplification previously OOM-killed around #4291 (~5.2 GB cache,
+~11.7 GB anonymous RSS). Record-count sharding can still emit one huge shard
+when records are large.
+
+The write-side repair is borrowed serde plus a bounded IO buffer into the
+existing atomic temp-file protocol, with an encoded-byte ceiling on both the
+single-entry and sharded paths. Size planning may use a same-length
+placeholder digest so planning does not retain a second encoded body.
+Generation-atomic shard names keep a failed replacement from mixing
+manifests. Load prefers any non-`Miss` single entry over a sharded
+manifest, and `publish_single_entry` currently leaves the previous
+sharded manifest in place. A parked restore therefore cannot treat
+`manifest.exists()` as “newer shards”: that leftover file is not a
+newer generation. Compare the parked-at snapshot; restore when it is
+unchanged, and refuse restore when the bytes changed or the file is
+unreadable. Load/decode auxiliary memory is a separate claim (#5124).
+A passing record-count test is not RSS proof; host-scoped 10k/self-dogfood
+store-phase RSS stays `not_established` until #3794 observes it. After
+#5291, owned envelopes serialize `classified_seams` through
+`related_test_table`. Borrowed store envelopes must use the same adapter
+(`serialize_with = related_test_table::serialize`); a sequence body is
+load-incompatible even when checksums are well-formed.
+
+## 2026-10-03: `Path::is_dir()` is not a missing-path probe (#5101)
+
+`Path::is_dir()` is false for a missing path and for an existing file. Doctor
+used that boolean as "the root directory does not exist", so `ripr doctor --root
+Cargo.toml` (and `doctor --json`) contradicted `ls`. Classify with
+`metadata`/`symlink_metadata` once and reuse the result for evidence, skip
+reasons, and MissingRoot guidance. Keep a missing-path control that must still
+say "does not exist"; a symlink to a directory must still pass. A live name
+whose follow fails with a non-`NotFound` error (symlink into an unreadable
+directory) is unreadable, not a non-directory. Do not give MissingRoot's
+Directory re-classify arm the missing-path sentence.
+
+## 2026-10-03: typed timeouts must survive the current consumer path (#4859)
+
+Git timeout classification belongs to the crate-internal `CoreError` variant;
+`Message` never acquires that meaning from its Display text. Structured context
+preserves the family until the public String boundary. The current worktree
+check returns output, Rust diagnostic origins, and consumed source commitments
+and observes producer progress. Carry the typed error through that tuple route
+and its open-path variant; replacing it with an older check adapter discards
+landed behavior. Committed-source reads retain the typed family through context.
+
+Control placement matters: wrapped timeout and lookalike Message tests invoke
+the production LSP error decision before the renderer. The framed server control
+uses numeric `gitTimeoutMs = 0` with explicit base `HEAD`, then restores the normal
+deadline and requires a nonempty recovery. Preserve spawned-timeout repair
+guidance: `--git-timeout SECS` or `RIPR_GIT_TIMEOUT=<seconds>` for CLI runs
+(`0 disables it`), and the editor session `gitTimeoutMs` initialization option.
+Editor zero remains the explicit fail-fast stimulus in the framed control.
+Fixed root-probe guidance has its own escape hatch; bounded cat-file session
+deadlines, cancellation Display, and terminate/reap behavior remain independent
+compatibility obligations. Source inspection and a patch
+application receipt establish bytes, not compilation or behavioral execution.
+
+## 2026-10-02: property macro spelling is not execution provenance (#4789)
+
+The #4835 overlay indexed token-tree functions as tests and accepted
+`prop_assert*` names as strong oracles. Exact native CLI controls subsequently
+reported `exposed` for a no-op property assertion whose test passed both correct
+and wrong owner behavior, and for no-op property blocks that collected zero
+tests. Indexing-only goldens did not discriminate these failures.
+
+The corrective quarantine restores opaque parser authority. Property blocks
+retain only source-level macro/identifier mentions to name the existing macro-reach
+limitation; these are not function, test, call or oracle evidence. Calls
+appearing only inside property assertions remain unresolved too; an independent
+ordinary call or helper path keeps its own evidence. Parser-failure fallback
+cannot synthesize tests from opaque token trees, and known unrelated packages
+cannot use a shared identifier to suppress a real gap. No broad macro resolver
+or role migration is introduced. The old blank overlay is removed, including its allocation and second parse on files
+with no property macros. Framework execution and static support remain separate
+claims; a syntax-only fixture cannot establish the former.
+
+## 2026-10-02: Assertion diagnostics are not error observers (#4748)
+
+`assert_eq!(rdr.len(), 10, "read error")` observes a successful length, not
+an error path. Exclude every formatting operand, including non-string arguments,
+before typing an assertion or confirming a changed reader/error variant. A
+quote-stripper alone still credits identifiers passed as diagnostic arguments;
+a reveal-only filter still trusts an error kind manufactured during extraction.
+
+Keep the argument boundary in `analysis/extract/oracles/arguments.rs`, shared
+by classification, bound-error recognition and ErrorPath matching. Preserve the
+original oracle text for rendering. The `error_path_diagnostic_*` fixtures pin
+absent, neutral, raw, escaped, formatted and typed-diagnostic controls in the
+RIPR-SPEC-0108 honesty corpus. Genuine typed and guarded Result oracles retain
+their producer-owned evidence; this is not general Rust name/dataflow resolution.
+
+## 2026-09-29: Absent worktree files are not `no_static_path` (#4586)
+
+Rust discovery walks the disk. A changed file that is in the diff but not
+on disk (sparse checkout, local delete) drops out of the index. Probes
+are still built from the diff text, find no owner, and used to classify
+as a complete `no_static_path`. That is a false-clean: a test may reach
+the owner; ripr could not see the file.
+
+Name `changed_file_absent_from_worktree`, withhold the probe (or emit
+`static_unknown`), and keep the outcome partial. Do not read git objects
+as a silent substitute for the missing worktree file in this lane.
+review-comments must list the dropped path the same way; `0/0` scoped
+production files without that disclosure is the same false-clean.
+
+Presence is not `root.join(diff_path)` alone. Git diffs keep the
+repository-relative path while `--root` is often a crate subdirectory;
+treat a suffix as the same file only when the stripped prefix is a
+trailing component sequence of `--root`. A sibling crate's `src/lib.rs`
+must not satisfy another crate's missing path.
+## 2026-09-29: Same-crate trait methods are not unique just because they share a crate (#4760)
+
+`body_contains_owner_call` and `tests_by_call_name` match `size_hint(` including
+`.size_hint()`. That is correct for a unique impl method (`ledger.apply(5)` is
+how a test calls `Ledger::apply`). It is not identity when two impls of one
+trait method live in the same crate.
+
+The uniqueness bypass only gates *cross-crate* package-prefix filtering. A
+name seen twice in one crate (`WhileSome::size_hint` vs `Combinations::size_hint`)
+still became `direct_owner_call`, and the Combinations test's strong
+`assert_eq!(it.size_hint().1, …)` then reported itertools `WhileSome::size_hint`
+as `exposed` 1.0. Mutation: with `(0, None)` applied, every suite still passed.
+
+Fail closed: an impl method whose name has more than one workspace definition
+is `direct_owner_call` only when the receiver resolves to this impl (let
+binding that names the type, UFCS `Type::method`, or `Type { }.method` prefix).
+Unresolved receivers (`let it = (0..3).combinations(2); it.size_hint()`) stay
+`weak_token_substring`. Unique impl methods are unchanged. Full `CallFact`
+receiver fields remain #3727.
+
+A second effect: one Combinations test can occupy several of the eight
+`related_tests` render slots (one row per matching assertion). Collapse only
+when the list exceeds that cap, putting unique tests first. Under the cap,
+keep per-assertion rows.
+
+Pin both sides: `rust_adversarial_same_method_other_type` must stay below
+`exposed`; `rust_same_method_owner_type_positive` must keep `exposed`. Do not
+absorb #4478 (confirmation pin), #4486 (proximity-only oracle), or #3727.
+
+## 2026-09-29: Repo-seam FieldConstruction missing facts need parser-backed owner-result identity (#1981)
+
+`CallFact`, `LetBindingFact`, and `ValueEnv` cannot prove that a local is the
+direct return of the seam owner. A nearby test name or a `.field` token on
+another object must not emit a compatible missing discriminator. Derive the
+fact only after activation is already `Yes`; nonempty `missing_discriminators`
+classifies `WeaklyGripped` before `ActivationUnknown`, so an unconditional
+field fact would invent actionability. Keep helper-transfer and qualified or
+method callees as named limitations until a later producer can resolve them.
+A same-name local or imported callee, a mutable borrow of the observed field,
+an assertion-message-only field mention, and an assertion-local shadow of the
+owner-result binding are also not owner-result observations: credit only a
+parser-backed discriminating condition or compared operands, and fail closed
+when the bare callee identity is ambiguous, including a local binding of the
+owner name that is not itself the parser-backed direct owner-result. A grouped
+nested-`super` import is the production owner only when the resolved module
+path uniquely matches this seam's owner; do not whitelist every `super::`
+prefix. The same spelling from another module, an unresolved import, or two
+cfg-ambiguous same-name owners stay non-ready. A leading `::` path selects
+the extern prelude and is not this seam's owner. A
+DirectOwnerCall related test that failed target admission stays `Missing`;
+ranking must not fall through to a Proposed InlineUnit or Integration target
+just because the `field_value` fact is now present. Advisory related observers
+(`SameModule`, `WeakTokenSubstring`, `ImportPathAffinity`) do not occupy that
+existing-test slot.
+
+## 2026-09-29: Boundary input and oracle from different tests is a false `exposed` (#4828)
+
+Infection ("related test input at the changed boundary") and discrimination
+("strong oracle") were independently Yes across the related-test set. One test
+called `gate(10)` with no assertion; another asserted `gate(100) == true`.
+The mutant `>=` → `>` passed both. `exposed` for a predicate now requires one
+test that both feeds a boundary input to the owner and holds a discriminating
+oracle on that call's result. The split names `same_test_pairing_missing`.
+Do not absorb helper credit (#4574), proximity-only oracles (#4486), or
+bare-name method relation (#4760) into this pairing gate. Pairing reuses
+activation's `==` facts so a same-test oracle that already infected through
+a named constant or helper hop stays `exposed`.
+
+## 2026-09-29: Whole-object equality is not an effect observer of a different collection (#4575)
+
+A SideEffect `items.push(...)` on a passed collection can be confirmed by
+`assert_eq!(items, expected)` and must stay unverified for `assert_eq!(other, expected)`
+or `assert_eq!(other, items)`. Kind-matching `WholeObjectEquality` / token
+coincidence on the expected side is not identity with the mutated receiver.
+
+Pin this as a should-stay-`weakly_exposed` control for the sibling collection.
+Do not generalize that rule to every effect family: mock/snapshot/whole-object
+observers for `persist_audit(record)` and `notifier.send(...)` remain on the
+existing Part C path. `cache.insert` is a delivered CallDeletion fixture, not
+this family's `push` admission; sharing the `insert` method name must not
+rewrite that golden. Reuse `PropagationWitnessV1`; do not mint a second
+witness DTO.
+
+## 2026-09-29: Missing git and a missing cwd share `NotFound` (#4735)
+
+Spawning `git` with `current_dir` yields `ErrorKind::NotFound` both when the
+binary is absent from PATH and when the working directory does not exist.
+Remapping every `NotFound` to "git was not found on PATH" would misdiagnose an
+invalid `--root` as a missing binary (the #3880 argv-leak class). The shared
+git spawn authority therefore names the PATH repair only when the program is
+git and the cwd exists (or is unset). Doctor's `tool_git` probe already
+classifies tool spawn `NotFound` separately from a missing repository, so it
+can consume the same PATH message without that cwd check.
+
+`ripr check` and `--worktree` both need git. When `tool_git` did not pass,
+doctor must not recommend either, even on a dirty tree; the reachable route is
+`--diff PATH` / `--diff -`.
+
+Default-base probes treat any git spawn failure as "ref absent". A gitless
+`ripr check` with no `--base` therefore used to say `Pass --base`. The
+git-root probe on that failure path must name PATH/`--diff` ahead of the
+default-base text. An explicit `--base` still falls through to `run_git_diff`,
+which already passes the named missing-git error through.
+
+## 2026-09-29: Shared-witness adapters must not promote candidate reach (#4790)
+
+`analysis::witness` projects existing `Finding` and `ClassifiedSeam` facts. It
+does not recompute stage meaning. Two traps showed up while writing the
+parity corpus:
+
+- A producer `reach=yes` backed only by `weak_token_substring` (or other
+  candidate relations) must keep those identities in `candidate_facts`. Copying
+  them into established reach is a false promotion even if the producer class
+  stays unchanged.
+- Inherent `diff_only_subject_set` versus `workspace_complete` is the normal
+  cross-path pairing. Treating that pair as an explaining scope difference
+  collapses exact-vs-broad, sibling-field, and missing-observer contradictions
+  into `explained_scope_difference`. Only partial index, stale/wrong input,
+  preview language, and named cross-language limits explain a difference.
+- Scope tokens cannot explain an owner, family, discriminator, or sink
+  mismatch. A partial-index witness paired with the wrong identity is a
+  `contradiction`, not an explained scope difference.
+- Stage `source_identities` belong in the digest. Clearing one without
+  rewriting the digest must make the row `not_comparable`.
+
+Pin both with the #4790 corpus. Later slices (#4792–#4794) migrate authority;
+they must not delete these controls.
+
+## 2026-09-29: Default output-dir create failures must name the relocate flag (#4774)
+
+`ripr pilot` and `ripr first-pr` create `target/ripr/pilot` and
+`target/ripr/reports` before they do useful work. On a read-only checkout the
+raw `Read-only file system (os error 30)` names neither command's output flag.
+`check`, `doctor`, and `cache status` already tolerate that layout.
+
+Keep the OS error, keep exit 2, and append `; write elsewhere with --out PATH`
+or `--out-dir PATH` only for `PermissionDenied` / `ReadOnlyFilesystem`. A path
+that is already a file is a different failure and must not grow that hint.
+Both commands share `output::file_write::create_output_dir`; do not special-case
+one command's prefix or flag in the other.
+## 2026-09-29: `proptest!` / `quickcheck!` bodies are token trees (#4789)
+
+The outer Rust grammar retains macro bodies as opaque token trees. An overlay
+can recover source-shaped functions and assertions, but cannot establish that
+these items are emitted or executed. The initial #4835 overlay promoted that
+syntax into test/oracle evidence; the 2026-10-02 quarantine above supersedes
+that authority after no-op and zero-test controls disproved it. Property macro
+support requires independently established provenance before promotion.
+
+## 2026-09-16: Parallel-build test flakes are shared-state mechanisms (#3742)
+
+A rotating family of suite failures under parallel cargo builds (observed
+2026-09-10..13 across `doctor`, `edit_cage`, `repair_attempt`, git-deadline,
+`cli_smoke`, and `output::gate` fixture-matrix members) classified into five
+shared-state mechanisms, each with a fixed shape:
+
+- (a) Fixed-path collisions: tests reading/writing fixed `target/` paths or
+  spawning `target/debug/` binaries race concurrent cargo builds. Fix at the
+  spawn site: stage a private copy under the test's temp root
+  (`xtask/src/reports/eval_sweep_refresh.rs`, `staged_ripr_binary`); fix at
+  the read site: root evaluations at an explicit temp dir, never the CWD
+  (`crates/ripr/src/output/gate/tests.rs`, slice 3 for CWD-rooted inputs).
+- (b) Live-repo dependence: the gate fixture matrix roots at `repo_root()`,
+  so worktree git state leaks into compared outputs. Mitigated slice by
+  slice; the corpus-relative matrix still requires its root (residual).
+- (c) Wall-clock assertions: assert kill-completion via process probes, not
+  human-time bounds; keep the short discriminating deadline as the input
+  (`crates/ripr/src/git.rs`, slice 2).
+- (d) Unhardened fixture git: bare `Command::output()` git spawns starve
+  under load. Route every fixture-git call through the shared deadline +
+  idempotent-retry + reconcile helper
+  (`crates/ripr/src/testing/fixture_git.rs`, slice 1).
+- (e) Env-triggered re-bless: `RIPR_UPDATE_FIXTURES` bare presence silently
+  converted asserts into rewrites. Only the explicit value `=1` opts in
+  (`crates/ripr/src/testing/rebless.rs`); the crate forbids `unsafe_code`
+  and `set_var` is `unsafe` in edition 2024, so the leak simulation runs
+  through the ambient environment, never in-test mutation.
+
+Lesson: classify first by shared-state mechanism, then fix one mechanism per
+slice with a discriminating control. New family members get their own
+investigation per the escalation rule (same operation green in isolation and
+red only under concurrency = structural).
+
+## 2026-09-29: Unchanged lexical-fallback test files and complete runs (#4775)
+
+#2698 discloses lexical fallback on the repo/seam-inventory path (stderr).
+Diff-scoped `ripr check` did not. An unchanged test file with a nightly-only
+construct (`Some(y if y > 0)`, `Err(!)`, or any other reference-parser
+refusal) was indexed lexically; compact `#[test] fn p() { ... }` registrations
+then vanished from related-test discovery. The changed production owner read
+`no_static_path` while `analysis_outcome` stayed complete.
+
+#4722/#4773 cover *changed* files as `producer_failure`. This lane is the
+unchanged test-file follow-up. The TypeScript analog is #4261: do not mark
+every run in a nightly-feature crate partial merely because some unused test
+file failed extraction. Emit `rust_lexical_test_index_partial` only when a
+classified owner actually consulted that file.
+
+Lesson: stderr disclosure on a different analysis mode is not a machine
+limitation. Related-test dropout is a completeness fact, not a classification
+vocabulary change. Owner-call scans must mask comments and strings so a
+comment mentioning the owner cannot make the crate partial. A `fn owner()`
+declaration, a same-named call in another crate, and a long repository path
+are not reasons to abort analysis or mark an unused nightly file as
+consulted; a turbofish `owner::<T>(...)` and `#[ test ]` still are.
+
 ## 2026-07-29: Property tests and lexical fallback disclosure
 
 Added the first property-based tests (`proptest`) for the diff parser. The
@@ -627,7 +1009,8 @@ or a near-miss.
 
 Running a few `cargo xtask check-*` gates by hand before pushing missed two
 required gates twice in a row (`check-generated`, then `check-static-language`).
-The required CX43 "Required Rust gates" step runs the whole set. Mirror it
+The required Rust gate set runs as the named per-producer steps in
+`.github/workflows/rust-gates.yml` (routed by `routed-rust.yml`). Mirror it
 locally with one command:
 
 ```bash
@@ -2105,3 +2488,181 @@ Two durable lessons:
   reclamation or recovery, absence of `success` is the signal to watch — not
   presence of `failure`. This is the same false-confidence class as
   2026-07-25, arriving through scheduling rather than through assertions.
+
+## 2026-09-22: A test that pins a defect fails when the defect is repaired, and a platform gate hides that locally
+
+The non-unix corpus fingerprint (#3848) reproduced exactly across a same-length
+edit that restored the modification time, so the stored mapping served an
+aggregate content hash taken before the edit. The repair makes
+`corpus_fingerprint` produce no signature at all where no field of the stat
+tuple is a content-change witness, and every consumer degrades to the
+read-everything path it already handled.
+
+The candidate passed `cargo xtask precommit` and every required check while
+being broken on Windows. The test that failed there,
+`analysis::seam_inventory::tests::given_preserved_signature_when_content_is_swapped_then_stored_hash_is_reused`,
+had pinned the defect as the intended fast path: it swapped a file's bytes for
+different same-length content, restored the mtime, and required the doctored
+(empty) cache entry to be served. Its name reads as a feature, and it is gated
+`#[cfg(not(unix))]`, so it compiles nowhere on a Linux development host.
+
+Two durable lessons:
+
+- A repair's blast radius includes the tests that pinned the old behavior.
+  Those tests are found by searching the defect's vocabulary — here the
+  scenario, "preserved signature", "swapped content", "reused hash" — not by
+  searching the symbols the diff changed. An assertion of the defect is
+  indistinguishable from an assertion of a contract until it is read.
+- `#[cfg(not(<host>))]` code is invisible to every local gate, so its
+  correctness is not established by any number of green local runs. It can be
+  executed on the host by temporarily forcing the production branch it guards:
+  making the unix arm of `corpus_fingerprint` return `None` and running the
+  library suite runs the non-unix expectations on Linux in seconds. The
+  failures that arrive are either the unix-only tests, which is the expected
+  noise, or the other platform's real breakage. This is the cheapest available
+  discriminating experiment for a platform-gated change, and the advisory
+  Windows lane — whose job conclusion is green by design and therefore proves
+  nothing on its own — should be a confirmation of it rather than the first
+  place the breakage is seen.
+
+## 2026-09-22: A directory's mtime is not a lease on the tree below it
+
+Both scratch cleaners ran `find /mnt/ci-scratch/{cargo-home,target,tmp}
+-mindepth 1 -maxdepth 1 -mmin +30 -exec rm -rf {} +` (#3841). A per-run
+directory's mtime changes only when an entry directly inside it is created,
+renamed, or removed. Cargo writing deep inside `target/<run>/debug/...` never
+refreshes it, so a 120-minute job with a 3,600-second evidence step becomes
+"stale" to every other job and to the scheduled sweep after 30 minutes. A
+reproduction with `touch -d '40 minutes ago'` and a fresh nested write deletes
+the live tree without any real wait. No age threshold fixes this; a larger one
+only delays it.
+
+Durable rules:
+
+- Liveness comes from something the kernel ties to the owner's lifetime. The
+  lease is an exclusive `flock` held by a background process for the whole
+  job, which the runner kills with the job's other orphan processes, so
+  completion, cancellation, timeout, and crash all release it. Reclaim takes
+  `flock -n` on the lease and deletes while still holding it, so no job can be
+  observed dead and then come back before the delete.
+- Unknown is not permission. A tree with no lease, a lease from another
+  repository, a malformed lease, a symlink, or a root that is itself a symlink
+  is skipped and counted. The cost is that trees left by the old selector, and
+  crashed jobs that never took a lease, stay until an operator removes them
+  on an idle host; `ci-disk-guard` and the exit-75 hosted fallback bound that
+  leak. A cleaner that deletes what it cannot attribute will eventually delete
+  a sibling consumer's live state.
+- Every cleaner sharing the roots must use the same authority. A second
+  cleaner that ignores the lease re-opens the defect however correct the
+  first one is, so inventory the cleaners (other repositories and host
+  services included) before calling it fixed.
+- Test the lock, not the story. The harness in
+  `xtask/src/policy/ci_scratch/tests.rs` runs the action's own script, and two
+  negative controls (lock check removed; lock check replaced by an mtime test)
+  must make the same harness fail. Also wait on the lock, not the PID, when
+  simulating job death: in containers without a reaping init, `kill -0` keeps
+  succeeding on a zombie long after its descriptors, and its lock, are gone.
+
+## 2026-09-24: Stale-PR sweep — two recurring repair classes
+
+Two failure classes recurred across 5+ PRs in one stale-branch sweep
+(golden-envelope class: #3986, #3984, #4023, #3956; stacked-branch handling:
+#3978, #3982).
+
+**Pre-envelope-change goldens ride along on rebased branches.** After
+squash-rebasing an old branch onto main, `cargo xtask goldens check` fails
+with `formatting_only` drift on `check.json` fixtures, first difference at
+the top-level `"base": "origin/main"` line. Cause: the branch carries goldens
+blessed before RIPR-SPEC-0084 (#4002, the no-default-base change) while main
+carries re-blessed copies. Repair: restore main's copies
+(`git checkout origin/main -- <fixture paths>`) rather than re-blessing; for
+fixtures *new* in the branch, re-bless to the new envelope (drop top-level
+`"base"`, set `base_revision` null). Rule: diff the PR's golden fixture files
+against main before pushing a rebase — re-blessing a pre-envelope file
+re-imports the drift main already repaired.
+
+**`git merge --squash` cannot be undone with `git merge --abort`.** No
+`MERGE_HEAD` is recorded, so a conflicted squash merge leaves the index
+conflicted and `checkout -B` carries the mess forward. Repair: first commit
+or back up unrelated local work (a hard reset discards tracked changes and
+may overwrite untracked files), then `git reset --hard <base>` before
+re-trying. Related: piping
+`git apply --3way` through `head` kills it with SIGPIPE mid-apply — capture
+full output to a file instead.
+
+## 2026-09-24: A shared sccache server inherits the TMP of whichever lane started it
+
+2026-09-24, multiple concurrent agent lanes on one Windows host
+(`ripr-swarm`). Two lanes lost 30+ minutes each to an sccache failure that
+looked like a broken tree. `ripr`'s `.cargo/config.toml` sets
+`[env] TMP/TEMP` to a target-relative path, so an `sccache` server auto-started
+by cargo inside a lane worktree bakes that worktree's absolute TMP into the
+user-level server process. Every later compile on the host — including lanes
+in *other* worktrees, which resolve their own TMP fine — then fails with
+`Failed to create temp dir` when the server's cached TMP points at a worktree
+that was removed (lane cleanup deletes its worktree; the server outlives it).
+The poisoned server also survived until explicitly restarted; a `tail` pipe in
+one lane's proof wrapper masked the real non-zero exit behind a success-looking
+line, which is exactly the hidden-gate failure the repo validation rules warn
+about.
+
+Durable rules:
+
+- A user-level daemon started from inside a configured workspace inherits that
+  workspace's env for its whole lifetime. Anything that auto-starts such a
+  daemon (cargo via `sccache` in `RUSTC_WRAPPER`, caches, language servers)
+  must be started once from a stable path, or its TMP/cache-dir environment
+  must be pinned explicitly, before lanes fan out.
+- Deleting a worktree is not enough lane cleanup when a host-level daemon may
+  reference it; the cleanup pass for a lane that used sccache should treat
+  `sccache --stop-server` (or a health check) as part of reaping.
+- Read the native exit status, not a piped summary: a wrapper that ends in
+  `| tail` reports the pipe's status, and a red gate behind it looks green.
+  Running wrappers under `set -o pipefail` (or the repo's `-o pipefail`
+  convention) propagates the real status instead.
+
+## 2026-09-25: Retired goal-scheduler commands survive in old playbook entries
+
+The 2026-05-04 "Step 0 Premise Check" and 2026-05-12 "Agent-Readiness" entries
+below still tell an executor to run `cargo xtask check-goals` and
+`cargo xtask goals next` against `.ripr/goals/` campaign state. That machinery
+was retired by #1701: `.ripr/goals/` is gone, and xtask now answers those
+command names with an explicit retired-command error pointing at GitHub
+issues/PRs and `cargo xtask help --all` as the live work-selection surfaces.
+Treat the retired commands in those entries as historical record only — do not
+copy them into new playbooks, and replay the premise check with
+`git fetch origin`, `git status --short`, `gh issue list --state open`,
+and `gh pr list --state open` instead.
+
+## 2026-10-04: A shallow glob manufactures a false capability claim (Windows PowerShell)
+
+While implementing #5213 I searched the vendored `winsafe-0.0.29` crate with
+`Select-String -Path "$w/src/**/*.rs"` and concluded that Windows had no safe
+per-process CPU or memory counter, publishing that claim in a module doc, an
+unavailable-state enum, and `docs/OUTPUT_SCHEMA.md`. It was false.
+`winsafe-0.0.29/src/kernel/handles/hprocess.rs:115` has
+`HPROCESS::GetProcessTimes() -> SysResult<(FILETIME, FILETIME, FILETIME, FILETIME)>`
+and `src/psapi/handles/hprocess.rs:126` has
+`HPROCESS::GetProcessMemoryInfo() -> SysResult<PROCESS_MEMORY_COUNTERS_EX>`.
+Both are safe `fn`; the `unsafe` lives inside `winsafe`.
+
+The cause was the search, not the crate. On Windows PowerShell, `**` in a
+`-Path` argument is not recursive, so `src/**/*.rs` expanded to one directory
+level and read only `src/kernel/ffi.rs` and `src/psapi/ffi.rs` - the raw
+extern declarations - while skipping every `handles/` wrapper. The evidence
+looked like a thorough sweep and supported the opposite of the truth.
+
+Durable rules:
+
+- A capability-absence claim needs a search that provably covered the tree.
+  `Get-ChildItem -Recurse -File | Select-String` does; a `**` glob passed to
+  `-Path` does not. On PowerShell, use `-Path (Get-ChildItem -Recurse -Filter
+  '*.rs').FullName` or `git grep` rather than a shell glob.
+- "The grep found no implementation" and "the API does not exist" are
+  different claims. Only the second may reach published documentation.
+- When a review or a later read contradicts a published absence claim, fix the
+  claim before optimizing the explanation of it. An unreachable enum variant
+  plus docs describing it is the same defect one layer down.
+- Prefer proving a negative twice on two independent paths - e.g. the safe
+  wrapper listing and a compile attempt that uses it - before writing that a
+  capability is unavailable.

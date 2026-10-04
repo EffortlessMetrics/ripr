@@ -2,6 +2,7 @@ use super::{
     SEAM_GRIP_CLASS_ORDER, TargetedTestOutcomeMovement, TargetedTestOutcomeReport,
     TargetedTestOutcomeSeam, review, targeted_test_outcome_gap_summary,
 };
+use crate::output::markdown::{code_span, inline_prose};
 use std::collections::BTreeMap;
 
 pub(crate) fn render_targeted_test_outcome_md(report: &TargetedTestOutcomeReport) -> String {
@@ -9,8 +10,8 @@ pub(crate) fn render_targeted_test_outcome_md(report: &TargetedTestOutcomeReport
     out.push_str("# ripr targeted-test outcome report\n\n");
     out.push_str("Status: advisory\n\n");
     out.push_str("Inputs:\n");
-    out.push_str(&format!("- before: `{}`\n", md_escape(&report.before_path)));
-    out.push_str(&format!("- after: `{}`\n\n", md_escape(&report.after_path)));
+    out.push_str(&format!("- before: {}\n", code_span(&report.before_path)));
+    out.push_str(&format!("- after: {}\n\n", code_span(&report.after_path)));
 
     out.push_str("## Summary\n\n");
     out.push_str("| Bucket | Count |\n| --- | ---: |\n");
@@ -64,9 +65,9 @@ fn push_targeted_outcome_movements_md(
     }
     for movement in movements {
         out.push_str(&format!(
-            "- `{}` {}:{} {} -> {} ({}; gap {})\n",
-            md_escape(&movement.seam_id),
-            md_escape(&movement.file),
+            "- {} {}:{} {} -> {} ({}; gap {})\n",
+            code_span(&movement.seam_id),
+            inline_prose(&movement.file),
             movement.line,
             movement.before,
             movement.after,
@@ -74,12 +75,12 @@ fn push_targeted_outcome_movements_md(
             movement.gap_movement
         ));
         for delta in &movement.evidence_delta {
-            out.push_str(&format!("  - {}\n", md_escape(delta)));
+            out.push_str(&format!("  - {}\n", inline_prose(delta)));
         }
         if movement.evidence_delta.is_empty()
             && let Some(reason) = &movement.no_movement_reason
         {
-            out.push_str(&format!("  - no movement: {}\n", md_escape(reason)));
+            out.push_str(&format!("  - no movement: {}\n", inline_prose(reason)));
         }
     }
 }
@@ -143,7 +144,7 @@ fn push_targeted_outcome_gap_summary_md(out: &mut String, report: &TargetedTestO
 fn push_review_receipt_list_md(out: &mut String, title: &str, items: &[String]) {
     out.push_str(&format!("### {title}\n\n"));
     for item in items {
-        out.push_str(&format!("- {}\n", md_escape(item)));
+        out.push_str(&format!("- {}\n", inline_prose(item)));
     }
     out.push('\n');
 }
@@ -160,16 +161,12 @@ fn push_targeted_outcome_seams_md(
     }
     for seam in seams {
         out.push_str(&format!(
-            "- `{}` {}:{} {} ({})\n",
-            md_escape(&seam.seam_id),
-            md_escape(&seam.file),
+            "- {} {}:{} {} ({})\n",
+            code_span(&seam.seam_id),
+            inline_prose(&seam.file),
             seam.line,
             seam.grip_class,
             seam.seam_kind
         ));
     }
-}
-
-pub(super) fn md_escape(value: &str) -> String {
-    value.replace('`', "\\`").replace(['\r', '\n'], " ")
 }

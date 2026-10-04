@@ -403,7 +403,9 @@ the entry small by pointing to the full agent seam packet:
 
 When matching seams are hidden by configured `off` severity or suppressions,
 the brief should omit them from `top_seams` and explain the omission without
-dumping the hidden seam packet:
+dumping the hidden seam packet. The first ten hidden matching seams are named
+one per warning; the rest are counted in one warning per reason, so a large
+diff cannot flood `warnings`:
 
 ```json
 {

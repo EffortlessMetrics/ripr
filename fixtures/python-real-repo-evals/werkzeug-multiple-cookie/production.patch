@@ -1,0 +1,15 @@
+diff --git a/src/werkzeug/sansio/request.py b/src/werkzeug/sansio/request.py
+index 8c22d4e2c..be3cdc9a8 100644
+--- a/src/werkzeug/sansio/request.py
++++ b/src/werkzeug/sansio/request.py
+@@ -237,8 +237,9 @@ def host(self) -> str:
+     def cookies(self) -> "ImmutableMultiDict[str, str]":
+         """A :class:`dict` with the contents of all cookies transmitted with
+         the request."""
++        wsgi_combined_cookie = ";".join(self.headers.getlist("Cookie"))
+         return parse_cookie(  # type: ignore
+-            self.headers.get("Cookie"),
++            wsgi_combined_cookie,
+             self.charset,
+             self.encoding_errors,
+             cls=self.dict_storage_class,

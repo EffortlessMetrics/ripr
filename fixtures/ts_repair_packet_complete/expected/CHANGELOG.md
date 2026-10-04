@@ -336,3 +336,202 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — ts_repair_packet_complete (1)
+
+Reason:
+RIPR-SPEC-0084: CheckInput default base is now None (was origin/main); --diff fixture envelopes honestly omit the inapplicable top-level base and record base_revision null. Only base/base_revision changed; findings, counts, and input_identity byte-identical.
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_complete --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — ts_repair_packet_complete (2)
+
+Reason:
+RIPR-SPEC-0087: repair action leads with the missing discriminator and the target shape uses an expected placeholder instead of re-using the borrowed toBeGreaterThan(50) literal under toBe; readiness and class unchanged
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_complete --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — ts_repair_packet_complete (3)
+
+Reason:
+RIPR-SPEC-0082/RIPR-SPEC-0122 wording owner change (PR #3978): Why lines re-derived from reach/observe stage state, preview notes use language display names with singular file counts, recovery detail lines end with exactly one period; mechanical re-render of unchanged fixture evidence
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_complete --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — ts_repair_packet_complete (4)
+
+Reason:
+RIPR-SPEC-0079: TypeScript preview receipt_command is the canonical ripr receipt write command from the shared receipt-write owner, not ripr outcome (#3906)
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_complete --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — ts_repair_packet_complete (5)
+
+Reason:
+RIPR-SPEC-0122: human-full carries per-finding drill-in commands (#4379); digest why-line names the incomplete stage; unreached static_unknown asks for a test first
+RIPR-SPEC-0087: derive the TypeScript boundary input from a read-only parameter and a literal or single immutable integer module const; a complete packet's Start-here line names its action, test file, and verify command
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_complete --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — ts_repair_packet_complete (6)
+
+Reason:
+RIPR-SPEC-0046 RIPR-SPEC-0047: check JSON now carries a top-level source_subject stamp with the analysis-time content digests of the files a derived gap ledger names (#4544); no finding, classification, or human output changed.
+RIPR-SPEC-0122: Next step counts its label against the line budget and wraps instead of overflowing; fixture_opaque gloss states the heuristic (#4323 review)
+RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_complete --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — ts_repair_packet_complete (7)
+
+Reason:
+RIPR-SPEC-0122: the analysis outcome and state lines lead with plain words; the id stays in parentheses
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_complete --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — ts_repair_packet_complete (9)
+
+Reason:
+RIPR-SPEC-0005: agent seam packet schema 0.4 to 0.5 (#4330) — packets state the edit cage (allowed_edit_surface, forbidden_files, must_not_change) and next.before_snapshot_command drops the POSIX-only mkdir prefix
+## Pending — ts_repair_packet_complete (8)
+
+Reason:
+RIPR-SPEC-0005: agent seam packet schema_version 0.4 to 0.5 (#4329); version-string-only flip - the additive repair_attempt continuation rides only the repair-before --json success stdout, never this check.json projection
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_complete --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — ts_repair_packet_complete (9)
+
+Reason:
+RIPR-SPEC-0122: bounded human surfaces disclose their windows - related-test and observed-value caps, digest missing-discriminator and related-test totals, Hidden block names omitted findings by file:line (class) with the all-base-side distinction (#4320); RIPR-SPEC-0152: all-base-side runs name base-side evidence instead of a lower-priority framing
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_complete --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — ts_repair_packet_complete (10)
+
+Reason:
+#4324 / RIPR-SPEC-0122: the bounded digest names all five stage states on one compact Evidence line (reach, infection, propagation, observation, discriminator) instead of letting the positional 2-line detail window hide the decisive stages behind a bare count; the detail window keeps its two lines and the remainder line now reads `N more detail line(s) in --format human-full`. JSON output is unchanged.
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_complete --reason "..."`
+
+Updated:
+- `expected/human.txt`
+
+## Pending — ts_repair_packet_complete (11)
+
+Reason:
+RIPR-SPEC-0122: #4321 additive per-finding id lines in human-full (drill-in identifiers)
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_complete --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+## Pending — ts_repair_packet_complete (9)
+
+Reason:
+RIPR-SPEC-0122: #4321 additive per-finding id lines in human-full (drill-in identifiers)
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_complete --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — ts_repair_packet_complete (12)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_complete --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — ts_repair_packet_complete (13)
+
+Reason:
+RIPR-SPEC-0027: findings comparing two read-only owner parameters carry typescript_boundary_parameters evidence (#4759); no class, packet or shape change
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_complete --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — ts_repair_packet_complete (14)
+
+Reason:
+RIPR-SPEC-0085: TypeScript verify commands launch the framework through the package runner (npx --no-install, pnpm exec, yarn, bun run) because node_modules/.bin is not on PATH
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_complete --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

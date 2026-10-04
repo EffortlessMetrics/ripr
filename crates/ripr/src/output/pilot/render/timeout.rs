@@ -1,6 +1,6 @@
 use super::render_helpers::push_path_field;
 use crate::output::json::escape as json_escape;
-use crate::output::markdown::powershell_command;
+use crate::output::markdown::{PowershellForm, powershell_form};
 use crate::output::path::display_path;
 use crate::output::pilot::commands::PilotCommands;
 use crate::output::pilot::{PILOT_SUMMARY_SCHEMA_VERSION, PilotSummaryContext};
@@ -120,13 +120,14 @@ pub(crate) fn render_pilot_timeout_summary_md(context: PilotSummaryContext<'_>) 
     out.push_str("```bash\n");
     out.push_str(&commands.retry);
     out.push_str("\n```\n");
-    match powershell_command(&commands.retry) {
-        Some(line) => {
+    match powershell_form(&commands.retry) {
+        PowershellForm::Translated(line) => {
             out.push_str("\n```powershell\n");
             out.push_str(&line);
             out.push_str("\n```\n");
         }
-        None => out.push_str(&format!(
+        PowershellForm::SameAsBash => {}
+        PowershellForm::Unavailable => out.push_str(&format!(
             "{}: `{}`\n",
             crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE,
             commands.retry

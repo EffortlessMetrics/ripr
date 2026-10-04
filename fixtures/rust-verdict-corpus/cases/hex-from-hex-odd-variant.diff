@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 7bf251d..84f1211 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -223,7 +223,7 @@ impl FromHex for Vec<u8> {
+     fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
+         let hex = hex.as_ref();
+         if hex.len() % 2 != 0 {
+-            return Err(FromHexError::OddLength);
++            return Err(Self::Error::OddLength);
+         }
+ 
+         let mut out = vec![0; hex.len() / 2];

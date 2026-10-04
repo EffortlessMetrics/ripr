@@ -371,3 +371,135 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — javascript_jsx_preview (2)
+
+Reason:
+RIPR-SPEC-0084: CheckInput default base is now None (was origin/main); --diff fixture envelopes honestly omit the inapplicable top-level base and record base_revision null. Only base/base_revision changed; findings, counts, and input_identity byte-identical.
+
+Command:
+`cargo xtask goldens bless javascript_jsx_preview --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — javascript_jsx_preview (3)
+
+Reason:
+RIPR-SPEC-0082/RIPR-SPEC-0122 wording owner change (PR #3978): Why lines re-derived from reach/observe stage state, preview notes use language display names with singular file counts, recovery detail lines end with exactly one period; mechanical re-render of unchanged fixture evidence
+
+Command:
+`cargo xtask goldens bless javascript_jsx_preview --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — javascript_jsx_preview (4)
+
+Reason:
+RIPR-SPEC-0027: the #4103 relation-anchor gate holds tests that only token-call the owner (no import/declaration anchor, mock/spy-only observation, or off-position boundary literal) at weakly_exposed with the missing anchor disclosed, instead of exposed; the fixture's assertion shape is one of the audited anchor-gate classes and its evidence lines are unchanged
+
+Command:
+`cargo xtask goldens bless javascript_jsx_preview --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — javascript_jsx_preview (5)
+
+Reason:
+RIPR-SPEC-0027: oracle classification is independent of relation credit - the unanchored bare owner call still classifies its exact-value assertion (exact_value/strong) and the recommendation names the missing proof; exposure stays weakly_exposed under the #4103 anchor gate
+
+Command:
+`cargo xtask goldens bless javascript_jsx_preview --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — javascript_jsx_preview (6)
+
+Reason:
+RIPR-SPEC-0122 (#4216): TS/JS preview safe next action is terminal for a closed repair packet (quotes the validator's why_not_actionable) and says no repair for an exposed finding
+
+Command:
+`cargo xtask goldens bless javascript_jsx_preview --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — javascript_jsx_preview (7)
+
+Reason:
+RIPR-SPEC-0122 (#4216 review): closed-packet TS/JS safe action bounds the quoted reason, drops the causal 'so', and asks unknown-class findings for a manual check
+
+Command:
+`cargo xtask goldens bless javascript_jsx_preview --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — javascript_jsx_preview (8)
+
+Reason:
+RIPR-SPEC-0122: omit zero-count languages, keep the empty-result caveat to empty runs, cut digest lines at word boundaries
+
+Command:
+`cargo xtask goldens bless javascript_jsx_preview --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — javascript_jsx_preview (9)
+
+Reason:
+RIPR-SPEC-0122: digest Next step wraps instead of cutting the remedy; stop reasons carry a gloss; boxed-wrapper limitation text has no whitespace runs (#4323)
+RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
+
+Command:
+`cargo xtask goldens bless javascript_jsx_preview --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — javascript_jsx_preview (10)
+
+Reason:
+RIPR-SPEC-0082: preview note names JavaScript-family files JavaScript, TS/JS for a mixed diff (#4555)
+
+Command:
+`cargo xtask goldens bless javascript_jsx_preview --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — javascript_jsx_preview (11)
+
+Reason:
+#4324 / RIPR-SPEC-0122: the bounded digest names all five stage states on one compact Evidence line (reach, infection, propagation, observation, discriminator) instead of letting the positional 2-line detail window hide the decisive stages behind a bare count; the detail window keeps its two lines and the remainder line now reads `N more detail line(s) in --format human-full`. JSON output is unchanged.
+
+Command:
+`cargo xtask goldens bless javascript_jsx_preview --reason "..."`
+
+Updated:
+- `expected/human.txt`
+
+## Pending — javascript_jsx_preview (12)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless javascript_jsx_preview --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

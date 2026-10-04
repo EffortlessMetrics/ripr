@@ -2,25 +2,25 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/rust_missing_discriminator_evidence/input
 
-Summary: 2 probe(s), 0 exposed, 2 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 2 probe(s), 0 exposed, 2 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 2 of 2 finding(s) unsuppressed
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
 
 Start here:
-  State: top_gap
+  State: a test gap to inspect or repair (top_gap)
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/rust_missing_discriminator_evidence/input/src/lib.rs:9
-  Static exposure: weakly_exposed (warning, confidence 0.92)
-  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Static exposure: weak (weakly_exposed, warning, confidence 0.92)
+  Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: Err(PricingError::Other)
-  Missing discriminator: PricingError::Other
+  Missing discriminator (1 of 2): PricingError::Other
   Related test: tests/pricing.rs:4 rejects_boundary
   Next step: Strengthen the related assertion so it discriminates the changed behavior.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach classify_boundary: rejects_boundary
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 6 more evidence line(s) hidden
+    - 6 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/rust_missing_discriminator_evidence/input --diff fixtures/rust_missing_discriminator_evidence/diff.patch --mode fast probe:src_lib.rs:call_deletion:c1a89389
@@ -28,5 +28,6 @@ Next: drill into the top finding:
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
+    - fixtures/rust_missing_discriminator_evidence/input/src/lib.rs:9 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

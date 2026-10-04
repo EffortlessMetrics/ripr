@@ -6,13 +6,13 @@ to reuse, and concrete enough to burn down toward RIPR 0.
 
 Lane 1 follows this tracker, the evidence specs, capability matrix,
 traceability manifest, and output contracts. It does not switch to another
-campaign merely because `.ripr/goals/active.toml` points at a PR/CI, editor, or
+campaign merely because active tracking points at a PR/CI, editor, or
 policy surface.
 
 The Lane 1 source-of-truth stack is defined in
 [docs/lanes/README.md](README.md). This tracker records the evidence-spine
 stabilization state; it does not replace proposals, specs, ADRs, capability
-evidence, traceability, closeouts, or the active operator manifest.
+evidence, traceability, closeouts, or the repository tracking model.
 
 This document is now the stabilization record for the shared evidence spine.
 The next Lane 1 objective is Evidence Accuracy Evaluation, tracked in
@@ -190,9 +190,9 @@ git diff --check
 
 ## Cross-Lane Rules
 
-- `.ripr/goals/active.toml` is the current Codex Goals manifest, not the whole
-  product board. Its top-level status may be `closed` after campaign closeout
-  until a successor campaign is selected.
+- Live execution state is governed by GitHub issues, PRs, and worktree state
+  per [Repository Tracking Model](../REPO_TRACKING_MODEL.md) (the former
+  `.ripr/goals/active.toml` manifest was retired in #1701).
 - Lane 1 may add or change evidence consumed by PR/CI, editor, agent, baseline,
   or gate surfaces.
 - Lane 1 should not implement PR/CI summary projection, editor UX polish,

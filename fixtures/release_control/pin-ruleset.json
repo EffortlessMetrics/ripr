@@ -4,9 +4,11 @@
   "enforcement": "active",
   "conditions": {
     "ref_name": {
-      "include": ["refs/tags/ripr-release-*"]
+      "include": ["refs/tags/ripr-release-*"],
+      "exclude": []
     }
   },
+  "bypass_actors": [],
   "rules": [
     {"type": "update"},
     {"type": "deletion"}

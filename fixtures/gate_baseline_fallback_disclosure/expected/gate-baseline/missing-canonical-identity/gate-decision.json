@@ -58,6 +58,7 @@
         },
         "missing_discriminator": "amount == discount_threshold",
         "receipt_command": null,
+        "repair_command": null,
         "repair_target": {
           "file": "tests/pricing.rs",
           "kind": "related_test",

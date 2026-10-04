@@ -602,7 +602,14 @@ fn required_development_surfaces() -> Vec<String> {
 }
 
 fn development_surfaces(root: &Path, commit: &str) -> Result<Vec<String>, String> {
-    let files = lines(git(root, &["ls-tree", "-r", "--name-only", commit])?);
+    // Raw NUL-delimited inventory (#4006): `ls-tree -z` output is never
+    // C-quoted, so exotic names survive byte-exact; parsing rules come from
+    // the shared authority in `decode_path_inventory`, not from line
+    // splitting here.
+    let files = decode_path_inventory(
+        &git_bytes(root, &["ls-tree", "-r", "--name-only", "-z", commit])?,
+        "development surfaces",
+    )?;
     Ok(required_development_surfaces()
         .into_iter()
         .filter(|path| files.iter().any(|file| file == path))
@@ -614,50 +621,111 @@ fn source_authority_paths_changed(
     before: &str,
     join: &str,
 ) -> Result<Vec<String>, String> {
-    let mut active = lines(git(root, &["diff", "--name-status", before, join])?)
-        .into_iter()
-        .filter_map(|entry| {
-            let mut parts = entry.split_whitespace();
-            let status = parts.next().unwrap_or_default();
-            let path = parts.next().unwrap_or_default().to_string();
-            if status == "D" {
-                return None;
-            }
-            if path == ".github/settings.yml" {
-                return Some(path);
-            }
-            (path.starts_with(".github/workflows/")
-                && git(root, &["show", &format!("{join}:{path}")])
-                    .map(|text| {
-                        let text = text.to_ascii_lowercase();
-                        [
-                            "publish",
-                            "release",
-                            "crates.io",
-                            "marketplace",
-                            "open-vsx",
-                            "signing",
-                        ]
-                        .iter()
-                        .any(|keyword| text.contains(keyword))
-                    })
-                    .unwrap_or(true))
-            .then_some(path)
-        })
-        .collect::<Vec<_>>();
+    // Raw NUL-delimited inventory (#4006): `--name-status -z` records are
+    // never C-quoted and never whitespace-split, so exotic names survive
+    // byte-exact. Rename/copy records attribute to the target path (the
+    // path present at `join`, which the `git show` probe below can read);
+    // the old line parser attributed them to the source path. Deleted
+    // paths stay excluded, as before.
+    let records = decode_status_inventory(&git_bytes(
+        root,
+        &["diff", "--name-status", "-z", before, join],
+    )?)?;
+    let mut active = Vec::new();
+    for record in &records {
+        if record.status == "D" {
+            continue;
+        }
+        let path = record.path.to_str().ok_or_else(|| {
+            format!(
+                "back-sync source-authority inventory: decoded path {} is not valid UTF-8",
+                record.path.display()
+            )
+        })?;
+        if path == ".github/settings.yml" {
+            active.push(path.to_string());
+            continue;
+        }
+        if path.starts_with(".github/workflows/")
+            && git(root, &["show", &format!("{join}:{path}")])
+                .map(|text| {
+                    let text = text.to_ascii_lowercase();
+                    [
+                        "publish",
+                        "release",
+                        "crates.io",
+                        "marketplace",
+                        "open-vsx",
+                        "signing",
+                    ]
+                    .iter()
+                    .any(|keyword| text.contains(keyword))
+                })
+                .unwrap_or(true)
+        {
+            active.push(path.to_string());
+        }
+    }
     active.sort();
     active.dedup();
     Ok(active)
 }
 
 fn source_publication_paths(root: &Path, commit: &str) -> Result<Vec<String>, String> {
-    let mut paths = lines(git(root, &["ls-tree", "-r", "--name-only", commit])?)
-        .into_iter()
-        .filter(|path| path.contains("publish") || path.contains("release"))
-        .collect::<Vec<_>>();
+    // Raw NUL-delimited inventory (#4006): `ls-tree -z` output is never
+    // C-quoted; parsing rules come from the shared authority in
+    // `decode_path_inventory`. The publish/release scope filter is the
+    // retained back-sync contract.
+    let mut paths = decode_path_inventory(
+        &git_bytes(root, &["ls-tree", "-r", "--name-only", "-z", commit])?,
+        "publication paths",
+    )?
+    .into_iter()
+    .filter(|path| path.contains("publish") || path.contains("release"))
+    .collect::<Vec<_>>();
     paths.sort();
     paths.dedup();
     Ok(paths)
+}
+
+/// Capture raw git stdout bytes through the shared process runner (#4006).
+/// Unlike `git` below, this never lossy-decodes: path inventories decode
+/// through the shared NUL authority at the call site. The shared runner
+/// adds no new spawn site, so the process-policy count for this file is
+/// unchanged.
+fn git_bytes(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
+    let owned: Vec<String> = args.iter().map(|arg| (*arg).to_string()).collect();
+    crate::run::capture_process_output_in("git", &owned, Some(root), &[], &[], &[])
+        .map_err(|error| error.message)
+}
+
+/// Decode raw `--name-only -z` bytes through the shared NUL path-record
+/// authority (#4006). Strict: non-UTF-8 or empty records fail loudly
+/// instead of collapsing through lossy conversion.
+fn decode_path_inventory(output: &[u8], context: &str) -> Result<Vec<String>, String> {
+    ripr::analysis::parse_git_path_records(output)
+        .map_err(|err| format!("back-sync {context}: {err}"))
+        .and_then(|paths| {
+            paths
+                .iter()
+                .map(|path| {
+                    path.to_str().map(str::to_string).ok_or_else(|| {
+                        format!(
+                            "back-sync {context}: decoded path {} is not valid UTF-8",
+                            path.display()
+                        )
+                    })
+                })
+                .collect()
+        })
+}
+
+/// Decode raw `--name-status -z` bytes through the shared NUL status-record
+/// authority (#4006). Strict: truncated records and non-UTF-8 fields fail
+/// loudly instead of attributing a change to half a record.
+fn decode_status_inventory(output: &[u8]) -> Result<Vec<ripr::analysis::StatusRecord>, String> {
+    ripr::analysis::parse_git_status_records(output)
+        .map_err(|err| format!("back-sync source-authority inventory: {err}"))
 }
 
 fn evidence(name: &str, path: Option<&Path>) -> Result<InputEvidence, String> {
@@ -994,6 +1062,191 @@ mod tests {
             Ok(_) => Ok(false),
             Err(error) => Ok(error.contains(needle)),
         }
+    }
+
+    #[test]
+    fn publication_paths_decode_exotic_names_exact() -> Result<(), String> {
+        // Discriminates NUL-delimited inventory (#4006): a non-ASCII
+        // publish-adjacent name must decode byte-exact; the old line parser
+        // kept git's C-quoted octal form. Asserts through the real
+        // `source_publication_paths` production path.
+        let root = temp_root("back-sync-names")?;
+        let _cleanup = Cleanup(root.clone());
+        init_repo(&root)?;
+        write_fixture_file(&root, "publish-notes.txt", "release notes\n")?;
+        write_fixture_file(&root, "publish-\u{e9}.txt", "release notes\n")?;
+        git(&root, &["add", "."])?;
+        git(&root, &["commit", "--quiet", "-m", "release"])?;
+
+        let mut paths = source_publication_paths(&root, "HEAD")?;
+        paths.sort();
+        // Byte order: `n` (0x6E) sorts before `é` (0xC3 0xA9).
+        let expected = vec![
+            "publish-notes.txt".to_string(),
+            "publish-\u{e9}.txt".to_string(),
+        ];
+        if paths != expected {
+            return Err(format!(
+                "exotic publication inventory mismatch: got {paths:?}, want {expected:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn authority_change_detection_sees_quoted_workflow_paths() -> Result<(), String> {
+        // The old `--name-status` line parser split on whitespace and kept
+        // C-quoting, so a workflow path with a non-ASCII name never matched
+        // the `.github/workflows/` prefix and the change went undetected.
+        // The NUL route (#4006) must attribute it.
+        let root = temp_root("back-sync-workflow-names")?;
+        let _cleanup = Cleanup(root.clone());
+        init_repo(&root)?;
+        write_fixture_file(&root, "AGENTS.md", "swarm development\n")?;
+        write_fixture_file(
+            &root,
+            ".github/workflows/uni-\u{e9}.yml",
+            "name: publish-check\n",
+        )?;
+        git(&root, &["add", "."])?;
+        git(&root, &["commit", "--quiet", "-m", "base"])?;
+        let before = git(&root, &["rev-parse", "HEAD"])?.trim().to_string();
+        write_fixture_file(
+            &root,
+            ".github/workflows/uni-\u{e9}.yml",
+            "name: publish-check\nrun: publish\n",
+        )?;
+        git(&root, &["add", "."])?;
+        git(&root, &["commit", "--quiet", "-m", "publish keyword"])?;
+        let join = git(&root, &["rev-parse", "HEAD"])?.trim().to_string();
+
+        let active = source_authority_paths_changed(&root, &before, &join)?;
+        if active != vec![".github/workflows/uni-\u{e9}.yml".to_string()] {
+            return Err(format!(
+                "quoted workflow change was not attributed: got {active:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn authority_change_detection_attributes_renames_to_the_target() -> Result<(), String> {
+        // Live-repo pin for the slice-2a rename-side decision: a renamed
+        // workflow file must attribute to the target path (the path present
+        // at `join`, which the `git show` probe reads). The old line parser
+        // attributed the source path instead. Asserts through the real
+        // `source_authority_paths_changed` production path.
+        let root = temp_root("back-sync-workflow-rename")?;
+        let _cleanup = Cleanup(root.clone());
+        init_repo(&root)?;
+        write_fixture_file(&root, "AGENTS.md", "swarm development\n")?;
+        write_fixture_file(
+            &root,
+            ".github/workflows/old-name.yml",
+            "name: publish-check\nrun: publish\n",
+        )?;
+        git(&root, &["add", "."])?;
+        git(&root, &["commit", "--quiet", "-m", "base"])?;
+        let before = git(&root, &["rev-parse", "HEAD"])?.trim().to_string();
+        git(
+            &root,
+            &[
+                "mv",
+                ".github/workflows/old-name.yml",
+                ".github/workflows/new-name.yml",
+            ],
+        )?;
+        git(&root, &["commit", "--quiet", "-m", "rename workflow"])?;
+        let join = git(&root, &["rev-parse", "HEAD"])?.trim().to_string();
+
+        let active = source_authority_paths_changed(&root, &before, &join)?;
+        if active != vec![".github/workflows/new-name.yml".to_string()] {
+            return Err(format!(
+                "renamed workflow change was not attributed to the target: got {active:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn strict_path_inventory_rejects_non_utf8() -> Result<(), String> {
+        // The strict-failure side of the NUL authority at the back-sync
+        // decode boundary: non-UTF-8 records fail loudly instead of
+        // collapsing through lossy conversion.
+        let err = match decode_path_inventory(b"ok.txt\0\xffbad\0", "test") {
+            Err(err) => err,
+            Ok(paths) => {
+                return Err(format!("non-UTF-8 inventory must fail, decoded {paths:?}"));
+            }
+        };
+        if !err.contains("not valid UTF-8") {
+            return Err(format!("unexpected strict-decode error: {err}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn strict_status_inventory_rejects_truncated_rename() -> Result<(), String> {
+        // A rename record missing its paired target must fail, not
+        // attribute the change to half a record.
+        let err = match decode_status_inventory(b"R100\0old.txt\0") {
+            Err(err) => err,
+            Ok(records) => {
+                return Err(format!("truncated rename must fail, decoded {records:?}"));
+            }
+        };
+        if !err.contains("missing its paired path") {
+            return Err(format!("unexpected strict-decode error: {err}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn status_records_attribute_renames_to_the_target() -> Result<(), String> {
+        // Pins the slice-2a rename-side decision: the verifier probes
+        // `git show {join}:{path}`, which only the target satisfies.
+        let records = decode_status_inventory(
+            b"M\0.github/workflows/kept.yml\0R100\0old.yml\0.github/workflows/new.yml\0D\0gone.yml\0",
+        )?;
+        let mut attributed = Vec::new();
+        for record in records.iter().filter(|record| record.status != "D") {
+            let path = record
+                .path
+                .to_str()
+                .ok_or_else(|| "test path must be UTF-8".to_string())?
+                .to_string();
+            let renamed_from = record
+                .renamed_from
+                .as_ref()
+                .map(|path| {
+                    path.to_str()
+                        .ok_or_else(|| "test path must be UTF-8".to_string())
+                        .map(str::to_string)
+                })
+                .transpose()?;
+            attributed.push((path, renamed_from));
+        }
+        let expected = vec![
+            (".github/workflows/kept.yml".to_string(), None),
+            (
+                ".github/workflows/new.yml".to_string(),
+                Some("old.yml".to_string()),
+            ),
+        ];
+        if attributed != expected {
+            return Err(format!(
+                "rename attribution mismatch: got {attributed:?}, want {expected:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    fn write_fixture_file(root: &Path, relative: &str, body: &str) -> Result<(), String> {
+        let path = root.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        fs::write(path, body).map_err(|error| error.to_string())
     }
 
     fn verifier_fixture(label: &str) -> Result<(PathBuf, Options), String> {

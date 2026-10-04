@@ -1,0 +1,52 @@
+schema_version = "2.0"
+id = "ripr.slice.feedback-usefulness-rate-eligibility.v1"
+generation = 1
+
+source_issue = "issue:1619"
+design_reference = "RIPR-SPEC-0179#behavior"
+change_class = "behavior_change"
+
+claim_boundary = """
+A usefulness rate includes only human-accepted feedback matched to an existing
+route-quality row and an explicitly supplied current result identity. Raw
+feedback counts retain all opinions. No eligible denominator means no rate.
+This is a correction to the shared join, not an analyzer, execution, review
+identity, telemetry or policy authority.
+"""
+
+non_goals = [
+  "new feedback commands or protocols",
+  "reviewer authentication",
+  "automatic current-result discovery",
+  "policy or diagnostic changes",
+  "corpus or support promotion",
+  "release membership",
+]
+
+return_conditions = [
+  "Return if excluded feedback disappears from raw counts.",
+  "Return if a missing comparison or row produces a numeric rate.",
+  "Return if repeated aggregate rows inflate the receipt denominator.",
+  "Return if accepted negative feedback is removed from the denominator.",
+]
+
+owned_seams = ["seam:ripr:app:usefulness-feedback"]
+shared_seams = ["seam:ripr:contract:route-quality-join"]
+forbidden_seams = [
+  "seam:ripr:output:gate-authority",
+  "seam:ripr:agent:command-runner",
+  "seam:ripr:release:promotion",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0179#behavior"
+requirement_generation = 2
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

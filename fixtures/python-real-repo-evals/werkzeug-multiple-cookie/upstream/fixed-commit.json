@@ -1,0 +1,35 @@
+{
+  "sha": "57acc4236044803956686c3f0f6ae0cacd2986b0",
+  "node_id": "MDY6Q29tbWl0OTk3MzM4OjU3YWNjNDIzNjA0NDgwMzk1NjY4NmMzZjBmNmFlMGNhY2QyOTg2YjA=",
+  "url": "https://api.github.com/repos/pallets/werkzeug/git/commits/57acc4236044803956686c3f0f6ae0cacd2986b0",
+  "html_url": "https://github.com/pallets/werkzeug/commit/57acc4236044803956686c3f0f6ae0cacd2986b0",
+  "author": {
+    "name": "pgjones",
+    "email": "philip.graham.jones@googlemail.com",
+    "date": "2021-03-14T19:20:47Z"
+  },
+  "committer": {
+    "name": "pgjones",
+    "email": "philip.graham.jones@googlemail.com",
+    "date": "2021-03-14T19:20:47Z"
+  },
+  "tree": {
+    "sha": "f364c9091b25f324a965a000873d9183caa4efd6",
+    "url": "https://api.github.com/repos/pallets/werkzeug/git/trees/f364c9091b25f324a965a000873d9183caa4efd6"
+  },
+  "message": "Fix sansio request cookies\n\nThe expectation for cookie parsing is that any multiple cookies\nheaders are joined with a semicolon separator as WSGI does.",
+  "parents": [
+    {
+      "sha": "2f0d8a7725ef3ac606d022fb16333ed482bebeaf",
+      "url": "https://api.github.com/repos/pallets/werkzeug/git/commits/2f0d8a7725ef3ac606d022fb16333ed482bebeaf",
+      "html_url": "https://github.com/pallets/werkzeug/commit/2f0d8a7725ef3ac606d022fb16333ed482bebeaf"
+    }
+  ],
+  "verification": {
+    "verified": false,
+    "reason": "unsigned",
+    "signature": null,
+    "payload": null,
+    "verified_at": null
+  }
+}

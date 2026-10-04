@@ -10,11 +10,286 @@
 //! `--json`, calls into this module to evaluate the core checks and probe
 //! tool availability, and prints either the JSON report or the human-prose
 //! projection.
+//!
+//! `Path::is_dir()` is false for a missing path and for an existing file.
+//! Doctor classifies those states once ([`DoctorRootPath`]) so the
+//! `root_directory` evidence, skip reasons, and MissingRoot guidance cannot
+//! claim an existing file does not exist (#5101).
 
 use crate::config::{CONFIG_FILE_NAME, RiprConfig, load_for_root};
+use crate::domain::LanguageId;
+pub(crate) use crate::output::path::command_root_display as doctor_command_root_display;
+use crate::output::path::{
+    absolute_command_root_display as absolute_doctor_root_display, human_path,
+};
+use crate::process_owner::OwnedProcess;
 use serde::Serialize;
 use std::path::Path;
 use std::time::{Duration, Instant};
+
+/// The closing line of a failing `ripr doctor` run.
+///
+/// It used to end `run `ripr doctor --help` for usage`. Help is not the
+/// remedy for anything doctor reports: every failing check already prints its
+/// own fix on its own `!` line (`rustup update stable`, an install command, a
+/// config repair), so the closing line sent the reader away from the answer
+/// they had just been given. The CLI path prints the same line for the same
+/// state, so both read it from here rather than keeping two copies of the
+/// text.
+pub(crate) const DOCTOR_FAILED_LINE: &str =
+    "! doctor checks failed; each `!` line above names the check and its fix\n";
+
+/// First command doctor prints after the checks. Git-backed routes are only
+/// recommended when the `tool_git` check actually passed (#4735). A root Git
+/// refuses gets the repository-free scan instead of a command that cannot run
+/// there (#4531); an unusable root (missing, or present but not a directory)
+/// keeps a runnable recovery command naming its lossless root spelling (#5010)
+/// plus `--root` guidance that names the actual filesystem state (#4606
+/// review, #5101), and is never probed for work-tree changes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DoctorFirstCommand {
+    /// `root_directory` failed while git runs: render the runnable recovery
+    /// command with its lossless root spelling, plus `--root` guidance that
+    /// distinguishes a missing path from an existing non-directory, and never
+    /// probe the work tree (#4531, #5010, #5101).
+    MissingRoot,
+    /// `git_repository` failed while git itself runs: the repository-free scan
+    /// is the only route that can run here.
+    OutsideGit,
+    /// `git_repository` passed but `HEAD` is unborn (#5259): the repository
+    /// has no commit to diff against, so every diff-scoped first command
+    /// fails; name the commit-first path and keep the repository-free scan.
+    UnbornHead,
+    SavedDiff,
+    Worktree,
+    DefaultCheck,
+}
+
+impl DoctorFirstCommand {
+    pub(crate) const SAVED_DIFF_LINE: &'static str = "ripr check --diff PATH";
+    pub(crate) const WORKTREE_LINE: &'static str = "ripr check --base HEAD --worktree";
+    pub(crate) const DEFAULT_LINE: &'static str = "ripr check";
+
+    /// `dirty_worktree` is only evaluated when git can run, so a gitless
+    /// environment is not probed (and not told to run `--worktree`).
+    pub(crate) fn resolve(git_can_run: bool, dirty_worktree: impl FnOnce() -> bool) -> Self {
+        if !git_can_run {
+            Self::SavedDiff
+        } else if dirty_worktree() {
+            Self::Worktree
+        } else {
+            Self::DefaultCheck
+        }
+    }
+
+    /// `resolve` for the diagnosed report. The check states decide before any
+    /// probe runs: a missing root (#4531) must not be probed for work-tree
+    /// changes — the probe would print a raw git failure for a problem the
+    /// checks above already name — and a root Git refuses must not be sent to
+    /// `ripr check`, which cannot run there. A git binary that cannot run
+    /// still outranks the repository state (#4735), because `--diff PATH`
+    /// does not need git.
+    pub(crate) fn resolve_for_report(
+        report: &DoctorReport,
+        dirty_worktree: impl FnOnce() -> bool,
+    ) -> Self {
+        let passed = |name: &str| {
+            report
+                .checks
+                .iter()
+                .any(|check| check.name == name && check.status == DoctorCheckStatus::Pass)
+        };
+        if !passed("root_directory") {
+            // #5010 renders the lossless root spelling for recovery, so the
+            // route stays runnable; only the work-tree probe is withheld
+            // (#4531). Gitless hosts keep the `--diff` route, which does not
+            // need the root to exist.
+            if git_tool_can_run(report) {
+                Self::MissingRoot
+            } else {
+                Self::SavedDiff
+            }
+        } else if !git_tool_can_run(report) {
+            Self::SavedDiff
+        } else if !passed("git_repository") {
+            Self::OutsideGit
+        } else if report
+            .checks
+            .iter()
+            .any(|check| check.name == "git_head" && check.status == DoctorCheckStatus::Advisory)
+        {
+            // #5259: the work tree is real but `HEAD` is unborn, so no base
+            // can resolve; the diff-scoped first commands would all fail.
+            Self::UnbornHead
+        } else {
+            Self::resolve(true, dirty_worktree)
+        }
+    }
+
+    /// The runnable `ripr check` form, or `None` for the state variants,
+    /// which recommend no git-backed command; `recommendation_lines_for`
+    /// renders those directly.
+    pub(crate) fn command_line(self) -> Option<&'static str> {
+        match self {
+            Self::SavedDiff => Some(Self::SAVED_DIFF_LINE),
+            Self::Worktree => Some(Self::WORKTREE_LINE),
+            Self::DefaultCheck => Some(Self::DEFAULT_LINE),
+            Self::MissingRoot | Self::OutsideGit | Self::UnbornHead => None,
+        }
+    }
+
+    /// `command_line` for the diagnosed `root`. `ripr check` defaults to
+    /// `.`, so a doctor run with `--root` from another directory must name
+    /// the root, or the recommended command analyzes the caller's directory.
+    /// Existing directories use filesystem resolution, matching diagnosis
+    /// even when a root traverses a symlink before `..`. Unresolved paths
+    /// keep an absolute, uncollapsed spelling for error-recovery guidance.
+    /// Empty for the state variant; render that through
+    /// `recommendation_lines_for`.
+    pub(crate) fn command_line_for_root(self, root: &Path) -> Result<String, String> {
+        use crate::agent::loop_commands::shell_arg;
+        let Some(line) = self.command_line() else {
+            return Ok(String::new());
+        };
+        if root == Path::new(".") {
+            return Ok(line.to_string());
+        }
+        let flags = line.strip_prefix("ripr check").unwrap_or_default();
+        let bound = match root.canonicalize() {
+            Ok(resolved) => doctor_command_root_display(root, &resolved)?,
+            Err(_) => absolute_doctor_root_display(root)?,
+        };
+        Ok(format!("ripr check --root {}{flags}", shell_arg(&bound)))
+    }
+
+    /// The full recommendation for `root`: the runnable variants render
+    /// through the shared physical-root command line, and the #4531 state
+    /// variant renders its own line.
+    pub(crate) fn recommendation_lines_for(self, root: &Path) -> Vec<String> {
+        match self {
+            // The recovery command names the lossless spelling of the unusable
+            // root exactly as the runnable variants do (#5010); the guidance
+            // line says what to replace it with (#4606 review, #5101).
+            Self::MissingRoot => {
+                let mut lines =
+                    Self::recommendation_lines(Self::DefaultCheck.command_line_for_root(root));
+                lines.push(
+                    DoctorRootPath::classify(root)
+                        .recovery_guidance()
+                        .to_string(),
+                );
+                lines
+            }
+            Self::OutsideGit => {
+                use crate::agent::loop_commands::shell_arg;
+                // The repository-free scan is a runnable command, so its root
+                // follows the same physical-root rule as the git-backed
+                // recommendations (#5010): a spaced, quoted, or aliased root
+                // must still analyze the diagnosed directory after the paste.
+                // The translator reads bare commands only, so the prose
+                // wrapper wraps each shell form, never enters it.
+                let bound = match root.canonicalize() {
+                    Ok(resolved) => doctor_command_root_display(root, &resolved),
+                    Err(_) => absolute_doctor_root_display(root),
+                };
+                let bash = bound.map(|bound| {
+                    format!(
+                        "ripr check --root {} --format repo-exposure-md",
+                        shell_arg(&bound)
+                    )
+                });
+                match bash {
+                    Ok(bash) => {
+                        let mut lines = vec![format!(
+                            "- Recommended first command: fix the Git check above, or scan \
+                             without Git history: `{bash}`"
+                        )];
+                        if let crate::output::markdown::PowershellForm::Translated(powershell) =
+                            crate::output::markdown::powershell_form(&bash)
+                        {
+                            lines.push(format!(
+                                "- Recommended first command (PowerShell): fix the Git check \
+                                 above, or scan without Git history: `{powershell}`"
+                            ));
+                        }
+                        lines
+                    }
+                    Err(error) => Self::recommendation_lines(Err(error)),
+                }
+            }
+            Self::UnbornHead => {
+                use crate::agent::loop_commands::shell_arg;
+                // #5259: the diff has no base until the first commit exists,
+                // so the line names the commit-first path (the same repair
+                // the check-time default-base error states) and keeps the
+                // repository-free scan runnable now. The scan's root follows
+                // the same physical-root rule as the other recommendations.
+                let bound = match root.canonicalize() {
+                    Ok(resolved) => doctor_command_root_display(root, &resolved),
+                    Err(_) => absolute_doctor_root_display(root),
+                };
+                let bash = bound.map(|bound| {
+                    format!(
+                        "ripr check --root {} --format repo-exposure-md",
+                        shell_arg(&bound)
+                    )
+                });
+                match bash {
+                    Ok(bash) => {
+                        let mut lines = vec![format!(
+                            "- Recommended first command: this repository has no commits yet, \
+                             so `ripr check` has no base to diff; commit once first (then \
+                             `ripr check --base HEAD --worktree` analyzes uncommitted edits), \
+                             or scan without Git history: `{bash}`"
+                        )];
+                        if let crate::output::markdown::PowershellForm::Translated(powershell) =
+                            crate::output::markdown::powershell_form(&bash)
+                        {
+                            lines.push(format!(
+                                "- Recommended first command (PowerShell): this repository has \
+                                 no commits yet, so `ripr check` has no base to diff; commit \
+                                 once first (then `ripr check --base HEAD --worktree` analyzes \
+                                 uncommitted edits), or scan without Git history: `{powershell}`"
+                            ));
+                        }
+                        lines
+                    }
+                    Err(error) => Self::recommendation_lines(Err(error)),
+                }
+            }
+            Self::SavedDiff | Self::Worktree | Self::DefaultCheck => {
+                Self::recommendation_lines(self.command_line_for_root(root))
+            }
+        }
+    }
+
+    /// Render the selected recommendation: the Bash line, then a labeled
+    /// PowerShell form only when the shared translator rewrites it (a root
+    /// with an apostrophe, which Bash and PowerShell escape differently).
+    pub(crate) fn recommendation_lines(command: Result<String, String>) -> Vec<String> {
+        let line = match command {
+            Ok(line) => line,
+            Err(error) => return vec![format!("- Recommended first command unavailable: {error}")],
+        };
+        let mut lines = vec![format!("- Recommended first command: {line}")];
+        if let crate::output::markdown::PowershellForm::Translated(powershell) =
+            crate::output::markdown::powershell_form(&line)
+        {
+            lines.push(format!(
+                "- Recommended first command (PowerShell): {powershell}"
+            ));
+        }
+        lines
+    }
+}
+
+/// Fail closed: only an explicit passing `tool_git` check means git can run.
+pub(crate) fn git_tool_can_run(report: &DoctorReport) -> bool {
+    report
+        .checks
+        .iter()
+        .any(|check| check.name == "tool_git" && check.status == DoctorCheckStatus::Pass)
+}
 
 /// The single source of truth for which tools doctor probes for availability.
 /// Both the evaluation (which actually spawns each tool to check it) and the
@@ -22,6 +297,10 @@ use std::time::{Duration, Instant};
 /// the report) iterate this list, so there is exactly one place that names
 /// the probed tools.
 pub(crate) const DOCTOR_TOOLS: [&str; 3] = ["git", "cargo", "rustc"];
+
+/// The subset of [`DOCTOR_TOOLS`] that only a Rust root needs. `git` is
+/// required for every root because diff scoping reads Git history.
+const RUST_TOOLCHAIN_TOOLS: [&str; 2] = ["cargo", "rustc"];
 
 const MINIMUM_RUSTC_VERSION: &str = env!("CARGO_PKG_RUST_VERSION");
 
@@ -44,15 +323,71 @@ fn parse_rustc_version(output: &str) -> Option<RustcVersion> {
         .strip_prefix("rustc ")?
         .split_whitespace()
         .next()?;
-    let mut components = version_token.split('.');
+    let (core, suffix) = match version_token.find(['-', '+']) {
+        Some(index) => (&version_token[..index], &version_token[index..]),
+        None => (version_token, ""),
+    };
+    if !suffix.is_empty() && !valid_rustc_version_suffix(suffix) {
+        return None;
+    }
+    let mut components = core.split('.');
     let major = components.next()?.parse().ok()?;
     let minor = components.next()?.parse().ok()?;
-    let patch = components.next()?.split(['-', '+']).next()?.parse().ok()?;
+    let patch = components.next()?.parse().ok()?;
+    if components.next().is_some() {
+        return None;
+    }
     Some(RustcVersion {
         major,
         minor,
         patch,
     })
+}
+
+fn valid_rustc_version_suffix(suffix: &str) -> bool {
+    if suffix.is_empty() {
+        return false;
+    }
+    let (prerelease, build, has_prerelease) = if let Some(remainder) = suffix.strip_prefix('-') {
+        match remainder.split_once('+') {
+            Some((prerelease, build)) => (prerelease, Some(build), true),
+            None => (remainder, None, true),
+        }
+    } else if let Some(build) = suffix.strip_prefix('+') {
+        ("", Some(build), false)
+    } else {
+        return false;
+    };
+    if prerelease.is_empty() && (has_prerelease || build.is_none())
+        || (!prerelease.is_empty() && !prerelease.split('.').all(valid_prerelease_identifier))
+    {
+        return false;
+    }
+    build.is_none_or(|build| {
+        !build.is_empty()
+            && build
+                .split('.')
+                .all(|identifier| valid_semver_identifier(identifier, false))
+    })
+}
+
+fn valid_prerelease_identifier(identifier: &str) -> bool {
+    valid_semver_identifier(identifier, true)
+        && !identifier.starts_with('-')
+        && !identifier.ends_with('-')
+}
+
+fn valid_semver_identifier(identifier: &str, reject_numeric_leading_zero: bool) -> bool {
+    !identifier.is_empty()
+        && identifier
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '-')
+        && !(reject_numeric_leading_zero
+            && identifier.len() > 1
+            && identifier.starts_with('0')
+            && identifier
+                .chars()
+                .all(|character| character.is_ascii_digit()))
 }
 
 fn minimum_rustc_version() -> Option<RustcVersion> {
@@ -73,24 +408,50 @@ fn minimum_rustc_version() -> Option<RustcVersion> {
     })
 }
 
-fn validate_rustc_version(output: &str) -> Result<(), String> {
-    let minimum = minimum_rustc_version().ok_or_else(|| {
-        format!(
+/// Why the local `rustc` is worth a word, split from whether the check passed.
+///
+/// `MINIMUM_RUSTC_VERSION` is ripr's own `rust-version`: what it takes to
+/// **build** or install ripr from source. The already-running ripr binary's
+/// built-in static analysis does not directly run `rustc`. Configured external
+/// producers have their own prerequisites; this advisory does not establish
+/// their compatibility.
+///
+/// A version below the minimum fails the source-build prerequisite; the
+/// analysis profile projects that failure as advisory. An unreadable version
+/// is also not evidence that source builds work.
+enum RustcVersionVerdict {
+    /// Parsed and at or above ripr's build minimum.
+    Current,
+    /// Parsed and below ripr's build minimum, with the line to disclose.
+    BelowBuildMinimum(String),
+    /// Not parseable, with the failure to report.
+    Unreadable(String),
+}
+
+/// The below-minimum rustc note already states what that means for the
+/// running binary's analysis; the analysis-profile advisory must not say it a
+/// second time (clean-install walk, 0.11).
+const RUSTC_ANALYSIS_SCOPE: &str = "The already-running ripr binary's built-in static analysis does not directly run rustc; configured external producers have their own prerequisites.";
+
+fn validate_rustc_version(output: &str) -> RustcVersionVerdict {
+    let Some(minimum) = minimum_rustc_version() else {
+        return RustcVersionVerdict::Unreadable(format!(
             "declared package rust-version `{MINIMUM_RUSTC_VERSION}` could not be parsed; update Cargo.toml"
-        )
-    })?;
-    let version = parse_rustc_version(output).ok_or_else(|| {
-        format!(
+        ));
+    };
+    let Some(version) = parse_rustc_version(output) else {
+        return RustcVersionVerdict::Unreadable(format!(
             "rustc version could not be parsed from `{}`; install Rust {minimum}+",
             output.trim()
-        )
-    })?;
+        ));
+    };
     if version < minimum {
-        return Err(format!(
-            "rustc {version} is below the minimum supported Rust version {minimum}; run `rustup update stable` or install Rust {minimum}+"
+        return RustcVersionVerdict::BelowBuildMinimum(format!(
+            "{}; below ripr's build minimum {minimum}. That minimum is what building or installing ripr from source requires. {RUSTC_ANALYSIS_SCOPE} Run `rustup update stable` before building ripr from source.",
+            output.trim()
         ));
     }
-    Ok(())
+    RustcVersionVerdict::Current
 }
 
 /// How long a tool probe may run before it is terminated (#2183 review): a
@@ -115,13 +476,51 @@ pub(crate) enum DoctorStatus {
     Fail,
 }
 
+/// The status of one top-level doctor check.
+///
+/// `Skipped` marks a check that does not apply to the selected root (for
+/// example the Cargo/Rust toolchain checks on a Python- or TypeScript-only
+/// root). It never fails the report, and its evidence says why the check was
+/// not run, so a skipped check never reads as a verified pass.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum DoctorCheckStatus {
+    /// The check ran and passed.
+    Pass,
+    /// The check ran and failed; the report fails in the selected profile.
+    Fail,
+    /// The observed capability is unavailable, but is not required by this profile.
+    Advisory,
+    /// The check does not apply to this root and was not run.
+    Skipped,
+}
+
+/// The requested doctor capability. An installed binary can analyze a Rust
+/// workspace without compiling RIPR or running the project's verification.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum DoctorProfile {
+    #[default]
+    Analysis,
+    SourceBuild,
+}
+
+impl From<DoctorStatus> for DoctorCheckStatus {
+    fn from(status: DoctorStatus) -> Self {
+        match status {
+            DoctorStatus::Pass => Self::Pass,
+            DoctorStatus::Fail => Self::Fail,
+        }
+    }
+}
+
 /// A single typed doctor check (root, Cargo.toml, tool availability).
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct DoctorCheck {
     /// The check name (e.g. "root_directory", "cargo_toml", "tool_git").
     pub(crate) name: String,
     /// The check status.
-    pub(crate) status: DoctorStatus,
+    pub(crate) status: DoctorCheckStatus,
     /// Human-readable evidence (e.g. "Cargo.toml found at /workspace").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) evidence: Option<String>,
@@ -155,7 +554,11 @@ pub(crate) struct DoctorRuntimeProbe {
 pub(crate) struct DoctorReport {
     pub(crate) schema_version: &'static str,
     pub(crate) tool: &'static str,
+    pub(crate) ripr_version: &'static str,
+    pub(crate) ripr_build_msrv: &'static str,
     pub(crate) root: String,
+    /// Which capability the top-level status evaluates.
+    pub(crate) profile: DoctorProfile,
     pub(crate) status: DoctorStatus,
     pub(crate) checks: Vec<DoctorCheck>,
     pub(crate) sections: Vec<DoctorSection>,
@@ -164,21 +567,29 @@ pub(crate) struct DoctorReport {
     /// the typed surface the generated CI consumes instead of parsing the
     /// human "Enabled languages:" line.
     pub(crate) languages: Vec<String>,
+    /// The running binary and the `ripr` on PATH (additive in schema `0.2`).
+    /// The command adapter fills it; core evaluation leaves it unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) binary: Option<super::doctor_binary::DoctorBinaryIdentity>,
 }
 
 impl DoctorReport {
-    pub(crate) const SCHEMA_VERSION: &'static str = "0.2";
+    pub(crate) const SCHEMA_VERSION: &'static str = "0.3";
 
     pub(crate) fn new(root: &str) -> Self {
         Self {
             schema_version: Self::SCHEMA_VERSION,
             tool: "ripr",
+            ripr_version: env!("CARGO_PKG_VERSION"),
+            ripr_build_msrv: MINIMUM_RUSTC_VERSION,
             root: root.to_string(),
+            profile: DoctorProfile::Analysis,
             status: DoctorStatus::Pass,
             checks: Vec::new(),
             sections: Vec::new(),
             runtime_probes: Vec::new(),
             languages: Vec::new(),
+            binary: None,
         }
     }
 
@@ -189,8 +600,26 @@ impl DoctorReport {
         }
         self.checks.push(DoctorCheck {
             name: name.to_string(),
-            status,
+            status: status.into(),
             evidence,
+        });
+    }
+
+    /// Record a check that does not apply to this root. It never changes the
+    /// overall status; `evidence` must say why the check was skipped.
+    pub(crate) fn add_skipped_check(&mut self, name: &str, evidence: String) {
+        self.checks.push(DoctorCheck {
+            name: name.to_string(),
+            status: DoctorCheckStatus::Skipped,
+            evidence: Some(evidence),
+        });
+    }
+
+    pub(crate) fn add_advisory_check(&mut self, name: &str, evidence: String) {
+        self.checks.push(DoctorCheck {
+            name: name.to_string(),
+            status: DoctorCheckStatus::Advisory,
+            evidence: Some(evidence),
         });
     }
 
@@ -234,11 +663,16 @@ impl DoctorReport {
         let mut out = String::new();
         out.push_str("ripr doctor\n");
         out.push_str(&format!("- root: {}\n", self.root));
+        out.push_str(&format!(
+            "- RIPR {} (source build requires Rust {})\n",
+            self.ripr_version, self.ripr_build_msrv
+        ));
         for check in &self.checks {
-            let icon = if check.status == DoctorStatus::Pass {
-                "✓"
-            } else {
-                "!"
+            let icon = match check.status {
+                DoctorCheckStatus::Pass => "✓",
+                DoctorCheckStatus::Fail => "!",
+                DoctorCheckStatus::Advisory => "~",
+                DoctorCheckStatus::Skipped => "-",
             };
             if let Some(evidence) = &check.evidence {
                 out.push_str(&format!("{icon} {evidence}\n"));
@@ -254,9 +688,7 @@ impl DoctorReport {
         }
         match self.status {
             DoctorStatus::Pass => out.push_str("✓ doctor checks passed\n"),
-            DoctorStatus::Fail => {
-                out.push_str("! doctor checks failed; run `ripr doctor --help` for usage\n")
-            }
+            DoctorStatus::Fail => out.push_str(DOCTOR_FAILED_LINE),
         }
         out
     }
@@ -279,8 +711,10 @@ impl DoctorReport {
 /// (RIPR-SPEC-0007, P2). The first line alone (path, "invalid ripr.toml",
 /// parse location) is enough to act on and contains no source text, so
 /// doctor's JSON evidence keeps only that line.
+/// The misplaced-key hint (#4534) is kept too: it names only a key and a
+/// table from a fixed allowlist, never file content.
 fn redact_config_parse_error(error: &str) -> String {
-    error.lines().next().unwrap_or(error).trim().to_string()
+    crate::config::config_error_summary(error)
 }
 
 /// Result of evaluating the doctor core checks, plus the raw config load
@@ -292,57 +726,360 @@ pub(crate) struct DoctorCoreEvaluation {
     pub(crate) config: Result<RiprConfig, String>,
 }
 
+/// How `--root` addresses the filesystem for doctor core checks.
+///
+/// `Path::is_dir()` is false both when the path is missing and when it
+/// exists as a non-directory. Classify once and reuse the result for the
+/// `root_directory` evidence, skip reasons, and MissingRoot guidance (#5101).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DoctorRootPath {
+    Directory,
+    Missing,
+    NotADirectory,
+    Unreadable,
+}
+
+impl DoctorRootPath {
+    fn classify(root: &Path) -> Self {
+        match std::fs::metadata(root) {
+            Ok(metadata) if metadata.is_dir() => Self::Directory,
+            Ok(_) => Self::NotADirectory,
+            // `metadata` follows symlinks. A dangling symlink is `NotFound`
+            // after follow, but the typed name still exists on disk.
+            Err(error) => match std::fs::symlink_metadata(root) {
+                Ok(_) => {
+                    // A dangling symlink is `NotFound` after follow. Any other
+                    // follow error with a live name (PermissionDenied on the
+                    // target) is unreadability, not "exists but is not a
+                    // directory".
+                    if error.kind() == std::io::ErrorKind::NotFound {
+                        Self::NotADirectory
+                    } else {
+                        Self::Unreadable
+                    }
+                }
+                Err(symlink_error) => {
+                    let missing = error.kind() == std::io::ErrorKind::NotFound
+                        && symlink_error.kind() == std::io::ErrorKind::NotFound;
+                    if missing {
+                        Self::Missing
+                    } else {
+                        Self::Unreadable
+                    }
+                }
+            },
+        }
+    }
+
+    fn unusable_skip_reason(self) -> Option<&'static str> {
+        match self {
+            Self::Directory => None,
+            Self::Missing => Some("the root directory does not exist"),
+            Self::NotADirectory => Some("the root is not a directory"),
+            Self::Unreadable => Some("the root directory cannot be read"),
+        }
+    }
+
+    fn root_directory_evidence(self, root: &Path) -> (DoctorStatus, String) {
+        match self {
+            Self::Directory => (
+                DoctorStatus::Pass,
+                format!("root directory exists at {}", human_path(root)),
+            ),
+            Self::Missing => (
+                DoctorStatus::Fail,
+                format!("root directory does not exist at {}", human_path(root)),
+            ),
+            Self::NotADirectory => (
+                DoctorStatus::Fail,
+                format!(
+                    "root is not a directory at {}; pass the workspace directory",
+                    human_path(root)
+                ),
+            ),
+            Self::Unreadable => (
+                DoctorStatus::Fail,
+                format!(
+                    "cannot determine whether {} is a directory",
+                    human_path(root)
+                ),
+            ),
+        }
+    }
+
+    fn recovery_guidance(self) -> &'static str {
+        match self {
+            Self::NotADirectory => {
+                "- The selected root exists but is not a directory; rerun with `--root <path>` \
+                 naming the repository directory, not a file inside it"
+            }
+            Self::Unreadable => {
+                "- The selected root could not be read; check permissions and rerun with \
+                 `--root <path>` naming an accessible repository directory"
+            }
+            Self::Missing => {
+                "- The selected root does not exist; rerun with `--root <path>` naming an \
+                 existing repository directory"
+            }
+            // MissingRoot re-classifies at render time. If the path became a
+            // directory after evaluation, do not claim it is absent.
+            Self::Directory => "- Rerun with `--root <path>` naming the repository directory",
+        }
+    }
+}
+
 /// Evaluate the doctor core checks (root, Cargo.toml, config, tool
 /// availability) and return just the typed report.
 #[cfg(test)]
-pub(crate) fn evaluate_doctor_core(root: &Path) -> DoctorReport {
-    evaluate_doctor_core_with_config(root).report
+pub(crate) fn evaluate_doctor_core(root: &Path, detected: &[LanguageId]) -> DoctorReport {
+    evaluate_doctor_core_with_config(root, detected).report
+}
+
+/// Whether the Rust toolchain checks (`Cargo.toml`, `cargo`, `rustc`) apply
+/// to a doctor root.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum RustToolchainScope {
+    /// Rust is in scope: a missing `Cargo.toml` or toolchain fails doctor.
+    Required,
+    /// Rust is not in scope for this root; the checks are reported as
+    /// skipped with this reason instead of failing.
+    NotInScope(String),
+}
+
+/// Decide whether the Rust toolchain checks apply to a root.
+///
+/// `detected` is doctor's marker scan of the root (`Cargo.toml` or `.rs`
+/// files mark Rust) and `config` is the effective configuration, whose
+/// enabled set already includes Python auto-enablement from
+/// `config::load_for_root`. The rule stays fail-closed for Rust:
+///
+/// - an unloadable config keeps the checks required (the config check
+///   already fails the report, and nothing proves Rust is out of scope);
+/// - Rust absent from the effective enabled set puts it out of scope;
+/// - detected Rust markers keep the checks required, so a Rust root without
+///   `Cargo.toml` still fails;
+/// - otherwise Rust is enabled only by default or by an explicit list that
+///   also names another language. When another language is detected or
+///   enabled, the root is that language's project and Rust is out of scope;
+///   with no other language at all (an empty or wrong root) the checks stay
+///   required, so the missing `Cargo.toml` is still reported as a failure.
+///
+/// `enabled = ["rust", "<language>"]` is what doctor's own enablement tip
+/// and the preview docs tell users to write, so an explicit `rust` entry
+/// alone cannot mean the root is a Rust project.
+pub(crate) fn rust_toolchain_scope(
+    config: &Result<RiprConfig, String>,
+    detected: &[LanguageId],
+) -> RustToolchainScope {
+    let Ok(config) = config else {
+        return RustToolchainScope::Required;
+    };
+    let enabled = config.languages().enabled();
+    if !enabled.contains(&LanguageId::Rust) {
+        return RustToolchainScope::NotInScope("Rust is not enabled in [languages]".to_string());
+    }
+    if detected.contains(&LanguageId::Rust) {
+        return RustToolchainScope::Required;
+    }
+    let mut others: Vec<&'static str> = Vec::new();
+    for language in detected.iter().chain(enabled) {
+        if *language != LanguageId::Rust && !others.contains(&language.as_str()) {
+            others.push(language.as_str());
+        }
+    }
+    if others.is_empty() {
+        return RustToolchainScope::Required;
+    }
+    RustToolchainScope::NotInScope(format!(
+        "Rust not detected at this root (no Cargo.toml or .rs files); in scope: {}",
+        others.join(", ")
+    ))
+}
+
+/// Whether `root` is inside a Git work tree, or `None` when the probe could
+/// not run at all.
+///
+/// A probe that never ran may not assert that a directory is not a
+/// repository: git missing from `PATH`, or a spawn that times out, is a
+/// different state from git running and reporting no work tree, and only the
+/// second one has a repair the user can act on. `rev-parse` exiting nonzero
+/// is git answering, so that arm reports `false` rather than the unknown.
+enum WorkTreeProbe {
+    Inside,
+    Outside,
+    /// Git refused the repository for its owner (#4530); carries the repair.
+    Refused(String),
+}
+
+fn work_tree_probe(root: &Path) -> Option<WorkTreeProbe> {
+    let output = crate::git::run_git_output_with_deadline(
+        root,
+        &["rev-parse", "--is-inside-work-tree"],
+        Some(DOCTOR_TOOL_TIMEOUT),
+    )
+    .ok()?;
+    if !output.status.success() {
+        return Some(
+            crate::git::dubious_ownership_message(root, &output.stderr, "")
+                .map_or(WorkTreeProbe::Outside, WorkTreeProbe::Refused),
+        );
+    }
+    Some(
+        if String::from_utf8_lossy(&output.stdout).trim() == "true" {
+            WorkTreeProbe::Inside
+        } else {
+            WorkTreeProbe::Outside
+        },
+    )
+}
+
+/// #5259: whether `HEAD` is unborn (the repository has no commits yet).
+/// Call only after [`work_tree_probe`] reported `Inside`: there, a
+/// `rev-parse --verify` that exits nonzero is git answering "no such
+/// revision", which is the unborn state. `false` when git could not answer
+/// (missing or timed-out git proves nothing, so doctor claims nothing) —
+/// the probe's absence must not read as "unborn" (#5398 review).
+fn unborn_head(root: &Path) -> bool {
+    probe_says_unborn(
+        crate::git::run_git_output_with_deadline(
+            root,
+            &["rev-parse", "--verify", "--quiet", "HEAD"],
+            Some(DOCTOR_TOOL_TIMEOUT),
+        )
+        .ok()
+        .map(|output| output.status.success()),
+    )
+}
+
+/// Pure three-arm verdict for [`unborn_head`]: `Some(true)` is git running
+/// and resolving HEAD (born), `Some(false)` is git running and refusing the
+/// revision (unborn), and `None` is a probe that never answered (spawn
+/// failure or deadline). Only the second arm claims unborn.
+fn probe_says_unborn(head_resolves: Option<bool>) -> bool {
+    head_resolves == Some(false)
 }
 
 /// Evaluate the doctor core checks and also return the raw config load
 /// result, so the human-readable projection can print full local detail
-/// without going through the redacted JSON evidence.
-pub(crate) fn evaluate_doctor_core_with_config(root: &Path) -> DoctorCoreEvaluation {
+/// without going through the redacted JSON evidence. `detected` is the
+/// caller's marker scan of the root, used only to decide whether the Rust
+/// toolchain checks apply (see [`rust_toolchain_scope`]).
+#[cfg(test)]
+pub(crate) fn evaluate_doctor_core_with_config(
+    root: &Path,
+    detected: &[LanguageId],
+) -> DoctorCoreEvaluation {
+    evaluate_doctor_core_with_config_for_profile(root, detected, DoctorProfile::Analysis)
+}
+
+pub(crate) fn evaluate_doctor_core_with_config_for_profile(
+    root: &Path,
+    detected: &[LanguageId],
+    profile: DoctorProfile,
+) -> DoctorCoreEvaluation {
+    evaluate_doctor_core_with_probe_for_profile(root, detected, profile, doctor_tool_check_for_root)
+}
+
+#[cfg(test)]
+fn evaluate_doctor_core_with_probe(
+    root: &Path,
+    detected: &[LanguageId],
+    probe_tool: impl FnMut(&str, &Path) -> (DoctorStatus, String),
+) -> DoctorCoreEvaluation {
+    evaluate_doctor_core_with_probe_for_profile(root, detected, DoctorProfile::Analysis, probe_tool)
+}
+
+fn evaluate_doctor_core_with_probe_for_profile(
+    root: &Path,
+    detected: &[LanguageId],
+    profile: DoctorProfile,
+    mut probe_tool: impl FnMut(&str, &Path) -> (DoctorStatus, String),
+) -> DoctorCoreEvaluation {
     let mut report = DoctorReport::new(&root.display().to_string());
-    if root.is_dir() {
-        report.add_check(
-            "root_directory",
-            DoctorStatus::Pass,
-            Some(format!("root directory exists at {}", root.display())),
-        );
-    } else {
-        report.add_check(
-            "root_directory",
-            DoctorStatus::Fail,
-            Some(format!(
-                "root directory does not exist at {}",
-                root.display()
-            )),
-        );
-    }
-    if root.join("Cargo.toml").exists() {
+    report.profile = profile;
+    let config = load_for_root(root);
+    let rust_scope = rust_toolchain_scope(&config, detected);
+    let root_path = DoctorRootPath::classify(root);
+    let (root_status, root_evidence) = root_path.root_directory_evidence(root);
+    report.add_check("root_directory", root_status, Some(root_evidence));
+    if let RustToolchainScope::NotInScope(reason) = &rust_scope {
+        report.add_skipped_check("cargo_toml", format!("Cargo.toml check skipped: {reason}"));
+    } else if root.join("Cargo.toml").exists() {
         report.add_check(
             "cargo_toml",
             DoctorStatus::Pass,
             Some(format!(
                 "Cargo.toml found at {}",
-                root.join("Cargo.toml").display()
+                human_path(&root.join("Cargo.toml"))
             )),
         );
     } else {
         report.add_check(
             "cargo_toml",
             DoctorStatus::Fail,
-            Some(format!("no Cargo.toml found at {}", root.display())),
+            Some(format!("no Cargo.toml found at {}", human_path(root))),
         );
     }
-    let config = load_for_root(root);
+    match root_path.unusable_skip_reason() {
+        Some(reason) => report.add_skipped_check(
+            "git_repository",
+            format!("Git work tree check skipped: {reason}"),
+        ),
+        None => match work_tree_probe(root) {
+            Some(WorkTreeProbe::Inside) => {
+                report.add_check(
+                    "git_repository",
+                    DoctorStatus::Pass,
+                    Some(format!("inside a Git work tree at {}", human_path(root))),
+                );
+                // #5259: an unborn HEAD is a work tree that cannot produce a
+                // diff base, so the workspace is not ready for the default
+                // first command. Advisory (the work-tree check itself is
+                // true), and the evidence reuses the commit-first repair the
+                // check-time default-base error names. Only a `rev-parse`
+                // that ran and answered "no" proves unborn: inside a
+                // confirmed work tree that is exactly what nonzero means.
+                if unborn_head(root) {
+                    report.add_advisory_check(
+                        "git_head",
+                        "this repository has no commits yet (unborn HEAD); `ripr check` has \
+                         no base to diff — commit once first, then analyze uncommitted edits \
+                         with `ripr check --base HEAD --worktree`"
+                            .to_string(),
+                    );
+                }
+            }
+            Some(WorkTreeProbe::Refused(message)) => {
+                report.add_check("git_repository", DoctorStatus::Fail, Some(message));
+            }
+            Some(WorkTreeProbe::Outside) => report.add_check(
+                "git_repository",
+                DoctorStatus::Fail,
+                Some(format!(
+                    "not inside a Git work tree at {}; the diff-scoped commands read committed \
+                     history and cannot run here. For a repository-free scan, run `ripr check --root \
+                     {} --format repo-exposure-md`",
+                    human_path(root),
+                    root.display()
+                )),
+            ),
+            None => report.add_check(
+                "git_repository",
+                DoctorStatus::Fail,
+                Some(format!(
+                    "could not determine whether {} is inside a Git work tree; the git tool check \
+                     below carries the reason",
+                    human_path(root)
+                )),
+            ),
+        },
+    }
     match &config {
         Ok(config) => report.add_check(
             "config",
             DoctorStatus::Pass,
             Some(match config.source_path() {
-                Some(path) => format!("loaded {} at {}", CONFIG_FILE_NAME, path.display()),
+                Some(path) => format!("loaded {} at {}", CONFIG_FILE_NAME, human_path(path)),
                 None => format!("{CONFIG_FILE_NAME} not found; using built-in defaults"),
             }),
         ),
@@ -353,8 +1090,31 @@ pub(crate) fn evaluate_doctor_core_with_config(root: &Path) -> DoctorCoreEvaluat
         ),
     }
     for tool in DOCTOR_TOOLS {
-        let (status, evidence) = doctor_tool_check_for_root(tool, root);
-        report.add_check(&format!("tool_{tool}"), status, Some(evidence));
+        let name = format!("tool_{tool}");
+        if let RustToolchainScope::NotInScope(reason) = &rust_scope
+            && RUST_TOOLCHAIN_TOOLS.contains(&tool)
+            && profile == DoctorProfile::Analysis
+        {
+            report.add_skipped_check(&name, format!("{tool} check skipped: {reason}"));
+            continue;
+        }
+        // The toolchain is probed in the selected root; an unusable root
+        // fails the spawn and would read as a missing tool (#4531, #5101).
+        if RUST_TOOLCHAIN_TOOLS.contains(&tool)
+            && let Some(reason) = root_path.unusable_skip_reason()
+        {
+            report.add_skipped_check(&name, format!("{tool} check skipped: {reason}"));
+            continue;
+        }
+        let (status, evidence) = probe_tool(tool, root);
+        if RUST_TOOLCHAIN_TOOLS.contains(&tool)
+            && profile == DoctorProfile::Analysis
+            && status == DoctorStatus::Fail
+        {
+            report.add_advisory_check(&name, analysis_advisory_toolchain_evidence(tool, &evidence));
+        } else {
+            report.add_check(&name, status, Some(evidence));
+        }
     }
     // Typed language surface for generated CI (#2072): mirror exactly the
     // effective enabled set the human projection prints.
@@ -384,26 +1144,121 @@ pub(crate) fn doctor_tool_check_isolated(tool: &str) -> (DoctorStatus, String) {
 }
 
 fn doctor_tool_command(tool: &str) -> std::process::Command {
-    std::process::Command::new(tool)
+    // Windows: std's program lookup for a bare `pnpm` only resolves
+    // `pnpm.exe` on PATH, so a tool installed as a batch shim (npm/corepack
+    // install `pnpm.cmd` and `yarn.cmd`) would be misreported as not
+    // installed. When no `.exe` exists, run the resolved shim by full path;
+    // std launches `.cmd`/`.bat` through cmd.exe with its batch-argument
+    // escaping. Other platforms keep the plain tool name unchanged.
+    let mut program = std::ffi::OsString::from(tool);
+    if cfg!(windows) {
+        let path = std::env::var_os("PATH").unwrap_or_default();
+        let pathext = std::env::var("PATHEXT").ok();
+        let dirs: Vec<std::path::PathBuf> = std::env::split_paths(&path).collect();
+        if let Some(shim) =
+            resolve_windows_batch_shim(tool, &dirs, pathext.as_deref(), &|p| p.is_file())
+        {
+            // A relative PATH entry was checked against this process's
+            // directory; pin that before a probe moves the child's cwd.
+            program = std::path::absolute(&shim).unwrap_or(shim).into_os_string();
+        }
+    }
+    std::process::Command::new(program)
 }
 
+/// Resolve a Windows batch shim (`<tool>.cmd`/`<tool>.bat`) on PATH for a bare
+/// tool name that has no `<tool>.exe` anywhere on PATH. Returns `None` when the
+/// native lookup should be used: the name already carries a path or
+/// extension, a `.exe` exists (it wins, matching `Command`'s own lookup), or no
+/// shim exists. Pure over its inputs so the policy is testable on any host.
+fn resolve_windows_batch_shim(
+    tool: &str,
+    path_dirs: &[std::path::PathBuf],
+    pathext: Option<&str>,
+    is_file: &dyn Fn(&Path) -> bool,
+) -> Option<std::path::PathBuf> {
+    if tool.is_empty() || tool.contains(['/', '\\', '.']) {
+        return None;
+    }
+    if path_dirs
+        .iter()
+        .any(|dir| is_file(&dir.join(format!("{tool}.exe"))))
+    {
+        return None;
+    }
+    // Only batch extensions, in PATHEXT order; PATHEXT's other entries
+    // (`.com`, `.vbs`, `.js`, ...) are not run by the doctor.
+    let batch_exts: Vec<String> = pathext
+        .unwrap_or(".COM;.EXE;.BAT;.CMD")
+        .split(';')
+        .map(str::to_ascii_lowercase)
+        .filter(|ext| ext == ".cmd" || ext == ".bat")
+        .collect();
+    path_dirs.iter().find_map(|dir| {
+        batch_exts
+            .iter()
+            .map(|ext| dir.join(format!("{tool}{ext}")))
+            .find(|candidate| is_file(candidate))
+    })
+}
+
+#[cfg(test)]
 pub(crate) fn doctor_tool_check(tool: &str) -> (DoctorStatus, String) {
     doctor_tool_check_with_timeout(tool, DOCTOR_TOOL_TIMEOUT)
 }
 
 fn doctor_tool_check_for_root(tool: &str, root: &Path) -> (DoctorStatus, String) {
-    if tool == "rustc" {
-        doctor_tool_check_with_timeout_result_at(tool, DOCTOR_TOOL_TIMEOUT, Some(root))
-            .into_public()
-    } else {
-        doctor_tool_check(tool)
+    if RUST_TOOLCHAIN_TOOLS.contains(&tool)
+        && let Some(file) = crate::config::repository_toolchain_path_pin(root)
+    {
+        return (
+            DoctorStatus::Fail,
+            crate::config::toolchain_path_pin_refusal(&file),
+        );
     }
+    doctor_tool_check_with_timeout_result_at(
+        tool,
+        DOCTOR_TOOL_TIMEOUT,
+        doctor_tool_probe_dir(tool, root),
+    )
+    .into_public()
 }
 
+/// The directory a core tool probe runs in. `cargo` and `rustc` resolve
+/// through rustup's per-directory toolchain selection (`rust-toolchain.toml`,
+/// overrides), so both are probed in the selected root: that is the toolchain
+/// a source build there uses and the `cargo` the analyzer's `cargo metadata`
+/// probe runs. Other tools keep the caller's directory.
+fn doctor_tool_probe_dir<'a>(tool: &str, root: &'a Path) -> Option<&'a Path> {
+    RUST_TOOLCHAIN_TOOLS.contains(&tool).then_some(root)
+}
+
+/// Evidence for an unavailable Cargo/rustc capability under the analysis
+/// profile. The installed binary's static analysis does not compile the
+/// workspace, but it does read `cargo metadata` for the custom test-harness
+/// target inventory, so a missing `cargo` withholds that evidence (the
+/// harness verdict fails closed as `manifest_unavailable`). Doctor names that
+/// degradation instead of implying analysis is unaffected.
+fn analysis_advisory_toolchain_evidence(tool: &str, evidence: &str) -> String {
+    if evidence.contains(RUSTC_ANALYSIS_SCOPE) {
+        return evidence.to_string();
+    }
+    let analysis_effect = if tool == "cargo" {
+        "static analysis continues, but evidence that reads `cargo metadata` in the selected root (custom test-harness target inventory) is withheld"
+    } else {
+        "the installed binary's static analysis does not run rustc"
+    };
+    format!(
+        "{evidence}; {analysis_effect}; project verification and source builds require their own toolchain"
+    )
+}
+
+#[cfg(test)]
 fn doctor_tool_check_with_timeout(tool: &str, timeout: Duration) -> (DoctorStatus, String) {
     doctor_tool_check_with_timeout_result(tool, timeout).into_public()
 }
 
+#[cfg(test)]
 fn doctor_tool_check_with_timeout_result(tool: &str, timeout: Duration) -> DoctorToolCheckResult {
     doctor_tool_check_with_timeout_result_at(tool, timeout, None)
 }
@@ -423,16 +1278,54 @@ fn doctor_tool_check_with_command(
     root: Option<&Path>,
 ) -> DoctorToolCheckResult {
     command.arg("--version");
+    crate::process_owner::forbid_rustup_auto_install(&mut command);
     if let Some(root) = root {
         command.current_dir(root);
     }
-    match run_doctor_tool(command, timeout) {
+    doctor_tool_run_result(tool, timeout, run_doctor_tool(command, timeout))
+}
+
+fn doctor_tool_run_result(
+    tool: &str,
+    timeout: Duration,
+    run: Result<std::process::Output, DoctorToolRunError>,
+) -> DoctorToolCheckResult {
+    match run {
         Ok(output) if output.status.success() => doctor_tool_check_success(tool, &output.stdout),
+        Ok(output) => DoctorToolCheckResult::failure(doctor_exit_failure_evidence(tool, &output)),
         Err(DoctorToolRunError::TimedOut) => {
             DoctorToolCheckResult::failure(doctor_timeout_evidence(tool, timeout))
         }
+        Err(DoctorToolRunError::CleanupFailed(end, cleanup)) => {
+            let event = match end {
+                DoctorProbeEnd::Exited => format!("{tool} exited"),
+                DoctorProbeEnd::TimedOut => doctor_timeout_evidence(tool, timeout),
+                DoctorProbeEnd::WaitFailed => format!("{tool} could not be waited on"),
+            };
+            DoctorToolCheckResult::failure(format!(
+                "{event}; ripr could not confirm the probe's processes stopped and some may still be running: {cleanup}"
+            ))
+        }
         Err(DoctorToolRunError::Spawn(kind)) => doctor_spawn_failure(tool, kind),
         _ => DoctorToolCheckResult::failure(format!("{tool} not available")),
+    }
+}
+
+/// Evidence for a probe that ran and exited non-zero. The tool exists, so
+/// "not available" would be false; its stderr carries the real cause, such
+/// as rustup's "toolchain ... is not installed" (#4734). The first `error:`
+/// line wins, because rustup can print a `warn:` line first (duplicate
+/// toolchain files); otherwise the first nonempty line.
+fn doctor_exit_failure_evidence(tool: &str, output: &std::process::Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let mut lines = stderr
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty());
+    let first = lines.clone().next();
+    match lines.find(|line| line.starts_with("error:")).or(first) {
+        Some(line) => format!("{tool} --version failed ({}): {line}", output.status),
+        None => format!("{tool} --version failed ({})", output.status),
     }
 }
 
@@ -442,8 +1335,9 @@ fn doctor_tool_check_success(tool: &str, stdout: &[u8]) -> DoctorToolCheckResult
         return DoctorToolCheckResult::pass(evidence);
     }
     match validate_rustc_version(&evidence) {
-        Ok(()) => DoctorToolCheckResult::pass(evidence),
-        Err(error) => DoctorToolCheckResult::failure(error),
+        RustcVersionVerdict::Current => DoctorToolCheckResult::pass(evidence),
+        RustcVersionVerdict::BelowBuildMinimum(note) => DoctorToolCheckResult::failure(note),
+        RustcVersionVerdict::Unreadable(error) => DoctorToolCheckResult::failure(error),
     }
 }
 
@@ -479,7 +1373,9 @@ impl DoctorToolCheckResult {
 fn doctor_spawn_failure(tool: &str, kind: std::io::ErrorKind) -> DoctorToolCheckResult {
     DoctorToolCheckResult {
         status: DoctorStatus::Fail,
-        evidence: if kind == std::io::ErrorKind::NotFound {
+        evidence: if kind == std::io::ErrorKind::NotFound && tool == "git" {
+            crate::git::GIT_NOT_FOUND_ON_PATH_MESSAGE.to_string()
+        } else if kind == std::io::ErrorKind::NotFound {
             format!("{tool} not available")
         } else {
             format!("{tool} could not be launched: {kind:?}")
@@ -511,43 +1407,127 @@ fn doctor_timeout_evidence(tool: &str, timeout: Duration) -> String {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum DoctorToolRunError {
     Spawn(std::io::ErrorKind),
     Wait,
     TimedOut,
+    /// The owner could not confirm the probe tree was stopped after the
+    /// named event; part of it may still be running.
+    CleanupFailed(DoctorProbeEnd, String),
 }
 
+/// What ended a probe before its tree cleanup, so a cleanup failure names
+/// the real event instead of always reading as a timeout.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DoctorProbeEnd {
+    Exited,
+    TimedOut,
+    WaitFailed,
+}
+
+/// Run one doctor probe under the shared owned-subprocess authority
+/// (#3803) so a timeout ends the whole tree, not only the direct child. On
+/// Windows a `.cmd`/`.bat` shim (pnpm, yarn) runs as `cmd.exe /c`, and
+/// killing `cmd.exe` alone left a hung node grandchild running after doctor
+/// reported the timeout; the owner's Job Object takes the grandchild with
+/// it. Other platforms keep the direct-child kill.
+///
+/// Both pipes drain on reader threads while the probe runs, so a verbose
+/// tool cannot fill the pipe buffer and read as a false timeout.
 fn run_doctor_tool(
     mut command: std::process::Command,
     timeout: Duration,
 ) -> Result<std::process::Output, DoctorToolRunError> {
     command
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    let mut child = command
-        .spawn()
-        .map_err(|err| DoctorToolRunError::Spawn(err.kind()))?;
+    let mut child =
+        OwnedProcess::spawn(command).map_err(|err| DoctorToolRunError::Spawn(err.kind()))?;
+    let stdout = child.stdout_pipe().take().map(spawn_doctor_pipe_reader);
+    let stderr = child.stderr_pipe().take().map(spawn_doctor_pipe_reader);
     let started = Instant::now();
     loop {
         match child.try_wait() {
-            Ok(Some(_)) => {
-                return child
-                    .wait_with_output()
-                    .map_err(|_err| DoctorToolRunError::Wait);
+            Ok(Some(status)) => {
+                // Ending the tree before the joins takes down any
+                // descendant still holding a pipe on Windows, so the readers
+                // reach EOF instead of waiting on it. A failed termination
+                // returns here: joining behind a live descendant could block
+                // doctor indefinitely.
+                if let Err(cleanup) = child.terminate_tree() {
+                    return Err(DoctorToolRunError::CleanupFailed(
+                        DoctorProbeEnd::Exited,
+                        cleanup,
+                    ));
+                }
+                drop(child);
+                return Ok(std::process::Output {
+                    status,
+                    stdout: join_doctor_pipe_reader(stdout)?,
+                    stderr: join_doctor_pipe_reader(stderr)?,
+                });
             }
             Ok(None) if started.elapsed() >= timeout => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(DoctorToolRunError::TimedOut);
+                // Readers are detached: terminating the tree closes every
+                // write end, so they finish on their own.
+                return Err(match child.terminate_tree() {
+                    Ok(()) => DoctorToolRunError::TimedOut,
+                    Err(cleanup) => {
+                        DoctorToolRunError::CleanupFailed(DoctorProbeEnd::TimedOut, cleanup)
+                    }
+                });
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(10)),
             Err(_) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(DoctorToolRunError::Wait);
+                return Err(match child.terminate_tree() {
+                    Ok(()) => DoctorToolRunError::Wait,
+                    Err(cleanup) => {
+                        DoctorToolRunError::CleanupFailed(DoctorProbeEnd::WaitFailed, cleanup)
+                    }
+                });
             }
         }
+    }
+}
+
+type DoctorPipeReader = std::thread::JoinHandle<std::io::Result<Vec<u8>>>;
+
+/// Bytes kept per probe stream. A `--version` line is far shorter; the rest
+/// is drained and dropped so a tool that floods its pipe cannot grow
+/// doctor's memory until the deadline.
+const DOCTOR_PIPE_RETAIN_BYTES: usize = 64 * 1024;
+
+fn spawn_doctor_pipe_reader(pipe: impl std::io::Read + Send + 'static) -> DoctorPipeReader {
+    std::thread::spawn(move || drain_doctor_pipe(pipe, DOCTOR_PIPE_RETAIN_BYTES))
+}
+
+/// Read `pipe` to EOF, keeping at most `retain` bytes.
+fn drain_doctor_pipe(mut pipe: impl std::io::Read, retain: usize) -> std::io::Result<Vec<u8>> {
+    let mut kept = Vec::new();
+    let mut chunk = [0_u8; 8192];
+    loop {
+        let read = match pipe.read(&mut chunk) {
+            Ok(0) => return Ok(kept),
+            Ok(read) => read,
+            Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(err) => return Err(err),
+        };
+        let room = retain.saturating_sub(kept.len());
+        kept.extend_from_slice(chunk.get(..read.min(room)).unwrap_or_default());
+    }
+}
+
+fn join_doctor_pipe_reader(
+    reader: Option<DoctorPipeReader>,
+) -> Result<Vec<u8>, DoctorToolRunError> {
+    match reader {
+        None => Ok(Vec::new()),
+        Some(handle) => match handle.join() {
+            Ok(Ok(buffer)) => Ok(buffer),
+            Ok(Err(_)) | Err(_) => Err(DoctorToolRunError::Wait),
+        },
     }
 }
 
@@ -567,6 +1547,21 @@ mod tests {
 
     static TEST_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+    fn below_minimum_rustc_output() -> Result<String, String> {
+        let minimum = minimum_rustc_version()
+            .ok_or_else(|| "minimum rustc version should parse".to_string())?;
+        let below = if minimum.patch > 0 {
+            format!("{}.{}.{}", minimum.major, minimum.minor, minimum.patch - 1)
+        } else if minimum.minor > 0 {
+            format!("{}.{}.0", minimum.major, minimum.minor - 1)
+        } else if minimum.major > 0 {
+            format!("{}.99.0", minimum.major - 1)
+        } else {
+            return Err("cannot construct a version below 0.0.0".to_string());
+        };
+        Ok(format!("rustc {below} (abc 2024-01-01)"))
+    }
+
     fn unique_test_dir(label: &str) -> std::path::PathBuf {
         let stamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -577,6 +1572,178 @@ mod tests {
             std::process::id(),
             TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
         ))
+    }
+
+    /// Run `git` in `dir` and return its trimmed stdout.
+    fn git_in(dir: &std::path::Path, args: &[&str]) -> Result<String, String> {
+        let output = crate::git::run_git_output_with_deadline(dir, args, Some(DOCTOR_TOOL_TIMEOUT))
+            .map_err(|error| format!("git {args:?} in {}: {error}", dir.display()))?;
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+
+    #[test]
+    fn a_root_outside_a_git_work_tree_is_named_as_such() -> Result<(), String> {
+        // A bare repository is not a work tree wherever the fixture lands.
+        // `std::env::temp_dir()` resolves inside this checkout in some
+        // environments, so a plain empty directory would be a work tree and
+        // this test would prove nothing. The construction check below is what
+        // catches that, and it is the reason the fixture is a bare repository.
+        let mut failures = Vec::new();
+
+        // Two fixtures, because git answers this question two different ways
+        // and the reported case is the second. A bare repository prints
+        // `false` and exits 0; a directory git cannot read as a repository
+        // exits nonzero, which is the arm a plain directory outside any
+        // checkout takes. A plain directory is not usable as a fixture here:
+        // the temp root resolves inside this checkout in some environments,
+        // where it would be a work tree.
+        let bare = unique_test_dir("outside-work-tree-bare");
+        std::fs::create_dir_all(&bare).map_err(|error| format!("create fixture: {error}"))?;
+        git_in(&bare, &["init", "--bare", "."])?;
+
+        let gitfile = unique_test_dir("outside-work-tree-gitfile");
+        std::fs::create_dir_all(&gitfile).map_err(|error| format!("create fixture: {error}"))?;
+        std::fs::write(gitfile.join(".git"), "not a gitfile\n")
+            .map_err(|error| format!("write fixture gitfile: {error}"))?;
+
+        for fixture in [&bare, &gitfile] {
+            let inside =
+                git_in(fixture, &["rev-parse", "--is-inside-work-tree"]).unwrap_or_default();
+            if inside == "true" {
+                failures.push(format!(
+                    "fixture {} is inside a work tree, so it proves nothing",
+                    fixture.display()
+                ));
+                continue;
+            }
+            let report = evaluate_doctor_core_with_config(fixture, &[]).report;
+            match report
+                .checks
+                .iter()
+                .find(|check| check.name == "git_repository")
+            {
+                None => failures.push(format!(
+                    "{}: no git_repository check was reported",
+                    fixture.display()
+                )),
+                Some(check) => {
+                    if check.status != DoctorStatus::Fail.into() {
+                        failures.push(format!(
+                            "{}: a root outside a work tree reported {:?}",
+                            fixture.display(),
+                            check.status
+                        ));
+                    }
+                    let evidence = check.evidence.as_deref().unwrap_or_default();
+                    // The line has to carry the state, the consequence, and a
+                    // command that works where the user is standing. Advice
+                    // that cannot run there is what this check replaces.
+                    for expected in [
+                        "not inside a Git work tree",
+                        "cannot run here",
+                        "--format repo-exposure-md",
+                    ] {
+                        if !evidence.contains(expected) {
+                            failures.push(format!("`{evidence}` does not say `{expected}`"));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Positive control: this checkout is a work tree, so the same check
+        // must pass here. Without it the test would also pass against a check
+        // that always fails.
+        let checkout = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        match evaluate_doctor_core_with_config(checkout, &[])
+            .report
+            .checks
+            .iter()
+            .find(|check| check.name == "git_repository")
+        {
+            Some(check) if check.status == DoctorStatus::Pass.into() => {}
+            other => failures.push(format!(
+                "this checkout should report a work tree, reported {other:?}"
+            )),
+        }
+
+        let _ = std::fs::remove_dir_all(&bare);
+        let _ = std::fs::remove_dir_all(&gitfile);
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(failures.join("\n"))
+        }
+    }
+
+    fn shim_dirs() -> Vec<std::path::PathBuf> {
+        vec![
+            std::path::PathBuf::from("first-bin"),
+            std::path::PathBuf::from("npm-global"),
+        ]
+    }
+
+    #[test]
+    fn windows_shim_resolves_cmd_when_no_exe_exists() {
+        let dirs = shim_dirs();
+        let shim = dirs[1].join("pnpm.cmd");
+        let resolved =
+            resolve_windows_batch_shim("pnpm", &dirs, Some(".COM;.EXE;.BAT;.CMD"), &|p| {
+                p == shim.as_path()
+            });
+        assert_eq!(resolved, Some(shim.clone()));
+        // PATHEXT absent falls back to the Windows default list.
+        assert_eq!(
+            resolve_windows_batch_shim("pnpm", &dirs, None, &|p| p == shim.as_path()),
+            Some(shim)
+        );
+    }
+
+    #[test]
+    fn windows_shim_defers_to_exe_anywhere_on_path() {
+        let dirs = shim_dirs();
+        let cmd = dirs[0].join("yarn.cmd");
+        let exe = dirs[1].join("yarn.exe");
+        let resolved = resolve_windows_batch_shim("yarn", &dirs, Some(".EXE;.CMD"), &|p| {
+            p == cmd.as_path() || p == exe.as_path()
+        });
+        assert_eq!(resolved, None);
+    }
+
+    #[test]
+    fn windows_shim_absent_stays_unresolved() {
+        let dirs = shim_dirs();
+        assert_eq!(
+            resolve_windows_batch_shim("pnpm", &dirs, Some(".EXE;.CMD"), &|_| false),
+            None
+        );
+        // A non-batch PATHEXT match is not run as a shim.
+        let js = dirs[0].join("pnpm.js");
+        assert_eq!(
+            resolve_windows_batch_shim("pnpm", &dirs, Some(".JS;.EXE"), &|p| p == js.as_path()),
+            None
+        );
+        // Names that already carry a path or extension use native lookup.
+        assert_eq!(
+            resolve_windows_batch_shim(r"npm-global\pnpm", &dirs, None, &|_| true),
+            None
+        );
+    }
+
+    #[test]
+    fn windows_shim_honours_pathext_order_within_a_directory() {
+        let dirs = shim_dirs();
+        let bat = dirs[0].join("yarn.bat");
+        let cmd = dirs[0].join("yarn.cmd");
+        let exists = |p: &Path| p == bat.as_path() || p == cmd.as_path();
+        assert_eq!(
+            resolve_windows_batch_shim("yarn", &dirs, Some(".EXE;.CMD;.BAT"), &exists),
+            Some(cmd.clone())
+        );
+        assert_eq!(
+            resolve_windows_batch_shim("yarn", &dirs, Some(".EXE;.BAT;.CMD"), &exists),
+            Some(bat)
+        );
     }
 
     #[test]
@@ -603,17 +1770,38 @@ mod tests {
         assert_eq!(report.status, DoctorStatus::Fail);
     }
 
+    /// A toolchain below ripr's own `rust-version` is disclosed as advisory
+    /// by the analysis profile, but fails the source-build capability:
+    /// that minimum is what building or installing ripr from source takes,
+    /// while the already-running binary's built-in static analysis does not
+    /// directly run `rustc`. The malformed-output and parser controls below
+    /// ensure that this advisory cannot hide an unknown version.
     #[test]
-    fn rustc_version_check_fails_below_msrv_and_passes_supported_versions() -> Result<(), String> {
+    fn rustc_below_build_minimum_is_disclosed_and_supported_versions_pass() -> Result<(), String> {
+        let minimum = minimum_rustc_version()
+            .ok_or_else(|| {
+                "minimum rustc version should parse for the disclosure test".to_string()
+            })?
+            .to_string();
+        let below = below_minimum_rustc_output()?;
         let cases = [
             (
-                "rustc 1.80.0 (abc 2024-01-01)",
+                below.clone(),
                 DoctorStatus::Fail,
-                "below the minimum supported Rust version",
+                "below ripr's build minimum",
             ),
-            ("rustc 1.95.0 (abc 2026-04-14)", DoctorStatus::Pass, ""),
             (
-                "rustc 1.96.1-nightly (abc 2026-05-01)",
+                format!("rustc {minimum} (abc 2026-04-14)"),
+                DoctorStatus::Pass,
+                "",
+            ),
+            (
+                format!("rustc {minimum}-nightly (abc 2026-05-01)"),
+                DoctorStatus::Pass,
+                "",
+            ),
+            (
+                format!("rustc {minimum}+build.1 (abc 2026-05-01)"),
                 DoctorStatus::Pass,
                 "",
             ),
@@ -633,22 +1821,149 @@ mod tests {
                 ));
             }
         }
+
+        // Discriminator 1: the below-minimum case must keep the actual and
+        // minimum versions, the build/install and built-in-analysis scopes,
+        // external-producer limitation, and an action, or the note is not
+        // usable.
+        let old_toolchain = doctor_tool_check_success("rustc", below.as_bytes());
+        for expected in [
+            "below ripr's build minimum",
+            &minimum,
+            "building or installing ripr from source",
+            "built-in static analysis does not directly run rustc",
+            "configured external producers have their own prerequisites",
+            "rustup update stable",
+        ] {
+            if !old_toolchain.evidence.contains(expected) {
+                return Err(format!(
+                    "the disclosure must contain {expected:?}: {:?}",
+                    old_toolchain.evidence
+                ));
+            }
+        }
+        if !old_toolchain.evidence.contains("rustc ") {
+            return Err(format!(
+                "the disclosure must name the actual rustc version: {:?}",
+                old_toolchain.evidence
+            ));
+        }
+
+        // Discriminator 2: a current toolchain must not carry the note, so
+        // the disclosure cannot be unconditional text.
+        let current = format!("rustc {minimum} (abc 2026-04-14)");
+        let current = doctor_tool_check_success("rustc", current.as_bytes());
+        if current.evidence.contains("below ripr's build minimum") {
+            return Err(format!(
+                "a supported toolchain must not be disclosed as below the minimum: {:?}",
+                current.evidence
+            ));
+        }
         Ok(())
     }
 
     #[test]
     fn rustc_version_check_fails_closed_for_malformed_output() -> Result<(), String> {
-        let result = doctor_tool_check_success("rustc", b"rustc unavailable");
-        if result.status != DoctorStatus::Fail {
+        for output in [
+            "rustc unavailable",
+            "rustc 1.80.0-",
+            "rustc 1.80.0+",
+            "rustc 1.80.0-+",
+            "rustc 1.80.0-+build",
+            "rustc 1.80.0--",
+            "rustc 1.80.0+build+extra",
+            "rustc 1.80.0-nightly..1",
+            "rustc 1.80.0+build..1",
+            "rustc 1.80.0-nightly+build.",
+        ] {
+            let result = doctor_tool_check_success("rustc", output.as_bytes());
+            if result.status != DoctorStatus::Fail {
+                return Err(format!(
+                    "malformed rustc output unexpectedly passed for {output:?}: {result:?}"
+                ));
+            }
+            if !result.evidence.contains("could not be parsed") {
+                return Err(format!(
+                    "unexpected malformed-output evidence for {output:?}: {:?}",
+                    result.evidence
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn analysis_advisory_states_the_rustc_analysis_scope_once() -> Result<(), String> {
+        let below = below_minimum_rustc_output()?;
+        let rustc = doctor_tool_check_success("rustc", below.as_bytes());
+        let advisory = analysis_advisory_toolchain_evidence("rustc", &rustc.evidence);
+        if advisory.matches("run rustc").count() != 1 {
             return Err(format!(
-                "malformed rustc output unexpectedly passed: {result:?}"
+                "the rustc analysis scope must appear once: {advisory:?}"
             ));
         }
-        if !result.evidence.contains("could not be parsed") {
+        let missing = analysis_advisory_toolchain_evidence("rustc", "rustc not found on PATH");
+        if !missing.contains("the installed binary's static analysis does not run rustc") {
             return Err(format!(
-                "unexpected malformed-output evidence: {:?}",
-                result.evidence
+                "a missing rustc still needs the analysis scope: {missing:?}"
             ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn below_minimum_rustc_advises_through_public_doctor_projection() -> Result<(), String> {
+        let below = below_minimum_rustc_output()?;
+        let rustc = doctor_tool_check_success("rustc", below.as_bytes());
+        let mut report = DoctorReport::new("/workspace");
+        report.add_advisory_check("tool_rustc", rustc.evidence.clone());
+
+        if report.status != DoctorStatus::Pass {
+            return Err(format!("below-minimum advisory must pass: {report:?}"));
+        }
+        if let Err(error) = doctor_report_result(&report) {
+            return Err(format!("doctor result must pass: {error}"));
+        }
+        let text = report.render_text();
+        for expected in [
+            "doctor checks passed",
+            &below,
+            "below ripr's build minimum",
+            "building or installing ripr from source",
+            "built-in static analysis does not directly run rustc",
+            "configured external producers have their own prerequisites",
+            "rustup update stable",
+        ] {
+            if !text.contains(expected) {
+                return Err(format!("rendered text is missing {expected:?}: {text}"));
+            }
+        }
+        let json = report.render_json()?;
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json).map_err(|error| format!("invalid JSON: {error}"))?;
+        if parsed["status"] != "pass" || parsed["checks"][0]["name"] != "tool_rustc" {
+            return Err(format!(
+                "unexpected doctor JSON status projection: {parsed}"
+            ));
+        }
+        if parsed["checks"][0]["status"] != "advisory" {
+            return Err(format!("rustc check must render as advisory: {parsed}"));
+        }
+        let evidence = parsed["checks"][0]["evidence"]
+            .as_str()
+            .ok_or_else(|| format!("rustc evidence must be rendered: {parsed}"))?;
+        for expected in [
+            &below,
+            "building or installing ripr from source",
+            "built-in static analysis does not directly run rustc",
+            "configured external producers have their own prerequisites",
+            "rustup update stable",
+        ] {
+            if !evidence.contains(expected) {
+                return Err(format!(
+                    "rendered JSON evidence is missing {expected:?}: {parsed}"
+                ));
+            }
         }
         Ok(())
     }
@@ -665,13 +1980,32 @@ mod tests {
             "rustc 1.95",
             "rustc 1.95.x",
             "rustc 1.95.-nightly",
+            "rustc 1.95.0-",
+            "rustc 1.95.0+",
+            "rustc 1.95.0-+",
+            "rustc 1.95.0-+build",
+            "rustc 1.95.0--",
+            "rustc 1.95.0+build+extra",
+            "rustc 1.95.0-nightly..1",
+            "rustc 1.95.0+build..1",
+            "rustc 1.95.0-nightly+build.",
         ] {
             assert!(
                 parse_rustc_version(output).is_none(),
                 "malformed rustc output unexpectedly parsed: {output:?}"
             );
         }
-        assert!(parse_rustc_version("rustc 1.95.0-nightly").is_some());
+        for output in [
+            "rustc 1.95.0-nightly",
+            "rustc 1.95.0-beta.1",
+            "rustc 1.95.0+build.1",
+            "rustc 1.95.0-nightly+build.01",
+        ] {
+            assert!(
+                parse_rustc_version(output).is_some(),
+                "valid rustc suffix unexpectedly rejected: {output:?}"
+            );
+        }
         assert_eq!(
             doctor_tool_check_success("cargo", b"cargo 1.95.0").status,
             DoctorStatus::Pass
@@ -719,10 +2053,10 @@ mod tests {
         // (a retryable launch failure flips the verdict without proving
         // anything about root selection), and the 5s production timeout can
         // elapse on a loaded host before /bin/sh even starts. Both produce
-        // the same observable — evidence without the MSRV string — so the
-        // oracle is made load-independent: the spawn goes through the shared
-        // bounded retry (only a retryable launch failure is retried, never a
-        // real verdict) under a generous test ceiling instead of the
+        // the same observable — evidence without the selected root's marker —
+        // so the oracle is made load-independent: the spawn goes through the
+        // shared bounded retry (only a retryable launch failure is retried,
+        // never a real verdict) under a generous test ceiling instead of the
         // production constant.
         let result = probe_published_tool_with_command(
             "rustc",
@@ -732,6 +2066,22 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&dir);
 
+        // The subject here is which directory the probe ran in, so the oracle
+        // is the shim's own per-directory marker rather than the verdict: the
+        // selected root prints `target-root`, the caller root `caller-root`.
+        // The probe reports the source-build prerequisite as failed; the
+        // analysis profile projects that observation as advisory. The root
+        // discriminator remains the shim's own per-directory marker.
+        assert!(
+            result.evidence.contains("target-root"),
+            "probe must run in the selected root; evidence: {}",
+            result.evidence
+        );
+        assert!(
+            !result.evidence.contains("caller-root"),
+            "probe must not run in the caller root; evidence: {}",
+            result.evidence
+        );
         assert_eq!(
             result.status,
             DoctorStatus::Fail,
@@ -739,10 +2089,8 @@ mod tests {
             result.evidence
         );
         assert!(
-            result
-                .evidence
-                .contains("below the minimum supported Rust version"),
-            "evidence: {}",
+            result.evidence.contains("below ripr's build minimum"),
+            "the selected root's 1.94.0 must still be disclosed; evidence: {}",
             result.evidence
         );
         Ok(())
@@ -767,6 +2115,12 @@ mod tests {
         assert!(text.contains("! no Cargo.toml"));
         assert!(text.contains("run ripr doctor --help"));
         assert!(text.contains("! doctor checks failed"));
+        // The remedy is on the failing check's own line, so the closing line
+        // must not send the reader to help text instead.
+        assert!(
+            !text.contains("for usage"),
+            "the closing line must not point at help text: {text}"
+        );
     }
 
     #[test]
@@ -796,6 +2150,704 @@ mod tests {
         assert_eq!(parsed["runtime_probes"][1]["required"], true);
         assert_eq!(parsed["runtime_probes"][1]["status"], "fail");
         Ok(())
+    }
+
+    /// Build a doctor root holding `files` (relative path, contents).
+    fn doctor_scope_root(
+        label: &str,
+        files: &[(&str, &str)],
+    ) -> Result<std::path::PathBuf, String> {
+        let root = unique_test_dir(label);
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        for (relative, contents) in files {
+            let path = root.join(relative);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(|err| format!("create parent: {err}"))?;
+            }
+            std::fs::write(&path, contents).map_err(|err| format!("write {relative}: {err}"))?;
+        }
+        Ok(root)
+    }
+
+    /// Evaluate a root with a probe where every tool except `git` is
+    /// missing, recording which tools doctor actually probed.
+    fn evaluate_without_rust_toolchain(
+        root: &Path,
+        detected: &[LanguageId],
+    ) -> (DoctorReport, Vec<String>) {
+        let mut probed = Vec::new();
+        let report = evaluate_doctor_core_with_probe(root, detected, |tool, _root| {
+            probed.push(tool.to_string());
+            if tool == "git" {
+                (DoctorStatus::Pass, "git version 2.43.0".to_string())
+            } else {
+                (DoctorStatus::Fail, format!("{tool} not available"))
+            }
+        })
+        .report;
+        (report, probed)
+    }
+
+    #[test]
+    fn a_missing_root_skips_root_bound_probes_instead_of_blaming_the_tools() -> Result<(), String> {
+        // #4531: cargo and rustc are probed with the root as their working
+        // directory, so a missing root failed the spawn and read as a
+        // missing tool; the Git work tree probe failed the same way.
+        let root = std::env::temp_dir().join(format!(
+            "ripr-doctor-missing-root-{}-does-not-exist",
+            std::process::id()
+        ));
+        if root.exists() {
+            return Err(format!(
+                "missing-root fixture must not exist: {}",
+                root.display()
+            ));
+        }
+        let (report, probed) = evaluate_without_rust_toolchain(&root, &[LanguageId::Rust]);
+        assert_unusable_root_skips_root_bound_probes(
+            &report,
+            &probed,
+            "does not exist",
+            "is not a directory",
+            "the root directory does not exist",
+        )?;
+        json_root_directory_evidence_distinguishes(&report, "does not exist", "is not a directory")
+    }
+
+    #[test]
+    fn a_file_root_is_not_reported_as_missing() -> Result<(), String> {
+        // #5101: Path::is_dir() is false for both a missing path and an
+        // existing file, so doctor claimed Cargo.toml passed as --root did
+        // not exist. The missing-root control above must keep "does not
+        // exist"; this case must not.
+        let dir = unique_test_dir("file-root");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create fixture dir: {err}"))?;
+        let file = dir.join("Cargo.toml");
+        std::fs::write(
+            &file,
+            "[package]\nname = \"not-a-dir\"\nversion = \"0.1.0\"\n",
+        )
+        .map_err(|err| format!("write fixture file: {err}"))?;
+        if !file.is_file() || file.is_dir() {
+            let _ = std::fs::remove_dir_all(&dir);
+            return Err(format!(
+                "file-root fixture must be a regular file: {}",
+                file.display()
+            ));
+        }
+        let (report, probed) = evaluate_without_rust_toolchain(&file, &[LanguageId::Rust]);
+        let result = assert_unusable_root_skips_root_bound_probes(
+            &report,
+            &probed,
+            "is not a directory",
+            "does not exist",
+            "the root is not a directory",
+        );
+        let json_result = match result {
+            Ok(()) => json_root_directory_evidence_distinguishes(
+                &report,
+                "is not a directory",
+                "does not exist",
+            ),
+            Err(error) => Err(error),
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        json_result
+    }
+
+    #[test]
+    fn a_directory_named_like_a_file_still_passes_root_directory() -> Result<(), String> {
+        // Negative of #5101: a directory whose last component looks like a
+        // file must not take the not-a-directory arm.
+        let dir = unique_test_dir("dir-named-Cargo.toml");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create fixture dir: {err}"))?;
+        if !dir.is_dir() {
+            let _ = std::fs::remove_dir_all(&dir);
+            return Err(format!(
+                "directory fixture must be a directory: {}",
+                dir.display()
+            ));
+        }
+        let (report, _probed) = evaluate_without_rust_toolchain(&dir, &[LanguageId::Rust]);
+        let found = check(&report, "root_directory")?;
+        let evidence = found.evidence.as_deref().unwrap_or_default();
+        let result = if found.status != DoctorCheckStatus::Pass
+            || !evidence.contains("root directory exists")
+            || evidence.contains("does not exist")
+            || evidence.contains("is not a directory")
+        {
+            Err(format!(
+                "a directory named like a file must pass root_directory: {found:?}"
+            ))
+        } else {
+            Ok(())
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        result
+    }
+
+    #[test]
+    fn doctor_root_path_classify_follows_symlinks_and_splits_file_from_missing()
+    -> Result<(), String> {
+        let missing = unique_test_dir("classify-missing");
+        if missing.exists() {
+            return Err(format!(
+                "missing classify fixture must not exist: {}",
+                missing.display()
+            ));
+        }
+        if DoctorRootPath::classify(&missing) != DoctorRootPath::Missing {
+            return Err(format!(
+                "missing path classified as {:?}",
+                DoctorRootPath::classify(&missing)
+            ));
+        }
+
+        let dir = unique_test_dir("classify-dir");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
+        let file = dir.join("afile.txt");
+        std::fs::write(&file, "not a workspace\n").map_err(|err| format!("write file: {err}"))?;
+        let mut failures = Vec::new();
+        if DoctorRootPath::classify(&dir) != DoctorRootPath::Directory {
+            failures.push(format!(
+                "directory classified as {:?}",
+                DoctorRootPath::classify(&dir)
+            ));
+        }
+        if DoctorRootPath::classify(&file) != DoctorRootPath::NotADirectory {
+            failures.push(format!(
+                "file classified as {:?}",
+                DoctorRootPath::classify(&file)
+            ));
+        }
+
+        #[cfg(unix)]
+        {
+            let link_to_dir = dir.join("link-to-dir");
+            std::os::unix::fs::symlink(&dir, &link_to_dir)
+                .map_err(|err| format!("symlink to dir: {err}"))?;
+            if DoctorRootPath::classify(&link_to_dir) != DoctorRootPath::Directory {
+                failures.push(format!(
+                    "symlink-to-dir classified as {:?}",
+                    DoctorRootPath::classify(&link_to_dir)
+                ));
+            }
+            let link_to_file = dir.join("link-to-file");
+            std::os::unix::fs::symlink(&file, &link_to_file)
+                .map_err(|err| format!("symlink to file: {err}"))?;
+            if DoctorRootPath::classify(&link_to_file) != DoctorRootPath::NotADirectory {
+                failures.push(format!(
+                    "symlink-to-file classified as {:?}",
+                    DoctorRootPath::classify(&link_to_file)
+                ));
+            }
+            let dangling = dir.join("dangling");
+            std::os::unix::fs::symlink(dir.join("no-such-target"), &dangling)
+                .map_err(|err| format!("dangling symlink: {err}"))?;
+            if DoctorRootPath::classify(&dangling) != DoctorRootPath::NotADirectory {
+                failures.push(format!(
+                    "dangling symlink classified as {:?}",
+                    DoctorRootPath::classify(&dangling)
+                ));
+            }
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(failures.join("; "))
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_root_is_not_reported_as_missing() -> Result<(), String> {
+        use std::os::unix::fs::PermissionsExt;
+        let parent = unique_test_dir("unreadable-parent");
+        std::fs::create_dir_all(parent.join("blocked"))
+            .map_err(|err| format!("create unreadable fixture: {err}"))?;
+        let child = parent.join("blocked");
+        let restore = |mode: u32| -> Result<(), String> {
+            std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(mode))
+                .map_err(|err| format!("restore parent mode {mode:#o}: {err}"))
+        };
+        restore(0o000)?;
+        let classified = DoctorRootPath::classify(&child);
+        let (report, probed) = evaluate_without_rust_toolchain(&child, &[LanguageId::Rust]);
+        restore(0o755)?;
+        let _ = std::fs::remove_dir_all(&parent);
+        if classified != DoctorRootPath::Unreadable {
+            return Err(format!("unreadable child classified as {classified:?}"));
+        }
+        assert_unusable_root_skips_root_bound_probes(
+            &report,
+            &probed,
+            "cannot determine",
+            "does not exist",
+            "the root directory cannot be read",
+        )?;
+        json_root_directory_evidence_distinguishes(&report, "cannot determine", "does not exist")
+    }
+
+    /// `metadata` follows the link; `symlink_metadata` sees the live name.
+    /// A follow `PermissionDenied` must not inherit the dangling-link
+    /// `NotADirectory` arm (#5101).
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_into_an_unreadable_directory_is_not_reported_as_a_file() -> Result<(), String> {
+        use std::os::unix::fs::PermissionsExt;
+        let parent = unique_test_dir("unreadable-symlink-follow");
+        let jail = parent.join("jail");
+        let target = jail.join("actual_dir");
+        std::fs::create_dir_all(&target)
+            .map_err(|err| format!("create unreadable follow target: {err}"))?;
+        let link = parent.join("link-to-jailed-dir");
+        std::os::unix::fs::symlink(&target, &link)
+            .map_err(|err| format!("symlink into jail: {err}"))?;
+        let restore = |mode: u32| -> Result<(), String> {
+            std::fs::set_permissions(&jail, std::fs::Permissions::from_mode(mode))
+                .map_err(|err| format!("restore jail mode {mode:#o}: {err}"))
+        };
+        restore(0o000)?;
+        let classified = DoctorRootPath::classify(&link);
+        let (report, probed) = evaluate_without_rust_toolchain(&link, &[LanguageId::Rust]);
+        restore(0o755)?;
+        let _ = std::fs::remove_dir_all(&parent);
+        if classified != DoctorRootPath::Unreadable {
+            return Err(format!(
+                "symlink into an unreadable directory classified as {classified:?}"
+            ));
+        }
+        assert_unusable_root_skips_root_bound_probes(
+            &report,
+            &probed,
+            "cannot determine",
+            "is not a directory",
+            "the root directory cannot be read",
+        )?;
+        json_root_directory_evidence_distinguishes(
+            &report,
+            "cannot determine",
+            "is not a directory",
+        )
+    }
+
+    #[test]
+    fn doctor_root_path_recovery_guidance_does_not_borrow_sibling_wording() {
+        let missing = DoctorRootPath::Missing.recovery_guidance();
+        let file = DoctorRootPath::NotADirectory.recovery_guidance();
+        let unreadable = DoctorRootPath::Unreadable.recovery_guidance();
+        let directory = DoctorRootPath::Directory.recovery_guidance();
+        assert!(
+            missing.contains("does not exist") && !missing.contains("is not a directory"),
+            "missing guidance: {missing}"
+        );
+        assert!(
+            file.contains("exists but is not a directory") && !file.contains("does not exist"),
+            "file guidance: {file}"
+        );
+        assert!(
+            unreadable.contains("could not be read") && !unreadable.contains("does not exist"),
+            "unreadable guidance: {unreadable}"
+        );
+        assert!(
+            !directory.contains("does not exist") && !directory.contains("is not a directory"),
+            "directory re-classify guidance must not claim absence or a file: {directory}"
+        );
+    }
+
+    /// Shared #4531/#5101 oracle: an unusable root still fails
+    /// `root_directory`, skips root-bound probes, and must not borrow the
+    /// sibling state's wording.
+    fn assert_unusable_root_skips_root_bound_probes(
+        report: &DoctorReport,
+        probed: &[String],
+        root_evidence_fragment: &str,
+        absent_evidence_fragment: &str,
+        skip_reason: &str,
+    ) -> Result<(), String> {
+        if probed != ["git"] {
+            return Err(format!(
+                "only git may be probed for an unusable root: {probed:?}"
+            ));
+        }
+        let root_check = check(report, "root_directory")?;
+        if root_check.status != DoctorCheckStatus::Fail {
+            return Err(format!(
+                "an unusable root itself must still fail doctor: {root_check:?}"
+            ));
+        }
+        let evidence = root_check.evidence.as_deref().unwrap_or_default();
+        if !evidence.contains(root_evidence_fragment) {
+            return Err(format!(
+                "root_directory evidence missing {root_evidence_fragment:?}: {evidence:?}"
+            ));
+        }
+        if evidence.contains(absent_evidence_fragment) {
+            return Err(format!(
+                "root_directory evidence must not claim {absent_evidence_fragment:?}: {evidence:?}"
+            ));
+        }
+        for name in ["tool_cargo", "tool_rustc", "git_repository"] {
+            let found = check(report, name)?;
+            let skip_evidence = found.evidence.as_deref().unwrap_or_default();
+            if found.status != DoctorCheckStatus::Skipped || !skip_evidence.ends_with(skip_reason) {
+                return Err(format!(
+                    "{name} must be skipped with {skip_reason:?}: {found:?}"
+                ));
+            }
+            if skip_evidence.contains(absent_evidence_fragment) {
+                return Err(format!(
+                    "{name} skip reason must not claim {absent_evidence_fragment:?}: {found:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn json_root_directory_evidence_distinguishes(
+        report: &DoctorReport,
+        present: &str,
+        absent: &str,
+    ) -> Result<(), String> {
+        let parsed: serde_json::Value = serde_json::from_str(&report.render_json()?)
+            .map_err(|error| format!("parse doctor JSON: {error}"))?;
+        let evidence = parsed["checks"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|check| check["name"] == "root_directory")
+            .and_then(|check| check["evidence"].as_str())
+            .ok_or_else(|| format!("JSON omitted root_directory evidence: {parsed}"))?;
+        if !evidence.contains(present) || evidence.contains(absent) {
+            return Err(format!(
+                "JSON root_directory evidence must contain {present:?} and not {absent:?}: {evidence:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    fn check<'a>(report: &'a DoctorReport, name: &str) -> Result<&'a DoctorCheck, String> {
+        report
+            .checks
+            .iter()
+            .find(|check| check.name == name)
+            .ok_or_else(|| format!("missing {name} check: {:?}", report.checks))
+    }
+
+    /// The three Rust toolchain checks are skipped (with a reason naming
+    /// `reason_fragment`), never probed, and the report passes although
+    /// neither cargo nor rustc is available.
+    fn assert_rust_toolchain_skipped(
+        report: &DoctorReport,
+        probed: &[String],
+        reason_fragment: &str,
+    ) -> Result<(), String> {
+        for name in ["cargo_toml", "tool_cargo", "tool_rustc"] {
+            let skipped = check(report, name)?;
+            if skipped.status != DoctorCheckStatus::Skipped {
+                return Err(format!("{name} was not skipped: {skipped:?}"));
+            }
+            let evidence = skipped.evidence.as_deref().unwrap_or_default();
+            if !evidence.contains("skipped: ") || !evidence.contains(reason_fragment) {
+                return Err(format!("{name} evidence does not say why: {evidence:?}"));
+            }
+        }
+        if probed != ["git"] {
+            return Err(format!("only git may be probed, probed {probed:?}"));
+        }
+        if report.status != DoctorStatus::Pass {
+            return Err(format!("report must pass: {:?}", report.checks));
+        }
+        let json: serde_json::Value = serde_json::from_str(&report.render_json()?)
+            .map_err(|err| format!("invalid JSON: {err}"))?;
+        if json["status"] != "pass" || json["checks"][1]["status"] != "skipped" {
+            return Err(format!("unexpected JSON projection: {json}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "lang-python")]
+    fn python_root_skips_rust_toolchain_checks_without_cargo_or_rustc() -> Result<(), String> {
+        let root = doctor_scope_root(
+            "scope-python",
+            &[
+                ("pyproject.toml", "[project]\nname = \"textfmt\"\n"),
+                ("src/textfmt/__init__.py", "def f():\n    return 1\n"),
+            ],
+        )?;
+        let (report, probed) = evaluate_without_rust_toolchain(&root, &[LanguageId::Python]);
+        let _ = std::fs::remove_dir_all(&root);
+        // Python auto-enablement keeps the default `rust` entry, so the skip
+        // must come from the absent Rust markers, not a missing `rust` entry.
+        if report.languages != ["rust", "python"] {
+            return Err(format!("unexpected enabled set: {:?}", report.languages));
+        }
+        assert_rust_toolchain_skipped(&report, &probed, "in scope: python")
+    }
+
+    #[test]
+    #[cfg(feature = "lang-typescript")]
+    fn typescript_enabled_root_skips_rust_toolchain_checks() -> Result<(), String> {
+        let root = doctor_scope_root(
+            "scope-typescript",
+            &[
+                (
+                    CONFIG_FILE_NAME,
+                    "[languages]\nenabled = [\"typescript\"]\n",
+                ),
+                ("package.json", "{}\n"),
+            ],
+        )?;
+        let (report, probed) = evaluate_without_rust_toolchain(&root, &[LanguageId::TypeScript]);
+        let _ = std::fs::remove_dir_all(&root);
+        assert_rust_toolchain_skipped(&report, &probed, "Rust is not enabled in [languages]")
+    }
+
+    /// `enabled = ["rust", "typescript"]` is the list doctor's own tip tells
+    /// a TypeScript user to write; with no Rust markers the root is still a
+    /// TypeScript project.
+    #[test]
+    #[cfg(feature = "lang-typescript")]
+    fn rust_listed_beside_typescript_without_rust_markers_skips_rust_toolchain()
+    -> Result<(), String> {
+        let root = doctor_scope_root(
+            "scope-rust-and-typescript",
+            &[
+                (
+                    CONFIG_FILE_NAME,
+                    "[languages]\nenabled = [\"rust\", \"typescript\"]\n",
+                ),
+                ("package.json", "{}\n"),
+            ],
+        )?;
+        let (report, probed) = evaluate_without_rust_toolchain(&root, &[LanguageId::TypeScript]);
+        let _ = std::fs::remove_dir_all(&root);
+        assert_rust_toolchain_skipped(&report, &probed, "in scope: typescript")
+    }
+
+    #[test]
+    fn rust_sources_without_cargo_toml_still_fail_the_cargo_toml_check() -> Result<(), String> {
+        let root = doctor_scope_root(
+            "scope-rust-no-manifest",
+            &[("src/lib.rs", "pub fn f() {}\n")],
+        )?;
+        let (report, probed) = evaluate_without_rust_toolchain(&root, &[LanguageId::Rust]);
+        let _ = std::fs::remove_dir_all(&root);
+        let cargo_toml = check(&report, "cargo_toml")?;
+        if cargo_toml.status != DoctorCheckStatus::Fail
+            || !cargo_toml
+                .evidence
+                .as_deref()
+                .unwrap_or_default()
+                .starts_with("no Cargo.toml found")
+        {
+            return Err(format!(
+                "Rust root must fail the Cargo.toml check: {cargo_toml:?}"
+            ));
+        }
+        if probed != ["git", "cargo", "rustc"] || report.status != DoctorStatus::Fail {
+            return Err(format!(
+                "Rust root must probe and fail: {probed:?} {:?}",
+                report.checks
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn rust_root_with_missing_cargo_discloses_verification_limitation() -> Result<(), String> {
+        let root = doctor_scope_root(
+            "scope-rust-no-cargo",
+            &[
+                ("Cargo.toml", "[package]\nname = \"probe\"\n"),
+                ("src/lib.rs", "pub fn f() {}\n"),
+            ],
+        )?;
+        let (report, _probed) = evaluate_without_rust_toolchain(&root, &[LanguageId::Rust]);
+        let _ = std::fs::remove_dir_all(&root);
+        if check(&report, "cargo_toml")?.status != DoctorCheckStatus::Pass {
+            return Err(format!("Cargo.toml must pass: {:?}", report.checks));
+        }
+        for tool in ["tool_cargo", "tool_rustc"] {
+            let advisory = check(&report, tool)?;
+            if advisory.status != DoctorCheckStatus::Advisory {
+                return Err(format!(
+                    "{tool} must be advisory for installed analysis: {advisory:?}"
+                ));
+            }
+        }
+        if report.status != DoctorStatus::Pass {
+            return Err("missing cargo must not fail installed analysis".to_string());
+        }
+        // PR #4196 review: the analyzer reads `cargo metadata` for the custom
+        // harness inventory, so a missing cargo is a disclosed analysis
+        // degradation, while a missing rustc is not claimed as one.
+        let cargo = check(&report, "tool_cargo")?
+            .evidence
+            .clone()
+            .unwrap_or_default();
+        let rustc = check(&report, "tool_rustc")?
+            .evidence
+            .clone()
+            .unwrap_or_default();
+        if !cargo.contains("`cargo metadata`")
+            || !cargo.contains("is withheld")
+            || rustc.contains("cargo metadata")
+            || !rustc.contains("does not run rustc")
+        {
+            return Err(format!(
+                "cargo advisory must disclose the cargo-metadata limitation: {cargo:?} / {rustc:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// PR #4196 review: `cargo` resolves through rustup's per-directory
+    /// toolchain just like `rustc`, so the source-build profile must probe it
+    /// in the selected root, not the caller's directory.
+    #[cfg(unix)]
+    #[test]
+    fn doctor_cargo_probe_uses_selected_root() -> Result<(), String> {
+        let dir = unique_test_dir("selected-root-cargo");
+        let selected_root = dir.join("selected-root");
+        std::fs::create_dir_all(&selected_root).map_err(|err| format!("create root: {err}"))?;
+        let shim = publish_doctor_test_tool(
+            &dir,
+            "cargo-root-probe",
+            "#!/bin/sh\ncase \"$PWD\" in\n  *selected-root) printf 'cargo 1.95.0 (target-root)\\n' ;;\n  *) exit 1 ;;\nesac\n",
+        )?;
+        let shim_str: &str = shim
+            .to_str()
+            .ok_or_else(|| "shim path is not UTF-8".to_string())?;
+        let result = probe_published_tool_with_command(
+            "cargo",
+            || doctor_tool_command(shim_str),
+            SHIM_PROBE_TEST_CEILING,
+            doctor_tool_probe_dir("cargo", &selected_root),
+        );
+        let git_dir = doctor_tool_probe_dir("git", &selected_root);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            (result.status, result.evidence.as_str()),
+            (DoctorStatus::Pass, "cargo 1.95.0 (target-root)"),
+        );
+        assert_eq!(git_dir, None, "git keeps the caller directory");
+        Ok(())
+    }
+
+    #[test]
+    fn old_workspace_compiler_is_advisory_for_analysis_and_fails_source_build() -> Result<(), String>
+    {
+        let root = doctor_scope_root(
+            "scope-old-compiler",
+            &[
+                (
+                    "Cargo.toml",
+                    "[package]\nname = \"probe\"\nversion = \"0.1.0\"\n",
+                ),
+                ("src/lib.rs", "pub fn f() {}\n"),
+            ],
+        )?;
+        git_in(&root, &["init", "."])?;
+        let old = below_minimum_rustc_output()?;
+        let probe = |tool: &str, _root: &Path| {
+            if tool == "rustc" {
+                doctor_tool_check_success(tool, old.as_bytes()).into_public()
+            } else {
+                (DoctorStatus::Pass, format!("{tool} available"))
+            }
+        };
+        let analysis = evaluate_doctor_core_with_probe_for_profile(
+            &root,
+            &[LanguageId::Rust],
+            DoctorProfile::Analysis,
+            &probe,
+        )
+        .report;
+        let build = evaluate_doctor_core_with_probe_for_profile(
+            &root,
+            &[LanguageId::Rust],
+            DoctorProfile::SourceBuild,
+            &probe,
+        )
+        .report;
+        let _ = std::fs::remove_dir_all(&root);
+        if check(&analysis, "tool_rustc")?.status != DoctorCheckStatus::Advisory
+            || check(&build, "tool_rustc")?.status != DoctorCheckStatus::Fail
+            || analysis.profile != DoctorProfile::Analysis
+            || build.profile != DoctorProfile::SourceBuild
+        {
+            return Err(format!(
+                "wrong capability projection: {analysis:?} {build:?}"
+            ));
+        }
+        let analysis_json = analysis.render_json()?;
+        let build_json = build.render_json()?;
+        if !analysis_json.contains("\"advisory\"")
+            || !build_json.contains("\"source-build\"")
+            || doctor_report_result(&analysis).is_err()
+            || doctor_report_result(&build).is_ok()
+        {
+            return Err(format!(
+                "wrong rendered/exit projection: {analysis_json} {build_json}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// A mixed root still reports unavailable Rust verification tools.
+    #[test]
+    #[cfg(feature = "lang-python")]
+    fn mixed_rust_and_python_root_reports_rust_toolchain_advisory() -> Result<(), String> {
+        let root = doctor_scope_root(
+            "scope-mixed",
+            &[
+                ("Cargo.toml", "[package]\nname = \"probe\"\n"),
+                ("pyproject.toml", "[project]\nname = \"probe\"\n"),
+            ],
+        )?;
+        let (report, _probed) =
+            evaluate_without_rust_toolchain(&root, &[LanguageId::Rust, LanguageId::Python]);
+        let _ = std::fs::remove_dir_all(&root);
+        if check(&report, "tool_cargo")?.status != DoctorCheckStatus::Advisory
+            || report.status != DoctorStatus::Pass
+        {
+            return Err(format!(
+                "mixed root must disclose missing cargo as advisory: {:?}",
+                report.checks
+            ));
+        }
+        Ok(())
+    }
+
+    /// An empty (likely wrong) root under the Rust-only default keeps the
+    /// missing-Cargo.toml failure instead of silently passing.
+    #[test]
+    fn empty_root_with_default_config_keeps_the_cargo_toml_failure() -> Result<(), String> {
+        let root = doctor_scope_root("scope-empty", &[])?;
+        let (report, _probed) = evaluate_without_rust_toolchain(&root, &[]);
+        let _ = std::fs::remove_dir_all(&root);
+        if check(&report, "cargo_toml")?.status != DoctorCheckStatus::Fail
+            || report.status != DoctorStatus::Fail
+        {
+            return Err(format!(
+                "empty root must fail Cargo.toml: {:?}",
+                report.checks
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unloadable_config_keeps_rust_toolchain_required() {
+        let config: Result<RiprConfig, String> = Err("invalid ripr.toml".to_string());
+        assert_eq!(
+            rust_toolchain_scope(&config, &[LanguageId::TypeScript]),
+            RustToolchainScope::Required
+        );
     }
 
     #[test]
@@ -845,7 +2897,7 @@ mod tests {
         )
         .map_err(|err| format!("write config: {err}"))?;
 
-        let report = evaluate_doctor_core(&root);
+        let report = evaluate_doctor_core(&root, &[LanguageId::Rust]);
         let json = report.render_json()?;
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         let parsed: serde_json::Value =
@@ -876,7 +2928,7 @@ mod tests {
         let json = report.render_json()?;
         let parsed: serde_json::Value =
             serde_json::from_str(&json).map_err(|e| format!("invalid JSON: {e}"))?;
-        assert_eq!(parsed["schema_version"], "0.2");
+        assert_eq!(parsed["schema_version"], "0.3");
         assert_eq!(parsed["tool"], "ripr");
         assert_eq!(parsed["status"], "pass");
         assert_eq!(parsed["checks"][0]["name"], "root_directory");
@@ -907,7 +2959,7 @@ mod tests {
         std::fs::write(dir.join(CONFIG_FILE_NAME), "[invalid\n")
             .map_err(|err| format!("write invalid config: {err}"))?;
 
-        let report = evaluate_doctor_core(&dir);
+        let report = evaluate_doctor_core(&dir, &[]);
         let _ = std::fs::remove_dir_all(&dir);
 
         let config_check = report
@@ -915,7 +2967,7 @@ mod tests {
             .iter()
             .find(|check| check.name == "config")
             .ok_or_else(|| "missing config check".to_string())?;
-        assert_eq!(config_check.status, DoctorStatus::Fail);
+        assert_eq!(config_check.status, DoctorCheckStatus::Fail);
         let evidence = config_check
             .evidence
             .as_deref()
@@ -1141,7 +3193,408 @@ mod tests {
         Ok(())
     }
 
-    /// Deterministic missing-tool assertion: probing a guaranteed-absent
+    #[test]
+    fn doctor_spawn_failure_names_the_shared_git_path_fix() {
+        let git_missing = doctor_spawn_failure("git", std::io::ErrorKind::NotFound);
+        assert_eq!(git_missing.status, DoctorStatus::Fail);
+        assert_eq!(
+            git_missing.evidence,
+            crate::git::GIT_NOT_FOUND_ON_PATH_MESSAGE
+        );
+        assert!(git_missing.evidence.contains("`--diff PATH` / `--diff -`"));
+        assert!(
+            !git_missing.evidence.contains('['),
+            "git argv must not appear on the doctor ! line: {}",
+            git_missing.evidence
+        );
+
+        let cargo_missing = doctor_spawn_failure("cargo", std::io::ErrorKind::NotFound);
+        assert_eq!(cargo_missing.evidence, "cargo not available");
+        assert!(
+            !cargo_missing.evidence.contains("--diff"),
+            "cargo must not inherit git's saved-diff repair"
+        );
+
+        let denied = doctor_spawn_failure("git", std::io::ErrorKind::PermissionDenied);
+        assert!(
+            denied.evidence.contains("could not be launched"),
+            "permission denied is not a missing-PATH diagnosis: {}",
+            denied.evidence
+        );
+        assert!(!denied.evidence.contains("--diff"));
+    }
+
+    #[test]
+    fn doctor_first_command_prefers_saved_diff_when_git_cannot_run() -> Result<(), String> {
+        let mut probed = false;
+        assert_eq!(
+            DoctorFirstCommand::resolve(false, || {
+                probed = true;
+                false
+            }),
+            DoctorFirstCommand::SavedDiff
+        );
+        assert!(!probed, "a gitless doctor must not probe the worktree");
+        assert_eq!(
+            DoctorFirstCommand::resolve(true, || true),
+            DoctorFirstCommand::Worktree
+        );
+        assert_eq!(
+            DoctorFirstCommand::resolve(true, || false),
+            DoctorFirstCommand::DefaultCheck
+        );
+        assert_eq!(
+            DoctorFirstCommand::SavedDiff.command_line(),
+            Some(DoctorFirstCommand::SAVED_DIFF_LINE)
+        );
+        assert_eq!(
+            DoctorFirstCommand::OutsideGit.command_line(),
+            None,
+            "a refused repository recommends no git-backed command"
+        );
+        assert_eq!(
+            DoctorFirstCommand::DefaultCheck.command_line_for_root(Path::new("."))?,
+            "ripr check"
+        );
+        // `/work/...` is absolute only on Unix; Windows needs a drive.
+        #[cfg(unix)]
+        {
+            assert_eq!(
+                DoctorFirstCommand::SavedDiff.command_line_for_root(Path::new("/work/app"))?,
+                "ripr check --root /work/app --diff PATH"
+            );
+            assert_eq!(
+                DoctorFirstCommand::Worktree.command_line_for_root(Path::new("/work/my app"))?,
+                "ripr check --root '/work/my app' --base HEAD --worktree"
+            );
+            assert_eq!(
+                DoctorFirstCommand::recommendation_lines(
+                    DoctorFirstCommand::DefaultCheck
+                        .command_line_for_root(Path::new("/work/my app"))
+                ),
+                ["- Recommended first command: ripr check --root '/work/my app'"],
+                "a form PowerShell reads unchanged prints once"
+            );
+            assert_eq!(
+                DoctorFirstCommand::recommendation_lines(
+                    DoctorFirstCommand::SavedDiff
+                        .command_line_for_root(Path::new("/work/it's app"))
+                ),
+                [
+                    r"- Recommended first command: ripr check --root '/work/it'\''s app' --diff PATH",
+                    "- Recommended first command (PowerShell): ripr check --root '/work/it''s app' --diff PATH",
+                ],
+                "an apostrophe escapes differently in PowerShell"
+            );
+            assert_eq!(
+                DoctorFirstCommand::OutsideGit
+                    .recommendation_lines_for(Path::new("/work/it's app")),
+                [
+                    r"- Recommended first command: fix the Git check above, or scan without Git history: `ripr check --root '/work/it'\''s app' --format repo-exposure-md`",
+                    "- Recommended first command (PowerShell): fix the Git check above, or scan without Git history: `ripr check --root '/work/it''s app' --format repo-exposure-md`",
+                ],
+                "the repository-free route quotes and translates like the runnable ones"
+            );
+            assert_eq!(
+                DoctorFirstCommand::MissingRoot
+                    .recommendation_lines_for(Path::new("/work/missing")),
+                [
+                    "- Recommended first command: ripr check --root /work/missing",
+                    "- The selected root does not exist; rerun with `--root <path>` naming an \
+                     existing repository directory",
+                ],
+                "the missing-root recovery names the runnable command and the --root guidance"
+            );
+        }
+        let file_root_dir = unique_test_dir("missing-root-guidance-file");
+        std::fs::create_dir_all(&file_root_dir)
+            .map_err(|error| format!("create file-root fixture: {error}"))?;
+        let file_root = file_root_dir.join("Cargo.toml");
+        std::fs::write(&file_root, "[package]\nname = \"file-root\"\n")
+            .map_err(|error| format!("write file-root fixture: {error}"))?;
+        let file_guidance = DoctorFirstCommand::MissingRoot.recommendation_lines_for(&file_root);
+        let _ = std::fs::remove_dir_all(&file_root_dir);
+        if file_guidance
+            .iter()
+            .all(|line| !line.contains("exists but is not a directory"))
+            || file_guidance
+                .iter()
+                .any(|line| line.contains("does not exist"))
+        {
+            return Err(format!(
+                "a file root must get not-a-directory guidance, not missing-path guidance: {file_guidance:?}"
+            ));
+        }
+        let existing_dir = unique_test_dir("missing-root-guidance-dir");
+        std::fs::create_dir_all(&existing_dir)
+            .map_err(|error| format!("create directory-root fixture: {error}"))?;
+        let directory_guidance =
+            DoctorFirstCommand::MissingRoot.recommendation_lines_for(&existing_dir);
+        let _ = std::fs::remove_dir_all(&existing_dir);
+        if directory_guidance
+            .iter()
+            .any(|line| line.contains("does not exist") || line.contains("is not a directory"))
+        {
+            return Err(format!(
+                "MissingRoot re-classifying an existing directory must not claim it is absent or a file: {directory_guidance:?}"
+            ));
+        }
+        // An unavailable relative root is bound to the producing directory,
+        // but `..` must retain filesystem traversal rather than lexical cleanup.
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_nanos();
+        let relative_root = Path::new("..").join(format!(
+            "ripr-doctor-missing-{}-{nonce}",
+            std::process::id()
+        ));
+        let bound = std::env::current_dir()
+            .map_err(|error| error.to_string())?
+            .join(&relative_root);
+        assert!(!bound.exists(), "fixture root must remain unavailable");
+        let relative = DoctorFirstCommand::DefaultCheck.command_line_for_root(&relative_root)?;
+        assert_eq!(
+            relative,
+            format!(
+                "ripr check --root {}",
+                crate::agent::loop_commands::shell_arg(&human_path(&bound))
+            )
+        );
+
+        let mut missing_git = DoctorReport::new(".");
+        missing_git.add_check(
+            "tool_git",
+            DoctorStatus::Fail,
+            Some(crate::git::GIT_NOT_FOUND_ON_PATH_MESSAGE.to_string()),
+        );
+        assert!(!git_tool_can_run(&missing_git));
+        assert_eq!(
+            DoctorFirstCommand::resolve(git_tool_can_run(&missing_git), || true),
+            DoctorFirstCommand::SavedDiff,
+            "a dirty tree cannot win over a missing git binary"
+        );
+
+        let mut git_ok = DoctorReport::new(".");
+        git_ok.add_check(
+            "tool_git",
+            DoctorStatus::Pass,
+            Some("git version 2.43.0".to_string()),
+        );
+        assert!(git_tool_can_run(&git_ok));
+        assert!(!git_tool_can_run(&DoctorReport::new(".")));
+        Ok(())
+    }
+
+    /// The report states decide before any probe runs, and a missing git
+    /// binary still outranks the repository state (#4735).
+    #[test]
+    fn doctor_first_command_report_states_decide_before_probes() {
+        // A missing root keeps a runnable recovery route (#5010) but is never
+        // probed for work-tree changes (#4531): the raw probe failure would
+        // only restate what the failing root_directory check already names.
+        let mut probed = false;
+        let mut missing_root_gitless = DoctorReport::new(".");
+        missing_root_gitless.add_check(
+            "root_directory",
+            DoctorStatus::Fail,
+            Some("root directory does not exist".to_string()),
+        );
+        assert_eq!(
+            DoctorFirstCommand::resolve_for_report(&missing_root_gitless, || {
+                probed = true;
+                true
+            }),
+            DoctorFirstCommand::SavedDiff,
+            "a gitless host still routes the missing root to the --diff recovery"
+        );
+        let mut missing_root_git = DoctorReport::new(".");
+        missing_root_git.add_check(
+            "root_directory",
+            DoctorStatus::Fail,
+            Some("root directory does not exist".to_string()),
+        );
+        missing_root_git.add_check(
+            "tool_git",
+            DoctorStatus::Pass,
+            Some("git version 2.43.0".to_string()),
+        );
+        assert_eq!(
+            DoctorFirstCommand::resolve_for_report(&missing_root_git, || {
+                probed = true;
+                true
+            }),
+            DoctorFirstCommand::MissingRoot,
+            "a missing root renders its lossless spelling plus --root guidance, without probing"
+        );
+        assert!(!probed, "a missing root must not probe the work tree");
+
+        let pass = |report: &mut DoctorReport, name: &str| {
+            report.add_check(name, DoctorStatus::Pass, Some("ok".to_string()));
+        };
+        let mut refused = DoctorReport::new(".");
+        pass(&mut refused, "root_directory");
+        pass(&mut refused, "tool_git");
+        refused.add_check(
+            "git_repository",
+            DoctorStatus::Fail,
+            Some("refused".to_string()),
+        );
+        assert_eq!(
+            DoctorFirstCommand::resolve_for_report(&refused, || false),
+            DoctorFirstCommand::OutsideGit,
+            "a non-repository root gets the repository-free scan, not a check that cannot run"
+        );
+
+        // A git binary that cannot run outranks the repository state (#4735):
+        // `--diff PATH` does not need git.
+        let mut gitless = DoctorReport::new(".");
+        pass(&mut gitless, "root_directory");
+        gitless.add_check(
+            "tool_git",
+            DoctorStatus::Fail,
+            Some("not found".to_string()),
+        );
+        gitless.add_check(
+            "git_repository",
+            DoctorStatus::Fail,
+            Some("refused".to_string()),
+        );
+        assert_eq!(
+            DoctorFirstCommand::resolve_for_report(&gitless, || true),
+            DoctorFirstCommand::SavedDiff
+        );
+
+        let mut healthy = DoctorReport::new(".");
+        pass(&mut healthy, "root_directory");
+        pass(&mut healthy, "tool_git");
+        pass(&mut healthy, "git_repository");
+        assert_eq!(
+            DoctorFirstCommand::resolve_for_report(&healthy, || true),
+            DoctorFirstCommand::Worktree
+        );
+        assert_eq!(
+            DoctorFirstCommand::resolve_for_report(&healthy, || false),
+            DoctorFirstCommand::DefaultCheck
+        );
+    }
+
+    /// #5259: a repository with no commits passes `git_repository` (it is a
+    /// real work tree) but cannot resolve a diff base, so the evaluation
+    /// records the advisory `git_head` check and the first command names the
+    /// commit-first repair with the repository-free scan, never a
+    /// diff-scoped `ripr check` that would exit 2 there.
+    #[test]
+    fn unborn_head_repository_is_advised_and_not_sent_to_ripr_check() -> Result<(), String> {
+        let root = doctor_scope_root(
+            "unborn-head",
+            &[
+                (
+                    "Cargo.toml",
+                    "[package]\nname = \"probe\"\nversion = \"0.1.0\"\n",
+                ),
+                ("src/lib.rs", "pub fn f() {}\n"),
+            ],
+        )?;
+        git_in(&root, &["init", "."])?;
+        // Fixture check: HEAD really is unborn (no commits yet). Status, not
+        // spawn success — `git rev-parse --verify` exits nonzero there.
+        let head_resolves = crate::git::run_git_output_with_deadline(
+            &root,
+            &["rev-parse", "--verify", "--quiet", "HEAD"],
+            Some(DOCTOR_TOOL_TIMEOUT),
+        )
+        .is_ok_and(|output| output.status.success());
+        if head_resolves {
+            let _ = std::fs::remove_dir_all(&root);
+            return Err("fixture: expected an unborn HEAD".to_string());
+        }
+        let report = evaluate_doctor_core_with_config(&root, &[LanguageId::Rust]).report;
+        let git_repository = check(&report, "git_repository")?;
+        let head = check(&report, "git_head")?;
+        let passed = git_repository.status == DoctorCheckStatus::Pass;
+        let _ = std::fs::remove_dir_all(&root);
+        if !passed {
+            return Err(format!(
+                "fixture work-tree check failed: {git_repository:?}"
+            ));
+        }
+        if head.status != DoctorCheckStatus::Advisory {
+            return Err(format!(
+                "an unborn HEAD must be the advisory git_head check: {head:?}"
+            ));
+        }
+        if !head
+            .evidence
+            .as_deref()
+            .is_some_and(|evidence| evidence.contains("no commits yet"))
+        {
+            return Err(format!(
+                "git_head evidence must name the commit-first path: {head:?}"
+            ));
+        }
+        // Advisory never fails the run...
+        if doctor_report_result(&report).is_err() {
+            return Err("an advisory git_head check must not fail the doctor run".to_string());
+        }
+        // ...but it reroutes the first command away from the failing check.
+        let first = DoctorFirstCommand::resolve_for_report(&report, || false);
+        if first != DoctorFirstCommand::UnbornHead {
+            return Err(format!("expected UnbornHead, got {first:?}"));
+        }
+        Ok(())
+    }
+
+    /// #5259 review: only a probe that RAN and answered "no" may claim
+    /// unborn; a probe that never answered (spawn failure, deadline) must
+    /// claim nothing, or a slow host would add a false `git_head` advisory
+    /// and reroute the first command in a healthy repository.
+    #[test]
+    fn unborn_head_verdict_claims_nothing_when_the_probe_never_answered() {
+        assert!(
+            !probe_says_unborn(Some(true)),
+            "a resolving HEAD is born, not unborn"
+        );
+        assert!(
+            probe_says_unborn(Some(false)),
+            "git refusing the revision is the unborn state"
+        );
+        assert!(
+            !probe_says_unborn(None),
+            "a probe that never answered must not claim unborn"
+        );
+    }
+
+    /// #5259: the UnbornHead recommendation names the commit-first repair
+    /// and keeps the repository-free scan runnable now, with the root bound
+    /// exactly as the other recommendations bind it.
+    #[test]
+    fn unborn_head_recommendation_names_commit_first_and_the_repo_free_scan() -> Result<(), String>
+    {
+        let root = doctor_scope_root("unborn-head-rec", &[])?;
+        let lines = DoctorFirstCommand::UnbornHead.recommendation_lines_for(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        let first = lines
+            .first()
+            .ok_or("the unborn-head recommendation must render")?;
+        for needle in [
+            "no commits yet",
+            "has no base to diff",
+            "commit once first",
+            "--base HEAD --worktree",
+            "--format repo-exposure-md",
+        ] {
+            if !first.contains(needle) {
+                return Err(format!("recommendation {first:?} misses {needle:?}"));
+            }
+        }
+        if !first.contains(&format!("--root {}", human_path(&root))) {
+            return Err(format!(
+                "recommendation must bind the diagnosed root: {first:?}"
+            ));
+        }
+        Ok(())
+    }
     /// absolute path must fail closed with actionable evidence, independent
     /// of what happens to be (or not be) on the host's PATH.
     #[test]
@@ -1163,6 +3616,40 @@ mod tests {
         );
     }
 
+    /// A doctor probe runs with rustup auto-install off (#4734), even when
+    /// the caller's environment turned it on: `cargo --version` in a
+    /// checkout pinning a missing toolchain must not download it.
+    #[cfg(unix)]
+    #[test]
+    fn doctor_tool_probe_forbids_rustup_auto_install() {
+        let mut command = doctor_tool_command("sh");
+        command
+            .args(["-c", "echo \"auto=${RUSTUP_AUTO_INSTALL-unset}\""])
+            .env("RUSTUP_AUTO_INSTALL", "1");
+        let result = doctor_tool_check_with_command("cargo", command, DOCTOR_TOOL_TIMEOUT, None);
+        assert_eq!(result.status, DoctorStatus::Pass);
+        assert_eq!(result.evidence, "auto=0");
+    }
+
+    /// A tool that runs and exits non-zero is present, so doctor names the
+    /// exit and the tool's own `error:` line, skipping a leading `warn:`,
+    /// instead of "not available" (#4734).
+    #[cfg(unix)]
+    #[test]
+    fn doctor_tool_nonzero_exit_names_the_tool_error() {
+        let mut command = doctor_tool_command("sh");
+        command.args([
+            "-c",
+            "printf '\\nwarn: both rust-toolchain and rust-toolchain.toml exist\\nerror: toolchain 1.81.0 is not installed\\nhelp: run rustup\\n' >&2; exit 1",
+        ]);
+        let result = doctor_tool_check_with_command("rustc", command, DOCTOR_TOOL_TIMEOUT, None);
+        assert_eq!(result.status, DoctorStatus::Fail);
+        assert_eq!(
+            result.evidence,
+            "rustc --version failed (exit status: 1): error: toolchain 1.81.0 is not installed"
+        );
+    }
+
     #[test]
     fn doctor_tool_runner_times_out_and_reaps_child() -> Result<(), String> {
         let mut command = doctor_tool_command(if cfg!(windows) { "powershell" } else { "sh" });
@@ -1176,5 +3663,127 @@ mod tests {
             Err(error) => Err(format!("expected timeout, got {error:?}")),
             Ok(_) => Err("timed-out tool unexpectedly completed".into()),
         }
+    }
+
+    #[test]
+    fn doctor_pipe_drain_keeps_a_bounded_prefix_and_reads_to_eof() -> Result<(), String> {
+        let flood = vec![b'x'; 300_000];
+        let mut reader = std::io::Cursor::new(flood);
+        let kept = drain_doctor_pipe(&mut reader, 1_000).map_err(|err| err.to_string())?;
+        if kept.len() != 1_000 {
+            return Err(format!(
+                "kept {} bytes, expected the 1000-byte cap",
+                kept.len()
+            ));
+        }
+        if reader.position() != 300_000 {
+            return Err(format!("pipe not drained to EOF: at {}", reader.position()));
+        }
+        let short = drain_doctor_pipe(std::io::Cursor::new(b"pnpm 9.1.0\n".to_vec()), 1_000)
+            .map_err(|err| err.to_string())?;
+        if short != b"pnpm 9.1.0\n" {
+            return Err("a short version line must be kept whole".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn doctor_timeout_with_incomplete_cleanup_names_the_leftover_processes() {
+        let result = doctor_tool_run_result(
+            "pnpm",
+            Duration::from_secs(5),
+            Err(DoctorToolRunError::CleanupFailed(
+                DoctorProbeEnd::TimedOut,
+                "job termination failed".to_string(),
+            )),
+        );
+        assert_eq!(result.status, DoctorStatus::Fail);
+        assert_eq!(
+            result.evidence,
+            "pnpm timed out after 5s; ripr could not confirm the probe's processes stopped and some may still be running: job termination failed"
+        );
+        let plain = doctor_tool_run_result(
+            "pnpm",
+            Duration::from_secs(5),
+            Err(DoctorToolRunError::TimedOut),
+        );
+        assert_eq!(plain.evidence, "pnpm timed out after 5s");
+        // A probe that exited or could not be waited on must not read as a
+        // timeout when its cleanup fails.
+        let exited = doctor_tool_run_result(
+            "pnpm",
+            Duration::from_secs(5),
+            Err(DoctorToolRunError::CleanupFailed(
+                DoctorProbeEnd::Exited,
+                "job termination failed".to_string(),
+            )),
+        );
+        assert_eq!(exited.status, DoctorStatus::Fail);
+        assert_eq!(
+            exited.evidence,
+            "pnpm exited; ripr could not confirm the probe's processes stopped and some may still be running: job termination failed"
+        );
+        let wait_failed = doctor_tool_run_result(
+            "pnpm",
+            Duration::from_secs(5),
+            Err(DoctorToolRunError::CleanupFailed(
+                DoctorProbeEnd::WaitFailed,
+                "job termination failed".to_string(),
+            )),
+        );
+        assert_eq!(
+            wait_failed.evidence,
+            "pnpm could not be waited on; ripr could not confirm the probe's processes stopped and some may still be running: job termination failed"
+        );
+    }
+
+    /// A doctor probe that times out takes its descendants with it. A
+    /// Windows `.cmd` shim runs as `cmd.exe /c node ...`; the probe used to
+    /// kill only the direct child and left the grandchild running. The
+    /// descendant here holds the inherited pipes the way a shim's node does.
+    #[cfg(windows)]
+    #[test]
+    fn doctor_tool_timeout_terminates_pipe_inheriting_descendants() -> Result<(), String> {
+        let marker =
+            std::env::temp_dir().join(format!("ripr-doctor-descendant-{}.pid", std::process::id()));
+        let _ = std::fs::remove_file(&marker);
+        let marker_text = marker.display().to_string().replace('\'', "''");
+        let mut command = doctor_tool_command("powershell");
+        command.args([
+            "-NoProfile",
+            "-Command",
+            &format!(
+                "$p = Start-Process -FilePath powershell -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 120') -NoNewWindow -PassThru; Set-Content -LiteralPath '{marker_text}' -Value $p.Id; Wait-Process -Id $p.Id"
+            ),
+        ]);
+        // Same setup budget as the process-owner descendant test.
+        let outcome = run_doctor_tool(command, Duration::from_secs(30));
+        let written = std::fs::read_to_string(&marker);
+        let _ = std::fs::remove_file(&marker);
+        if !matches!(outcome, Err(DoctorToolRunError::TimedOut)) {
+            return Err(format!("expected a timeout, got {outcome:?}"));
+        }
+        // A missing marker is a setup failure, not proof of containment.
+        let pid: u32 = written
+            .map_err(|err| format!("descendant marker was not written: {err}"))?
+            .trim()
+            .parse()
+            .map_err(|err| format!("descendant marker is not a PID: {err}"))?;
+        let mut probe = doctor_tool_command("powershell");
+        probe.args([
+            "-NoProfile",
+            "-Command",
+            &format!("if (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{ exit 0 }} else {{ exit 1 }}"),
+        ]);
+        let alive = run_doctor_tool(probe, Duration::from_secs(30))
+            .map_err(|err| format!("liveness probe failed: {err:?}"))?
+            .status
+            .success();
+        if alive {
+            return Err(format!(
+                "descendant {pid} outlived the doctor probe timeout"
+            ));
+        }
+        Ok(())
     }
 }

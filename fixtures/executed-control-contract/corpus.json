@@ -1,0 +1,971 @@
+{
+  "cases": [
+    {
+      "description": "Executed removal control fails before and passes after the repair.",
+      "id": "fail_before_pass_after",
+      "packet": {
+        "kind": "executed_control_packet",
+        "obligations": [
+          {
+            "acceptable_evidence_forms": [
+              "retained_artifact",
+              "bounded_log_commitment"
+            ],
+            "control_class": "removed_guard",
+            "expected_discriminating_outcome": "fails_before_passes_after",
+            "intended_wrong_implementation": "eager parse of the lazy tail",
+            "invalidators": [
+              "source_head_moved",
+              "control_contract_changed",
+              "artifact_missing",
+              "command_identity_changed"
+            ],
+            "kind": "executed_control_obligation",
+            "obligation_id": "claim:example:removed-guard",
+            "owning_claim": "issue:4641",
+            "permitted_substitute": null,
+            "required_execution_subject": {
+              "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+              "named_wrong_implementation": "eager_file_count_parse",
+              "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requiredness": "required",
+            "schema_version": "1"
+          }
+        ],
+        "results": [
+          {
+            "artifact": {
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "logical_id": "artifact:removed-guard-log"
+            },
+            "candidate_id": "candidate:example",
+            "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+            "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "executed_control_result",
+            "obligation_digest": "sha256:076e8962c556ef85f469d20fdadb858a832634501ec43a9c3ad444b09ca77580",
+            "obligation_id": "claim:example:removed-guard",
+            "observed_outcome": "failed_before_passed_after",
+            "offered_evidence_kind": "executed_discriminating_control",
+            "schema_version": "1",
+            "source_identity": "EffortlessMetrics/ripr-swarm",
+            "state": "passed"
+          },
+          {
+            "artifact": {
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "logical_id": "artifact:removed-guard-log"
+            },
+            "candidate_id": "candidate:example",
+            "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+            "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "kind": "executed_control_result",
+            "obligation_id": "claim:example:removed-guard",
+            "observed_outcome": "rejected_wrong_implementation",
+            "offered_evidence_kind": "executed_discriminating_control",
+            "schema_version": "1",
+            "source_identity": "EffortlessMetrics/ripr-swarm",
+            "state": "failed"
+          }
+        ],
+        "schema_version": "1",
+        "source_identity": "EffortlessMetrics/ripr-swarm"
+      }
+    },
+    {
+      "description": "Ordinary positive test incorrectly offered as the control.",
+      "expected_failure": "ordinary positive test",
+      "id": "ordinary_positive_test",
+      "invalid": true,
+      "packet": {
+        "kind": "executed_control_packet",
+        "obligations": [
+          {
+            "acceptable_evidence_forms": [
+              "retained_artifact",
+              "bounded_log_commitment"
+            ],
+            "control_class": "removed_guard",
+            "expected_discriminating_outcome": "fails_before_passes_after",
+            "intended_wrong_implementation": "eager parse of the lazy tail",
+            "invalidators": [
+              "source_head_moved",
+              "control_contract_changed",
+              "artifact_missing",
+              "command_identity_changed"
+            ],
+            "kind": "executed_control_obligation",
+            "obligation_id": "claim:example:removed-guard",
+            "owning_claim": "issue:4641",
+            "permitted_substitute": null,
+            "required_execution_subject": {
+              "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+              "named_wrong_implementation": "eager_file_count_parse",
+              "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requiredness": "required",
+            "schema_version": "1"
+          }
+        ],
+        "results": [
+          {
+            "artifact": {
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "logical_id": "artifact:removed-guard-log"
+            },
+            "candidate_id": "candidate:example",
+            "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+            "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "executed_control_result",
+            "obligation_digest": "sha256:076e8962c556ef85f469d20fdadb858a832634501ec43a9c3ad444b09ca77580",
+            "obligation_id": "claim:example:removed-guard",
+            "observed_outcome": "ordinary_positive_tests_passed",
+            "offered_evidence_kind": "ordinary_positive_test",
+            "schema_version": "1",
+            "source_identity": "EffortlessMetrics/ripr-swarm",
+            "state": "passed"
+          }
+        ],
+        "schema_version": "1",
+        "source_identity": "EffortlessMetrics/ripr-swarm"
+      }
+    },
+    {
+      "description": "Control claimed in prose with no retained artifact.",
+      "expected_failure": "review prose",
+      "id": "prose_without_artifact",
+      "invalid": true,
+      "packet": {
+        "kind": "executed_control_packet",
+        "obligations": [
+          {
+            "acceptable_evidence_forms": [
+              "retained_artifact",
+              "bounded_log_commitment"
+            ],
+            "control_class": "removed_guard",
+            "expected_discriminating_outcome": "fails_before_passes_after",
+            "intended_wrong_implementation": "eager parse of the lazy tail",
+            "invalidators": [
+              "source_head_moved",
+              "control_contract_changed",
+              "artifact_missing",
+              "command_identity_changed"
+            ],
+            "kind": "executed_control_obligation",
+            "obligation_id": "claim:example:removed-guard",
+            "owning_claim": "issue:4641",
+            "permitted_substitute": null,
+            "required_execution_subject": {
+              "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+              "named_wrong_implementation": "eager_file_count_parse",
+              "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requiredness": "required",
+            "schema_version": "1"
+          }
+        ],
+        "results": [
+          {
+            "candidate_id": "candidate:example",
+            "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+            "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "executed_control_result",
+            "obligation_digest": "sha256:076e8962c556ef85f469d20fdadb858a832634501ec43a9c3ad444b09ca77580",
+            "obligation_id": "claim:example:removed-guard",
+            "observed_outcome": "review_argument_only",
+            "offered_evidence_kind": "review_prose",
+            "schema_version": "1",
+            "source_identity": "EffortlessMetrics/ripr-swarm",
+            "state": "passed"
+          }
+        ],
+        "schema_version": "1",
+        "source_identity": "EffortlessMetrics/ripr-swarm"
+      }
+    },
+    {
+      "description": "Control run on another head.",
+      "expected_failure": "binds head",
+      "id": "other_head",
+      "invalid": true,
+      "packet": {
+        "kind": "executed_control_packet",
+        "obligations": [
+          {
+            "acceptable_evidence_forms": [
+              "retained_artifact",
+              "bounded_log_commitment"
+            ],
+            "control_class": "removed_guard",
+            "expected_discriminating_outcome": "fails_before_passes_after",
+            "intended_wrong_implementation": "eager parse of the lazy tail",
+            "invalidators": [
+              "source_head_moved",
+              "control_contract_changed",
+              "artifact_missing",
+              "command_identity_changed"
+            ],
+            "kind": "executed_control_obligation",
+            "obligation_id": "claim:example:removed-guard",
+            "owning_claim": "issue:4641",
+            "permitted_substitute": null,
+            "required_execution_subject": {
+              "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+              "named_wrong_implementation": "eager_file_count_parse",
+              "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requiredness": "required",
+            "schema_version": "1"
+          }
+        ],
+        "results": [
+          {
+            "artifact": {
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "logical_id": "artifact:removed-guard-log"
+            },
+            "candidate_id": "candidate:example",
+            "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+            "head": "cccccccccccccccccccccccccccccccccccccccc",
+            "kind": "executed_control_result",
+            "obligation_digest": "sha256:076e8962c556ef85f469d20fdadb858a832634501ec43a9c3ad444b09ca77580",
+            "obligation_id": "claim:example:removed-guard",
+            "observed_outcome": "failed_before_passed_after",
+            "offered_evidence_kind": "executed_discriminating_control",
+            "schema_version": "1",
+            "source_identity": "EffortlessMetrics/ripr-swarm",
+            "state": "passed"
+          }
+        ],
+        "schema_version": "1",
+        "source_identity": "EffortlessMetrics/ripr-swarm"
+      }
+    },
+    {
+      "description": "Command succeeded but did not exercise the named wrong implementation.",
+      "expected_failure": "without exercising",
+      "id": "command_succeeded_without_exercising_subject",
+      "invalid": true,
+      "packet": {
+        "kind": "executed_control_packet",
+        "obligations": [
+          {
+            "acceptable_evidence_forms": [
+              "retained_artifact",
+              "bounded_log_commitment"
+            ],
+            "control_class": "removed_guard",
+            "expected_discriminating_outcome": "fails_before_passes_after",
+            "intended_wrong_implementation": "eager parse of the lazy tail",
+            "invalidators": [
+              "source_head_moved",
+              "control_contract_changed",
+              "artifact_missing",
+              "command_identity_changed"
+            ],
+            "kind": "executed_control_obligation",
+            "obligation_id": "claim:example:removed-guard",
+            "owning_claim": "issue:4641",
+            "permitted_substitute": null,
+            "required_execution_subject": {
+              "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+              "named_wrong_implementation": "eager_file_count_parse",
+              "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requiredness": "required",
+            "schema_version": "1"
+          }
+        ],
+        "results": [
+          {
+            "artifact": {
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "logical_id": "artifact:removed-guard-log"
+            },
+            "candidate_id": "candidate:example",
+            "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+            "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "executed_control_result",
+            "obligation_digest": "sha256:076e8962c556ef85f469d20fdadb858a832634501ec43a9c3ad444b09ca77580",
+            "obligation_id": "claim:example:removed-guard",
+            "observed_outcome": "command_succeeded_without_exercising_subject",
+            "offered_evidence_kind": "executed_discriminating_control",
+            "schema_version": "1",
+            "source_identity": "EffortlessMetrics/ripr-swarm",
+            "state": "passed"
+          }
+        ],
+        "schema_version": "1",
+        "source_identity": "EffortlessMetrics/ripr-swarm"
+      }
+    },
+    {
+      "description": "Unavailable instrument with an explicitly accepted substitute.",
+      "id": "declared_substitute",
+      "packet": {
+        "kind": "executed_control_packet",
+        "obligations": [
+          {
+            "acceptable_evidence_forms": [
+              "retained_artifact",
+              "bounded_log_commitment",
+              "declared_substitute"
+            ],
+            "control_class": "removed_guard",
+            "expected_discriminating_outcome": "fails_before_passes_after",
+            "intended_wrong_implementation": "eager parse of the lazy tail",
+            "invalidators": [
+              "source_head_moved",
+              "control_contract_changed",
+              "artifact_missing",
+              "command_identity_changed"
+            ],
+            "kind": "executed_control_obligation",
+            "obligation_id": "claim:example:removed-guard",
+            "owning_claim": "issue:4641",
+            "permitted_substitute": {
+              "evidence_form": "declared_substitute",
+              "instrument_id": "hosted-mutation-runner",
+              "substitute_id": "hosted-eager-variant"
+            },
+            "required_execution_subject": {
+              "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+              "named_wrong_implementation": "eager_file_count_parse",
+              "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requiredness": "required",
+            "schema_version": "1"
+          }
+        ],
+        "results": [
+          {
+            "artifact": {
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "logical_id": "artifact:removed-guard-log"
+            },
+            "candidate_id": "candidate:example",
+            "command_or_instrument_id": "hosted-mutation-runner",
+            "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "executed_control_result",
+            "limitation": "local eager-variant instrument unavailable; declared hosted substitute ran",
+            "obligation_digest": "sha256:2cf557b49971550248c0c9384c30edabf8d3e72fbb19daeab961521b764c6c8b",
+            "obligation_id": "claim:example:removed-guard",
+            "observed_outcome": "instrument_unavailable",
+            "offered_evidence_kind": "declared_substitute",
+            "schema_version": "1",
+            "source_identity": "EffortlessMetrics/ripr-swarm",
+            "state": "substituted",
+            "substitute_id": "hosted-eager-variant"
+          }
+        ],
+        "schema_version": "1",
+        "source_identity": "EffortlessMetrics/ripr-swarm"
+      }
+    },
+    {
+      "description": "Unavailable instrument without an accepted substitute.",
+      "id": "instrument_failure_without_substitute",
+      "packet": {
+        "kind": "executed_control_packet",
+        "obligations": [
+          {
+            "acceptable_evidence_forms": [
+              "retained_artifact",
+              "bounded_log_commitment"
+            ],
+            "control_class": "removed_guard",
+            "expected_discriminating_outcome": "fails_before_passes_after",
+            "intended_wrong_implementation": "eager parse of the lazy tail",
+            "invalidators": [
+              "source_head_moved",
+              "control_contract_changed",
+              "artifact_missing",
+              "command_identity_changed"
+            ],
+            "kind": "executed_control_obligation",
+            "obligation_id": "claim:example:removed-guard",
+            "owning_claim": "issue:4641",
+            "permitted_substitute": null,
+            "required_execution_subject": {
+              "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+              "named_wrong_implementation": "eager_file_count_parse",
+              "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requiredness": "required",
+            "schema_version": "1"
+          }
+        ],
+        "results": [
+          {
+            "candidate_id": "candidate:example",
+            "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+            "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "executed_control_result",
+            "limitation": "eager-variant instrument was not available",
+            "obligation_id": "claim:example:removed-guard",
+            "observed_outcome": "instrument_unavailable",
+            "offered_evidence_kind": "executed_discriminating_control",
+            "schema_version": "1",
+            "source_identity": "EffortlessMetrics/ripr-swarm",
+            "state": "instrument_failure"
+          }
+        ],
+        "schema_version": "1",
+        "source_identity": "EffortlessMetrics/ripr-swarm"
+      }
+    },
+    {
+      "description": "Duplicated obligation IDs.",
+      "expected_failure": "duplicated obligation_id",
+      "id": "duplicate_obligation_ids",
+      "invalid": true,
+      "packet": {
+        "kind": "executed_control_packet",
+        "obligations": [
+          {
+            "acceptable_evidence_forms": [
+              "retained_artifact",
+              "bounded_log_commitment"
+            ],
+            "control_class": "removed_guard",
+            "expected_discriminating_outcome": "fails_before_passes_after",
+            "intended_wrong_implementation": "eager parse of the lazy tail",
+            "invalidators": [
+              "source_head_moved",
+              "control_contract_changed",
+              "artifact_missing",
+              "command_identity_changed"
+            ],
+            "kind": "executed_control_obligation",
+            "obligation_id": "claim:example:removed-guard",
+            "owning_claim": "issue:4641",
+            "permitted_substitute": null,
+            "required_execution_subject": {
+              "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+              "named_wrong_implementation": "eager_file_count_parse",
+              "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requiredness": "required",
+            "schema_version": "1"
+          },
+          {
+            "acceptable_evidence_forms": [
+              "retained_artifact",
+              "bounded_log_commitment"
+            ],
+            "control_class": "removed_guard",
+            "expected_discriminating_outcome": "fails_before_passes_after",
+            "intended_wrong_implementation": "eager parse of the lazy tail",
+            "invalidators": [
+              "source_head_moved",
+              "control_contract_changed",
+              "artifact_missing",
+              "command_identity_changed"
+            ],
+            "kind": "executed_control_obligation",
+            "obligation_id": "claim:example:removed-guard",
+            "owning_claim": "issue:4641",
+            "permitted_substitute": null,
+            "required_execution_subject": {
+              "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+              "named_wrong_implementation": "eager_file_count_parse",
+              "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requiredness": "required",
+            "schema_version": "1"
+          }
+        ],
+        "results": [
+          {
+            "artifact": {
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "logical_id": "artifact:removed-guard-log"
+            },
+            "candidate_id": "candidate:example",
+            "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+            "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "executed_control_result",
+            "obligation_digest": "sha256:076e8962c556ef85f469d20fdadb858a832634501ec43a9c3ad444b09ca77580",
+            "obligation_id": "claim:example:removed-guard",
+            "observed_outcome": "failed_before_passed_after",
+            "offered_evidence_kind": "executed_discriminating_control",
+            "schema_version": "1",
+            "source_identity": "EffortlessMetrics/ripr-swarm",
+            "state": "passed"
+          }
+        ],
+        "schema_version": "1",
+        "source_identity": "EffortlessMetrics/ripr-swarm"
+      }
+    },
+    {
+      "description": "Result for an unknown obligation.",
+      "expected_failure": "unknown obligation_id",
+      "id": "unknown_obligation",
+      "invalid": true,
+      "packet": {
+        "kind": "executed_control_packet",
+        "obligations": [
+          {
+            "acceptable_evidence_forms": [
+              "retained_artifact",
+              "bounded_log_commitment"
+            ],
+            "control_class": "removed_guard",
+            "expected_discriminating_outcome": "fails_before_passes_after",
+            "intended_wrong_implementation": "eager parse of the lazy tail",
+            "invalidators": [
+              "source_head_moved",
+              "control_contract_changed",
+              "artifact_missing",
+              "command_identity_changed"
+            ],
+            "kind": "executed_control_obligation",
+            "obligation_id": "claim:example:removed-guard",
+            "owning_claim": "issue:4641",
+            "permitted_substitute": null,
+            "required_execution_subject": {
+              "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+              "named_wrong_implementation": "eager_file_count_parse",
+              "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requiredness": "required",
+            "schema_version": "1"
+          }
+        ],
+        "results": [
+          {
+            "artifact": {
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "logical_id": "artifact:removed-guard-log"
+            },
+            "candidate_id": "candidate:example",
+            "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+            "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "executed_control_result",
+            "obligation_digest": "sha256:076e8962c556ef85f469d20fdadb858a832634501ec43a9c3ad444b09ca77580",
+            "obligation_id": "claim:unknown",
+            "observed_outcome": "failed_before_passed_after",
+            "offered_evidence_kind": "executed_discriminating_control",
+            "schema_version": "1",
+            "source_identity": "EffortlessMetrics/ripr-swarm",
+            "state": "passed"
+          }
+        ],
+        "schema_version": "1",
+        "source_identity": "EffortlessMetrics/ripr-swarm"
+      }
+    },
+    {
+      "description": "Result whose source_identity is not the packet source.",
+      "expected_failure": "source identity",
+      "id": "foreign_source",
+      "invalid": true,
+      "packet": {
+        "kind": "executed_control_packet",
+        "obligations": [
+          {
+            "acceptable_evidence_forms": [
+              "retained_artifact",
+              "bounded_log_commitment"
+            ],
+            "control_class": "removed_guard",
+            "expected_discriminating_outcome": "fails_before_passes_after",
+            "intended_wrong_implementation": "eager parse of the lazy tail",
+            "invalidators": [
+              "source_head_moved",
+              "control_contract_changed",
+              "artifact_missing",
+              "command_identity_changed"
+            ],
+            "kind": "executed_control_obligation",
+            "obligation_id": "claim:example:removed-guard",
+            "owning_claim": "issue:4641",
+            "permitted_substitute": null,
+            "required_execution_subject": {
+              "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+              "named_wrong_implementation": "eager_file_count_parse",
+              "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requiredness": "required",
+            "schema_version": "1"
+          }
+        ],
+        "results": [
+          {
+            "artifact": {
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "logical_id": "artifact:removed-guard-log"
+            },
+            "candidate_id": "candidate:example",
+            "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+            "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "executed_control_result",
+            "obligation_digest": "sha256:076e8962c556ef85f469d20fdadb858a832634501ec43a9c3ad444b09ca77580",
+            "obligation_id": "claim:example:removed-guard",
+            "observed_outcome": "failed_before_passed_after",
+            "offered_evidence_kind": "executed_discriminating_control",
+            "schema_version": "1",
+            "source_identity": "other/repo",
+            "state": "passed"
+          }
+        ],
+        "schema_version": "1",
+        "source_identity": "EffortlessMetrics/ripr-swarm"
+      }
+    },
+    {
+      "description": "Named substitute recorded as not_executed.",
+      "expected_failure": "unexecuted substitute",
+      "id": "unexecuted_substitute",
+      "invalid": true,
+      "packet": {
+        "kind": "executed_control_packet",
+        "obligations": [
+          {
+            "acceptable_evidence_forms": [
+              "retained_artifact",
+              "bounded_log_commitment",
+              "declared_substitute"
+            ],
+            "control_class": "removed_guard",
+            "expected_discriminating_outcome": "fails_before_passes_after",
+            "intended_wrong_implementation": "eager parse of the lazy tail",
+            "invalidators": [
+              "source_head_moved",
+              "control_contract_changed",
+              "artifact_missing",
+              "command_identity_changed"
+            ],
+            "kind": "executed_control_obligation",
+            "obligation_id": "claim:example:removed-guard",
+            "owning_claim": "issue:4641",
+            "permitted_substitute": {
+              "evidence_form": "declared_substitute",
+              "instrument_id": "hosted-mutation-runner",
+              "substitute_id": "hosted-eager-variant"
+            },
+            "required_execution_subject": {
+              "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+              "named_wrong_implementation": "eager_file_count_parse",
+              "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requiredness": "required",
+            "schema_version": "1"
+          }
+        ],
+        "results": [
+          {
+            "artifact": {
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "logical_id": "artifact:removed-guard-log"
+            },
+            "candidate_id": "candidate:example",
+            "command_or_instrument_id": "hosted-mutation-runner",
+            "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "executed_control_result",
+            "obligation_digest": "sha256:2cf557b49971550248c0c9384c30edabf8d3e72fbb19daeab961521b764c6c8b",
+            "obligation_id": "claim:example:removed-guard",
+            "observed_outcome": "not_executed",
+            "offered_evidence_kind": "declared_substitute",
+            "schema_version": "1",
+            "source_identity": "EffortlessMetrics/ripr-swarm",
+            "state": "substituted",
+            "substitute_id": "hosted-eager-variant"
+          }
+        ],
+        "schema_version": "1",
+        "source_identity": "EffortlessMetrics/ripr-swarm"
+      }
+    },
+    {
+      "description": "Passed retained-artifact result against an obligation that accepts only declared_substitute.",
+      "expected_failure": "acceptable evidence form",
+      "id": "disallowed_evidence_form",
+      "invalid": true,
+      "packet": {
+        "kind": "executed_control_packet",
+        "obligations": [
+          {
+            "acceptable_evidence_forms": [
+              "declared_substitute"
+            ],
+            "control_class": "removed_guard",
+            "expected_discriminating_outcome": "fails_before_passes_after",
+            "intended_wrong_implementation": "eager parse of the lazy tail",
+            "invalidators": [
+              "source_head_moved",
+              "control_contract_changed",
+              "artifact_missing",
+              "command_identity_changed"
+            ],
+            "kind": "executed_control_obligation",
+            "obligation_id": "claim:example:removed-guard",
+            "owning_claim": "issue:4641",
+            "permitted_substitute": {
+              "evidence_form": "declared_substitute",
+              "instrument_id": "hosted-mutation-runner",
+              "substitute_id": "hosted-eager-variant"
+            },
+            "required_execution_subject": {
+              "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+              "named_wrong_implementation": "eager_file_count_parse",
+              "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requiredness": "required",
+            "schema_version": "1"
+          }
+        ],
+        "results": [
+          {
+            "artifact": {
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "logical_id": "artifact:removed-guard-log"
+            },
+            "candidate_id": "candidate:example",
+            "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+            "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "executed_control_result",
+            "obligation_digest": "sha256:b0d900215f2322e474c410e3725ea282cf006f63dd0e4ad699c140db8cd5db09",
+            "obligation_id": "claim:example:removed-guard",
+            "observed_outcome": "failed_before_passed_after",
+            "offered_evidence_kind": "executed_discriminating_control",
+            "schema_version": "1",
+            "source_identity": "EffortlessMetrics/ripr-swarm",
+            "state": "passed"
+          }
+        ],
+        "schema_version": "1",
+        "source_identity": "EffortlessMetrics/ripr-swarm"
+      }
+    },
+    {
+      "description": "Passed and failed results for the same head and command.",
+      "expected_failure": "conflicting passed and failed",
+      "id": "same_head_pass_and_fail",
+      "invalid": true,
+      "packet": {
+        "kind": "executed_control_packet",
+        "obligations": [
+          {
+            "acceptable_evidence_forms": [
+              "retained_artifact",
+              "bounded_log_commitment"
+            ],
+            "control_class": "removed_guard",
+            "expected_discriminating_outcome": "fails_before_passes_after",
+            "intended_wrong_implementation": "eager parse of the lazy tail",
+            "invalidators": [
+              "source_head_moved",
+              "control_contract_changed",
+              "artifact_missing",
+              "command_identity_changed"
+            ],
+            "kind": "executed_control_obligation",
+            "obligation_id": "claim:example:removed-guard",
+            "owning_claim": "issue:4641",
+            "permitted_substitute": null,
+            "required_execution_subject": {
+              "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+              "named_wrong_implementation": "eager_file_count_parse",
+              "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requiredness": "required",
+            "schema_version": "1"
+          }
+        ],
+        "results": [
+          {
+            "artifact": {
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "logical_id": "artifact:removed-guard-log"
+            },
+            "candidate_id": "candidate:example",
+            "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+            "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "executed_control_result",
+            "obligation_id": "claim:example:removed-guard",
+            "observed_outcome": "rejected_wrong_implementation",
+            "offered_evidence_kind": "executed_discriminating_control",
+            "schema_version": "1",
+            "source_identity": "EffortlessMetrics/ripr-swarm",
+            "state": "failed"
+          },
+          {
+            "artifact": {
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "logical_id": "artifact:removed-guard-log"
+            },
+            "candidate_id": "candidate:example",
+            "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+            "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "executed_control_result",
+            "obligation_digest": "sha256:076e8962c556ef85f469d20fdadb858a832634501ec43a9c3ad444b09ca77580",
+            "obligation_id": "claim:example:removed-guard",
+            "observed_outcome": "failed_before_passed_after",
+            "offered_evidence_kind": "executed_discriminating_control",
+            "schema_version": "1",
+            "source_identity": "EffortlessMetrics/ripr-swarm",
+            "state": "passed"
+          }
+        ],
+        "schema_version": "1",
+        "source_identity": "EffortlessMetrics/ripr-swarm"
+      }
+    },
+    {
+      "description": "Deterministic output independent of input/map order.",
+      "id": "input_order_independent",
+      "packet": {
+        "kind": "executed_control_packet",
+        "obligations": [
+          {
+            "acceptable_evidence_forms": [
+              "retained_artifact",
+              "bounded_log_commitment"
+            ],
+            "control_class": "removed_guard",
+            "expected_discriminating_outcome": "fails_before_passes_after",
+            "intended_wrong_implementation": "eager parse of the lazy tail",
+            "invalidators": [
+              "source_head_moved",
+              "control_contract_changed",
+              "artifact_missing",
+              "command_identity_changed"
+            ],
+            "kind": "executed_control_obligation",
+            "obligation_id": "claim:example:other",
+            "owning_claim": "issue:4641",
+            "permitted_substitute": null,
+            "required_execution_subject": {
+              "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+              "named_wrong_implementation": "eager_file_count_parse",
+              "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requiredness": "required",
+            "schema_version": "1"
+          },
+          {
+            "acceptable_evidence_forms": [
+              "retained_artifact",
+              "bounded_log_commitment"
+            ],
+            "control_class": "removed_guard",
+            "expected_discriminating_outcome": "fails_before_passes_after",
+            "intended_wrong_implementation": "eager parse of the lazy tail",
+            "invalidators": [
+              "source_head_moved",
+              "control_contract_changed",
+              "artifact_missing",
+              "command_identity_changed"
+            ],
+            "kind": "executed_control_obligation",
+            "obligation_id": "claim:example:removed-guard",
+            "owning_claim": "issue:4641",
+            "permitted_substitute": null,
+            "required_execution_subject": {
+              "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+              "named_wrong_implementation": "eager_file_count_parse",
+              "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requiredness": "required",
+            "schema_version": "1"
+          }
+        ],
+        "results": [
+          {
+            "artifact": {
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "logical_id": "artifact:removed-guard-log"
+            },
+            "candidate_id": "candidate:example",
+            "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+            "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "executed_control_result",
+            "obligation_digest": "sha256:35c420c855f97e58a91edcdc7241de4160380711aabb0e001c8be88ee7af7297",
+            "obligation_id": "claim:example:other",
+            "observed_outcome": "failed_before_passed_after",
+            "offered_evidence_kind": "executed_discriminating_control",
+            "schema_version": "1",
+            "source_identity": "EffortlessMetrics/ripr-swarm",
+            "state": "passed"
+          },
+          {
+            "artifact": {
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "logical_id": "artifact:removed-guard-log"
+            },
+            "candidate_id": "candidate:example",
+            "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+            "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "executed_control_result",
+            "obligation_digest": "sha256:076e8962c556ef85f469d20fdadb858a832634501ec43a9c3ad444b09ca77580",
+            "obligation_id": "claim:example:removed-guard",
+            "observed_outcome": "failed_before_passed_after",
+            "offered_evidence_kind": "executed_discriminating_control",
+            "schema_version": "1",
+            "source_identity": "EffortlessMetrics/ripr-swarm",
+            "state": "passed"
+          }
+        ],
+        "schema_version": "1",
+        "source_identity": "EffortlessMetrics/ripr-swarm"
+      }
+    },
+    {
+      "description": "Issue #3858 / PR #4063 execution is not established and must not be rewritten as passed.",
+      "id": "issue_3858_not_proven",
+      "packet": {
+        "kind": "executed_control_packet",
+        "obligations": [
+          {
+            "acceptable_evidence_forms": [
+              "retained_artifact",
+              "bounded_log_commitment"
+            ],
+            "control_class": "removed_guard",
+            "expected_discriminating_outcome": "fails_before_passes_after",
+            "intended_wrong_implementation": "eager parse / removed lazy file-count guard (admit_file_count)",
+            "invalidators": [
+              "source_head_moved",
+              "control_contract_changed",
+              "artifact_missing",
+              "command_identity_changed"
+            ],
+            "kind": "executed_control_obligation",
+            "obligation_id": "issue:3858:eager-file-count-removal-control",
+            "owning_claim": "issue:3858",
+            "permitted_substitute": null,
+            "required_execution_subject": {
+              "command_or_instrument_id": "cargo test -- removed_guard_or_eager_file_count_control",
+              "named_wrong_implementation": "eager_admit_file_count",
+              "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "requiredness": "required",
+            "schema_version": "1"
+          }
+        ],
+        "results": [
+          {
+            "candidate_id": "pr:4063",
+            "command_or_instrument_id": "cargo test -- removed_guard_or_eager_file_count_control",
+            "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "executed_control_result",
+            "limitation": "Issue #3858 / PR #4063 recorded no retained eager or removed-guard execution artifact. Execution is not_proven and must not be rewritten as passed.",
+            "obligation_id": "issue:3858:eager-file-count-removal-control",
+            "observed_outcome": "not_executed",
+            "offered_evidence_kind": "review_prose",
+            "schema_version": "1",
+            "source_identity": "EffortlessMetrics/ripr-swarm",
+            "state": "not_proven"
+          }
+        ],
+        "schema_version": "1",
+        "source_identity": "EffortlessMetrics/ripr-swarm"
+      }
+    }
+  ],
+  "kind": "executed_control_corpus",
+  "schema_version": "1"
+}

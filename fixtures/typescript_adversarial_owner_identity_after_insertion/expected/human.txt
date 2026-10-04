@@ -2,38 +2,46 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/typescript_adversarial_owner_identity_after_insertion/input
 
-Summary: 2 probe(s), 0 exposed, 1 weak, 0 unrevealed, 1 no path, 0 unknown
+Summary: 2 probe(s), 0 exposed, 0 weakly_exposed, 0 reachable_unrevealed, 2 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 2 of 2 finding(s) unsuppressed
 
-Changed file(s) by language: rust: 0, typescript: 1.
+Changed file(s) by language: typescript: 1.
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 9 changed line(s), 2 candidate line(s), 2 probe(s), 2 finding(s).
 
 Start here:
-  State: preview_limited
-  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
-  File: src/pricing.ts:14
+  State: preview language, advisory only (preview_limited)
+  Safe next action: this TypeScript preview finding's repair packet is not ready (no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route); `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add a test that calls it by hand, then rerun `ripr check`.
+  File: src/pricing.ts:6
   Language: typescript
   Language status: preview
-  Static exposure: weakly_exposed (warning, confidence 0.40)
-  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
-  Changed behavior: if (amount >= threshold) {
-  Missing discriminator: Only heuristic TypeScript test links were found for `applyDiscount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
-  Related test: tests/pricing.test.ts:3 computes the processing fee
-  Next step: TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.
-  Evidence:
-    - reach weak: 1 related test(s) found for owner `applyDiscount`
+  Static exposure: no path (no_static_path, warning, confidence 0.40)
+  Why no path: no related test was found that reaches this change
+  Changed behavior: export const DEFAULT_FEE_RULE: FeeRule = { bps: 300, cap: 50 };
+  Missing discriminator: No trusted TypeScript module-initializer observer for `DEFAULT_FEE_RULE`. Direct `expect(IMPORTED_CONST)...` and `expect(namespace.EXPORT)...` observers are supported, but…
+  Next step: TypeScript preview advisory: module initializer observer is missing context; add a
+    direct `expect(IMPORTED_CONST).toBe(...)` or `expect(namespace.EXPORT).toEqual(...)` observer
+    when safe, and keep helper-derived or dynamic initialization evidence advisory.
+  Evidence: reach no · infection unknown · propagation unknown · observation no · discriminator no
+    - reach no: 0 related test(s) found for owner `DEFAULT_FEE_RULE`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 4 more evidence line(s) hidden
+    - 8 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
-  ripr explain --root fixtures/typescript_adversarial_owner_identity_after_insertion/input --diff fixtures/typescript_adversarial_owner_identity_after_insertion/diff.patch --mode fast probe:src_pricing.ts:typescript_preview:bd772dc8
-  ripr context --root fixtures/typescript_adversarial_owner_identity_after_insertion/input --diff fixtures/typescript_adversarial_owner_identity_after_insertion/diff.patch --mode fast --at probe:src_pricing.ts:typescript_preview:bd772dc8
+  ripr explain --root fixtures/typescript_adversarial_owner_identity_after_insertion/input --diff fixtures/typescript_adversarial_owner_identity_after_insertion/diff.patch --mode fast probe:src_pricing.ts:typescript_preview:fff3ea84
+  ripr context --root fixtures/typescript_adversarial_owner_identity_after_insertion/input --diff fixtures/typescript_adversarial_owner_identity_after_insertion/diff.patch --mode fast --at probe:src_pricing.ts:typescript_preview:fff3ea84
 
 Hidden:
-  1 lower-priority finding(s) omitted from default human output.
+  1 lower-priority finding(s) omitted from default human output (TypeScript preview: 1).
+    - src/pricing.ts:14 (no_static_path)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 
 
-Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: ripr found no static test path for any of the 2 changed expression(s) in this diff. Scope
+  analyzed: 2 changed expression(s) and 0 statically linked related test(s). This is not a coverage
+  assessment. A test may already exercise these changes through macros, helper-call chains, or
+  integration tests that ripr's static model does not yet trace; if none does, add co-located tests
+  that observe the changed behavior.
+
+Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

@@ -1,8 +1,11 @@
 use crate::agent::command_specs::command_displays_are_complete;
 use crate::agent::loop_commands::{
     WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_BRIEF_ARTIFACT,
-    WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_brief_command, agent_verify_command, display_path,
+    WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+    WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_brief_command, agent_verify_command,
+    check_analysis_outcome_command_with_base, display_path, shell_arg,
 };
+use crate::analysis::ClassifiedSeam;
 use crate::analysis::canonical_gap::canonical_gap_identity;
 use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::Mode;
@@ -16,14 +19,18 @@ use crate::output::agent_seam_packets;
 use crate::output::agent_seam_packets::missing_discriminator_records_for as missing_records_for;
 use crate::output::evidence_record::{
     CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY, CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE,
-    EvidenceRecordStaticLimitation, actionability_for, canonical_receipt_command_for,
+    EvidenceRecordStaticLimitation, NO_TEST_REACHES_OWNER_CATEGORY, actionability_for,
+    canonical_receipt_command_for, canonical_repair_command_for,
     cross_language_test_target_unresolved, gap_state_for, static_limitations_for,
 };
 use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute};
+use crate::output::markdown::{code_span, inline_prose};
+#[cfg(test)]
+use crate::testing::cwd_placeholder::project_cwd_text;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 mod scope;
@@ -179,6 +186,7 @@ pub(crate) fn render_review_comments_json_with_scope(
     for selected in actionable.iter().take(DEFAULT_REVIEW_MAX_SUMMARY_ITEMS) {
         let recommendation = review_recommendation_json(
             context.root,
+            context.base,
             context.mode,
             context.config,
             selected,
@@ -192,9 +200,12 @@ pub(crate) fn render_review_comments_json_with_scope(
             continue;
         }
         let recommended_test = agent_seam_packets::recommended_test_for(selected.seam);
-        if changed_test_paths
-            .iter()
-            .any(|path| path == &normalize_path_text(Path::new(&recommended_test.file)))
+        // Test-file proximity does not resolve a producer-owned open seam.
+        // Keep its recommendation and existing confidence/repair limitations.
+        if !selected.seam.class.is_headline_eligible()
+            && changed_test_paths
+                .iter()
+                .any(|path| path == &normalize_path_text(Path::new(&recommended_test.file)))
         {
             suppressed.push(suppressed_json(
                 selected,
@@ -417,21 +428,45 @@ pub(crate) fn render_gap_record_review_comments_json(
     let mut suppressed = Vec::new();
     let mut seen_dedupe = BTreeSet::new();
     let analysis_scope = ReviewCommentsAnalysisScope::gap_ledger_artifact(records);
+    let seam_claimed_dedupe = seam_claimed_dedupe_keys(root, gap_ledger_path, records);
 
-    for record in records {
-        let comment = match gap_record_comment_json(
+    // A seam-carrying card that wins a shared dedupe key takes the ledger
+    // slot of the first seamless record that yielded the key to it, so the
+    // caps below cannot drop the key's only card (#4524).
+    let mut yielded_slot = BTreeMap::new();
+    let mut rendered = Vec::new();
+    let mut ordered_suppressed = Vec::new();
+    for (index, record) in records.iter().enumerate() {
+        match gap_record_comment_json(
             root,
             gap_ledger_path,
             record,
             &mut seen_dedupe,
+            &seam_claimed_dedupe,
             causal_projection.as_ref(),
         ) {
-            Ok(comment) => comment,
-            Err(suppressed_item) => {
-                suppressed.push(suppressed_item);
-                continue;
+            Ok(comment) => {
+                let slot = comment
+                    .get("dedupe_key")
+                    .and_then(Value::as_str)
+                    .and_then(|key| yielded_slot.get(key))
+                    .copied()
+                    .unwrap_or(index);
+                rendered.push((slot, record, comment));
             }
-        };
+            Err(suppressed_item) => {
+                if suppressed_item["reason"] == "duplicate_dedupe_fingerprint"
+                    && let Some(key) = gap_record_dedupe_key(record)
+                    && seam_claimed_dedupe.contains(key)
+                {
+                    yielded_slot.entry(key.to_string()).or_insert(index);
+                }
+                ordered_suppressed.push((index, suppressed_item));
+            }
+        }
+    }
+    rendered.sort_by_key(|(slot, _, _)| *slot);
+    for (slot, record, comment) in rendered {
         if comments.len() < DEFAULT_REVIEW_MAX_INLINE_COMMENTS {
             comments.push(comment);
         } else if summary_only.len() < DEFAULT_REVIEW_MAX_SUMMARY_ITEMS {
@@ -439,9 +474,11 @@ pub(crate) fn render_gap_record_review_comments_json(
             item["summary_reason"] = json!(SUMMARY_REASON_INLINE_CAP_REACHED);
             summary_only.push(item);
         } else {
-            suppressed.push(gap_record_cap_suppressed_json(record));
+            ordered_suppressed.push((slot, gap_record_cap_suppressed_json(record)));
         }
     }
+    ordered_suppressed.sort_by_key(|(slot, _)| *slot);
+    suppressed.extend(ordered_suppressed.into_iter().map(|(_, item)| item));
 
     let value = json!({
         "schema_version": REVIEW_COMMENTS_SCHEMA_VERSION,
@@ -678,6 +715,7 @@ fn gap_record_comment_json(
     gap_ledger_path: &str,
     record: &GapRecord,
     seen_dedupe: &mut BTreeSet<String>,
+    seam_claimed_dedupe: &BTreeSet<String>,
     causal_projection: Option<&CausalDeltaArtifact>,
 ) -> Result<Value, Value> {
     // Route through the shared eligibility authority (#3281): a record
@@ -741,12 +779,7 @@ fn gap_record_comment_json(
             "PR comments require an anchor line.",
         ));
     };
-    let Some(dedupe) = anchor
-        .dedupe_fingerprint
-        .as_deref()
-        .map(str::trim)
-        .filter(|dedupe| !dedupe.is_empty())
-    else {
+    let Some(dedupe) = gap_record_dedupe_key(record) else {
         return Err(gap_record_suppressed_json(
             record,
             "missing_dedupe_fingerprint",
@@ -760,20 +793,19 @@ fn gap_record_comment_json(
             "PR comments require a non-empty anchor and dedupe fingerprint.",
         ));
     }
-    let Some(seam_id) = record.seam_id.as_deref().and_then(non_empty) else {
-        return Err(gap_record_suppressed_json(
-            record,
-            "missing_seam_identity",
-            "PR comments require producer-owned seam identity.",
-        ));
-    };
-    if !seen_dedupe.insert(dedupe.to_string()) {
+    // Seam identity is optional on a gap-record card (#4524): the card is
+    // keyed by its GapRecord, and preview-language `--check-output` records
+    // carry no seam. A record that has one still wins a shared dedupe key.
+    let seam_id = record.seam_id.as_deref().and_then(non_empty);
+    if seam_id.is_none() && seam_claimed_dedupe.contains(dedupe) {
         return Err(gap_record_suppressed_json(
             record,
             "duplicate_dedupe_fingerprint",
-            "A previous GapRecord already emitted this PR comment dedupe key.",
+            "A GapRecord with producer-owned seam identity emits this PR comment dedupe key.",
         ));
     }
+    // Every rejection comes before the dedupe insert, so only a card that
+    // renders reserves its key.
     let Some(repair_route) = record.repair_route.as_ref() else {
         return Err(gap_record_suppressed_json(
             record,
@@ -786,6 +818,13 @@ fn gap_record_comment_json(
             record,
             "missing_verification_command",
             "PR comments require only nonblank verification commands.",
+        ));
+    }
+    if !seen_dedupe.insert(dedupe.to_string()) {
+        return Err(gap_record_suppressed_json(
+            record,
+            "duplicate_dedupe_fingerprint",
+            "A previous GapRecord already emitted this PR comment dedupe key.",
         ));
     }
 
@@ -806,7 +845,6 @@ fn gap_record_comment_json(
         "gap_state": record.gap_state.as_str(),
         "policy_state": record.policy_state.as_str(),
         "repairability": record.repairability.as_str(),
-        "seam_id": seam_id,
         "dedupe_key": dedupe,
         "source_location": source_location,
         "placement": {
@@ -844,16 +882,56 @@ fn gap_record_comment_json(
         },
         "llm_guidance": {
             "prompt": repair_prompt(repair_route, &verify_command),
-            "command": format!("ripr first-action --root {} --gap-ledger {}", display_path(root), gap_ledger_path),
+            "command": format!(
+                "ripr first-action --root {} --gap-ledger {}",
+                shell_arg(&display_path(root)),
+                shell_arg(gap_ledger_path)
+            ),
             "verify_command": verify_command,
         },
     });
+    if let Some(seam_id) = seam_id
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert("seam_id".to_string(), json!(seam_id));
+    }
     if let Some(projection) = causal_projection
         && let Some(object) = value.as_object_mut()
     {
         projection.insert_delta_fields(object, non_empty(&record.canonical_gap_id).as_deref());
     }
     Ok(value)
+}
+
+/// Dedupe keys a seam-carrying record renders a card for, so a seamless
+/// record sharing the key yields to it regardless of ledger order.
+fn seam_claimed_dedupe_keys(
+    root: &Path,
+    gap_ledger_path: &str,
+    records: &[GapRecord],
+) -> BTreeSet<String> {
+    let mut seen = BTreeSet::new();
+    let none_claimed = BTreeSet::new();
+    records
+        .iter()
+        .filter(|record| record.seam_id.as_deref().and_then(non_empty).is_some())
+        .filter_map(|record| {
+            gap_record_comment_json(
+                root,
+                gap_ledger_path,
+                record,
+                &mut seen,
+                &none_claimed,
+                None,
+            )
+            .ok()
+        })
+        .filter_map(|card| {
+            card.get("dedupe_key")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+        })
+        .collect()
 }
 
 fn gap_record_suppressed_json(record: &GapRecord, reason: &str, message: &str) -> Value {
@@ -874,6 +952,16 @@ fn gap_record_cap_suppressed_json(record: &GapRecord) -> Value {
         "reason": "summary_cap",
         "message": "The PR guidance summary item cap was reached.",
     })
+}
+
+fn gap_record_dedupe_key(record: &GapRecord) -> Option<&str> {
+    record
+        .anchor
+        .as_ref()?
+        .dedupe_fingerprint
+        .as_deref()
+        .map(str::trim)
+        .filter(|dedupe| !dedupe.is_empty())
 }
 
 fn gap_record_id(record: &GapRecord) -> String {
@@ -914,7 +1002,8 @@ fn repair_text(route: &GapRepairRoute) -> String {
 fn repair_why(record: &GapRecord, route: &GapRepairRoute) -> String {
     if let Some(changed) = route.changed_behavior.as_deref() {
         return format!(
-            "Changed behavior `{changed}` has a repairable {} gap.",
+            "Changed behavior {} has a repairable {} gap.",
+            code_span(changed),
             record.kind
         );
     }
@@ -944,12 +1033,14 @@ fn repair_intent(route_kind: &str) -> &'static str {
 fn repair_prompt(route: &GapRepairRoute, verify_command: &str) -> String {
     let repair = repair_text(route);
     format!(
-        "{repair} Do not change production behavior unless the existing tests prove it is necessary. Verify with `{verify_command}`."
+        "{repair} Do not change production behavior unless the existing tests prove it is necessary. Verify with {}.",
+        code_span(verify_command)
     )
 }
 
 fn review_recommendation_json(
     root: &Path,
+    base: &str,
     _mode: &Mode,
     config: &RiprConfig,
     selected: &AgentBriefSelectedSeam<'_>,
@@ -963,6 +1054,10 @@ fn review_recommendation_json(
     let candidate_values = agent_seam_packets::candidate_values_for(entry, &missing);
     let assertion_shape = agent_seam_packets::assertion_shape_for_entry(entry);
     let seam_id = seam.id().as_str();
+    // Review cards are published into pull requests, where a checkout path
+    // from the machine that rendered them (often a CI runner) names nothing
+    // the reader has: their commands keep the portable `--root` the report
+    // was invoked with, meaning the reader's own checkout root (#4000).
     let root_display = display_path(root);
     let missing_value = missing.first().map(|record| record.value.clone());
     let seam_file = display_path(seam.file());
@@ -982,7 +1077,7 @@ fn review_recommendation_json(
     };
 
     // receipt_command: only for actionable cards; reuses canonical_receipt_command_for.
-    let receipt_command = canonical_receipt_command_for(entry, gap_state);
+    let receipt_command = canonical_receipt_command_for(entry, gap_state, &root_display);
 
     // why_not_actionable + non_claims: for static_limitation cards.
     let static_limitations = if gap_state == "static_limitation" {
@@ -1032,16 +1127,27 @@ fn review_recommendation_json(
         json!({
             "prompt": llm_prompt(&recommended.file, nearest.map(|test| test.test_name.as_str()), missing_value.as_deref()),
             "command": agent_brief_command(&root_display, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
+            "analysis_outcome_command": check_analysis_outcome_command_with_base(
+                &root_display,
+                Some(base),
+                "draft",
+                WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+            ),
             "verify_command": agent_verify_command(
                 &root_display,
                 WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
                 WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
-                None,
+                Some(WORKFLOW_AGENT_VERIFY_ARTIFACT),
             ),
         })
     } else if gap_state == "static_limitation" {
         json!({
-            "prompt": limitation_prompt_for(static_limitations.first()),
+            "prompt": match static_limitations.first() {
+                Some(limitation) if limitation.category == NO_TEST_REACHES_OWNER_CATEGORY => {
+                    no_test_reaches_owner_prompt(root, entry)
+                }
+                limitation => limitation_prompt_for(limitation),
+            },
             "command": agent_brief_command(&root_display, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
         })
     } else {
@@ -1111,7 +1217,7 @@ fn review_recommendation_json(
             "expression": seam.expression(),
         },
         "source_location": source_location_json(&seam_file, Some(seam_line)),
-        "reason": reason_for(selected, missing_value.as_deref()),
+        "reason": reason_for(selected, gap_state, missing_value.as_deref()),
         "missing_discriminator": missing_value,
         "suggested_test": suggested_test,
         "llm_guidance": llm_guidance,
@@ -1120,6 +1226,17 @@ fn review_recommendation_json(
     // Project actionable-only fields.
     if let (Some(cmd), Some(object)) = (receipt_command, recommendation.as_object_mut()) {
         object.insert("receipt_command".to_string(), json!(cmd));
+    }
+    // The repair transaction's start (#3906), only past the fail-closed
+    // repair-packet flip. The evidence record owns the decision; the card
+    // projects it.
+    if let (Some(cmd), Some(guidance)) = (
+        canonical_repair_command_for(entry, gap_state, &root_display),
+        recommendation
+            .get_mut("llm_guidance")
+            .and_then(Value::as_object_mut),
+    ) {
+        guidance.insert("repair_command".to_string(), json!(cmd));
     }
     // Project limitation-only fields.
     if let (Some(why), Some(object)) = (why_not_actionable, recommendation.as_object_mut()) {
@@ -1197,13 +1314,28 @@ fn placement_for(
         });
     }
 
-    production_lines
+    // `same_file_changed_line` (RIPR-SPEC-0012): a changed line inside the
+    // seam owner's span that owner attribution bound to a nested function.
+    // Sharing a file with the diff is not enough: a seam whose own line and
+    // owner span sit outside every hunk has no safe changed-line placement
+    // and stays summary-only, which keeps it out of annotations and gate
+    // blocking. Unknown owner spans (no enclosing-owner evidence) fail
+    // closed the same way.
+    working_set
+        .enclosing_owners
         .iter()
-        .filter(|line| normalize_path_text(&line.file) == seam_file)
+        .filter(|owner| normalize_path_text(&owner.file) == seam_file)
+        .filter(|owner| owner.owner == seam.owner())
+        .filter(|owner| !is_test_like_path(&owner.file))
+        .filter(|owner| {
+            production_lines
+                .iter()
+                .any(|line| normalize_path_text(&line.file) == seam_file && line.line == owner.line)
+        })
         .min_by(|left, right| nearest_line_ordering(left.line, right.line, seam.display_line()))
-        .map(|line| ReviewPlacement {
+        .map(|owner| ReviewPlacement {
             path: seam_file,
-            line: line.line,
+            line: owner.line,
             mode: "same_file_changed_line",
         })
 }
@@ -1243,7 +1375,7 @@ fn unresolved_source_location_json() -> Value {
 }
 
 fn analysis_scope_json(scope: &ReviewCommentsAnalysisScope) -> Value {
-    json!({
+    let mut value = json!({
         "scope": scope.scope,
         "run_status": scope.run_status,
         "basis": scope.basis,
@@ -1260,7 +1392,16 @@ fn analysis_scope_json(scope: &ReviewCommentsAnalysisScope) -> Value {
         "downstream_consumable": scope.downstream_consumable,
         "limitation": scope.limitation,
         "repair_route": scope.repair_route,
-    })
+    });
+    // Present only when the staged scope skipped seams, so a consumer
+    // can tell `classified_seams_considered` is not the whole scope.
+    if scope.unevaluated_seams > 0 {
+        value["unevaluated_seams"] = json!(scope.unevaluated_seams);
+    }
+    if !scope.absent_changed_files.is_empty() {
+        value["absent_changed_files"] = json!(scope.absent_changed_files);
+    }
+    value
 }
 
 fn display_paths(paths: &[std::path::PathBuf]) -> Vec<String> {
@@ -1312,9 +1453,23 @@ fn nearest_line_ordering(left: usize, right: usize, target: usize) -> Ordering {
         .then_with(|| left.cmp(&right))
 }
 
-fn reason_for(selected: &AgentBriefSelectedSeam<'_>, missing: Option<&str>) -> String {
+fn reason_for(
+    selected: &AgentBriefSelectedSeam<'_>,
+    gap_state: &str,
+    missing: Option<&str>,
+) -> String {
+    // Optional discriminator values do not grant repair authority. Project
+    // the same canonical decision that owns the card's typed guidance.
+    if gap_state != "actionable" {
+        return format!(
+            "Static evidence state is {gap_state}; no repair test is offered by this card. Inspect the producer-owned evidence and policy state."
+        );
+    }
     if let Some(missing) = missing {
-        return format!("Static evidence names missing discriminator `{missing}` for this seam.");
+        return format!(
+            "Static evidence names missing discriminator {} for this seam.",
+            code_span(missing)
+        );
     }
     format!(
         "Static evidence class is {}; a focused test can strengthen the named seam.",
@@ -1353,13 +1508,18 @@ fn suggested_test_intent(shape: &agent_seam_packets::AssertionShape) -> &'static
     }
 }
 
+/// The closing sentence of an actionable card's LLM prompt. A human surface
+/// that leads with the card's carried repair start (#3906) drops it, since
+/// the repair's after phase runs verify; the JSON prompt keeps it unchanged.
+pub(crate) const LLM_PROMPT_VERIFY_SENTENCE: &str = "Verify with ripr agent verify.";
+
 fn llm_prompt(recommended_file: &str, near_test: Option<&str>, missing: Option<&str>) -> String {
     let target = missing.unwrap_or("the missing discriminator named by the seam packet");
     let near = near_test
         .map(|test| format!(" near {test}"))
         .unwrap_or_default();
     format!(
-        "Write one focused Rust test for {target}. Place it in {recommended_file}{near}. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify."
+        "Write one focused Rust test for {target}. Place it in {recommended_file}{near}. Do not change production code. Preserve existing fixture style. {LLM_PROMPT_VERIFY_SENTENCE}"
     )
 }
 
@@ -1382,11 +1542,61 @@ fn limitation_prompt(
 fn limitation_prompt_for(limitation: Option<&EvidenceRecordStaticLimitation>) -> String {
     match limitation {
         Some(limitation) => format!(
-            "Do not write a repair test or infer an edit surface from this finding. Inspect static limitation `{}`: {}. Route investigation through `{}`.",
-            limitation.category, limitation.reason, limitation.repair_route
+            "Do not write a repair test or infer an edit surface from this finding. Inspect static limitation {}: {}. Route investigation through {}.",
+            code_span(&limitation.category),
+            limitation.reason,
+            code_span(&limitation.repair_route)
         ),
         None => "Do not write a repair test or infer an edit surface from this finding. The producer-owned repair route is incomplete; inspect the evidence before taking action.".to_string(),
     }
+}
+
+/// Plain wording for a changed owner no existing test reaches (#4216 row 2):
+/// a test gap in the change, not an analyzer limitation. It names no repair
+/// target; the producer-owned route stays incomplete and fail-closed.
+fn no_test_reaches_owner_prompt(root: &Path, entry: &ClassifiedSeam) -> String {
+    let seam = &entry.seam;
+    let placement = match integration_test_files_for(root, seam.file()).as_slice() {
+        [only] => format!(
+            " A new test for it would usually go in {}, the crate's integration test file.",
+            code_span(only)
+        ),
+        [] => String::new(),
+        _ => " A new test for it would usually go in one of the crate's integration test files under `tests/`.".to_string(),
+    };
+    format!(
+        "No existing test reaches {owner}: static evidence finds no test path to this changed owner (`no_static_path`), so static evidence shows no current test checking the changed behavior {expression}. This is a test gap in the change, not a RIPR analysis limitation. RIPR does not propose a target for a first test, so no repair route, verify command, or receipt is offered.{placement}",
+        owner = code_span(seam.owner()),
+        expression = code_span(seam.expression()),
+    )
+}
+
+/// Top-level `tests/*.rs` files of the Cargo package owning `source_file`
+/// (workspace-relative, sorted). Navigation text only, never a repair target.
+fn integration_test_files_for(root: &Path, source_file: &Path) -> Vec<String> {
+    let mut package_dir = source_file.parent();
+    while let Some(dir) = package_dir {
+        if root.join(dir).join("Cargo.toml").is_file() {
+            break;
+        }
+        package_dir = dir.parent();
+    }
+    let Some(package_dir) = package_dir else {
+        return Vec::new();
+    };
+    let tests_dir = package_dir.join("tests");
+    let Ok(read_dir) = std::fs::read_dir(root.join(&tests_dir)) else {
+        return Vec::new();
+    };
+    let mut files = read_dir
+        .filter_map(Result::ok)
+        .filter(|item| item.file_type().is_ok_and(|kind| kind.is_file()))
+        .map(|item| item.file_name().to_string_lossy().to_string())
+        .filter(|name| name.ends_with(".rs"))
+        .map(|name| display_path(&tests_dir.join(name)))
+        .collect::<Vec<_>>();
+    files.sort();
+    files
 }
 
 fn push_markdown_items(lines: &mut Vec<String>, heading: &str, value: Option<&Value>) {
@@ -1400,7 +1610,9 @@ fn push_markdown_items(lines: &mut Vec<String>, heading: &str, value: Option<&Va
     };
 
     for item in items {
-        let seam_id = string_field(item, "seam_id").unwrap_or("unknown");
+        let seam_id = string_field(item, "seam_id")
+            .or_else(|| string_field(item, "gap_id"))
+            .unwrap_or("unknown");
         let reason = string_field(item, "reason").unwrap_or("No reason available.");
         let source_location = markdown_source_location(item);
         let state = string_field(item, "gap_state")
@@ -1410,20 +1622,28 @@ fn push_markdown_items(lines: &mut Vec<String>, heading: &str, value: Option<&Va
             .get("llm_guidance")
             .and_then(|guidance| string_field(guidance, "command"))
             .unwrap_or("ripr agent brief --root . --seam-id <id> --json");
-        lines.push(format!("- `{seam_id}` @ `{source_location}`: {reason}"));
+        lines.push(format!(
+            "- {} @ {}: {}",
+            code_span(seam_id),
+            code_span(&source_location),
+            inline_prose(reason)
+        ));
         let canonical_gap_id = string_field(item, "canonical_gap_id")
             .filter(|value| !value.trim().is_empty())
             .unwrap_or("null");
-        lines.push(format!("  - canonical_gap_id: `{canonical_gap_id}`"));
+        lines.push(format!(
+            "  - canonical_gap_id: {}",
+            code_span(canonical_gap_id)
+        ));
         if let Some(attribution) = string_field(item, "delta_attribution") {
-            lines.push(format!("  - delta_attribution: `{attribution}`"));
+            lines.push(format!("  - delta_attribution: {}", code_span(attribution)));
         }
-        lines.push(format!("  - state: `{state}`"));
+        lines.push(format!("  - state: {}", code_span(state)));
         if let Some(route) = repair_route_kind(item) {
-            lines.push(format!("  - repair_route: `{route}`"));
+            lines.push(format!("  - repair_route: {}", code_span(route)));
         }
         if let Some(route) = string_field(item, "limitation_route") {
-            lines.push(format!("  - limitation_route: `{route}`"));
+            lines.push(format!("  - limitation_route: {}", code_span(route)));
         }
         if let Some(target) = item.get("navigation_only_target") {
             push_navigation_only_target_markdown(lines, target);
@@ -1434,7 +1654,21 @@ fn push_markdown_items(lines: &mut Vec<String>, heading: &str, value: Option<&Va
                     .to_string(),
             );
         }
-        lines.push(format!("  - command: `{command}`"));
+        lines.push(format!("  - command: {}", code_span(command)));
+        if let Some(guidance) = item.get("llm_guidance")
+            && let Some(outcome) = string_field(guidance, "analysis_outcome_command")
+        {
+            lines.push(format!(
+                "  - analysis_outcome_command: {}",
+                code_span(outcome)
+            ));
+            if let Some(verify) = string_field(guidance, "verify_command") {
+                lines.push(format!("  - verify_command: {}", code_span(verify)));
+            }
+            if let Some(receipt) = string_field(item, "receipt_command") {
+                lines.push(format!("  - receipt_command: {}", code_span(receipt)));
+            }
+        }
     }
     lines.push(String::new());
 }
@@ -1450,10 +1684,11 @@ fn push_navigation_only_target_markdown(lines: &mut Vec<String>, target: &Value)
         .and_then(Value::as_bool)
         .unwrap_or(false);
     lines.push(format!(
-        "  - navigation_only_target: `{location}` ({language}; repair_packet_ready={ready})"
+        "  - navigation_only_target: {} ({language}; repair_packet_ready={ready})",
+        code_span(&location)
     ));
     if let Some(test_name) = string_field(target, "test_name") {
-        lines.push(format!("  - external_observer: `{test_name}`"));
+        lines.push(format!("  - external_observer: {}", code_span(test_name)));
     }
 }
 
@@ -1488,6 +1723,30 @@ fn push_analysis_scope_summary(lines: &mut Vec<String>, value: Option<&Value>) {
         "- scoped production files: {considered}/{total_production}"
     ));
     lines.push(format!("- classified seams considered: {classified}"));
+    if let Some(unevaluated) = scope.get("unevaluated_seams").and_then(Value::as_u64) {
+        lines.push(format!(
+            "- scoped seams not evaluated: {unevaluated} (changed-line seams filled every review slot)"
+        ));
+    }
+    if let Some(absent) = scope
+        .get("absent_changed_files")
+        .and_then(Value::as_array)
+        .filter(|files| !files.is_empty())
+    {
+        let listed = absent
+            .iter()
+            .filter_map(Value::as_str)
+            .map(code_span)
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(format!(
+            "- limitation: `changed_file_absent_from_worktree`; dropped file(s): {listed}"
+        ));
+        lines.push(
+            "- repair: check out the missing file, or disable sparse checkout for it, then re-run"
+                .to_string(),
+        );
+    }
     if let (Some(limitation), Some(route)) = (
         scope.get("limitation").and_then(Value::as_str),
         scope.get("repair_route").and_then(Value::as_str),
@@ -1546,9 +1805,15 @@ fn push_suppressed_items(lines: &mut Vec<String>, value: Option<&Value>) {
         return;
     };
     for item in items {
-        let seam_id = string_field(item, "seam_id").unwrap_or("unknown");
+        let seam_id = string_field(item, "seam_id")
+            .or_else(|| string_field(item, "gap_id"))
+            .unwrap_or("unknown");
         let reason = string_field(item, "reason").unwrap_or("unknown");
-        lines.push(format!("- `{seam_id}`: {reason}"));
+        lines.push(format!(
+            "- {}: {}",
+            code_span(seam_id),
+            inline_prose(reason)
+        ));
     }
 }
 
@@ -1559,6 +1824,66 @@ fn string_field<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// comments.md: a backtick in a seam id, path, or test name must not
+    /// close the code span and let `@mention` or HTML after it render live.
+    #[test]
+    fn comments_markdown_keeps_backtick_text_inside_code_spans() {
+        let items = json!([{
+            "seam_id": "s` @octocat",
+            "reason": "reason for @octocat <img>",
+            "source_location": {"file": "src/`x <img src=x onerror=alert(1)>.rs", "line": 3},
+            "gap_state": "open",
+            "navigation_only_target": {
+                "file": "a.ts",
+                "line": 1,
+                "language": "typescript",
+                "test_name": "t` @octocat"
+            }
+        }]);
+        let mut lines = Vec::new();
+        push_markdown_items(&mut lines, "Inline", Some(&items));
+        let rendered = lines.join("\n");
+        assert!(
+            rendered.contains(
+                "- ``s` @octocat`` @ ``src/`x <img src=x onerror=alert(1)>.rs:3``: reason for @\u{2060}octocat &lt;img>"
+            ),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("  - external_observer: ``t` @octocat``"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("  - state: `open`"), "{rendered}");
+    }
+
+    /// #4586: an absent path with Markdown-active characters must stay inside
+    /// a code span so `@mention` / backticks cannot fire when posted.
+    #[test]
+    fn absent_changed_file_markdown_keeps_markup_inert() {
+        let scope = json!({
+            "scope": "diff_scoped_changed_files",
+            "run_status": "limited_diff_scope",
+            "production_files_considered": 0,
+            "classified_seams_considered": 0,
+            "absent_changed_files": ["src/@octocat/`tick`.rs"]
+        });
+        let mut lines = Vec::new();
+        push_analysis_scope_summary(&mut lines, Some(&scope));
+        let rendered = lines.join("\n");
+        assert!(
+            rendered.contains(&format!(
+                "dropped file(s): {}",
+                code_span("src/@octocat/`tick`.rs")
+            )),
+            "{rendered}"
+        );
+        assert!(
+            !rendered.contains("dropped file(s): src/@octocat/"),
+            "raw path must not appear outside a code span:\n{rendered}"
+        );
+    }
+
     use crate::analysis::ClassifiedSeam;
     use crate::analysis::canonical_gap::canonical_gap_identity;
     use crate::analysis::seams::{
@@ -1638,8 +1963,28 @@ mod tests {
                     reason: "producer identified the equality boundary as missing".to_string(),
                     flow_sink: None,
                 }],
+                new_test_target: None,
             },
         }
+    }
+
+    fn classified_in_owner(line: usize, owner: &str) -> ClassifiedSeam {
+        let mut entry = classified(line);
+        let seam = RepoSeam::new(
+            "src/pricing.rs",
+            owner,
+            SeamKind::PredicateBoundary,
+            line * 10,
+            line,
+            "amount >= 5_000",
+            RequiredDiscriminator::BoundaryValue {
+                description: "amount == 5_000".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        entry.evidence.seam_id = seam.id().clone();
+        entry.seam = seam;
+        entry
     }
 
     fn field_classified_without_discriminator() -> ClassifiedSeam {
@@ -1700,6 +2045,7 @@ mod tests {
                 discriminate: stage(StageState::Weak),
                 observed_values: Vec::new(),
                 missing_discriminators: Vec::new(),
+                new_test_target: None,
             },
         }
     }
@@ -1742,6 +2088,7 @@ mod tests {
                 discriminate: stage(StageState::Weak),
                 observed_values: Vec::new(),
                 missing_discriminators: Vec::new(),
+                new_test_target: None,
             },
         }
     }
@@ -1781,6 +2128,113 @@ mod tests {
             &selection(seams),
         )?;
         serde_json::from_str(&rendered).map_err(|err| format!("parse review comments JSON: {err}"))
+    }
+
+    /// A new public owner that no existing test reaches, as in a PR that adds
+    /// a `pub fn` that no test calls, next to a crate integration test file.
+    fn unreached_new_owner_classified() -> ClassifiedSeam {
+        let mut entry = classified_in_owner(29, "src/lib.rs::loyalty_price");
+        let seam = RepoSeam::new(
+            "src/lib.rs",
+            "src/lib.rs::loyalty_price",
+            SeamKind::PredicateBoundary,
+            290,
+            29,
+            "member_years >= 5",
+            RequiredDiscriminator::BoundaryValue {
+                description: "5".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        entry.evidence.seam_id = seam.id().clone();
+        entry.seam = seam;
+        entry.class = SeamGripClass::Ungripped;
+        entry.evidence.related_tests.clear();
+        entry.evidence.reach = stage(StageState::No);
+        entry.evidence.activate = stage(StageState::No);
+        entry.evidence.propagate = stage(StageState::Yes);
+        entry.evidence.observe = stage(StageState::No);
+        entry.evidence.discriminate = stage(StageState::No);
+        entry.evidence.missing_discriminators.clear();
+        entry
+    }
+
+    fn render_unreached_owner_card(with_integration_test: bool) -> Result<Value, String> {
+        let root = std::env::temp_dir().join(format!(
+            "ripr-review-unreached-owner-{with_integration_test}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|err| format!("clock: {err}"))?
+                .as_nanos()
+        ));
+        let write = |relative: &str, text: &str| -> Result<(), String> {
+            let path = root.join(relative);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|err| format!("create {}: {err}", parent.display()))?;
+            }
+            fs::write(&path, text).map_err(|err| format!("write {}: {err}", path.display()))
+        };
+        write("Cargo.toml", "[package]\nname = \"pricing\"\n")?;
+        write("src/lib.rs", "pub fn loyalty_price() {}\n")?;
+        if with_integration_test {
+            write("tests/pricing.rs", "use pricing::*;\n")?;
+        }
+        let seams = [unreached_new_owner_classified()];
+        let working_set =
+            AgentBriefResolvedWorkingSet::base("main", vec![AgentBriefLine::new("src/lib.rs", 29)]);
+        let rendered = render_review_comments_json(
+            &root,
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            &RiprConfig::default(),
+            &working_set,
+            &selection(&seams),
+        );
+        let _ = fs::remove_dir_all(&root);
+        serde_json::from_str(&rendered?).map_err(|err| format!("parse review comments JSON: {err}"))
+    }
+
+    #[test]
+    fn unreached_new_owner_is_a_test_gap_not_a_ripr_limitation() -> Result<(), String> {
+        let value = render_unreached_owner_card(true)?;
+        let card = &value["comments"][0];
+        assert_eq!(card["owner"], "src/lib.rs::loyalty_price");
+        // Actionability does not flip: no producer-owned target exists.
+        assert_eq!(card["gap_state"], "static_limitation");
+        assert_eq!(card["suggested_test"]["recommended_file"], "not_applicable");
+        assert_eq!(card["receipt_command"], Value::Null);
+        let prompt = card["llm_guidance"]["prompt"]
+            .as_str()
+            .ok_or("missing prompt")?;
+        assert!(
+            prompt.starts_with("No existing test reaches `src/lib.rs::loyalty_price`"),
+            "{prompt}"
+        );
+        assert!(
+            prompt.contains("not a RIPR analysis limitation"),
+            "{prompt}"
+        );
+        assert!(prompt.contains("no repair route"), "{prompt}");
+        assert!(
+            prompt.contains("would usually go in `tests/pricing.rs`"),
+            "{prompt}"
+        );
+        assert!(!prompt.contains("Do not write a repair test"), "{prompt}");
+        assert!(
+            !prompt.contains("test_target_provenance_unresolved"),
+            "{prompt}"
+        );
+
+        let without_tests = render_unreached_owner_card(false)?;
+        let prompt = without_tests["comments"][0]["llm_guidance"]["prompt"]
+            .as_str()
+            .ok_or("missing prompt")?;
+        assert!(prompt.starts_with("No existing test reaches"), "{prompt}");
+        assert!(!prompt.contains("tests/"), "{prompt}");
+        Ok(())
     }
 
     fn render_value_with_selection(
@@ -2051,17 +2505,87 @@ mod tests {
 
     fn assert_text_fixture(case: &str, file: &str, rendered: &str) -> Result<(), String> {
         let path = pr_guidance_fixture(case, file);
-        if std::env::var("RIPR_UPDATE_FIXTURES").is_ok() {
-            fs::write(&path, rendered)
+        // Issue #3872: command redirects anchor at the resolved --root, so
+        // the machine prefix projects to `<cwd>/` before comparing AND
+        // before re-blessing — a blessed fixture must never carry a real
+        // machine directory (placeholder rule: loop_commands).
+        let normalized = project_cwd_text(rendered);
+        // #3742 class (e): only the explicit RIPR_UPDATE_FIXTURES=1 opt-in
+        // rewrites; a leaked bare variable must assert, never re-bless.
+        if crate::testing::rebless::fixture_rebless_enabled() {
+            fs::write(&path, &normalized)
                 .map_err(|err| format!("write fixture {}: {err}", path.display()))?;
             return Ok(());
         }
         let expected = fs::read_to_string(&path)
             .map_err(|err| format!("read fixture {}: {err}", path.display()))?;
         assert_eq!(
-            expected, rendered,
+            expected, normalized,
             "PR guidance fixture drift for {case}/{file}"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn actionable_review_card_writes_every_receipt_input() -> Result<(), String> {
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let seams = [classified(88)];
+        let value = render_value(&working_set, &seams)?;
+        let card = value
+            .get("comments")
+            .and_then(Value::as_array)
+            .and_then(|cards| cards.first())
+            .ok_or("producer did not emit the actionable fixture card")?;
+        if card.get("gap_state").and_then(Value::as_str) != Some("actionable") {
+            return Err(format!(
+                "fixture must exercise the actionable producer: {card}"
+            ));
+        }
+        let guidance = card.get("llm_guidance").ok_or("missing guidance")?;
+        let verify = guidance
+            .get("verify_command")
+            .and_then(Value::as_str)
+            .ok_or("missing verify command")?;
+        let receipt = card
+            .get("receipt_command")
+            .and_then(Value::as_str)
+            .ok_or("missing receipt command")?;
+        if !receipt.contains("--verify-json target/ripr/workflow/agent-verify.json") {
+            return Err(format!(
+                "fixture must consume the canonical verify artifact: {receipt}"
+            ));
+        }
+        if !verify.contains(" > ") || !verify.contains("target/ripr/workflow/agent-verify.json") {
+            return Err(format!(
+                "listed verify command does not persist the receipt input: {verify}"
+            ));
+        }
+        let outcome = guidance
+            .get("analysis_outcome_command")
+            .and_then(Value::as_str)
+            .ok_or("actionable card does not list the receipt analysis-outcome producer")?;
+        if !outcome.contains("--format json > ")
+            || !outcome.contains("target/ripr/workflow/analysis-outcome.json")
+        {
+            return Err(format!(
+                "analysis outcome is not written beside verification: {outcome}"
+            ));
+        }
+        if !outcome.contains("--base main ") {
+            return Err(format!(
+                "outcome command lost the producing review's selected base: {outcome}"
+            ));
+        }
+        let markdown = render_markdown(&working_set, &seams);
+        if ![outcome, verify, receipt]
+            .iter()
+            .all(|command| markdown.contains(*command))
+        {
+            return Err("Markdown must carry the actual persisted receipt chain".to_string());
+        }
         Ok(())
     }
 
@@ -2106,10 +2630,70 @@ mod tests {
                 "repair_route": null,
             })
         );
-        assert_eq!(
-            value["comments"][0]["llm_guidance"]["verify_command"],
-            "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+        let verify = value
+            .pointer("/comments/0/llm_guidance/verify_command")
+            .and_then(Value::as_str)
+            .ok_or("exact-line card omitted its verify command")?;
+        if project_cwd_text(verify)
+            != "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json"
+        {
+            return Err(format!(
+                "exact-line card must persist root-anchored verification: {verify}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// #3906: a card offers `agent repair` only for an actionable seam past
+    /// the fail-closed repair-packet flip. The second seam adds a TypeScript
+    /// observer beside the same Rust test, so the flip refuses it: a known
+    /// seam with a non-actionable route, which must get no repair start.
+    #[test]
+    fn review_cards_offer_the_repair_start_only_past_the_repair_packet_flip() -> Result<(), String>
+    {
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
         );
+        let eligible = classified(88);
+        let mut ineligible = classified(88);
+        let mut observer = ineligible.evidence.related_tests[0].clone();
+        observer.file = PathBuf::from("tests/pricing.test.ts");
+        ineligible.evidence.related_tests.push(observer);
+
+        for (entry, want_repair) in [(eligible, true), (ineligible, false)] {
+            let seam_id = entry.seam.id().as_str().to_string();
+            if crate::analysis::repair_route::repair_packet_eligibility(&entry).eligible()
+                != want_repair
+            {
+                return Err(format!(
+                    "{seam_id}: fixture eligibility must be {want_repair}"
+                ));
+            }
+            let value = render_value(&working_set, std::slice::from_ref(&entry))?;
+            let card = &value["comments"][0];
+            // Preconditions: both seams render a card with a known seam id;
+            // only the eligible one is actionable.
+            let expected_state = if want_repair {
+                "actionable"
+            } else {
+                "static_limitation"
+            };
+            if card["seam_id"] != seam_id.as_str() || card["gap_state"] != expected_state {
+                return Err(format!("{seam_id}: card must be {expected_state}: {card}"));
+            }
+            let repair = card["llm_guidance"].get("repair_command");
+            let expected = format!("ripr agent repair --root . --seam-id {seam_id} --phase before");
+            match (want_repair, repair) {
+                (true, Some(Value::String(command))) if *command == expected => {}
+                (false, None) => {}
+                _ => {
+                    return Err(format!(
+                        "{seam_id}: repair_command {repair:?}, want present={want_repair}"
+                    ));
+                }
+            }
+        }
         Ok(())
     }
 
@@ -2215,14 +2799,27 @@ mod tests {
 
     #[test]
     fn review_comments_places_nearest_same_file_changed_line() -> Result<(), String> {
+        // RIPR-SPEC-0012: `same_file_changed_line` is the changed line inside
+        // the seam owner's span that owner attribution bound to a nested
+        // function. Line 84 is nearer the seam but belongs to another owner,
+        // so nearest-line proximity alone must not win.
         let seams = [classified(88)];
         let working_set = AgentBriefResolvedWorkingSet::base(
             "main",
             vec![
-                AgentBriefLine::new("src/pricing.rs", 60),
-                AgentBriefLine::new("src/pricing.rs", 92),
+                AgentBriefLine::new("src/pricing.rs", 84),
+                AgentBriefLine::new("src/pricing.rs", 95),
             ],
-        );
+        )
+        .with_changed_owners(vec![
+            AgentBriefChangedOwner::new("src/pricing.rs", 84, "pricing::apply_fee"),
+            AgentBriefChangedOwner::new("src/pricing.rs", 95, "pricing::discounted_total::clamp"),
+        ])
+        .with_enclosing_owners(vec![
+            AgentBriefChangedOwner::new("src/pricing.rs", 84, "pricing::apply_fee"),
+            AgentBriefChangedOwner::new("src/pricing.rs", 95, "pricing::discounted_total"),
+            AgentBriefChangedOwner::new("src/pricing.rs", 95, "pricing::discounted_total::clamp"),
+        ]);
 
         let value = render_value(&working_set, &seams)?;
         assert_eq!(value["summary"]["comments"], 1);
@@ -2230,7 +2827,150 @@ mod tests {
             value["comments"][0]["placement"]["mode"],
             "same_file_changed_line"
         );
-        assert_eq!(value["comments"][0]["placement"]["line"], 92);
+        assert_eq!(value["comments"][0]["placement"]["line"], 95);
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_keeps_unchanged_same_file_seam_summary_only() -> Result<(), String> {
+        // F60-5: the seam at line 88 and its owner span are outside every
+        // hunk; the PR only changed another owner and a blank line in the
+        // same file. Neither line may carry the seam, with or without owner
+        // attribution for the blank line.
+        let seams = [classified(88)];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![
+                AgentBriefLine::new("src/pricing.rs", 94),
+                AgentBriefLine::new("src/pricing.rs", 96),
+            ],
+        )
+        .with_changed_owners(vec![AgentBriefChangedOwner::new(
+            "src/pricing.rs",
+            96,
+            "pricing::loyalty_price",
+        )])
+        .with_enclosing_owners(vec![AgentBriefChangedOwner::new(
+            "src/pricing.rs",
+            96,
+            "pricing::loyalty_price",
+        )]);
+
+        let value = render_value(&working_set, &seams)?;
+        assert_eq!(value["summary"]["comments"], 0);
+        assert_eq!(value["summary"]["summary_only"], 1);
+        assert_eq!(value["summary_only"][0]["placement"], Value::Null);
+        assert_eq!(
+            value["summary_only"][0]["summary_reason"],
+            SUMMARY_REASON_NO_SAFE_PLACEMENT
+        );
+        assert_eq!(value["summary_only"][0]["seam"]["line"], 88);
+
+        // Unknown owner spans fail closed: with no enclosing-owner evidence
+        // a same-file changed line is still not a safe placement.
+        let unresolved = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 92)],
+        );
+        let value = render_value(&unresolved, &seams)?;
+        assert_eq!(value["summary"]["comments"], 0);
+        assert_eq!(
+            value["summary_only"][0]["summary_reason"],
+            SUMMARY_REASON_NO_SAFE_PLACEMENT
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gate_blocks_changed_seam_but_not_unchanged_same_file_seam() -> Result<(), String> {
+        // F60-5 end to end over the produced PR-guidance artifact: the
+        // changed seam (exact changed line) still blocks under
+        // acknowledgeable mode, while the unchanged seam in the same file is
+        // advisory at its own line and is not labeled changed.
+        let changed = classified(11);
+        let unchanged = classified_in_owner(20, "pricing::with_shipping");
+        let seams = [changed, unchanged];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![
+                AgentBriefLine::new("src/pricing.rs", 11),
+                AgentBriefLine::new("src/pricing.rs", 26),
+                AgentBriefLine::new("src/pricing.rs", 28),
+            ],
+        )
+        .with_changed_owners(vec![
+            AgentBriefChangedOwner::new("src/pricing.rs", 11, "pricing::discounted_total"),
+            AgentBriefChangedOwner::new("src/pricing.rs", 28, "pricing::loyalty_price"),
+        ])
+        .with_enclosing_owners(vec![
+            AgentBriefChangedOwner::new("src/pricing.rs", 11, "pricing::discounted_total"),
+            AgentBriefChangedOwner::new("src/pricing.rs", 28, "pricing::loyalty_price"),
+        ]);
+        let value = render_value(&working_set, &seams)?;
+        assert_eq!(value["summary"]["comments"], 1);
+        assert_eq!(value["comments"][0]["owner"], "pricing::discounted_total");
+        assert_eq!(value["comments"][0]["placement"]["mode"], "exact_seam_line");
+        assert_eq!(value["summary_only"][0]["owner"], "pricing::with_shipping");
+
+        let root = std::env::temp_dir().join(format!(
+            "ripr-review-anchor-gate-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|err| format!("clock: {err}"))?
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).map_err(|err| format!("create {}: {err}", root.display()))?;
+        let guidance = root.join("comments.json");
+        let text = serde_json::to_string(&value).map_err(|err| format!("encode: {err}"))?;
+        fs::write(&guidance, text).map_err(|err| format!("write guidance: {err}"))?;
+        let input = crate::output::gate::GateEvaluateInput {
+            root: root.clone(),
+            repo_exposure: None,
+            pr_guidance: Some(PathBuf::from("comments.json")),
+            gap_ledger: None,
+            sarif_policy: None,
+            labels_json: None,
+            labels: Vec::new(),
+            agent_verify: None,
+            agent_receipt: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            baseline: None,
+            mode: crate::output::gate::GateMode::Acknowledgeable,
+            acknowledgement_labels: Vec::new(),
+            exception_policy: None,
+        };
+        let report = crate::output::gate::build_gate_decision_report(&input);
+        let _ = fs::remove_dir_all(&root);
+        let report = report?;
+        assert!(crate::output::gate::gate_decision_should_fail(&report));
+        let markdown = crate::output::gate::render_gate_decision_markdown(&report);
+        let (blocking, advisory) = markdown
+            .split_once("## Advisory")
+            .ok_or_else(|| format!("gate markdown has no advisory section:\n{markdown}"))?;
+        assert!(blocking.contains("Blocking: 1"), "{markdown}");
+        assert!(
+            blocking.contains("- src/pricing.rs:11 weakly_gripped — policy-eligible gap blocks"),
+            "{markdown}"
+        );
+        assert!(
+            blocking.contains("Changed owner: `pricing::discounted_total`"),
+            "{markdown}"
+        );
+        assert!(!blocking.contains("with_shipping"), "{markdown}");
+        assert!(
+            advisory.contains(
+                "- src/pricing.rs:20 weakly_gripped — seam is outside this PR's changed lines"
+            ),
+            "{markdown}"
+        );
+        assert!(
+            advisory.contains("  - Owner: `pricing::with_shipping`"),
+            "{markdown}"
+        );
+        assert!(!advisory.contains("Changed owner"), "{markdown}");
+        assert!(!advisory.contains("Changed behavior"), "{markdown}");
         Ok(())
     }
 
@@ -2341,8 +3081,40 @@ mod tests {
     }
 
     #[test]
-    fn review_comments_suppresses_when_recommended_test_changed() -> Result<(), String> {
-        let seams = [classified(88)];
+    fn review_comments_changed_tests_do_not_erase_unresolved_classes() -> Result<(), String> {
+        for class in [
+            SeamGripClass::Ungripped,
+            SeamGripClass::WeaklyGripped,
+            SeamGripClass::ReachableUnrevealed,
+            SeamGripClass::ActivationUnknown,
+            SeamGripClass::PropagationUnknown,
+            SeamGripClass::ObservationUnknown,
+            SeamGripClass::DiscriminationUnknown,
+        ] {
+            for test_changed in [false, true] {
+                let mut entry = classified(88);
+                entry.class = class;
+                let mut lines = vec![AgentBriefLine::new("src/pricing.rs", 88)];
+                if test_changed {
+                    lines.push(AgentBriefLine::new("tests/pricing.rs", 12));
+                }
+                let working_set = AgentBriefResolvedWorkingSet::base("main", lines);
+                let value = render_value(&working_set, &[entry])?;
+                if value["summary"]["comments"] != 1
+                    || value["summary"]["suppressed"] != 0
+                    || value["summary"]["unchanged_tests"] != !test_changed
+                {
+                    return Err(format!(
+                        "unresolved {class:?}, changed={test_changed}: {value}"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_changed_tests_preserve_noneligible_disposition() -> Result<(), String> {
         let working_set = AgentBriefResolvedWorkingSet::base(
             "main",
             vec![
@@ -2351,21 +3123,100 @@ mod tests {
             ],
         );
 
-        let value = render_value(&working_set, &seams)?;
-        assert_eq!(value["summary"]["comments"], 0);
-        assert_eq!(value["summary"]["suppressed"], 1);
-        assert_eq!(value["suppressed"][0]["reason"], "nearby_test_changed");
-        assert_eq!(value["summary"]["unchanged_tests"], false);
-        let rendered = render_review_comments_markdown(
-            Path::new("."),
-            "main",
-            "HEAD",
-            &Mode::Draft,
-            &RiprConfig::default(),
-            &working_set,
-            &selection(&seams),
-        );
-        assert!(rendered.contains("nearby_test_changed"));
+        for class in [
+            SeamGripClass::StronglyGripped,
+            SeamGripClass::Intentional,
+            SeamGripClass::Suppressed,
+            SeamGripClass::Opaque,
+        ] {
+            let mut entry = classified(88);
+            entry.class = class;
+            let control = AgentBriefResolvedWorkingSet::base(
+                "main",
+                vec![AgentBriefLine::new("src/pricing.rs", 88)],
+            );
+            let baseline = render_value(&control, std::slice::from_ref(&entry))?;
+            let value = render_value(&working_set, &[entry])?;
+            for key in ["comments", "summary_only", "suppressed"] {
+                if value[key] != baseline[key] {
+                    return Err(format!("noneligible {class:?} changed {key}: {value}"));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_changed_tests_retain_ten_selected_with_bounded_overflow()
+    -> Result<(), String> {
+        for count in [10, 11] {
+            let seams: Vec<_> = (88..88 + count)
+                .map(|line| {
+                    let mut entry = classified(line);
+                    entry.class = SeamGripClass::ReachableUnrevealed;
+                    entry
+                })
+                .collect();
+            let mut lines: Vec<_> = (88..88 + count)
+                .map(|line| AgentBriefLine::new("src/pricing.rs", line))
+                .collect();
+            lines.push(AgentBriefLine::new("tests/pricing.rs", 12));
+            let working_set = AgentBriefResolvedWorkingSet::base("main", lines);
+            let value = render_value(&working_set, &seams)?;
+            if value["summary"]["comments"] != 3
+                || value["summary"]["summary_only"] != 7
+                || value["summary"]["suppressed"] != count - 10
+            {
+                return Err(format!("bounded selected guidance erased: {value}"));
+            }
+            let cards = value["comments"]
+                .as_array()
+                .ok_or("missing comments")?
+                .iter()
+                .chain(value["summary_only"].as_array().ok_or("missing summary")?);
+            for card in cards.clone() {
+                if card["source_location"]["file"] != "src/pricing.rs"
+                    || !card["source_location"]["line"]
+                        .as_u64()
+                        .is_some_and(|line| (88..98).contains(&line))
+                    || card["grip_class"] != "reachable_unrevealed"
+                    || card["reason"]
+                        .as_str()
+                        .is_none_or(|reason| reason.is_empty())
+                    || card["suggested_test"].is_null()
+                {
+                    return Err(format!("retained card lost actionable evidence: {card}"));
+                }
+            }
+            let control = AgentBriefResolvedWorkingSet::base(
+                "main",
+                (88..88 + count)
+                    .map(|line| AgentBriefLine::new("src/pricing.rs", line))
+                    .collect(),
+            );
+            let baseline = render_value(&control, &seams)?;
+            for key in ["comments", "summary_only", "suppressed", "limits_note"] {
+                if value[key] != baseline[key] {
+                    return Err(format!(
+                        "changed-test proximity altered card evidence or limits: {key}"
+                    ));
+                }
+            }
+            let ids: std::collections::BTreeSet<_> = cards
+                .map(|card| card["seam_id"].as_str().ok_or("missing seam identity"))
+                .collect::<Result<_, _>>()?;
+            let expected: std::collections::BTreeSet<_> = seams
+                .iter()
+                .take(10)
+                .map(|entry| entry.seam.id().as_str())
+                .collect();
+            if ids != expected {
+                return Err("selected seam identity lost".into());
+            }
+            if count == 11 && value["suppressed"][0]["reason"] != "summary_cap" {
+                return Err("overflow lost explicit cap reason".into());
+            }
+        }
         Ok(())
     }
 
@@ -2529,6 +3380,7 @@ mod tests {
         let selected = selection(&seams);
         let item = review_recommendation_json(
             Path::new("."),
+            "main",
             &Mode::Draft,
             &RiprConfig::default(),
             &selected.top_seams[0],
@@ -2536,15 +3388,79 @@ mod tests {
         );
 
         assert_eq!(item["gap_state"], "static_limitation");
+        let reason = item
+            .get("reason")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "static-limitation card must carry a reason".to_string())?;
+        if !reason.contains("Static evidence state is static_limitation")
+            || reason.contains("a focused test can strengthen")
+        {
+            return Err(format!(
+                "static-limitation reason contradicts canonical state: {reason}"
+            ));
+        }
         assert_eq!(item["suggested_test"]["recommended_file"], "not_applicable");
         assert!(item["suggested_test"]["assertion_guidance"].is_null());
         assert!(item["receipt_command"].is_null());
         assert!(item["llm_guidance"].get("verify_command").is_none());
+        if item
+            .pointer("/llm_guidance/analysis_outcome_command")
+            .is_some()
+        {
+            return Err("static-limitation card must not gain an outcome producer".to_string());
+        }
         assert!(
             item["llm_guidance"]["prompt"]
                 .as_str()
                 .is_some_and(|prompt| prompt.contains("missing_discriminator_evidence"))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn review_comment_reason_state_precedes_optional_discriminator() -> Result<(), String> {
+        let seams = [classified(10)];
+        let selected = selection(&seams);
+        let entry = selected
+            .top_seams
+            .first()
+            .ok_or_else(|| "expected selected reason fixture".to_string())?;
+        for state in [
+            "static_limitation",
+            "already_observed",
+            "internal_only",
+            "unknown",
+        ] {
+            for missing in [None, Some("amount == discount_threshold")] {
+                let reason = reason_for(entry, state, missing);
+                let expected = format!(
+                    "Static evidence state is {state}; no repair test is offered by this card. Inspect the producer-owned evidence and policy state."
+                );
+                if reason != expected {
+                    return Err(format!(
+                        "non-actionable state {state} changed: expected {expected}, got {reason}"
+                    ));
+                }
+            }
+        }
+        let missing = reason_for(entry, "actionable", Some("amount == discount_threshold"));
+        if missing
+            != "Static evidence names missing discriminator `amount == discount_threshold` for this seam."
+        {
+            return Err(format!(
+                "actionable discriminator reason changed: {missing}"
+            ));
+        }
+        let fallback = reason_for(entry, "actionable", None);
+        let expected_fallback = format!(
+            "Static evidence class is {}; a focused test can strengthen the named seam.",
+            entry.seam.class.as_str()
+        );
+        if fallback != expected_fallback {
+            return Err(format!(
+                "actionable fallback reason changed: expected {expected_fallback}, got {fallback}"
+            ));
+        }
         Ok(())
     }
 
@@ -2695,6 +3611,29 @@ mod tests {
     }
 
     #[test]
+    fn review_comments_gap_ledger_first_action_command_quotes_root_and_ledger() -> Result<(), String>
+    {
+        let records = crate::output::gap_decision_ledger::parse_gap_records_json(
+            gap_record_review_comments_fixture(),
+        )?;
+        let rendered = render_gap_record_review_comments_json(
+            Path::new("it's a repo"),
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            "target/it's;ledger.json",
+            &records,
+        )?;
+        let value: Value =
+            serde_json::from_str(&rendered).map_err(|err| format!("parse JSON: {err}"))?;
+        assert_eq!(
+            value["comments"][0]["llm_guidance"]["command"],
+            "ripr first-action --root 'it'\\''s a repo' --gap-ledger 'target/it'\\''s;ledger.json'"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn review_comments_gap_ledger_renders_only_eligible_repair_cards() -> Result<(), String> {
         let records = crate::output::gap_decision_ledger::parse_gap_records_json(
             gap_record_review_comments_fixture(),
@@ -2760,8 +3699,22 @@ mod tests {
             value["comments"][0].get("confidence").is_none(),
             "repair cards should not expose generic confidence optics"
         );
-        assert_eq!(value["suppressed"][0]["reason"], "missing_seam_identity");
+        // The seamless duplicate yields its dedupe key to the seam-carrying
+        // card (#4524) instead of being suppressed for its missing seam.
+        assert_eq!(
+            value["suppressed"][0]["reason"],
+            "duplicate_dedupe_fingerprint"
+        );
+        assert_eq!(value["suppressed"][0]["gap_id"], "gap:duplicate");
         assert_eq!(value["suppressed"][1]["reason"], "not_pr_comment_eligible");
+
+        // The schema fixture must retain the real eligible producer shape;
+        // validating only zero-comment ledgers misses this route's card.
+        let schema_fixture: Value = serde_json::from_str(include_str!(
+            "../../../../tests/fixtures/verification/ripr/review-comments.gap-ledger.valid.json"
+        ))
+        .map_err(|err| format!("parse schema fixture: {err}"))?;
+        assert_eq!(value["comments"][0], schema_fixture["comments"][0]);
 
         let markdown = render_gap_record_review_comments_markdown(
             Path::new("."),
@@ -2785,7 +3738,11 @@ mod tests {
     }
 
     #[test]
-    fn review_comments_gap_ledger_without_seam_identity_is_suppressed() -> Result<(), String> {
+    fn review_comments_gap_ledger_without_seam_identity_renders_gap_keyed_card()
+    -> Result<(), String> {
+        // Preview-language `--check-output` records carry no seam identity
+        // (#4524). The card stays keyed by its GapRecord and omits `seam_id`
+        // rather than substituting the gap ID for it.
         let mut record = eligible_gap_record_json("gap:missing-seam", "dedupe:missing-seam");
         record
             .as_object_mut()
@@ -2801,11 +3758,65 @@ mod tests {
             "target/ripr/reports/gap-decision-ledger.json",
             &records,
         )?;
-        let value: Value = serde_json::from_str(&rendered)
-            .map_err(|err| format!("parse suppressed JSON: {err}"))?;
-        assert_eq!(value["summary"]["comments"], 0);
-        assert_eq!(value["summary"]["suppressed"], 1);
-        assert_eq!(value["suppressed"][0]["reason"], "missing_seam_identity");
+        let value: Value =
+            serde_json::from_str(&rendered).map_err(|err| format!("parse card JSON: {err}"))?;
+        assert_eq!(value["summary"]["comments"], 1);
+        assert_eq!(value["summary"]["suppressed"], 0);
+        let card = &value["comments"][0];
+        assert_eq!(card["gap_id"], "gap:missing-seam");
+        assert_eq!(card["dedupe_key"], "dedupe:missing-seam");
+        assert!(
+            card.get("seam_id").is_none(),
+            "seam_id was synthesized: {card}"
+        );
+
+        let markdown = render_gap_record_review_comments_markdown(
+            Path::new("."),
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            "target/ripr/reports/gap-decision-ledger.json",
+            &records,
+        );
+        assert!(markdown.contains("- `gap:missing-seam` @ "), "{markdown}");
+        Ok(())
+    }
+
+    /// Eligibility does not require a related test or target file, so an
+    /// eligible card projects null test-navigation fields. The published
+    /// schema's gap-ledger branch admits exactly this shape
+    /// (`review_comments_gap_ledger_card_has_its_own_schema_branch`).
+    #[test]
+    fn review_comments_gap_ledger_card_without_related_test_keeps_null_navigation()
+    -> Result<(), String> {
+        let mut record = eligible_gap_record_json("gap:no-related-test", "dedupe:no-related");
+        record["repair_route"]
+            .as_object_mut()
+            .ok_or("repair route fixture should be an object")?
+            .remove("target_file");
+        let records_json = serde_json::json!({ "records": [record] }).to_string();
+        let records = crate::output::gap_decision_ledger::parse_gap_records_json(&records_json)?;
+        let rendered = render_gap_record_review_comments_json(
+            Path::new("."),
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            "target/ripr/reports/gap-decision-ledger.json",
+            &records,
+        )?;
+        let value: Value =
+            serde_json::from_str(&rendered).map_err(|err| format!("parse JSON: {err}"))?;
+        assert_eq!(value["summary"]["comments"], 1);
+        let suggested = &value["comments"][0]["suggested_test"];
+        for field in [
+            "recommended_file",
+            "recommended_name",
+            "near_test",
+            "related_test",
+        ] {
+            assert_eq!(suggested[field], Value::Null, "{field}");
+        }
+        assert!(value["comments"][0]["repair_card"].is_object());
         Ok(())
     }
 
@@ -2843,14 +3854,55 @@ mod tests {
     }
 
     #[test]
-    fn review_comments_missing_seam_does_not_consume_duplicate_slot() -> Result<(), String> {
-        let mut legacy = eligible_gap_record_json("gap:legacy", "dedupe:shared");
-        legacy
+    fn review_comments_seam_carrying_record_wins_a_shared_dedupe_key() -> Result<(), String> {
+        let mut seamless = eligible_gap_record_json("gap:seamless", "dedupe:shared");
+        seamless
             .as_object_mut()
-            .ok_or("legacy fixture should be an object")?
+            .ok_or("seamless fixture should be an object")?
             .remove("seam_id");
-        let valid = eligible_gap_record_json("gap:valid", "dedupe:shared");
-        let records_json = serde_json::json!({ "records": [legacy, valid] }).to_string();
+        let with_seam = eligible_gap_record_json("gap:with-seam", "dedupe:shared");
+        // A seamless record must not take the key from a seam-carrying one,
+        // whichever comes first in the ledger.
+        for records in [
+            [seamless.clone(), with_seam.clone()],
+            [with_seam.clone(), seamless.clone()],
+        ] {
+            let records_json = serde_json::json!({ "records": records }).to_string();
+            let records =
+                crate::output::gap_decision_ledger::parse_gap_records_json(&records_json)?;
+            let rendered = render_gap_record_review_comments_json(
+                Path::new("."),
+                "main",
+                "HEAD",
+                &Mode::Draft,
+                "target/ripr/reports/gap-decision-ledger.json",
+                &records,
+            )?;
+            let value: Value = serde_json::from_str(&rendered)
+                .map_err(|err| format!("parse shared-key JSON: {err}"))?;
+            assert_eq!(value["summary"]["comments"], 1);
+            assert_eq!(value["summary"]["suppressed"], 1);
+            assert_eq!(value["comments"][0]["gap_id"], "gap:with-seam");
+            assert_eq!(value["suppressed"][0]["gap_id"], "gap:seamless");
+            assert_eq!(
+                value["suppressed"][0]["reason"],
+                "duplicate_dedupe_fingerprint"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_ineligible_seam_record_does_not_claim_a_shared_dedupe_key()
+    -> Result<(), String> {
+        let mut seamless = eligible_gap_record_json("gap:seamless", "dedupe:shared");
+        seamless
+            .as_object_mut()
+            .ok_or("seamless fixture should be an object")?
+            .remove("seam_id");
+        let mut waived = eligible_gap_record_json("gap:waived", "dedupe:shared");
+        waived["policy_state"] = serde_json::json!("waived");
+        let records_json = serde_json::json!({ "records": [waived, seamless] }).to_string();
         let records = crate::output::gap_decision_ledger::parse_gap_records_json(&records_json)?;
         let rendered = render_gap_record_review_comments_json(
             Path::new("."),
@@ -2861,11 +3913,119 @@ mod tests {
             &records,
         )?;
         let value: Value = serde_json::from_str(&rendered)
-            .map_err(|err| format!("parse mixed migration JSON: {err}"))?;
+            .map_err(|err| format!("parse waived-key JSON: {err}"))?;
         assert_eq!(value["summary"]["comments"], 1);
-        assert_eq!(value["summary"]["suppressed"], 1);
-        assert_eq!(value["comments"][0]["gap_id"], "gap:valid");
-        assert_eq!(value["suppressed"][0]["reason"], "missing_seam_identity");
+        assert_eq!(value["comments"][0]["gap_id"], "gap:seamless");
+        assert_eq!(
+            value["suppressed"][0]["reason"],
+            "policy_state_not_commentable"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_rejected_record_does_not_reserve_a_dedupe_key() -> Result<(), String> {
+        let mut no_route = eligible_gap_record_json("gap:no-route", "dedupe:shared");
+        no_route
+            .as_object_mut()
+            .ok_or("no-route fixture should be an object")?
+            .remove("repair_route");
+        let mut blank_verify = eligible_gap_record_json("gap:blank-verify", "dedupe:shared");
+        blank_verify["verification_commands"] = serde_json::json!(["  "]);
+        let valid = eligible_gap_record_json("gap:valid", "dedupe:shared");
+        for (rejected, reason) in [
+            (&no_route, "missing_repair_route"),
+            (&blank_verify, "missing_verification_command"),
+        ] {
+            for with_seam in [true, false] {
+                let (mut rejected, mut valid) = (rejected.clone(), valid.clone());
+                if !with_seam {
+                    for record in [&mut rejected, &mut valid] {
+                        record
+                            .as_object_mut()
+                            .ok_or("fixture should be an object")?
+                            .remove("seam_id");
+                    }
+                }
+                let records_json = serde_json::json!({ "records": [rejected, valid] }).to_string();
+                let records =
+                    crate::output::gap_decision_ledger::parse_gap_records_json(&records_json)?;
+                let rendered = render_gap_record_review_comments_json(
+                    Path::new("."),
+                    "main",
+                    "HEAD",
+                    &Mode::Draft,
+                    "target/ripr/reports/gap-decision-ledger.json",
+                    &records,
+                )?;
+                let value: Value = serde_json::from_str(&rendered)
+                    .map_err(|err| format!("parse reserved-key JSON: {err}"))?;
+                assert_eq!(value["summary"]["comments"], 1, "{reason} seam={with_seam}");
+                assert_eq!(value["comments"][0]["gap_id"], "gap:valid");
+                assert_eq!(value["suppressed"][0]["reason"], reason);
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_seam_winner_keeps_its_key_past_the_caps() -> Result<(), String> {
+        let mut seamless = eligible_gap_record_json("gap:seamless", "dedupe:shared");
+        seamless
+            .as_object_mut()
+            .ok_or("seamless fixture should be an object")?
+            .remove("seam_id");
+        let with_seam = eligible_gap_record_json("gap:with-seam", "dedupe:shared");
+        let filler = (0..DEFAULT_REVIEW_MAX_INLINE_COMMENTS + DEFAULT_REVIEW_MAX_SUMMARY_ITEMS)
+            .map(|index| {
+                eligible_gap_record_json(&format!("gap:filler:{index}"), &format!("dedupe:{index}"))
+            })
+            .collect::<Vec<_>>();
+        // The seam-carrying record sits past both caps in one order and first
+        // in the other; either way the shared key keeps exactly one card.
+        let mut late_seam = vec![seamless.clone()];
+        late_seam.extend(filler.iter().cloned());
+        late_seam.push(with_seam.clone());
+        let mut early_seam = vec![with_seam, seamless];
+        early_seam.extend(filler);
+        for records in [late_seam, early_seam] {
+            let records_json = serde_json::json!({ "records": records }).to_string();
+            let records =
+                crate::output::gap_decision_ledger::parse_gap_records_json(&records_json)?;
+            let rendered = render_gap_record_review_comments_json(
+                Path::new("."),
+                "main",
+                "HEAD",
+                &Mode::Draft,
+                "target/ripr/reports/gap-decision-ledger.json",
+                &records,
+            )?;
+            let value: Value = serde_json::from_str(&rendered)
+                .map_err(|err| format!("parse capped shared-key JSON: {err}"))?;
+            let shared_cards = ["comments", "summary_only"]
+                .iter()
+                .filter_map(|lane| value[*lane].as_array())
+                .flatten()
+                .filter(|card| card["dedupe_key"] == "dedupe:shared")
+                .collect::<Vec<_>>();
+            assert_eq!(shared_cards.len(), 1);
+            assert_eq!(shared_cards[0]["gap_id"], "gap:with-seam");
+            assert_eq!(value["comments"][0]["gap_id"], "gap:with-seam");
+            let suppressed = value["suppressed"]
+                .as_array()
+                .ok_or("suppressed should be an array")?;
+            let reasons = suppressed
+                .iter()
+                .map(|item| (item["gap_id"].as_str(), item["reason"].as_str()))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                reasons,
+                [
+                    (Some("gap:seamless"), Some("duplicate_dedupe_fingerprint")),
+                    (Some("gap:filler:12"), Some("summary_cap")),
+                ]
+            );
+        }
         Ok(())
     }
 
@@ -3116,13 +4276,20 @@ mod tests {
             &render_markdown(&owner, &exact_seams),
         )?;
 
+        // Line 92 sits inside `pricing::discounted_total`'s span (enclosing
+        // owner evidence); line 60 does not. Only 92 is a safe placement.
         let same_file = AgentBriefResolvedWorkingSet::base(
             "main",
             vec![
                 AgentBriefLine::new("src/pricing.rs", 60),
                 AgentBriefLine::new("src/pricing.rs", 92),
             ],
-        );
+        )
+        .with_enclosing_owners(vec![AgentBriefChangedOwner::new(
+            "src/pricing.rs",
+            92,
+            "pricing::discounted_total",
+        )]);
         assert_json_fixture("same-file-line", &render_value(&same_file, &exact_seams)?)?;
         assert_markdown_fixture("same-file-line", &render_markdown(&same_file, &exact_seams))?;
 

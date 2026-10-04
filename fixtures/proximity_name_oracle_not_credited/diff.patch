@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -6,7 +6,7 @@ pub enum ParseError {
+ 
+ pub fn try_parse(raw: &str) -> Result<usize, ParseError> {
+     if raw.contains('@') {
+-        return Err(ParseError::ParserInit);
++        return Err(ParseError::MalformedSource);
+     }
+     Ok(raw.len())
+ }

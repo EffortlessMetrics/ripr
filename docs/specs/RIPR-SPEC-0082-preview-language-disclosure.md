@@ -86,8 +86,16 @@ changes. The remaining non-analyzable files (`.md`, `.yaml`, etc.) never
 trigger an advisory. Each advisory carries:
 
 - `language`: stable wire string (e.g. `"typescript"`, `"python"`)
-- `file_count`: number of files in scope that routed to this adapter
-- `sample_paths`: up to three normalized file paths (forward-slash)
+- `file_count`: when `enabled` is `true`, the number of routed files the
+  adapter accepts for analysis — a changed file its own generated/excluded-path
+  authority refuses before counting (TypeScript/JavaScript #3743, Python #3672)
+  is not counted (#4372); when `enabled` is `false`, the raw number of files in
+  scope that routed to this adapter
+- `sample_paths`: up to three normalized file paths (forward-slash), drawn from
+  the same set `file_count` counts
+- `javascript_file_count`: how many of the `file_count` files are
+  JavaScript-family sources (`0` for every language but `typescript`); used by
+  human prose only (#4555)
 - `enabled`: whether this preview adapter was configured and available for
   this analysis
 
@@ -95,6 +103,66 @@ Advisories are propagated through `AnalysisResult` → `CheckOutput`. Adapter
 completion is producer-owned by `language_runs`: successful runs are omitted,
 while a matching non-success record means the routed files were not analyzed
 to completion.
+
+### Skipped generated/excluded files (enabled adapters)
+
+An enabled preview adapter skips changed files under its excluded directories
+(for TypeScript/JavaScript: `vendor/`, `node_modules/`, `dist/`, `build/`,
+`coverage/`, `out/`, `.next/`, `.cache/`, `.direnv/`, `__generated__/`; for
+Python: the `PYTHON_EXCLUDED_DIRS` set plus `vendor/`) and generated names
+(`*.generated.*`, generated Python such as `*_pb2.py`). Those files are not
+counted in `file_count` and are never presented as analyzed. They are still
+changed files in scope, so the diff pipeline records one typed limitation per
+language on the shared analysis outcome (#4372):
+
+- `kind`: `language_scope_unsupported`, `producer_stage`: `language_adapter`
+- `affected_items`: number of skipped changed files for that language
+- `recovery`: `retry`, naming up to three skipped paths ("Not analyzed by the
+  <Language> preview adapter: <paths>. ...")
+
+This is the same shape the Rust adapter uses for skipped generated Rust files.
+The outcome therefore becomes `partial_with_limitations` (analysis incomplete),
+so an excluded-only diff is never a silently complete result. When the
+adapter is not enabled, no skip limitation is emitted: the not-enabled
+advisory already discloses every routed file with its raw count. No new JSON
+field is introduced.
+
+### Unavailable changed Python source
+
+A new-side changed Python path absent from the selected source root is not an
+analyzed file (#5110). Python reuses the shared regular-source-file admission
+check and emits `changed_file_absent_from_worktree` with the exact path and
+checkout recovery. The path is withheld from probes, summary analyzed counts,
+and the enabled advisory's count/sample paths. The raw changed-input count
+still includes it. Available files in the same diff retain their findings.
+
+The shared outcome is `partial_with_limitations`, `analysis_complete: false`;
+human, JSON and badge projections consume that outcome. A missing-source-only
+badge cannot become a complete green zero. Restoring identical bytes under the
+same root with the same retained diff restores the original findings. Invalid
+UTF-8 retains its existing read-failure limitation, while a readable comment-only
+diff can still be a complete zero. Generated/excluded paths keep the skipped-scope
+rule above; genuine Git deletions are omitted by the parser's new-side selection
+and do not require a nonexistent new-side file to be restored.
+
+Admission matches source discovery's no-follow boundary below the selected root
+(#5141): a changed source whose final entry is a symlink, or whose relative
+ancestor is a symlink or non-directory, is unavailable for this analysis and
+uses the same typed limitation. The selected root itself may be a legitimate
+alias. Direct relative paths and valid repository-prefix suffix paths apply the
+same rule. This is source-availability disclosure, not a filesystem race or
+authentication guarantee. Public CLI controls hold a Git-generated diff fixed
+across regular source, owned file and directory links, and restoration, covering
+explicit roots, implicit repository/nested roots, and a selected-root alias.
+The public control retains one bounded observational text transcript in the
+required test artifact, alongside unchanged JUnit and run context. It does not
+change test selection or retries and is not typed acceptance or release proof.
+Its exact filename binds the current run and attempt, so a skipped or unobserved
+test cannot reuse a cached transcript from another run. The bounded header and
+each collected receipt are persisted before later outcome assertions; a partial
+transcript remains observational evidence, not proof that all controls ran.
+Outside GitHub Actions, absent GitHub identifiers use a unique fixture filename,
+including in other CI environments; this does not create a GitHub artifact receipt.
 
 ### Three honesty cases
 
@@ -109,7 +177,13 @@ to completion.
 3. **Adapter NOT enabled (default) + preview files in scope** (`enabled ==
    false`) — the files were detected but NOT analyzed; the user is told their
    change was not analyzed and how to enable the adapter. This is the primary
-   #1111 fix.
+   #1111 fix. When the adapter is not compiled into the running binary (only
+   Perl is disclosed in that state), a `ripr.toml` edit cannot enable it —
+   config load rejects the language — so the human note, JSON/diff-report
+   `why`, and typed outcome recovery instead carry the shared
+   `LanguageId::unavailable_adapter_recovery` text naming the real
+   prerequisites (a `lang-perl` build and the not-yet-published
+   `perl-ripr-facts` exporter) and omit the TOML block.
 
 Pure-Rust diffs produce no advisory in either case.
 
@@ -121,14 +195,29 @@ When any advisory is present, a `Note:` line is appended after the findings
 Enabled case:
 
 ```
-Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
 ```
 
 Not-enabled (default) case:
 
 ```
-Note: this diff contains 1 Typescript(s). The Typescript adapter is preview and not enabled, so these files were not analyzed — this is NOT a clean Rust-grade result. Enable it in ripr.toml [languages] to analyze them.
+Note: this diff contains 1 TypeScript file. The TypeScript adapter is preview and not enabled, so these files were not analyzed — this is NOT a clean Rust-grade result. Enable it in ripr.toml [languages] to analyze them.
 ```
+
+The note names the language by its display name (`TypeScript`,
+`JavaScript`, `Python`, `Perl`, owned by `LanguageId::display_name`) and
+counts files as `1 <Language> file` or `N <Language> files`.
+
+The TypeScript adapter analyzes the whole TS/JS family under the `typescript`
+wire name, so its advisory also carries `javascript_file_count`: how many of
+`file_count` are `.js`/`.jsx`/`.mjs`/`.cjs` sources, by the router's exact
+extension lists (#4555). Human prose uses it: a JavaScript-only advisory
+counts `JavaScript file(s)`, a mixed one `TypeScript/JavaScript files`, and
+the not-enabled, not-compiled and none-routed notes name the
+`TypeScript/JavaScript adapter`. The not-enabled note keeps
+the `"typescript"` config value and adds `("typescript" enables the adapter
+for JavaScript files too.)`. A TypeScript-only advisory is unchanged. The JSON
+advisory does not carry the new count; its `language` stays the wire name.
 
 The note is omitted entirely for pure-Rust diffs. The note does not change
 exit code or pass/fail status.
@@ -209,11 +298,11 @@ enabled adapter with a matching non-success `language_runs` entry carries
 
 1. **Default case (#1111 repro)**: diff contains `.ts` file, NO `ripr.toml`
    (only Rust enabled) → human output includes
-   `Note: this diff contains 1 Typescript(s). The Typescript adapter is preview and not enabled, so these files were not analyzed`,
+   `Note: this diff contains 1 TypeScript file. The TypeScript adapter is preview and not enabled, so these files were not analyzed`,
    and JSON `preview_languages[0].enabled == false`, `analyzed == false`.
 2. Enabled-success case: diff contains `.ts` file, `ripr.toml` has
    `enabled = ["typescript"]` → human output includes
-   `Note: 1 Typescript(s) analyzed under preview support`, JSON
+   `Note: 1 TypeScript file analyzed under preview support`, JSON
    `preview_languages[0].enabled == true`, `analyzed == true`.
 3. Enabled-failure case: diff contains `.pm` file, Perl is enabled, and the
    supplied facts packet fails ingestion → `language_runs` records `invalid`,
@@ -260,7 +349,9 @@ enabled adapter with a matching non-success `language_runs` entry carries
   `detect_preview_advisories()` (diff), `detect_repo_preview_advisories()`
   (repo); detection runs after the language loop, independent of enablement.
   Also `non_source_disclosure_message()` (#2304): the pure docs-only stderr
-  disclosure decision (count + extension summary), emitted only when the
+  disclosure decision (count + extension summary; extensionless and
+  `.`-ending paths are named, and a `.`-ending path drops the "correct"
+  non-claim as a likely truncated header, #4376), emitted only when the
   pipeline produced zero findings and no changed file routes to a source
   adapter.
 - `crates/ripr/src/analysis/workspace/discover.rs` —
@@ -301,3 +392,7 @@ enabled adapter with a matching non-success `language_runs` entry carries
 - Promote to accepted when an external TypeScript repo exercises the default
   (no-config) disclosure path end-to-end and the silent empty-result gap is
   confirmed closed.
+
+Git-generated paths with filename whitespace retain their exact identity in
+missing-source limitations and preview admission. An available `leading.py`
+remains counted and sampled when the distinct ` leading.py` is missing.

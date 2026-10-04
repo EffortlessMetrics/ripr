@@ -4,3 +4,8 @@
 # path
 #
 # Empty by default. Prefer cargo xtask over checked-in executable scripts.
+
+# The npm launcher's `bin` entry must keep the executable bit so the published
+# tarball supports direct `npx ripr` execution; a consumer-side Node shim has
+# no xtask equivalent.
+packaging/npm/launcher/bin/ripr.cjs

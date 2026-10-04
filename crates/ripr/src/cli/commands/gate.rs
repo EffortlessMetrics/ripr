@@ -4,6 +4,7 @@
 //! live in `crate::output::gate`. This module owns argv parsing, output
 //! destination selection, and exit mapping for the gate command family.
 
+use crate::cli::CommandError;
 use crate::cli::commands_options::GateOptions;
 use crate::cli::help;
 use crate::cli::parse::expect_value;
@@ -14,7 +15,7 @@ use std::path::PathBuf;
 
 use super::{non_empty_path_arg, non_empty_string_arg, write_text_file};
 
-pub(in crate::cli) fn gate(args: &[String]) -> Result<(), String> {
+pub(in crate::cli) fn gate(args: &[String]) -> Result<(), CommandError> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         help::print_gate_help();
         return Ok(());
@@ -26,9 +27,9 @@ pub(in crate::cli) fn gate(args: &[String]) -> Result<(), String> {
         None => ("evaluate", &[][..]),
     };
     if subcommand != "evaluate" {
-        return Err(format!(
+        return Err(CommandError::from(format!(
             "unknown gate subcommand {subcommand:?}; expected `evaluate`"
-        ));
+        )));
     }
 
     let options = parse_gate_options(rest)?;
@@ -43,9 +44,9 @@ pub(in crate::cli) fn gate(args: &[String]) -> Result<(), String> {
         && options.input.gap_ledger.is_none()
         && options.input.repo_exposure.is_none()
     {
-        return Err(
+        return Err(CommandError::from(
             "gate evaluate requires at least one of --pr-guidance <path>, --gap-ledger <path>, or --repo-exposure <path>; see `ripr gate --help` for all options".to_string(),
-        );
+        ));
     }
     let report = output::gate::build_gate_decision_report(&options.input)?;
     let rendered_json = output::gate::render_gate_decision_json(&report)?;
@@ -56,15 +57,24 @@ pub(in crate::cli) fn gate(args: &[String]) -> Result<(), String> {
     println!("Wrote {}", options.out_md.display());
     if output::gate::gate_decision_should_fail(&report) {
         let detail = output::gate::gate_decision_inline_detail(&report);
-        Err(format!(
+        let message = format!(
             "ripr gate decision is {}{}; see {} for the full report",
             output::gate::gate_decision_status(&report),
             detail,
             options.out.display()
-        ))
-    } else {
-        Ok(())
+        );
+        // A config_error means the evaluation could not complete (exit 2);
+        // only a completed evaluation reaching its blocking decision is a
+        // Decision (exit 3).
+        return Err(
+            if output::gate::gate_decision_status(&report) == "config_error" {
+                CommandError::Failure(message)
+            } else {
+                CommandError::Decision(message)
+            },
+        );
     }
+    Ok(())
 }
 
 fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
@@ -221,7 +231,7 @@ fn default_visible_only_warning(
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::{args, repo_root, unique_command_test_dir};
+    use super::super::tests::{args, unique_command_test_dir};
     use super::*;
 
     /// Removes owned temporary roots when the test returns, including `?`
@@ -326,14 +336,16 @@ mod tests {
         }
         assert_eq!(
             bare_result,
-            Err(
+            Err(CommandError::Failure(
                 "gate evaluate requires at least one of --pr-guidance <path>, --gap-ledger <path>, or --repo-exposure <path>; see `ripr gate --help` for all options"
                     .to_string()
-            )
+            ))
         );
         assert_eq!(
             gate(&args(&["inspect"])),
-            Err("unknown gate subcommand \"inspect\"; expected `evaluate`".to_string())
+            Err(CommandError::Failure(
+                "unknown gate subcommand \"inspect\"; expected `evaluate`".to_string()
+            ))
         );
         assert_eq!(
             parse_gate_options(&args(&["--mode", "strict"])),
@@ -394,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    fn gate_command_writes_visible_only_reports() -> Result<(), String> {
+    fn gate_command_writes_visible_only_reports() -> Result<(), CommandError> {
         let dir = unique_command_test_dir("gate-visible");
         std::fs::create_dir_all(&dir).map_err(|err| format!("create gate dir: {err}"))?;
         let out = dir.join("gate-decision.json");
@@ -402,7 +414,9 @@ mod tests {
         gate(&args(&[
             "evaluate",
             "--root",
-            &repo_root().display().to_string(),
+            &crate::testing::fixture_workspace::hermetic_gate_fixture_root()?
+                .display()
+                .to_string(),
             "--pr-guidance",
             "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
             "--out",
@@ -424,7 +438,7 @@ mod tests {
     }
 
     #[test]
-    fn gate_command_writes_blocked_report_before_error() -> Result<(), String> {
+    fn gate_command_writes_blocked_report_before_error() -> Result<(), CommandError> {
         // #1711: every verdict-affecting input is read through --root, so
         // the test owns its root instead of the real checkout. A stale
         // canonical-delta.json planted OUTSIDE the owned root (a sibling
@@ -463,7 +477,19 @@ mod tests {
             &out.display().to_string(),
         ]));
 
-        assert!(matches!(result, Err(message) if message.contains("blocked")));
+        // A blocked gate decision is a successful evaluation reaching its
+        // blocking decision: it maps to the decision exit code 3, not the
+        // could-not-complete code 2.
+        let Err(decision) = result else {
+            return Err(CommandError::Failure(
+                "expected a blocked gate decision error, got Ok".to_string(),
+            ));
+        };
+        assert!(
+            matches!(&decision, CommandError::Decision(message) if message.contains("blocked")),
+            "blocked decision must carry the Decision variant: {decision:?}"
+        );
+        assert_eq!(decision.exit_code(), 3);
         let json_text =
             std::fs::read_to_string(&out).map_err(|err| format!("read gate json: {err}"))?;
         assert!(json_text.contains("\"status\": \"blocked\""));

@@ -4,7 +4,9 @@ mod formatter;
 mod report;
 
 pub use context_packet::render_context_packet;
-pub(crate) use context_packet::render_context_packet_dto;
+pub(crate) use context_packet::{
+    render_context_packet_dto, render_context_packet_with_explain_command,
+};
 pub use report::render;
 pub(crate) use report::render_with_config;
 
@@ -99,10 +101,18 @@ mod tests {
         );
 
         let human = crate::output::human::render(&output);
-        assert!(human.contains("Analysis outcome: unsupported_input (analysis incomplete)."));
+        assert!(human.contains(
+            "Analysis outcome: the input is not supported (analysis incomplete; unsupported_input)."
+        ));
         assert!(!human.contains("Analysis outcome: \"unsupported_input\""));
         assert!(human.contains("analysis incomplete"));
-        assert!(human.contains("Zero findings is not a clean result"));
+        // The sample output carries findings, so the zero-findings hedge is
+        // replaced by the analyzed-scope caveat.
+        assert_eq!(
+            human.contains("Zero findings is not a clean result"),
+            output.findings.is_empty()
+        );
+        assert!(output.findings.is_empty() || human.contains("finding(s) below cover only"));
         assert!(human.contains("combined_hunk_unsupported"));
         assert!(human.contains("two-way diff"));
         Ok(())
@@ -277,6 +287,7 @@ mod tests {
             uninspected_files_lower_bound: 2,
             uninspected_changed_lines_lower_bound: 120,
             stop_reason: crate::analysis::PartialDiffStopReason::LineBudget,
+            next_file_changed_lines: Some(50),
             partition_identity: "b".repeat(64),
         }
     }
@@ -365,12 +376,13 @@ mod tests {
             scope["budget_disclosures"].as_array().map(Vec::len),
             Some(1)
         );
-        assert!(
-            scope["continuation"]
-                .as_str()
-                .unwrap_or("")
-                .contains("RIPR_PARTIAL_DIFF_FILE_BUDGET"),
-            "continuation must name the budget-override route: {scope}"
+        assert_eq!(
+            scope["continuation"].as_str(),
+            Some(
+                "partial result: raise RIPR_PARTIAL_DIFF_LINE_BUDGET to at least 110, then re-run; \
+                 named partition continuation is not available"
+            ),
+            "continuation must lead with the budget that stopped selection: {scope}"
         );
         Ok(())
     }
@@ -413,6 +425,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            untracked_working_tree_source_paths: Vec::new(),
             suppression: None,
             analysis_outcome: None,
             partial_scope: None,
@@ -538,6 +551,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            untracked_working_tree_source_paths: Vec::new(),
             suppression: None,
             analysis_outcome: None,
             partial_scope: None,
@@ -709,6 +723,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            untracked_working_tree_source_paths: Vec::new(),
             suppression: None,
             analysis_outcome: None,
             partial_scope: None,
@@ -829,7 +844,7 @@ mod tests {
         let mut out = String::new();
         finding_json(&mut out, &finding, 0);
 
-        assert!(out.contains("observed assertion argument value actual = 10 at line 33"));
+        assert!(out.contains("source assertion argument value actual = 10 at line 33"));
     }
 
     #[test]
@@ -958,6 +973,128 @@ mod tests {
             out.contains("\"related_tests_total\": 3"),
             "related_tests_total must equal actual count when under cap: {out}"
         );
+    }
+
+    #[test]
+    fn finding_matched_total_preserves_legacy_serde_and_retained_count_floor() -> Result<(), String>
+    {
+        let mut finding = unknown_finding();
+        finding.related_tests = ["one", "two"]
+            .into_iter()
+            .map(|name| RelatedTest {
+                name: name.to_string(),
+                file: PathBuf::from("tests/retained.rs"),
+                line: 1,
+                oracle: None,
+                oracle_kind: OracleKind::SmokeOnly,
+                oracle_strength: OracleStrength::Weak,
+                relation_reason: None,
+                relation_confidence: None,
+            })
+            .collect();
+        assert_eq!(finding.related_tests_total(), 2);
+        let legacy = serde_json::to_value(&finding).map_err(|error| error.to_string())?;
+        assert!(legacy.get("related_tests_matched_total").is_none());
+        let restored: Finding =
+            serde_json::from_value(legacy).map_err(|error| error.to_string())?;
+        assert_eq!(restored.related_tests_total(), 2);
+        assert_eq!(restored.related_tests_matched_total, None);
+        finding.related_tests_matched_total = Some(9);
+        let bytes = serde_json::to_vec(&finding).map_err(|error| error.to_string())?;
+        let restored: Finding =
+            serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+        assert_eq!(restored.related_tests_total(), 9);
+        assert_eq!(restored.related_tests, finding.related_tests);
+        finding.related_tests_matched_total = Some(0);
+        assert_eq!(
+            finding.related_tests_total(),
+            2,
+            "metadata cannot undercount retained rows"
+        );
+        finding.related_tests.clear();
+        assert_eq!(
+            finding.related_tests_total(),
+            0,
+            "explicit zero remains valid for empty evidence"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn finding_json_and_human_preserve_prepack_total_for_bounded_metadata() -> Result<(), String> {
+        for count in [6, 8, 9] {
+            let mut finding = unknown_finding();
+            finding.related_tests = (0..count.min(8))
+                .map(|index| RelatedTest {
+                    name: format!("matched_{index:02}"),
+                    file: PathBuf::from("tests/matched.rs"),
+                    line: 10 + index,
+                    oracle: None,
+                    oracle_kind: OracleKind::SmokeOnly,
+                    oracle_strength: OracleStrength::Weak,
+                    relation_reason: None,
+                    relation_confidence: None,
+                })
+                .collect();
+            finding.related_tests_matched_total = Some(count);
+            let retained = finding.related_tests.clone();
+            let mut out = String::new();
+            finding_json(&mut out, &finding, 0);
+            let json: serde_json::Value =
+                serde_json::from_str(&out).map_err(|error| error.to_string())?;
+            assert_eq!(json["related_tests_total"], serde_json::json!(count));
+            assert_eq!(
+                json["related_tests"]
+                    .as_array()
+                    .ok_or("missing rows")?
+                    .len(),
+                count.min(8)
+            );
+            let human = crate::output::human::render_finding(&finding);
+            assert!(human.contains(&format!("showing 5 of {count}")), "{human}");
+            assert_eq!(
+                finding.related_tests, retained,
+                "renderers cannot add semantic evidence"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn finding_json_sparse_retained_rows_preserve_high_total_without_trailing_comma()
+    -> Result<(), String> {
+        let mut finding = unknown_finding();
+        finding.related_tests = (0..2)
+            .map(|index| RelatedTest {
+                name: format!("retained_{index}"),
+                file: PathBuf::from("tests/retained.rs"),
+                line: index + 1,
+                oracle: None,
+                oracle_kind: OracleKind::SmokeOnly,
+                oracle_strength: OracleStrength::Weak,
+                relation_reason: None,
+                relation_confidence: None,
+            })
+            .collect();
+        finding.related_tests_matched_total = Some(9);
+        let serialized = serde_json::to_string(&finding).map_err(|error| error.to_string())?;
+        let restored = serde_json::from_str(&serialized).map_err(|error| error.to_string())?;
+        let mut out = String::new();
+        finding_json(&mut out, &restored, 0);
+        let json: serde_json::Value =
+            serde_json::from_str(&out).map_err(|error| error.to_string())?;
+        assert_eq!(json["related_tests_total"], serde_json::json!(9));
+        assert_eq!(
+            json["related_tests"]
+                .as_array()
+                .ok_or("missing rows")?
+                .len(),
+            2
+        );
+        let human = crate::output::human::render_finding(&restored);
+        assert!(human.contains("showing 2 of 9"));
+        assert!(!human.contains("more in --format json"));
+        Ok(())
     }
 
     #[test]
@@ -1351,6 +1488,7 @@ mod tests {
             flow_sinks: vec![],
             activation: ActivationEvidence::default(),
             stop_reasons: vec![],
+            related_tests_matched_total: None,
             related_tests: vec![],
             recommended_next_step: Some("Escalate to real mutation testing.".to_string()),
             language: None,
@@ -1383,6 +1521,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            untracked_working_tree_source_paths: Vec::new(),
             suppression: None,
             analysis_outcome: None,
             partial_scope: None,
@@ -1518,6 +1657,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            untracked_working_tree_source_paths: Vec::new(),
             suppression: None,
             analysis_outcome: None,
             partial_scope: None,
@@ -1549,6 +1689,94 @@ mod tests {
         );
     }
 
+    /// A finding that relates to thousands of tests carries one observed value
+    /// per assertion argument on a distinct line. The report must render a
+    /// bounded projection in both arrays and `assertion_texts`, disclose the
+    /// pre-cap count, and leave the finding's full vector untouched.
+    #[test]
+    fn json_caps_observed_values_on_distinct_lines_and_discloses_the_total() -> Result<(), String> {
+        use crate::output::observed_values::MAX_OBSERVED_VALUES_PER_FINDING;
+
+        let mut finding = unknown_finding();
+        finding.activation.observed_values = (1..=5_000)
+            .map(|line| ValueFact {
+                line,
+                text: format!("assert!(rendered.contains(\"field_{line}\"));"),
+                value: format!("\"field_{line}\""),
+                context: ValueContext::AssertionArgument,
+            })
+            .collect();
+        let output = single_finding_output(finding.clone());
+
+        let rendered = render(&output);
+        let json: serde_json::Value =
+            serde_json::from_str(&rendered).map_err(|error| error.to_string())?;
+        let rendered_finding = &json["findings"][0];
+
+        let array_len = |value: &serde_json::Value| value.as_array().map(Vec::len);
+        assert_eq!(
+            array_len(&rendered_finding["observed_values"]),
+            Some(MAX_OBSERVED_VALUES_PER_FINDING)
+        );
+        assert_eq!(
+            array_len(&rendered_finding["activation"]["observed_values"]),
+            Some(MAX_OBSERVED_VALUES_PER_FINDING)
+        );
+        assert_eq!(
+            rendered_finding["assertion_texts"]
+                .as_object()
+                .map(|map| map.len()),
+            Some(MAX_OBSERVED_VALUES_PER_FINDING)
+        );
+        assert_eq!(rendered_finding["observed_values_total"], 5_000);
+        // A dropped value's assertion text must not leak through the map.
+        assert!(!rendered.contains("field_5000"));
+        assert!(
+            rendered.len() < 100_000,
+            "capped finding should stay small; got {} bytes",
+            rendered.len()
+        );
+        assert_eq!(finding.activation.observed_values.len(), 5_000);
+        Ok(())
+    }
+
+    #[test]
+    fn json_omits_observed_values_total_when_nothing_is_dropped() {
+        let mut finding = unknown_finding();
+        finding.activation.observed_values = vec![ValueFact {
+            line: 12,
+            text: "assert_eq!(discounted_total(50, 100), 50);".to_string(),
+            value: "amount = 50".to_string(),
+            context: ValueContext::FunctionArgument,
+        }];
+
+        let rendered = render(&single_finding_output(finding));
+
+        assert!(rendered.contains("\"amount = 50\""));
+        assert!(!rendered.contains("observed_values_total"));
+    }
+
+    fn single_finding_output(finding: Finding) -> CheckOutput {
+        CheckOutput {
+            harness_projections: Vec::new(),
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: std::path::PathBuf::from("."),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![finding],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            untracked_working_tree_source_paths: Vec::new(),
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
+        }
+    }
+
     // RIPR-SPEC-0083 tests: no-scope JSON disclosure
 
     #[test]
@@ -1568,6 +1796,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: true,
             unanalyzed_working_tree: false,
+            untracked_working_tree_source_paths: Vec::new(),
             suppression: None,
             analysis_outcome: None,
             partial_scope: None,
@@ -1591,6 +1820,8 @@ mod tests {
             rendered.contains("diff-first"),
             "expected diff-first guidance in why; got:\n{rendered}"
         );
+        assert!(rendered.contains("--base BASE"));
+        assert!(!rendered.contains("--base origin/main"));
         // Bug 2 regression guard: the why field must recommend --format repo-exposure-md,
         // not --mode fast (which is a speed tier, not a scope provider).
         assert!(
@@ -1626,6 +1857,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            untracked_working_tree_source_paths: Vec::new(),
             suppression: None,
             analysis_outcome: None,
             partial_scope: None,
@@ -1663,6 +1895,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: true,
             unanalyzed_working_tree: false,
+            untracked_working_tree_source_paths: Vec::new(),
             suppression: None,
             analysis_outcome: None,
             partial_scope: None,

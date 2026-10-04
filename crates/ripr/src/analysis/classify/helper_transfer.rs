@@ -157,7 +157,7 @@ impl HelperChain {
 pub(crate) fn callee_is_unique(callee_name: &str, index: &RustIndex) -> bool {
     !callee_name.is_empty()
         && index
-            .functions
+            .functions()
             .iter()
             .filter(|function| function.name == callee_name)
             .count()
@@ -172,7 +172,7 @@ pub(crate) fn direct_callers<'a>(
     index: &'a RustIndex,
 ) -> Vec<&'a FunctionSummary> {
     index
-        .functions
+        .functions()
         .iter()
         .filter(|function| {
             function.name != callee_name
@@ -225,7 +225,9 @@ fn direct_call_paren(text: &str, callee_name: &str) -> Option<usize> {
         if direct {
             return Some(at);
         }
-        search = at + 1;
+        // Step by the first char's width so a non-ASCII callee name never
+        // leaves `search` inside a multibyte char.
+        search = at + needle.chars().next().map_or(1, char::len_utf8);
     }
     None
 }
@@ -542,16 +544,19 @@ mod tests {
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
+            impl_context: Default::default(),
         }
     }
 
     fn index(functions: Vec<FunctionSummary>) -> RustIndex {
-        RustIndex {
+        RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions,
-            ..RustIndex::default()
-        }
+            ..Default::default()
+        })
     }
 
     #[test]
@@ -746,6 +751,19 @@ mod tests {
             return Err("expected the second occurrence to qualify".to_string());
         }
         match split_call_arguments_text("my_inner(2); inner(1)", "inner") {
+            Some(arguments) if arguments == vec!["1".to_string()] => Ok(()),
+            other => Err(format!("expected [\"1\"], got {other:?}")),
+        }
+    }
+
+    #[test]
+    fn non_ascii_callee_after_shadowed_occurrence_does_not_panic() -> Result<(), String> {
+        // A shadowed first occurrence of a callee whose name starts with a
+        // multibyte char must advance by that char's width, not one byte.
+        if is_direct_call_site("my_заказ(2);", "заказ") {
+            return Err("a prefixed occurrence must not qualify".to_string());
+        }
+        match split_call_arguments_text("my_заказ(2); заказ(1)", "заказ") {
             Some(arguments) if arguments == vec!["1".to_string()] => Ok(()),
             other => Err(format!("expected [\"1\"], got {other:?}")),
         }

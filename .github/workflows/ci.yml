@@ -230,6 +230,15 @@ jobs:
       - name: Publish dry-run (release surface)
         if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
         run: cargo publish -p ripr --dry-run
+      # `cargo install ripr` without `--locked` ignores Cargo.lock and resolves
+      # fresh, so a lock-only pin never reaches it (#3787). Build the packaged
+      # crate the way that command does: drop its lockfile and re-resolve.
+      - name: Unlocked install resolution (release surface)
+        if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
+        run: |
+          cargo package -p ripr --no-verify && tar xzf "target/package/ripr-$(cargo pkgid -p ripr | sed 's/.*#//').crate" -C "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/ripr-$(cargo pkgid -p ripr | sed 's/.*#//')" && rm Cargo.lock && cargo generate-lockfile
+          cargo check --target-dir "$RUNNER_TEMP/unlocked-target"
       - name: Release readiness (release surface)
         if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
         run: |
@@ -355,6 +364,39 @@ jobs:
             target/xtask/impacted-evidence/
           if-no-files-found: ignore
           retention-days: 7
+
+  rust-only-features:
+    # #4252: the Rust-only feature lane (#2400, #3128) otherwise runs only in
+    # the Windows advisory workflow, whose verdict hid this step's result
+    # until #4229. It runs before merge on PRs that change the Rust crate,
+    # fixtures, or Cargo manifests, and on every push to main; label events
+    # and docs-only PRs skip the compile, matching the routed lane's posture.
+    name: Rust-only feature lane
+    if: github.event_name != 'pull_request' || contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Detect Rust surface change
+        id: surface
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          changed=crates/; [ -z "$BASE_SHA" ] || changed="$(git diff --name-only "$BASE_SHA"...HEAD 2>/dev/null || echo crates/)"
+          if grep -qE '^(crates/|fixtures/|Cargo\.(toml|lock)$|rust-toolchain|\.cargo/)' <<< "$changed"; then rust=true; else rust=false; fi
+          echo "rust=$rust" | tee -a "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@1.95.0
+        if: steps.surface.outputs.rust == 'true'
+      - uses: Swatinem/rust-cache@v2
+        if: steps.surface.outputs.rust == 'true'
+        with:
+          shared-key: ripr-rust-only-1.95-${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Test --no-default-features --features lang-rust
+        if: steps.surface.outputs.rust == 'true'
+        run: cargo test -p ripr --locked --no-default-features --features lang-rust --no-fail-fast
 
   msrv:
     # Routed Rust already runs the declared 1.95.0 toolchain on every ordinary

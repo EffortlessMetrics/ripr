@@ -1,0 +1,8 @@
+[package]
+name = "match_arm_tuple_derived_return_before_assertion"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "match_arm_tuple_derived_return_before_assertion"
+path = "src/lib.rs"

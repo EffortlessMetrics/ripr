@@ -1,75 +1,73 @@
 ---
 name: build-candidate
-description: Build, harden, simplify, and challenge one current candidate for a coherent claim. Use after proof design or when an existing implementation needs repair before PR review and convergence. Establish an inherited baseline floor before mutation, drive a discriminating control before the production repair, and promote only exact-head evidence.
+description: Build, harden, simplify, and challenge one coherent candidate. Establish the inherited baseline, discriminate the intended change from wrong behavior, and bind proof to the actual candidate before substantive review.
 ---
 
 # Useful result
 
-One candidate implements the selected claim, carries discriminating proof, respects the semantic owner, has no unnecessary parallel authority, separates inherited failures from candidate failures, and is ready for substantive exact-head review.
+One candidate implements the selected claim, extends its semantic owner, has discriminating proof and an honest baseline/currentness record, and is ready for substantive review. It is not already merge-ready merely because the builder finished.
 
 # Route markers
 
 - `review_route:build_candidate_to_review_pr`
 - `review_route:repair_returns_to_same_candidate`
 
+# Candidate operating contract markers
+
+- `candidate_contract:host_shell_detection`
+- `candidate_contract:focused_local_proof`
+- `candidate_contract:one_writer_worktree`
+- `candidate_contract:publish_for_remote_evidence`
+
+# Environment and ownership
+
+Identify the actual shell, host/target platform, repository remote, root, worktree, branch, HEAD and available toolchain. Shell grammar is not inferred from OS: PowerShell can run on Linux; Bash/WSL can run on a Windows host. Read `docs/agent-context/validation.md` for native exit-status handling and proof ownership.
+
+One writer owns the candidate worktree at a time. A delegated writer receives the claim, input identity, write boundary, non-goals, proof and handback; the root does not edit concurrently. Reviewers read committed objects or create their own detached inspection worktree. Preserve pre-existing changes and never move another writer's HEAD.
+
+Before allocating a worktree, starting a build, or freezing an executable, apply the [bounded storage closeout](../../../docs/PR_AUTOMATION.md#bounded-local-storage-and-proof-retention) procedure. The existing root/task owns each exact resource, its peak-growth budget, required witnesses and planned disposition before generation. Include frozen copies and restoration staging in the budget; a Cargo build budget alone does not cover them. Release or recoverably archive no-longer-needed outputs from completed candidates before admitting the next batch. This is root-owned admission using existing tooling, not a new registry or an automatic cleanup claim.
+
+Bind background commands to retained task/session handles, candidate identities and logs. A process-name filter, quiet interval or stale report does not establish failure or orphaned work. Read the native exit and terminal report, not stderr noise or a success-looking line alone. Serialize Cargo operations that share a worktree, target lock or memory bottleneck. Do not kill unrelated processes. The parent goal may advance another ready claim on a separate worker/worktree while this candidate waits.
+
 # Procedure
 
-1. Confirm the issue, claim boundary, current candidate branch/worktree, exact base SHA, semantic owner, and governing sources.
-2. Establish the inherited baseline floor before the first mutation:
+1. Bind the issue, acceptance/rollback boundary, existing candidate, exact base and semantic owner. Re-read current source, all-state/recent PRs and substantive issue decisions for an equivalent implementation before editing.
+2. Establish the inherited baseline before the first mutation:
    - run `cargo xtask worktree doctor` and read its report;
-   - require `git merge-base origin/main HEAD` to equal the recorded base SHA before `check-fast` may support base attribution. If it does not, reconcile history and record the resulting accepted base, or run base-aware gates directly; do not cite `check-fast` as base-authoritative;
-   - on a new candidate, run `cargo xtask check-fast` before editing and bind the result to the recorded base SHA. This is a cheap policy floor, not a claim that every full gate or package compiles;
-   - independently require `git diff --name-only origin/main...HEAD` to succeed before citing `check-fast`. Zero changed paths are expected only when `HEAD` is the recorded base. The strict command fail-closes selector loss, while the independent diff remains the denominator receipt and protects against stale or direct helper use; an unverified zero-path result is `INSTRUMENT_FAILURE`, not pass;
-   - before editing a Rust or repo-control candidate, run the narrowest `cargo check` that covers the semantic owner on the exact base (`cargo check -p <package> --all-targets` by default; widen to `--workspace --all-targets` for shared manifests, workspace policy, or cross-package behavior). For a genuinely non-Rust-only candidate, record the omitted compile dimension explicitly. A zero-diff `check-fast` result is not compile evidence;
-   - when resuming an already-mutated candidate, run the same diagnostics immediately and reproduce any apparent inherited failure in a clean isolated worktree at the exact base before attributing it;
-   - run full `cargo xtask precommit` in that isolated exact-base worktree only when the selected claim is a baseline repair or a later candidate failure needs an authoritative comparison;
-   - route a real base failure separately unless the selected claim is the baseline repair. Do not absorb unrelated drift into this candidate.
-3. Read the owning production path, nearby tests, fixtures, and the strongest known-wrong or boundary case before editing production code.
-4. Put a discriminating control ahead of the implementation:
-   - add or strengthen the smallest test, fixture, or artifact assertion that should reject the missing behavior;
-   - observe it fail for the intended reason against the pre-repair state;
-   - for an existing implementation, bind the failure to its parent/pre-repair head or use a reversible negative mutation;
-   - if no safe failing observation is available, report that proof dimension as `NOT_ESTABLISHED` rather than inventing a red/green sequence.
-5. Make the smallest coherent implementation that satisfies the claim. Do not create a second validator, owner, or route when an existing authority should be extended.
-6. Rerun the focused control immediately after each coherent edit. Treat failures as information about source, proof, instrument, or environment rather than retrying blindly, and stop broadening when the control no longer discriminates the selected claim.
-7. Improve the test suite:
-   - add the discriminating negative or alternate case;
-   - validate fixture setup and nonempty subject;
-   - add currentness or identity checks where relevant;
-   - preserve fail-closed unknown and limitation states;
-   - prove rendered/public behavior when source-text coincidence could pass without the real route changing.
-8. Simplify the candidate:
-   - remove temporary scaffolding and dead branches;
-   - collapse duplicated logic into the owning layer;
-   - remove public placeholders and panic/todo paths;
-   - keep the PR's acceptance and rollback boundary coherent.
-9. Challenge the candidate with fresh criteria:
-   - authority, provenance, and architecture;
-   - correctness, failure paths, rollback, transaction boundaries, replay, and concurrency;
-   - test stimulus and oracle grip;
-   - runtime/schema/docs/help/output parity;
-   - platform, packaging, process, security, and user-facing claim honesty where relevant.
-10. Repair every accepted finding through the same candidate.
-11. Commit the coherent candidate so broad verification and review bind to one exact Git object. An uncommitted worktree cannot receive an exact-head disposition.
-12. Run `cargo xtask check-fast` again on that exact committed head as the first broad candidate gate, then run `cargo xtask precommit`, the focused tests, and the additional gates required by the changed surface. Before citing `check-fast`, confirm that the accepted merge-base still equals the recorded base SHA, then compare the independently resolved committed path set with `check-fast-selector.md` and the ran/skipped categories in `check-fast.md`; a base mismatch, unexpected zero, omitted path category, or selector failure is `INSTRUMENT_FAILURE`. Reconcile history or run the affected base-aware gates directly, and do not convert that partial route to pass. Read the emitted reports, not only the exit code. If repair changes the head, recommit and rerun the affected dimensions before review.
-13. Hand the exact committed head to `review-pr`. Candidate challenge inside the builder is not the final PR review, and green CI or zero review threads cannot replace that pass.
-14. Before a PR exists, `review-pr` may return `REVIEW_INCOMPLETE` because remote checks, artifacts, and review evidence are unavailable. Route that exact candidate to `finish-pr` for publication, then re-enter `review-pr` on the published PR head before merge convergence.
-15. If `review-pr` returns `REPAIR_REQUIRED`, repair the same candidate, recommit, and refresh only the affected review/proof dimensions before reviewing again.
+   - verify `git merge-base origin/main HEAD` equals the recorded base before using `check-fast` for base attribution. If it differs, reconcile the accepted basis or run base-aware gates directly; a mismatch is not a demand to chase unrelated main movement;
+   - independently require `git diff --name-only origin/main...HEAD` to succeed. A zero-path result is expected only when HEAD is the recorded base, not when the selector failed;
+   - run `cargo xtask check-fast` on the new candidate's base. This policy floor is not compile or full-suite evidence;
+   - run the narrowest `cargo check` covering the owner on the exact base, normally `cargo check -p <package> --all-targets`. Widen for shared manifests or cross-package changes. Record the omitted compile dimension for non-Rust-only work;
+   - when resuming an already-mutated candidate, reproduce an apparently inherited failure in an isolated exact-base worktree before blaming the base. Use full `precommit` there only for a baseline-repair claim or an authoritative comparison;
+   - if local execution is unavailable, retain that missing baseline dimension and use the available hosted route. Do not fabricate a local pass or turn tool absence into a blanket prohibition on PR publication.
+3. Read production consumers, tests, fixtures and the strongest wrong/boundary case. Route unrelated inherited failures to their own owner rather than absorbing them into this patch.
+4. Establish a discriminating control before repairing production:
+   - add the smallest test/fixture/artifact assertion that rejects the missing behavior;
+   - observe its intended failure against the pre-repair state;
+   - for an existing fix, bind the observation to its parent or a reversible wrong-implementation/removal experiment;
+   - report an unexecuted red dimension as `NOT_ESTABLISHED`, not an invented red/green pair. A compile error before the behavior runs is not the intended behavioral discriminator.
+5. Implement the smallest coherent repair in the owning layer. Do not create a parallel validator, route or authority for convenience.
+6. Rerun the focused control after coherent edits. Classify source, test/oracle, instrument and infrastructure failures before choosing a repair. Do not retry a deterministic failure without changing or investigating its cause.
+7. Harden the proof: positive and negative cases, nonempty intended subjects, setup assertions, currentness/identity, explicit limitations, and rendered/public behavior where source-text coincidence could otherwise pass.
+8. Simplify the candidate: remove scaffolding and dead branches, collapse duplicate decisions, and preserve one acceptance/rollback boundary. Do not mix unrelated dependency, documentation and product changes because they share a working tree.
+9. Challenge authority/provenance, failure and rollback paths, transaction boundaries, concurrency, oracle grip, runtime/schema/docs/output parity, platforms, packaging and user-facing claims. Use an independent source/oracle/reviewer when it adds detection value, not merely a different persona.
+10. Repair accepted findings in the same candidate. Commit coherent changes without another routine permission pause so verification can bind to a real Git object.
+11. Run `check-fast` on the committed candidate and compare its selector report and ran/skipped categories with the independently resolved path set. Reconcile a changed basis or run base-aware gates directly. Unexpected zero, omitted categories or selector failure is `INSTRUMENT_FAILURE`, not pass.
+12. Run `precommit`, focused tests and the relevant changed-surface checks. Keep proof proportional: full local runs are for named failures or explicit qualification, not automatic duplication of the entire hosted matrix before publishing.
+13. Hand the committed candidate to `review-pr`. Missing hosted evidence normally yields `REVIEW_INCOMPLETE`; enter `finish-pr` to publish and obtain that evidence, then return to exact published-head review before merge.
+14. On `REPAIR_REQUIRED`, repair the same candidate and refresh affected proof/review dimensions. Before resolving an integration conflict, check whether upstream already delivered the claim; preserve only a genuine unique residual.
 
-# Candidate law
+# Currentness and delivery
 
-- One claim normally has one current candidate.
-- One writer mutates the branch/worktree at a time.
-- Focused agents may research or review read-only.
-- Inherited failures are not candidate failures until they reproduce against the recorded base.
-- A test added after the implementation is not discriminating evidence by itself; bind it to an observed known-wrong state.
-- Do not create rival candidates merely to produce parallel activity.
-- Do not scan sibling lanes for file overlap or reserve surfaces.
-- If an earlier PR creates a real conflict, this candidate owns its focused reconciliation and affected re-proof.
+A behind-only branch does not require restacking. A material content conflict, prerequisite change, combined-tree failure or governing exact-base rule does. Track implementation, stimulus, oracle, public claim, generated relationships, conflict resolution, integration basis and head identity separately; do not invalidate unaffected evidence just because main moved.
 
-# Decision law
+Local commits and test runs are useful unpublished candidate evidence, not landed repository delivery. A reported test count or subagent conclusion must resolve to the same subject and execution before it supports a PR claim.
 
-Choose and document reasonable reversible decisions. Escalate only when materially different viable outcomes remain after source research and safe implementation experiments.
+# Decisions and cleanup
+
+Choose reversible in-scope implementations from evidence. Routine commit/push/PR/review repair/protected merge is already inside an authorized delivery goal. Ask only at an actual scope, destructive-action, exposure, settings, release-authorization or non-derivable product boundary. Do not create rival candidates, reservation files, overlap maps or sibling monitoring.
+
+After a durable merge/closure handoff, apply the [bounded storage closeout](../../../docs/PR_AUTOMATION.md#bounded-local-storage-and-proof-retention) procedure to lane-created worktrees, branches and temporary residue. Return each exact resource as `released`, `retained with reason`, or `awaiting owner verification` before removal. Releasing ownership alone is not deletion authority. Preserve retained and unknown resources, required proof and unrelated work.
 
 # Valid exits
 
@@ -83,3 +81,5 @@ Choose and document reasonable reversible decisions. Escalate only when material
 - `INFRASTRUCTURE_FAILURE`
 - `EXTERNAL_BLOCKER`
 - `NOT_ESTABLISHED`
+
+A lane exit returns its exact object, evidence, residual and next transition to the parent loop; it does not complete the parent goal.

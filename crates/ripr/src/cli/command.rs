@@ -3,6 +3,14 @@ pub(super) enum CliCommand {
     Help,
     /// `ripr help --all`: the exhaustive command reference.
     HelpAll,
+    /// `ripr help workflow [name]`: bounded, non-executing workflow
+    /// guidance (RIPR-SPEC-0189 / #4824). `None` lists the workflow
+    /// identities; `Some(name)` renders one workflow.
+    HelpWorkflow(Option<String>),
+    /// `ripr help --json`: the versioned machine-readable command and
+    /// workflow discovery document (RIPR-SPEC-0190 / #4825). Serializes the
+    /// accepted typed catalogs only; never executes or inspects anything.
+    HelpJson,
     Version,
     Init(Vec<String>),
     Config(Vec<String>),
@@ -24,6 +32,7 @@ pub(super) enum CliCommand {
     Reports(Vec<String>),
     Calibrate(Vec<String>),
     Receipt(Vec<String>),
+    Feedback(Vec<String>),
     Agent(Vec<String>),
     Swarm(Vec<String>),
     Diff(Vec<String>),
@@ -67,63 +76,41 @@ impl CliCommand {
                 if wants_all(&command_args) {
                     return Ok(Self::HelpAll);
                 }
+                // `ripr help --json` is the versioned machine-discovery route
+                // (RIPR-SPEC-0190 / #4825): strict grammar, exactly one flag.
+                if command_args.first().is_some_and(|arg| arg == "--json") {
+                    return match command_args.len() {
+                        1 => Ok(Self::HelpJson),
+                        _ => Err(
+                            "usage: ripr help --json (this route accepts no other arguments)"
+                                .to_string(),
+                        ),
+                    };
+                }
+                // `ripr help workflow [name]` is the bounded workflow-discovery
+                // route (RIPR-SPEC-0189): it intercepts before the
+                // command-local rewrite because `workflow` is not a command.
+                if command_args.first().is_some_and(|arg| arg == "workflow") {
+                    return help_workflow_command(&command_args[1..]);
+                }
                 let (target, rest) = match command_args.split_first() {
                     Some((target, rest)) => (target.clone(), rest.to_vec()),
                     None => return Ok(Self::Help),
                 };
-                let mut injected = Vec::with_capacity(rest.len() + 1);
-                injected.push("--help".to_string());
-                injected.extend(rest);
-                Self::from_parts(Some(&target), injected)
+                Self::from_parts(Some(&target), help_request_args(rest))
             }
             Some("--version" | "-V") => Ok(Self::Version),
-            Some("init") => Ok(Self::Init(command_args)),
-            Some("config") => Ok(Self::Config(command_args)),
-            Some("pilot") => Ok(Self::Pilot(command_args)),
-            Some("outcome") => Ok(Self::Outcome(command_args)),
-            Some("evidence-health") => Ok(Self::EvidenceHealth(command_args)),
-            Some("review-comments") => Ok(Self::ReviewComments(command_args)),
-            Some("gate") => Ok(Self::Gate(command_args)),
-            Some("baseline") => Ok(Self::Baseline(command_args)),
-            Some("zero") => Ok(Self::Zero(command_args)),
-            Some("policy") => Ok(Self::Policy(command_args)),
-            Some("pr-ledger") => Ok(Self::PrLedger(command_args)),
-            Some("pr-comments") => Ok(Self::PrComments(command_args)),
-            Some("pr-review") => Ok(Self::PrReview(command_args)),
-            Some("coverage-grip") => Ok(Self::CoverageGrip(command_args)),
-            Some("assistant-loop") => Ok(Self::AssistantLoop(command_args)),
-            Some("first-pr") | Some("start-here") => Ok(Self::FirstPr(command_args)),
-            Some("first-action") => Ok(Self::FirstAction(command_args)),
-            Some("reports") => Ok(Self::Reports(command_args)),
-            Some("calibrate") => Ok(Self::Calibrate(command_args)),
-            Some("receipt") => Ok(Self::Receipt(command_args)),
-            Some("agent") => Ok(Self::Agent(command_args)),
-            Some("swarm") => Ok(Self::Swarm(command_args)),
-            Some("diff") => Ok(Self::Diff(command_args)),
-            Some("check") => Ok(Self::Check(command_args)),
-            Some("explain") => Ok(Self::Explain(command_args)),
-            Some("context") => Ok(Self::Context(command_args)),
-            Some("doctor") => Ok(Self::Doctor(command_args)),
-            Some("lsp") => Ok(Self::Lsp(command_args)),
-            Some("pr-summary") => Ok(Self::PrSummary(command_args)),
-            Some("annotations") => Ok(Self::Annotations(command_args)),
-            Some("pr-evidence") => Ok(Self::PrEvidence(command_args)),
-            Some("impacted-evidence") => Ok(Self::ImpactedEvidence(command_args)),
-            Some("plus") => Ok(Self::RiprPlus(command_args)),
-            Some("cache") => Ok(Self::Cache(command_args)),
-            Some("rerun") => Ok(Self::Rerun(command_args)),
-            // Catalog visibility only: startup routes `mcp` to the MCP runtime
-            // before this parser runs, but the spelling must stay known.
-            Some("mcp") => Ok(Self::Mcp(command_args)),
-            Some(command) => Err(unknown_command_error(command)),
+            // Top-level command identity and aliases are owned by the catalog
+            // (RIPR-SPEC-0184). Help/version stay here because they are flag
+            // spellings and `help <command>` rewrites, not catalog rows.
+            Some(command) => match crate::cli::command_catalog::resolve_top_level(command) {
+                Some(entry) => Ok(cli_command_from_dispatch(entry.dispatch, command_args)),
+                None => Err(unknown_command_error(command)),
+            },
         }
     }
 }
 
-/// Whether a help invocation asked for the exhaustive reference.
-///
-/// Scanned rather than positionally matched so `ripr help --all` and
-/// `ripr --help --all` behave the same.
 /// Whether a help request selects the exhaustive reference.
 ///
 /// Deliberately only the **first** argument. Scanning all of them makes `--all`
@@ -136,49 +123,89 @@ fn wants_all(args: &[String]) -> bool {
     args.first().is_some_and(|arg| arg == "--all")
 }
 
-/// Every command the parser accepts. Also the source for typo suggestions and
-/// for the `ripr help --all` completeness test, so a command cannot be
-/// reachable-but-undocumented.
-pub(super) const KNOWN_COMMANDS: &[&str] = &[
-    "init",
-    "config",
-    "help",
-    "pilot",
-    "outcome",
-    "evidence-health",
-    "review-comments",
-    "gate",
-    "baseline",
-    "zero",
-    "policy",
-    "pr-ledger",
-    "pr-comments",
-    "pr-review",
-    "coverage-grip",
-    "assistant-loop",
-    "first-pr",
-    "start-here",
-    "first-action",
-    "reports",
-    "calibrate",
-    "receipt",
-    "agent",
-    "swarm",
-    "diff",
-    "check",
-    "explain",
-    "context",
-    "doctor",
-    "lsp",
-    "cache",
-    "pr-summary",
-    "annotations",
-    "pr-evidence",
-    "impacted-evidence",
-    "plus",
-    "rerun",
-    "mcp",
-];
+/// `ripr help workflow [name]`: no flags are accepted on this route, the name
+/// is optional, and a flag-shaped name is a usage error rather than an
+/// unknown-workflow lookup so the two failure families stay distinct.
+fn help_workflow_command(args: &[String]) -> Result<CliCommand, String> {
+    match args {
+        [] => Ok(CliCommand::HelpWorkflow(None)),
+        [name] if !name.starts_with('-') => Ok(CliCommand::HelpWorkflow(Some(name.clone()))),
+        _ => Err(
+            "usage: ripr help workflow [<workflow-name>] (this route accepts no flags)".to_string(),
+        ),
+    }
+}
+
+/// Arguments for `ripr help <command> [words...] [flags...]` (#4378).
+///
+/// `--help` goes after the leading subcommand words, so `help agent repair`
+/// dispatches as `agent repair --help` and reaches the subcommand's own help
+/// instead of the parent overview. A subcommand-bearing parser matches its
+/// first argument, so a prepended `--help` would always win there; an unknown
+/// word now reaches that parser's unknown-subcommand error rather than
+/// printing unrelated help. Flags keep their order after `--help`.
+fn help_request_args(rest: Vec<String>) -> Vec<String> {
+    let words = rest.iter().take_while(|arg| !arg.starts_with('-')).count();
+    let mut injected = Vec::with_capacity(rest.len() + 1);
+    let mut rest = rest.into_iter();
+    injected.extend(rest.by_ref().take(words));
+    injected.push("--help".to_string());
+    injected.extend(rest);
+    injected
+}
+
+/// Every top-level spelling the parser accepts. Derived from the command
+/// catalog so typo suggestions cannot drift into a second list.
+pub(super) fn known_commands() -> Vec<&'static str> {
+    crate::cli::command_catalog::typo_suggestable_spellings()
+}
+
+fn cli_command_from_dispatch(
+    dispatch: crate::cli::command_catalog::CommandDispatch,
+    command_args: Vec<String>,
+) -> CliCommand {
+    use crate::cli::command_catalog::CommandDispatch;
+    match dispatch {
+        CommandDispatch::Help => CliCommand::Help,
+        CommandDispatch::Init => CliCommand::Init(command_args),
+        CommandDispatch::Config => CliCommand::Config(command_args),
+        CommandDispatch::Pilot => CliCommand::Pilot(command_args),
+        CommandDispatch::Outcome => CliCommand::Outcome(command_args),
+        CommandDispatch::EvidenceHealth => CliCommand::EvidenceHealth(command_args),
+        CommandDispatch::ReviewComments => CliCommand::ReviewComments(command_args),
+        CommandDispatch::Gate => CliCommand::Gate(command_args),
+        CommandDispatch::Baseline => CliCommand::Baseline(command_args),
+        CommandDispatch::Zero => CliCommand::Zero(command_args),
+        CommandDispatch::Policy => CliCommand::Policy(command_args),
+        CommandDispatch::PrLedger => CliCommand::PrLedger(command_args),
+        CommandDispatch::PrComments => CliCommand::PrComments(command_args),
+        CommandDispatch::PrReview => CliCommand::PrReview(command_args),
+        CommandDispatch::CoverageGrip => CliCommand::CoverageGrip(command_args),
+        CommandDispatch::AssistantLoop => CliCommand::AssistantLoop(command_args),
+        CommandDispatch::FirstPr => CliCommand::FirstPr(command_args),
+        CommandDispatch::FirstAction => CliCommand::FirstAction(command_args),
+        CommandDispatch::Reports => CliCommand::Reports(command_args),
+        CommandDispatch::Calibrate => CliCommand::Calibrate(command_args),
+        CommandDispatch::Receipt => CliCommand::Receipt(command_args),
+        CommandDispatch::Feedback => CliCommand::Feedback(command_args),
+        CommandDispatch::Agent => CliCommand::Agent(command_args),
+        CommandDispatch::Swarm => CliCommand::Swarm(command_args),
+        CommandDispatch::Diff => CliCommand::Diff(command_args),
+        CommandDispatch::Check => CliCommand::Check(command_args),
+        CommandDispatch::Explain => CliCommand::Explain(command_args),
+        CommandDispatch::Context => CliCommand::Context(command_args),
+        CommandDispatch::Doctor => CliCommand::Doctor(command_args),
+        CommandDispatch::Lsp => CliCommand::Lsp(command_args),
+        CommandDispatch::PrSummary => CliCommand::PrSummary(command_args),
+        CommandDispatch::Annotations => CliCommand::Annotations(command_args),
+        CommandDispatch::PrEvidence => CliCommand::PrEvidence(command_args),
+        CommandDispatch::ImpactedEvidence => CliCommand::ImpactedEvidence(command_args),
+        CommandDispatch::RiprPlus => CliCommand::RiprPlus(command_args),
+        CommandDispatch::Cache => CliCommand::Cache(command_args),
+        CommandDispatch::Rerun => CliCommand::Rerun(command_args),
+        CommandDispatch::Mcp => CliCommand::Mcp(command_args),
+    }
+}
 
 fn unknown_command_error(command: &str) -> String {
     match closest_command(command) {
@@ -190,10 +217,15 @@ fn unknown_command_error(command: &str) -> String {
 }
 
 fn closest_command(command: &str) -> Option<&'static str> {
-    let typo_budget = if command.len() <= 4 { 1 } else { 3 };
-    KNOWN_COMMANDS
-        .iter()
-        .copied()
+    // Scale the budget with length so short unrelated names (`bogus`) do not
+    // match a command three edits away.
+    let typo_budget = match command.chars().count() {
+        0..=4 => 1,
+        5..=7 => 2,
+        _ => 3,
+    };
+    known_commands()
+        .into_iter()
         .map(|known| (known, edit_distance(command, known)))
         .filter(|(_, distance)| *distance <= typo_budget)
         .min_by_key(|(known, distance)| (*distance, *known))
@@ -222,7 +254,7 @@ fn edit_distance(left: &str, right: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{CliCommand, KNOWN_COMMANDS, closest_command, unknown_command_error};
+    use super::{CliCommand, closest_command, known_commands, unknown_command_error};
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
@@ -343,6 +375,7 @@ mod tests {
             (Some("reports"), CliCommand::Reports(Vec::new())),
             (Some("calibrate"), CliCommand::Calibrate(Vec::new())),
             (Some("receipt"), CliCommand::Receipt(Vec::new())),
+            (Some("feedback"), CliCommand::Feedback(Vec::new())),
             (Some("agent"), CliCommand::Agent(Vec::new())),
             (Some("swarm"), CliCommand::Swarm(Vec::new())),
             (Some("diff"), CliCommand::Diff(Vec::new())),
@@ -413,14 +446,20 @@ mod tests {
     }
 
     #[test]
+    fn closest_command_ignores_unrelated_short_names() {
+        assert_eq!(closest_command("bogus"), None);
+        assert_eq!(closest_command("chekc"), Some("check"));
+    }
+
+    #[test]
     fn known_commands_covers_every_parser_spelling() {
         // Every command spelling accepted by from_parts must appear in
-        // KNOWN_COMMANDS so typo suggestions work. Help/Version are flags,
-        // not subcommands, so they are intentionally excluded.
-        for known in KNOWN_COMMANDS {
+        // the catalog-derived known-command list so typo suggestions work.
+        // Help/Version flags stay outside that list except the `help` command.
+        for known in known_commands() {
             assert!(
                 CliCommand::from_parts(Some(known), Vec::new()).is_ok(),
-                "KNOWN_COMMANDS entry {known:?} is not accepted by from_parts"
+                "known command {known:?} is not accepted by from_parts"
             );
         }
     }
@@ -468,6 +507,26 @@ mod tests {
         );
     }
 
+    /// `ripr help agent repair` must reach the repair subcommand's help, not
+    /// the parent `agent` overview (#4378). A prepended `--help` is matched by
+    /// the `agent` parser's first-argument branch before `repair` is seen.
+    #[test]
+    fn help_places_help_flag_after_subcommand_words() {
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["agent", "repair"])),
+            Ok(CliCommand::Agent(args(&["repair", "--help"])))
+        );
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["swarm", "queue", "--json"])),
+            Ok(CliCommand::Swarm(args(&["queue", "--help", "--json"])))
+        );
+        // Flags right after the command keep the old shape.
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["agent", "--json"])),
+            Ok(CliCommand::Agent(args(&["--help", "--json"])))
+        );
+    }
+
     #[test]
     fn help_with_unknown_subcommand_returns_unknown_command_error() {
         // A typo after `help` should produce the same unknown-command error as
@@ -479,6 +538,67 @@ mod tests {
         assert_eq!(
             CliCommand::from_parts(Some("help"), args(&["chekc"])),
             Err("unknown command \"chekc\". Did you mean `check`? Run `ripr --help`.".to_string())
+        );
+    }
+
+    /// `ripr help workflow [name]` parses to the bounded workflow-discovery
+    /// route: no name lists the identities, one bare name renders one
+    /// workflow, and any flag shape or extra argument is a usage error, not
+    /// an unknown-workflow lookup (#4824).
+    #[test]
+    fn help_workflow_parses_the_bounded_discovery_route() {
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["workflow"])),
+            Ok(CliCommand::HelpWorkflow(None))
+        );
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["workflow", "repair-gap"])),
+            Ok(CliCommand::HelpWorkflow(Some("repair-gap".to_string())))
+        );
+        // An alias resolves at render time, so the parser keeps the spelling.
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["workflow", "adoption"])),
+            Ok(CliCommand::HelpWorkflow(Some("adoption".to_string())))
+        );
+        // Flag-shaped names and extra arguments are usage errors, keeping the
+        // failure family distinct from the unknown-workflow family.
+        let usage = "usage: ripr help workflow [<workflow-name>] (this route accepts no flags)";
+        for bad in [
+            args(&["workflow", "--json"]),
+            args(&["workflow", "repair-gap", "extra"]),
+        ] {
+            assert_eq!(
+                CliCommand::from_parts(Some("help"), bad),
+                Err(usage.to_string())
+            );
+        }
+    }
+
+    /// `ripr help --json` parses to the versioned machine-discovery route:
+    /// exactly the one flag, any extra argument is a usage error, and the
+    /// route intercepts before the `help <command>` rewrite (#4825).
+    #[test]
+    fn help_json_parses_the_machine_discovery_route() {
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["--json"])),
+            Ok(CliCommand::HelpJson)
+        );
+        let usage = "usage: ripr help --json (this route accepts no other arguments)";
+        for bad in [
+            args(&["--json", "extra"]),
+            args(&["--json", "--quiet"]),
+            args(&["--json", "--all"]),
+        ] {
+            assert_eq!(
+                CliCommand::from_parts(Some("help"), bad),
+                Err(usage.to_string())
+            );
+        }
+        // `help --json` wins over the `help <command>` rewrite only at the
+        // first argument; a later `--json` still belongs to the subcommand.
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["check", "--json"])),
+            Ok(CliCommand::Check(args(&["--help", "--json"])))
         );
     }
 }

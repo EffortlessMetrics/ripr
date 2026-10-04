@@ -1,8 +1,8 @@
 use super::evidence::ClassifiedProbeEvidence;
 use crate::analysis::classify::{
-    BOUNDARY_OPERAND_UNRESOLVED_MARKER, ProbeContext, body_contains_owner_call,
-    ensure_unknown_stop_reason, exact_error_variant, missing_evidence, recommended_next_step,
-    stop_reasons, unresolved_guard_error_edge,
+    ASSERTION_CONTEXT_UNESTABLISHED, BOUNDARY_OPERAND_UNRESOLVED_MARKER, OwnerPinSyntax,
+    ProbeContext, body_contains_owner_call, ensure_unknown_stop_reason, exact_error_variant,
+    missing_evidence, recommended_next_step, stop_reasons, unresolved_guard_error_edge,
 };
 
 /// #1429: repair assignment for a predicate boundary discriminator the
@@ -18,8 +18,10 @@ pub(in crate::analysis) const BOUNDARY_OPERAND_UNRESOLVED_NEXT_STEP: &str = "Typ
 /// edge static analysis cannot establish, deferring the
 /// discrimination verdict to real mutation testing.
 pub(in crate::analysis) const ERROR_RETURN_GUARD_UNRESOLVED_NEXT_STEP: &str = "Typed static limitation (rust_value_propagation_unresolved): ripr cannot statically resolve the changed error return's producing expression through the boolean guard, so it does not prescribe a boundary or error-assertion test the suite may already contain. Verify via real mutation testing whether the exact observer discriminates the producing expression.";
-use crate::analysis::rust_index::TestSummary;
+use crate::analysis::rust_index::{OracleFact, TestSummary};
 use crate::domain::*;
+
+const STATIC_UNKNOWN_UNREACHED_NEXT_STEP: &str = "No static test path reaches this change (a test may still reach it through macros, dynamic dispatch, or integration tests that static evidence does not follow). Add or point to a test that exercises it and asserts the result first; deep mode and real mutation testing need a reaching test to say more.";
 
 pub(in crate::analysis) fn build_finding(
     context: &ProbeContext<'_>,
@@ -69,6 +71,8 @@ pub(in crate::analysis) fn build_finding(
     // contains, so the typed static limitation replaces the
     // prescription. The class stays `InfectionUnknown`: the gap is
     // still visible, only the impossible repair assignment is withheld.
+    let fallback_pin_syntax = OwnerPinSyntax::default();
+    let pin_syntax = context.owner_pin_syntax.unwrap_or(&fallback_pin_syntax);
     let error_guard_unresolved: Option<String> = if class == ExposureClass::InfectionUnknown
         && matches!(context.probe.family, ProbeFamily::Predicate)
     {
@@ -80,24 +84,46 @@ pub(in crate::analysis) fn build_finding(
             context.helper_chain.as_ref(),
         )
         .filter(|_| {
-            strong_assertion_observes_owner_result(
+            strong_assertion_observes_owner_result_with_admission(
                 &context.related_tests,
                 context.owner_fn.map(|owner| owner.name.as_str()),
+                &|test, assertion| {
+                    pin_syntax.admits_equality_assertion(
+                        context.probe,
+                        test,
+                        assertion,
+                        context.index,
+                    )
+                },
             )
         })
     } else {
         None
     };
-    let recommended_next_step =
-        if class == ExposureClass::WeaklyExposed && exact_oracle_covers_direct_sink {
-            None
-        } else if boundary_operand_unresolved {
-            Some(BOUNDARY_OPERAND_UNRESOLVED_NEXT_STEP.to_string())
-        } else if error_guard_unresolved.is_some() {
-            Some(ERROR_RETURN_GUARD_UNRESOLVED_NEXT_STEP.to_string())
-        } else {
-            recommended_next_step(context.probe, &class, context.owner_assertion_shaped)
-        };
+    let recommended_next_step = if class == ExposureClass::WeaklyExposed
+        && exact_oracle_covers_direct_sink
+    {
+        None
+    } else if boundary_operand_unresolved {
+        Some(BOUNDARY_OPERAND_UNRESOLVED_NEXT_STEP.to_string())
+    } else if error_guard_unresolved.is_some() {
+        Some(ERROR_RETURN_GUARD_UNRESOLVED_NEXT_STEP.to_string())
+    } else if class == ExposureClass::StaticUnknown
+        && evidence.reach.state == StageState::No
+        && !context.owner_assertion_shaped
+    {
+        // A new function no test calls yields several unclassifiable lines;
+        // "escalate to real mutation" is useless while no test reaches
+        // the owner at all. The class stays static_unknown.
+        Some(STATIC_UNKNOWN_UNREACHED_NEXT_STEP.to_string())
+    } else if class == ExposureClass::ReachableUnrevealed
+        && evidence.observe.summary == ASSERTION_CONTEXT_UNESTABLISHED
+        && !context.owner_assertion_shaped
+    {
+        Some("Establish that the test is collected and enabled, that the assertion runs on its executed path, and that it resolves to the intended standard macro, then check the changed returned value.".to_string())
+    } else {
+        recommended_next_step(context.probe, &class, context.owner_assertion_shaped)
+    };
     let confidence = evidence.confidence(&class);
     let invalid_propagation_witness = evidence.propagation_witness().is_some_and(|diagnostic| {
         diagnostic.is_invalid() || !diagnostic.witness().digest_matches()
@@ -145,6 +171,7 @@ pub(in crate::analysis) fn build_finding(
         flow_sinks: evidence.flow_sinks,
         activation: evidence.activation,
         stop_reasons,
+        related_tests_matched_total: Some(evidence.related_tests_matched_total),
         related_tests: evidence.related_tests,
         recommended_next_step,
         // Language metadata is populated by the per-language adapter
@@ -228,9 +255,18 @@ fn exact_oracle_aligns_with_sink(
 /// applies to value sinks), so only an observer of the owner result
 /// withholds the prescription. A directly asserted owner call with no
 /// `let` binding stays fail-closed and keeps its repair.
+#[cfg(test)]
 fn strong_assertion_observes_owner_result(
     related_tests: &[(&TestSummary, RelationReason)],
     owner_name: Option<&str>,
+) -> bool {
+    strong_assertion_observes_owner_result_with_admission(related_tests, owner_name, &|_, _| true)
+}
+
+fn strong_assertion_observes_owner_result_with_admission(
+    related_tests: &[(&TestSummary, RelationReason)],
+    owner_name: Option<&str>,
+    assertion_admitted: &dyn Fn(&TestSummary, &OracleFact) -> bool,
 ) -> bool {
     let Some(owner_name) = owner_name else {
         return false;
@@ -238,7 +274,8 @@ fn strong_assertion_observes_owner_result(
     related_tests.iter().any(|(test, _)| {
         let bound = bound_identifiers_from_owner_calls(&test.body, owner_name);
         test.assertions.iter().any(|assertion| {
-            assertion.strength == OracleStrength::Strong
+            assertion_admitted(test, assertion)
+                && assertion.strength == OracleStrength::Strong
                 && bound
                     .iter()
                     .any(|name| contains_identifier(&assertion.text, name))
@@ -496,12 +533,14 @@ mod tests {
             flow_sinks: sinks,
             propagation_witness: None,
             activation: ActivationEvidence::default(),
+            related_tests_matched_total: related_tests.len(),
             related_tests,
             reach: yes.clone(),
             infect: yes.clone(),
             propagate: StageEvidence::new(StageState::Weak, Confidence::Low, "propagation weak"),
             observe: yes.clone(),
             discriminate: yes,
+            reach_ruled_out: true,
         }
     }
 

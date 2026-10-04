@@ -53,7 +53,12 @@ The date prefix sorts handoffs chronologically when a directory listing
 is the index. The `<topic>` slug should match the campaign or PR-cluster
 the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
-## Current Handoffs
+## Retained handoffs (historical)
+
+These files are campaign and freeze closeouts. They do not select current
+work. Start from [the roadmap](../ROADMAP.md) and live GitHub issues for what
+RIPR is doing now. Keep the links: a closeout remains the receipt for the
+claim it closed.
 
 - [0.9.0 freeze re-pin](2026-06-08-0.9.0-freeze-repin.md)
 - [0.9.0 swarm freeze](2026-06-05-0.9.0-swarm-freeze.md)
@@ -224,7 +229,7 @@ doesn't apply, omit it rather than padding it.
 | `docs/DEFERRED.md` | "v1 simple, revisit later" decisions; reference these from a handoff but don't duplicate them |
 | PR body | per-PR review context; the handoff references PRs by number |
 | `target/ripr/reports/plan-forward.md` | live, ephemeral, per-iteration plan during an autonomous loop; graduate to a committed handoff only at session boundary |
-| `.ripr/goals/active.toml` | machine-readable manifest; a committed handoff complements this rather than duplicating it |
+| GitHub issues and PRs | live execution tracking per [Repository Tracking Model](../REPO_TRACKING_MODEL.md) (the former `.ripr/goals/active.toml` manifest was retired in #1701); a committed handoff complements this rather than duplicating it |
 
 ## See also
 

@@ -133,7 +133,7 @@ pub(crate) fn read_analysis_outcome_artifact_at(
     root_display: &str,
     path: &Path,
 ) -> Result<AnalysisOutcome, AnalysisOutcomeArtifactError> {
-    let text = std::fs::read_to_string(path).map_err(|error| {
+    let text = crate::bounded_input::read_to_string(path).map_err(|error| {
         let message = format!(
             "Analysis outcome artifact {} is unavailable: {error}.",
             path.display()

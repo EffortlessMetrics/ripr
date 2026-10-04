@@ -1,0 +1,500 @@
+# Developer-experience scoreboards for `cargo xtask dx-scoreboard`.
+#
+# Each metric names the board it belongs to, the bar a developer would feel
+# (`target`), and the margin that counts as a regression against a committed
+# baseline. Targets are proposals until accepted; changing one is a reviewed
+# edit to this file, never a side effect of a run.
+#
+# `source` says where the number comes from:
+#   measured          the command measures it on this host
+#   file:<path>       read from a committed receipt in this repository
+#   ingest:<kind>     supplied by `--ingest <file>` from another harness
+#   pending           no instrument yet; always reported as not_measured
+#
+# `runner_dependent = true` metrics (wall time, memory) are compared against a
+# baseline only when the baseline's runner class matches this run's.
+
+schema_version = "ripr-dx-scoreboards-v1"
+
+# The shared Rust corpus (`benchmarks/rust_corpus/manifest.json`, #5288, now on
+# main) can replace the inline list below; switching needs a new baseline
+# because its pins differ:
+#   corpus_manifest = "benchmarks/rust_corpus/manifest.json"
+# Its `fast` tier then runs by default and `full` with --include-heavy.
+
+# Fixed corpus of real repositories. Pins are exact commits so a moving
+# upstream cannot move the measurement; only the analyzer under test changes.
+# Each pin is a commit whose own change touches production Rust, so the warm
+# `ripr check --base HEAD~1` measures a real small edit rather than an empty
+# diff. Entries can also be repositories we intend to integrate with; the
+# report shows each one as its own row set.
+[[corpus]]
+id = "serde"
+url = "https://github.com/serde-rs/serde"
+sha = "dd18663450ec3ee38e35e3a4ee141932614e662c"
+note = "small library workspace, macro-heavy tests"
+
+[[corpus]]
+id = "ripgrep"
+url = "https://github.com/BurntSushi/ripgrep"
+sha = "020687a77d13146923333f0beb274eeabd54a270"
+note = "multi-crate CLI workspace"
+
+[[corpus]]
+id = "regex"
+url = "https://github.com/rust-lang/regex"
+sha = "72d650cb0a880a01ab6dc2137c0888e8f89740f7"
+note = "large library workspace with generated test suites"
+
+[[corpus]]
+id = "ripr-swarm"
+url = "https://github.com/EffortlessMetrics/ripr-swarm"
+sha = "7c64b9c8d0778cc7a6aeaab0deb0452d9e521663"
+note = "large workspace (~900 files); pinned, not the checkout under test"
+heavy = true
+
+# ---------------------------------------------------------------- speed ----
+
+[[metric]]
+id = "speed.cold_pilot_ms"
+board = "speed"
+title = "Cold `ripr pilot` to first useful result"
+unit = "ms"
+direction = "lower_is_better"
+target = 30000
+regression_pct = 25
+regression_floor = 3000
+runner_dependent = true
+source = "measured"
+per_repo = true
+
+[[metric]]
+id = "speed.cold_pilot_peak_rss_mb"
+board = "speed"
+title = "Cold `ripr pilot` peak memory"
+unit = "MB"
+direction = "lower_is_better"
+target = 1024
+regression_pct = 15
+regression_floor = 64
+runner_dependent = true
+source = "measured"
+per_repo = true
+
+[[metric]]
+id = "speed.warm_check_ms"
+board = "speed"
+title = "Warm `ripr check` on the last commit"
+unit = "ms"
+direction = "lower_is_better"
+target = 2000
+regression_pct = 25
+regression_floor = 500
+runner_dependent = true
+source = "measured"
+per_repo = true
+
+[[metric]]
+id = "speed.warm_check_peak_rss_mb"
+board = "speed"
+title = "Warm `ripr check` peak memory"
+unit = "MB"
+direction = "lower_is_better"
+target = 512
+regression_pct = 15
+regression_floor = 64
+runner_dependent = true
+source = "measured"
+per_repo = true
+
+# ------------------------------------------------------------ ci adoption --
+
+[[metric]]
+id = "ci.workflow_lines"
+board = "ci"
+title = "Lines in the workflow `ripr init --ci github` writes"
+unit = "lines"
+direction = "lower_is_better"
+target = 150
+regression_pct = 10
+regression_floor = 20
+runner_dependent = false
+source = "measured"
+
+[[metric]]
+id = "ci.builds_ripr_from_source"
+board = "ci"
+title = "Generated workflow can only get ripr by compiling it (1 = yes)"
+unit = "flag"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "measured"
+
+[[metric]]
+id = "ci.install_seconds"
+board = "ci"
+title = "Time for the generated workflow to have ripr on PATH"
+unit = "s"
+direction = "lower_is_better"
+target = 30
+regression_pct = 50
+regression_floor = 15
+runner_dependent = true
+source = "ingest:install"
+pending_reason = "timed by the install harness (download, sha256 check, extract, `ripr --version`); pass its receipt with --ingest"
+
+# ------------------------------------------------------------------ trust --
+
+[[metric]]
+id = "trust.false_clean_on_bad_input"
+board = "trust"
+title = "Commands that exit 0 when pointed at a missing repository"
+unit = "commands"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "measured"
+
+[[metric]]
+id = "trust.hostile_repo_failures"
+board = "trust"
+title = "Hostile-repository journeys (odd file names, symlink loops, shallow clones, submodules) where ripr neither finds nor refuses cleanly"
+unit = "journeys"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "measured"
+
+[[metric]]
+id = "trust.self_contradictions"
+board = "trust"
+title = "Findings or seams whose own evidence contradicts itself"
+unit = "findings"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "measured"
+per_repo = true
+
+[[metric]]
+id = "trust.false_verdict_rate"
+board = "trust"
+title = "Wrong verdicts on the hand-checked verdict corpus"
+unit = "ratio"
+direction = "lower_is_better"
+target = 0.05
+# One more wrong case out of 23 (0.043) exceeds the floor and regresses.
+regression_pct = 0
+regression_floor = 0.02
+runner_dependent = false
+source = "file:fixtures/rust-verdict-corpus/expected/report.json#false_verdict_rate"
+pending_reason = "the hand-checked verdict corpus report lands with #5318"
+
+[[metric]]
+id = "trust.verdict_corpus_false_actionable"
+board = "trust"
+title = "Hand-checked edits the crate's tests fully catch that ripr still flags as a gap"
+unit = "ratio"
+direction = "lower_is_better"
+target = 0.05
+regression_pct = 0
+regression_floor = 0.02
+runner_dependent = false
+source = "file:fixtures/rust-verdict-corpus/expected/report.json#false_actionable_rate"
+pending_reason = "the hand-checked verdict corpus report lands with #5318"
+
+[[metric]]
+id = "trust.verdict_corpus_abstention"
+board = "trust"
+title = "Hand-checked edits where ripr gives no specific verdict"
+unit = "ratio"
+direction = "lower_is_better"
+target = 0.2
+regression_pct = 0
+regression_floor = 0.02
+runner_dependent = false
+source = "file:fixtures/rust-verdict-corpus/expected/report.json#abstention_rate"
+pending_reason = "the hand-checked verdict corpus report lands with #5318"
+
+[[metric]]
+id = "trust.verdict_corpus_false_silent"
+board = "trust"
+title = "Hand-checked edits the crate's tests miss that ripr reports as fine (counterweight to abstaining less)"
+unit = "ratio"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "file:fixtures/rust-verdict-corpus/expected/report.json#false_silent_rate"
+pending_reason = "the hand-checked verdict corpus report lands with #5318"
+
+[[metric]]
+id = "trust.verdict_corpus_false_exposed"
+board = "trust"
+title = "Hand-checked edits the crate's tests miss that ripr credits as caught (false confidence; few credited cases so far, so read with its denominator)"
+unit = "ratio"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "file:fixtures/rust-verdict-corpus/expected/report.json#false_exposed_rate"
+pending_reason = "the hand-checked verdict corpus report lands with #5318"
+
+[[metric]]
+id = "trust.discriminator_claim_agreement"
+board = "trust"
+title = "When ripr says a test discriminates, real mutants are caught"
+unit = "ratio"
+direction = "higher_is_better"
+target = 0.95
+regression_pct = 0
+regression_floor = 0.05
+runner_dependent = false
+source = "ingest:mutation-spot-check"
+
+[[metric]]
+id = "trust.gap_claim_agreement"
+board = "trust"
+title = "When ripr reports a gap, real mutants survive"
+unit = "ratio"
+direction = "higher_is_better"
+target = 0.8
+regression_pct = 0
+regression_floor = 0.05
+runner_dependent = false
+source = "ingest:mutation-spot-check"
+
+[[metric]]
+id = "trust.mutation_join_coverage"
+board = "trust"
+title = "Real mutants that join a ripr seam precisely enough to score"
+unit = "ratio"
+direction = "higher_is_better"
+target = 0.5
+regression_pct = 0
+regression_floor = 0.02
+runner_dependent = false
+source = "ingest:mutation-spot-check"
+
+[[metric]]
+id = "trust.judged_panel_false_actionable"
+board = "trust"
+title = "False actionable rate on the Rust judged behavior panel"
+unit = "ratio"
+direction = "lower_is_better"
+target = 0.0
+regression_pct = 0
+regression_floor = 0.0
+runner_dependent = false
+source = "file:metrics/rust-judged-behavior-panel/calibration-scorecard.json#candidates.false_actionable"
+
+# ------------------------------------------------------------ paste safety --
+
+[[metric]]
+id = "paste.unsafe_commands"
+board = "paste"
+title = "Printed commands that break or run injected code under a hostile repo path"
+unit = "commands"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "measured"
+
+[[metric]]
+id = "paste.unbound_commands"
+board = "paste"
+title = "Printed commands that drop the selected repository root"
+unit = "commands"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "measured"
+
+# -------------------------------------------------------------- first run --
+
+[[metric]]
+id = "first_run.time_to_first_useful_result_s"
+board = "first_run"
+title = "New developer, fresh machine: install to first useful result"
+unit = "s"
+direction = "lower_is_better"
+target = 300
+regression_pct = 25
+regression_floor = 60
+runner_dependent = true
+source = "ingest:first-run"
+
+[[metric]]
+id = "first_run.unknown_verdicts"
+board = "first_run"
+title = "Simple boundary edits on unfamiliar crates that get an `*_unknown` verdict"
+unit = "cases"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "ingest:first-run"
+# The verdict list is the sample detail: a changed verdict is listed for
+# review, because correctness needs the labeled corpus, not this walk.
+review_on_change = true
+
+[[metric]]
+id = "first_run.friction_events"
+board = "first_run"
+title = "Friction events logged during the scripted first run"
+unit = "events"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "ingest:first-run"
+
+[[metric]]
+id = "first_run.failed_steps"
+board = "first_run"
+title = "First-run steps that exit nonzero"
+unit = "steps"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "ingest:first-run"
+
+[[metric]]
+id = "first_run.over_budget_steps"
+board = "first_run"
+title = "First-run steps over their own time, output-length or workflow-size budget"
+unit = "steps"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "ingest:first-run"
+
+[[metric]]
+id = "first_run.walk_secs"
+board = "first_run"
+title = "Seconds for the scripted walk on one crate, setup excluded"
+unit = "s"
+direction = "lower_is_better"
+target = 10
+# The walk's own rule: fail above 1.5x the last accepted run plus 0.5 s,
+# checked for every case against the same case in the baseline.
+regression_pct = 50
+regression_floor = 0.5
+regression_additive = true
+runner_dependent = true
+per_repo = true
+source = "ingest:first-run"
+
+# ------------------------------------------------------------------ agent ----
+# Help-only agents fixing seeded test gaps on pinned crates, scored with
+# hand-written mutants plus cargo-mutants (agent-as-user harness, #5293).
+# The step-count targets are proposed bars, not measured limits.
+
+[[metric]]
+id = "agent.fix_success_rate"
+board = "agent"
+title = "Targets where every answer-key mutant is caught after the agent finishes"
+unit = "ratio"
+direction = "higher_is_better"
+target = 1.0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "ingest:agent-as-user"
+
+[[metric]]
+id = "agent.answer_key_mutants_caught"
+board = "agent"
+title = "Answer-key mutants caught after the agent's fix"
+unit = "mutants"
+direction = "higher_is_better"
+target = 3
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+per_repo = true
+source = "ingest:agent-as-user"
+
+[[metric]]
+id = "agent.ripr_commands_to_fix"
+board = "agent"
+title = "ripr commands the agent ran to close the gap"
+unit = "commands"
+direction = "lower_is_better"
+target = 10
+regression_pct = 25
+regression_floor = 3
+runner_dependent = false
+per_repo = true
+source = "ingest:agent-as-user"
+
+[[metric]]
+id = "agent.tool_steps_to_fix"
+board = "agent"
+title = "All agent tool calls to close the gap"
+unit = "steps"
+direction = "lower_is_better"
+target = 15
+regression_pct = 25
+regression_floor = 3
+runner_dependent = false
+per_repo = true
+source = "ingest:agent-as-user"
+
+[[metric]]
+id = "agent.false_weak_findings_after_fix"
+board = "agent"
+title = "Non-exposed verdicts left after every mutant is caught"
+unit = "findings"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+per_repo = true
+source = "ingest:agent-as-user"
+
+[[metric]]
+id = "agent.stale_recheck_cycles"
+board = "agent"
+title = "Re-checks after an edit that returned stale output"
+unit = "cycles"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "ingest:agent-as-user"
+
+[[metric]]
+id = "agent.white_box_tests_to_satisfy_ripr"
+board = "agent"
+title = "White-box tests written only to satisfy ripr"
+unit = "tests"
+direction = "lower_is_better"
+target = 0
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "ingest:agent-as-user"

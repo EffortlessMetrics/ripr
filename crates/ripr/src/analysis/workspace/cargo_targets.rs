@@ -52,6 +52,12 @@ use super::source_role::SourceRoleContext;
 pub(crate) struct DeclaredCargoTargets {
     pub(crate) tests: BTreeSet<PathBuf>,
     pub(crate) benches: BTreeSet<PathBuf>,
+    /// The build script Cargo compiles for this package, if any.
+    pub(crate) build_script: Option<PathBuf>,
+    /// Explicit `path = ...` entries of the `[lib]` table and the
+    /// `[[bin]]` array: production crate roots that may sit outside any
+    /// `src` layout (`[lib] path = "lib/foo.rs"`).
+    pub(crate) production_roots: BTreeSet<PathBuf>,
 }
 
 /// Read `path = ...` entries from the `[[test]]` and `[[bench]]` arrays
@@ -67,10 +73,45 @@ pub(crate) fn declared_targets_from_manifest(
     };
     collect_explicit_paths(value.get("test"), manifest_dir, &mut targets.tests);
     collect_explicit_paths(value.get("bench"), manifest_dir, &mut targets.benches);
+    collect_explicit_paths(
+        value.get("bin"),
+        manifest_dir,
+        &mut targets.production_roots,
+    );
+    if let Some(lib) = value.get("lib") {
+        // `[lib]` is a single table; reuse the array walker on it.
+        collect_explicit_paths(
+            Some(&toml::Value::Array(vec![lib.clone()])),
+            manifest_dir,
+            &mut targets.production_roots,
+        );
+    }
+    targets.build_script = build_script_from_manifest(&value, manifest_dir);
     targets
 }
 
-fn collect_explicit_paths(
+/// Cargo's build-script resolution for one package manifest: no
+/// `[package]` (a virtual workspace) builds nothing; `build = false`
+/// disables the script; `build = "path"` names it; otherwise (`build`
+/// absent or `true`) Cargo builds `build.rs` when that file exists.
+fn build_script_from_manifest(value: &toml::Value, manifest_dir: &Path) -> Option<PathBuf> {
+    let package = value.get("package")?;
+    let path = match package.get("build") {
+        Some(toml::Value::Boolean(false)) => return None,
+        Some(toml::Value::String(path)) => manifest_dir.join(path.trim()),
+        Some(toml::Value::Boolean(true)) | None => {
+            let default = manifest_dir.join("build.rs");
+            if !default.is_file() {
+                return None;
+            }
+            default
+        }
+        Some(_) => return None,
+    };
+    Some(normalize(&path))
+}
+
+pub(super) fn collect_explicit_paths(
     target_entries: Option<&toml::Value>,
     manifest_dir: &Path,
     out: &mut BTreeSet<PathBuf>,
@@ -411,6 +452,42 @@ static METADATA_PROBE_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic
 /// pathological workspace.
 const CARGO_METADATA_PROBE_DEADLINE: std::time::Duration = std::time::Duration::from_mins(2);
 
+/// The bounded `cargo metadata` probe command for `workspace_root`, before
+/// its output wiring. Split out so its environment is testable (#4734).
+fn cargo_metadata_command(workspace_root: &Path) -> std::process::Command {
+    let mut command = std::process::Command::new("cargo");
+    command
+        .args([
+            "metadata",
+            "--no-deps",
+            "--format-version",
+            "1",
+            "--offline",
+        ])
+        .arg("--manifest-path")
+        // Bare `Cargo.toml`: the process directory below is the
+        // workspace root, and a root-prefixed `manifest_path`
+        // would be re-resolved against that new directory — a
+        // relative analysis root (`some/dir`) would probe
+        // `some/dir/some/dir/Cargo.toml` and fail every
+        // registration's premise (#3637 review). An absolute path
+        // would work, but canonicalize emits `\\?\` verbatim
+        // paths on Windows that would leak into the inventory
+        // keys.
+        .arg("Cargo.toml")
+        // Cargo resolves the workspace from the process directory
+        // too: without this anchor, a probe for a bare-package
+        // root inherits the caller's enclosing workspace and cargo
+        // rejects the manifest as "believes it's in a workspace
+        // when it's not" (#3634).
+        .current_dir(workspace_root)
+        .stdin(std::process::Stdio::null());
+    // `--offline` is a cargo flag; it does not stop the rustup proxy from
+    // downloading a toolchain a `rust-toolchain.toml` pins (#4734).
+    crate::process_owner::forbid_rustup_auto_install(&mut command);
+    command
+}
+
 /// Run `cargo metadata --no-deps --offline` against the analysis root and
 /// extract the workspace test-target inventory (#3634). `None` on any
 /// unresolvable state: no root manifest, a cargo binary that cannot be
@@ -427,6 +504,11 @@ fn run_workspace_cargo_metadata(
     if !manifest_path.is_file() {
         return None;
     }
+    // A repository toolchain `path` would make rustup run the repository's
+    // own `cargo`; fail closed like any other unavailable metadata.
+    if crate::config::repository_toolchain_path_pin(workspace_root).is_some() {
+        return None;
+    }
     let stdout_path = std::env::temp_dir().join(format!(
         "ripr-cargo-metadata-{}-{}-{}.json",
         std::process::id(),
@@ -439,36 +521,13 @@ fn run_workspace_cargo_metadata(
     let parsed = std::fs::File::create(&stdout_path)
         .ok()
         .and_then(|stdout_file| {
-            std::process::Command::new("cargo")
-                .args([
-                    "metadata",
-                    "--no-deps",
-                    "--format-version",
-                    "1",
-                    "--offline",
-                ])
-                .arg("--manifest-path")
-                // Bare `Cargo.toml`: the process directory below is the
-                // workspace root, and a root-prefixed `manifest_path`
-                // would be re-resolved against that new directory — a
-                // relative analysis root (`some/dir`) would probe
-                // `some/dir/some/dir/Cargo.toml` and fail every
-                // registration's premise (#3637 review). An absolute path
-                // would work, but canonicalize emits `\\?\` verbatim
-                // paths on Windows that would leak into the inventory
-                // keys.
-                .arg("Cargo.toml")
-                // Cargo resolves the workspace from the process directory
-                // too: without this anchor, a probe for a bare-package
-                // root inherits the caller's enclosing workspace and cargo
-                // rejects the manifest as "believes it's in a workspace
-                // when it's not" (#3634).
-                .current_dir(workspace_root)
-                .stdin(std::process::Stdio::null())
+            let mut command = cargo_metadata_command(workspace_root);
+            command
                 .stdout(std::process::Stdio::from(stdout_file))
-                .stderr(std::process::Stdio::null())
-                .spawn()
-                .ok()
+                .stderr(std::process::Stdio::null());
+            // The owned-subprocess authority (#3803) keeps the bounded
+            // probe's tree termination Job-Object-backed on Windows.
+            crate::process_owner::OwnedProcess::spawn(command).ok()
         })
         .and_then(|mut child| {
             let outcome = crate::git::poll_child(
@@ -483,6 +542,11 @@ fn run_workspace_cargo_metadata(
                         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
                         .map(|value| workspace_test_target_owners(&value))
                 }
+                // Tree cleanup could not be confirmed after the probe
+                // ended abnormally: the wait contract only guarantees a
+                // terminated tree for the other non-Exited arms, so the
+                // probe result is unusable either way.
+                crate::git::ChildWait::CleanupFailed(_) => None,
                 _ => None,
             }
         });
@@ -631,11 +695,15 @@ pub(crate) fn context_for_files<'a, I>(workspace_root: &Path, files: I) -> Sourc
 where
     I: IntoIterator<Item = &'a Path>,
 {
+    let files = files.into_iter().collect::<Vec<_>>();
     let mut manifests: BTreeMap<PathBuf, DeclaredCargoTargets> = BTreeMap::new();
     let mut context = SourceRoleContext::empty();
-    for file in files {
+    // (owning package dir, module dir) for each declared crate root that
+    // sits in its own directory, both lexically resolved and anchored.
+    let mut module_dirs: BTreeSet<(PathBuf, PathBuf)> = BTreeSet::new();
+    for file in &files {
         let anchored = workspace_root.join(file);
-        let Some(root) = package_root_of(&anchored) else {
+        let Some(root) = owning_package_dir(workspace_root, &anchored) else {
             continue;
         };
         if !manifests.contains_key(&root) {
@@ -651,9 +719,62 @@ where
             context
                 .declared_bench_targets
                 .extend(strip_root(workspace_root, &targets.benches));
+            context.build_scripts.extend(strip_root(
+                workspace_root,
+                &targets.build_script.iter().cloned().collect(),
+            ));
+            // `path = "./lib/foo.rs"` or `"sub/../lib.rs"` must compare
+            // equal to the diff's identity, so resolve `.`/`..` first.
+            let resolved = targets
+                .production_roots
+                .iter()
+                .map(|path| lexical(&normalize(path)))
+                .collect::<BTreeSet<_>>();
+            context
+                .declared_production_sources
+                .extend(strip_root(workspace_root, &resolved));
+            let package_dir = lexical(&normalize(&root));
+            module_dirs.extend(
+                resolved
+                    .iter()
+                    .filter_map(|target| target.parent().map(Path::to_path_buf))
+                    // A crate root beside its manifest (or above it) would
+                    // turn the whole package, or more, into a source tree;
+                    // only the root file itself is declared then.
+                    .filter(|dir| !package_dir.starts_with(dir))
+                    .map(|dir| (package_dir.clone(), dir)),
+            );
+        }
+    }
+    // Rust resolves a declared root's out-of-line modules below the root's
+    // directory. Admit exactly the analyzed files there that the same
+    // package owns: a nested package inside that directory keeps its own
+    // roles, and no directory prefix can widen the set.
+    if !module_dirs.is_empty() {
+        for file in &files {
+            let anchored = lexical(&normalize(&workspace_root.join(file)));
+            let owner = owning_package_dir(workspace_root, &workspace_root.join(file))
+                .map(|dir| lexical(&normalize(&dir)));
+            let declared = module_dirs.iter().any(|(package_dir, dir)| {
+                anchored.starts_with(dir) && owner.as_ref() == Some(package_dir)
+            });
+            if declared {
+                context
+                    .declared_production_sources
+                    .extend(strip_root(workspace_root, &BTreeSet::from([anchored])));
+            }
         }
     }
     context
+}
+
+/// The package directory that owns `anchored`: the Cargo source-layout
+/// parent (`src/`, `tests/`, ...) when there is one, else the nearest
+/// ancestor manifest inside the workspace. Files outside every source
+/// layout (a build script beside its manifest, a declared `[lib] path =
+/// "lib/foo.rs"` root) take the second route.
+pub(super) fn owning_package_dir(workspace_root: &Path, anchored: &Path) -> Option<PathBuf> {
+    package_root_of(anchored).or_else(|| nearest_manifest_dir(workspace_root, anchored))
 }
 
 /// Normalize absolute declared-target paths back to workspace-relative
@@ -663,13 +784,25 @@ fn strip_root(workspace_root: &Path, targets: &BTreeSet<PathBuf>) -> BTreeSet<Pa
     targets
         .iter()
         .filter_map(|target| {
-            let normalized = normalize(target);
-            normalized
-                .strip_prefix(normalize(workspace_root))
+            // Resolve `.`/`..` on both sides: a `.` workspace root and a
+            // `./lib/foo.rs` target must still strip to `lib/foo.rs`.
+            lexical(&normalize(target))
+                .strip_prefix(lexical(&normalize(workspace_root)))
                 .ok()
                 .map(normalize)
         })
         .collect()
+}
+
+/// The nearest ancestor directory of `file` that holds a `Cargo.toml`,
+/// bounded by the workspace root so a manifest above the analyzed
+/// workspace is never consulted.
+pub(super) fn nearest_manifest_dir(workspace_root: &Path, file: &Path) -> Option<PathBuf> {
+    file.ancestors()
+        .skip(1)
+        .take_while(|dir| dir.starts_with(workspace_root))
+        .find(|dir| dir.join("Cargo.toml").is_file())
+        .map(Path::to_path_buf)
 }
 
 /// The package root owning `file`: the nearest ancestor directory that
@@ -689,7 +822,7 @@ fn package_root_of(file: &Path) -> Option<PathBuf> {
     }
 }
 
-fn normalize(path: &Path) -> PathBuf {
+pub(super) fn normalize(path: &Path) -> PathBuf {
     PathBuf::from(path.to_string_lossy().replace('\\', "/"))
 }
 
@@ -700,7 +833,7 @@ fn normalize(path: &Path) -> PathBuf {
 /// registration spelling. A leading ParentDir chain — the path escaping
 /// above its base — is kept as spelled, so outside-root declarations
 /// resolve consistently without being silently clamped into the root.
-fn lexical(path: &Path) -> PathBuf {
+pub(super) fn lexical(path: &Path) -> PathBuf {
     let mut resolved: Vec<std::path::Component> = Vec::new();
     for component in path.components() {
         match component {
@@ -882,6 +1015,141 @@ mod context {
     use super::*;
 
     #[test]
+    fn context_for_files_records_only_build_scripts_cargo_compiles() -> Result<(), String> {
+        // Cargo builds `build.rs` by default, `package.build = "path"` by
+        // name, nothing under `build = false`, and nothing for a virtual
+        // workspace or a directory with no manifest.
+        let dir = unique_workspace("build-scripts-ctx");
+        let files = [
+            (
+                "default/Cargo.toml",
+                "[package]\nname='d'\nversion='0.1.0'\n",
+            ),
+            ("default/build.rs", "fn main() {}\n"),
+            (
+                "custom/Cargo.toml",
+                "[package]\nname='c'\nversion='0.1.0'\nbuild='tools/gen.rs'\n",
+            ),
+            ("custom/src/lib.rs", "pub fn f() {}\n"),
+            ("custom/tools/gen.rs", "fn main() {}\n"),
+            (
+                "disabled/Cargo.toml",
+                "[package]\nname='x'\nversion='0.1.0'\nbuild=false\n",
+            ),
+            ("disabled/build.rs", "compile_error!(\"never built\");\n"),
+            ("virtual/Cargo.toml", "[workspace]\nmembers=[]\n"),
+            ("virtual/build.rs", "fn main() {}\n"),
+            ("loose/build.rs", "fn main() {}\n"),
+        ];
+        for (path, text) in files {
+            let target = dir.join(path);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            std::fs::write(&target, text).map_err(|e| e.to_string())?;
+        }
+        let rust_files = [
+            "default/build.rs",
+            "custom/src/lib.rs",
+            "custom/tools/gen.rs",
+            "disabled/build.rs",
+            "virtual/build.rs",
+            "loose/build.rs",
+        ]
+        .map(PathBuf::from);
+        let context = context_for_files(&dir, rust_files.iter().map(PathBuf::as_path));
+        assert_eq!(
+            context.build_scripts,
+            BTreeSet::from([
+                PathBuf::from("custom/tools/gen.rs"),
+                PathBuf::from("default/build.rs"),
+            ])
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn context_for_files_records_declared_lib_and_bin_roots() -> Result<(), String> {
+        // `[lib]` is a table and `[[bin]]` an array; both may point outside
+        // `src/`. `./` and `..` spellings resolve to the diff's identity.
+        // Files below a root in its own directory are admitted only when the
+        // same package owns them; a root beside (or above) its manifest
+        // declares only itself, never the package directory.
+        let dir = unique_workspace("production-roots-ctx");
+        let files = [
+            (
+                "Cargo.toml",
+                "[package]\nname='odd'\nversion='0.1.0'\n[lib]\npath='./lib/odd.rs'\n[[bin]]\nname='cli'\npath='tools/x/../cli.rs'\n",
+            ),
+            ("lib/odd.rs", "pub fn f() {}\n"),
+            ("lib/odd/helper.rs", "pub fn g() {}\n"),
+            ("tools/cli.rs", "fn main() {}\n"),
+            ("scripts/gen.rs", "fn main() {}\n"),
+            (
+                "lib/nested/Cargo.toml",
+                "[package]\nname='nested'\nversion='0.1.0'\nbuild=false\n",
+            ),
+            ("lib/nested/build.rs", "compile_error!(\"never built\");\n"),
+            (
+                "flat/Cargo.toml",
+                "[package]\nname='flat'\nversion='0.1.0'\n[lib]\npath='lib.rs'\n",
+            ),
+            ("flat/lib.rs", "pub fn f() {}\n"),
+            ("flat/loose.rs", "pub fn f() {}\n"),
+            (
+                "up/Cargo.toml",
+                "[package]\nname='up'\nversion='0.1.0'\n[lib]\npath='../shared.rs'\n",
+            ),
+            ("shared.rs", "pub fn f() {}\n"),
+            ("up/loose.rs", "pub fn f() {}\n"),
+            (
+                "plain/Cargo.toml",
+                "[package]\nname='plain'\nversion='0.1.0'\n",
+            ),
+            ("plain/src/lib.rs", "pub fn f() {}\n"),
+        ];
+        for (path, text) in files {
+            let target = dir.join(path);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            std::fs::write(&target, text).map_err(|e| e.to_string())?;
+        }
+        let rust_files = [
+            "lib/odd.rs",
+            "lib/odd/helper.rs",
+            "lib/nested/build.rs",
+            "tools/cli.rs",
+            "scripts/gen.rs",
+            "flat/lib.rs",
+            "flat/loose.rs",
+            "up/loose.rs",
+            "plain/src/lib.rs",
+        ]
+        .map(PathBuf::from);
+        let context = context_for_files(&dir, rust_files.iter().map(PathBuf::as_path));
+        assert_eq!(
+            context.declared_production_sources,
+            BTreeSet::from([
+                PathBuf::from("flat/lib.rs"),
+                PathBuf::from("lib/odd.rs"),
+                PathBuf::from("lib/odd/helper.rs"),
+                PathBuf::from("shared.rs"),
+                PathBuf::from("tools/cli.rs"),
+            ]),
+            "the nested package's build.rs, loose files beside a flat root, and \
+             files beside an escaping root stay undeclared"
+        );
+
+        // A `.` workspace root (the CLI default) strips to the same identities.
+        let relative = context_for_files(Path::new("."), std::iter::empty());
+        assert!(relative.declared_production_sources.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
     fn context_for_files_collects_declared_targets_from_disk() -> Result<(), String> {
         // #3283 discriminating test for the aggregation itself: a real
         // manifest on disk contributes its declared targets, workspace
@@ -961,6 +1229,19 @@ mod harness_verdict {
             std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
         }
         std::fs::write(path, contents).map_err(|error| error.to_string())
+    }
+
+    /// The metadata probe must not let rustup install a toolchain a
+    /// `rust-toolchain.toml` pins (#4734): `--offline` binds cargo, not the
+    /// rustup proxy in front of it.
+    #[test]
+    fn cargo_metadata_probe_forbids_rustup_auto_install() {
+        let command = super::cargo_metadata_command(Path::new("."));
+        let auto_install = command
+            .get_envs()
+            .find(|(key, _)| *key == "RUSTUP_AUTO_INSTALL")
+            .and_then(|(_, value)| value);
+        assert_eq!(auto_install, Some(std::ffi::OsStr::new("0")));
     }
 
     /// #3608: the verdict discriminates declared-harness-false targets from

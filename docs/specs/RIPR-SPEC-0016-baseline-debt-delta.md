@@ -175,6 +175,55 @@ If more than one current record matches one baseline identity, the report must
 mark the baseline entry `stale_baseline_entry` or `invalid_baseline_entry`
 instead of selecting a current record arbitrarily.
 
+## Canonical Identity Authority and Compatibility Window
+
+Canonical gap identity is the normal gate-baseline authority: `canonical_gap_id`
+first, then the governed `seam_id` / `source_id` / `id` / `dedupe_key` chain
+where explicitly permitted. The legacy `path:line:static_class` fallback is
+compatibility evidence only, and every fallback-only join is a reviewable
+compatibility event that can never stay silent:
+
+- the joined item carries `baseline_match_kind: "legacy_path_line_class"`,
+  `stale_baseline_warning: true`, the retained `matched_legacy_identity`, and
+  the retained `canonical_replacement_candidate` (null when the current
+  candidate names none) in JSON, plus a "Legacy fallback matches" section in
+  Markdown;
+- the report emits a warning per fallback-only join and counts all such items
+  in `delta.legacy_fallback_match`, which generated CI summarizes;
+- when both sides carry a `canonical_gap_id` and they differ, the fallback
+  join is stale: the reviewed entry goes `stale_baseline_entry` and the current
+  decision stays unmatched, so a genuinely new canonical gap surfaces as
+  `new_policy_eligible` instead of looking historical;
+- when the reviewed entry preserves a repository `root` that differs from the
+  current report root, the fallback join is likewise stale: foreign history is
+  never laundered into this repository's delta.
+
+New baselines refuse fallback identity as primary authority: `ripr baseline
+create` writes only canonical or governed identities, preserves the source
+report `root` on the report and on each entry, and counts refused
+fallback-only decisions under `summary.skipped.fallback_only` with a loud
+warning. The deterministic migration route is
+`ripr baseline update --migrate-legacy-identities`: an unambiguously
+fallback-joined entry whose current decision carries a canonical gap id gains
+that canonical identity (path, line, decision, evidence, and review travel
+untouched), each replacement is recorded under the `update` section for
+independent review, and conflicting or cross-root migrations are refused with a
+warning. Migration never adopts new current debt, and removal of resolved
+debt additionally requires `--remove-resolved`: a migration-only run preserves
+unmatched entries with a warning instead of shrinking the reviewed baseline.
+The shrink-only update agrees with the delta refusal: a diverged or
+cross-root fallback join preserves the entry unchanged and leaves the current
+decision unmatched, so both surfaces tell the same story about the same
+evidence. Root spellings compare after normalization (separators unify,
+a single leading `./` folds away, trailing slashes drop); genuinely different
+forms of one checkout stay distinct and fail safe toward stale visibility.
+
+Compatibility window: the baseline schema version stays `0.1` and every change
+is additive. Ledgers written before root preservation (no `root`) or before
+canonical identities (no `canonical_gap_id`) remain parseable; entries without
+a root skip the cross-root refusal and stay comparable. Canonical-match items
+render byte-identical to before the disclosure existed.
+
 ## Delta Buckets
 
 Every parsed baseline or current decision should land in exactly one primary
@@ -232,7 +281,8 @@ The JSON report uses schema version `0.1`:
     "suppressed": 0,
     "stale_baseline_entry": 1,
     "invalid_baseline_entry": 0,
-    "missing_current_input": 0
+    "missing_current_input": 0,
+    "legacy_fallback_match": 0
   },
   "items": [
     {

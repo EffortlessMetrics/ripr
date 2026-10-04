@@ -1,0 +1,35 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -4,7 +4,7 @@ pub struct Codec;
+
+ impl Codec {
+     pub fn decode(input: u32) -> u32 {
+-        input
++        input.rotate_left(3)
+     }
+ }
+
+@@ -18,7 +18,7 @@ pub trait Reader {
+     fn base(&self) -> u32;
+
+     fn next_word(&mut self) -> u32 {
+-        self.base() * 2
++        self.base() * 3
+     }
+ }
+
+@@ -47,10 +47,10 @@ fn validate(x: i32) -> Result<i32, HalfError> {
+ }
+
+ pub fn checked_half(x: i32) -> Result<i32, HalfError> {
+-    Ok(validate(x)? / 2)
++    Ok(validate(x)? >> 1)
+ }
+
+ // A test that binds the owner's name locally calls its own binding.
+ pub fn scaled(x: i32) -> i32 {
+-    x * 5
++    x * 10
+ }

@@ -41,6 +41,9 @@ pub(super) fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) 
     {
         return (ProbeFamily::FieldConstruction, DeltaKind::Value);
     }
+    if super::boundary::python_return_comparison(trimmed).is_some() {
+        return (ProbeFamily::Predicate, DeltaKind::Control);
+    }
     if trimmed.starts_with("return ") || trimmed == "return" {
         return (ProbeFamily::ReturnValue, DeltaKind::Value);
     }
@@ -136,7 +139,9 @@ fn normalize_python_gap_discriminator(probe_family: &ProbeFamily, line_text: &st
     let mut text = line_text.trim().trim_end_matches(';').trim().to_string();
     match probe_family {
         ProbeFamily::Predicate => {
-            for prefix in ["if ", "elif ", "while ", "for ", "match ", "case "] {
+            for prefix in [
+                "if ", "elif ", "while ", "for ", "match ", "case ", "return ",
+            ] {
                 if let Some(stripped) = text.strip_prefix(prefix) {
                     text = stripped.to_string();
                     break;

@@ -46,11 +46,17 @@ ripr pr-ledger record \
   --coverage target/ripr/reports/coverage-summary.json \
   --history .ripr/pr-evidence-ledger.jsonl \
   --out target/ripr/reports/pr-evidence-ledger.json \
-  --out-md target/ripr/reports/pr-evidence-ledger.md
+  --out-md target/ripr/reports/pr-evidence-ledger.md \
+  --out-jsonl .ripr/pr-evidence-ledger.jsonl
 ```
 
 The report is evidence only. `ripr gate evaluate` remains the pass/fail
 authority for configured gate modes.
+
+To populate trend fields, pass `--out-jsonl .ripr/pr-evidence-ledger.jsonl` on a
+run you choose to keep, then commit that JSONL (or otherwise supply it on the
+next `--history` read). Generated GitHub workflows never pass `--out-jsonl` and
+never auto-commit the ledger.
 
 ## Read The First Screen
 
@@ -231,7 +237,9 @@ coverage/grip claims.
 ## History And Receipts
 
 The ledger may read prior PR ledger history from `.ripr/pr-evidence-ledger.jsonl`
-or another configured artifact. History turns one PR card into an adoption
+or another configured artifact. Produce that file with
+`ripr pr-ledger record --out-jsonl .ripr/pr-evidence-ledger.jsonl` (one compact
+record object per line). History turns one PR card into an adoption
 record:
 
 ```text
@@ -281,7 +289,7 @@ promoting stricter gate modes.
   is ready to move from advisory to stricter configured gates.
 - [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) explains how
   ledger movement can feed one reviewer, developer, or agent next action.
-- [CI strategy](CI.md#generated-github-workflow) describes generated workflow
+- [CI strategy](CI.md#copyable-ripr-advisory-workflow) describes generated workflow
   projection into GitHub job summaries and artifacts.
 - [Output schema](OUTPUT_SCHEMA.md#pr-evidence-ledger) defines the
   `pr-evidence-ledger` JSON and Markdown contracts.

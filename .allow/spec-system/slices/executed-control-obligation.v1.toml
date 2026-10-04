@@ -1,0 +1,62 @@
+schema_version = "2.0"
+id = "ripr.slice.executed-control-obligation.v1"
+generation = 1
+
+source_issue = "issue:4641"
+design_reference = "RIPR-SPEC-0183#behavior"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Declares the executed_control_obligation.v1 / executed_control_result.v1
+vocabulary, domain validation, deterministic JSON/Markdown projection, and
+fixtures. It does not inspect live GitHub, enforce merge eligibility, audit
+historical issues, change workflow policy, or absorb #4644/#4646.
+"""
+
+non_goals = [
+  "live GitHub inspection",
+  "merge eligibility enforcement",
+  "historical issue audit",
+  "mutation testing platform",
+  "prose extraction",
+  "workflow policy change",
+  "publication",
+]
+
+return_conditions = [
+  "Return to root if a passed result can be inferred from ordinary tests or review prose.",
+  "Return to root if #3858/#4063 is rewritten as passed.",
+  "Return to root if this slice starts enforcing closeout or querying live GitHub.",
+]
+
+owned_seams = [
+  "seam:ripr:domain:executed-control-obligation",
+  "seam:ripr:contract:executed-control-v1",
+  "seam:ripr:output:executed-control-projection",
+  "seam:ripr:fixtures:executed-control-contract",
+]
+
+shared_seams = [
+  "seam:ripr:docs:output-schema",
+  "seam:ripr:policy:document-artifact-ledger",
+]
+
+forbidden_seams = [
+  "seam:ripr:output:gate-authority",
+  "seam:ripr:cli:github-adapter",
+  "seam:ripr:analysis:runtime-mutation",
+  "seam:ripr:ci:merge-gate",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0183#behavior"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

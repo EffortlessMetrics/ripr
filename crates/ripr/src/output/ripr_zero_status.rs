@@ -1,3 +1,4 @@
+use super::first_pr::{ProofPathLabels, REPAIR_AFTER_PHASE_LABEL, REPAIR_AFTER_PHASE_STEP};
 use super::gap_decision_ledger::{self, GapRecord};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -128,6 +129,12 @@ struct RepairRoute {
     suggested_test: Option<String>,
     related_test: Option<String>,
     verify_command: Option<String>,
+    /// The repair transaction's start (#3906), carried from the delta item's
+    /// `evidence_record.canonical_item.repair_command`. That record names it
+    /// only past the fail-closed repair-packet flip; zero status never builds
+    /// one from a seam id.
+    repair_command: Option<String>,
+    /// The carried repair start, or `None`. Never a synthesized `agent start`.
     agent_command: Option<String>,
     static_limitations: Vec<String>,
 }
@@ -183,6 +190,7 @@ struct EvidenceRecordRepairContext {
     suggested_test: Option<String>,
     related_test: Option<String>,
     verify_command: Option<String>,
+    repair_command: Option<String>,
     static_limitations: Vec<String>,
 }
 
@@ -427,11 +435,18 @@ pub(crate) fn render_ripr_zero_status_markdown(report: &RiprZeroStatusReport) ->
         if let Some(suggested) = route.suggested_test.as_deref() {
             out.push_str(&format!("  Suggested test: {suggested}\n"));
         }
-        if let Some(verify) = route.verify_command.as_deref() {
-            out.push_str(&format!("  Verify: {verify}\n"));
+        // #3906: a carried repair start leads; its after phase runs verify,
+        // so the verify command is the manual alternative. Without one it
+        // runs after the test edit.
+        if let Some(repair) = route.repair_command.as_deref() {
+            out.push_str(&format!("  Repair start: {repair}\n"));
+            out.push_str(&format!(
+                "  {REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n"
+            ));
         }
-        if let Some(agent) = route.agent_command.as_deref() {
-            out.push_str(&format!("  Agent: {agent}\n"));
+        if let Some(verify) = route.verify_command.as_deref() {
+            let labels = ProofPathLabels::for_repair_start(route.repair_command.is_some());
+            out.push_str(&format!("  {}: {verify}\n", labels.verify));
         }
         if let Some(limit) = route.static_limitations.first() {
             out.push_str(&format!("  Static limit: {limit}\n"));
@@ -786,6 +801,10 @@ fn evidence_record_repair_context_from_value(
             }),
         verify_command: recommendation
             .and_then(|recommendation| string_field(recommendation.get("verify_command"))),
+        repair_command: path_value(value, &["canonical_item", "repair_command"])
+            .and_then(Value::as_str)
+            .filter(|command| !command.trim().is_empty())
+            .map(ToOwned::to_owned),
         static_limitations: static_limitations_from_evidence_record(value),
     })
 }
@@ -982,7 +1001,7 @@ fn gap_repair_routes(records: &[GapRecord]) -> Vec<RepairRoute> {
                 gap_id: (!record.gap_id.is_empty()).then(|| record.gap_id.clone()),
                 canonical_gap_id: (!record.canonical_gap_id.is_empty())
                     .then(|| record.canonical_gap_id.clone()),
-                seam_id: seam_id.clone(),
+                seam_id,
                 path: anchor
                     .and_then(|anchor| anchor.file.clone())
                     .or_else(|| route.and_then(|route| route.target_file.clone())),
@@ -993,11 +1012,10 @@ fn gap_repair_routes(records: &[GapRecord]) -> Vec<RepairRoute> {
                 suggested_test: route.and_then(|route| route.assertion_shape.clone()),
                 related_test: route.and_then(|route| route.related_test.clone()),
                 verify_command: record.verification_commands.first().cloned(),
-                agent_command: seam_id.as_ref().map(|seam_id| {
-                    format!(
-                        "ripr agent start --root . --seam-id {seam_id} --out target/ripr/workflow"
-                    )
-                }),
+                // Gap records carry no repair start (#3906), and this route's
+                // `seam_id` is a gap identity, so no agent command is named.
+                repair_command: None,
+                agent_command: None,
                 static_limitations: Vec::new(),
             }
         })
@@ -1031,7 +1049,7 @@ fn repair_routes(items: &[DeltaItem]) -> Vec<RepairRoute> {
                 source: "baseline_debt_delta".to_string(),
                 gap_id: None,
                 canonical_gap_id: None,
-                seam_id: seam_id.clone(),
+                seam_id,
                 path: evidence
                     .and_then(|record| record.path.clone())
                     .or_else(|| item.path.clone()),
@@ -1056,11 +1074,8 @@ fn repair_routes(items: &[DeltaItem]) -> Vec<RepairRoute> {
                 verify_command: evidence
                     .and_then(|record| record.verify_command.clone())
                     .or_else(|| item.repair.verify_command.clone()),
-                agent_command: seam_id.as_ref().map(|seam_id| {
-                    format!(
-                        "ripr agent start --root . --seam-id {seam_id} --out target/ripr/workflow"
-                    )
-                }),
+                repair_command: evidence.and_then(|record| record.repair_command.clone()),
+                agent_command: evidence.and_then(|record| record.repair_command.clone()),
                 static_limitations: evidence
                     .map(|record| record.static_limitations.clone())
                     .unwrap_or_default(),
@@ -1231,7 +1246,7 @@ fn top_debt_area_json(area: &TopDebtArea) -> Value {
 }
 
 fn repair_route_json(route: &RepairRoute) -> Value {
-    json!({
+    let mut value = json!({
         "rank": route.rank,
         "source": route.source,
         "gap_id": route.gap_id,
@@ -1246,7 +1261,16 @@ fn repair_route_json(route: &RepairRoute) -> Value {
         "verify_command": route.verify_command,
         "agent_command": route.agent_command,
         "static_limitations": route.static_limitations,
-    })
+    });
+    if let Some(repair_command) = route.repair_command.as_ref()
+        && let Some(fields) = value.as_object_mut()
+    {
+        fields.insert(
+            "repair_command".to_string(),
+            Value::String(repair_command.clone()),
+        );
+    }
+    value
 }
 
 fn route_headline(route: &RepairRoute) -> String {
@@ -1312,6 +1336,7 @@ mod tests {
         RiprZeroStatusInput, build_ripr_zero_status_report, render_ripr_zero_status_json,
         render_ripr_zero_status_markdown,
     };
+    use crate::output::first_pr::{REPAIR_AFTER_PHASE_LABEL, REPAIR_AFTER_PHASE_STEP};
     use serde_json::Value;
 
     #[test]
@@ -1600,6 +1625,54 @@ mod tests {
             Some("ripr evidence-movement --before before.json --after after.json"),
             "expected evidence_record verify command in: {rendered}"
         );
+        // #3906: this record carries no repair start, so neither the route
+        // nor its Markdown names a repair-loop command for `record-seam`.
+        assert_eq!(route.get("agent_command"), Some(&Value::Null));
+        assert!(route.get("repair_command").is_none());
+        assert!(!rendered.contains("agent start") && !rendered.contains("agent repair"));
+        assert!(!markdown.contains("agent start") && !markdown.contains("agent repair"));
+
+        let carried = "ripr agent repair --root . --seam-id record-seam --phase before";
+        let mut carried_delta: Value =
+            serde_json::from_str(delta).map_err(|err| format!("parse delta fixture: {err}"))?;
+        carried_delta["items"][0]["evidence_record"]["canonical_item"] =
+            serde_json::json!({ "repair_command": carried });
+        let carried_report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "target/ripr/reports/baseline-debt-delta.json".to_string(),
+            gap_ledger_path: None,
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(carried_delta.to_string()),
+            gap_ledger_json: None,
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let carried_rendered = render_ripr_zero_status_json(&carried_report)?;
+        let carried_value = serde_json::from_str::<Value>(&carried_rendered)
+            .map_err(|err| format!("RIPR Zero status JSON should parse: {err}"))?;
+        assert_eq!(
+            carried_value["repair_routes"][0]["repair_command"],
+            Value::from(carried)
+        );
+        assert_eq!(
+            carried_value["repair_routes"][0]["agent_command"],
+            Value::from(carried)
+        );
+        let carried_markdown = render_ripr_zero_status_markdown(&carried_report);
+        // #3906 (F60-14): the after phase follows the carried start.
+        assert!(
+            carried_markdown.contains(&format!(
+                "  Repair start: {carried}\n  {REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n"
+            )),
+            "{carried_markdown}"
+        );
+        assert!(!carried_markdown.contains("  Verify after the test edit:"));
         let limitation = route
             .get("static_limitations")
             .and_then(Value::as_array)
@@ -1830,13 +1903,12 @@ mod tests {
             Some("legacy verify"),
             "expected legacy verify fallback in: {rendered}"
         );
-        assert!(
-            route
-                .get("agent_command")
-                .and_then(Value::as_str)
-                .is_some_and(|command| command.contains("--seam-id record-seam")),
-            "expected agent command to use record seam id in: {rendered}"
+        assert_eq!(
+            route.get("agent_command"),
+            Some(&Value::Null),
+            "a seam id without a carried repair start names no agent command: {rendered}"
         );
+        assert!(!rendered.contains("agent start") && !rendered.contains("agent repair"));
         Ok(())
     }
 

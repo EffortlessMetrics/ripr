@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_field_assignment_shape/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:2a2eca7104579bba07613d92f593391252a71a5b90a8b06c5afa68fdd75d5788","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:2a2eca7104579bba07613d92f593391252a71a5b90a8b06c5afa68fdd75d5788","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -25,7 +24,7 @@
 
       },
       "classification": "exposed",
-      "severity": "warning",
+      "severity": "info",
       "confidence": 0.60,
       "probe": {
         "id": "probe:src_invoice.py:python_preview:5473c8e6",
@@ -47,7 +46,7 @@
       "flow_sinks": [
         {"kind":"struct_field","text":"self.status = \"paid\"","line":6}
       ],
-      "evidence": ["owner: Invoice.mark_paid", "owner_kind: method", "test_framework: pytest (test_mark_paid_sets_status)", "test_verify_command: pytest tests/test_invoice.py::test_mark_paid_sets_status (test_mark_paid_sets_status)", "related_test_relation: syntactic_call (test_mark_paid_sets_status)", "test_oracle: exact_value strong (test_mark_paid_sets_status)", "test_oracle_shape: status_code_assertion (test_mark_paid_sets_status)"],
+      "evidence": ["owner: Invoice.mark_paid", "owner_kind: method", "test_framework: pytest (test_mark_paid_sets_status)", "test_verify_command: python -m pytest tests/test_invoice.py::test_mark_paid_sets_status (test_mark_paid_sets_status)", "related_test_relation: syntactic_call (test_mark_paid_sets_status)", "test_oracle: exact_value strong (test_mark_paid_sets_status)", "test_oracle_shape: status_code_assertion (test_mark_paid_sets_status)"],
       "missing": ["Related Python test reaches `mark_paid` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
       "assertion_texts": {
       },
@@ -97,5 +96,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/invoice.py","digest":"sha256:44581a4645bd4ec58a56b6b9b1b1feb8ea33189c8f2191b61edecab6c689e52e"}]}
 }

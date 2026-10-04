@@ -40,18 +40,26 @@ mode, base revision, worktree state, bounded analysis-input identity,
 snapshot identity, creation command/profile, and `content_sha256`.
 
 The analysis-input identity is portable semantic/configuration identity
-(#2823): an explicitly versioned `input:v3:fnv1a64:<16 lowercase hex>`
+(#2823): an explicitly versioned `input:v4:fnv1a64:<16 lowercase hex>`
 covering the
 identity version, mode, profile (bound to mode by this producer), base, named
-workspace inputs (manifest and lockfile content identities), the
+workspace inputs (manifest content identities and the content identities of
+the Cargo lockfiles Git tracks), the
 repo-exposure producer-consumed configuration boundary (exactly the three
 oracle-strength fields — the Rust-only seam inventory consumes nothing else
 from `ripr.toml`), and analyzer version — never the
 concrete checkout root or a host-specific path spelling. Equivalent checkouts
 of the same commit under different roots share one input identity; the
 concrete root remains separate envelope evidence (`repository.root`) that the
-verifier compares with exact canonical-path equality. Only the current
-`input:v3:` identity version with the exact digest shape validates as current
+verifier compares with exact canonical-path equality. Version 4 (#3906)
+narrows the lockfile input to Git-tracked lockfiles: an untracked or ignored
+`Cargo.lock` is build state that Cargo writes when it resolves dependencies
+(the first `cargo test` of a library that does not commit one), and the static
+seam inventory never reads lockfile content, so creating or rewriting it keeps
+the identity. A tracked lockfile, a newly tracked one, and every manifest still
+move it. When Git cannot list the tracked lockfiles, every lockfile counts,
+which can only make a pair less comparable. Only the current
+`input:v4:` identity version with the exact digest shape validates as current
 evidence; any other version is rejected as an unsupported input identity
 version, any malformed digest shape as a malformed input identity digest, and
 a previous-version migration boundary stays deferred until a real migration
@@ -160,6 +168,25 @@ after movement succeeds but discloses `historical_noncurrent`.
   different seam moves.
 - The editor repair-loop fixture consumes bound artifacts and records explicit
   currentness.
+- Selected-source execution of that existing corpus uses an all-or-none
+  `--controller-root`, `--candidate-source-root`, `--candidate-artifact` group.
+  Without `--candidate-manifest-sha256`, the historical registry mode grants
+  authority only to exact registered controller bytes. With that explicit
+  independently accepted digest, direct #1609 schema-1.1 admission binds the
+  single manifest and exact accepted prerequisite bytes under SPEC-0144;
+  neither mode falls back to the other or to unqualified smoke.
+  actual source HEAD/tree/ref and raw committed input bytes are checked
+  independently. Canonical source/controller roots must not be equal or nested;
+  distinct worktrees of one repository are valid. Qualified Cargo package/install
+  use explicit owned roots.
+  Ordinary archive entries must match committed blobs; only Cargo's original
+  manifest, normalized manifest, lock and VCS metadata have explicit generated
+  rules. Archive and installed executable bytes are revalidated before
+  consumption by installed doctor and the authentic chain. Controller-owned
+  reports disclose `qualification_mode`, custody and the exclusive evidence
+  root. Without the group, the command remains unqualified legacy smoke;
+  partial/refused qualification never falls back. These unlocked checks are
+  not authenticated provenance or full release qualification (#4510).
 - The integrated installed-candidate negative corpus (`cargo xtask
   release-negative-corpus --version <version>`, #2824) runs the packaged
   candidate through the authentic readiness chain in a controlled external
@@ -222,7 +249,9 @@ an unsupported schema fails before movement calculation.
   (`pair_currentness_label`, #3027) and the portable input-identity contract (#2823):
   identity portability across equivalent checkout roots, concrete-root
   rejection at an equivalent clone, revision-only snapshot movement, semantic
-  input drift (mode, base, config, manifest, lockfile), the scoped
+  input drift (mode, base, config, manifest, tracked lockfile, newly tracked
+  lockfile), untracked-lockfile stability (created, rewritten, or removed
+  without Git tracking it), the scoped
   producer-consumed config boundary (unconsumed typescript/perl/languages
   settings stay comparable), rerun byte-stability, the root-bound v1 removal
   experiment, and previous-version plus malformed-digest identity rejection.
@@ -276,3 +305,69 @@ For portable workspace identities, CRLF is normalized to LF before hashing;
 standalone CR bytes are preserved so invalid input cannot collide with valid LF
 input. Changing this normalization is an identity-algorithm change and requires
 a new identity version. The prior `input:v2:` shape is unsupported.
+
+
+### Selected-source resource and object custody (#4510)
+
+Metadata and blob batches use the same `git --no-replace-objects` contract.
+Ambient replacement objects cannot alter the raw candidate bytes. A checkout
+that substitutes those bytes, including via skip-worktree flags, refuses.
+
+Source limits are independent of the direct manifest's 64 MiB input limit:
+16,384 ordinary blobs, 16 MiB per blob, and 128 MiB total retained blob bytes.
+Git metadata stdout is capped at 8 MiB and stderr at 1 MiB. The ordinary-blob
+census includes declared sizes before body capture. Batch stdout is capped at
+the exact sum of those body sizes and Git's per-object headers/terminators;
+changed batch identities or sizes refuse. Readers consume at most limit+1
+bytes. Oversized output or missing terminal drain output is a refusal for
+this budgeted source mode, reported as `byte_budgeted_strict_terminal_drain`.
+No truncated-output placeholder is admitted in that mode. A reader closes its pipe as soon as its byte limit
+is exceeded, but the parent keeps the existing child wait/deadline and cleanup
+path. Overflow can therefore be reported after that deadline; byte limits do
+not promise immediate process cancellation. Existing uncapped byte-capture
+callers retain their prior drain-placeholder and timeout-reporting behavior.
+
+Checkout revalidation uses the shared observed regular-file snapshot reader,
+with each read capped at the already admitted blob length plus one. Empty
+ordinary files are permitted. The retained source budget is checked again.
+These are unlocked observations with the same stated race limits as manifest
+custody. The batch buffer and retained blob map can coexist transiently; the
+128 MiB limit names retained blob bytes, not total process resident memory.
+
+Archive, extracted install input and installed executable revalidation reuse
+that same regular-file snapshot reader. Each reread is capped at its already
+retained byte length plus one, including zero-length extracted files. Growth,
+truncation, same-length byte changes, missing files, directories and symlink
+replacements refuse; unchanged ordinary bytes remain accepted. Parent paths
+are resolved for each observation. This does not lock the parent hierarchy or
+authenticate the invoked executable, and the existing unlocked race limits
+remain. Initial archive/executable capture and archive decompression are not
+bounded by this reread contract; full package/install qualification remains
+separate from these controls.
+
+The 2026-10-02 review census had 5,411 ordinary blobs, 58,566,161 body bytes,
+1,949,776 bytes in the largest blob, and 647,658 metadata bytes. That observation
+motivates the limits and is not a promise about the final release candidate.
+
+Full custody is intentionally checked before and after each qualified child
+command, including fixture Git commands. Each check rereads retained manifest
+evidence, the source checkout, archive and executable, and reruns source Git
+identity/range observations. Its work is linear in those bytes/files per check;
+the corpus multiplies that work by twice its child-command count. Hundreds of
+commands over a roughly 59 MB checkout can therefore reread tens of GB before
+archive/executable/evidence costs. The 1.31-second engineering inventory and
+checkout observation is not a per-command or complete corpus benchmark. Actual
+qualification must retain its elapsed observations; no low-overhead claim is
+made. Reducing this boundary needs separately proved invalidation semantics.
+
+
+### Source-handoff acceptance is distinct from execution custody
+
+The #4510 direct-manifest digest adapter prepares and observes exact candidate
+inputs; its caller-supplied digest does not independently establish release
+selection or complete qualification. SPEC-0148's source-promotion consumer now
+requires native #1609/#2766/#2769 decision observations and the complete
+#2769 bundle, with exact raw digest, roster, row, proof-input and candidate
+bindings. Historical registry admission and local corpus results cannot issue
+that handoff. Native owner trust and unlocked snapshot limitations remain
+explicit; this does not add cryptographic signatures or a new provenance system.

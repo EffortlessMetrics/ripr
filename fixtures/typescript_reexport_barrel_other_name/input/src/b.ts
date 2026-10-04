@@ -1,0 +1,4 @@
+/** Unchanged sibling the test does import. */
+export function formatCents(cents: number): string {
+    return (cents / 100).toFixed(2);
+}

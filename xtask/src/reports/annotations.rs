@@ -165,10 +165,10 @@ fn annotation_from_comment(item: &Value) -> Result<String, String> {
     let level = annotation_level_for_severity(severity);
     Ok(format!(
         "::{level} file={},line={},title={}::{}",
-        escape_cmd(&path),
+        escape_property(&path),
         line,
-        escape_cmd(&title),
-        escape_cmd(&message)
+        escape_property(&title),
+        escape_data(&message)
     ))
 }
 
@@ -226,13 +226,18 @@ fn write_annotations(
     Ok(())
 }
 
-fn escape_cmd(value: &str) -> String {
+// GitHub Actions uses different escapes for message data and properties.
+// Message punctuation must stay literal; the runner does not decode %2C or
+// %3A there. Escape percent first so literal escape sequences survive.
+fn escape_data(value: &str) -> String {
     value
         .replace('%', "%25")
         .replace('\r', "%0D")
         .replace('\n', "%0A")
-        .replace(',', "%2C")
-        .replace(':', "%3A")
+}
+
+fn escape_property(value: &str) -> String {
+    escape_data(value).replace(',', "%2C").replace(':', "%3A")
 }
 
 fn repo_root() -> Result<PathBuf, String> {
@@ -301,7 +306,7 @@ mod tests {
         assert!(
             generated
                 .text
-                .contains("Suggested test%3A Assert boundary behavior")
+                .contains("Suggested test: Assert boundary behavior")
         );
         assert!(!generated.text.contains("src/other.rs"));
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
@@ -497,5 +502,58 @@ mod tests {
                 .map_err(|err| format!("create {}: {err}", parent.display()))?;
         }
         fs::write(&path, text).map_err(|err| format!("write {}: {err}", path.display()))
+    }
+
+    #[test]
+    fn annotation_uses_distinct_property_and_message_encoding() -> Result<(), String> {
+        let item = serde_json::json!({
+            "placement": {
+                "path": "src/pricing,edge:100%.rs",
+                "line": 42,
+                "mode": "exact_seam_line"
+            },
+            "severity": "medium",
+            "kind": "focused:test,case",
+            "reason": "Pin: Result::Err, not Ok(100%).",
+            "suggested_test": { "intent": "assert_eq!(actual, expected)" }
+        });
+        let annotation = annotation_from_comment(&item)?;
+        assert_eq!(
+            annotation,
+            concat!(
+                "::warning file=src/pricing%2Cedge%3A100%25.rs,line=42,",
+                "title=ripr medium focused%3Atest%2Ccase::",
+                "Pin: Result::Err, not Ok(100%25).",
+                " Suggested test: assert_eq!(actual, expected)"
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn annotation_preserves_literal_escapes_and_encodes_line_breaks() -> Result<(), String> {
+        let item = serde_json::json!({
+            "placement": {
+                "path": "src/é,%0A\r\n.rs",
+                "line": 7,
+                "mode": "same_file_changed_line"
+            },
+            "kind": "focused\r\ntest",
+            "reason": "literal %0A %0D %2C %3A %25\r\nnext: é, ok",
+            "suggested_test": { "intent": "assert_eq!(a,\nb)" }
+        });
+        let annotation = annotation_from_comment(&item)?;
+        assert_eq!(
+            annotation,
+            concat!(
+                "::warning file=src/é%2C%250A%0D%0A.rs,line=7,",
+                "title=ripr advisory focused%0D%0Atest::",
+                "literal %250A %250D %252C %253A %2525%0D%0Anext: é, ok",
+                " Suggested test: assert_eq!(a,%0Ab)"
+            )
+        );
+        assert_eq!(annotation.lines().count(), 1);
+        assert!(!annotation.contains('\r'));
+        Ok(())
     }
 }

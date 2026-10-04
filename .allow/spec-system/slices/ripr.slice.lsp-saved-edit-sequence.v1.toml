@@ -1,0 +1,67 @@
+schema_version = "2.0"
+id = "ripr.slice.lsp-saved-edit-sequence.v1"
+generation = 1
+
+source_issue = "issue:1578"
+design_reference = "RIPR-SPEC-0180"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Adds a repeatable saved-edit sequence harness and identity-bound
+lsp-performance report for the 2026-09-28 #1578 packet: cold start,
+unchanged save/refresh, production edit, related-test edit, unrelated-test
+edit, rename, config change, cancellation, corrupt cache, and explicit full
+refresh. A stale cached answer cannot satisfy a speed target; a fast run
+cannot hide redundant full rescans or duplicate diagnostics. Historical
+2s/10s/30s figures remain proposals. It reuses landed #3837/#3795 cache/phase
+and #1575/#1565/#1566 scheduler/delivery metrics. It does not reopen #3795,
+absorb #3796 semantic reuse or #1702 trial execution, add a new always-on
+full-workspace CI job, or change support tiers or release scope.
+"""
+
+non_goals = [
+  "semantic-reuse / bounded-diff optimization (#3796)",
+  "trial execution (#1702)",
+  "reopening #3795 from its old problem statement",
+  "new always-on full-workspace CI job",
+  "adopted latency gates or achieved 2s/10s/30s results",
+  "support-tier or release-scope auto-expand",
+  "per-keystroke analysis",
+]
+
+return_conditions = [
+  "Return to root if the report treats proposed 2s/10s/30s envelopes as gating or achieved.",
+  "Return to root if a new always-on full-workspace CI job is added.",
+  "Return to root if the harness starts claiming runtime mutation outcomes.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:saved-edit-sequence",
+  "seam:ripr:xtask:lsp-performance-report",
+]
+
+shared_seams = [
+  "seam:ripr:lsp:refresh-scheduler",
+  "seam:ripr:lsp:diagnostic-delivery",
+  "seam:ripr:analysis:seam-cache",
+  "seam:ripr:lsp:seams-deferred",
+]
+
+forbidden_seams = [
+  "seam:ripr:ci:always-on-full-workspace-job",
+  "seam:ripr:release:support-tier",
+  "seam:ripr:analysis:semantic-reuse-optimization",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0180"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

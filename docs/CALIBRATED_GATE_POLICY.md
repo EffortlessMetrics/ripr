@@ -30,7 +30,7 @@ ripr gate evaluate \
   --agent-receipt target/ripr/reports/agent-receipt.json \
   --recommendation-calibration target/ripr/reports/recommendation-calibration.json \
   --mutation-calibration target/ripr/reports/mutation-calibration.json \
-  --baseline target/ripr/reports/gate-baseline.json \
+  --baseline .ripr/gate-baseline.json \
   --mode visible-only \
   --out target/ripr/reports/gate-decision.json \
   --out-md target/ripr/reports/gate-decision.md

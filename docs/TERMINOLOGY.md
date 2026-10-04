@@ -18,10 +18,11 @@ analyzer itself, you will want the internal term.
 | nearby test to imitate | related test | candidate test context used to suggest the next focused test |
 | the evidence got better after adding a test | movement | before/after static change observed by `ripr outcome` |
 | top test gap | top actionable seam | the highest-priority seam in the current pilot/report |
-| no focused test gap found | `no-actionable-seam` | stable status ID emitted when analysis ran cleanly but produced no actionable recommendation |
+| no focused test gap found | `no_actionable_seam` | stable status ID emitted when analysis ran cleanly but produced no actionable recommendation |
 | recommended next test | `first-useful-action` | the advisory `target/ripr/reports/first-useful-action.json` projection |
 | static classifications: exposed, weak, unrevealed, no static path, unknown | `exposed` / `weakly_exposed` / `reachable_unrevealed` / `no_static_path` / `infection_unknown` / `propagation_unknown` / `static_unknown` | conservative static-exposure labels — `ripr` does not use mutation-runtime words such as `killed` or `survived` outside calibration reports |
-| ripr's view of how well a behavior is tested | grip (seam-grip class) | seam-native classification across the five RIPR stages, surfaced as `SeamGripClass` in JSON |
+| ripr's view of how well a behavior is tested | grip (seam-grip class) | seam-native classification across the five RIPR stages, surfaced as `grip_class` (for example `weakly_gripped`) in JSON |
+| the same plain words at seam scope | `strongly_gripped` → exposed, `weakly_gripped` → weak, `ungripped` → no path, `reachable_unrevealed` → unrevealed, the `*_unknown` classes and `opaque` → unknown | `ripr check` classifies a changed line (`weakly_exposed`); `ripr pilot` and `ripr agent repair` classify a seam (`weakly_gripped`). Both are published schema values and stay distinct. Human output leads with the shared plain word and keeps the value beside it, for example `Static exposure: weak (weakly_exposed, ...)` and `(weak, weakly_gripped)` |
 | identity for a behavior gap (so it does not move when line numbers change) | canonical gap identity | hash of owner / kind / flow sink / missing discriminator / assertion shape used by ledgers, baselines, and gate comparison |
 | PR review summary | `pr-review front-panel` / report packet index | composed advisory CI artifact summarizing PR guidance, first useful action, assistant proof, ledger, baseline, gate, calibration, coverage/grip, and receipt |
 | agent proof status | `assistant-loop health` | advisory summary of existing assistant proof reports |

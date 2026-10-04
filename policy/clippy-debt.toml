@@ -6,24 +6,32 @@ status = "active"
 # Tracked Clippy debt: lint flips that are intentionally deferred with a
 # named owner and a target date.
 #
-# Empty by default. Each entry must record:
+# `cargo xtask check-lint-policy` parses this file as TOML: unique ids,
+# required nonblank fields, ISO `target` dates that are not in the past,
+# unknown fields / duplicate keys / trailing garbage fail, and lints
+# that are not already `[[active]]`, `[[planned]]`, or present in
+# Cargo.toml. Presence here is a CI ratchet for ledger shape, not a
+# claim that the debt has been paid.
+#
+# Each entry must record:
 #   id         stable identifier referenced in PR descriptions
 #   lint       full clippy lint name (e.g. clippy::let_underscore_must_use)
 #   level      target level once the debt is paid (deny | warn)
 #   owner      team/area responsible for clearing the debt
 #   reason     why this lint is not enforced today
 #   blocked_by call sites or refactors that must land first
-#   target     date by which the debt must be cleared
+#   target     date by which the debt must be cleared or re-justified
 #
 # Debt is reviewed at every release readiness check.
+# `[[planned]]` lints in policy/clippy-lints.toml (indexing_slicing,
+# string_slice, disallowed_fields, manual_pop_if) stay there — they are
+# already dual-railed with Cargo.toml. Do not duplicate them here.
 
-# Example shape (commented out so the empty file parses):
-#
-# [[debt]]
-# id = "clippy-debt-0001"
-# lint = "clippy::let_underscore_must_use"
-# level = "deny"
-# owner = "core/rust"
-# reason = "Best-effort cleanup patterns like `let _ = fs::remove_dir_all(&dir)` are pervasive across the test suite. Flipping requires per-call review."
-# blocked_by = "Audit and replace test-suite cleanup `let _ = ...` patterns with explicit ignored-error helpers."
-# target = "2026-09-01"
+[[debt]]
+id = "clippy-debt-0001"
+lint = "clippy::let_underscore_must_use"
+level = "deny"
+owner = "core/rust"
+reason = "Best-effort cleanup patterns like `let _ = fs::remove_dir_all(&dir)` are pervasive across the test suite. Flipping requires per-call review so ignored errors stay explicit."
+blocked_by = "658 text `let _ =` sites remain (top: crates/ripr/src/analysis/workspace/cargo_targets.rs has 34). xtask tests match remove_dir_all (23), one remove_file, and two panic-path cwd restores instead of discarding those Results. Fixture strings that spell `let _ =` stay. eval_sweep_refresh.rs, diff/load.rs, gate/tests.rs, cli_smoke.rs, and seam_cache.rs cleanup stay matched. Do not flip the lint until the remaining sites are explicit."
+target = "2027-03-31"

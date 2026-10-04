@@ -44,8 +44,9 @@ Downstream PR/CI and editor lanes own rendering. This tracker does not change
 annotations, hovers, gates, generated workflows, default blocking, generated
 tests, source edits, provider calls, or mutation execution.
 
-Do not update `.ripr/goals/active.toml` unless the repo-wide operator sequence
-explicitly makes this Lane 1 tracker active.
+Live execution state is governed by GitHub issues, PRs, and worktree state per
+[Repository Tracking Model](../REPO_TRACKING_MODEL.md) (the former
+`.ripr/goals/active.toml` manifest was retired in #1701).
 
 ## Source-Of-Truth Stack
 

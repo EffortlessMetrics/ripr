@@ -168,7 +168,8 @@ Skip reasons:
 - `mode_off`
 - `summary_only`
 - `suppressed`
-- `cap_reached`
+- `inline_comment_cap_reached` (SPEC-0068 renamed the historical `cap_reached` token)
+- `comment_body_too_large`
 - `unchanged_tests`
 - `not_publishable`
 - `already_current`
@@ -355,7 +356,7 @@ Planned operations:
 
 Skipped:
 - summary_only: 1 recommendation remains in `comments.md`
-- cap_reached: 1 recommendation was kept out of inline comments
+- inline_comment_cap_reached: 1 recommendation was kept out of inline comments
 
 Limits:
 - Advisory publish plan only.
@@ -442,7 +443,7 @@ make comment publishing required for merge.
 - `mode=plan` with three line-placeable `comments[]` items renders three
   planned operations and posts nothing.
 - More than three `comments[]` items renders at most three publishable
-  operations and records the rest as `cap_reached`.
+  operations and records the rest as `inline_comment_cap_reached`.
 - `summary_only[]` entries are listed as skipped with `summary_only`, not
   converted to line comments.
 - A missing `dedupe_key` blocks the item instead of creating a duplicate-prone

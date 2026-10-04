@@ -13,8 +13,11 @@ export interface RiprConfig {
   checkMode: 'instant' | 'draft' | 'fast' | 'deep' | 'ready';
   baseRef: string;
   includeUnchangedTests: boolean;
-  seamDiagnostics: boolean;
-  diagnosticProfile: DiagnosticProfile;
+  // Undefined unless the user set the VS Code setting, so `ripr.toml`
+  // `[lsp]` values still apply. Forwarding the manifest default made the
+  // server treat it as an explicit override (#4717).
+  seamDiagnostics: boolean | undefined;
+  diagnosticProfile: DiagnosticProfile | undefined;
   traceServer: TraceSetting;
 }
 
@@ -35,8 +38,31 @@ export function getConfig(resource?: vscode.Uri): RiprConfig {
     checkMode: config.get<'instant' | 'draft' | 'fast' | 'deep' | 'ready'>('check.mode', 'draft'),
     baseRef: config.get<string>('baseRef', 'origin/main'),
     includeUnchangedTests: config.get<boolean>('includeUnchangedTests', true),
-    seamDiagnostics: config.get<boolean>('seamDiagnostics', true),
-    diagnosticProfile: config.get<DiagnosticProfile>('diagnosticProfile', 'actionable'),
+    seamDiagnostics: explicitSetting<boolean>(config, 'seamDiagnostics'),
+    diagnosticProfile: explicitSetting<DiagnosticProfile>(config, 'diagnosticProfile'),
     traceServer: config.get<TraceSetting>('trace.server', 'off')
   };
+}
+
+/**
+ * Returns a setting only when some settings layer sets it explicitly.
+ * `WorkspaceConfiguration.get` falls back to the package.json default, which
+ * the server cannot tell apart from a user choice.
+ */
+export function explicitSetting<T>(
+  config: vscode.WorkspaceConfiguration,
+  section: string
+): T | undefined {
+  const inspected = config.inspect<T>(section);
+  if (!inspected) {
+    return undefined;
+  }
+  return (
+    inspected.workspaceFolderLanguageValue ??
+    inspected.workspaceLanguageValue ??
+    inspected.globalLanguageValue ??
+    inspected.workspaceFolderValue ??
+    inspected.workspaceValue ??
+    inspected.globalValue
+  );
 }

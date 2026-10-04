@@ -6,6 +6,9 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tar::Archive;
 
+pub(crate) mod candidate_harness;
+use candidate_harness::CandidateExecution;
+
 const REPORT_WORK_DIR: &str = "target/ripr/release-readiness";
 const INSTALL_ROOT: &str = "target/ripr/release-readiness/install";
 const PILOT_OUT: &str = "target/ripr/release-readiness/pilot";
@@ -682,7 +685,11 @@ fn validate_binary_identity(workspace_digest: &str, installed_digest: &str) -> R
     Ok(())
 }
 
-fn validate_installed_version(success: bool, stdout: &str, version: &str) -> Result<(), String> {
+pub(crate) fn validate_installed_version(
+    success: bool,
+    stdout: &str,
+    version: &str,
+) -> Result<(), String> {
     if !success || !stdout.contains(&format!("ripr {version}")) {
         return Err(
             "installed binary version output did not identify the packaged crate version"
@@ -692,7 +699,7 @@ fn validate_installed_version(success: bool, stdout: &str, version: &str) -> Res
     Ok(())
 }
 
-fn validate_doctor_result(success: bool, doctor_json: &Value) -> Result<(), String> {
+pub(crate) fn validate_doctor_result(success: bool, doctor_json: &Value) -> Result<(), String> {
     if !success || doctor_json.get("status").and_then(Value::as_str) != Some("pass") {
         return Err(
             "installed ripr doctor did not report pass for the external fixture".to_string(),
@@ -787,6 +794,11 @@ fn create_external_doctor_fixture(root: &Path) -> Result<PathBuf, String> {
         "pub fn fixture_marker() -> &'static str { \"ok\" }\n",
     )
     .map_err(|err| format!("write external doctor fixture source failed: {err}"))?;
+    // Since #3988/#4007 `ripr doctor` fails outside a Git work tree instead
+    // of passing, the external fixture must be one: a bare `git init` (no
+    // commit needed for work-tree detection) with the same hardened git
+    // environment the other external-fixture commands use.
+    run_git_output_in_dir(root, &["init", "--quiet"])?;
     Ok(root.to_path_buf())
 }
 
@@ -1496,7 +1508,7 @@ fn installed_command_surface_check(binary: &Path) -> ReleaseReadinessCheck {
         &first_pr_help.stdout,
         &[
             "Create the start-here packet",
-            "usage: ripr first-pr",
+            "Usage: ripr first-pr",
             "--gap-ledger",
             "--receipts-dir",
             "--out-dir",
@@ -1775,6 +1787,12 @@ fn run_authentic_repo_exposure_journey(binary: &Path) -> Result<Vec<String>, Str
 
 pub(crate) fn create_authentic_repo_exposure_fixture()
 -> Result<AuthenticRepoExposureFixture, String> {
+    create_authentic_fixture_with_execution(CandidateExecution::Legacy(Path::new("ripr")))
+}
+
+pub(crate) fn create_authentic_fixture_with_execution(
+    execution: CandidateExecution<'_>,
+) -> Result<AuthenticRepoExposureFixture, String> {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| format!("system clock is before Unix epoch: {err}"))?
@@ -1783,49 +1801,78 @@ pub(crate) fn create_authentic_repo_exposure_fixture()
         "ripr-release-exposure-{}-{stamp}",
         std::process::id()
     ));
+    if matches!(execution, CandidateExecution::Qualified(_)) {
+        fs::create_dir(&root)
+            .map_err(|error| format!("create exclusive authentic fixture: {error}"))?;
+    }
     let result = (|| {
         fs::create_dir_all(root.join("src"))
             .map_err(|err| format!("create authentic fixture source failed: {err}"))?;
         fs::create_dir_all(root.join("tests"))
             .map_err(|err| format!("create authentic fixture tests failed: {err}"))?;
         for relative in ["Cargo.toml", "src/lib.rs", "tests/pricing.rs"] {
-            let source = Path::new("fixtures/boundary_gap/input").join(relative);
             let destination = root.join(relative);
-            fs::copy(&source, &destination).map_err(|err| {
-                format!(
-                    "copy authentic fixture {} to {} failed: {err}",
-                    crate::normalize_path(&source),
-                    crate::normalize_path(&destination)
-                )
-            })?;
+            match execution {
+                CandidateExecution::Legacy(_) => {
+                    let source = Path::new("fixtures/boundary_gap/input").join(relative);
+                    fs::copy(&source, &destination)
+                        .map_err(|error| format!("copy legacy authentic fixture: {error}"))?;
+                }
+                CandidateExecution::Qualified(candidate) => {
+                    fs::write(&destination, candidate.fixture_bytes(relative)?)
+                        .map_err(|error| format!("write admitted authentic fixture: {error}"))?;
+                }
+            }
         }
-        run_fixture_git_command(&root, &["init", "--quiet", "--template="], "initialize")?;
-        run_fixture_git_command(
+        if let CandidateExecution::Qualified(candidate) = execution {
+            candidate.revalidate()?;
+            fs::create_dir(root.join(".cargo"))
+                .map_err(|error| format!("create owned fixture Cargo directory: {error}"))?;
+            fs::create_dir(root.join("target"))
+                .map_err(|error| format!("create owned fixture Cargo target: {error}"))?;
+            fs::write(root.join(".cargo/config.toml"),
+                "[env]\nTEMP = { value = 'target', relative = true, force = true }\nTMP = { value = 'target', relative = true, force = true }\nTMPDIR = { value = 'target', relative = true, force = true }\n")
+                .map_err(|error| format!("write owned fixture Cargo config: {error}"))?;
+            fs::write(root.join(".gitignore"), "target/\n")
+                .map_err(|error| format!("write owned fixture target exclusion: {error}"))?;
+            candidate.revalidate()?;
+        }
+        execution.fixture_git(&root, &["init", "--quiet", "--template="], "initialize")?;
+        if matches!(execution, CandidateExecution::Qualified(_)) {
+            for (key, value) in [("core.autocrlf", "false"), ("core.fsmonitor", "false")] {
+                execution.fixture_git(
+                    &root,
+                    &["config", "--local", key, value],
+                    "configure owned fixture Git",
+                )?;
+            }
+        }
+        execution.fixture_git(
             &root,
             &["config", "user.name", "RIPR Release Fixture"],
             "configure user name",
         )?;
-        run_fixture_git_command(
+        execution.fixture_git(
             &root,
             &["config", "user.email", "release-fixture@example.invalid"],
             "configure user email",
         )?;
-        run_fixture_git_command(
+        execution.fixture_git(
             &root,
             &["config", "commit.gpgSign", "false"],
             "disable signing",
         )?;
-        run_fixture_git_command(
+        execution.fixture_git(
             &root,
             &["-c", "core.hooksPath=", "add", "."],
             "stage before state",
         )?;
-        run_fixture_git_command(
+        execution.fixture_git(
             &root,
             &["-c", "core.hooksPath=", "commit", "-m", "fixture before"],
             "commit before state",
         )?;
-        let before_commit = fixture_head(&root)?;
+        let before_commit = execution.fixture_head(&root)?;
 
         let tests_path = root.join("tests/pricing.rs");
         let mut tests = fs::OpenOptions::new()
@@ -1843,21 +1890,21 @@ pub(crate) fn create_authentic_repo_exposure_fixture()
         writeln!(tests, "}}")
             .map_err(|err| format!("write authentic fixture test close failed: {err}"))?;
         drop(tests);
-        run_fixture_git_command(
+        execution.fixture_git(
             &root,
             &["-c", "core.hooksPath=", "add", "."],
             "stage after state",
         )?;
-        run_fixture_git_command(
+        execution.fixture_git(
             &root,
             &["-c", "core.hooksPath=", "commit", "-m", "fixture after"],
             "commit after state",
         )?;
-        let after_commit = fixture_head(&root)?;
+        let after_commit = execution.fixture_head(&root)?;
         if before_commit == after_commit {
             return Err("authentic fixture before and after commits are identical".to_string());
         }
-        let ancestor = run_fixture_git_command(
+        let ancestor = execution.fixture_git(
             &root,
             &["merge-base", "--is-ancestor", &before_commit, &after_commit],
             "compare fixture commits",
@@ -1933,12 +1980,26 @@ pub(crate) fn produce_authentic_chain_in_fixture(
     before_commit: &str,
     after_commit: &str,
 ) -> Result<Vec<String>, String> {
+    produce_authentic_chain_with_execution(
+        candidate_harness::CandidateExecution::Legacy(binary),
+        root,
+        before_commit,
+        after_commit,
+    )
+}
+
+pub(crate) fn produce_authentic_chain_with_execution(
+    execution: candidate_harness::CandidateExecution<'_>,
+    root: &Path,
+    before_commit: &str,
+    after_commit: &str,
+) -> Result<Vec<String>, String> {
     let before_name = "before.repo-exposure.json";
     let after_name = "after.repo-exposure.json";
-    checkout_fixture_commit(root, before_commit)?;
-    let _before = run_producer_check(binary, root, before_name)?;
-    checkout_fixture_commit(root, after_commit)?;
-    let _after = run_producer_check(binary, root, after_name)?;
+    execution.fixture_checkout(root, before_commit)?;
+    let _before = run_producer_with_execution(execution, root, before_name)?;
+    execution.fixture_checkout(root, after_commit)?;
+    let _after = run_producer_with_execution(execution, root, after_name)?;
     validate_authentic_artifact(&root.join(before_name), before_commit, "before")?;
     validate_authentic_artifact(&root.join(after_name), after_commit, "after")?;
     let before_value = read_json_value(&root.join(before_name))?;
@@ -1953,7 +2014,7 @@ pub(crate) fn produce_authentic_chain_in_fixture(
                 .to_string(),
         );
     }
-    run_analysis_outcome_check(binary, root)?;
+    run_analysis_outcome_check(execution, root)?;
     let verify_args = vec![
         "agent".to_string(),
         "verify".to_string(),
@@ -1965,7 +2026,7 @@ pub(crate) fn produce_authentic_chain_in_fixture(
         after_name.to_string(),
         "--json".to_string(),
     ];
-    let verify = run_command_in_dir(binary, &verify_args, root, "authentic agent verify")?;
+    let verify = execution.run(&verify_args, root, "authentic agent verify")?;
     if !verify.success {
         return Err(format!(
             "authentic agent verify failed: {}",
@@ -1987,7 +2048,7 @@ pub(crate) fn produce_authentic_chain_in_fixture(
         "--out".to_string(),
         "agent-receipt.json".to_string(),
     ];
-    let receipt = run_command_in_dir(binary, &receipt_args, root, "authentic agent receipt")?;
+    let receipt = execution.run(&receipt_args, root, "authentic agent receipt")?;
     if !receipt.success || !root.join("agent-receipt.json").is_file() {
         return Err(format!(
             "authentic agent receipt failed: {}",
@@ -2004,8 +2065,8 @@ pub(crate) fn produce_authentic_chain_in_fixture(
     ])
 }
 
-pub(crate) fn run_producer_check(
-    binary: &Path,
+pub(crate) fn run_producer_with_execution(
+    execution: candidate_harness::CandidateExecution<'_>,
     root: &Path,
     artifact_name: &str,
 ) -> Result<Value, String> {
@@ -2018,7 +2079,7 @@ pub(crate) fn run_producer_check(
         "--format".to_string(),
         "repo-exposure-json".to_string(),
     ];
-    let result = run_command_in_dir(binary, &args, root, "authentic repo-exposure producer")?;
+    let result = execution.run(&args, root, "authentic repo-exposure producer")?;
     if !result.success {
         return Err(format!(
             "producer check failed: {}",
@@ -2032,7 +2093,10 @@ pub(crate) fn run_producer_check(
     Ok(value)
 }
 
-fn run_analysis_outcome_check(binary: &Path, root: &Path) -> Result<(), String> {
+fn run_analysis_outcome_check(
+    execution: candidate_harness::CandidateExecution<'_>,
+    root: &Path,
+) -> Result<(), String> {
     let args = vec![
         "check".to_string(),
         "--root".to_string(),
@@ -2042,7 +2106,7 @@ fn run_analysis_outcome_check(binary: &Path, root: &Path) -> Result<(), String> 
         "--format".to_string(),
         "json".to_string(),
     ];
-    let result = run_command_in_dir(binary, &args, root, "authentic analysis outcome producer")?;
+    let result = execution.run(&args, root, "authentic analysis outcome producer")?;
     if !result.success {
         return Err(format!(
             "analysis outcome producer failed: {}",
@@ -2381,31 +2445,25 @@ fn github_workflow_check(binary: &Path) -> ReleaseReadinessCheck {
         Ok(result) if result.success => {
             let required = [
                 "continue-on-error: true",
-                "ripr pilot",
-                "ripr agent start",
-                "ripr agent status",
-                "ripr agent review-summary",
-                "ripr reports gap-ledger",
-                "ripr first-pr",
-                "#### First-run status",
-                "missing_start_here",
-                "cat target/ripr/reports/start-here.md",
-                "target/ripr/reports/gap-decision-ledger.json",
-                "target/ripr/reports/start-here.md",
+                // #4696: the analysis steps run inside `ripr reports
+                // ci-packet`; `ci_packet_steps_missing` below checks the
+                // installed binary still declares them.
+                "run: ripr reports ci-packet --root .",
+                // #5375: the first-run summary text moved out of the YAML
+                // into `ripr reports ci-summary` (#5236). The workflow must
+                // call it; `ci_summary_first_run_missing` below checks the
+                // installed binary's empty-state output carries the text.
+                "ripr reports ci-summary",
+                "$GITHUB_STEP_SUMMARY",
                 "target/ripr/pilot",
                 "target/ripr/workflow",
                 "target/ripr/reports",
-                "target/ripr/workflow/agent-status.md",
-                "target/ripr/workflow/agent-review-summary.md",
-                "target/ripr/reports/agent-receipt.json",
                 "RIPR_UPLOAD_SARIF",
                 "actions/upload-artifact",
             ];
-            let missing = required
-                .iter()
-                .filter(|needle| !result.stdout.contains(**needle))
-                .map(|needle| (*needle).to_string())
-                .collect::<Vec<_>>();
+            let mut missing = missing_required_needles(&result.stdout, &required);
+            missing.extend(ci_summary_first_run_missing(binary));
+            missing.extend(ci_packet_steps_missing(binary));
             if missing.is_empty() {
                 readiness_check(
                     "github-workflow-defaults",
@@ -2446,6 +2504,112 @@ fn github_workflow_check(binary: &Path) -> ReleaseReadinessCheck {
             Vec::new(),
             vec![err],
         ),
+    }
+}
+
+/// Text the generated workflow's summary step must print on a first run,
+/// before any start-here packet exists (#5375).
+const CI_SUMMARY_FIRST_RUN_NEEDLES: &[&str] = &[
+    "#### First-run status",
+    "missing_start_here",
+    "target/ripr/reports/start-here.md",
+];
+
+/// Runs the installed binary's `reports ci-summary` against an empty root
+/// outside the checkout and returns the first-run needles it did not print,
+/// or why it could not run. Empty means the summary step would still lead a
+/// new adopter to start-here.
+fn ci_summary_first_run_missing(binary: &Path) -> Vec<String> {
+    let root = match external_cli_fixture_root() {
+        Ok(root) => root.join("ci-summary"),
+        Err(err) => return vec![format!("ci-summary fixture root: {err}")],
+    };
+    if let Err(err) = fs::create_dir_all(&root) {
+        return vec![format!("ci-summary fixture root: {err}")];
+    }
+    let root_text = root.to_string_lossy().into_owned();
+    let result = run_command_path(
+        binary,
+        &[
+            "reports",
+            "ci-summary",
+            "--root",
+            &root_text,
+            "--base-ref",
+            "main",
+        ],
+    );
+    if let Some(parent) = root.parent() {
+        let _ = fs::remove_dir_all(parent);
+    }
+    match result {
+        Ok(result) if result.success => {
+            missing_required_needles(&result.stdout, CI_SUMMARY_FIRST_RUN_NEEDLES)
+                .into_iter()
+                .map(|needle| format!("ripr reports ci-summary output: {needle}"))
+                .collect()
+        }
+        Ok(result) => {
+            let mut details = vec!["ripr reports ci-summary failed".to_string()];
+            details.extend(command_details(&result));
+            details
+        }
+        Err(err) => vec![format!("ripr reports ci-summary could not run: {err}")],
+    }
+}
+
+/// Steps the generated workflow's `Run RIPR` must still run: the pilot,
+/// the agent-loop start, the gap ledger, start-here and the agent status
+/// summaries (the needles this row read from the YAML before #4696).
+const CI_PACKET_STEP_NEEDLES: &[&str] = &[
+    "Generate RIPR pilot packet",
+    "Generate RIPR agent loop artifacts",
+    "Render RIPR gap decision ledger",
+    "Render RIPR first-pr start-here",
+    "Render RIPR LLM work-loop summaries",
+];
+
+/// Asks the installed binary's `reports ci-packet` for its step list (an
+/// unknown `--step` runs nothing and names every step) and returns the
+/// expected steps it did not name, or why it could not run.
+fn ci_packet_steps_missing(binary: &Path) -> Vec<String> {
+    let root = match external_cli_fixture_root() {
+        Ok(root) => root.join("ci-packet"),
+        Err(err) => return vec![format!("ci-packet fixture root: {err}")],
+    };
+    if let Err(err) = fs::create_dir_all(&root) {
+        return vec![format!("ci-packet fixture root: {err}")];
+    }
+    let root_text = root.to_string_lossy().into_owned();
+    let result = run_command_path(
+        binary,
+        &[
+            "reports",
+            "ci-packet",
+            "--root",
+            &root_text,
+            "--step",
+            "ripr-release-readiness-probe",
+        ],
+    );
+    if let Some(parent) = root.parent() {
+        let _ = fs::remove_dir_all(parent);
+    }
+    match result {
+        Ok(result) if !result.success && result.stderr.contains("unknown --step") => {
+            missing_required_needles(&result.stderr, CI_PACKET_STEP_NEEDLES)
+                .into_iter()
+                .map(|needle| format!("ripr reports ci-packet step: {needle}"))
+                .collect()
+        }
+        Ok(result) => {
+            let mut details = vec![
+                "ripr reports ci-packet did not list its steps for an unknown --step".to_string(),
+            ];
+            details.extend(command_details(&result));
+            details
+        }
+        Err(err) => vec![format!("ripr reports ci-packet could not run: {err}")],
     }
 }
 
@@ -3050,14 +3214,16 @@ fn run_command_path(program: &Path, args: &[&str]) -> Result<CommandResult, Stri
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use super::{CI_PACKET_STEP_NEEDLES, ci_packet_steps_missing, ci_summary_first_run_missing};
     use super::{
         EditorVersion, FIRST_SCREEN_NEEDLES, PackageVersion, RELEASE_LOOP_NEEDLES,
-        ReleaseReadinessCheck, ReleaseReadinessReport, extension_version_check_from,
-        extract_packaged_crate, missing_required_needles, package_version,
-        parse_release_readiness_args, read_crate_version, readiness_check, release_readiness_json,
-        release_readiness_markdown, release_readiness_status, validate_binary_identity,
-        validate_doctor_result, validate_installed_version, validate_package_entry,
-        vsix_start_current_repair_command_present,
+        ReleaseReadinessCheck, ReleaseReadinessReport, create_external_doctor_fixture,
+        extension_version_check_from, extract_packaged_crate, missing_required_needles,
+        package_version, parse_release_readiness_args, read_crate_version, readiness_check,
+        release_readiness_json, release_readiness_markdown, release_readiness_status,
+        validate_binary_identity, validate_doctor_result, validate_installed_version,
+        validate_package_entry, vsix_start_current_repair_command_present,
     };
     use serde_json::Value;
     use std::fs;
@@ -4151,6 +4317,116 @@ mod tests {
         }
         if !markdown.contains("installed-command-surface") {
             return Err("expected check id in markdown".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn external_doctor_fixture_is_a_git_work_tree() -> Result<(), String> {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| format!("clock error: {err}"))?
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("ripr-doctor-fixture-{stamp}"));
+        let fixture = create_external_doctor_fixture(&root)?;
+        let git_head = fixture.join(".git").join("HEAD");
+        let result = if git_head.is_file() {
+            Ok(())
+        } else {
+            Err("external doctor fixture must be a git work tree since #3988/#4007 makes doctor fail outside one".to_string())
+        };
+        let _ = fs::remove_dir_all(&root);
+        result
+    }
+
+    /// #5375: the readiness row reads the first-run guidance from the
+    /// installed binary's `reports ci-summary`, not from workflow text. A
+    /// stand-in binary that prints it passes; one that prints a summary
+    /// without it, or fails, is named in the row's details.
+    #[cfg(unix)]
+    #[test]
+    fn ci_summary_first_run_probe_reads_the_binary_output() -> Result<(), String> {
+        use std::os::unix::fs::PermissionsExt;
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| format!("clock error: {err}"))?
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("ripr-ci-summary-probe-{stamp}"));
+        fs::create_dir_all(&dir).map_err(|err| format!("failed to create dir: {err}"))?;
+        let stand_in = |name: &str, body: &str| -> Result<std::path::PathBuf, String> {
+            let path = dir.join(name);
+            fs::write(&path, format!("#!/bin/sh\n{body}\n"))
+                .map_err(|err| format!("write {name}: {err}"))?;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
+                .map_err(|err| format!("chmod {name}: {err}"))?;
+            Ok(path)
+        };
+        let good = stand_in(
+            "good",
+            "[ \"$1 $2\" = 'reports ci-summary' ] || exit 9\n\
+             printf '#### First-run status\\n- Status: `missing_start_here`\\n\
+             Open `target/ripr/reports/start-here.md` first.\\n'",
+        )?;
+        let silent = stand_in("silent", "echo '## RIPR advisory summary'")?;
+        let failing = stand_in("failing", "echo boom >&2; exit 3")?;
+        let packet = stand_in(
+            "packet",
+            "[ \"$1 $2\" = 'reports ci-packet' ] || exit 9\n\
+             echo 'ripr reports ci-packet: unknown --step x; the steps are: \
+             Generate RIPR pilot packet, Generate RIPR agent loop artifacts, \
+             Render RIPR gap decision ledger, Render RIPR first-pr start-here, \
+             Render RIPR LLM work-loop summaries' >&2; exit 2",
+        )?;
+        let short_packet = stand_in(
+            "short-packet",
+            "echo 'unknown --step x; the steps are: Generate RIPR pilot packet' >&2; exit 2",
+        )?;
+
+        let good_missing = ci_summary_first_run_missing(&good);
+        let silent_missing = ci_summary_first_run_missing(&silent);
+        let failing_missing = ci_summary_first_run_missing(&failing);
+        let packet_missing = ci_packet_steps_missing(&packet);
+        let short_packet_missing = ci_packet_steps_missing(&short_packet);
+        // A binary without the command (or one that runs the steps) must
+        // not pass as listing them.
+        let no_packet_missing = ci_packet_steps_missing(&silent);
+        let _ = fs::remove_dir_all(&dir);
+
+        if !packet_missing.is_empty() {
+            return Err(format!(
+                "complete step list reported missing: {packet_missing:?}"
+            ));
+        }
+        if short_packet_missing.len() != CI_PACKET_STEP_NEEDLES.len() - 1 {
+            return Err(format!("short step list: {short_packet_missing:?}"));
+        }
+        if !no_packet_missing
+            .iter()
+            .any(|item| item.contains("did not list its steps"))
+        {
+            return Err(format!("binary without ci-packet: {no_packet_missing:?}"));
+        }
+
+        if !good_missing.is_empty() {
+            return Err(format!(
+                "complete summary reported missing: {good_missing:?}"
+            ));
+        }
+        if silent_missing.len() != 3
+            || !silent_missing
+                .iter()
+                .any(|item| item.contains("#### First-run status"))
+        {
+            return Err(format!(
+                "summary without first-run text: {silent_missing:?}"
+            ));
+        }
+        if !failing_missing
+            .iter()
+            .any(|item| item.contains("ripr reports ci-summary failed"))
+            || !failing_missing.iter().any(|item| item.contains("boom"))
+        {
+            return Err(format!("failing binary not named: {failing_missing:?}"));
         }
         Ok(())
     }

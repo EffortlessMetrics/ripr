@@ -88,9 +88,24 @@ RIPR-SPEC-0026 owner-kind vocabulary explicitly adds a class value.
 
 Test discovery:
 
-- `pytest` test functions named `test_*` at module level
-- pytest test methods under `class Test*`
-- `unittest.TestCase` subclasses and their `test_*` methods
+- `pytest` test functions with the default `test` name prefix at module level
+- pytest test methods with the same prefix under `class Test*`
+- `unittest.TestCase` subclasses and their default `test`-prefixed methods,
+  including classes that reach `TestCase` through a base defined in the same
+  file, and the `test`-prefixed methods of a same-file mixin that a collected
+  test class inherits (#4562), directly or through another same-file mixin.
+  A mixin member is collected only when some collected subclass resolves it
+  to that mixin along Python's C3 method resolution order: the subclass's
+  own definition (a method or a `test_x = None` assignment) or an earlier
+  class in that order wins, and an imported base, a base defined after the
+  subclass or a redefined class name is unknown, so a member behind it is
+  not collected. A collected mixin member is recorded under the subclass
+  that runs it (`TestConsumer.test_shared`), the node id the runner accepts,
+  once per such subclass. Only the last definition of a class name is
+  collected.
+  An uninherited mixin is not collected, nor a `Test*` class that pytest
+  skips because it or a same-file ancestor defines `__init__` or `__new__`
+  or is a dataclass
 - parametrized tests via `@pytest.mark.parametrize` (recognised
   syntactically)
 - pytest fixture and parameter names captured from test function signatures
@@ -98,8 +113,20 @@ Test discovery:
   and `*_test.py`; the configured pattern is part of the repo config
   cross-spec contract)
 - framework-shaped verify commands for related tests when the static selector
-  is known: `pytest path::node` for pytest and
-  `python -m unittest module.Class.test_method` for unittest
+  is known: `python -m pytest path::node` for pytest and
+  `python -m unittest module.Class.test_method` for unittest. The pytest form
+  runs through `python -m` so the working directory is on `sys.path` and a
+  flat-layout package at the repository root imports without a `pythonpath`
+  setting; bare `pytest path::node` fails collection there with
+  `ModuleNotFoundError`. Both forms spell the interpreter `python`, which names
+  the virtual environment's interpreter on every platform
+
+The default name prefix is case-sensitive and does not require an underscore:
+`test`, `testCamelCase`, and `test_with_underscore` all qualify. `_test_private`,
+`contest`, and `TestWrongCase` do not. The prefix rule applies to both `def`
+and `async def`; it does not change test-file or class selection. Custom
+`python_functions` patterns, modified `TestLoader.testMethodPrefix` values,
+and collection hooks are not resolved by this syntax-only collector.
 
 Assertions / oracles the adapter must recognise:
 
@@ -130,9 +157,103 @@ syntactic call proximity. Direct owner calls must be token-aware. Module
 import aliases may match attribute calls such as `pricing.apply_discount(...)`;
 arbitrary object method calls must not be treated as related to a top-level
 function owner unless the changed owner is itself a method or class method.
+Free-function module identity compares a `from M import name` source module
+with the owner's dotted module path by exact equality. An owner below a
+directory named `src` (the PyPA src layout, including monorepo
+`packages/<pkg>/src/`) also matches the dotted path below that `src` import
+root, so `from pricing.discounts import f` identifies `src/pricing/discounts.py`
+while the repository-relative `src.pricing.discounts` form still matches. Bare
+file stems and arbitrary path suffixes never count as module identity.
+
+A package whose `__init__.py` re-exports a top-level function or class under
+its own name is also an import path of that owner: `from .time import
+naturaldelta` in `src/humanize/__init__.py` lets `import humanize` +
+`humanize.naturaldelta(...)` and `from humanize import naturaldelta` relate to
+`src/humanize/time.py::naturaldelta`, and `from .more import *` lets
+`import more_itertools as mi` + `mi.one(...)` relate to
+`more_itertools/more.py::one`. The re-export is followed only from
+`__init__.py` module imports whose source module is the owner's module (or an
+earlier re-exporting package), for at most three packages. A renamed
+re-export (`from .time import naturaldelta as delta`) is not followed. A star re-export
+never carries a `_private` name, and when the source module binds `__all__`
+at top level the name must be listed in it; any other binding of `__all__`
+(an import, `del`, a loop target, a binding inside a conditional block, or a
+value other than a literal list or tuple of strings or a `+=` of one) fails
+closed, and a mention of `__all__` in a comment or docstring is not a binding.
+When the initializer also binds the name to something else (a second import
+under that name, a star import from another module that defines it, its own
+definition, an assignment, `del`, a loop or `with` target, or any binding
+inside a conditional block), the re-export is not followed, because the
+reader does not order bindings. An unreadable or unparsable initializer
+re-exports nothing.
+Methods and module owners are never re-exported. The test must still call the owner's own name through
+the package, so a test that only calls a sibling name from the same package
+stays unrelated, and a test that binds a local named like the package alias
+(a parameter, fixture or assignment) calls that local, not the package. Diff
+mode and repo mode apply the same rule.
+A package import also reaches a free-function owner through the remaining
+submodule path (#4560): `import click` binds `click`, so
+`click.utils._expand_args(...)` calls `src/click/utils.py::_expand_args`, and
+`from click import _internal` reaches `_internal.utils.f(...)`. The receiver
+must spell the owner's full dotted module path below the imported module; a
+different submodule (`click.other.f(`) or a local shadowing the alias does not
+match. An import of the owner's own module path reaches it the same way, which
+covers an owner in a package `__init__.py` (`from dateutil import zoneinfo`
+then `zoneinfo.get_zonefile_instance(...)`), whose file stem never matches.
 Test-name and fixture-name proximity may provide a suggested repair location,
 but these links must be marked uncertain, must keep weak reachability, and must
 not promote unrelated assertions to strong revealability.
+
+A Python test is related to an owner only when the test references the owner.
+Same-stem file, test-name, and fixture-name proximity only rank a test that
+already references the owner without a recognized call shape; they never
+relate a test that only exercises a sibling owner in the same module, so a new
+owner that no test references reads `no_static_path`. A reference is outside
+comments, strings, and docstrings:
+
+- function or class owner: the bare owner name (`handler = loyalty_price`),
+  unless the test binds a local of that name (a parameter or fixture, an
+  assignment, a walrus `:=`, a `for` loop target, an `as` target, a nested
+  `def` or `class`) or the name is a keyword-argument or
+  assignment target; a renamed import local
+  (`from pricing import loyalty_price as lp`, then `lp`) whose source module is
+  the owner module; or a module-qualified member through an import of the
+  owner module (`import pricing` then `pricing.loyalty_price`, or
+  `import pricing as p` then `p.loyalty_price`);
+- method or class-method owner: an attribute reference `.name`, consistent
+  with the direct rule that relates any `.name(` call for these owners;
+- dunder method owner (`__init__`, `__eq__`, `__setitem__`, ...): only a
+  reference to its class. Every class defines the same dunder names, so a
+  test-local `def __init__` or `super().__init__(...)` in a helper class is
+  not a reference. Constructing the class (`Class(...)`, a renamed import, or
+  `module.Class(...)`) relates `__init__`, `__new__`, and `__post_init__` as
+  `constructor_call`, an oracle-eligible relation; for any other dunder it
+  relates as `dunder_protocol`, which stays uncertain because syntax cannot
+  bind `obj[key] = value` or `a == b` to the constructed instance. A dunder
+  owner with no related test, in a workspace whose tests import its class,
+  its module, or anything from a package above it, reads `static_unknown`
+  with the `dynamic_dispatch` limit instead of `no_static_path`: the adapter
+  cannot bind a unittest mixin's `self.Cache`, a test-local subclass, or a
+  public API that builds a private subclass (a descriptor's `__get__` behind
+  a decorator) to the owner class. A nested class (`Outer.Inner`) is reached
+  through its outermost class, `Outer.Inner(...)` after importing `Outer`;
+- a changed or new default on a parameter line inside a multi-line `def`
+  header is read like a one-line header change: each name on the line must
+  be a declared parameter of the owner with a default, and when every strong
+  related call binds that parameter the default is never reached and the
+  line is not credited `exposed`. A keyword argument never binds a
+  positional-only parameter. Methods, constructors included, fail open:
+  subclasses and `cls(...)` factories construct through receivers the
+  adapter does not see;
+- module-level owner: a local bound by an import of, or from, the owner
+  module.
+
+A `def name(`, `async def name(`, or `class name(` header in a test defines a
+local; it is not a call of `name`.
+
+A title, a fixture name, a file stem, or an object-member use such as
+`order.loyalty_price` on a receiver that is not the owner module is not a
+reference to a free-function owner.
 
 ## Probe Facts
 
@@ -155,6 +276,19 @@ It must derive this from AST string-expression spans in both source versions,
 not from triple-quote text alone. Assigned strings, f-strings, and a behavioral
 line replaced by a newly introduced docstring remain analyzable.
 
+The adapter must not emit a probe for the one-line `def` header of a new
+function (no removed counterpart) whose body holds another added behavior
+line: the body lines carry its behavior. A header with a default value, a
+changed header, a one-line `def f(x): return x`, and a multi-line header keep
+their probe.
+
+In diff mode the adapter must not emit a probe for a line of a multi-line
+`def` header that only names parameters or opens or closes the header
+(`self,`, `key: int,`, `*args,`, `*,`, `def name(`, `):`, `) -> bool:`),
+when the paired old line, if any, has the same shape. A parameter default, an
+annotation with a call, a trailing comment, and a `)` that closes a call in a
+body keep their probe.
+
 When the adapter cannot classify, it emits one of the `static_limit_kind`
 values defined in RIPR-SPEC-0026:
 
@@ -169,7 +303,7 @@ values defined in RIPR-SPEC-0026:
   `@app.get(...)`, `@api.post(...)`, or `@router.api_route(...)` may be treated
   as static route metadata when the changed behavior itself is a supported
   repair shape)
-- `mocked_module` (e.g., `@patch(...)` or `monkeypatch.setattr(...)`
+- `mocked_module` (e.g., `@patch(...)`, `patch.object(...)` (#4565) or `monkeypatch.setattr(...)`
   observed at the related-test call site)
 - `opaque_custom_assertion_helper` (e.g., a related test observes the changed
   owner only through an `assert_*(...)` helper body the adapter does not
@@ -181,6 +315,9 @@ values defined in RIPR-SPEC-0026:
   input or expected values whose concrete discriminator coverage is not
   statically known)
 - `unsupported_syntax`
+- `python_transitive_reach_unresolved` (RIPR-SPEC-0201: a test constructs or
+  calls into the owner's class and a bounded same-class `self.` / `cls.` path
+  may reach the changed method; classification stays `no_static_path`)
 
 ## Canonical Gap Identity
 
@@ -226,6 +363,59 @@ spine as other languages:
   downgrades to `weakly_exposed` with a typed reason. Reach plus a strong oracle
   alone must not credit `exposed`, or the classification degrades into coverage.
 
+A changed relational predicate (`<`, `<=`, `>`, `>=`) additionally follows the
+Rust activation boundary rule. When a strong related test calls the owner with
+at least one literal argument, `exposed` requires one of those calls to bind
+both comparison operands to equal values: each operand is a literal or an owner
+parameter bound to a literal argument or literal default (positional, keyword,
+import-alias, and method calls after `self`). Literal owner arguments, and the
+boundary equality when observed, are recorded in `observed_values`. Otherwise
+the finding fails closed to `weakly_exposed` and the infection stage reads
+`weak`. When every non-literal operand is bound by some call, the boundary is
+named as the missing discriminator (`amount == threshold`, with the observed
+operand values in its reason). An operand ripr cannot bind (an attribute such
+as `item.on_hand`, a computed `len(name)`, a comprehension local, or a line
+with several comparisons) never counts as observed, and such a boundary is not
+named as a typed repair target: the test input may already sit on it at runtime
+(`reserve(Item("a", 3), 3)`), so the finding states the unresolved operand
+instead of producing a repair card. A module-scope name bound once to a scalar
+literal (`DISCOUNT_THRESHOLD = 10_000`) resolves like a literal operand, the
+way the Rust and TypeScript adapters resolve a same-file constant; the missing
+discriminator keeps the name (`amount == DISCOUNT_THRESHOLD`) and its reason
+names the value and declaring line. A test argument that names the constant,
+imported from the owner's module (`discounted_total(DISCOUNT_THRESHOLD)` or
+`pricing.DISCOUNT_THRESHOLD`), binds to that value unless the test's own scope
+or its module binds that name again. The name stays unresolved when anything
+can rebind it: a second module-scope binding (including inside
+`if`/`try`/`for`/`with`), a `global` declaration or walrus target anywhere in
+the module, a star import, a module-scope `match`, any mention of a dynamic
+namespace writer (`exec`, `globals`, `vars`, `locals`, `setattr`,
+`sys.modules`, `__dict__`), a non-literal value, a parameter or local binding
+of the same name in the owner, a nested `def`/`class`/`lambda` in the owner,
+or a related test file that assigns the attribute (`pricing.DISCOUNT_THRESHOLD
+= 5`). A call inside a `@pytest.mark.parametrize` (or `@mark.parametrize`)
+test whose argument is a
+parametrize argname (`bulk_discount(quantity)`) expands into one call per
+generated case, binding each case's literal argvalue (#4559). Cases are
+recorded only when statically certain: string or list/tuple argnames, a
+list/tuple argvalues literal with rows of the right arity (`pytest.param(...)`
+unwrapped), stacked decorators as a product of at most 256 cases. A
+single-name list/tuple argnames takes tuple rows, as pytest unpacks them.
+Another decorator named `parametrize` (a plugin or project helper) records
+no cases. Argvalues named by a variable, `indirect=`, starred rows, a `pytest.param`
+with any keyword but `id=` (a `marks=` skip or xfail case may never run), a
+unittest method (pytest does not parametrize it), and an argname the test
+body may rebind leave the call unresolved. A rebinding is read from the
+parsed test body: any assignment, tuple, loop, `with` or `except` target, an
+import or `del` of the argname drops it from the cases, and a nested `def` or
+`class`, a `match` or a star import drops all cases. Any `lambda` in the test,
+or a comprehension whose `for` target names the argname, also leaves the call
+unresolved. When no strong related call binds a literal
+argument (test locals, `*args`, a construct-call passing a dict), static
+evidence cannot see the activating input either way: the oracle verdict stands
+and an `exposed` finding carries a `boundary_activation_unresolved` evidence
+line naming that limitation.
+
 Static-limit findings must fail closed. They keep any observed reachability and
 oracle facts, but their infection and propagation stages remain `unknown`, the
 finding class is `static_unknown`, a typed stop reason is emitted, and no
@@ -234,12 +424,24 @@ canonical repair-gap ID or repair recommendation is emitted.
 Direct weak findings may also carry activation-level missing discriminator
 facts for the first preview repair classes. For example, a changed
 `if amount >= threshold:` predicate can emit `amount == threshold`; a changed
-`return amount >= 100` expression can emit `return value == amount >= 100`; a
-changed `raise ValueError("positive required")` path can emit
+`return 42` expression can emit `return value == 42`; a changed
+`raise ValueError("positive required")` path can emit
 `raises ValueError matching "positive required"`; a changed
 `self.status = "paid"` assignment can emit `self.status == "paid"`; and a
 changed `logger.warning("coupon expired")` call can emit
-`log contains "coupon expired"`. These facts are evidence only until a later
+`log contains "coupon expired"`. A missing discriminator never restates the
+changed production expression as its own oracle: an assertion such as
+`result == sum(i.quantity for i in self.items) + 1` passes for every mutant of
+that expression. The expected side of a returned value, returned-dict field,
+constructor keyword, or plain assignment is kept only when it is one
+independent literal (a single string, including one triple-quoted string,
+number, `True`, `False`, or `None`; a string-delimited compound such as
+`"Hello, " + name + "!"` is not one, and adjacent-string concatenation such
+as `"a" "b"` is conservatively not one either).
+Otherwise it is the `<expected value>` placeholder
+(`return value == <expected value>`, `self.total == <expected value>`,
+`result.total == <expected value>`), and no concrete expected value is
+claimed. These facts are evidence only until a later
 repair-card contract supplies the test shape, verify command, receipt command,
 and edit boundaries. Heuristic-only links, no related-test paths, and static
 limits must not emit repair guidance.
@@ -263,6 +465,16 @@ read-out: the boolean the classifier uses is derived from the surfaced
   finding (no strong oracle, or a `<module>` owner with no usable token).
 - `alignment_reason` — a stable snake_case token explaining the value
   (e.g. `strong_oracle_observes_different_sink`).
+  `strong_oracle_observes_owner_call_through_module` (`direct`) credits a free
+  function whose strong oracle calls it through a module-identified spelling
+  (`utils.sign(0) == 0`, `pkg.utils.sign(...)`, a function-local import) or
+  asserts a local the same test bound once to such a call as its whole value
+  (`result = utils.sign(0)`, not `result = utils.sign(0) or 1`; #4567). The
+  call or local must be an asserted operand: nested in another call
+  (`always_true(utils.sign(0))`) it is not the compared value. A later import
+  of the same name inside the test replaces the earlier binding, and the
+  test's own `import pkg.mod as alias` is not a rebinding of `alias`. Those calls also bind boundary activation, so the
+  relational-boundary gate still applies to them.
 
 These fields are advisory preview evidence; they do not change the
 classification and do not claim runtime maturity. The contract does not bump the
@@ -289,6 +501,8 @@ can show:
   framework-shaped verify commands
 - fixtures proving test-name and fixture-name proximity are related-test
   heuristics but remain explicitly uncertain
+- a fixture proving a same-stem test that only calls a sibling owner is not
+  related to an owner it never references
 - fixtures proving Python preview findings carry stable canonical gap IDs
   across human, JSON, GitHub annotation, and SARIF output while static-limit
   findings remain limitation evidence rather than repair gaps
@@ -434,24 +648,67 @@ Expected static evidence:
 
 ## Test Mapping
 
+Default-prefix regression cases live in
+`crates/ripr/src/analysis/language/python/owners_tests/tests.rs`. They exercise
+module functions, pytest methods, unittest methods, and async definitions;
+exclude near-miss names and helpers; and check that collected tests retain
+framework-specific selectors and relate only to the referenced owner.
+
 Follow-up fixtures and tests cover the owner, test, assertion, related
 test, probe, and static-limit cases listed under Required Evidence, plus
 generated CI behavior and LSP smoke coverage. The CLI first-use path also
 checks that `ripr pilot` can surface a top Python repair card from diff-scoped
-preview evidence without requiring a Cargo workspace, and that `ripr first-pr`
+preview evidence without requiring a Cargo workspace, that pilot's next
+commands then follow that card's route instead of the diff-first
+`ripr check` route (`ripr first-pr` before the edit to name the receipt
+command, unless the card carries one; then the test edit, the card's verify
+command, and the receipt command), and that `ripr first-pr`
 can route an existing Python preview GapRecord into a preview-limited
 start-here packet for a Python project root. The first-PR mapping also covers
 the direct `--check-output <check.json>` bridge that materializes the
 check-output-derived gap decision ledger before selecting the same preview
-Python repair card. The repo-ops PR summary also projects the top eligible
+Python repair card. When that start-here packet ends with a
+`ripr receipt write` receipt, which records only the verify status it is
+given, and the ledger names its check-output input report, the packet also
+carries `selected.static_recheck_command`: a `ripr check --worktree` run from
+the same merge base compared with that input report by `ripr outcome`. The
+comparison is static movement, not runtime or mutation evidence, and it is
+omitted when the ledger's input report is unnamed or absent. The repo-ops PR summary also projects the top eligible
 Python preview repair card from `actionable-gaps.json` so local reviewer
 packets preserve the same canonical gap, missing discriminator, verify command,
 receipt command, and advisory boundary. Editor projection accepts bounded
-`pytest ...` and `python -m unittest ...` verify commands from Python
+`python -m pytest ...` (and the bare `pytest ...` form earlier artifacts
+carry) and `python -m unittest ...` verify commands from Python
 GapRecords, can copy a bounded Python agent packet from current actionable
 GapRecords, can copy a full repair card with a current validated GapRecord
 freshness cue, can copy a fail-fast pytest skeleton, and can open the
 suggested test file when the repair route carries a bare test name.
+
+The single-literal expected-value rule (including one triple-quoted string,
+and excluding compounds and adjacent-string concatenation) is covered by
+`crates/ripr/src/analysis/language/python/tests.rs::classify_change_never_restates_changed_expression_as_discriminator`.
+
+Package re-export reach is covered end to end, in diff and repo mode, by
+`crates/ripr/src/analysis/language/python/reexport_tests.rs`: attribute calls
+through an explicit `__init__.py` re-export, `from package import name`
+module identity, a star re-export honoring `__all__`, and the negative
+controls (a name `__all__` omits, a name quoted elsewhere but not in
+`__all__`, a sibling name, a renamed re-export, a shadowed package alias, an
+initializer that binds the name twice, an initializer that reassigns, deletes
+or conditionally rebinds it, and an `__all__` replaced by an import), a
+binding of another name that keeps the re-export, and a docstring that
+mentions `__all__` without binding it.
+
+The curated upstream Werkzeug #2065 case lives under
+`fixtures/python-real-repo-evals/werkzeug-multiple-cookie/` and is referenced by
+the existing Python eval corpus. Its native broken/fixed and assertion-removal
+controls establish the `getlist("a") == ["b", "c"]` answer key independently
+of analyzer output. Fixture-contract checks bind retained bytes and execution
+records; the documented pytest replay executes the native controls separately.
+The recorded historical `cached_property` limitation is not a permanent
+expected capability boundary. Future promotion requires resolved descriptor
+reach, effective-versus-weakened observer separation, and conservative
+unknown/rebound-decorator controls before actionable guidance.
 
 ## Implementation Mapping
 
@@ -511,3 +768,4 @@ adapter contributes:
 - `language_adapter_python_static_limit_property_based_test`
 - `language_adapter_python_static_limit_unresolved_pytest_fixture`
 - `language_adapter_python_static_limit_unsupported_syntax`
+- `language_adapter_python_static_limit_transitive_reach`

@@ -75,6 +75,10 @@ Repository configuration evidence should cover:
 - unsafe relative-path shapes being rejected where paths are configurable;
 - `ripr doctor` reporting loaded config path, missing-config defaults, and
   malformed config errors without printing config source text;
+- `ripr doctor` separating installed-binary analysis readiness (the default
+  `analysis` profile) from RIPR source-build prerequisites
+  (`--profile source-build`), with the Cargo/rustc probes run in the selected
+  root;
 - `ripr config validate` accepting valid config, following the existing
   missing-config defaults path, and returning path-qualified errors for
   malformed or policy-invalid config;
@@ -157,6 +161,43 @@ then doctor reports the config path or default state and never prints the
 config source text.
 ```
 
+### Doctor enable tip produces a loadable configuration
+
+```text
+Given a workspace with detected source for a preview language whose adapter
+is compiled into this binary and eligible for an enable tip (TypeScript and
+Python; Perl never gets a tip), and that language is not enabled,
+when ripr doctor runs,
+then doctor prints one `[languages] enabled` snippet that keeps every language
+already enabled, names only values `languages.enabled` accepts (JavaScript
+maps to `typescript`), and names the enable step beside the recommended first
+command;
+and a workspace with no such language gets neither.
+```
+
+### Doctor separates analysis readiness from source-build prerequisites
+
+```text
+Given a Rust workspace whose selected toolchain is missing cargo or rustc, or
+whose rustc is older than RIPR's build MSRV,
+when ripr doctor runs with the default analysis profile,
+then the cargo and rustc checks are reported as advisory, the report status is
+pass, and doctor exits 0;
+and a missing cargo discloses that evidence read from `cargo metadata` is
+withheld.
+
+Given the same workspace,
+when ripr doctor runs with --profile source-build,
+then the cargo and rustc checks fail, the report status is fail, and doctor
+exits 2;
+and enabled language runtimes are reported but do not decide that profile's
+status.
+
+Given a selected root with its own rustup toolchain selection,
+when doctor probes cargo or rustc,
+then the probe runs in the selected root rather than the caller's directory.
+```
+
 ## Test Mapping
 
 Current tests:
@@ -177,6 +218,30 @@ Current tests:
 - `crates/ripr/tests/cli_smoke.rs::doctor_reports_missing_config_defaults`
 - `crates/ripr/tests/cli_smoke.rs::doctor_reports_loaded_config_path`
 - `crates/ripr/tests/cli_smoke.rs::doctor_reports_malformed_config_error`
+- `crates/ripr/src/output/doctor.rs::tests::old_workspace_compiler_is_advisory_for_analysis_and_fails_source_build`
+- `crates/ripr/src/output/doctor.rs::tests::rust_root_with_missing_cargo_discloses_verification_limitation`
+- `crates/ripr/src/output/doctor.rs::tests::doctor_cargo_probe_uses_selected_root`
+- `crates/ripr/src/output/doctor.rs::tests::a_missing_root_skips_root_bound_probes_instead_of_blaming_the_tools`
+- `crates/ripr/src/output/doctor.rs::tests::a_file_root_is_not_reported_as_missing`
+- `crates/ripr/src/output/doctor.rs::tests::a_directory_named_like_a_file_still_passes_root_directory`
+- `crates/ripr/src/output/doctor.rs::tests::doctor_root_path_classify_follows_symlinks_and_splits_file_from_missing`
+- `crates/ripr/src/output/doctor.rs::tests::an_unreadable_root_is_not_reported_as_missing`
+- `crates/ripr/src/output/doctor.rs::tests::a_symlink_into_an_unreadable_directory_is_not_reported_as_a_file`
+- `crates/ripr/src/output/doctor.rs::tests::doctor_root_path_recovery_guidance_does_not_borrow_sibling_wording`
+- `crates/ripr/src/cli/commands/doctor.rs::tests::doctor_core_report_fails_closed_for_file_root`
+- `crates/ripr/src/cli/commands/doctor.rs::tests::doctor_human_projection_fails_for_file_root`
+- `crates/ripr/tests/cli_smoke.rs::doctor_file_root_is_not_reported_as_missing`
+- `crates/ripr/src/cli/commands/doctor.rs::tests::source_build_profile_keeps_enabled_language_runtime_failure_advisory`
+- `crates/ripr/src/cli/commands/doctor.rs::tests::path_command_in_ignores_a_repo_local_prove_cmd`
+- `crates/ripr/src/cli/commands/doctor.rs::tests::path_command_in_prefers_path_prove_over_repo_local_prove_cmd`
+- `crates/ripr/src/cli/commands/doctor.rs::tests::path_command_in_windows_prefers_pathext_over_extensionless`
+- `crates/ripr/src/cli/commands/doctor.rs::tests::is_cwd_path_entry_treats_empty_dot_and_backslash_dot_as_cwd`
+- `crates/ripr/src/cli/commands/doctor.rs::tests::path_command_in_unix_prove_cmd_is_not_a_prove_binary`
+- `crates/ripr/src/cli/commands/doctor.rs::tests::doctor_program_keeps_explicit_paths_and_skips_bare_names_off_path`
+- `crates/ripr/tests/cli_smoke.rs::doctor_does_not_treat_a_repo_local_prove_cmd_as_path_prove`
+- `crates/ripr/tests/cli_smoke.rs::doctor_reports_a_real_path_prove_despite_a_repo_local_prove_cmd`
+- `crates/ripr/tests/cli_smoke.rs::doctor_discloses_missing_verification_tools_but_still_checks_manifest`
+- `crates/ripr/tests/cli_help_hierarchy.rs::doctor_exit_code_guide_distinguishes_analysis_and_source_build`
 
 Planned tests:
 

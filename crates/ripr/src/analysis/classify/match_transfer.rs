@@ -227,8 +227,11 @@ mod tests {
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
+            impl_context: Default::default(),
         }
     }
 
@@ -388,10 +391,10 @@ mod tests {
         );
         assert_ne!(body, BODY, "the nested-call substitution must apply");
         let helper = match_fn("label_of", &body);
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![helper.clone()],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let eval = root_eval(&index);
         let bound = inputs(&[("kind", "\"word\"")]);
         match super::super::helper_transfer::helper_return_value(&helper, &bound, &eval) {
@@ -412,10 +415,10 @@ mod tests {
         let cyclic = BODY.replace("        _ => \"other\",", "        _ => label_of(kind),");
         assert_ne!(cyclic, BODY, "the cycle substitution must apply");
         let helper = match_fn("label_of", &cyclic);
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![helper.clone()],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let eval = root_eval(&index);
         let bound = inputs(&[("kind", "\"zz\"")]);
         assert!(
@@ -434,10 +437,10 @@ mod tests {
     }
 }";
         let chained = match_fn("label_of", chain);
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![chained.clone()],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
         let eval = root_eval(&index);
         let inside = inputs(&[("kind", "\"c\"")]);
         match super::super::helper_transfer::helper_return_value(&chained, &inside, &eval) {

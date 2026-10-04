@@ -60,7 +60,7 @@ mod tests {
                 "python",
             ])),
             Err(
-                "swarm queue root target/ripr/missing-swarm-queue-root is not a directory"
+                "swarm queue root target/ripr/missing-swarm-queue-root is not a directory; pass the directory that contains the workspace (for a Cargo.toml path, its parent directory)"
                     .to_string()
             )
         );
@@ -73,7 +73,7 @@ mod tests {
                 "agent-result.json",
             ])),
             Err(
-                "swarm ingest root target/ripr/missing-swarm-ingest-root is not a directory"
+                "swarm ingest root target/ripr/missing-swarm-ingest-root is not a directory; pass the directory that contains the workspace (for a Cargo.toml path, its parent directory)"
                     .to_string()
             )
         );

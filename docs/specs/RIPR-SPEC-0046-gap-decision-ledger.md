@@ -238,6 +238,13 @@ Gate decisions remain separate artifacts. The ledger may identify gate
 candidates, but the generated summary, PR comment, LSP diagnostic, badge, and
 packet index do not become pass/fail authority.
 
+`not_policy_targeted` is not a configured-off fact. It also describes
+no-action records such as an already-observed gap. The gate reads a ledger
+record as suppressed only from `policy_state = "suppressed"` or a suppressed
+safe gate predicate; any other record that is not gate-candidate eligible is
+`not_applicable` with a reason naming the ledger state, and its
+`evidence.configured_off` is `false`.
+
 ### Badge Targets
 
 Public badges are repo-scoped trust markers, not PR-local evidence.
@@ -409,6 +416,30 @@ Preview-language evidence:
   advisory record with preview labels.
 - It is not eligible for `ripr 0`, `ripr+`, or default gate authority.
 - Generated CI and editor surfaces preserve preview/advisory labels.
+- Given a TypeScript preview finding whose repair packet the shared validator
+  kept closed (`preview_actionability.repair_packet_ready = false`, no
+  `typescript_repair_packet`), the ledger emits a `StaticLimitation` record
+  with `static_limit_kind = "typescript_repair_packet_not_delegatable"`, the
+  validator's `why_not_actionable` text as its detail, and the card's
+  suggested assertion as a `not_delegatable_target_shape` static limit. It
+  has no repair route, verify command, or receipt, and no agent-packet,
+  PR-comment, LSP, gate, or badge eligibility. `ripr first-pr` names that
+  limitation as advisory no-action instead of reporting the ledger as
+  blocked (#4224).
+- Given a weakly exposed Python preview finding that `check` emitted without
+  a `python_repair_card` (the Python repair-route authority), without a
+  structured `static_limit_kind`, and with a non-heuristic test relation, the
+  ledger emits a `StaticLimitation` record with
+  `static_limit_kind = "python_repair_card_unavailable"`. Its detail names why
+  no card exists (no concrete missing discriminator, or incomplete test
+  placement or related-test evidence), states that `ripr pilot`,
+  `ripr agent repair` and `ripr first-pr` will not route it, and names the
+  manual step. It has no repair route, verify command, receipt, or gate
+  predicate, and no agent-packet, PR-comment, LSP, gate, or badge
+  eligibility. `ripr first-pr` names that limitation as advisory no-action
+  instead of a bare generic reason (#4216). Exposed and no-path Python
+  findings never form this record: an exposed finding has nothing to repair
+  and a no-path finding is a test gap, not an analyzer limitation.
 
 RIPR Zero target:
 
@@ -455,6 +486,16 @@ Follow-up implementation should include:
 - typed regeneration command-spec tests proving exact-shape-only recovery,
   role-validated collections, read-time enrichment idempotence, and LSP
   payload disclosure of the typed routes.
+
+Rooted regeneration routes (#3999, #4287) are pinned by
+`crates/ripr/src/agent/command_specs.rs::tests::anchored_gap_ledger_displays_recover_root_relative_argv`
+(anchored paths recover root-relative argv; paths outside the selected root
+stay legacy-string-only),
+`crates/ripr/src/output/gap_decision_ledger.rs::tests::parse_keeps_a_display_bound_to_a_foreign_root_legacy_string_only`
+(a display bound to another root gains no typed spec), and
+`crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::load_gap_ledger_records_binds_typed_routes_to_the_workspace_root`
+(the LSP binds recovery to its workspace root, not the server's working
+directory, and the legacy-only path recovers nothing).
 
 This spec PR does not add production code or public output fields.
 

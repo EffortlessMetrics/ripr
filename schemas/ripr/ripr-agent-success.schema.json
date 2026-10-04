@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.effortlessmetrics.dev/ripr/ripr-agent-success.schema.json",
   "title": "RIPR riprAgent success envelope",
-  "description": "Bounded producer-owned success fields for a future implemented riprAgent request.",
+  "description": "Bounded producer-owned success fields for a riprAgent request. Reserved for #3009: the live ripr/listActionableItems handler emits a smaller interim shape, documented in docs/OUTPUT_SCHEMA.md, not this full envelope.",
   "type": "object",
   "additionalProperties": false,
   "required": [

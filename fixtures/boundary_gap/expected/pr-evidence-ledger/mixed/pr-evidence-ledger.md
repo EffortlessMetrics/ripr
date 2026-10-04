@@ -11,9 +11,8 @@ Start here:
 - Missing discriminator: new == 4
 - Suggested test: assert_eq!(new(), 4)
 - Related test: tests/new.rs::boundary
-- Verify command: `ripr agent verify --json`
+- Verify after the test edit: `ripr agent verify --json`
 - Receipt state: receipt_missing
-- Agent handoff: `ripr agent start --root . --seam-id new --out target/ripr/workflow`
 - Boundary: advisory static evidence only; raw counts below are supporting evidence and gate authority remains separate.
 
 Supporting movement counts:

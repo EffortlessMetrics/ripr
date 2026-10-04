@@ -10,6 +10,8 @@ Linked issues:
 
 - [#2107](https://github.com/EffortlessMetrics/ripr-swarm/issues/2107) —
   `ripr explain` / `ripr context` re-run the full pipeline per invocation.
+- [#5112](https://github.com/EffortlessMetrics/ripr-swarm/issues/5112) —
+  stdin findings must not bind to an unrelated literal `-` file.
 
 Linked proposals:
 
@@ -65,6 +67,23 @@ recorded identity; resolving it at reuse time would re-run the producer
 and defeat reuse). An explicit `--perl-facts <path>` packet is recorded
 (path plus content hash) and remains supported. A failed artifact write
 fails the command: the user explicitly requested the artifact.
+
+`--diff -` (stdin) is not supported with `--write-artifact`: the consumed
+stdin bytes are not retained as a re-resolvable artifact input. The CLI
+refuses this combination before analysis or any artifact write, whether
+an unrelated literal `-` file is absent, empty, or contains another patch.
+An existing destination artifact stays byte-identical. Save stdin to a
+named diff file and pass `--diff <path> --write-artifact <artifact>` to
+create a reusable result. Ordinary `--diff -` analysis remains supported;
+an explicit path such as `./-` remains a named-file input.
+
+For reuse, `explain` and `context` also refuse `--from` with the exact
+`--diff -` sentinel: it cannot assert the identity of a recorded diff file.
+Use the named diff path when creating and reusing the artifact. Earlier v1
+artifacts that incorrectly bound stdin findings to a literal `-` file do
+not record that provenance and cannot be distinguished from legitimate
+named-file artifacts; regenerate them from a named diff file. The v1
+schema and other reuse identity checks are unchanged.
 
 A `--worktree` producing run is supported: its diff source is recorded as
 `worktree` (the requested base, or none for dynamic default-base
@@ -124,7 +143,9 @@ The artifact embeds an input identity computed at check time:
   input option fails compilation until it is explicitly classified;
 - `config_identity_version` and `config_identity_hash` — a closed,
   versioned allowlist contract over `ripr.toml`: the finding-affecting
-  fields (`oracles.*`, `typescript.resolve_tsconfig_paths`, `perl.*`),
+  fields (`oracles.*`, production-like targets and test harnesses,
+  Rust generated patterns and `handwritten_files`,
+  `typescript.resolve_tsconfig_paths`, `perl.*`),
   canonically serialized with defaults materialized, sorted, and hashed.
   The classifier (`RiprConfig::check_artifact_identity_fields`)
   destructures every config struct without a `..` rest pattern, so an
@@ -137,7 +158,9 @@ The artifact embeds an input identity computed at check time:
   are excluded; fields already recorded elsewhere in the identity
   (`analysis.mode`, `analysis.include_unchanged_tests`,
   `languages.enabled`) are marked as captured, not hashed twice;
-- `analyzer_version` (the writing binary's version) and the envelope
+- `analyzer_version` (the writing binary's build identity: its version plus
+  its commit, or a digest of its sources for a dirty or commit-less build,
+  so another build of the same version is refused) and the envelope
   `schema_version`.
 
 The CLI has no diagnostic-profile surface today (that concept is LSP-only,
@@ -177,7 +200,11 @@ analysis-relevant config), not to fingerprint the repository.
 (`select_finding`) and rendering (`render_finding_with_config`,
 `render_context_packet`) operate on the loaded findings exactly as on
 freshly computed ones, so a reused explanation is byte-identical to a
-recomputed one given the same render options. Render-time knobs
+recomputed one given the same render options. The one exception is
+navigation: the sibling commands `explain` prints and the context packet's
+`witness.explain_command` replay the source that produced the finding,
+`--diff`/`--base` on a fresh run and `--from <artifact>` on a reused one
+(#3952). Render-time knobs
 (`--max-related-tests`, severity display, output format) are not part of
 the identity and are honored fresh at render time — including
 `--max-related-tests` beyond the `check --json` render cap, because the
@@ -217,6 +244,19 @@ artifact stores the uncapped related-tests list.
   gate, badge, or proof route.
 
 ## Acceptance Examples
+
+### Stdin artifact capture refuses before analysis or replacement
+
+```text
+Given stdin contains a changed Python or JavaScript diff,
+when `ripr check --diff - --write-artifact a.json` runs,
+then it exits 2 with a named-file recovery instruction and no analysis output,
+and it neither creates nor changes a.json, regardless of a literal '-' file.
+Saving those stdin bytes to d.patch and using `--diff d.patch` succeeds,
+and ordinary `ripr check --diff -` still analyzes those same bytes.
+When `explain` or `context` uses `--from a.json --diff -`,
+then it refuses the stdin assertion rather than resolving a literal '-' file.
+```
 
 ### Write then reuse without scope flags
 
@@ -270,6 +310,12 @@ even though the `check --json` render caps related tests at 8.
 
 ## Test Mapping
 
+- `crates/ripr/tests/cli_smoke/check_artifact_stdin.rs::python_stdin_artifact_refusal_preserves_named_recovery`
+  and `javascript_stdin_artifact_refusal_preserves_named_recovery` — real
+  CLI admission refusal before analysis and artifact replacement, ordinary
+  stdin parity, nonempty named-file recovery, and explicit literal-dash
+  file support; both reuse commands reject stdin assertions and accept
+  the recorded named-file assertion.
 - `crates/ripr/src/app/check_artifact/tests.rs::artifact_round_trip_preserves_full_fidelity_findings`
   — loaded findings equal the computed set exactly, including the fields
   the lossy JSON projection drops.
@@ -340,6 +386,8 @@ even though the `check --json` render caps related tests at 8.
 - `crates/ripr/src/app/context.rs` — `collect_context_from_artifact`.
 - `crates/ripr/src/cli/commands.rs` — flag parsing, run-shape rejection,
   dispatch.
+- `crates/ripr/src/cli/commands/check.rs` — stdin-artifact admission before
+  analysis or writing.
 - `crates/ripr/src/config/model.rs` + `crates/ripr/src/config.rs` —
   config-identity allowlist, version, and hash.
 - `crates/ripr/src/domain/probe.rs`, `classification.rs`, `language.rs` —

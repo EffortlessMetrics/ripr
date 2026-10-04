@@ -88,8 +88,10 @@ Currently denied at the workspace level (selected highlights):
   `clippy::let_underscore_must_use` is
   intentionally **not** yet active — best-effort cleanup patterns
   (`let _ = fs::remove_dir_all(&dir)`) are pervasive across tests, and the
-  flip is tracked as a follow-up. Tests asserting that a `Result` is `Err`
-  should use `.expect_err("why")` rather than `assert!(x.is_err())`.
+  flip is recorded as `clippy-debt-0001` in
+  [`policy/clippy-debt.toml`](../policy/clippy-debt.toml). Tests asserting
+  that a `Result` is `Err` should use `.expect_err("why")` rather than
+  `assert!(x.is_err())`.
 - Format / I/O footguns: `clippy::format_in_format_args`,
   `clippy::to_string_in_format_args`, `clippy::unused_format_specs`,
   `clippy::suspicious_open_options`, `clippy::nonsensical_open_options`,
@@ -177,11 +179,29 @@ verifies that:
   configured in `[workspace.lints.*]` in `Cargo.toml` at the same level;
 - every `[[planned]]` entry is **not** yet configured in `Cargo.toml`
   (they're future flips, not active);
-- every `[workspace.lints.*]` line has a matching ledger entry.
+- every `[workspace.lints.*]` line has a matching ledger entry;
+- every `[[planned]]` `activate_when_msrv` that is already met by
+  `[workspace.package] rust-version` has a remaining non-MSRV `blocked_by`
+  (empty or MSRV-only `blocked_by` text fails; `reason` does not satisfy
+  this check);
+- every `[[debt]]` row in `policy/clippy-debt.toml` is valid TOML with
+  unique `id` / `lint`, required nonblank fields, a `target` that is not
+  in the past, and a lint that is not already `[[active]]`, `[[planned]]`,
+  or present in `Cargo.toml`.
+
+`activate_when_msrv` on `[[planned]]` entries is compared to
+`[workspace.package] rust-version`. When the recorded MSRV is already
+met, the entry must have a remaining non-MSRV `blocked_by` or be promoted.
+A `blocked_by` that only names an MSRV or Rust version is treated as missing.
+`reason` is narrative and does not satisfy the gate. The values are not
+verified available-since (`clippy::manual_pop_if` records `1.95` while
+`blocked_by` says pinned 1.95.0 Clippy does not recognize the lint).
 
 When promoting a planned lint, move the entry from `[[planned]]` to
 `[[active.<group>]]`, add the matching `Cargo.toml` line, and update
-this doc — the gate makes drift visible immediately.
+this doc — the gate makes Cargo.toml drift visible immediately. An
+already-met `activate_when_msrv` without `blocked_by` is overdue, not a
+silent documentary leftover.
 
 ## Companion ledgers
 
@@ -189,18 +209,31 @@ Two companion ledgers track Clippy state alongside the active/planned table:
 
 - [`policy/clippy-debt.toml`](../policy/clippy-debt.toml) records lints that
   are intentionally **deferred** with a named owner, a blocking dependency,
-  and a target date for clearing the debt. Empty by default.
+  and a target date for clearing the debt. It currently records
+  `clippy::let_underscore_must_use` as `clippy-debt-0001`.
 - [`policy/clippy-exceptions.toml`](../policy/clippy-exceptions.toml) records
   per-call-site `#[expect(...)]` / `#[allow(...)]` suppressions with an `id`,
   `owner`, `reason`, `covered_by`, and `expires`. It is the reviewable
-  counterpart to `.ripr/allow-attributes.txt`. Empty by default.
+  counterpart to `.ripr/allow-attributes.txt`. It has no live rows;
+  `clippy-exception-0001` was retired when `PanicAllowEntryVersioned::V2`
+  was boxed.
 
-These are advisory until the corresponding xtask ledger checks land in a
-follow-up PR. One slice already enforces coverage claims: `cargo xtask
-check-covered-by` resolves every test-valued `covered_by` entry in
-`policy/clippy-exceptions.toml` against a static scan of the workspace's
-actual `#[test]`-family functions, so a claim that names a renamed or deleted
-test fails the gate with the entry id and a repair hint (#3528).
+These companion ledgers are gated as follows:
+
+- `cargo xtask check-lint-policy` reads `policy/clippy-debt.toml` as
+  TOML (`deny_unknown_fields`): unique ids, required nonblank fields
+  (`id`, `lint`, `level`, `owner`, `reason`, `blocked_by`, `target`),
+  ISO `target` dates that are not in the past, and debt lints that are
+  not already `[[active]]`, `[[planned]]`, or present in `Cargo.toml`.
+  Invalid TOML, duplicate keys, unknown fields, and trailing garbage fail.
+- `cargo xtask check-covered-by` reads `policy/clippy-exceptions.toml` as
+  TOML (`deny_unknown_fields`): unique ids, required nonblank fields
+  (`id`, `lint`, `path`, `selector`, `owner`, `reason`, `covered_by`),
+  optional ISO `expires` dates that are not in the past, and every
+  test-valued `covered_by` against a static scan of the workspace's
+  actual `#[test]`-family functions. Invalid TOML, duplicate keys,
+  unknown fields, and trailing garbage fail. `check-allow-attributes`
+  still reads only `.ripr/allow-attributes.txt`.
 
 ## MSRV 1.95 rollout
 
@@ -230,16 +263,20 @@ Planned lints retained after PR 03:
 
 The rollout PR stack is in `docs/ci/ripr-rollout-plan.md`. Future lint flips
 must move entries from `[[planned]]` to `[[active]]` only after the matching
-toolchain support, configuration, and xtask checks are present.
+toolchain support, configuration, and receipts in `blocked_by` are present.
+`check-lint-policy` compares `activate_when_msrv` to workspace
+`rust-version` and requires a remaining non-MSRV `blocked_by` when that
+version is already met (MSRV-only `blocked_by` text fails; `reason` does
+not satisfy the gate).
 
 ## See also
 
 - [`policy/clippy-lints.toml`](../policy/clippy-lints.toml) — declarative
   ledger and planned flips.
 - [`policy/clippy-debt.toml`](../policy/clippy-debt.toml) — deferred lints
-  with owner and target date.
+  with owner and target date; consumed by `check-lint-policy`.
 - [`policy/clippy-exceptions.toml`](../policy/clippy-exceptions.toml) —
-  per-site suppressions.
+  per-site suppressions; consumed by `check-covered-by`.
 - [`docs/NO_PANIC_SEMANTIC_ALLOWLIST.md`](NO_PANIC_SEMANTIC_ALLOWLIST.md) —
   selector-based allowlist schema.
 - [`docs/NO_PANIC_POLICY.md`](NO_PANIC_POLICY.md) — no-panic policy overview.

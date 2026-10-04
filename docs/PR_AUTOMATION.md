@@ -16,6 +16,23 @@ Humans and coding agents should spend attention on behavior, evidence,
 exceptions, and public contracts. They should not spend attention on formatting,
 allowlist order, report directory setup, generated indexes, or gate ordering.
 
+## Changelog inputs
+
+The release cut assembles its `Unreleased` section from the swarm and source
+changelogs as a semantic union. A contract-changing PR should normally add a
+short `Unreleased` entry with an issue or PR link, including compatibility
+effects such as a newly refused path or a changed finding class. The author
+and reviewer decide whether a change is notable; a path-only check cannot
+establish that a user contract changed or that a useful note was written.
+
+An entry may instead be drafted retrospectively during the release cut. In
+that case, the PR should say where the change will be found in the release
+inventory and why the entry is deferred. The release checklist requires an
+explicit inventory of merged contract changes, including deferred entries,
+before the semantic union. `check-pr` does not enforce completeness of
+`CHANGELOG.md`; a green check must not be read as a complete release-note
+inventory.
+
 Codex Goals consume this harness. The `/goal` loop may advance a multi-PR
 campaign, but each work item should still leave the same shaped PR, reports, and
 review artifacts described here. Machine-readable receipts record which gates
@@ -64,6 +81,7 @@ cargo xtask check-local-context
 cargo xtask check-network-policy
 cargo xtask check-no-panic-family [--propose]
 cargo xtask check-output-contracts
+cargo xtask check-identity-registry
 cargo xtask check-positioning-language
 cargo xtask check-pr
 cargo xtask check-process-policy
@@ -108,7 +126,9 @@ cargo xtask install-hooks
 cargo xtask issue-intake --issue <number>
 cargo xtask lane1-evidence-audit
 cargo xtask lsp-cockpit-report
+cargo xtask lsp-performance-report
 cargo xtask markdown-links
+cargo xtask merge-queue capture [--repo <owner/name>] [--out <dir>] [--input <path>] [--prior <path>]
 cargo xtask metrics
 cargo xtask module-health [--threshold <n>]
 cargo xtask mutation-calibration [root] --mutants-json <path>
@@ -148,6 +168,7 @@ cargo xtask route-quality [--attempt-ledger <path>]
 cargo xtask rust-conversion-candidates
 cargo xtask rust-repair-trust-report
 cargo xtask sarif-policy --current <path> [--baseline <path>]
+cargo xtask schema-producer-sweep [--rev REV] [--artifact SCHEMA[#POINTER]=FILE[#POINTER]]...
 cargo xtask shape
 cargo xtask specs next
 cargo xtask suggested-fixes
@@ -223,6 +244,71 @@ that lack an obvious work item marker. Its report also includes a short
 next-action queue so agents can move from diagnosis to the right cleanup or
 follow-up validation command without reverse-engineering the findings.
 
+### Bounded local storage and proof retention
+
+The root's existing task/resource ownership carries storage admission and closeout;
+Git and GitHub carry source/PR state. Do not add a registry, daemon or scheduler.
+`worktree doctor` inspects repository hygiene; it does not measure host capacity,
+prove consumer inactivity or authorize deletion. A successful build is not a
+storage closeout.
+
+Before allocating or generating, record in the existing task handoff:
+
+- exact worktree, Git common directory, effective Cargo target/build paths,
+  temporary output and frozen-proof destinations, with their current owners;
+- mandatory current/witness artifacts: the qualified executable and each distinct
+  negative or prior-candidate witness still needed to reproduce the claim,
+  identified by source SHA, artifact hash and the receipt that consumes it;
+- reusable mutable build state, and disposable or superseded outputs eligible for
+  the already-authorized recoverable closeout after their consumers release them;
+- observed free space, the host's accepted reserve and the conservative
+  **peak additional bytes** for compilation, downloads, snapshots, archive creation
+  and full restoration verification on every affected volume. Do not count prospective
+  reclamation before it is verified, assume a compression ratio, or lower a floor
+  merely to admit another run. Stop generation when that budget no longer fits.
+
+Use an existing immutable artifact reference for repeated proof consumers when
+its hash and source identity match. Do not freeze another expanded executable for
+unchanged bytes merely because a new report or stage has a different name. Do not
+hard-link proof into mutable Cargo output; later writes could alter the witness.
+Different bytes or semantics can require separate witnesses. A hash, source/version stamp, Cargo freshness claim, successful rebuild or green
+test alone does not establish the actual executable's dependency/source identity
+or replace a required original witness. Bind qualification to the explicitly
+selected compiler artifact and observed behavior under its admitted ownership.
+
+Before the next batch, and at merge, closure, cancellation or handoff, reconcile
+resources with the actual writer and all queued, running and independent consumers.
+Classify every resource as `released`, `retained with reason`, or
+`awaiting owner verification` in the existing terminal return. Missing process/PID
+observations, old mtimes, an unlocked directory, a clean source tree or a merged PR are not
+release evidence. Preserve open-claim witnesses and unknown resources. Bound a
+retention reason to the real consumer or proof need, rather than keeping every
+superseded runner expanded by default.
+
+For confirmed inactive resources within existing cleanup authority:
+
+1. Re-read source status, ignored/untracked evidence, branch/HEAD/upstream,
+   detached or unpushed work, Git registrations and native ownership immediately
+   before acting. A primary checkout may contain a common Git store used by active
+   linked worktrees. Do not move that store or infer removability from its branch.
+2. Preserve required source, unique work, receipts and restore paths. Use ordinary
+   Git worktree operations for linked trees, and the existing lock/owner protocol
+   for generated state; never repurpose a live target to make room.
+3. For compressed quarantine, retain a manifest with original paths, source and
+   artifact identities, required metadata and restore instructions. Admit both
+   the archive and expanded verification copy while originals still exist,
+   restore into a separate staging path, and compare the restored bytes/metadata
+   before replacing the expanded originals with the recoverable archive. Retain
+   originals if any check fails. A same-filesystem rename alone reclaims no bytes.
+4. Recheck excluded resources and actual free-space gain. Return the archive,
+   verification result and exact restore path in the existing terminal report.
+   Do not permanently purge the archive without the required separate authority.
+
+These are root-owned checks using existing tooling, not new command-enforced
+budgets or automatic deletion. Routine recoverable closeout already covered by
+user/host authority should execute within that scope; ask only for a genuinely
+missing permission or an unresolved ownership/data boundary.
+
 `pr-triage-report` is the open-board hygiene report. It reads open PR metadata
 through GitHub CLI and writes `target/ripr/reports/pr-triage.md` plus
 `target/ripr/reports/pr-triage.json`. It flags same-title families, identical
@@ -264,6 +350,12 @@ advisory and never updates the branch, comments, approves, or merges.
 Use [Merge freshness and watcher policy](MERGE_WATCH_POLICY.md) for polling
 cadence, branch-refresh decisions, REST status fallback, Droid/advisory-check
 handling, and local worktree merge limitations.
+
+`merge-queue capture` is the MQ0 read-only current-state receipt. It writes
+desired settings, live observation, apply-route capability, and rollback
+identity as separate facts under `--out` (default
+`target/ripr/reports/merge-queue`). Tests use `--input`; live mode uses GET-only
+`gh api` calls. It never applies settings or enables a queue.
 
 `suggested-fixes` writes `target/ripr/reports/suggested-fixes.patch` and
 `target/ripr/reports/suggested-fixes.md` with safe deterministic repair
@@ -349,6 +441,15 @@ e2e smoke test file and writes `target/ripr/reports/lsp-cockpit.md` and
 `target/ripr/reports/lsp-cockpit.json`. It summarizes which fixtures produce
 editor diagnostics, which code actions are exposed, which context/action fields
 are present, and which VS Code commands are covered by e2e tests.
+
+`lsp-performance-report` runs the saved-edit sequence harness from
+`crates/ripr/src/lsp/saved_edit_sequence.rs`, overlays source/binary identity,
+and writes `target/ripr/reports/lsp-performance.md` and
+`target/ripr/reports/lsp-performance.json`. It records scheduler, delivery, and
+cache-load work counts for cold start through explicit full refresh. Historical
+2s/10s/30s envelopes remain proposals. Existing rust tests absorb the
+deterministic sequence; the command is not a CI gate and does not add a
+full-workspace job.
 
 `repo-exposure-latency-report` builds the local debug `ripr` binary, runs
 repo-exposure formats under a bounded timeout, captures opt-in analyzer phase
@@ -445,7 +546,8 @@ the final report index.
 `check-allow-attributes` rejects guarded Rust lint suppressions such as
 panic-family, unsafe-code, dead-code, unused-code, and broad warning
 suppression attributes unless they are narrowly allowlisted in
-`.ripr/allow-attributes.txt`. It writes
+`.ripr/allow-attributes.txt`. The row count is exact: source above the row
+and a row above the source both fail. It writes
 `target/ripr/reports/allow-attributes.md`.
 
 `check-local-context` rejects committed local machine paths, Codex memory or
@@ -546,6 +648,7 @@ cargo xtask check-workspace-shape
 cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
+cargo xtask check-identity-registry
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
@@ -586,6 +689,7 @@ cargo xtask check-workspace-shape
 cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
+cargo xtask check-identity-registry
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
@@ -736,6 +840,7 @@ cargo xtask check-workspace-shape
 cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
+cargo xtask check-identity-registry
 cargo xtask check-doc-artifacts
 cargo xtask check-doc-index
 cargo xtask check-readme-state

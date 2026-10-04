@@ -193,6 +193,12 @@ Check internal seam ownership:
 * `output`: human, JSON, GitHub, future SARIF rendering.
 * `cli`: command adapter.
 * `lsp`: editor protocol adapter.
+* `agent`: bounded repair-loop command production and provenance.
+* `config`: `ripr.toml` loading, typed model, language detection.
+* `mcp`: bounded read-only Model Context Protocol adapter (`ripr mcp --stdio`;
+  ADR 0022). Shared workspace-status projection; no edit or execution authority.
+* `provider_contract`: public exact-snapshot DTOs for external proof
+  orchestrators; not an analysis or rendering layer.
 
 ### Rust policy
 
@@ -476,37 +482,30 @@ this review.
 
 ## Merge readiness: resolving review threads
 
-The repo's branch ruleset enforces `required_review_thread_resolution: true`.
-Any unresolved review comment thread — including those from automated bots
-(codex, gemini, droid, github-actions) — blocks `gh pr merge` with
-"Repository rule violations found."
+Read the current ruleset and branch-protection requirements rather than
+inferring them from a blocked status. Ordinary PR repair never authorizes
+changing review counts, disabling required checks or bypassing protection.
 
 Before merging a PR:
 
-1. **Address or reject each finding.** If the bot's suggestion is correct,
-   fix the code and push. If it is wrong, leave a short reply explaining why.
-   Do not resolve a thread without engaging the finding — that defeats the
-   review-feedback loop.
-2. **Resolve the thread** via the GraphQL API:
+1. Address or reject each finding. Repair valid findings or post a source-backed
+   refutation. A bot's automatic addressed label is not proof of a repair.
+2. Confirm that the repair or reply exists, then resolve the thread and read
+   back its state. Fetch all paginated threads; an empty first page is not a
+   complete review denominator. Reply and resolve are independent operations.
+3. Diagnose approval/check requirements read-only from both authorities:
    ```bash
-   gh api graphql -f query='query($o:String!,$r:String!,$p:Int!){repository(owner:$o,name:$r){pullRequest(number:$p){reviewThreads(first:50){nodes{id isResolved}}}}}' -F o=EffortlessMetrics -F r=ripr-swarm -F p=<PR> --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | .id'
+   gh api repos/EffortlessMetrics/ripr-swarm/branches/main/protection/required_pull_request_reviews
+   gh api repos/EffortlessMetrics/ripr-swarm/rules/branches/main
    ```
-   Then for each thread ID:
-   ```bash
-   gh api graphql -f query='mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}' -f id=<THREAD_ID>
-   ```
-3. **Verify `required_approving_review_count` is 0** (single-maintainer repo).
-   If it has drifted back to 1, fix it:
-   ```bash
-   gh api -X PATCH repos/EffortlessMetrics/ripr-swarm/branches/main/protection/required_pull_request_reviews -F required_approving_review_count=0 -F dismiss_stale_reviews=false -F require_code_owner_reviews=false -F require_last_push_approval=false
-   ```
-   Also check the GitHub **ruleset** (separate from branch protection):
-   ```bash
-   gh api repos/EffortlessMetrics/ripr-swarm/rulesets --jq '.[].id'
-   gh api repos/EffortlessMetrics/ripr-swarm/rulesets/<ID> --jq '.rules[] | select(.type == "pull_request") | .parameters'
-   ```
-4. **Merge** once all threads are resolved and the required check is green:
+   A settings change requires explicit owner authorization naming the rule and
+   change. Do not assume a single-maintainer repository has no approval rule or
+   patch protection to match that assumption. If reads are unavailable, retain
+   the gap and let the protected merge API enforce its rules.
+4. Only after substantive exact-head `REVIEW_READY`, addressed threads and
+   required proof, use normal protected squash merge:
    ```bash
    gh pr merge <PR> --squash
    ```
-
+   Do not use an admin bypass. Special history-preserving source-integration
+   transactions follow their own governing issue, not this ordinary PR route.

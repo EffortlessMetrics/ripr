@@ -39,11 +39,15 @@ fn parse_validate_root(args: &[String]) -> Result<PathBuf, String> {
 fn validate_config(root: &Path) -> Result<&'static str, String> {
     if !root.is_dir() {
         return Err(format!(
-            "config validate root {} is not a directory",
+            "config validate root {} is not a directory; pass the directory that contains the workspace (for a Cargo.toml path, its parent directory)",
             root.display()
         ));
     }
-    load_for_root(root)?;
+    // A missing file is a valid first run, but saying "ripr.toml valid" there
+    // told users a file they never wrote had been checked.
+    if load_for_root(root)?.source_path.is_none() {
+        return Ok("✓ no ripr.toml found; built-in defaults apply");
+    }
     Ok("✓ ripr.toml valid")
 }
 
@@ -91,7 +95,7 @@ mod tests {
 
         let result = validate_config(&root);
         fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
-        if result? != "✓ ripr.toml valid" {
+        if result? != "✓ no ripr.toml found; built-in defaults apply" {
             return Err("missing configuration returned the wrong success message".to_string());
         }
         Ok(())

@@ -97,11 +97,13 @@ ripr policy history \
   --commit HEAD \
   --pr-number 123 \
   --out target/ripr/reports/policy-history.json \
-  --out-md target/ripr/reports/policy-history.md
+  --out-md target/ripr/reports/policy-history.md \
+  --out-jsonl .ripr/policy-history.jsonl
 ```
 
-The command reads optional history; it does not append to
-`.ripr/policy-history.jsonl`.
+The command reads optional history. It does not append to
+`.ripr/policy-history.jsonl` unless `--out-jsonl` is supplied. Generated CI
+never passes `--out-jsonl`.
 
 Use the history report to answer:
 

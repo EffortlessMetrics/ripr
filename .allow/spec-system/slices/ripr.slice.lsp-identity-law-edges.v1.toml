@@ -1,0 +1,77 @@
+schema_version = "2.0"
+id = "ripr.slice.lsp-identity-law-edges.v1"
+generation = 1
+
+source_issue = "issue:1932"
+design_reference = "RIPR-SPEC-0129"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Pins the landed agentic-LSP identity laws with discriminating edge-case
+tests and uses that coverage to share one fingerprint/canonical-text
+authority: `action_id` is class + canonical addressed identity + command
+id + action name (never title, range, message, snapshot handle, client
+capability, or disabled reason); parse and build recompute from that one
+formula; blank `canonical_gap_id` falls through; `LspAnalysisInputIdentity`
+excludes deadlines, position encoding, PID, client name, and wall-clock
+keys while session semantic flags and profile still participate; diagnostic
+result IDs ignore refresh clock and attempt `snapshot_id` and change for
+message-only or profile movement. It does not introduce CanonicalItemId or
+the #4804–#4809 identity registry/train, mint replacement wrappers, or
+change action/edit execution.
+"""
+
+non_goals = [
+  "governed identity registry (#4804)",
+  "CanonicalItemId / InstructionSemanticId / InstructionInstanceId typing (#4805)",
+  "ActionId / EditInstructionId typed wrappers (#4806)",
+  "analysis-attempt / snapshot / continuation typed wrappers (#4807)",
+  "CommandId / RepairAttemptId / ReceiptId migration (#4808)",
+  "conformance-check closeout (#4809)",
+  "action execution, edit application, or verify/receipt running",
+  "golden or output-schema changes",
+]
+
+return_conditions = [
+  "Return to root if action_id starts fingerprinting title, snapshot, or capability.",
+  "Return to root if parse and build diverge on the fingerprint formula.",
+  "Return to root if goldens or output contracts drift.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:code-action-data-contract",
+  "seam:ripr:lsp:input-identity",
+]
+
+shared_seams = [
+  "seam:ripr:contract:editor-integration-contract-v1",
+  "seam:ripr:lsp:code-action-resolve-revalidation",
+  "seam:ripr:lsp:git-input-authority",
+]
+
+forbidden_seams = [
+  "seam:ripr:editors:vscode-extension",
+  "seam:ripr:fixtures:goldens",
+  "seam:ripr:output:check-json-contract",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0129"
+requirement_generation = 1
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0142"
+requirement_generation = 1
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0124"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

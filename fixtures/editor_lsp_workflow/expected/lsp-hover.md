@@ -31,6 +31,7 @@ Kind: `predicate_boundary`
 
 ## Handoff, verify, and receipt commands
 
+- Repair (start here): `ripr agent repair --root . --seam-id 67fc764ba37d77bd --phase before`
 - Packet: `ripr agent packet --root . --seam-id 67fc764ba37d77bd --json > target/ripr/agent/agent-packet.json`
 - Brief: `ripr agent brief --root . --seam-id 67fc764ba37d77bd --json > target/ripr/agent/agent-brief.json`
 - After snapshot: `ripr check --root . --base origin/main --mode fast --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json`

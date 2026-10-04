@@ -11,7 +11,7 @@ Start here:
 - Class: exposed
 - Current evidence strength: exposed
 - Why not actionable: The receipt reports that static grip already improved; no further repair is recommended.
-- Verify command: `ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json`
+- Verify after the test edit: `ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json`
 - Receipt: receipt_found (fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json)
 - Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.
 

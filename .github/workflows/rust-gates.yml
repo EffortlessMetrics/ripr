@@ -66,6 +66,22 @@ jobs:
         with:
           fetch-depth: 0
 
+      # #3841: ownership and liveness of this job's per-run scratch trees come
+      # from a kernel flock lease taken before any tree exists, never from a
+      # directory age. The same action is the scheduled scratch-gc.yml authority.
+      - name: Acquire scratch lease
+        if: inputs.use-scratch
+        uses: ./.github/actions/ci-scratch-lease
+        with:
+          mode: acquire
+          job-timeout-minutes: ${{ inputs.job-timeout-minutes }}
+
+      - name: Reclaim terminal scratch
+        if: inputs.use-scratch
+        uses: ./.github/actions/ci-scratch-lease
+        with:
+          mode: reclaim
+
       - name: Prepare toolchain temp
         if: inputs.use-scratch
         env:
@@ -95,7 +111,6 @@ jobs:
         id: scratch
         if: inputs.use-scratch
         run: |
-          find /mnt/ci-scratch/cargo-home /mnt/ci-scratch/target /mnt/ci-scratch/tmp -mindepth 1 -maxdepth 1 -mmin +30 -exec rm -rf {} + 2>/dev/null || true
           find /mnt/ci-cache/sccache -type f -mmin +1440 -delete 2>/dev/null || true
           du -sh /mnt/ci-scratch/* /mnt/ci-cache/* /mnt/actions/_work/* /var/log /var/lib/docker /home/* 2>/dev/null | sort -rh | head -20 || true
           df -h / /mnt/ci-scratch 2>/dev/null || true
@@ -132,6 +147,7 @@ jobs:
           toolchain: 1.95.0
 
       - name: Formatting preflight
+        id: formatting
         run: cargo fmt --check
 
       - name: Install CI tools
@@ -152,21 +168,99 @@ jobs:
           mkdir -p "$CARGO_TARGET_DIR" "$SCCACHE_DIR"
           sccache --start-server || true
 
-      - name: Required Rust gates
+      # Keep each required producer independently visible in Actions. Policy
+      # failures stop before the later check/Clippy/test stages; xtask still
+      # needs its normal build, shared with the subsequent evidence commands.
+      - name: Repository policy preflight
+        id: precommit
+        run: cargo xtask precommit
+
+      - name: Evidence promotion honesty
+        id: promotion_honesty
+        run: cargo xtask check-evidence-promotion-honesty
+
+      - name: Agent skill contracts
+        id: agent_skills
+        run: cargo xtask check-agent-skills
+
+      - name: Dependency policy
+        id: dependencies
+        run: cargo xtask check-dependencies
+
+      - name: Process policy
+        id: process_policy
+        run: cargo xtask check-process-policy
+
+      - name: Network policy
+        id: network_policy
+        run: cargo xtask check-network-policy
+
+      - name: Workspace and all-target check
+        id: workspace_check
+        run: cargo check --workspace --all-targets
+
+      - name: Strict workspace Clippy
+        id: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Required Rust tests
+        id: rust-tests
         run: |
-          cargo check --workspace --all-targets
-          cargo clippy --workspace --all-targets -- -D warnings
-          cargo nextest run --workspace
-          cargo xtask precommit
-          cargo xtask check-evidence-promotion-honesty
-          cargo xtask check-agent-skills
-          cargo xtask check-dependencies
-          cargo xtask check-process-policy
-          cargo xtask check-network-policy
-          cargo xtask goldens check
-          cargo xtask fixtures
+          mkdir -p target/nextest/ci
+          rm -f target/nextest/ci/junit.xml target/nextest/ci/run-context.txt
+          checkout_sha="$(git rev-parse HEAD)"
+          {
+            printf 'repository=%s\ncheckout_sha=%s\nrun_id=%s\nrun_attempt=%s\n' "$GITHUB_REPOSITORY" "$checkout_sha" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+            printf 'profile=ci\ncommand=cargo nextest run --workspace --profile ci\n'
+            cargo nextest --version
+            rustc --version
+            cargo --version
+            printf 'input_blobs (Cargo.lock, nextest.toml, rust-gates.yml):\n'
+            git hash-object Cargo.lock .config/nextest.toml .github/workflows/rust-gates.yml
+          } > target/nextest/ci/run-context.txt
+          set +e
+          cargo nextest run --workspace --profile ci
+          test_exit=$?
+          set -e
+          printf 'nextest_exit=%s\n' "$test_exit" >> target/nextest/ci/run-context.txt
+          if [ "$test_exit" -eq 0 ] && ! grep -Eq '<testsuites [^>]*tests="[1-9][0-9]*"' target/nextest/ci/junit.xml; then
+            echo "::error::nextest succeeded without a fresh JUnit report naming at least one test"
+            exit 1
+          fi
+          exit "$test_exit"
+
+      # Retain the required run's small diagnostic packet, not another test run.
+      # A failed/aborted runner may have context only; it must not inherit XML.
+      - name: Upload required Rust test results
+        if: always() && steps.rust-tests.outcome != 'skipped'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact-name }}-nextest-${{ github.run_attempt }}
+          path: |
+            target/nextest/ci/junit.xml
+            target/nextest/ci/run-context.txt
+            target/nextest/ci/python-symlink-source-admission-cli-${{ github.run_id }}-${{ github.run_attempt }}.txt
+            target/ripr/reports/repair-card-usability.json
+            target/ripr/reports/repair-card-usability.md
+            target/ripr/reports/blind-journey-execute.json
+            target/ripr/reports/blind-journey-execute.md
+          if-no-files-found: warn
+          retention-days: 5
+
+      # Nextest does not execute Rust doctests; Cargo/rustdoc owns them (#3825).
+      - name: Required Rust doctests
+        run: cargo test --workspace --doc
+
+      - name: Golden output contracts
+        id: goldens
+        run: cargo xtask goldens check
+
+      - name: Fixture contracts
+        id: fixtures
+        run: cargo xtask fixtures
 
       - name: PR evidence
+        id: pr_evidence
         if: github.event_name == 'pull_request'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -176,17 +270,23 @@ jobs:
           # Raised from the 2000 default as the PR #3592 decision artifact, then
           # to 3500 for #3532 (3,060-line capability diff), then to 4500 for
           # #3674 (#3555 PR C, 4,321-line review-hardened capability diff),
-          # then to 5500, 6500 and finally 7500 for #3709/#3569 (the guarded-match
+          # then to 5500, 6500 and 7500 for #3709/#3569 (the guarded-match
           # oracle + driver-binding diff reached ~7,300 changed Rust lines
-          # across six adversarial bot-review rounds of falsifier pins;
+          # across six adversarial bot-review rounds of falsifier pins),
+          # and to 10000 for #4390/#4968 (the eval_sweep_report.rs
+          # decomposition is one atomic 9,016-changed-Rust-line move across
+          # six files; the issue forbids splitting it further and the moved
+          # lines are behavior-preserving, measured locally: full
+          # diff-scoped analysis completes in ~73s with
+          # analysis_complete=true, far under the 3,600s producer ceiling;
           # further growth splits per docs/CONFIGURATION.md);
           # the variable is documented in docs/CONFIGURATION.md.
-          RIPR_MAX_DIFF_CHANGED_RUST_LINES: "7500"
+          RIPR_MAX_DIFF_CHANGED_RUST_LINES: "10000"
           # Match the raised max limit: the partial-budget clamp bounds against
           # the effective limit, so without this a PR above the default passes
           # the hard guard but still lands in gate-ineligible
           # limited_partial_scope.
-          RIPR_PARTIAL_DIFF_LINE_BUDGET: "7500"
+          RIPR_PARTIAL_DIFF_LINE_BUDGET: "10000"
           # Large analyzer PRs need more than the 120s default for the
           # evidence producer's ripr check subprocess; #3709's 5,104-line
           # diff measured ~3,100s locally and exceeded 1,800s on CI, so
@@ -228,14 +328,50 @@ jobs:
         if: always() && inputs.use-scratch && steps.scratch.outputs.status != 'tempfail'
         run: sccache --show-stats || true
 
-      - name: Write failure summary
-        if: failure()
+      - name: Write gate summary
+        id: gate_summary
+        if: always()
+        env:
+          SUBJECT_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          EXECUTION_ROUTE: ${{ inputs.artifact-name }}
+          FORMATTING_RESULT: ${{ steps.formatting.outcome }}
+          PRECOMMIT_RESULT: ${{ steps.precommit.outcome }}
+          PROMOTION_HONESTY_RESULT: ${{ steps.promotion_honesty.outcome }}
+          AGENT_SKILLS_RESULT: ${{ steps.agent_skills.outcome }}
+          DEPENDENCIES_RESULT: ${{ steps.dependencies.outcome }}
+          PROCESS_POLICY_RESULT: ${{ steps.process_policy.outcome }}
+          NETWORK_POLICY_RESULT: ${{ steps.network_policy.outcome }}
+          WORKSPACE_CHECK_RESULT: ${{ steps.workspace_check.outcome }}
+          CLIPPY_RESULT: ${{ steps.clippy.outcome }}
+          RUST_TESTS_RESULT: ${{ steps.rust-tests.outcome }}
+          GOLDENS_RESULT: ${{ steps.goldens.outcome }}
+          FIXTURES_RESULT: ${{ steps.fixtures.outcome }}
+          PR_EVIDENCE_RESULT: ${{ steps.pr_evidence.outcome }}
         run: |
           {
-            echo "## Rust gates failed"
+            echo "## Rust gate outcomes"
             echo ""
-            echo "The first failed step above is the authoritative failure."
-            echo "Broad advisory report generation was skipped after the required failure."
+            printf -- '- Workflow commit: `%s`\n- Subject head: `%s`\n- Run / attempt: `%s` / `%s`\n- Route: `%s`\n' "$GITHUB_SHA" "$SUBJECT_HEAD" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$EXECUTION_ROUTE"
+            echo ""
+            echo '| Gate | Outcome |'
+            echo '| --- | --- |'
+            printf '| formatting | %s |\n' "${FORMATTING_RESULT:-not_reported}"
+            printf '| precommit | %s |\n' "${PRECOMMIT_RESULT:-not_reported}"
+            printf '| promotion_honesty | %s |\n' "${PROMOTION_HONESTY_RESULT:-not_reported}"
+            printf '| agent_skills | %s |\n' "${AGENT_SKILLS_RESULT:-not_reported}"
+            printf '| dependencies | %s |\n' "${DEPENDENCIES_RESULT:-not_reported}"
+            printf '| process_policy | %s |\n' "${PROCESS_POLICY_RESULT:-not_reported}"
+            printf '| network_policy | %s |\n' "${NETWORK_POLICY_RESULT:-not_reported}"
+            printf '| workspace_check | %s |\n' "${WORKSPACE_CHECK_RESULT:-not_reported}"
+            printf '| clippy | %s |\n' "${CLIPPY_RESULT:-not_reported}"
+            printf '| rust-tests | %s |\n' "${RUST_TESTS_RESULT:-not_reported}"
+            printf '| goldens | %s |\n' "${GOLDENS_RESULT:-not_reported}"
+            printf '| fixtures | %s |\n' "${FIXTURES_RESULT:-not_reported}"
+            printf '| pr_evidence | %s |\n' "${PR_EVIDENCE_RESULT:-not_reported}"
+            echo ""
+            echo "Step timings are available in the Actions job view and workflow-jobs API."
+            echo "The first failed step is authoritative. Skipped, cancelled, and not_reported are not passes."
+            echo "This summary is diagnostic; Ripr Rust Small Result remains the required check."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove RIPR analysis cache before artifact upload
@@ -262,3 +398,9 @@ jobs:
           cargo clean || true
           rm -rf "$CARGO_HOME" "$CARGO_TARGET_DIR" "$TMPDIR"
           df -h /mnt/ci-scratch /mnt/ci-cache || true
+
+      - name: Release scratch lease
+        if: always() && inputs.use-scratch
+        uses: ./.github/actions/ci-scratch-lease
+        with:
+          mode: release

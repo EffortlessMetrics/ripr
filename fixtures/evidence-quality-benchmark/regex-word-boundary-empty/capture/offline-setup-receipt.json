@@ -1,0 +1,179 @@
+{
+  "kind": "actual_upstream_native_experiment",
+  "started_utc": "2026-10-03T08:42:48Z",
+  "phase": "generate-lockfile-offline",
+  "pid": 2,
+  "source_candidate": "f37ce8b2a0bd530abe25835090374b94cebe7448",
+  "source_candidate_tested": false,
+  "limits": {
+    "mutable": 536870912,
+    "witnesses": 268435456,
+    "cache_growth": 134217728,
+    "source_logs_temp": 134217728,
+    "total_growth": 1073741824
+  },
+  "reserve_floor_bytes": 3221225472,
+  "workspace": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+  "target_dir": "/workspace/shared/ripr-regex-case-evidence/native-experiment/target",
+  "build_dir": "/workspace/shared/ripr-regex-case-evidence/native-experiment/build",
+  "commands": [
+    {
+      "label": "cargo-identity",
+      "argv": [
+        "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+        "--version",
+        "--verbose"
+      ],
+      "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+      "started_utc": "2026-10-03T08:42:49Z",
+      "timed_out": false,
+      "budget_abort": false,
+      "pid": 14,
+      "exit_code": 0,
+      "duration_seconds": 0.383,
+      "stdout": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/cargo-identity.stdout",
+        "bytes": 328,
+        "sha256": "c6cd47fb28b137d9450165b5b0796de3dfdac887c91ea225c53506f3fc5f6add"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/cargo-identity.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "usage_after": {
+        "mutable": 8192,
+        "witnesses": 4096,
+        "cache_growth": 0,
+        "source_logs_temp": 11214848,
+        "total_growth": 11227136,
+        "free_bytes": 5212057600
+      }
+    },
+    {
+      "label": "rustc-identity",
+      "argv": [
+        "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/rustc",
+        "--version",
+        "--verbose"
+      ],
+      "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+      "started_utc": "2026-10-03T08:42:50Z",
+      "timed_out": false,
+      "budget_abort": false,
+      "pid": 32,
+      "exit_code": 0,
+      "duration_seconds": 0.377,
+      "stdout": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/rustc-identity.stdout",
+        "bytes": 196,
+        "sha256": "4fdff2578428e9c5c08ddd7a0d3079c1a106b1cdaa46e73e46f7cd32b0fb9cad"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/rustc-identity.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "usage_after": {
+        "mutable": 8192,
+        "witnesses": 4096,
+        "cache_growth": 0,
+        "source_logs_temp": 11223040,
+        "total_growth": 11235328,
+        "free_bytes": 5212049408
+      }
+    },
+    {
+      "label": "generate-lockfile-offline",
+      "argv": [
+        "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+        "generate-lockfile",
+        "--offline",
+        "--manifest-path",
+        "Cargo.toml"
+      ],
+      "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+      "started_utc": "2026-10-03T08:42:50Z",
+      "timed_out": false,
+      "budget_abort": false,
+      "pid": 49,
+      "exit_code": 101,
+      "duration_seconds": 0.38,
+      "stdout": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/generate-lockfile-offline.stdout",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/generate-lockfile-offline.stderr",
+        "bytes": 392,
+        "sha256": "0b1a2645c0f9e63709a0c5f9de8849f4d6673e0d671829e9bc87e763c2293a44"
+      },
+      "usage_after": {
+        "mutable": 8192,
+        "witnesses": 4096,
+        "cache_growth": 0,
+        "source_logs_temp": 11227136,
+        "total_growth": 11239424,
+        "free_bytes": 5212045312
+      }
+    }
+  ],
+  "variants": [],
+  "cache_initial_allocated_bytes": 592052224,
+  "lock": {
+    "path": "/workspace/shared/cloud-cargo.lock",
+    "open_mode": "rb",
+    "exclusive": true,
+    "pid": 2,
+    "acquired_utc": "2026-10-03T08:42:49Z",
+    "released_utc": "2026-10-03T08:42:51Z"
+  },
+  "admission_usage": {
+    "mutable": 0,
+    "witnesses": 0,
+    "cache_growth": 0,
+    "source_logs_temp": 49152,
+    "total_growth": 49152,
+    "free_bytes": 5223235584
+  },
+  "environment": {
+    "RUSTUP_HOME": "/workspace/shared/cloud-rustup",
+    "CARGO_HOME": "/workspace/shared/cloud-cargo",
+    "CARGO_TARGET_DIR": "/workspace/shared/ripr-regex-case-evidence/native-experiment/target",
+    "CARGO_BUILD_BUILD_DIR": "/workspace/shared/ripr-regex-case-evidence/native-experiment/build",
+    "CARGO_BUILD_JOBS": "2",
+    "CARGO_INCREMENTAL": "0",
+    "RUSTC": "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/rustc",
+    "RUSTDOC": "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/rustdoc",
+    "RUSTUP_TOOLCHAIN": "1.95.0-x86_64-unknown-linux-gnu"
+  },
+  "cargo_binary": {
+    "path": "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+    "bytes": 42185192,
+    "sha256": "841072d1d92f9e841d9ba5b0814182a0adf064acf4527cd120967b7bc49dcb66"
+  },
+  "rustc_binary": {
+    "path": "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/rustc",
+    "bytes": 644784,
+    "sha256": "bff349e72704ff70bc08a234a3847338e797065bbedde5e556808bc87b7bf7c6"
+  },
+  "terminal_status": "stopped",
+  "error": "RuntimeError('unexpected exit for generate-lockfile-offline: 101; see /workspace/shared/ripr-regex-case-evidence/native-experiment/logs/generate-lockfile-offline.stderr')",
+  "terminal_usage": {
+    "mutable": 8192,
+    "witnesses": 4096,
+    "cache_growth": 0,
+    "source_logs_temp": 11227136,
+    "total_growth": 11239424,
+    "free_bytes": 5212045312
+  },
+  "peak_observed_usage": {
+    "mutable": 8192,
+    "witnesses": 4096,
+    "cache_growth": 0,
+    "source_logs_temp": 11227136,
+    "total_growth": 11239424,
+    "free_bytes": 5212045312
+  }
+}

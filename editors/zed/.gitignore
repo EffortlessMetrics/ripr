@@ -1,0 +1,3 @@
+/target
+# Zed writes the compiled component here when installing a dev extension.
+/extension.wasm

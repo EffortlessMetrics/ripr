@@ -69,8 +69,9 @@ repair/test instructions. Those are later bounded slices of #3215.
 
 ## Implementation Mapping
 
-- `crates/ripr/src/analysis/language/rust.rs` performs the bounded,
-  fail-closed detection and emits limitation evidence.
+- `crates/ripr/src/analysis/language/rust/probes.rs` performs the bounded,
+  fail-closed detection and emits limitation evidence. The Rust adapter
+  façade in `crates/ripr/src/analysis/language/rust/mod.rs` still wires it.
 - `crates/ripr/src/domain/language.rs` owns the stable enum token and
   description; `crates/ripr/src/lsp/gap_artifacts.rs` accepts the artifact kind.
 - `docs/OUTPUT_SCHEMA.md` and `docs/STATIC_LIMITS.md` document the wire and

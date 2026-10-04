@@ -1,0 +1,112 @@
+{
+ "schema_version": "blind_journey_installed_python_fixture.v1",
+ "spec": "RIPR-SPEC-0209",
+ "issues": ["#4518", "#4508", "#4600", "#3797", "#4510", "#4604", "#4603"],
+ "fixture": {
+  "name": "installed-python-discount-boundary",
+  "language": "python",
+  "summary": "Bounded flat-layout Python package whose committed production change moves one numeric equality boundary from exclusive to inclusive while the related test only covers below/above; the expected repair adds one equality test and no production edit, and the module-form verification command discriminates the bare-command defect in the clean shape."
+ },
+ "repository": {
+  "identity": "fixtures/blind_journey_installed_python/repository",
+  "default_base_ref": "main",
+  "snapshots": {
+   "base": {
+    "commit": "9e62e8091324eb65e214be59a45cd596a8192219",
+    "tree": "3b633ff09d7fca5e33f9ba5e15a5afe025c26b30",
+    "files": {
+     "pyproject.toml": "d8b6d97e3ff3ed7c52bd6df4d5c38be07562afcc763dc73a2f71e669f279daea",
+     "pricing/__init__.py": "bd8d3d29a53ca48b42d6c8e8f123f39d6afa7db0b9e2c5af7d2eca75807e6dcf",
+     "pricing/core.py": "f7160689de0dbac60f589a7c56d2174a12f0e17eae24caa72cff9427dcf78b79",
+     "tests/test_pricing.py": "48b7afd905b2c5c4991e1aa6c561065d25afd0d88f2fd9e636e5d0dda6a988c6"
+    }
+   },
+   "head": {
+    "commit": "7ee422a670ba383a600785d46eadc432d27bbfd2",
+    "tree": "453b32d284b9a120f92dbe254825f8d581e79369",
+    "files": {
+     "pyproject.toml": "d8b6d97e3ff3ed7c52bd6df4d5c38be07562afcc763dc73a2f71e669f279daea",
+     "pricing/__init__.py": "bd8d3d29a53ca48b42d6c8e8f123f39d6afa7db0b9e2c5af7d2eca75807e6dcf",
+     "pricing/core.py": "6bd84426ce5ddcb5d8bc8e70ad06ee4e411e285e7d025c9d25762b414e32c709",
+     "tests/test_pricing.py": "48b7afd905b2c5c4991e1aa6c561065d25afd0d88f2fd9e636e5d0dda6a988c6"
+    }
+   }
+  },
+  "construction_recipe": [
+   "git init -b main . && git config core.autocrlf false && git config user.name 'ripr fixture' && git config user.email 'fixture@example.invalid'",
+   "write the base snapshot files (repository/base/*) and `git add -A`",
+   "GIT_AUTHOR_DATE=2026-10-03T00:00:00Z GIT_COMMITTER_DATE=2026-10-03T00:00:00Z git commit -m 'base: exclusive bulk-discount boundary with below/above tests'",
+   "write the head snapshot files (repository/head/*) and `git add -A`",
+   "GIT_AUTHOR_DATE=2026-10-03T00:01:00Z GIT_COMMITTER_DATE=2026-10-03T00:01:00Z git commit -m 'head: move bulk-discount boundary to include exactly 20 units'"
+  ],
+  "recipe_note": "Pinned author/committer identity, fixed timestamps and core.autocrlf=false make every commit and tree object reproducible; the recorded commit and tree identities were reproduced from this recipe before being committed."
+ },
+ "journey": {
+  "eligible_items": ["seam-discount-boundary-equality"],
+  "quiet_neighbors": ["seam-discount-standard-branch"],
+  "expected_edit_cage": ["tests/test_pricing.py"],
+  "forbidden_edits": ["pricing/core.py", "pricing/__init__.py", "pyproject.toml"],
+  "discriminator_family": "boundary-constant",
+  "known_product_limitations": ["no-network"],
+  "environment_binding": {
+   "current_verify_command": "python -m pytest tests/test_pricing.py",
+   "historical_bare_command": "pytest tests/test_pricing.py",
+   "binding": "flat layout without an installed editable package: run from <selected-root>, the module form adds the current working directory (the project root) to sys.path so `import pricing` resolves, while the bare console script does not add the project root and fails in the clean shape; the foreign launch directory applies to the ripr --root invocations only",
+   "historical_strength": "the bare form is retained as an explicitly supported historical artifact accepted at documented strength for replay only; it is never the printed recommendation"
+  },
+  "selected_repair": {
+   "edit_target": "tests/test_pricing.py",
+   "added_test": "test_at_boundary_gets_discount",
+   "focused_verification_command": "python -m pytest tests/test_pricing.py",
+   "expected_verification_exit": 0,
+   "independent_understanding": "head makes bulk_discount_rate(20) return 0.15; the retained test only asserts quantities 19 and 21, so one equality assertion at 20 is the complete bounded repair"
+  },
+  "printed_command_templates": {
+   "doctor": "ripr doctor --root <selected-root>",
+   "pilot": "ripr pilot --root <selected-root>",
+   "repair_before": "ripr agent repair --root <selected-root> --seam-id seam-discount-boundary-equality --phase before",
+   "repair_after": "ripr agent repair --root <selected-root> --attempt <repair-attempt-id> --phase after",
+   "agent_receipt": "ripr agent receipt --root <selected-root> --attempt <repair-attempt-id> --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-discount-boundary-equality --json --out target/ripr/reports/agent-receipt.json"
+  },
+  "substitution_contract": "<selected-root> and <repair-attempt-id> are the only placeholders; the product prints concrete values and the scripted transcript records the printed bytes literally. The ripr invocations run from a foreign launch directory and bind the root through --root; the printed project verification command `python -m pytest tests/test_pricing.py` runs from <selected-root>."
+ },
+ "journey_scenario_ids": [
+  "installed_python_positive_journey_emits_receipt",
+  "installed_python_bare_pytest_import_failure_visible",
+  "installed_python_no_environment_stops_before_edit",
+  "installed_python_production_edit_refused",
+  "installed_python_receipt_path_mismatch_refused",
+  "installed_python_failing_focused_test_visible",
+  "installed_python_verification_skipped_visible",
+  "installed_python_deleted_before_artifact_names_recovery",
+  "installed_python_historical_bare_form_accepted_at_documented_strength",
+  "installed_python_decoy_interpreter_rejected",
+  "installed_python_interrupted_receipt_write_recovers"
+ ],
+ "control_mapping": {
+  "bare_pytest_replaced_command_fails": "installed_python_bare_pytest_import_failure_visible",
+  "no_activated_environment_terminates_with_precise_prerequisite": "installed_python_no_environment_stops_before_edit",
+  "production_source_edit_refused": "installed_python_production_edit_refused",
+  "receipt_path_display_differs_from_out_target": "installed_python_receipt_path_mismatch_refused",
+  "failed_focused_test_keeps_axes_separate": "installed_python_failing_focused_test_visible",
+  "skipped_project_verification_stays_not_run": "installed_python_verification_skipped_visible",
+  "deleted_or_stale_artifact_names_recovery": "installed_python_deleted_before_artifact_names_recovery",
+  "foreign_cwd_decoy_keeps_selected_root": "installed_python_positive_journey_emits_receipt",
+  "historical_bare_form_accepted_at_documented_strength_unsupported_fails_closed": "installed_python_historical_bare_form_accepted_at_documented_strength",
+  "workspace_candidate_or_interpreter_substitution_exposed": "installed_python_decoy_interpreter_rejected",
+  "interrupted_artifact_write_stays_blocked_until_rerun": "installed_python_interrupted_receipt_write_recovers"
+ },
+ "claims": {
+  "limitations": [
+   "the scripted rows bind the retained fixture snapshots by content digest and recorded git identity; the frozen-candidate run through the #4510 harness rebinds live process and package identities",
+   "recorded command output bytes are the retained literal observations of the printed route; the real installed run may print equivalent concrete roots and attempt ids",
+   "the flat-layout environment-binding discriminator is asserted by the retained clean shape (no editable install, no path repair); the frozen-candidate run rebinds the live interpreter and pytest identities"
+  ],
+  "non_claims": [
+   "no installed usefulness, candidate qualification or blind acceptance is claimed",
+   "no claim that every Python packaging or test-runner configuration is supported",
+   "no claim that `python` selects the correct interpreter outside the documented environment",
+   "no mutation-adequacy or runtime-mutation result is claimed anywhere in the rows"
+  ]
+ }
+}

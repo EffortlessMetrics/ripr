@@ -1,6 +1,6 @@
 --- a/src/formatter.ts
 +++ b/src/formatter.ts
-@@ -1,6 +1,6 @@
+@@ -1,5 +1,5 @@
  export function formatCurrency(amount: number, currency: string): string {
 -    if (amount < 0) {
 +    if (amount <= 0) {

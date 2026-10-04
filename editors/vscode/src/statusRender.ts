@@ -21,6 +21,7 @@ export type RiprStatusKind =
   | 'ready'
   | 'analysisRunning'
   | 'analysisReady'
+  | 'analysisLimited'
   | 'gapActionable'
   | 'gapNoAction'
   | 'gapArtifactWarning'
@@ -64,9 +65,10 @@ export interface FirstUsefulActionStatus {
  *
  * - error (red): the analysis run failed or the server is unavailable.
  *   These need user attention.
- * - warning (yellow): the run is stale, the workspace is untrusted or
- *   ambiguous, or the gap-artifact validation flagged something. These are
- *   degraded-but-not-failed states.
+ * - warning (yellow): the run is stale or limited (`analysisLimited` — the
+ *   server completed the run but withheld evidence, #4326), the workspace is
+ *   untrusted or ambiguous, or the gap-artifact validation flagged something.
+ *   These are degraded-but-not-failed states.
  * - default: transient (analysisRunning/starting/analysisQueued), idle
  *   (ready/analysisReady/gapActionable/...), and the initial `stopped`
  *   state. Setting a colour here would cry wolf; the codicon + text already
@@ -78,6 +80,12 @@ export interface StatusBarColors {
   foreground: vscode.ThemeColor;
 }
 
+/**
+ * `analysisLimited` is intentionally not projectable (#4326): the run withheld
+ * evidence, so the first-useful-action report must not be projected over the
+ * degraded warning, and the `stale`-kind "editor evidence is stale" branch does
+ * not apply to it either.
+ */
 export function canProjectFirstUsefulAction(kind: RiprStatusKind): boolean {
   return kind === 'starting'
     || kind === 'analysisQueued'
@@ -140,6 +148,8 @@ export function statusText(kind: RiprStatusKind, firstAction?: FirstUsefulAction
       return '$(sync~spin) ripr: analyzing';
     case 'analysisReady':
       return '$(check) ripr: diagnostics';
+    case 'analysisLimited':
+      return '$(warning) ripr: limited';
     case 'gapActionable':
       return '$(lightbulb) ripr: gap ready';
     case 'gapNoAction':
@@ -176,6 +186,7 @@ export function statusBarColors(kind: RiprStatusKind): StatusBarColors | undefin
         foreground: new vscode.ThemeColor('statusBarItem.errorForeground'),
       };
     case 'stale':
+    case 'analysisLimited':
     case 'workspaceAmbiguous':
     case 'workspaceUntrusted':
     case 'gapArtifactWarning':

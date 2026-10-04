@@ -6,6 +6,12 @@ use crate::app::causal_projection::{CausalDeltaArtifact, insert_canonical_delta_
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "baseline_debt_delta";
 const STATUS: &str = "advisory";
+/// Identity authority recorded on a delta item whose current candidate matched
+/// a reviewed baseline entry only through the legacy `path:line:static_class`
+/// fallback (issue #1964, slice of #1934). Canonical matches never carry this
+/// marker: the compatibility match must be impossible to mistake for a
+/// canonical identity match.
+pub(crate) const BASELINE_MATCH_KIND_LEGACY_PATH_LINE_CLASS: &str = "legacy_path_line_class";
 const LIMITS_NOTE: &str = "Advisory baseline debt movement over static RIPR gate evidence; pass/fail remains owned by ripr gate evaluate.";
 pub(crate) const DEFAULT_BASELINE_DELTA_OUT: &str = "target/ripr/reports/baseline-debt-delta.json";
 pub(crate) const DEFAULT_BASELINE_DELTA_MD_OUT: &str = "target/ripr/reports/baseline-debt-delta.md";
@@ -58,6 +64,7 @@ struct DeltaCounts {
     stale_baseline_entry: usize,
     invalid_baseline_entry: usize,
     missing_current_input: usize,
+    legacy_fallback_match: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -73,6 +80,20 @@ struct DeltaItem {
     suggested_test: SuggestedTest,
     repair: Repair,
     review: Option<ReviewMetadata>,
+    /// `Some(legacy_path_line_class)` when the current candidate matched the
+    /// reviewed baseline entry only through the legacy fallback (issue #1964).
+    /// `None` on every canonical match, so canonical items render exactly as
+    /// before the disclosure existed.
+    baseline_match_kind: Option<String>,
+    /// True exactly when `baseline_match_kind` is the legacy fallback: the
+    /// match is a reviewable compatibility event, never silent.
+    stale_baseline_warning: bool,
+    /// The legacy `path:line:static_class` identity that joined the match.
+    matched_legacy_identity: Option<String>,
+    /// The current candidate's canonical gap id when it carries one, retained
+    /// so `ripr baseline update --migrate-legacy-identities` can replace the
+    /// reviewed legacy identity deterministically.
+    canonical_replacement_candidate: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -196,6 +217,10 @@ struct BaselineRecord {
     decision: Option<String>,
     evidence: Evidence,
     review: Option<ReviewMetadata>,
+    /// Repository/root identity preserved when the baseline entry was created
+    /// (issue #1964). `None` on entries written before root preservation: those
+    /// stay comparable under the documented compatibility window.
+    root: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -234,6 +259,9 @@ struct CurrentParse {
     decisions: Vec<CurrentDecision>,
     warnings: Vec<String>,
     unavailable: bool,
+    /// Top-level `root` of the current gate-decision report, used to refuse
+    /// cross-repository fallback joins (issue #1964).
+    root: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -280,31 +308,114 @@ pub(crate) fn build_baseline_delta_report(input: BaselineDeltaInput) -> Baseline
         for baseline_record in &baseline.entries {
             match match_current_decision(&baseline_record.identity, &indexes) {
                 MatchResult::Match { index, matched_by } if matched_current.contains(&index) => {
-                    items.push(stale_item(
+                    let item = stale_item(
                         baseline_record,
                         format!(
                             "Baseline identity also matched a current decision already joined by another baseline entry using {matched_by}."
                         ),
-                    ));
-                }
-                MatchResult::Match { index, matched_by } => {
-                    matched_current.insert(index);
+                    );
+                    // Every legacy-flagged item has a matching warning (issue
+                    // #1964, review): warning consumers must see the same
+                    // compatibility events the counter reports.
                     if matched_by == "fallback" {
                         warnings.push(format!(
-                            "baseline entry {} matched current evidence by fallback path/line/static_class",
+                            "baseline entry {} also matched an already joined current decision by fallback path/line/static_class; treated as stale, not historical",
                             baseline_record.identity.sort_key()
                         ));
+                        items.push(with_legacy_disclosure(
+                            item,
+                            baseline_record.identity.fallback.clone(),
+                            current.decisions[index].identity.canonical_gap_id.clone(),
+                        ));
+                    } else {
+                        items.push(item);
                     }
+                }
+                MatchResult::Match { index, matched_by } => {
                     let current_decision = &current.decisions[index];
-                    items.push(matched_item(baseline_record, current_decision, matched_by));
+                    // CANONICAL DIVERGENCE (issue #1964): both sides carry a
+                    // canonical gap id and they differ, so the fallback join
+                    // is stale evidence, not a historical match. The baseline
+                    // entry goes stale and the current decision stays
+                    // unmatched, so the genuinely new canonical gap surfaces
+                    // as new policy-eligible instead of looking historical.
+                    if matched_by == "fallback"
+                        && let Some(divergence) =
+                            canonical_divergence(baseline_record, current_decision)
+                    {
+                        warnings.push(format!(
+                            "baseline entry {} matched current evidence by fallback path/line/static_class but canonical identity diverged ({divergence}); treated as stale, not historical",
+                            baseline_record.identity.sort_key()
+                        ));
+                        items.push(with_legacy_disclosure(
+                            stale_item(
+                                baseline_record,
+                                format!(
+                                    "Reviewed baseline identity matched current evidence only by legacy fallback, but the canonical gap id diverged ({divergence}); refresh the baseline identity instead of treating the current gap as historical."
+                                ),
+                            ),
+                            baseline_record.identity.fallback.clone(),
+                            current_decision.identity.canonical_gap_id.clone(),
+                        ));
+                    } else if matched_by == "fallback"
+                        && let Some(roots) =
+                            foreign_root_join(baseline_record, current.root.as_deref())
+                    {
+                        // FOREIGN ROOT (issue #1964): the reviewed entry was
+                        // recorded for another repository. Consuming the
+                        // current decision here would launder foreign history
+                        // into this repo's delta, so both sides stay visible.
+                        warnings.push(format!(
+                            "baseline entry {} matched current evidence by fallback path/line/static_class but belongs to another repository root ({roots}); treated as stale, not historical",
+                            baseline_record.identity.sort_key()
+                        ));
+                        items.push(with_legacy_disclosure(
+                            stale_item(
+                                baseline_record,
+                                format!(
+                                    "Reviewed baseline identity matched current evidence only by legacy fallback, but it belongs to another repository root ({roots}); the current gap is evaluated on this repository's own history."
+                                ),
+                            ),
+                            baseline_record.identity.fallback.clone(),
+                            current_decision.identity.canonical_gap_id.clone(),
+                        ));
+                    } else {
+                        matched_current.insert(index);
+                        if matched_by == "fallback" {
+                            warnings.push(format!(
+                                "baseline entry {} matched current evidence by fallback path/line/static_class",
+                                baseline_record.identity.sort_key()
+                            ));
+                        }
+                        items.push(matched_item(baseline_record, current_decision, matched_by));
+                    }
                 }
                 MatchResult::Ambiguous { matched_by, count } => {
-                    items.push(stale_item(
+                    let item = stale_item(
                         baseline_record,
                         format!(
                             "Baseline identity matched {count} current decisions by {matched_by}; refresh or narrow the baseline identity."
                         ),
-                    ));
+                    );
+                    // An ambiguous fallback join names no single replacement
+                    // candidate, but the legacy identity stays retained and
+                    // visible (issue #1964). The stale warning replaces the
+                    // generic preserved notice so one join emits one warning.
+                    if matched_by == "fallback" {
+                        warnings.push(format!(
+                            "baseline entry {} matched {count} current decisions by fallback path/line/static_class; treated as stale, not historical",
+                            baseline_record.identity.sort_key()
+                        ));
+                    }
+                    items.push(if matched_by == "fallback" {
+                        with_legacy_disclosure(
+                            item,
+                            baseline_record.identity.fallback.clone(),
+                            None,
+                        )
+                    } else {
+                        item
+                    });
                 }
                 MatchResult::None => items.push(resolved_item(baseline_record)),
             }
@@ -422,6 +533,41 @@ pub(crate) fn render_baseline_delta_markdown(report: &BaselineDeltaReport) -> St
         }
     }
 
+    // Human-visible legacy disclosure (issue #1964): every fallback-only
+    // match names the retained legacy identity and the canonical replacement
+    // candidate, so the compatibility event cannot stay silent in Markdown.
+    // Unlike the capped top-new/resolved lists, this section is exhaustive:
+    // the contract promises every fallback-only match is visible in human
+    // output, and the JSON items carry the same set for machine consumers.
+    let legacy_items = report
+        .items
+        .iter()
+        .filter(|item| item.stale_baseline_warning)
+        .collect::<Vec<_>>();
+    if !legacy_items.is_empty() {
+        out.push_str(&format!(
+            "\nLegacy fallback matches ({} total):\n",
+            report.delta.legacy_fallback_match
+        ));
+        for item in legacy_items {
+            out.push_str(&format!("- {}\n", item_headline(item)));
+            if let Some(legacy) = item.matched_legacy_identity.as_deref() {
+                out.push_str(&format!("  Legacy identity: {legacy}\n"));
+            }
+            match item.canonical_replacement_candidate.as_deref() {
+                Some(replacement) => out.push_str(&format!(
+                    "  Canonical replacement candidate: {replacement}\n"
+                )),
+                None => out.push_str(
+                    "  Canonical replacement candidate: none; refresh or narrow the baseline identity.\n",
+                ),
+            }
+            out.push_str(
+                "  Action: review, then run `ripr baseline update --migrate-legacy-identities` or refresh the entry.\n",
+            );
+        }
+    }
+
     if !report.warnings.is_empty() {
         out.push_str("\nWarnings:\n");
         for warning in &report.warnings {
@@ -533,6 +679,7 @@ fn parse_current_decisions(path: &str, json_text: Result<String, String>) -> Cur
             .collect(),
         warnings: Vec::new(),
         unavailable: false,
+        root: string_field(value.get("root")),
     }
 }
 
@@ -584,6 +731,7 @@ fn baseline_record_from_value(value: &Value) -> Option<BaselineRecord> {
         decision: string_field(value.get("decision")),
         evidence: evidence_from_value(value),
         review: review_metadata_from_value(value.get("review")),
+        root: string_field(value.get("root")),
     })
 }
 
@@ -719,6 +867,71 @@ fn match_current_decision(identity: &Identity, indexes: &CurrentIndexes) -> Matc
     first_ambiguity.unwrap_or(MatchResult::None)
 }
 
+/// The `old-canonical -> new-canonical` pair when a fallback join hides a
+/// canonical identity change (issue #1964). `None` unless both sides carry a
+/// canonical gap id and they differ.
+fn canonical_divergence(baseline: &BaselineRecord, current: &CurrentDecision) -> Option<String> {
+    match (
+        baseline.identity.canonical_gap_id.as_deref(),
+        current.identity.canonical_gap_id.as_deref(),
+    ) {
+        (Some(old), Some(new)) if old != new => Some(format!("{old} -> {new}")),
+        _ => None,
+    }
+}
+
+/// The `baseline-root -> current-root` pair when a fallback join crosses
+/// repository boundaries (issue #1964). `None` when either side omits root
+/// (pre-root-preservation baselines stay comparable under the compatibility
+/// window) or when both roots agree.
+fn foreign_root_join(baseline: &BaselineRecord, current_root: Option<&str>) -> Option<String> {
+    match (baseline.root.as_deref(), current_root) {
+        (Some(baseline_root), Some(current_root)) => {
+            let normalized_baseline = normalize_root_for_comparison(baseline_root);
+            let normalized_current = normalize_root_for_comparison(current_root);
+            if normalized_baseline != normalized_current {
+                Some(format!("{baseline_root} -> {current_root}"))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Normalize repository-root spellings before comparison (issue #1964,
+/// review): separators unify, a single leading `./` folds away, and trailing
+/// slashes drop, so `.`, `./`, and `.\\` compare equal. Spellings that name
+/// the same checkout in genuinely different forms (relative vs absolute) stay
+/// distinct: the refusal fails safe toward stale visibility, and the pair is
+/// always quoted in the warning so the operator can see why.
+pub(crate) fn normalize_root_for_comparison(root: &str) -> String {
+    let mut normalized = root.replace('\\', "/");
+    while normalized.ends_with('/') && normalized.len() > 1 {
+        normalized.pop();
+    }
+    normalized
+        .strip_prefix("./")
+        .unwrap_or(&normalized)
+        .to_string()
+}
+
+/// Attach the legacy-fallback disclosure quartet to a delta item built from a
+/// fallback-only join (issue #1964): the match kind, the never-silent warning
+/// flag, the retained legacy identity, and the retained canonical replacement
+/// candidate (if the current candidate carries one).
+fn with_legacy_disclosure(
+    mut item: DeltaItem,
+    matched_legacy_identity: Option<String>,
+    canonical_replacement_candidate: Option<String>,
+) -> DeltaItem {
+    item.baseline_match_kind = Some(BASELINE_MATCH_KIND_LEGACY_PATH_LINE_CLASS.to_string());
+    item.stale_baseline_warning = true;
+    item.matched_legacy_identity = matched_legacy_identity;
+    item.canonical_replacement_candidate = canonical_replacement_candidate;
+    item
+}
+
 fn push_missing_input_items(
     baseline: &BaselineParse,
     current: &CurrentParse,
@@ -743,6 +956,10 @@ fn push_missing_input_items(
             suggested_test: SuggestedTest::default(),
             repair: repair("provide_required_input"),
             review: None,
+            baseline_match_kind: None,
+            stale_baseline_warning: false,
+            matched_legacy_identity: None,
+            canonical_replacement_candidate: None,
         });
     }
 }
@@ -754,8 +971,8 @@ fn matched_item(
 ) -> DeltaItem {
     let bucket = current_matched_bucket(current);
     let mut identity = current.identity.clone();
-    identity.matched_by = Some(matched_by);
-    DeltaItem {
+    identity.matched_by = Some(matched_by.clone());
+    let item = DeltaItem {
         bucket,
         identity,
         path: current.path.clone().or_else(|| baseline.path.clone()),
@@ -774,6 +991,22 @@ fn matched_item(
         suggested_test: suggested_test(&current.evidence, &baseline.evidence),
         repair: repair_for_bucket(bucket),
         review: baseline.review.clone(),
+        baseline_match_kind: None,
+        stale_baseline_warning: false,
+        matched_legacy_identity: None,
+        canonical_replacement_candidate: None,
+    };
+    // Every fallback-only join is a reviewable compatibility event (issue
+    // #1964): the match kind, the warning flag, the retained legacy identity,
+    // and the retained canonical replacement candidate travel on the item.
+    if matched_by == "fallback" {
+        with_legacy_disclosure(
+            item,
+            baseline.identity.fallback.clone(),
+            current.identity.canonical_gap_id.clone(),
+        )
+    } else {
+        item
     }
 }
 
@@ -801,6 +1034,10 @@ fn unmatched_current_item(current: &CurrentDecision) -> DeltaItem {
         suggested_test: suggested_test(&current.evidence, &Evidence::default()),
         repair: repair_for_bucket(bucket),
         review: None,
+        baseline_match_kind: None,
+        stale_baseline_warning: false,
+        matched_legacy_identity: None,
+        canonical_replacement_candidate: None,
     }
 }
 
@@ -828,6 +1065,10 @@ fn resolved_item(baseline: &BaselineRecord) -> DeltaItem {
         suggested_test: suggested_test(&baseline.evidence, &Evidence::default()),
         repair: repair("remove_resolved_from_baseline_when_reviewed"),
         review: baseline.review.clone(),
+        baseline_match_kind: None,
+        stale_baseline_warning: false,
+        matched_legacy_identity: None,
+        canonical_replacement_candidate: None,
     }
 }
 
@@ -844,6 +1085,10 @@ fn stale_item(baseline: &BaselineRecord, reason: String) -> DeltaItem {
         suggested_test: suggested_test(&baseline.evidence, &Evidence::default()),
         repair: repair("inspect_or_refresh_baseline_entry"),
         review: baseline.review.clone(),
+        baseline_match_kind: None,
+        stale_baseline_warning: false,
+        matched_legacy_identity: None,
+        canonical_replacement_candidate: None,
     }
 }
 
@@ -860,6 +1105,10 @@ fn missing_current_input_item(baseline: &BaselineRecord) -> DeltaItem {
         suggested_test: suggested_test(&baseline.evidence, &Evidence::default()),
         repair: repair("provide_current_gate_decision"),
         review: baseline.review.clone(),
+        baseline_match_kind: None,
+        stale_baseline_warning: false,
+        matched_legacy_identity: None,
+        canonical_replacement_candidate: None,
     }
 }
 
@@ -885,6 +1134,10 @@ fn invalid_baseline_item(value: &Value) -> DeltaItem {
         },
         repair: repair("repair_or_remove_baseline_entry"),
         review: review_metadata_from_value(value.get("review")),
+        baseline_match_kind: None,
+        stale_baseline_warning: false,
+        matched_legacy_identity: None,
+        canonical_replacement_candidate: None,
     }
 }
 
@@ -980,6 +1233,9 @@ fn count_items(items: &[DeltaItem]) -> DeltaCounts {
             Bucket::InvalidBaselineEntry => counts.invalid_baseline_entry += 1,
             Bucket::MissingCurrentInput => counts.missing_current_input += 1,
         }
+        if item.stale_baseline_warning {
+            counts.legacy_fallback_match += 1;
+        }
     }
     counts
 }
@@ -1014,6 +1270,7 @@ fn delta_json(delta: &DeltaCounts) -> Value {
         "stale_baseline_entry": delta.stale_baseline_entry,
         "invalid_baseline_entry": delta.invalid_baseline_entry,
         "missing_current_input": delta.missing_current_input,
+        "legacy_fallback_match": delta.legacy_fallback_match,
     })
 }
 
@@ -1050,6 +1307,35 @@ fn item_json(item: &DeltaItem, causal_projection: Option<&CausalDeltaArtifact>) 
         && let Some(object) = output.as_object_mut()
     {
         insert_canonical_delta_fields(object, delta);
+    }
+    // Additive (issue #1964): present only on legacy fallback-only joins, so
+    // canonical-match and baseline-new items render byte-identical to before
+    // the disclosure existed. Mirrors the gate-decision `baseline_match_kind`
+    // vocabulary (RIPR-SPEC-0014 § Baseline Comparison).
+    if item.stale_baseline_warning
+        && let Some(object) = output.as_object_mut()
+    {
+        object.insert(
+            "baseline_match_kind".to_string(),
+            Value::String(
+                item.baseline_match_kind
+                    .clone()
+                    .unwrap_or_else(|| BASELINE_MATCH_KIND_LEGACY_PATH_LINE_CLASS.to_string()),
+            ),
+        );
+        object.insert("stale_baseline_warning".to_string(), Value::Bool(true));
+        object.insert(
+            "matched_legacy_identity".to_string(),
+            item.matched_legacy_identity
+                .clone()
+                .map_or(Value::Null, Value::String),
+        );
+        object.insert(
+            "canonical_replacement_candidate".to_string(),
+            item.canonical_replacement_candidate
+                .clone()
+                .map_or(Value::Null, Value::String),
+        );
     }
     output
 }
@@ -1629,6 +1915,539 @@ mod tests {
         let rendered_md = render_baseline_delta_markdown(&report);
         assert_eq!(rendered_json, read_file(&expected_json_path)?.trim_end());
         assert_eq!(rendered_md, read_file(&expected_md_path)?);
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_delta_treats_diverged_canonical_behind_shared_fallback_as_stale()
+    -> Result<(), String> {
+        // Issue #1964, fixture 1: same path/line/class, but the canonical gap
+        // changed after a source edit. The stale fallback must not make the
+        // genuinely new canonical gap look historical.
+        let baseline = r#"{
+          "schema_version": "0.1",
+          "entries": [
+            {
+              "identity": {
+                "canonical_gap_id": "pricing::discount::old_rule",
+                "fallback": "src/pricing.rs:88:weakly_gripped"
+              },
+              "path": "src/pricing.rs",
+              "line": 88,
+              "static_class": "weakly_gripped"
+            }
+          ]
+        }"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "root": ".",
+          "decisions": [
+            {
+              "decision": "advisory",
+              "static_class": "weakly_gripped",
+              "placement": {"path": "src/pricing.rs", "line": 88},
+              "evidence_record": {
+                "canonical_gap_id": "pricing::discount::new_rule"
+              },
+              "evidence": {"missing_discriminator": "amount > threshold"}
+            }
+          ]
+        }"#;
+
+        let report = build_baseline_delta_report(BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: Ok(baseline.to_string()),
+            current_gate_decision_json: Ok(current.to_string()),
+        });
+        let rendered = render_baseline_delta_json(&report)?;
+        assert!(
+            rendered.contains("\"stale_baseline_entry\": 1"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"new_policy_eligible\": 1"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("\"still_present\": 0"), "{rendered}");
+        assert!(
+            rendered.contains("\"legacy_fallback_match\": 1"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"baseline_match_kind\": \"legacy_path_line_class\""),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"stale_baseline_warning\": true"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"matched_legacy_identity\": \"src/pricing.rs:88:weakly_gripped\""),
+            "{rendered}"
+        );
+        assert!(
+            rendered
+                .contains("\"canonical_replacement_candidate\": \"pricing::discount::new_rule\""),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("canonical identity diverged"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("pricing::discount::old_rule -> pricing::discount::new_rule"),
+            "{rendered}"
+        );
+        let markdown = render_baseline_delta_markdown(&report);
+        assert!(
+            markdown.contains("Legacy fallback matches (1 total):"),
+            "{markdown}"
+        );
+        assert!(
+            markdown.contains("Legacy identity: src/pricing.rs:88:weakly_gripped"),
+            "{markdown}"
+        );
+        assert!(
+            markdown.contains("Canonical replacement candidate: pricing::discount::new_rule"),
+            "{markdown}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_delta_discloses_pure_legacy_match_with_replacement_candidate() -> Result<(), String>
+    {
+        // Issue #1964, fixture 4: the reviewed entry carries no canonical
+        // identity at all, but the current candidate does. The match is
+        // preserved (compatibility window) and impossible to miss: match kind,
+        // warning flag, retained legacy identity, retained replacement.
+        let baseline = r#"{
+          "schema_version": "0.1",
+          "entries": [
+            {
+              "identity": {"fallback": "src/legacy.rs:7:weakly_gripped"},
+              "path": "src/legacy.rs",
+              "line": 7,
+              "static_class": "weakly_gripped"
+            }
+          ]
+        }"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "root": ".",
+          "decisions": [
+            {
+              "decision": "advisory",
+              "static_class": "weakly_gripped",
+              "placement": {"path": "src/legacy.rs", "line": 7},
+              "evidence_record": {"canonical_gap_id": "legacy::gap::seven"},
+              "evidence": {}
+            }
+          ]
+        }"#;
+
+        let report = build_baseline_delta_report(BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: Ok(baseline.to_string()),
+            current_gate_decision_json: Ok(current.to_string()),
+        });
+        let rendered = render_baseline_delta_json(&report)?;
+        assert!(rendered.contains("\"still_present\": 1"), "{rendered}");
+        assert!(
+            rendered.contains("\"legacy_fallback_match\": 1"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"baseline_match_kind\": \"legacy_path_line_class\""),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"stale_baseline_warning\": true"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"matched_legacy_identity\": \"src/legacy.rs:7:weakly_gripped\""),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"canonical_replacement_candidate\": \"legacy::gap::seven\""),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("matched current evidence by fallback"),
+            "{rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_delta_refuses_cross_root_fallback_join_as_stale() -> Result<(), String> {
+        // Issue #1964, fixture 5: a legacy baseline recorded for another
+        // repository must not launder its history into this repo's delta. The
+        // reviewed entry goes stale and the current gap stays new.
+        let baseline = r#"{
+          "schema_version": "0.1",
+          "entries": [
+            {
+              "identity": {"fallback": "src/foreign.rs:7:weakly_gripped"},
+              "path": "src/foreign.rs",
+              "line": 7,
+              "static_class": "weakly_gripped",
+              "root": "/other/repo"
+            }
+          ]
+        }"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "root": ".",
+          "decisions": [
+            {
+              "decision": "advisory",
+              "static_class": "weakly_gripped",
+              "placement": {"path": "src/foreign.rs", "line": 7},
+              "evidence": {}
+            }
+          ]
+        }"#;
+
+        let report = build_baseline_delta_report(BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: Ok(baseline.to_string()),
+            current_gate_decision_json: Ok(current.to_string()),
+        });
+        let rendered = render_baseline_delta_json(&report)?;
+        assert!(
+            rendered.contains("\"stale_baseline_entry\": 1"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"new_policy_eligible\": 1"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("\"still_present\": 0"), "{rendered}");
+        assert!(rendered.contains("another repository root"), "{rendered}");
+        assert!(rendered.contains("/other/repo -> ."), "{rendered}");
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_delta_keeps_same_root_fallback_match_comparable() -> Result<(), String> {
+        // Same-root entries (and pre-root-preservation entries without a root)
+        // stay comparable: the foreign-root refusal only fires on an explicit
+        // mismatch.
+        let baseline = r#"{
+          "schema_version": "0.1",
+          "entries": [
+            {
+              "identity": {"fallback": "src/a.rs:1:weakly_gripped"},
+              "path": "src/a.rs",
+              "line": 1,
+              "static_class": "weakly_gripped",
+              "root": "."
+            },
+            {
+              "identity": {"fallback": "src/b.rs:2:weakly_gripped"},
+              "path": "src/b.rs",
+              "line": 2,
+              "static_class": "weakly_gripped"
+            }
+          ]
+        }"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "root": ".",
+          "decisions": [
+            {"decision": "advisory", "static_class": "weakly_gripped", "placement": {"path": "src/a.rs", "line": 1}, "evidence": {}},
+            {"decision": "advisory", "static_class": "weakly_gripped", "placement": {"path": "src/b.rs", "line": 2}, "evidence": {}}
+          ]
+        }"#;
+
+        let report = build_baseline_delta_report(BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: Ok(baseline.to_string()),
+            current_gate_decision_json: Ok(current.to_string()),
+        });
+        let rendered = render_baseline_delta_json(&report)?;
+        assert!(rendered.contains("\"still_present\": 2"), "{rendered}");
+        assert!(
+            rendered.contains("\"stale_baseline_entry\": 0"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"legacy_fallback_match\": 2"),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("another repository root"), "{rendered}");
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_delta_marks_ambiguous_fallback_with_retained_legacy_identity() -> Result<(), String>
+    {
+        // Issue #1964, fixture 3: two gaps on one line with the same class.
+        // No single replacement candidate exists, but the legacy identity is
+        // retained and the match stays visible.
+        let baseline = r#"{
+          "schema_version": "0.1",
+          "entries": [
+            {
+              "identity": {"fallback": "src/ambiguous.rs:7:weakly_gripped"},
+              "path": "src/ambiguous.rs",
+              "line": 7,
+              "static_class": "weakly_gripped"
+            }
+          ]
+        }"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "decisions": [
+            {"decision": "advisory", "static_class": "weakly_gripped", "placement": {"path": "src/ambiguous.rs", "line": 7}, "evidence": {}},
+            {"decision": "advisory", "static_class": "weakly_gripped", "placement": {"path": "src/ambiguous.rs", "line": 7}, "evidence": {}}
+          ]
+        }"#;
+
+        let report = build_baseline_delta_report(BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: Ok(baseline.to_string()),
+            current_gate_decision_json: Ok(current.to_string()),
+        });
+        let rendered = render_baseline_delta_json(&report)?;
+        assert!(
+            rendered.contains("\"stale_baseline_entry\": 1"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("matched 2 current decisions by fallback"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"baseline_match_kind\": \"legacy_path_line_class\""),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"stale_baseline_warning\": true"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"matched_legacy_identity\": \"src/ambiguous.rs:7:weakly_gripped\""),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"canonical_replacement_candidate\": null"),
+            "{rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_delta_canonical_match_carries_no_legacy_disclosure() -> Result<(), String> {
+        // Canonical authority must render exactly as before the disclosure
+        // existed: no match-kind key, no warning flag, no legacy fields.
+        let baseline = r#"{
+          "schema_version": "0.1",
+          "entries": [
+            {
+              "identity": {"canonical_gap_id": "gap::stable"},
+              "path": "src/moved.rs",
+              "line": 10,
+              "static_class": "weakly_gripped"
+            }
+          ]
+        }"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "decisions": [
+            {
+              "decision": "advisory",
+              "static_class": "weakly_gripped",
+              "placement": {"path": "src/moved.rs", "line": 44},
+              "evidence_record": {"canonical_gap_id": "gap::stable"},
+              "evidence": {}
+            }
+          ]
+        }"#;
+
+        let report = build_baseline_delta_report(BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: Ok(baseline.to_string()),
+            current_gate_decision_json: Ok(current.to_string()),
+        });
+        let rendered = render_baseline_delta_json(&report)?;
+        assert!(rendered.contains("\"still_present\": 1"), "{rendered}");
+        assert!(
+            rendered.contains("\"legacy_fallback_match\": 0"),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("baseline_match_kind"), "{rendered}");
+        assert!(!rendered.contains("stale_baseline_warning"), "{rendered}");
+        assert!(!rendered.contains("matched_legacy_identity"), "{rendered}");
+        assert!(
+            !rendered.contains("canonical_replacement_candidate"),
+            "{rendered}"
+        );
+        let markdown = render_baseline_delta_markdown(&report);
+        assert!(!markdown.contains("Legacy fallback matches"), "{markdown}");
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_delta_treats_equivalent_root_spellings_as_same_repository() -> Result<(), String> {
+        // Issue #1964, review: `.`, `./`, and `.\\` name the same checkout
+        // after normalization, so the cross-root refusal must not fire on
+        // spelling alone.
+        let baseline = r#"{
+          "schema_version": "0.1",
+          "entries": [
+            {
+              "identity": {"fallback": "src/a.rs:1:weakly_gripped"},
+              "path": "src/a.rs",
+              "line": 1,
+              "static_class": "weakly_gripped",
+              "root": "./"
+            }
+          ]
+        }"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "root": ".",
+          "decisions": [
+            {"decision": "advisory", "static_class": "weakly_gripped", "placement": {"path": "src/a.rs", "line": 1}, "evidence": {}}
+          ]
+        }"#;
+
+        let report = build_baseline_delta_report(BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: Ok(baseline.to_string()),
+            current_gate_decision_json: Ok(current.to_string()),
+        });
+        let rendered = render_baseline_delta_json(&report)?;
+        assert!(rendered.contains("\"still_present\": 1"), "{rendered}");
+        assert!(
+            rendered.contains("\"stale_baseline_entry\": 0"),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("another repository root"), "{rendered}");
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_delta_warns_on_already_joined_fallback_match() -> Result<(), String> {
+        // Issue #1964, review: the second entry sharing one fallback identity
+        // is counted as a legacy match AND warned, so warning consumers see
+        // the same compatibility events the counter reports.
+        let baseline = r#"{
+          "schema_version": "0.1",
+          "entries": [
+            {
+              "identity": {"fallback": "src/dup.rs:7:weakly_gripped"},
+              "path": "src/dup_a.rs",
+              "line": 7,
+              "static_class": "weakly_gripped"
+            },
+            {
+              "identity": {"fallback": "src/dup.rs:7:weakly_gripped"},
+              "path": "src/dup_b.rs",
+              "line": 8,
+              "static_class": "weakly_gripped"
+            }
+          ]
+        }"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "decisions": [
+            {"decision": "advisory", "static_class": "weakly_gripped", "placement": {"path": "src/dup.rs", "line": 7}, "evidence": {}}
+          ]
+        }"#;
+
+        let report = build_baseline_delta_report(BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: Ok(baseline.to_string()),
+            current_gate_decision_json: Ok(current.to_string()),
+        });
+        let rendered = render_baseline_delta_json(&report)?;
+        assert!(rendered.contains("\"still_present\": 1"), "{rendered}");
+        assert!(
+            rendered.contains("\"stale_baseline_entry\": 1"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"legacy_fallback_match\": 2"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("also matched an already joined current decision by fallback"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"baseline_match_kind\": \"legacy_path_line_class\""),
+            "{rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_delta_markdown_lists_every_legacy_match() -> Result<(), String> {
+        // Issue #1964, review: the human compatibility section is exhaustive.
+        // Twelve legacy joins list twelve headlines, not ten plus silence.
+        let mut entries = Vec::new();
+        let mut decisions = Vec::new();
+        for index in 0..12 {
+            entries.push(format!(
+                "{{\"identity\": {{\"fallback\": \"src/legacy{index}.rs:7:weakly_gripped\"}}, \"path\": \"src/legacy{index}.rs\", \"line\": 7, \"static_class\": \"weakly_gripped\"}}"
+            ));
+            decisions.push(format!(
+                "{{\"decision\": \"advisory\", \"static_class\": \"weakly_gripped\", \"placement\": {{\"path\": \"src/legacy{index}.rs\", \"line\": 7}}, \"evidence\": {{}}}}"
+            ));
+        }
+        let baseline = format!(
+            "{{\"schema_version\": \"0.1\", \"entries\": [{}]}}",
+            entries.join(",")
+        );
+        let current = format!(
+            "{{\"schema_version\": \"0.1\", \"decisions\": [{}]}}",
+            decisions.join(",")
+        );
+
+        let report = build_baseline_delta_report(BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: Ok(baseline),
+            current_gate_decision_json: Ok(current),
+        });
+        let rendered = render_baseline_delta_json(&report)?;
+        assert!(rendered.contains("\"still_present\": 12"), "{rendered}");
+        assert!(
+            rendered.contains("\"legacy_fallback_match\": 12"),
+            "{rendered}"
+        );
+        let markdown = render_baseline_delta_markdown(&report);
+        assert!(
+            markdown.contains("Legacy fallback matches (12 total):"),
+            "{markdown}"
+        );
+        for index in 0..12 {
+            assert!(
+                markdown.contains(&format!("src/legacy{index}.rs:7")),
+                "{markdown}"
+            );
+        }
         Ok(())
     }
 

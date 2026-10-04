@@ -1,0 +1,277 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/rust_adversarial_same_method_other_type/input",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:ebc0ed0bf12769e3cbad5f10ecc6d77f7dff24c315712e96c883745d070139c3","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:return_value:c861ec7a",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:c861ec7a",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/rust_adversarial_same_method_other_type/input/src/lib.rs",
+        "line": 22,
+        "expression": "(0, Some(self.remaining))"
+       },
+      "ripr": {
+        "reach": {"state":"weak","confidence":"low","summary":"No test is seen calling size_hint; tests share only its file or a name token: combinations_inexact_size_hints"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches returned value: (0, Some(self.remaining))"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach weak: No test is seen calling size_hint; tests share only its file or a name token: combinations_inexact_size_hints", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: (0, Some(self.remaining))", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: (0, Some(self.remaining)) (line 22)", "related test tests/size_hints.rs:4 combinations_inexact_size_hints uses strong exact value oracle: assert_eq!(it.size_hint().1, Some(3));", "related test tests/size_hints.rs:4 combinations_inexact_size_hints uses strong exact value oracle: assert_eq!(it.size_hint().0, 3);", "related test tests/size_hints.rs:4 combinations_inexact_size_hints uses smoke smoke only oracle: assert!(it.size_hint().1.is_some());", "related test tests/size_hints.rs:4 combinations_inexact_size_hints uses strong exact value oracle: assert_eq!(it.size_hint(), (3, Some(3)));", "related test tests/size_hints.rs:4 combinations_inexact_size_hints uses weak relational check oracle: assert!(it.size_hint().1 == Some(3));", "source assertion argument value 3 at line 6", "source assertion argument value 3 at line 7", "source assertion argument value 3 at line 9"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"(0, Some(self.remaining))","line":22}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches returned value: (0, Some(self.remaining))", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "No test is seen calling size_hint; tests share only its file or a name token: combinations_inexact_size_hints", "Reachable tests can plausibly activate this changed behavior"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "6": "assert_eq!(it.size_hint().1, Some(3));",
+        "7": "assert_eq!(it.size_hint().0, 3);",
+        "9": "assert_eq!(it.size_hint(), (3, Some(3)));"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "3",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 7,
+            "value": "3",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 9,
+            "value": "3",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "3",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 7,
+          "value": "3",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 9,
+          "value": "3",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 5,
+      "related_tests": [
+        {
+          "name": "combinations_inexact_size_hints",
+          "file": "tests/size_hints.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(it.size_hint().1, Some(3));",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        },
+        {
+          "name": "combinations_inexact_size_hints",
+          "file": "tests/size_hints.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(it.size_hint().0, 3);",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        },
+        {
+          "name": "combinations_inexact_size_hints",
+          "file": "tests/size_hints.rs",
+          "line": 4,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "assert!(it.size_hint().1.is_some());",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        },
+        {
+          "name": "combinations_inexact_size_hints",
+          "file": "tests/size_hints.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(it.size_hint(), (3, Some(3)));",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        },
+        {
+          "name": "combinations_inexact_size_hints",
+          "file": "tests/size_hints.rs",
+          "line": 4,
+          "oracle_strength": "weak",
+          "oracle_kind": "relational_check",
+          "oracle": "assert!(it.size_hint().1 == Some(3));",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "suggested_next_action": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:return_value:d114ce99",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:d114ce99",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/rust_adversarial_same_method_other_type/input/src/lib.rs",
+        "line": 22,
+        "expression": "(0, None)"
+       },
+      "ripr": {
+        "reach": {"state":"weak","confidence":"low","summary":"No test is seen calling size_hint; tests share only its file or a name token: combinations_inexact_size_hints"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"weak","confidence":"low","summary":"No complete owner-bound propagation witness found for returned value: (0, Some(self.remaining))"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach weak: No test is seen calling size_hint; tests share only its file or a name token: combinations_inexact_size_hints", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation weak: No complete owner-bound propagation witness found for returned value: (0, Some(self.remaining))", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: (0, Some(self.remaining)) (line 22)", "related test tests/size_hints.rs:4 combinations_inexact_size_hints uses strong exact value oracle: assert_eq!(it.size_hint().1, Some(3));", "related test tests/size_hints.rs:4 combinations_inexact_size_hints uses strong exact value oracle: assert_eq!(it.size_hint().0, 3);", "related test tests/size_hints.rs:4 combinations_inexact_size_hints uses smoke smoke only oracle: assert!(it.size_hint().1.is_some());", "related test tests/size_hints.rs:4 combinations_inexact_size_hints uses strong exact value oracle: assert_eq!(it.size_hint(), (3, Some(3)));", "related test tests/size_hints.rs:4 combinations_inexact_size_hints uses weak relational check oracle: assert!(it.size_hint().1 == Some(3));", "source assertion argument value 3 at line 6", "source assertion argument value 3 at line 7", "source assertion argument value 3 at line 9"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"(0, Some(self.remaining))","line":22}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "No complete owner-bound propagation witness found for returned value: (0, Some(self.remaining))", "No test is seen calling size_hint; tests share only its file or a name token: combinations_inexact_size_hints", "Reachable tests can plausibly activate this changed behavior"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "6": "assert_eq!(it.size_hint().1, Some(3));",
+        "7": "assert_eq!(it.size_hint().0, 3);",
+        "9": "assert_eq!(it.size_hint(), (3, Some(3)));"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "3",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 7,
+            "value": "3",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 9,
+            "value": "3",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "3",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 7,
+          "value": "3",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 9,
+          "value": "3",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 5,
+      "related_tests": [
+        {
+          "name": "combinations_inexact_size_hints",
+          "file": "tests/size_hints.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(it.size_hint().1, Some(3));",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        },
+        {
+          "name": "combinations_inexact_size_hints",
+          "file": "tests/size_hints.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(it.size_hint().0, 3);",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        },
+        {
+          "name": "combinations_inexact_size_hints",
+          "file": "tests/size_hints.rs",
+          "line": 4,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "assert!(it.size_hint().1.is_some());",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        },
+        {
+          "name": "combinations_inexact_size_hints",
+          "file": "tests/size_hints.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(it.size_hint(), (3, Some(3)));",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        },
+        {
+          "name": "combinations_inexact_size_hints",
+          "file": "tests/size_hints.rs",
+          "line": 4,
+          "oracle_strength": "weak",
+          "oracle_kind": "relational_check",
+          "oracle": "assert!(it.size_hint().1 == Some(3));",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "suggested_next_action": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "language": "rust",
+      "source_currentness": "base_deleted"
+    }
+  ]
+}

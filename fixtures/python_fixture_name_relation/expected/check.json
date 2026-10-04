@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_fixture_name_relation/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:e0b002efc47aeab45ed5b7c235c2d81f6cf29fbce8dd66f59cd46fcc2b036452","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:e0b002efc47aeab45ed5b7c235c2d81f6cf29fbce8dd66f59cd46fcc2b036452","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -43,11 +42,11 @@
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 1)"},
         "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape."}
        },
-      "evidence_path": ["reach weak: 1 heuristic Python test link(s) found for owner `calculate_fee`; relation is uncertain", "infection yes: Changed Python return expression can alter the owner return value: `return amount + 2`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator weak: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.", "local flow reaches returned value: return amount + 2 (line 2)", "related test tests/test_checkout.py:1 test_checkout_total uses unknown unknown oracle"],
+      "evidence_path": ["reach weak: 1 heuristic Python test link(s) found for owner `calculate_fee`; relation is uncertain", "infection yes: Changed Python return expression can alter the owner return value: `return amount + 2`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator weak: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.", "local flow reaches returned value: return amount + 2 (line 2)", "related test tests/test_checkout.py:4 test_checkout_total uses unknown unknown oracle"],
       "flow_sinks": [
         {"kind":"return_value","text":"return amount + 2","line":2}
       ],
-      "evidence": ["owner: calculate_fee", "owner_kind: function", "test_framework: pytest (test_checkout_total)", "test_fixtures: pricing (test_checkout_total)", "test_verify_command: pytest tests/test_checkout.py::test_checkout_total (test_checkout_total)", "related_test_relation: fixture_name (test_checkout_total)", "related_test_uncertain: fixture_name (test_checkout_total)"],
+      "evidence": ["owner: calculate_fee", "owner_kind: function", "test_framework: pytest (test_checkout_total)", "test_fixtures: pricing (test_checkout_total)", "test_verify_command: python -m pytest tests/test_checkout.py::test_checkout_total (test_checkout_total)", "related_test_relation: fixture_name (test_checkout_total)", "related_test_uncertain: fixture_name (test_checkout_total)"],
       "missing": ["Only heuristic Python test links were found for `calculate_fee`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion."],
       "assertion_texts": {
       },
@@ -66,7 +65,7 @@
         {
           "name": "test_checkout_total",
           "file": "tests/test_checkout.py",
-          "line": 1,
+          "line": 4,
           "oracle_strength": "unknown",
           "oracle_kind": "unknown",
           "oracle": ""
@@ -96,5 +95,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/pricing.py","digest":"sha256:33716584d863638c4edd42afe2c298129ac825bb9196746dfe5a4c9180a87da5"}]}
 }

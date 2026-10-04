@@ -6,10 +6,12 @@
 //! output advisory and source-edit-free.
 
 mod commands;
+mod language_routes;
 mod ranking;
 mod render;
 mod types;
 
+pub(crate) use language_routes::{PilotLanguageRoute, PilotLanguageRoutes};
 pub(crate) use render::{
     render_pilot_summary_json, render_pilot_summary_md, render_pilot_terminal,
     render_pilot_timeout_summary_json, render_pilot_timeout_summary_md,

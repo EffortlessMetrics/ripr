@@ -1,7 +1,9 @@
 mod allow_attributes;
 mod ci_lane_whitelist;
+pub(crate) mod ci_scratch;
 mod covered_by;
 mod dependency_expiry;
+pub(crate) mod distribution;
 mod doc_roles;
 pub(crate) mod droid_review;
 mod executable_files;
@@ -14,6 +16,8 @@ mod process;
 mod product_copy;
 pub(crate) mod proof_packs;
 mod release_targets;
+
+pub(crate) use release_targets::{CandidateAuthoritySnapshot, capture_candidate_authority};
 mod static_language;
 mod test_inventory;
 mod workflows;
@@ -33,6 +37,25 @@ pub(crate) use positioning_language::check_positioning_language;
 pub(crate) use process::check_process_policy;
 pub(crate) use product_copy::check_product_copy;
 pub(crate) use proof_packs::check_proof_packs;
-pub(crate) use release_targets::check_release_targets;
 pub(crate) use static_language::check_static_language;
 pub(crate) use workflows::check_workflows;
+
+pub(crate) fn check_release_targets() -> Result<(), String> {
+    let mut failures = Vec::new();
+    if let Err(error) = release_targets::check_release_targets() {
+        failures.push(error);
+    }
+    if let Err(error) = distribution::check_distribution_contract() {
+        failures.push(error);
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("\n"))
+    }
+}
+
+pub(crate) fn qualify_python_wheelhouse(args: &[String]) -> Result<(), String> {
+    distribution::wheelhouse::run(args)
+}

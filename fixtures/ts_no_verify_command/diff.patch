@@ -1,6 +1,6 @@
 --- a/src/calculator.ts
 +++ b/src/calculator.ts
-@@ -1,6 +1,6 @@
+@@ -1,5 +1,5 @@
  export function multiply(a: number, b: number): number {
 -    if (a > 0) {
 +    if (a >= 0) {

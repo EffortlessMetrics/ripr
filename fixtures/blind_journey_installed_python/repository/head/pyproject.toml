@@ -1,0 +1,8 @@
+[project]
+name = "discount-fixture"
+version = "0.1.0"
+description = "Bounded flat-layout fixture for the installed Python repair journey"
+requires-python = ">=3.9"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

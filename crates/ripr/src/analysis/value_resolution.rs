@@ -44,7 +44,7 @@
 //! Without that, a comment like `// let threshold = 999;` would
 //! shadow the real binding.
 
-use super::rust_index::{FileFacts, RustIndex, TestSummary};
+use super::rust_index::{FileFactsView, RustIndex, TestSummary};
 use super::seams::{RepoSeam, RequiredDiscriminator};
 use crate::domain::{ValueContext, ValueFact};
 use std::collections::BTreeMap;
@@ -114,19 +114,35 @@ impl SourcePosition {
     }
 }
 
-impl ValueEnvFacts {
+/// Whole-file scans shared by every test in one file. Evidence builds this
+/// once per file per pass: rebuilding it per test re-scanned large files
+/// with many inline tests once for each of those tests.
+#[derive(Default)]
+pub(crate) struct FileValueScan {
+    module_constants: BTreeMap<String, String>,
+    path_constructor_imports: PathConstructorImports,
+}
+
+impl FileValueScan {
     pub(crate) fn build(test: &TestSummary, index: &RustIndex) -> Self {
+        file_facts_for(test, index)
+            .map(|facts| Self {
+                module_constants: extract_module_constants(&facts.source),
+                path_constructor_imports: extract_path_constructor_imports(&facts.source),
+            })
+            .unwrap_or_default()
+    }
+}
+
+impl ValueEnvFacts {
+    pub(crate) fn build(test: &TestSummary, file_scan: &FileValueScan) -> Self {
         let body_clean = strip_comments_and_strings(&test.body);
         let let_bindings = extract_let_bindings(&body_clean);
         let (rstest_cases, case_param_names) = extract_rstest_cases(test);
         let test_param_names = extract_fn_param_names(&body_clean);
         let table_bindings = extract_table_bindings(&body_clean);
-        let module_constants = file_facts_for(test, index)
-            .map(|facts| extract_module_constants(&facts.source))
-            .unwrap_or_default();
-        let path_constructor_imports = file_facts_for(test, index)
-            .map(|facts| extract_path_constructor_imports(&facts.source))
-            .unwrap_or_default();
+        let module_constants = file_scan.module_constants.clone();
+        let path_constructor_imports = file_scan.path_constructor_imports;
         let (struct_field_bindings, struct_field_invalidations) =
             extract_struct_field_bindings(&body_clean, test.start_line, &test_param_names);
         let local_binding_positions = extract_local_binding_positions(&body_clean, test.start_line);
@@ -432,11 +448,11 @@ impl<'a> ValueEnv<'a> {
 /// Look up the test's home-file facts in the index. The test fact
 /// stores the original file path; we use it to find the matching
 /// FileFacts entry.
-fn file_facts_for<'a>(test: &TestSummary, index: &'a RustIndex) -> Option<&'a FileFacts> {
-    index.files.get(&test.file)
+fn file_facts_for<'a>(test: &TestSummary, index: &'a RustIndex) -> Option<FileFactsView<'a>> {
+    index.files().get(&test.file)
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 struct PathConstructorImports {
     path: bool,
     path_buf: bool,
@@ -527,6 +543,33 @@ fn item_defines_name(line: &str, name: &str) -> bool {
     false
 }
 
+/// Drop leading `#[...]` attribute groups written on the same line as an
+/// item (`#[cfg(test)] const LIMIT: u32 = 5;`), so the item keyword is seen.
+fn strip_leading_attributes(mut line: &str) -> &str {
+    while let Some(rest) = line.strip_prefix("#[") {
+        let mut depth = 1usize;
+        let mut end = None;
+        for (i, ch) in rest.char_indices() {
+            match ch {
+                '[' => depth += 1,
+                ']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = Some(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let Some(end) = end else {
+            return line;
+        };
+        line = rest[end + 1..].trim_start();
+    }
+    line
+}
+
 fn strip_visibility_prefix(line: &str) -> &str {
     let Some(rest) = line.strip_prefix("pub") else {
         return line;
@@ -576,6 +619,159 @@ fn extract_let_bindings(body: &str) -> BTreeMap<String, String> {
         out.insert(ident.to_string(), rhs.to_string());
     }
     out
+}
+
+/// The literal a test body binds to `ident` through `let IDENT = LITERAL;`
+/// (the same scan [`ValueEnvFacts`] uses), for consumers that resolve one
+/// owner-call argument without a repo seam (the check-path activation
+/// stage). That consumer can promote a finding to `exposed`, so it fails
+/// closed where the seam scan is permissive: `None` when the identifier
+/// has no literal `let` binding, is declared `mut`, or is declared by more
+/// than one `let` in the body (a shadow may rebind it to a computed value).
+pub(crate) fn test_let_bound_literal(body: &str, ident: &str) -> Option<String> {
+    let cleaned = strip_comments_and_strings(body);
+    let mut declarations = find_all(&cleaned, "let ").into_iter().filter_map(|start| {
+        let after_let = &cleaned[start + 4..];
+        let stmt = &after_let[..top_level_semicolon(after_let).unwrap_or(after_let.len())];
+        let lhs = &stmt[..first_single_eq(stmt).unwrap_or(stmt.len())];
+        let_binding_ident(lhs).filter(|(name, _)| *name == ident)
+    });
+    let (_, is_mut) = declarations.next()?;
+    if is_mut || declarations.next().is_some() {
+        return None;
+    }
+    extract_let_bindings(body).remove(ident)
+}
+
+/// What one source file says about a named constant, for consumers that
+/// compare a changed boundary against a `const` operand
+/// (`amount >= DISCOUNT_THRESHOLD`). Reuses the same-file declaration scan
+/// behind [`ValueEnvFacts`]'s module constants, and fails closed where that
+/// scan is permissive: a name declared more than once in the file (for
+/// example in two inline modules) is ambiguous, and only an integer literal
+/// counts as a visible value.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum NamedConstant {
+    /// Declared exactly once as `[pub[(..)]] const NAME: T = <integer>;`.
+    Value(String),
+    /// Declared exactly once, but its value is not a plain integer literal
+    /// (a computed initializer, a typed suffix, a string, or a `static mut`).
+    Opaque,
+    /// Declared more than once in the file.
+    Ambiguous,
+    /// Not declared in the file.
+    Undeclared,
+}
+
+/// Look up `name` among the file's `const`/`static` declarations.
+pub(crate) fn named_constant(file_source: &str, name: &str) -> NamedConstant {
+    if !is_simple_identifier(name) {
+        return NamedConstant::Undeclared;
+    }
+    let cleaned = strip_comments_and_strings(file_source);
+    let mut declarations = 0usize;
+    let mut mutable = false;
+    for line in cleaned.lines() {
+        let item = strip_visibility_prefix(strip_leading_attributes(line.trim()));
+        let (rest, is_mut) = if let Some(rest) = item.strip_prefix("const ") {
+            (rest, false)
+        } else if let Some(rest) = item.strip_prefix("static mut ") {
+            (rest, true)
+        } else if let Some(rest) = item.strip_prefix("static ") {
+            (rest, false)
+        } else {
+            continue;
+        };
+        let declared = rest.split([':', '=']).next().unwrap_or(rest).trim();
+        if declared == name {
+            declarations += 1;
+            mutable |= is_mut;
+        }
+    }
+    match declarations {
+        0 => NamedConstant::Undeclared,
+        1 if !mutable => extract_module_constants(file_source)
+            .remove(name)
+            .filter(|value| is_integer_literal(value))
+            .map_or(NamedConstant::Opaque, NamedConstant::Value),
+        1 => NamedConstant::Opaque,
+        _ => NamedConstant::Ambiguous,
+    }
+}
+
+impl NamedConstant {
+    /// The constant's visible integer value.
+    pub(crate) fn value(&self) -> Option<&str> {
+        match self {
+            NamedConstant::Value(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    /// A test argument that names the constant is the boundary value by
+    /// identity only when the file declares that constant exactly once.
+    pub(crate) fn is_declared_once(&self) -> bool {
+        matches!(self, NamedConstant::Value(_) | NamedConstant::Opaque)
+    }
+
+    /// Why the value is not statically visible, for honest evidence text.
+    pub(crate) fn limitation(&self) -> &'static str {
+        match self {
+            NamedConstant::Value(_) => "its literal value is visible",
+            NamedConstant::Opaque => "its initializer is not a plain integer literal",
+            NamedConstant::Ambiguous => "the owner's file declares it more than once",
+            NamedConstant::Undeclared => "it is not declared in the owner's file",
+        }
+    }
+}
+
+/// True when a test outside the owner's file may name its own constant
+/// rather than the owner's: its file declares the same name, or its source
+/// is not available to check. A test in the owner's own file needs no check
+/// here, because a second declaration there already makes the owner lookup
+/// [`NamedConstant::Ambiguous`].
+pub(crate) fn test_file_may_shadow_constant(
+    owner_file: &std::path::Path,
+    test_file: &std::path::Path,
+    test_file_source: Option<&str>,
+    name: &str,
+) -> bool {
+    test_file != owner_file
+        && test_file_source
+            .is_none_or(|source| named_constant(source, name) != NamedConstant::Undeclared)
+}
+
+/// The constant a comparison operand names, when the operand is
+/// constant-shaped: an upper-case identifier (`DISCOUNT_THRESHOLD`),
+/// optionally `Self::` qualified. Anything else is not a named constant.
+pub(crate) fn constant_operand_name(operand: &str) -> Option<&str> {
+    let operand = operand.trim();
+    let name = operand.strip_prefix("Self::").unwrap_or(operand);
+    (name.starts_with(|ch: char| ch.is_ascii_uppercase())
+        && name
+            .chars()
+            .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_'))
+    .then_some(name)
+}
+
+/// True when one call argument names the constant `name` itself, bare or
+/// through a plain path (`DISCOUNT_THRESHOLD`, `&DISCOUNT_THRESHOLD`,
+/// `pricing::DISCOUNT_THRESHOLD`).
+pub(crate) fn argument_names_constant(argument: &str, name: &str) -> bool {
+    let argument = argument.trim().trim_start_matches('&').trim();
+    if argument == name {
+        return true;
+    }
+    argument
+        .strip_suffix(name)
+        .and_then(|path| path.strip_suffix("::"))
+        .is_some_and(|path| !path.is_empty() && path.split("::").all(is_simple_identifier))
+}
+
+fn is_integer_literal(value: &str) -> bool {
+    let digits = value.strip_prefix('-').unwrap_or(value);
+    digits.starts_with(|ch: char| ch.is_ascii_digit())
+        && digits.chars().all(|ch| ch.is_ascii_digit() || ch == '_')
 }
 
 /// Position of the first top-level `;` in `text`, or `None` if no
@@ -1194,6 +1390,12 @@ fn is_assignment_operator(text: &str) -> bool {
 /// Read attrs from `TestFact.attrs` (populated by the parser-backed
 /// index path); no filesystem reads.
 fn extract_rstest_cases(test: &TestSummary) -> (Vec<Vec<String>>, Vec<String>) {
+    let (cases, params) = extract_rstest_case_params(test);
+    (cases, params.into_iter().map(|param| param.name).collect())
+}
+
+/// [`extract_rstest_cases`] with each case parameter's full header fact.
+fn extract_rstest_case_params(test: &TestSummary) -> (Vec<Vec<String>>, Vec<FnParam>) {
     let mut cases: Vec<Vec<String>> = Vec::new();
     let mut is_rstest = false;
     for attr in &test.attrs {
@@ -1213,8 +1415,63 @@ fn extract_rstest_cases(test: &TestSummary) -> (Vec<Vec<String>>, Vec<String>) {
     if !is_rstest && cases.is_empty() {
         return (Vec::new(), Vec::new());
     }
-    let params = extract_fn_param_names(&test.body);
+    // rstest binds case values positionally to the `#[case]` parameters
+    // only; the others are fixtures. Without any `#[case]` marker every
+    // parameter counts, as before #4601. (Rows written inside the legacy
+    // `#[rstest(a, case(..))]` attribute and named `#[case::name(..)]`
+    // rows are not parsed, so they bind nothing.)
+    let params = extract_fn_params(&test.body);
+    let params = if params.iter().any(|param| param.is_case) {
+        params.into_iter().filter(|param| param.is_case).collect()
+    } else {
+        params
+    };
     (cases, params)
+}
+
+/// The values rstest `#[case(..)]` rows bind to the test parameter
+/// `ident`, one per row, for the check-path activation stage (which can
+/// promote a finding to `exposed`). Fails closed to no values when the
+/// parameter is `mut` or anything in the body may rebind the name before
+/// the owner call: a `let` (simple or pattern), a `for`, `if let` or
+/// `while let` binding, a closure parameter or a match arm. A nested
+/// `fn` item also binds nothing: an owner call inside it reads that fn's
+/// own parameters, which the case rows do not bind.
+pub(crate) fn test_case_bound_literals(test: &TestSummary, ident: &str) -> Vec<String> {
+    if !test.nested_fn_names.is_empty() {
+        return Vec::new();
+    }
+    // Parser authority first: the case parameter must be the only binding
+    // of `ident` anywhere in the test (a char or raw-string literal cannot
+    // hide a later `let` from the parser), and an unparsable body binds
+    // nothing. The lexical scan below still covers bindings written inside
+    // macro token trees, which the parser does not expand.
+    if crate::analysis::syntax::fn_name_binding_count(&test.body, ident) != Some(1) {
+        return Vec::new();
+    }
+    let cleaned = strip_comments_and_strings(&test.body);
+    let rebound = find_all(&cleaned, "let ").into_iter().any(|start| {
+        let after_let = &cleaned[start + 4..];
+        let stmt = &after_let[..top_level_semicolon(after_let).unwrap_or(after_let.len())];
+        let lhs = &stmt[..first_single_eq(stmt).unwrap_or(stmt.len())];
+        let_binding_ident(lhs).is_some_and(|(name, _)| name == ident)
+    }) || !non_simple_let_shadowing_lines(&cleaned, ident, test.start_line)
+        .is_empty()
+        || !non_let_shadowing_lines(&cleaned, ident, test.start_line).is_empty();
+    if rebound {
+        return Vec::new();
+    }
+    let (cases, params) = extract_rstest_case_params(test);
+    let Some(position) = params.iter().position(|param| param.name == ident) else {
+        return Vec::new();
+    };
+    if params[position].is_mut {
+        return Vec::new();
+    }
+    cases
+        .iter()
+        .filter_map(|case| case.get(position).map(|value| value.trim().to_string()))
+        .collect()
 }
 
 fn attr_matches_name_or_call(attr: &str, name: &str) -> bool {
@@ -1244,27 +1501,93 @@ fn attr_inner(attr: &str) -> Option<&str> {
 /// always present on the first non-attr line. Best-effort: skip
 /// `&self` / `self` and reject anything not identifier-shaped.
 fn extract_fn_param_names(body: &str) -> Vec<String> {
+    extract_fn_params(body)
+        .into_iter()
+        .filter(|param| !param.name.is_empty())
+        .map(|param| param.name)
+        .collect()
+}
+
+/// One parameter of a test fn header: its name and whether it carries
+/// rstest's `#[case]` attribute.
+struct FnParam {
+    name: String,
+    is_case: bool,
+    is_mut: bool,
+}
+
+/// Parameters of the `fn` header in `body`. Parameter attributes
+/// (`#[case] x: u32`, `#[values(1, 2)] y: u8`) are stripped before the
+/// name is read, and the list ends at the parenthesis that balances the
+/// opening one, so an attribute's own arguments never cut it short.
+fn extract_fn_params(body: &str) -> Vec<FnParam> {
     let Some(open) = body.find('(') else {
         return Vec::new();
     };
     let after = &body[open + 1..];
-    let Some(close) = after.find(')') else {
+    let mut depth = 0usize;
+    let mut close = None;
+    for (at, character) in after.char_indices() {
+        match character {
+            '(' | '[' => depth += 1,
+            ')' if depth == 0 => {
+                close = Some(at);
+                break;
+            }
+            ')' | ']' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    let Some(close) = close else {
         return Vec::new();
     };
     let raw = &after[..close];
     let mut out = Vec::new();
     for part in split_top_level(raw) {
-        let part = part.trim();
-        if part.is_empty() || part == "self" || part.starts_with('&') {
+        let mut part = part.trim();
+        let mut is_case = false;
+        while let Some(rest) = part.strip_prefix("#[") {
+            let Some(end) = balanced_attribute_end(rest) else {
+                break;
+            };
+            let attribute = rest[..end].trim();
+            is_case |= attribute == "case" || attribute == "rstest::case";
+            part = rest[end + 1..].trim_start();
+        }
+        if part.is_empty() || part == "self" || part.starts_with("&self") {
             continue;
         }
         let ident = part.split(':').next().unwrap_or(part).trim();
+        let is_mut = ident.starts_with("mut ");
         let ident = ident.strip_prefix("mut ").unwrap_or(ident).trim();
-        if is_simple_identifier(ident) {
-            out.push(ident.to_string());
-        }
+        // A pattern parameter (`ref x`, `(a, b)`) keeps its position with an
+        // empty name, so later case columns stay aligned; nothing binds it.
+        out.push(FnParam {
+            name: if is_simple_identifier(ident) {
+                ident.to_string()
+            } else {
+                String::new()
+            },
+            is_case,
+            is_mut,
+        });
     }
     out
+}
+
+/// Offset of the `]` closing an attribute whose `#[` was already
+/// consumed, skipping brackets nested in its arguments (`vec![1]`).
+fn balanced_attribute_end(rest: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    for (at, character) in rest.char_indices() {
+        match character {
+            '[' => depth += 1,
+            ']' if depth == 0 => return Some(at),
+            ']' => depth -= 1,
+            _ => {}
+        }
+    }
+    None
 }
 
 /// `for (a, b) in [(L, L), ...] { ... }` and
@@ -1676,18 +1999,17 @@ fn builder_method_matches_allowed(
 
 /// Drop `//` line-comment tails and replace string-literal contents
 /// with empty text, so binding scans don't pick up `// let x = 1;`
-/// or string-embedded names. Mirrors the helper added in
-/// `analysis/related-test-precision-v1` for `import_path_affinity`.
+/// or string-embedded names. Only a `//` outside a string literal starts
+/// a comment: a URL such as `"http://example"` must not truncate the
+/// line, or a binding after it would vanish from the scan. Mirrors the
+/// helper added in `analysis/related-test-precision-v1` for
+/// `import_path_affinity`.
 fn strip_comments_and_strings(source: &str) -> String {
     let mut out = String::with_capacity(source.len());
     for raw_line in source.lines() {
-        let without_comment = match raw_line.find("//") {
-            Some(idx) => &raw_line[..idx],
-            None => raw_line,
-        };
         let mut in_string = false;
         let mut escaped = false;
-        for ch in without_comment.chars() {
+        for (idx, ch) in raw_line.char_indices() {
             if in_string {
                 if escaped {
                     escaped = false;
@@ -1707,6 +2029,9 @@ fn strip_comments_and_strings(source: &str) -> String {
                 in_string = true;
                 out.push('"');
                 continue;
+            }
+            if ch == '/' && raw_line[idx..].starts_with("//") {
+                break;
             }
             out.push(ch);
         }

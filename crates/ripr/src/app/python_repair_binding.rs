@@ -1126,11 +1126,13 @@ pub(crate) fn prepare_binding(
 /// Loads the retained prepare-phase binding artifact of a durable attempt, if
 /// the attempt carries one. The attempt loader has already re-verified the
 /// artifact digest against the attempt manifest.
-pub(crate) fn load_retained_binding(
+pub(crate) fn load_retained_binding_from(
     root: &Path,
+    store: Option<&Path>,
     attempt_id: &crate::app::repair_attempt::RepairAttemptId,
 ) -> Result<Option<RetainedBinding>, String> {
-    let manifest = crate::app::repair_attempt::load_repair_attempt_manifest(root, attempt_id)?;
+    let manifest =
+        crate::app::repair_attempt::load_repair_attempt_manifest_from(root, store, attempt_id)?;
     let Some(artifact) = crate::app::repair_attempt::find_manifest_artifact_by_role(
         &manifest,
         BINDING_ARTIFACT_ROLE,
@@ -1428,6 +1430,38 @@ fn check_binding_artifact_chain(staged_sha256_prefixed: &str, claimed: &str) -> 
     Ok(())
 }
 
+/// The late-window manifest confirmation distinguishes a replaced manifest —
+/// a deliberate named refusal that maps to the decision exit code 3 — from
+/// operational failures reading the retained binding or the manifest itself,
+/// which map to exit code 2.
+pub(crate) enum ManifestConfirmationError {
+    /// The manifest digests differently from the retained binding's pinned
+    /// digest: replaced trust data refuses the finish.
+    Replaced(String),
+    /// The retained binding or the manifest could not be read or validated.
+    Operational(String),
+}
+
+impl ManifestConfirmationError {
+    pub(crate) fn message(&self) -> &str {
+        match self {
+            Self::Replaced(message) | Self::Operational(message) => message,
+        }
+    }
+}
+
+impl From<ManifestConfirmationError> for String {
+    fn from(error: ManifestConfirmationError) -> Self {
+        error.message().to_string()
+    }
+}
+
+impl std::fmt::Display for ManifestConfirmationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.message())
+    }
+}
+
 /// Re-reads the selection manifest at its recorded telemetry path and
 /// requires the pinned digest. This closes the late publication window: the
 /// apply verification runs before several expensive after-phase operations,
@@ -1435,24 +1469,36 @@ fn check_binding_artifact_chain(staged_sha256_prefixed: &str, claimed: &str) -> 
 /// durable attempt advances. A manifest replaced inside that window refuses
 /// here, leaving the attempt `awaiting_edit` instead of recording an edit
 /// against silently replaced trust data.
-pub(crate) fn confirm_manifest_unchanged(retained: &RetainedBinding) -> Result<(), String> {
-    let record = as_object(&retained.value, "retained binding record")?;
+pub(crate) fn confirm_manifest_unchanged(
+    retained: &RetainedBinding,
+) -> Result<(), ManifestConfirmationError> {
+    let record = as_object(&retained.value, "retained binding record")
+        .map_err(ManifestConfirmationError::Operational)?;
     let trust = record
         .get("trust")
         .and_then(Value::as_object)
-        .ok_or_else(|| "retained binding record is missing trust".to_string())?;
-    let pinned = require_string("retained binding trust", trust, "selection_manifest_sha256")?;
+        .ok_or_else(|| {
+            ManifestConfirmationError::Operational(
+                "retained binding record is missing trust".to_string(),
+            )
+        })?;
+    let pinned = require_string("retained binding trust", trust, "selection_manifest_sha256")
+        .map_err(ManifestConfirmationError::Operational)?;
     let path = require_string(
         "retained binding record",
         record,
         TELEMETRY_MANIFEST_PATH_FIELD,
-    )?;
-    let (current, _) = load_selection_manifest(Path::new(&path))
-        .map_err(|error| format!("stale packet rejected before the durable finish: {error}"))?;
+    )
+    .map_err(ManifestConfirmationError::Operational)?;
+    let (current, _) = load_selection_manifest(Path::new(&path)).map_err(|error| {
+        ManifestConfirmationError::Operational(format!(
+            "stale packet rejected before the durable finish: {error}"
+        ))
+    })?;
     if current != pinned {
-        return Err(format!(
+        return Err(ManifestConfirmationError::Replaced(format!(
             "stale selection manifest: the retained binding pins manifest sha256 `{pinned}` but {path} now digests to `{current}`; a changed manifest requires a new re-authorized attempt"
-        ));
+        )));
     }
     Ok(())
 }
@@ -1463,16 +1509,18 @@ pub(crate) fn confirm_manifest_unchanged(retained: &RetainedBinding) -> Result<(
 /// and no verification, movement, or closure claim. The identities are read
 /// from the durable attempt's own retained artifacts, so the record restates
 /// the authority instead of re-deriving it.
-pub(crate) fn write_apply_record(
+pub(crate) fn write_apply_record_from(
     root: &Path,
+    store: Option<&Path>,
     attempt_id: &crate::app::repair_attempt::RepairAttemptId,
     retained_artifact_sha256: &str,
     verified: &VerifiedSelection,
     authority: &str,
     after: &crate::app::repair_attempt::RepairAttemptAfter,
 ) -> Result<PathBuf, String> {
-    let manifest = crate::app::repair_attempt::load_repair_attempt_manifest(root, attempt_id)?;
-    let policy = crate::app::repair_attempt::load_edit_cage_policy(root, attempt_id)?;
+    let manifest =
+        crate::app::repair_attempt::load_repair_attempt_manifest_from(root, store, attempt_id)?;
+    let policy = crate::app::repair_attempt::load_edit_cage_policy_from(root, store, attempt_id)?;
     // The digest chain is verified against the staged prepare artifact before
     // anything is rendered: a claimed digest that leaves the retained binding
     // fails here instead of being published into the record.
@@ -1901,6 +1949,65 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn identical_record_inputs_serialize_identically() -> Result<(), String> {
+        // This is deterministic construction proof, not selection admission.
+        // The packet bytes are a committed producer snapshot, not a digest
+        // placeholder. Neither call creates or publishes a durable attempt.
+        let packet = include_bytes!(
+            "../../../../fixtures/boundary_gap/expected/editor-agent-loop/agent-packet.json"
+        );
+        serde_json::from_slice::<Value>(packet)
+            .map_err(|error| format!("producer packet fixture is invalid: {error}"))?;
+        let packet_sha256 = sha256_hex(packet);
+        let before_snapshot_sha256 = sha256_hex(b"identical before snapshot bytes");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/boundary_gap");
+        let row = sample_row()?;
+        let verified = verify_row_binding(as_object(&row, "selection row")?, "att-test-1")?;
+        let target = crate::edit_cage::CagePathRule::exact(&verified.target_path)?;
+        let policy = EditCagePolicy {
+            selected_target: target.clone(),
+            allowed_edit_surface: vec![target],
+            forbidden_paths: Vec::new(),
+            expected_operational_writes: Vec::new(),
+            ignored_build_output: None,
+            untracked_build_lockfile: None,
+        };
+        let render = || {
+            render_record(
+                &root,
+                RecordIdentity {
+                    seam_id: "identical-seam",
+                    repository_head: &verified.head,
+                    phase: "prepare",
+                    durable_attempt_id: None,
+                    binding_artifact_sha256: None,
+                    verified: &verified,
+                    authority: AUTHORITY_IDENTITY,
+                    packet_sha256: &packet_sha256,
+                    before_snapshot_sha256: &before_snapshot_sha256,
+                    policy: &policy,
+                },
+                None,
+            )
+        };
+        let first = render()?;
+        let second = render()?;
+        if first
+            .pointer("/input/packet_sha256")
+            .and_then(Value::as_str)
+            != Some(packet_sha256.as_str())
+        {
+            return Err("record lost the identical producer packet digest".to_string());
+        }
+        let first_bytes = serde_json::to_vec(&first).map_err(|error| error.to_string())?;
+        let second_bytes = serde_json::to_vec(&second).map_err(|error| error.to_string())?;
+        if first_bytes != second_bytes {
+            return Err("identical accepted record inputs serialized differently".to_string());
+        }
+        Ok(())
+    }
+
     /// A minimal retained prepare record whose early re-verification checks
     /// pass, so the bounded value validation of the nested blocks is the first
     /// stage under test. The trust block is a stub: value tampering fails
@@ -1956,6 +2063,8 @@ mod tests {
             expected_operational_writes: vec![crate::edit_cage::CagePathRule::subtree(
                 "target/ripr",
             )?],
+            ignored_build_output: None,
+            untracked_build_lockfile: None,
         };
         // Positive control: with intact values the bounded value stage passes
         // and verification proceeds to the telemetry manifest, which does not
@@ -2120,14 +2229,17 @@ mod tests {
                 .map_err(|error| format!("serialize replaced manifest: {error}"))?;
             std::fs::write(&manifest_path, &replaced_text)
                 .map_err(|error| format!("write replaced manifest: {error}"))?;
-            let error = match confirm_manifest_unchanged(&retained) {
-                Err(error) => error,
+            let message = match confirm_manifest_unchanged(&retained) {
+                Err(ManifestConfirmationError::Replaced(message)) => message,
+                Err(ManifestConfirmationError::Operational(message)) => {
+                    return Err(format!("unexpected operational refusal: {message}"));
+                }
                 Ok(()) => {
                     return Err("a replaced manifest passed the late-window confirm".to_string());
                 }
             };
-            if !error.contains("stale selection manifest") {
-                return Err(format!("unexpected confirm refusal: {error}"));
+            if !message.contains("stale selection manifest") {
+                return Err(format!("unexpected confirm refusal: {message}"));
             }
             Ok(())
         })();

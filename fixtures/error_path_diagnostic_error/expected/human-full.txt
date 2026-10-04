@@ -1,0 +1,85 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/error_path_diagnostic_error/input
+
+Summary: 2 probe(s), 0 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 1 static_unknown; 2 of 2 finding(s) unsuppressed
+
+Analysis outcome: findings below (analysis complete; complete_with_findings).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
+
+WARNING fixtures/error_path_diagnostic_error/input/src/lib.rs:5
+  id: probe:src_lib.rs:error_path:fedbf836
+
+Changed
+  before: let n = rdr.read(&mut buf).unwrap_or(0);
+  after:  let n = rdr.read(&mut buf)?;
+
+Probe
+  family: error_path
+  delta:  value
+  owner:  src/lib.rs::read_all
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach read_all: reads_successfully
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Complete propagation witness reaches error variant: let n = rdr.read(&mut buf)?
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches error variant: let n = rdr.read(&mut buf)? (line 5)
+  - related test src/lib.rs:14 reads_successfully uses strong exact value oracle: assert_eq!(rdr.len(), 10, "read error");
+  - source assertion argument value 10 at line 17
+  - source assertion argument value "read error" at line 18
+  - source assertion argument value 10 at line 18
+
+Weakness
+  - No exact error variant discriminator was detected
+
+Next step
+  Assert the exact error variant or payload instead of only is_err().
+Drill in:
+  ripr explain --root fixtures/error_path_diagnostic_error/input --diff fixtures/error_path_diagnostic_error/diff.patch --mode fast probe:src_lib.rs:error_path:fedbf836
+  ripr context --root fixtures/error_path_diagnostic_error/input --diff fixtures/error_path_diagnostic_error/diff.patch --mode fast --at probe:src_lib.rs:error_path:fedbf836
+
+NOTE fixtures/error_path_diagnostic_error/input/src/lib.rs:5
+  id: probe:src_lib.rs:static_unknown:afc04379
+
+Changed
+  before: let n = rdr.read(&mut buf).unwrap_or(0);
+  expr:   let n = rdr.read(&mut buf).unwrap_or(0);
+  source:  base_deleted — base-side evidence, not a candidate edit target
+
+Probe
+  family: static_unknown
+  delta:  unknown
+  owner:  src/lib.rs::read_all
+
+Static exposure
+  static_unknown (note, confidence 0.50)
+
+Evidence
+  - reach yes: Related tests appear to reach read_all: reads_successfully
+  - infection unknown: Changed syntax is not mapped to a high-confidence probe family
+  - propagation unknown: No propagation model is available for this changed syntax
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator unknown: Assertions exist, but oracle strength is unknown
+  - local flow reaches unknown sink: unknown sink (line 5)
+  - related test src/lib.rs:14 reads_successfully uses unknown exact value oracle: assert_eq!(rdr.len(), 10, "read error");
+  - source assertion argument value 10 at line 17
+  - source assertion argument value "read error" at line 18
+  - source assertion argument value 10 at line 18
+
+Weakness
+  - No strong discriminator was detected
+  - Syntax-first analysis cannot classify this change; use deep mode or real mutation
+
+Stop reasons:
+  - static_probe_unknown — ripr could not model this change well enough to classify it
+
+Next step
+  Escalate to real mutation testing or deep static analysis for this probe.
+Drill in:
+  ripr explain --root fixtures/error_path_diagnostic_error/input --diff fixtures/error_path_diagnostic_error/diff.patch --mode fast probe:src_lib.rs:static_unknown:afc04379
+  ripr context --root fixtures/error_path_diagnostic_error/input --diff fixtures/error_path_diagnostic_error/diff.patch --mode fast --at probe:src_lib.rs:static_unknown:afc04379

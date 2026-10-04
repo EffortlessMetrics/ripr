@@ -23,6 +23,9 @@ pub(crate) struct PilotSummaryContext<'a> {
     pub(crate) timeout_ms: u64,
     pub(crate) artifacts: &'a PilotArtifacts,
     pub(crate) python_first_use: Option<&'a PilotPythonFirstUse>,
+    /// Routes for languages pilot's Rust seam scan does not rank. `None` when
+    /// they were not collected (the timeout summary).
+    pub(crate) language_routes: Option<&'a super::PilotLanguageRoutes>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

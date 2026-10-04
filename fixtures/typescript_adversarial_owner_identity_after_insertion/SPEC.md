@@ -39,8 +39,9 @@ its strong oracle.
 ## Then
 
 ripr keeps owner identity aligned to the POST-insertion file: the changed
-predicate resolves to `applyDiscount`, whose only test link is the
-same-file-stem proximity heuristic, so it classifies `weakly_exposed`. The
+predicate resolves to `applyDiscount`; the only test references `computeFee`,
+so the same-file stem alone does not relate it (RIPR-SPEC-0027) and the
+change classifies `no_static_path`. The
 inserted module initializer `DEFAULT_FEE_RULE` has no observer and classifies
 `no_static_path`. The `computeFee` exact-value oracle is never borrowed —
 `computeFee` is unchanged, so it produces no finding at all.

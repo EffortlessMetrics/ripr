@@ -72,7 +72,10 @@
       "type": "array",
       "const": ["push"]
     },
-    "snapshot_handles": { "type": "boolean" },
+    "snapshot_handles": {
+      "type": "boolean",
+      "description": "Advertises the #1602 immutable snapshot-handle contract. Stays `false` until #1602 lands that contract; the interim `snapshot_id` generation echo in responses is NOT this contract."
+    },
     "continuations": { "type": "boolean" },
     "work_done_progress": { "type": "boolean" },
     "cancellation": { "type": "boolean" },

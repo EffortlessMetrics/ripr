@@ -1,0 +1,862 @@
+{
+  "kind": "historical_exact_family_binary_observation",
+  "producer_head": "68770f7cbc382425fdd2d0c1d02f1b198466d788",
+  "source_candidate": "1a3672db4b624338aeeaaecc3beed62e347a5d03",
+  "source_candidate_tested": false,
+  "limits": {
+    "source_bytes": 16777216,
+    "output_cache_receipts_bytes": 50331648,
+    "total_bytes": 67108864,
+    "free_floor_bytes": 3221225472,
+    "seconds_per_command": 120
+  },
+  "observations": [
+    {
+      "variant": "corrected",
+      "root": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/workspace",
+      "inputs_before": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-corrected-before-inputs.json",
+        "bytes": 42092,
+        "sha256": "0994c790789c674587a788c7e447e22b2e99335a46420f87d5805fa91541cdf9"
+      },
+      "identity_before": {
+        "executable": {
+          "path": "/workspace/shared/targets/ripr/debug/ripr",
+          "bytes": 158795648,
+          "sha256": "3ae247fffbfeb234b21c5fbb10a51ac86ffbd14dffdb0fdaabeec0b2dd2384f1"
+        },
+        "producer_receipt": {
+          "path": "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/qualification-value-wording-final/phase-receipt.json",
+          "bytes": 13822,
+          "sha256": "d0f16a8620fa322b7f803a63a50f1f018bad3d5163f479702571bc4400728d52"
+        }
+      },
+      "patch_before": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/portable-benchmark-proposal/regex-word-boundary-empty/patches/production.patch",
+        "bytes": 1612,
+        "sha256": "37e041abb479743a22a83b2f0e615dbebc8b8a4c000038c281a8af48c0fe5cc8"
+      },
+      "timed_out": false,
+      "resource_stop": null,
+      "started_utc": "2026-10-03T09:51:11Z",
+      "argv": [
+        "/workspace/shared/targets/ripr/debug/ripr",
+        "check",
+        "--root",
+        "/workspace/shared/ripr-regex-case-evidence/ripr-observation/workspace",
+        "--diff",
+        "/workspace/shared/ripr-regex-case-evidence/portable-benchmark-proposal/regex-word-boundary-empty/patches/production.patch",
+        "--format",
+        "json"
+      ],
+      "pid": 36,
+      "exit_code": 0,
+      "elapsed_seconds": 2.868,
+      "stdout": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-corrected.stdout.json",
+        "bytes": 15583,
+        "sha256": "659c706a088fecde651ba82698d9d708ea3157f3a4133a8b40f8994362bba3d3"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-corrected.stderr",
+        "bytes": 1313,
+        "sha256": "cfe332448589760908ad23ee46b1e60407bae54b359c898ce2a63ec8a76c14fb"
+      },
+      "inputs_after": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-corrected-after-inputs.json",
+        "bytes": 42092,
+        "sha256": "0994c790789c674587a788c7e447e22b2e99335a46420f87d5805fa91541cdf9"
+      },
+      "identity_after": {
+        "executable": {
+          "path": "/workspace/shared/targets/ripr/debug/ripr",
+          "bytes": 158795648,
+          "sha256": "3ae247fffbfeb234b21c5fbb10a51ac86ffbd14dffdb0fdaabeec0b2dd2384f1"
+        },
+        "producer_receipt": {
+          "path": "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/qualification-value-wording-final/phase-receipt.json",
+          "bytes": 13822,
+          "sha256": "d0f16a8620fa322b7f803a63a50f1f018bad3d5163f479702571bc4400728d52"
+        }
+      },
+      "patch_after": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/portable-benchmark-proposal/regex-word-boundary-empty/patches/production.patch",
+        "bytes": 1612,
+        "sha256": "37e041abb479743a22a83b2f0e615dbebc8b8a4c000038c281a8af48c0fe5cc8"
+      },
+      "json_kind": "dict",
+      "json_top_level_keys": [
+        "analysis_outcome",
+        "findings",
+        "mode",
+        "root",
+        "schema_version",
+        "summary",
+        "tool"
+      ],
+      "parsed_json": true,
+      "usage_after": {
+        "source_bytes": 11124736,
+        "output_cache_receipts_bytes": 21573632,
+        "total_bytes": 32698368,
+        "free_bytes": 4784386048
+      }
+    },
+    {
+      "variant": "original",
+      "root": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/workspace",
+      "inputs_before": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-original-before-inputs.json",
+        "bytes": 42092,
+        "sha256": "cc5aa8d9f9f88bc7ef91bcebe451e181e078aba1bda86b0794278791ae059066"
+      },
+      "identity_before": {
+        "executable": {
+          "path": "/workspace/shared/targets/ripr/debug/ripr",
+          "bytes": 158795648,
+          "sha256": "3ae247fffbfeb234b21c5fbb10a51ac86ffbd14dffdb0fdaabeec0b2dd2384f1"
+        },
+        "producer_receipt": {
+          "path": "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/qualification-value-wording-final/phase-receipt.json",
+          "bytes": 13822,
+          "sha256": "d0f16a8620fa322b7f803a63a50f1f018bad3d5163f479702571bc4400728d52"
+        }
+      },
+      "patch_before": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/portable-benchmark-proposal/regex-word-boundary-empty/patches/production.patch",
+        "bytes": 1612,
+        "sha256": "37e041abb479743a22a83b2f0e615dbebc8b8a4c000038c281a8af48c0fe5cc8"
+      },
+      "timed_out": false,
+      "resource_stop": null,
+      "started_utc": "2026-10-03T09:51:14Z",
+      "argv": [
+        "/workspace/shared/targets/ripr/debug/ripr",
+        "check",
+        "--root",
+        "/workspace/shared/ripr-regex-case-evidence/ripr-observation/workspace",
+        "--diff",
+        "/workspace/shared/ripr-regex-case-evidence/portable-benchmark-proposal/regex-word-boundary-empty/patches/production.patch",
+        "--format",
+        "json"
+      ],
+      "pid": 182,
+      "exit_code": 0,
+      "elapsed_seconds": 3.009,
+      "stdout": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-original.stdout.json",
+        "bytes": 15583,
+        "sha256": "659c706a088fecde651ba82698d9d708ea3157f3a4133a8b40f8994362bba3d3"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-original.stderr",
+        "bytes": 1313,
+        "sha256": "cfe332448589760908ad23ee46b1e60407bae54b359c898ce2a63ec8a76c14fb"
+      },
+      "inputs_after": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-original-after-inputs.json",
+        "bytes": 42092,
+        "sha256": "cc5aa8d9f9f88bc7ef91bcebe451e181e078aba1bda86b0794278791ae059066"
+      },
+      "identity_after": {
+        "executable": {
+          "path": "/workspace/shared/targets/ripr/debug/ripr",
+          "bytes": 158795648,
+          "sha256": "3ae247fffbfeb234b21c5fbb10a51ac86ffbd14dffdb0fdaabeec0b2dd2384f1"
+        },
+        "producer_receipt": {
+          "path": "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/qualification-value-wording-final/phase-receipt.json",
+          "bytes": 13822,
+          "sha256": "d0f16a8620fa322b7f803a63a50f1f018bad3d5163f479702571bc4400728d52"
+        }
+      },
+      "patch_after": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/portable-benchmark-proposal/regex-word-boundary-empty/patches/production.patch",
+        "bytes": 1612,
+        "sha256": "37e041abb479743a22a83b2f0e615dbebc8b8a4c000038c281a8af48c0fe5cc8"
+      },
+      "json_kind": "dict",
+      "json_top_level_keys": [
+        "analysis_outcome",
+        "findings",
+        "mode",
+        "root",
+        "schema_version",
+        "summary",
+        "tool"
+      ],
+      "parsed_json": true,
+      "usage_after": {
+        "source_bytes": 11124736,
+        "output_cache_receipts_bytes": 23412736,
+        "total_bytes": 34537472,
+        "free_bytes": 4782551040
+      }
+    },
+    {
+      "variant": "weak",
+      "root": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/workspace",
+      "inputs_before": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-weak-before-inputs.json",
+        "bytes": 42092,
+        "sha256": "d796cd8166f482a304b07b44ee7dde8db0f7a940d749831af4705d9aa2c102ff"
+      },
+      "identity_before": {
+        "executable": {
+          "path": "/workspace/shared/targets/ripr/debug/ripr",
+          "bytes": 158795648,
+          "sha256": "3ae247fffbfeb234b21c5fbb10a51ac86ffbd14dffdb0fdaabeec0b2dd2384f1"
+        },
+        "producer_receipt": {
+          "path": "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/qualification-value-wording-final/phase-receipt.json",
+          "bytes": 13822,
+          "sha256": "d0f16a8620fa322b7f803a63a50f1f018bad3d5163f479702571bc4400728d52"
+        }
+      },
+      "patch_before": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/portable-benchmark-proposal/regex-word-boundary-empty/patches/production.patch",
+        "bytes": 1612,
+        "sha256": "37e041abb479743a22a83b2f0e615dbebc8b8a4c000038c281a8af48c0fe5cc8"
+      },
+      "timed_out": false,
+      "resource_stop": null,
+      "started_utc": "2026-10-03T09:51:18Z",
+      "argv": [
+        "/workspace/shared/targets/ripr/debug/ripr",
+        "check",
+        "--root",
+        "/workspace/shared/ripr-regex-case-evidence/ripr-observation/workspace",
+        "--diff",
+        "/workspace/shared/ripr-regex-case-evidence/portable-benchmark-proposal/regex-word-boundary-empty/patches/production.patch",
+        "--format",
+        "json"
+      ],
+      "pid": 334,
+      "exit_code": 0,
+      "elapsed_seconds": 3.125,
+      "stdout": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-weak.stdout.json",
+        "bytes": 15583,
+        "sha256": "659c706a088fecde651ba82698d9d708ea3157f3a4133a8b40f8994362bba3d3"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-weak.stderr",
+        "bytes": 1313,
+        "sha256": "cfe332448589760908ad23ee46b1e60407bae54b359c898ce2a63ec8a76c14fb"
+      },
+      "inputs_after": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-weak-after-inputs.json",
+        "bytes": 42092,
+        "sha256": "d796cd8166f482a304b07b44ee7dde8db0f7a940d749831af4705d9aa2c102ff"
+      },
+      "identity_after": {
+        "executable": {
+          "path": "/workspace/shared/targets/ripr/debug/ripr",
+          "bytes": 158795648,
+          "sha256": "3ae247fffbfeb234b21c5fbb10a51ac86ffbd14dffdb0fdaabeec0b2dd2384f1"
+        },
+        "producer_receipt": {
+          "path": "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/qualification-value-wording-final/phase-receipt.json",
+          "bytes": 13822,
+          "sha256": "d0f16a8620fa322b7f803a63a50f1f018bad3d5163f479702571bc4400728d52"
+        }
+      },
+      "patch_after": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/portable-benchmark-proposal/regex-word-boundary-empty/patches/production.patch",
+        "bytes": 1612,
+        "sha256": "37e041abb479743a22a83b2f0e615dbebc8b8a4c000038c281a8af48c0fe5cc8"
+      },
+      "json_kind": "dict",
+      "json_top_level_keys": [
+        "analysis_outcome",
+        "findings",
+        "mode",
+        "root",
+        "schema_version",
+        "summary",
+        "tool"
+      ],
+      "parsed_json": true,
+      "usage_after": {
+        "source_bytes": 11124736,
+        "output_cache_receipts_bytes": 25251840,
+        "total_bytes": 36376576,
+        "free_bytes": 4780711936
+      }
+    }
+  ],
+  "lock": {
+    "path": "/workspace/shared/cloud-cargo.lock",
+    "mode": "rb/exclusive/nonblocking",
+    "pid": 2,
+    "acquired_utc": "2026-10-03T09:51:10Z",
+    "released_utc": "2026-10-03T09:51:21Z"
+  },
+  "admission_usage": {
+    "source_bytes": 11124736,
+    "output_cache_receipts_bytes": 8654848,
+    "total_bytes": 19779584,
+    "free_bytes": 4797304832
+  },
+  "identity_before": {
+    "executable": {
+      "path": "/workspace/shared/targets/ripr/debug/ripr",
+      "bytes": 158795648,
+      "sha256": "3ae247fffbfeb234b21c5fbb10a51ac86ffbd14dffdb0fdaabeec0b2dd2384f1"
+    },
+    "producer_receipt": {
+      "path": "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/qualification-value-wording-final/phase-receipt.json",
+      "bytes": 13822,
+      "sha256": "d0f16a8620fa322b7f803a63a50f1f018bad3d5163f479702571bc4400728d52"
+    }
+  },
+  "compiler_artifact": {
+    "reason": "compiler-artifact",
+    "package_id": "path+file:///workspace/shared/ripr-family-admission-cloud-qa/crates/ripr#0.11.0",
+    "manifest_path": "/workspace/shared/ripr-family-admission-cloud-qa/crates/ripr/Cargo.toml",
+    "target": {
+      "kind": [
+        "bin"
+      ],
+      "crate_types": [
+        "bin"
+      ],
+      "name": "ripr",
+      "src_path": "/workspace/shared/ripr-family-admission-cloud-qa/crates/ripr/src/main.rs",
+      "edition": "2024",
+      "doc": true,
+      "doctest": false,
+      "test": true
+    },
+    "profile": {
+      "opt_level": "0",
+      "debuginfo": "line-tables-only",
+      "debug_assertions": true,
+      "overflow_checks": true,
+      "test": false
+    },
+    "features": [
+      "default",
+      "lang-python",
+      "lang-rust",
+      "lang-typescript"
+    ],
+    "filenames": [
+      "/workspace/shared/targets/ripr/debug/ripr"
+    ],
+    "executable": "/workspace/shared/targets/ripr/debug/ripr",
+    "fresh": false
+  },
+  "patch": {
+    "path": "/workspace/shared/ripr-regex-case-evidence/portable-benchmark-proposal/regex-word-boundary-empty/patches/production.patch",
+    "bytes": 1612,
+    "sha256": "37e041abb479743a22a83b2f0e615dbebc8b8a4c000038c281a8af48c0fe5cc8"
+  },
+  "prior_attempt": {
+    "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/receipt.json",
+    "bytes": 6653,
+    "sha256": "c09291f66b6ea2d3f2006ed431bb59f88e1468d8847147e0c7425cc8ef30a3b9"
+  },
+  "old_cache_before": [
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/0402c870dcb1ee93.json",
+      "bytes": 35456,
+      "sha256": "64b28e906c5191d9b2823bf2e0a77e6f0e9c03331a440be6852a16f8832ac8b5"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/07ca2f514b782257.json",
+      "bytes": 2199,
+      "sha256": "57848184b524b2fa7ec7a17b30810457b58ba0d76690f8d744305b75aaa04516"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/135ed28ac5cbe338.json",
+      "bytes": 137978,
+      "sha256": "41da07b309a3390fc6012db5df162ffeeee2068ca14c374130fb139949552b04"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/142c4e0b99b424f8.json",
+      "bytes": 135480,
+      "sha256": "1c5d3ba619a3604320c6f29f9ba6d33abe70802702390453e69ba39428eae9bb"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/287b45e820611ceb.json",
+      "bytes": 37135,
+      "sha256": "8591a3908954623b20742427990e3620fd5689613c01339c183c17757734911b"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/3b428c861be927ff.json",
+      "bytes": 20083,
+      "sha256": "c64259534a770e7f711097e5a61e944529f9deb16e209947f131dc19b56a6bfd"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/438de5592f21f88d.json",
+      "bytes": 1866,
+      "sha256": "4f0f2e040a67b5ba5ebd35aac34be44d664db30b6ac568645f7a6b7b4f213b20"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/48f753a7de1ad084.json",
+      "bytes": 44122,
+      "sha256": "30bf3c6cda7286b665c7f75120a413ec488bd0f86bd889f7d029dada3067d037"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/4b8033dddf38dd52.json",
+      "bytes": 804,
+      "sha256": "40b5c5d1725fc62f92c0afb8ecaf1463fd020874acf12a522c2bdabf628fb089"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/4bef2a3f335c49dc.json",
+      "bytes": 89449,
+      "sha256": "71599d3a8136622dc3053aa0b2e693578123eef97fdebe5f91b44edba69692b0"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/5991f7b718e84e6a.json",
+      "bytes": 51586,
+      "sha256": "105cd2732d70151e83df78bfe765d13aa3ffef1b8c2f9dd5737879b8e534df4c"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/67a665e5a0de2588.json",
+      "bytes": 1725352,
+      "sha256": "2274b710409d12e038fdfecf1727d62f5cf0c4f0bb83c69bc12c91a0728a71ce"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/69915bb0327eca48.json",
+      "bytes": 10336,
+      "sha256": "9913c5b3512ebbc47c3e3d9eec116342229f15f8e5ef5145966bbdf2ab0acdf6"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/77fcb3593514db2c.json",
+      "bytes": 2102,
+      "sha256": "5210d604f6bb03326285dc52b917d7acef3ebacc59334fa6935dd128df396757"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/7a4c402f6431fefe.json",
+      "bytes": 159826,
+      "sha256": "28551e691ccf3dd4c3a7f1b564a67b638341bc53baac28a145d0d0deebf90b5a"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/7c78b0d7c3c815f9.json",
+      "bytes": 118826,
+      "sha256": "caec25e399c7211ab4aae32f91b4d87378989a62dc3b617e4d85d9572c18d99a"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/7f5a8ded4e69d1ea.json",
+      "bytes": 6505,
+      "sha256": "164cf49ac7ca6a2b751c0c72d73ab1860161aadba9e72505fe9018114f1538f8"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/83ca2cc61f0d5482.json",
+      "bytes": 377724,
+      "sha256": "0c9cf8fdf067711cd93819d4cf7e58cc81ea316237419f37ca1666015dea80a1"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/89e8698ef7ef6560.json",
+      "bytes": 1167,
+      "sha256": "ec31d2433370be5c76b8af9a435195504fc328f678f1354775cadda99809c762"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/955d36fb3269514d.json",
+      "bytes": 47169,
+      "sha256": "623e7ae7e506d821f404798524b2491180d69488e803e73dd86bfd44c5022b97"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/9875bca7fa1a94f6.json",
+      "bytes": 8760,
+      "sha256": "cd0f5431a63380419da8767b413cadab6ff0c8d49cb82c0e9fb981a46020b838"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/9c9ecea80405a458.json",
+      "bytes": 67678,
+      "sha256": "97fdee40fca78d07575c54fcc1c06b33460982d2042bd4f4f52763a708521f2c"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/9d2e95e075849ddf.json",
+      "bytes": 191998,
+      "sha256": "d2ecf79ec8d1637cfd2d87cc5012996d227d4fbfab6c12e14b48ceadb7b0f414"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/9fdf89ee1a378926.json",
+      "bytes": 11572,
+      "sha256": "1dd60f2afcb070f63aa67fa4a546b9855e54c9540bc40408108b41636e4984c6"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/a9f784ff93439898.json",
+      "bytes": 11811,
+      "sha256": "61b8604e4633eae45407089188ea3ec5bb341652b42226ccf05db3eb3779ff9a"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/acce1ae35eb4cdcb.json",
+      "bytes": 24809,
+      "sha256": "4f7eee5b38d976e21e704e182c1b35a2a8574d662d8e28c6142a06f12d3a106b"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/afe6f832f6ae71fd.json",
+      "bytes": 16282,
+      "sha256": "4c912186df7ef4473cd571495928d2d2237344356e5f0e5457f080a95d686e25"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/b104a4ca587e557e.json",
+      "bytes": 22160,
+      "sha256": "3960699687ade7e503e0d04cc7a1f5413997e7c89e660c53f186cd205cfd1529"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/b5a040e9f6174ae1.json",
+      "bytes": 49249,
+      "sha256": "0875e1ea22813b08fac3dc6f9eca0d4223a2804c7ce45f26441300954b9c6fad"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/b5ce646836c7c4f4.json",
+      "bytes": 44997,
+      "sha256": "9bc04d14ca0a741b7603d794987c645bb6310aa601998dd4ba1047367ea844cf"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/b930d990e72b159a.json",
+      "bytes": 2814369,
+      "sha256": "5d746ac5bdf2e7fb4ac676a815ba0920099212bf07893f714a74918f52f36631"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/c405bc7753fe58ea.json",
+      "bytes": 62107,
+      "sha256": "b2b182e54b339c8275723b7b42b71a7302a08581e71e792e70565bfaf1cd2058"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/c4827041d9ef1b7c.json",
+      "bytes": 16122,
+      "sha256": "ee8ad13acdc223b30ecc162723991cf89823671492198c07c01819566a654f79"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/c640057681cdec6a.json",
+      "bytes": 243788,
+      "sha256": "c09a253c75e074b3caba7ef9b4d588adb0550f6bc174d0059fa06dd7e89417a7"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/ca0a6e01f2f0cab5.json",
+      "bytes": 848861,
+      "sha256": "2f9f3b1a3daa606a8ab9bbe8c0c6c79a9887fd7063f807be140fa93ce54044c7"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/d558c9195ea4dcf8.json",
+      "bytes": 1384,
+      "sha256": "55f3dd9c1dac2e9d7f9475e8454d4cf34e5b78de8c342f91e165bd7d92a93d46"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/d5e0d39b2e0ac2f2.json",
+      "bytes": 34062,
+      "sha256": "7c6175e197963cc2ceedc7f79cb53a7443c23bafc9e9f04444be9f02bbade087"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/df132cf4789dea16.json",
+      "bytes": 11669,
+      "sha256": "3ec5b754db5e89beb5bee81aeba251c100e4b237260b1947b136e83286eb1d00"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/df3f22b029506407.json",
+      "bytes": 25630,
+      "sha256": "457e8d2588a96ea5cc02abd59b1925afcbf20101677ba01ae0d2175917b6679e"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/dff554c02d26ff2f.json",
+      "bytes": 52908,
+      "sha256": "af2d835ba043466e8d05d9cf7bc7e68c178fd2bdd614d9a57929607c61029ea4"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/eb573b778cd832b9.json",
+      "bytes": 43683,
+      "sha256": "8660d1a2c6e6141f91e3d14be91ff3d807cc697f30a4895b92fee906ed3e0507"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/ef0cf2a21a8dd083.json",
+      "bytes": 39305,
+      "sha256": "0ceaef5783859d8be0b2ac642f944673db3a789d24d7d0a56c48bfc2127bf301"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/f2b877b80711688d.json",
+      "bytes": 10740,
+      "sha256": "0d8a973786fefebaf865289a148945338bd7dd3888e6aa2643c24cebbd14202c"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/f7cf78cb968c6848.json",
+      "bytes": 258998,
+      "sha256": "9ac73ff5c8d405d4d663f3d4400c7a654c56f27cceef760854c891bcc78422f9"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/f8ac4fc25f32135a.json",
+      "bytes": 39892,
+      "sha256": "99aa753b8d0275235973bf717b3a3434af251da37e392264f486e213c12e8123"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/fd19a7c4dd2127fa.json",
+      "bytes": 30119,
+      "sha256": "a266fc2109539a2b6bae610775486f26c7ce91168cde6c3bd9e953a79e709f8a"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/fe4e614c02d5a43e.json",
+      "bytes": 385861,
+      "sha256": "064ad9d5f524d04b6541b6fcda828b06a01754db495a4e03b5ebcf9cb42044fa"
+    }
+  ],
+  "environment": {
+    "RIPR_CACHE_DIR": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache-68770"
+  },
+  "identity_after": {
+    "executable": {
+      "path": "/workspace/shared/targets/ripr/debug/ripr",
+      "bytes": 158795648,
+      "sha256": "3ae247fffbfeb234b21c5fbb10a51ac86ffbd14dffdb0fdaabeec0b2dd2384f1"
+    },
+    "producer_receipt": {
+      "path": "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/qualification-value-wording-final/phase-receipt.json",
+      "bytes": 13822,
+      "sha256": "d0f16a8620fa322b7f803a63a50f1f018bad3d5163f479702571bc4400728d52"
+    }
+  },
+  "old_cache_after": [
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/0402c870dcb1ee93.json",
+      "bytes": 35456,
+      "sha256": "64b28e906c5191d9b2823bf2e0a77e6f0e9c03331a440be6852a16f8832ac8b5"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/07ca2f514b782257.json",
+      "bytes": 2199,
+      "sha256": "57848184b524b2fa7ec7a17b30810457b58ba0d76690f8d744305b75aaa04516"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/135ed28ac5cbe338.json",
+      "bytes": 137978,
+      "sha256": "41da07b309a3390fc6012db5df162ffeeee2068ca14c374130fb139949552b04"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/142c4e0b99b424f8.json",
+      "bytes": 135480,
+      "sha256": "1c5d3ba619a3604320c6f29f9ba6d33abe70802702390453e69ba39428eae9bb"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/287b45e820611ceb.json",
+      "bytes": 37135,
+      "sha256": "8591a3908954623b20742427990e3620fd5689613c01339c183c17757734911b"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/3b428c861be927ff.json",
+      "bytes": 20083,
+      "sha256": "c64259534a770e7f711097e5a61e944529f9deb16e209947f131dc19b56a6bfd"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/438de5592f21f88d.json",
+      "bytes": 1866,
+      "sha256": "4f0f2e040a67b5ba5ebd35aac34be44d664db30b6ac568645f7a6b7b4f213b20"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/48f753a7de1ad084.json",
+      "bytes": 44122,
+      "sha256": "30bf3c6cda7286b665c7f75120a413ec488bd0f86bd889f7d029dada3067d037"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/4b8033dddf38dd52.json",
+      "bytes": 804,
+      "sha256": "40b5c5d1725fc62f92c0afb8ecaf1463fd020874acf12a522c2bdabf628fb089"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/4bef2a3f335c49dc.json",
+      "bytes": 89449,
+      "sha256": "71599d3a8136622dc3053aa0b2e693578123eef97fdebe5f91b44edba69692b0"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/5991f7b718e84e6a.json",
+      "bytes": 51586,
+      "sha256": "105cd2732d70151e83df78bfe765d13aa3ffef1b8c2f9dd5737879b8e534df4c"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/67a665e5a0de2588.json",
+      "bytes": 1725352,
+      "sha256": "2274b710409d12e038fdfecf1727d62f5cf0c4f0bb83c69bc12c91a0728a71ce"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/69915bb0327eca48.json",
+      "bytes": 10336,
+      "sha256": "9913c5b3512ebbc47c3e3d9eec116342229f15f8e5ef5145966bbdf2ab0acdf6"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/77fcb3593514db2c.json",
+      "bytes": 2102,
+      "sha256": "5210d604f6bb03326285dc52b917d7acef3ebacc59334fa6935dd128df396757"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/7a4c402f6431fefe.json",
+      "bytes": 159826,
+      "sha256": "28551e691ccf3dd4c3a7f1b564a67b638341bc53baac28a145d0d0deebf90b5a"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/7c78b0d7c3c815f9.json",
+      "bytes": 118826,
+      "sha256": "caec25e399c7211ab4aae32f91b4d87378989a62dc3b617e4d85d9572c18d99a"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/7f5a8ded4e69d1ea.json",
+      "bytes": 6505,
+      "sha256": "164cf49ac7ca6a2b751c0c72d73ab1860161aadba9e72505fe9018114f1538f8"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/83ca2cc61f0d5482.json",
+      "bytes": 377724,
+      "sha256": "0c9cf8fdf067711cd93819d4cf7e58cc81ea316237419f37ca1666015dea80a1"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/89e8698ef7ef6560.json",
+      "bytes": 1167,
+      "sha256": "ec31d2433370be5c76b8af9a435195504fc328f678f1354775cadda99809c762"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/955d36fb3269514d.json",
+      "bytes": 47169,
+      "sha256": "623e7ae7e506d821f404798524b2491180d69488e803e73dd86bfd44c5022b97"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/9875bca7fa1a94f6.json",
+      "bytes": 8760,
+      "sha256": "cd0f5431a63380419da8767b413cadab6ff0c8d49cb82c0e9fb981a46020b838"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/9c9ecea80405a458.json",
+      "bytes": 67678,
+      "sha256": "97fdee40fca78d07575c54fcc1c06b33460982d2042bd4f4f52763a708521f2c"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/9d2e95e075849ddf.json",
+      "bytes": 191998,
+      "sha256": "d2ecf79ec8d1637cfd2d87cc5012996d227d4fbfab6c12e14b48ceadb7b0f414"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/9fdf89ee1a378926.json",
+      "bytes": 11572,
+      "sha256": "1dd60f2afcb070f63aa67fa4a546b9855e54c9540bc40408108b41636e4984c6"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/a9f784ff93439898.json",
+      "bytes": 11811,
+      "sha256": "61b8604e4633eae45407089188ea3ec5bb341652b42226ccf05db3eb3779ff9a"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/acce1ae35eb4cdcb.json",
+      "bytes": 24809,
+      "sha256": "4f7eee5b38d976e21e704e182c1b35a2a8574d662d8e28c6142a06f12d3a106b"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/afe6f832f6ae71fd.json",
+      "bytes": 16282,
+      "sha256": "4c912186df7ef4473cd571495928d2d2237344356e5f0e5457f080a95d686e25"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/b104a4ca587e557e.json",
+      "bytes": 22160,
+      "sha256": "3960699687ade7e503e0d04cc7a1f5413997e7c89e660c53f186cd205cfd1529"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/b5a040e9f6174ae1.json",
+      "bytes": 49249,
+      "sha256": "0875e1ea22813b08fac3dc6f9eca0d4223a2804c7ce45f26441300954b9c6fad"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/b5ce646836c7c4f4.json",
+      "bytes": 44997,
+      "sha256": "9bc04d14ca0a741b7603d794987c645bb6310aa601998dd4ba1047367ea844cf"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/b930d990e72b159a.json",
+      "bytes": 2814369,
+      "sha256": "5d746ac5bdf2e7fb4ac676a815ba0920099212bf07893f714a74918f52f36631"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/c405bc7753fe58ea.json",
+      "bytes": 62107,
+      "sha256": "b2b182e54b339c8275723b7b42b71a7302a08581e71e792e70565bfaf1cd2058"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/c4827041d9ef1b7c.json",
+      "bytes": 16122,
+      "sha256": "ee8ad13acdc223b30ecc162723991cf89823671492198c07c01819566a654f79"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/c640057681cdec6a.json",
+      "bytes": 243788,
+      "sha256": "c09a253c75e074b3caba7ef9b4d588adb0550f6bc174d0059fa06dd7e89417a7"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/ca0a6e01f2f0cab5.json",
+      "bytes": 848861,
+      "sha256": "2f9f3b1a3daa606a8ab9bbe8c0c6c79a9887fd7063f807be140fa93ce54044c7"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/d558c9195ea4dcf8.json",
+      "bytes": 1384,
+      "sha256": "55f3dd9c1dac2e9d7f9475e8454d4cf34e5b78de8c342f91e165bd7d92a93d46"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/d5e0d39b2e0ac2f2.json",
+      "bytes": 34062,
+      "sha256": "7c6175e197963cc2ceedc7f79cb53a7443c23bafc9e9f04444be9f02bbade087"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/df132cf4789dea16.json",
+      "bytes": 11669,
+      "sha256": "3ec5b754db5e89beb5bee81aeba251c100e4b237260b1947b136e83286eb1d00"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/df3f22b029506407.json",
+      "bytes": 25630,
+      "sha256": "457e8d2588a96ea5cc02abd59b1925afcbf20101677ba01ae0d2175917b6679e"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/dff554c02d26ff2f.json",
+      "bytes": 52908,
+      "sha256": "af2d835ba043466e8d05d9cf7bc7e68c178fd2bdd614d9a57929607c61029ea4"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/eb573b778cd832b9.json",
+      "bytes": 43683,
+      "sha256": "8660d1a2c6e6141f91e3d14be91ff3d807cc697f30a4895b92fee906ed3e0507"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/ef0cf2a21a8dd083.json",
+      "bytes": 39305,
+      "sha256": "0ceaef5783859d8be0b2ac642f944673db3a789d24d7d0a56c48bfc2127bf301"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/f2b877b80711688d.json",
+      "bytes": 10740,
+      "sha256": "0d8a973786fefebaf865289a148945338bd7dd3888e6aa2643c24cebbd14202c"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/f7cf78cb968c6848.json",
+      "bytes": 258998,
+      "sha256": "9ac73ff5c8d405d4d663f3d4400c7a654c56f27cceef760854c891bcc78422f9"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/f8ac4fc25f32135a.json",
+      "bytes": 39892,
+      "sha256": "99aa753b8d0275235973bf717b3a3434af251da37e392264f486e213c12e8123"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/fd19a7c4dd2127fa.json",
+      "bytes": 30119,
+      "sha256": "a266fc2109539a2b6bae610775486f26c7ce91168cde6c3bd9e953a79e709f8a"
+    },
+    {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/cache/repo-file-facts/1.18/fe4e614c02d5a43e.json",
+      "bytes": 385861,
+      "sha256": "064ad9d5f524d04b6541b6fcda828b06a01754db495a4e03b5ebcf9cb42044fa"
+    }
+  ],
+  "status": "THREE_COMMANDS_TERMINAL",
+  "terminal_usage": {
+    "source_bytes": 11124736,
+    "output_cache_receipts_bytes": 25255936,
+    "total_bytes": 36380672,
+    "free_bytes": 4780707840
+  },
+  "peak_observed_usage": {
+    "source_bytes": 11124736,
+    "output_cache_receipts_bytes": 25255936,
+    "total_bytes": 36380672,
+    "free_bytes": 4780707840
+  }
+}

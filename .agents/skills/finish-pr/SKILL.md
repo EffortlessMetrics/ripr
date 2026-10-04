@@ -12,15 +12,24 @@ The selected PR has an exact current head, a current `review-pr` disposition, al
 - `review_route:finish_pr_requires_review_ready`
 - `review_route:finish_pr_resolves_repaired_threads`
 
+# Finish contract markers
+
+- `finish_contract:routine_repo_writes`
+- `finish_contract:ordinary_squash_merge`
+- `finish_contract:duplicate_recheck`
+- `finish_contract:behind_only_no_restack`
+
 # Entry condition
 
 `finish-pr` owns publication, remote review/CI repair, merge, and reconciliation. It does not silently manufacture the substantive review pass.
 
 A committed candidate with `REVIEW_INCOMPLETE` may enter so the procedure can publish the PR and obtain remote evidence. Before arming auto-merge or merging, the exact published PR head must have a current `REVIEW_READY` result from `review-pr`. When the head changes materially, re-enter `review-pr` for affected currentness dimensions.
 
+Routine publication and convergence inside the selected repository claim—push ordinary branch, open/update PR, reply to review, repair CI, resolve addressed threads, arm normal auto-merge, use protected squash merge, and clean lane-created state—do not require another owner approval. Separate authorization remains required for force-push/shared-history rewriting, settings/rulesets/secrets, public tags/releases/publication/signing/credentials, durable-evidence deletion, or work outside the selected goal.
+
 # Procedure
 
-1. Reuse the PR that already owns the claim. Publish a new PR only when no equivalent candidate exists.
+1. Reuse the PR that already owns the claim. Search current source, all-state PRs, recently merged PRs, and the controlling issue immediately before publishing a new PR. Publish a new PR only when no equivalent candidate exists.
 2. Write a complete body:
    - production and evidence delta;
    - acceptance matrix;
@@ -40,17 +49,20 @@ A committed candidate with `REVIEW_INCOMPLETE` may enter so the procedure can pu
    - missing proof/review;
    - not established.
 6. Repair valid findings through the same candidate. For an incorrect finding, reply with source-backed evidence. Resolve only after the reply or repair exists.
-7. As merge preparation, resolve every thread that now holds a landed repair or a source-backed reply. Unresolved threads are a merge blocker in their own right, separate from whether review was sufficient: a candidate can hold `REVIEW_READY`, pass every required check, and still be refused. This does not soften the previous step. A thread with neither a repair nor a reply stays open, and resolving in order to clear a blocker rather than because the finding is addressed is a false-confidence action. Read each thread's state back after acting; a rejected call or a thread still reported unresolved keeps merge preparation blocked, and neither may be assumed to have succeeded. The reply and the resolve are independent operations that fail independently — a batch that posts no reply yet still resolves leaves the thread closed with its evidence missing, which reads as addressed while nothing was recorded. Sequence them so this cannot happen: confirm the reply exists before issuing the resolve, and leave the thread open when that confirmation fails, so a lost reply never closes an unrepaired finding.
+7. As merge preparation, resolve every thread that now holds a landed repair or a source-backed reply. Unresolved threads are a merge blocker in their own right, separate from whether review was sufficient: a candidate can hold `REVIEW_READY`, pass every required check, and still be refused. This does not soften the previous step. A thread with neither a repair nor a reply stays open, and resolving in order to clear a blocker rather than because the finding is addressed is a false-confidence action. Read each thread's state back after acting; a rejected call or a thread still reported unresolved keeps merge preparation blocked, and neither may be assumed to have succeeded. The reply and the resolve are independent operations that fail independently—confirm the reply exists before issuing the resolve and leave the thread open when that confirmation fails.
 8. Refresh only proof and review dimensions affected by the repair, then obtain a new or amended `review-pr` disposition for the exact head.
 9. Distinguish candidate-head proof from integration proof:
    - the PR head is the implementation/review subject;
    - current `main` or queued predecessors are the integration basis;
-   - the squash/merge-group result is the combined-tree subject.
-10. Do not update a behind-only branch. Reconcile only an actual conflict, explicit stack change, material prerequisite change, or failed combined-tree proof.
-11. Do not infer review from an empty thread list, reviewer quota/unavailability, or green required checks. Do not infer a human approval requirement from `mergeStateStatus: BLOCKED`; identify the exact rule and evidence source first. Query both authorities, since they can disagree: classic branch protection (`repos/{owner}/{repo}/branches/{branch}/protection`) and repository rulesets (`repos/{owner}/{repo}/rules/branches/{branch}`, then the named ruleset). Branch protection can report a requirement as disabled while an active ruleset enforces it — `required_conversation_resolution: false` beside a ruleset `required_review_thread_resolution: true` is a live configuration here.
-12. When GitHub owns the next transition, return an in-flight result instead of polling unchanged state. Auto-merge may be armed only for the exact published head with `REVIEW_READY` and current required proof.
-13. After merge, verify `main`, update issue acceptance, parent state, generated evidence, and any residual work. Close only acceptance-complete issues.
-14. After deliberate closure or supersession, record the winning candidate and preserved residual work.
+   - the ordinary squash result is the combined-tree subject.
+10. Do not update a behind-only branch. Unrelated movement on `main` is normal and does not require restacking, force-pushing, or rerunning unaffected proof. Reconcile only an actual conflict, explicit stack change, material prerequisite change, failed combined-tree proof, or exact-base policy that applies to this candidate.
+11. Before spending time on conflict repair, re-run the claim-identity search. When upstream or another PR already delivered the same claim, stop, compare for unique residuals, record the winning implementation, and close or disposition the duplicate rather than resolving a dead candidate.
+12. Do not infer review from an empty thread list, reviewer quota/unavailability, or green required checks. Do not infer a human approval requirement from `mergeStateStatus: BLOCKED`; identify the exact rule and evidence source first. Query both authorities, since classic branch protection and repository rulesets can disagree.
+13. When GitHub owns the next transition, return an in-flight result instead of polling unchanged state. Auto-merge may be armed only for the exact published head with `REVIEW_READY` and current required proof. The parent goal may advance another independent claim while this PR waits.
+14. Merge ordinary `ripr-swarm` development PRs with the repository's protected squash method. Exact history-preserving source-integration transactions are a separate controlled path and follow their governing issue instead of this rule.
+15. After merge, verify `main`, update issue acceptance, parent state, generated evidence, and any residual work. A merged PR means implementation landed; it does not by itself complete the parent issue, release phase, or high-level goal.
+16. After deliberate closure or supersession, record the winning candidate and preserved residual work.
+17. Close out every lane-created worktree and generated resource using [bounded storage closeout](../../../docs/PR_AUTOMATION.md#bounded-local-storage-and-proof-retention). Return each exact resource as released, retained with a concrete consumer/evidence reason, or awaiting owner verification. Preserve required proof and unique work; use the already-authorized recoverable handling for confirmed inactive residue instead of leaving every previous executable expanded indefinitely. A terminal PR disposition alone is not resource-release evidence.
 
 # Release-scope law
 

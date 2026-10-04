@@ -67,6 +67,7 @@ const CODE_ACTION_ONLY_COMMANDS = [
   'ripr.copySuggestedAssertion',
   'ripr.copyTargetedTestBrief',
   'ripr.openRelatedTest',
+  'ripr.copyAgentRepairCommand',
   'ripr.copyAgentPacketCommand',
   'ripr.copyAgentBriefCommand',
   'ripr.copyAfterSnapshotCommand',

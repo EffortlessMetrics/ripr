@@ -2,31 +2,34 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/infect_wildcard_discard/input
 
-Summary: 3 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 3 unknown
+Summary: 2 probe(s), 0 exposed, 0 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 1 propagation_unknown, 1 static_unknown; 2 of 2 finding(s) unsuppressed
 
-Analysis outcome: complete_with_findings (analysis complete).
-  Counts: 1 changed file(s), 4 changed line(s), 3 candidate line(s), 3 probe(s), 3 finding(s).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
+  Counts: 1 changed file(s), 3 changed line(s), 2 candidate line(s), 2 probe(s), 2 finding(s).
 
 Start here:
-  State: static_limited
+  State: limited by static analysis (static_limited)
   Safe next action: inspect the named static limitation before treating this as repair-ready.
-  File: fixtures/infect_wildcard_discard/input/src/lib.rs:2
-  Static exposure: infection_unknown (warning, confidence 0.66)
-  Why infection_unknown: the change reaches a sink but infection could not be determined statically
-  Changed behavior: let _ : i32 = compute_fee(amount * 9);
-  Missing discriminator: Changed value is bound to a discard pattern; it cannot infect a sink
+  File: fixtures/infect_wildcard_discard/input/src/lib.rs:3
+  Static exposure: unknown (propagation_unknown, note, confidence 0.66)
+  Why unknown: the path from the changed behavior to an observable sink is not statically clear
+  Changed behavior: amount
+  Analyzer limit: No clear propagation path from changed behavior to an observable sink
   Related test: tests/process_tests.rs:4 process_returns_amount_unchanged
-  Next step: Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.
-  Evidence:
+  Next step: Escalate to real mutation testing or deep static analysis for this probe.
+  Evidence: reach yes · infection yes · propagation unknown · observation yes · discriminator not established
     - reach yes: Related tests appear to reach process: process_returns_amount_unchanged
-    - infection unknown: Changed value is bound to a discard pattern; it cannot infect a sink
-    - 7 more evidence line(s) hidden
+    - infection yes: Reachable tests can plausibly activate this changed behavior
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
-  ripr explain --root fixtures/infect_wildcard_discard/input --diff fixtures/infect_wildcard_discard/diff.patch --mode fast probe:src_lib.rs:field_construction:a173a95c
-  ripr context --root fixtures/infect_wildcard_discard/input --diff fixtures/infect_wildcard_discard/diff.patch --mode fast --at probe:src_lib.rs:field_construction:a173a95c
+  ripr explain --root fixtures/infect_wildcard_discard/input --diff fixtures/infect_wildcard_discard/diff.patch --mode fast probe:src_lib.rs:return_value:d0b06139
+  ripr context --root fixtures/infect_wildcard_discard/input --diff fixtures/infect_wildcard_discard/diff.patch --mode fast --at probe:src_lib.rs:return_value:d0b06139
+Write a test for it:
+  ripr agent stub --root fixtures/infect_wildcard_discard/input --at src/lib.rs:3
 
 Hidden:
-  2 lower-priority finding(s) omitted from default human output.
+  1 lower-priority finding(s) omitted from default human output.
+    - fixtures/infect_wildcard_discard/input/src/lib.rs:2 (static_unknown)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

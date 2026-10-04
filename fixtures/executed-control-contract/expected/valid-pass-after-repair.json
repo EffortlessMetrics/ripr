@@ -1,0 +1,68 @@
+{
+  "schema_version": "1",
+  "kind": "executed_control_packet",
+  "source_identity": "EffortlessMetrics/ripr-swarm",
+  "obligations": [
+    {
+      "schema_version": "1",
+      "kind": "executed_control_obligation",
+      "obligation_id": "claim:example:removed-guard",
+      "owning_claim": "issue:4641",
+      "control_class": "removed_guard",
+      "intended_wrong_implementation": "eager parse of the lazy tail",
+      "required_execution_subject": {
+        "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+        "named_wrong_implementation": "eager_file_count_parse",
+        "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "expected_discriminating_outcome": "fails_before_passes_after",
+      "acceptable_evidence_forms": [
+        "retained_artifact",
+        "bounded_log_commitment"
+      ],
+      "permitted_substitute": null,
+      "requiredness": "required",
+      "invalidators": [
+        "source_head_moved",
+        "control_contract_changed",
+        "artifact_missing",
+        "command_identity_changed"
+      ]
+    }
+  ],
+  "results": [
+    {
+      "schema_version": "1",
+      "kind": "executed_control_result",
+      "obligation_id": "claim:example:removed-guard",
+      "source_identity": "EffortlessMetrics/ripr-swarm",
+      "candidate_id": "candidate:example",
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+      "artifact": {
+        "logical_id": "artifact:removed-guard-log",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "observed_outcome": "failed_before_passed_after",
+      "offered_evidence_kind": "executed_discriminating_control",
+      "state": "passed",
+      "obligation_digest": "sha256:076e8962c556ef85f469d20fdadb858a832634501ec43a9c3ad444b09ca77580"
+    },
+    {
+      "schema_version": "1",
+      "kind": "executed_control_result",
+      "obligation_id": "claim:example:removed-guard",
+      "source_identity": "EffortlessMetrics/ripr-swarm",
+      "candidate_id": "candidate:example",
+      "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "command_or_instrument_id": "cargo test -p example -- removed_guard_control",
+      "artifact": {
+        "logical_id": "artifact:removed-guard-log",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "observed_outcome": "rejected_wrong_implementation",
+      "offered_evidence_kind": "executed_discriminating_control",
+      "state": "failed"
+    }
+  ]
+}

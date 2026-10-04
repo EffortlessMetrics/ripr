@@ -51,7 +51,7 @@
     "suggested_test": "assert_eq!(ack(), 5)",
     "verify_command": null,
     "static_evidence_boundary": "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.",
-    "agent_command": "ripr agent start --root . --seam-id ack --out target/ripr/workflow",
+    "agent_command": null,
     "receipt": {
       "artifact": null,
       "status": "receipt_missing"

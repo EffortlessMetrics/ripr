@@ -2,9 +2,9 @@
   "schema_version": "0.1",
   "tool": "ripr",
   "kind": "report_packet_index",
-  "status": "pass",
+  "status": "warn",
   "root": ".",
-  "generated_at": "2026-05-10T12:00:00Z",
+  "generated_at": "unix_ms:0",
   "inputs": {
     "reports_dir": "target/ripr/reports",
     "review_dir": "target/ripr/review",
@@ -36,7 +36,7 @@
           "kind": "markdown",
           "path": "target/ripr/reports/pr-review-front-panel.md",
           "json_path": "target/ripr/reports/pr-review-front-panel.json",
-          "status": "available",
+          "status": "warn",
           "available": true,
           "required": true,
           "authority": false,
@@ -56,7 +56,7 @@
           "kind": "markdown",
           "path": "target/ripr/reports/first-useful-action.md",
           "json_path": "target/ripr/reports/first-useful-action.json",
-          "status": "pass",
+          "status": "available",
           "available": true,
           "required": false,
           "authority": false,
@@ -89,11 +89,11 @@
           "kind": "markdown",
           "path": "target/ripr/reports/test-oracle-assistant-proof.md",
           "json_path": "target/ripr/reports/test-oracle-assistant-proof.json",
-          "status": "pass",
+          "status": "available",
           "available": true,
           "required": false,
           "authority": false,
-          "description": "Joined proof over guidance, handoff, receipt, and movement.",
+          "description": "Joined repair proof packet.",
           "next_command": null
         },
         {
@@ -102,7 +102,7 @@
           "kind": "markdown",
           "path": "target/ripr/reports/assistant-loop-health.md",
           "json_path": "target/ripr/reports/assistant-loop-health.json",
-          "status": "pass",
+          "status": "available",
           "available": true,
           "required": false,
           "authority": false,
@@ -192,7 +192,7 @@
           "available": true,
           "required": false,
           "authority": false,
-          "description": "Coverage and static grip comparison.",
+          "description": "Coverage delta and static grip movement context; not runtime confirmation.",
           "next_command": null
         }
       ]

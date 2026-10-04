@@ -11,8 +11,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::path::Path;
+#[cfg(test)]
 use std::sync::mpsc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(test)]
+use std::time::Instant;
 pub(crate) const REVIEW_ANALYSIS_IDENTITY_SCHEMA: &str = "ripr.review_analysis_identity.v1";
 // Keep this admission bound synchronized with the producer projection limit.
 const REVIEW_INPUT_PROJECTION_LIMIT: u64 = 10;
@@ -51,6 +54,7 @@ pub(crate) struct ProducerAdmissionError {
     pub(crate) category: &'static str,
     pub(crate) message: String,
 }
+#[cfg(test)]
 pub(crate) fn run_analysis_with_timeout<T>(
     timeout_ms: u64,
     work: impl FnOnce() -> Result<T, String>,
@@ -116,7 +120,7 @@ pub(crate) fn admit_producer_evidence(
     diff_text: &str,
 ) -> Result<AdmittedReviewAnalysis, ProducerAdmissionError> {
     let subject_path = check_path.with_extension("subject.json");
-    let subject_bytes = std::fs::read(&subject_path).map_err(|error| {
+    let subject_bytes = crate::bounded_input::read(&subject_path).map_err(|error| {
         let message = format!(
             "producer subject receipt {} is unreadable: {error}",
             subject_path.display()
@@ -161,7 +165,7 @@ pub(crate) fn admit_producer_evidence(
         require_equal(field, required_string(&subject, field)?, expected)?;
     }
     let review_input_path = check_path.with_file_name("review-input.json");
-    let review_input_bytes = std::fs::read(&review_input_path).map_err(|error| {
+    let review_input_bytes = crate::bounded_input::read(&review_input_path).map_err(|error| {
         let message = format!(
             "producer review input {} is unreadable: {error}",
             review_input_path.display()
@@ -252,7 +256,7 @@ pub(crate) fn admit_review_input(
     producer_finding_count: u64,
     producer_projection: Option<&[crate::review_input::ReviewFindingProjectionV1]>,
 ) -> Result<AdmittedReviewInput, ProducerAdmissionError> {
-    let bytes = std::fs::read(review_input_path).map_err(|error| {
+    let bytes = crate::bounded_input::read(review_input_path).map_err(|error| {
         let message = format!(
             "producer review input {} is unreadable: {error}",
             review_input_path.display()
@@ -491,16 +495,28 @@ fn resolve_revision(
     kind: &str,
 ) -> Result<String, ProducerAdmissionError> {
     let object = format!("{revision}^{{{kind}}}");
-    let output = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["rev-parse", "--verify", &object])
-        .output()
-        .map_err(|error| {
-            ProducerAdmissionError::malformed(format!(
-                "resolve producer revision {revision:?} failed: {error}"
-            ))
-        })?;
+    let output = crate::git::run_git_output_with_deadline(
+        root,
+        &["rev-parse", "--verify", &object],
+        Some(Duration::from_secs(5)),
+    )
+    .map_err(|error| {
+        let message = format!("resolve producer revision {revision:?} failed: {error}");
+        if error.is_git_invocation_timeout()
+            || (crate::analysis::cancellation::is_cancellation_error(&error.to_string())
+                && crate::analysis::cancellation::current_token().is_some_and(|token| {
+                    token.abort_kind()
+                        == Some(crate::analysis::cancellation::AnalysisAbortKind::DeadlineExceeded)
+                }))
+        {
+            ProducerAdmissionError {
+                category: "producer_timeout",
+                message,
+            }
+        } else {
+            ProducerAdmissionError::malformed(message)
+        }
+    })?;
     if !output.status.success() {
         return Err(ProducerAdmissionError::malformed(format!(
             "resolve producer revision {revision:?} failed: {}",
@@ -522,15 +538,15 @@ fn resolve_revision(
     }
 }
 fn repository_identity(root: &Path) -> String {
-    let origin = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["config", "--local", "--get", "remote.origin.url"])
-        .output()
-        .ok()
-        .filter(|output| output.status.success())
-        .map(|output| output.stdout)
-        .filter(|origin| !origin.iter().all(u8::is_ascii_whitespace));
+    let origin = crate::git::run_git_output_with_deadline(
+        root,
+        &["config", "--local", "--get", "remote.origin.url"],
+        Some(Duration::from_secs(5)),
+    )
+    .ok()
+    .filter(|output| output.status.success())
+    .map(|output| output.stdout)
+    .filter(|origin| !origin.iter().all(u8::is_ascii_whitespace));
     origin_identity(origin.as_deref())
 }
 fn origin_identity(origin: Option<&[u8]>) -> String {
@@ -1585,6 +1601,22 @@ mod tests {
         let present = origin_identity(Some(b"https://github.com/example/repo.git\n"));
         if !present.starts_with("sha256:") || present == "unavailable" {
             return Err("present origin must have a digest identity".to_string());
+        }
+        Ok(())
+    }
+    #[test]
+    fn producer_revision_deadline_remains_a_typed_timeout() -> Result<(), String> {
+        let token = crate::analysis::cancellation::AnalysisCancellationToken::new();
+        let _ = token.cancel(crate::analysis::cancellation::AnalysisAbortKind::DeadlineExceeded);
+        let error = crate::analysis::cancellation::with_token(&token, || {
+            resolve_revision(Path::new("."), "HEAD", "commit")
+        })
+        .err()
+        .ok_or_else(|| "canceled producer revision must not resolve successfully".to_string())?;
+        if error.category != "producer_timeout" {
+            return Err(format!(
+                "producer deadline lost its typed category: {error:?}"
+            ));
         }
         Ok(())
     }

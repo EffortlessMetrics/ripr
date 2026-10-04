@@ -279,7 +279,7 @@ output (human):
     related test: src/pricing.test.ts::applies discount at threshold
     oracle: expect(result).toBeGreaterThan(50)
     verify: npx jest src/pricing.test.ts --testNamePattern "applies discount"
-    receipt: ripr outcome ... target/ripr/receipts/gap-typescript-predicate-xxxxxxxx.json
+    receipt: ripr receipt write --gap gap:typescript:predicate:xxxxxxxx --verify-command '...' --status not_run --out target/ripr/receipts/gap-typescript-predicate-xxxxxxxx.json
     edit surface: src/pricing.test.ts
     must not change:
       - src/pricing.ts (changed production file — test-only edits required)
@@ -300,7 +300,7 @@ output (human):
     "language_status": "preview",
     "authority_boundary": "preview_advisory_only",
     "verify_command": "npx jest src/pricing.test.ts ...",
-    "receipt_command": "ripr outcome ... target/ripr/receipts/...",
+    "receipt_command": "ripr receipt write --gap gap:typescript:predicate:xxxxxxxx ... --status not_run --out target/ripr/receipts/...",
     "allowed_edit_surface": ["src/pricing.test.ts"],
     "forbidden_files": ["src/pricing.ts"],
     "must_not_change": ["src/pricing.ts (changed production file — test-only edits required)", "Do not treat preview-language evidence as gate authority."]

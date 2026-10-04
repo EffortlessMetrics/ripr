@@ -64,7 +64,7 @@ The server advertises the following under `initialize.result.capabilities.experi
   "supported_profiles": ["actionable"],
   "reserved_profiles": ["actionable", "full"],
   "diagnostic_modes": ["push"],
-  "snapshot_handles": true,
+  "snapshot_handles": false,
   "continuations": false,
   "work_done_progress": false,
   "cancellation": true,
@@ -77,6 +77,12 @@ The example is abbreviated: the producer-owned capability also carries
 `claim_boundary`, and the capability schema requires the full field set. Since
 #1603, `implementation_state` is `implemented` with exactly the handler set
 above; a reserved name is still not a support claim.
+
+`snapshot_handles` stays `false` even though responses echo a `snapshot_id`:
+that value is only the interim refresh generation identity, not #1602's
+immutable snapshot-handle contract. Advertising `true` would claim the
+immutable contract before #1602 implements it; the binding lands with that
+slice.
 
 `protocol_version` identifies the wire vocabulary and compatibility rules.
 `schema_version` identifies the serialized DTO shape. They are independently

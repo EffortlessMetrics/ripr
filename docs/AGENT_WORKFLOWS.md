@@ -1,15 +1,17 @@
 # Agent Workflows
 
-This repository supports high-level goal delivery through two complete provider
+This repository supports high-level goal delivery through complete provider
 sets:
 
 ```text
-Codex:  AGENTS.md + .agents/skills/**
-Claude: CLAUDE.md + .claude/skills/**
+AGENTS consumers: AGENTS.md + .agents/skills/**
+Claude:           CLAUDE.md + .claude/skills/**
 ```
 
 Select the provider's own skill file. Do not route one provider through the
-other provider's files.
+other provider's files. A runtime that selects AGENTS.md and ignores CLAUDE.md
+uses the AGENTS route; absence of native skill import does not prevent reading
+the applicable procedure directly.
 
 The normal outer flow is:
 
@@ -32,153 +34,110 @@ The pre-publication pass normally exits `REVIEW_INCOMPLETE` when hosted checks,
 artifacts, or external review do not yet exist. Only the exact published PR head
 may receive `REVIEW_READY` for merge convergence.
 
----
-
 ## Starting from a high-level goal
 
 Use `deliver-goal` when the user states an outcome rather than one scoped issue.
 
-1. Preserve the goal verbatim.
-2. State the current interpretation, constraints, non-goals, assumptions, and
-   acceptance predicates.
-3. Read current `main`, GitHub issues and PRs, required checks, and the governing
-   product, architecture, policy, spec, and production paths.
-4. Identify the distinct claims required to satisfy the predicates.
-5. Resume an equivalent existing PR or issue before creating new work.
-6. Advance one coherent claim with `deliver-pr`.
-7. When a PR reaches CI, external review, auto-merge, or merge queue, leave it
-   in flight and advance another distinct required claim when useful.
-8. Reconcile after every merge or deliberate closure.
-9. Stop only when predicates pass, a real external blocker covers all remaining
-   work, a material owner decision remains, or the result is not established.
+1. Preserve the user's parent end state, constraints, non-goals, assumptions and
+   accepted scope. A session, runtime progress bar or current PR batch does not
+   establish a smaller goal.
+2. Rehydrate from current user and repository instructions, current source,
+   issues/PRs and retained evidence. Summaries and subagent reports are leads,
+   not permission or completion authority. Instructions define the task;
+   artifacts establish observed results.
+3. Identify the distinct claims required by the parent acceptance predicates.
+   Resume an equivalent existing issue or PR before creating new work.
+4. Advance a ready coherent claim with `deliver-pr`; use independent candidate
+   worktrees and implementation agents when useful and available.
+5. When a PR reaches CI, review, auto-merge or merge queue, retain it in flight
+   and advance another ready claim. A build blocks its own transition, not the
+   whole goal.
+6. Reconcile after merge or deliberate closure, then select the next ready
+   claim. A reconciliation document accompanies delivery; it does not replace it.
+7. Evaluate the actual parent, including missing or stale evidence. Unknown
+   evidence calls for investigation while useful authorized work remains.
+8. Stop only when the parent is satisfied, the user stops the work, a material
+   non-derivable owner decision remains, or no authorized executable work remains
+   because of named capability, prerequisite or authorization boundaries.
+   All-useful-work-waiting is `GOAL_IN_FLIGHT`, not completion.
 
-Do not substitute “finish this issue” for the larger requested end state unless
-that issue's acceptance actually equals the goal.
+Runtime goal text contains durable end conditions, not volatile PR numbers or
+worker names. Replace stale objective text with a successor preserving the
+parent; do not ask the user to dictate a recoverable goal again.
 
----
+When progress counts are useful, count nonoverlapping accepted parent predicates
+against the complete selected denominator. Do not count both umbrellas and
+children, use PR count as release progress, invent percentages, or infer time to
+cut from a percentage. Scope changes need their governing ruling or evidence.
+
+A local commit is useful unpublished evidence, an open PR is in flight, and a
+merged PR is landed implementation. Candidate selection, qualification, source
+integration, ship authorization, publication and public verification are later
+separate judgments. A completed subgoal never closes its parent automatically.
+An explicitly requested read-only analysis may finish with its requested report;
+do not impose a PR requirement on that different task.
 
 ## Starting from an issue
 
 Use `deliver-pr`.
 
-1. Read the issue and every linked governing artifact.
+1. Read the issue and linked governing artifacts.
 2. Verify the premise against current source and the real consumer.
-3. Search for an equivalent existing PR.
-4. Enter at the earliest missing or stale judgment:
-   - issue/premise;
-   - proof;
-   - implementation;
-   - test hardening;
-   - simplification;
-   - candidate challenge;
-   - substantive current-head review;
-   - review repair;
-   - integration proof;
-   - reconciliation.
+3. Search all-state and recently merged PRs for equivalent work.
+4. Enter at the earliest missing or stale judgment: premise, proof,
+   implementation, hardening, simplification, challenge, substantive review,
+   review repair, integration proof or reconciliation.
 5. Commit the coherent candidate before exact-head review.
 6. Continue through candidate review, publication, published-head review,
-   review/CI repair, merge, and reconciliation unless a real stop condition
-   exists.
+   review/CI repair, merge and reconciliation unless a genuine boundary remains.
 
-Filing or correcting the issue is not a reason to stop when implementation was
-the requested job.
-
----
+Filing an issue is not completion when implementation was requested. Do not
+recreate completed stages because a new session arrived later. Before resolving
+a conflict or opening another PR, check whether upstream already delivered or
+superseded the claim. Preserve only the genuine unique residual.
 
 ## Starting from an existing PR
 
-Use `deliver-pr`, `review-pr`, or `finish-pr` depending on candidate maturity.
+Use `deliver-pr`, `review-pr` or `finish-pr` according to candidate maturity.
 
-- Read the complete current-head diff and PR body.
-- Read every current review thread and required check.
-- Treat thread/check inspection as remote triage, not substantive review.
-- Use `review-pr` to inspect semantic ownership and consumers, failure and
-  transaction behavior, test stimulus/oracle grip, rendered/public behavior,
-  runtime/schema/docs/output parity, platform-relevant branches, and exact-head
-  job/artifact evidence.
-- Verify findings against source and behavior.
-- Repair valid findings through the same candidate.
-- Refute invalid findings with evidence.
-- Resolve only after repair or reply.
-- Refresh only affected proof and review dimensions.
-- Leave a behind-only branch alone.
-- Reconcile a real conflict or failed integration proof when it occurs.
-- Yield when GitHub owns the next event instead of polling unchanged state.
+Read the complete current-head diff, PR body, governing issue, review threads
+and required checks. Thread/check inspection is remote triage, not substantive
+review. Follow changed behavior into its semantic owner and consumers; challenge
+the oracle, failure paths, contracts, platforms and artifact identity.
 
-A PR waiting on CI is still useful in-flight work. It does not normally block a
-larger goal.
+Repair valid findings on the same candidate; refute incorrect findings with
+source-backed evidence. Confirm a repair or reply exists before resolving a
+thread, then read back its state. Inspect all pages. A bot's automatic addressed
+label is not evidence of repair.
 
----
+Leave a behind-only branch alone. Reconcile actual conflicts, changed explicit
+prerequisites, failed combined-tree proof or a genuinely applicable exact-base
+rule. Ordinary swarm PRs use protected squash merge. The controlled
+history-preserving source-integration transaction follows its own authority,
+not this ordinary merge method.
+
+A PR waiting on CI remains useful in-flight work. Yield to another ready claim
+rather than polling unchanged remote state. Revisit after a material event.
 
 ## The seven public skills
 
-### `deliver-goal`
+| Skill | Owns |
+|---|---|
+| `deliver-goal` | Parent end state, acceptance, ready claims, in-flight work and final satisfaction judgment |
+| `deliver-pr` | One coherent acceptance-and-rollback claim from premise to merge/closure and reconciliation |
+| `prepare-issue` | Current premise, semantic owner, scope, dependencies, negative acceptance and non-goals |
+| `prepare-proof` | Positive and discriminating negative proof, production-path reachability, identity and claim limits |
+| `build-candidate` | Implementation, tests, simplification, challenge and repair on one committed candidate |
+| `review-pr` | Substantive exact-head inspection with current source, oracle, contract, platform and hosted evidence |
+| `finish-pr` | Publication, remote repair, earned merge convergence, acceptance reconciliation and cleanup |
 
-Owns the original goal, acceptance predicates, distinct required claims,
-in-flight PRs, and final satisfaction judgment.
-
-### `deliver-pr`
-
-Owns one coherent claim from current premise to merge or deliberate closure.
-It routes a committed candidate through a pre-publication review, publication,
-and a published exact-head review before merge convergence.
-
-### `prepare-issue`
-
-Researches or corrects the issue, semantic owner, acceptance, dependencies, and
-non-goals, then returns to delivery.
-
-### `prepare-proof`
-
-Designs positive, negative, production-path, currentness, and claim-boundary
-proof before or during implementation.
-
-### `build-candidate`
-
-Implements, tests, simplifies, challenges, and repairs one current candidate.
-It commits the coherent candidate before exact-head review. Its internal
-challenge pass does not substitute the final PR review.
-
-### `review-pr`
-
-Performs the substantive review on one exact committed head. It reads the
-complete diff and governing claim, follows the change into semantic owners and
-real consumers, challenges the test oracle and public/runtime contracts,
-inspects platform-relevant behavior and exact-head CI receipts, and emits one
-of:
-
-```text
-REVIEW_READY
-REPAIR_REQUIRED
-REVIEW_INCOMPLETE
-INSTRUMENT_FAILURE
-INFRASTRUCTURE_FAILURE
-NOT_ESTABLISHED
-```
-
-A pre-publication candidate review normally retains absent remote evidence as
-`REVIEW_INCOMPLETE`. A clean published-head review records what was inspected,
-risks considered, invariants checked, validation observed, missing evidence,
-residual assumptions, and the exact head. `LGTM`, green CI, and an empty thread
-list are not review records.
-
-### `finish-pr`
-
-Publishes or resumes a committed candidate with `REVIEW_INCOMPLETE`, obtains
-remote evidence, requires a current published-head `REVIEW_READY` disposition
-before arming merge, repairs review and CI findings, yields remote waits, merges
-the exact ready candidate, and reconciles repository state.
-
-Each provider's file contains the complete procedure and valid outcomes.
-
----
+Each provider's skill file contains the full procedure. This page is routing and
+shared contract context, not a second implementation of every procedure.
 
 ## Exact-head review contract
 
-An exact review subject is a committed Git object. Uncommitted working-tree
-state cannot receive an exact-head disposition.
-
-A standard review binds:
+An exact review subject is a committed Git object. An uncommitted worktree cannot
+receive an exact-head disposition. Bind:
 
 ```text
 reviewed_head_sha
@@ -195,230 +154,167 @@ residual_assumptions_and_non_claims
 disposition
 ```
 
-Review the applicable lanes:
+Review the applicable evidence dimensions:
 
-1. semantic ownership, authority, provenance, and identity;
-2. correctness, failure paths, rollback, cleanup, atomicity, replay, races, and
-   concurrency;
-3. fixture construction, intended subjects, production-path reachability, and
-   whether the old or wrong behavior can still pass;
-4. rendered CLI/API/LSP/help/output behavior rather than source-text
-   coincidence;
+1. semantic ownership, authority, provenance and identity;
+2. failure paths, rollback, cleanup, atomicity, replay, races and concurrency;
+3. fixture construction, nonempty intended subjects, production reachability and
+   whether old or wrong behavior can still pass;
+4. rendered CLI/API/LSP/help/output behavior rather than source coincidence;
 5. runtime/schema/docs/generated/output/support parity;
-6. platform, packaging, process, trust, security, and permissions where engaged;
-7. exact-head required/advisory jobs, denominators, skips, failures, reports,
-   and artifacts.
+6. platform, packaging, process, trust, security and permissions;
+7. exact-head required/advisory jobs, selected/executed subjects, skips, failures,
+   reports and artifacts.
 
-Every load-bearing claim should receive a counterexample, alternate case,
-mutation/removal experiment, deliberately wrong implementation, or an explicit
-reason such a challenge is impractical.
+Challenge load-bearing claims with a counterexample, alternate case, removal or
+wrong-implementation experiment, or an explicit reason it is impractical. A
+clean review records what was inspected and what remains unverified. Naked LGTM,
+green CI and an empty thread list are not semantic review.
 
-On the author's own PR, GitHub cannot accept `REQUEST_CHANGES`. Use a `COMMENT`
-review with an explicit blocking or review-ready disposition. That platform
-constraint is neither approval nor a reason to weaken the review.
+Valid dispositions are `REVIEW_READY`, `REPAIR_REQUIRED`, `REVIEW_INCOMPLETE`,
+`INSTRUMENT_FAILURE`, `INFRASTRUCTURE_FAILURE`, `EXTERNAL_BLOCKER` and
+`NOT_ESTABLISHED`. Missing hosted evidence prevents merge readiness, not
+publication to obtain that evidence.
+On the author's own PR, use a `COMMENT` review with explicit disposition; the
+platform's author-review constraint is not approval.
 
-False-confidence prohibitions:
+Keep these false-confidence boundaries:
 
-- no unresolved threads does not mean review occurred;
-- green required CI does not establish semantic correctness;
-- unavailable/quota/skipped/stale reviewers are missing review;
+- unavailable/quota-limited/skipped/stale reviewers are missing review for that
+  provider; an adequate permitted alternative can supply the judgment;
 - zero intended subjects is not proof;
-- individually atomic writes are not a whole transaction;
-- hashes bind bytes, not their named producer or invocation;
+- atomic individual writes are not automatically an atomic transaction;
+- hashes bind bytes, not their claimed producer or invocation;
 - docs and PR prose cannot strengthen runtime/schema authority;
-- `mergeStateStatus: BLOCKED` is not a causal diagnosis or evidence of a human
-  approval requirement.
+- `mergeStateStatus: BLOCKED` is not a diagnosis of a human approval requirement;
+- a structural instruction checker does not prove semantic consistency, actual
+  provider loading or model compliance.
 
----
+## Agents, decisions and candidate ownership
 
-## Claim and candidate rules
+Many distinct claims may be in flight. One coherent claim normally has one
+current candidate and one writer. Delegate independent implementation to
+separate candidate worktrees; readers/reviewers may inspect without moving or
+editing a writer's checkout. Give the delegate the claim, inputs, exact question,
+non-goals, write boundary, proof and handback. The root verifies load-bearing
+citations and owns integration.
 
-```text
-many distinct claims may be in flight
-one claim normally has one current candidate
-one writer mutates that candidate branch/worktree at a time
-```
+Do not create rival implementations, permanent role rosters, reservations,
+overlap maps, sibling monitoring or repository-global orchestration state.
+A different persona is not automatically independent; a different oracle,
+source, tool, platform or failure perspective can be.
 
-Agents do not inspect sibling worktrees, reserve files or crates, maintain
-an overlap ledger, or watch sibling implementations.
+Choose the strongest reversible in-scope option after research. Routine
+commits, ordinary pushes, PR creation/updates, review and CI repairs, protected
+squash merge and lane cleanup are part of an authorized delivery goal. Do not
+ask again merely because main moved or multiple implementations are possible.
 
-Before creating work, check only for:
-
-- an equivalent PR for the same claim;
-- an explicit prerequisite;
-- a superseding implementation.
-
-During integration, react only to:
-
-- a concrete Git conflict;
-- a changed explicit prerequisite;
-- a failed combined-tree proof;
-- a repository rule that genuinely applies to this candidate.
-
-The later lane owns its own conflict repair and affected re-proof.
-
----
-
-## Subagents
-
-The accountable root may execute directly or use focused provider-native
-subagents.
-
-Useful subagent questions include:
-
-- Where is the semantic owner and production consumer?
-- What current issue or PR already owns this claim?
-- What is the strongest counterexample to the proposed proof?
-- Does the test reach the real production branch?
-- What security, privacy, compatibility, platform, or product boundary is at
-  risk?
-
-Subagents are normally read-only. They return evidence-backed findings, not
-lifecycle authority. The root verifies their citations, resolves contradictions,
-and integrates one candidate.
-
-Do not create one permanent actor for every judgment pass. Research, adversarial
-challenge, implementation, test hardening, simplification, and formal review are
-passes; the same accountable root may perform several of them.
-
----
-
-## Decisions and escalation
-
-Make the strongest source-backed reversible decision and proceed.
-
-Escalate only when:
-
-- materially different viable outcomes remain after research and safe
-  experiments;
-- the choice changes external commitment, destructive action, exposure, or a
-  non-derivable product preference;
-- credentials or permissions are genuinely unavailable;
-- the selected claim exceeds its accepted authority boundary.
-
-Do not stop merely because design judgment exists.
-
----
+Escalate only a non-derivable material choice, expanded scope, changed exposure,
+destructive action or genuinely unavailable required capability/authorization.
+Settings/rulesets/secrets, shared-history rewrites, durable-evidence deletion and
+public release actions need their applicable explicit authorization. A future
+publication boundary does not block reversible preparation.
 
 ## Local proof and precommit
 
-Run focused proof while developing. Before publication, run:
+Read `docs/agent-context/validation.md` for actual-shell detection, native exit
+status, background-task ownership and environment-specific proof. The host OS
+alone does not determine shell grammar. Stderr noise or a success-looking line
+alone is not a terminal result.
+
+Use focused proof during implementation. Before publication, use:
 
 ```bash
 cargo xtask precommit
 ```
 
-`precommit` is the authoritative local shift-left entry point. It must preserve
-repository policy checks and select Rust linting from the actual local change
-set. Full workspace and release qualification remain separate fixed-candidate
-steps.
+`precommit` is the authoritative local shift-left entry point. It preserves
+policy checks and selects Rust linting from the actual local change set. For
+changed Rust, on-diff Clippy compiles the impacted package/targets, not isolated
+changed lines.
 
-`check-fast` is retained as an advisory, diff-aware shortcut for callers that
-explicitly need a cheaper subset. It is not an alias for `precommit`, does not
-establish a complete-change denominator, and cannot replace the authoritative
-precommit result for local handoff or routed CI.
+`check-fast` is a cheaper diff-aware route, not an alias for `precommit` or full
+qualification. Independently verify its selector/base and ran/skipped report;
+a failed or empty selector does not prove that nothing needed testing.
 
-Do not use broad post-edit hooks that run workspace-wide Clippy or tests while
-the code is intentionally incomplete. Hooks may invoke canonical repository
-commands at explicit lifecycle points; they do not own policy.
+Full-workspace and release qualification are separate fixed-candidate steps.
+Do not front-load every hosted gate onto a local machine merely to publish a
+coherent candidate. When local execution is unavailable, retain that gap and use
+the available hosted route without inventing a local pass. Preserve every
+required merge check and substantive review.
 
-For changed Rust, “on-diff Clippy” means compiling the complete impacted package
-and relevant targets, not parsing changed lines without crate context.
+Serialize Cargo operations sharing a candidate worktree, target lock or memory
+bottleneck; do not kill unrelated processes. Bind owned background commands to
+their original task/driver and logs, not process-name guesses. Hooks are thin
+conveniences around canonical commands, not independent policy authorities.
 
-Run one Cargo command at a time per candidate worktree. Lock contention or a
-runner failure is infrastructure state, not source failure.
+## Currentness, merge and reconciliation
 
----
+Keep the candidate head, integration basis and squash/merge-group result
+separate. Refresh only affected implementation, stimulus, oracle, public-claim,
+generated, conflict, integration and head-identity dimensions. Unrelated main
+movement is not automatic invalidation.
 
-## PR currentness and merge
+`finish-pr` publishes coherent `REVIEW_INCOMPLETE` candidates to obtain hosted
+evidence. It arms merge only with current published-head `REVIEW_READY`, actual
+required proof and addressed material findings. Diagnose branch protection and
+active rulesets read-only; never weaken them or use admin bypass to clear a PR.
 
-Keep separate:
-
-- candidate head;
-- integration basis;
-- squash or merge-group result.
-
-Do not rebase because `main` moved. Reconcile only real conflicts or interactions.
-
-A later edit invalidates only affected dimensions:
-
-- production implementation;
-- test stimulus;
-- test oracle;
-- public claim;
-- generated relationships;
-- conflict resolution;
-- integration basis;
-- candidate head identity.
-
-`finish-pr` may publish a committed `REVIEW_INCOMPLETE` candidate. It may arm
-merge only when the exact published head has `REVIEW_READY`, required proof is
-current, and substantive findings are repaired or evidence-refuted.
-
-Useful remote-owned outcomes include:
-
-```text
-PR_IN_FLIGHT
-AUTO_MERGE_ARMED
-WAITING_REQUIRED_CHECKS
-WAITING_EXTERNAL_REVIEW
-WAITING_INTEGRATION_PROOF
-```
-
-A substantive review finding, required failure, head change, conflict, changed
-prerequisite, merge, or closure is a material transition. Unchanged remote state
-is not.
-
-After merge:
-
-1. verify current `main`;
-2. update issue acceptance as delivered, partial, blocked, or residual;
-3. update parent goals or campaigns;
-4. refresh generated evidence where required;
-5. close only acceptance-complete issues;
-6. remove the worktree and stale branch.
-
----
+After merge/closure, verify the actual repository object, reconcile delivered
+and remaining issue acceptance, update the parent, preserve residual work,
+refresh required generated evidence and remove only lane-created residue.
+Closing a child does not close its parent.
 
 ## Durable sources
 
-Resume from artifacts, not model memory:
-
 | Artifact | Use |
-| --- | --- |
-| GitHub issue | Claim, acceptance, owner, dependencies, residual work |
-| GitHub PR | Current candidate, review, CI, integration state |
+|---|---|
+| GitHub issues | Current claim, acceptance, dependencies, decisions and residual work |
+| GitHub PRs, reviews and checks | Published candidate, review, proof and integration state |
 | `docs/ROADMAP.md` | Product direction |
 | `docs/IMPLEMENTATION_PLAN.md` | Current implementation direction |
-| `docs/IMPLEMENTATION_CAMPAIGNS.md` | Historical and multi-PR context, not a global active queue |
-| `.allow/spec-system/slices/` | PR-sized claim boundaries |
+| `docs/IMPLEMENTATION_CAMPAIGNS.md` | Historical/multi-PR context, not a global queue |
+| `.allow/spec-system/slices/` | PR-local claim boundaries |
 | `docs/specs/` and `.ripr/traceability.toml` | Spec-test-code relationships |
-| `docs/LEARNINGS.md` | Durable failure modes and hidden invariants |
-| Provider skill roots | Executable procedure for the current provider |
+| `docs/LEARNINGS.md` | Durable failure modes and invariants |
+| Provider roots and skills | Operating instructions and procedure |
 
-No `.ripr/goals/active.toml`, current-writer file, stage file, or agent-liveness
-record selects ordinary work.
+For a bounded repair handoff of one seam — for example when resuming a repair
+attempt in a fresh session — `ripr agent card --root . --seam-id ID [--json]`
+is the default compact handoff (`RepairCardV1`, RIPR-SPEC-0194); `ripr agent
+packet` remains the full-detail compatibility route. See
+[LLM_OPERATOR_GUIDE.md](LLM_OPERATOR_GUIDE.md) and the
+[Output Schema](OUTPUT_SCHEMA.md) § "Repair card".
 
----
+To go from one `ripr check` finding to a test in one step, run
+`ripr agent stub --root . --at FILE:LINE` with the location the finding
+prints (or `--seam-id ID`). It prints a compiling `#[test]` placed in the
+owner file's inline `#[cfg(test)]` module, a new inline module, or the
+proposed `tests/` file, calling the changed function with its real receiver
+and arguments and a boundary input when the changed comparison names one. The
+expected value is a labelled `todo!()`, so the test fails until it is
+written. `--write` applies it; `--json` emits the `rust_test_stub` document.
+Its `run_command` runs only that test through the owning package's
+`--manifest-path`, and is `null` when no Cargo package owns the file. A
+`--at` path that matches files with gaps in several crates is refused; pass
+the full path or the seam ID.
+
+No `.ripr/goals/active.toml`, current-writer file, stage file or agent-liveness
+record selects ordinary work. Keep status changes evidence-bound and update an
+existing owned reconciliation comment rather than repeatedly appending copies.
 
 ## Honest stopping conditions
 
-Valid terminal or yielding conditions are:
+A lane can yield as `PR_IN_FLIGHT`, `WAITING_REQUIRED_CHECKS`,
+`WAITING_EXTERNAL_REVIEW` or `WAITING_INTEGRATION_PROOF`; that is not parent
+completion. A merged PR or deliberate closure is terminal for that claim only.
 
-- goal satisfied;
-- PR merged;
-- PR durably in flight while GitHub owns the next event;
-- real external blocker;
-- material owner decision;
-- deliberate closure or supersession with residual work preserved;
-- not established.
+The parent stops when it is satisfied, the user stops it, a non-derivable material
+decision remains, or no authorized executable work remains behind named
+capability/prerequisite/authorization boundaries. Retain the unmet predicates
+and exact next transition. `NOT_ESTABLISHED` describes missing evidence, not
+permission to stop available investigation.
 
-Invalid stopping conditions include:
-
-- an issue was filed;
-- one plausible PR was opened;
-- CI is merely still running;
-- another branch is behind;
-- a different design was conceivable;
-- no more issues were found;
-- an automated reviewer was unavailable.
+An issue filed, PR opened, busy compiler, behind-only branch, conceivable
+alternative design, unavailable review bot, exhausted local checklist or lack
+of newly found issues is not sufficient to complete the parent goal.

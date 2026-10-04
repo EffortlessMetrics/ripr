@@ -91,10 +91,12 @@ impl EdgeStatus {
 #[serde(rename_all = "snake_case")]
 pub(in crate::analysis) enum PathCompleteness {
     /// The bounded direct source-to-sink path is fully established for one of
-    /// the sink families integrated by PR-B.
+    /// the sink families integrated by PR-B, or for the direct collection
+    /// StateWrite family (#4575).
     Complete,
     /// A local source-to-sink fact exists, but observer binding is not modeled
-    /// by this PR.  It cannot by itself justify `propagate=yes`.
+    /// by this adapter except for the direct collection StateWrite family.
+    /// It cannot by itself justify `propagate=yes`.
     Partial,
     Unresolved,
 }
@@ -133,7 +135,24 @@ pub(in crate::analysis) fn current_path_witness(
     let source_identity = normalize_semantic_text(&probe.expression);
     let sink_identity = normalize_semantic_text(&sink.text);
     let edge_status = edge_status_for_kind(&edge_kind, &source_identity, &sink_identity);
-    let completeness = completeness_for_edge(&edge_kind, &edge_status);
+    let collection_direct = is_direct_collection_state_write(probe, sink);
+    let completeness = if collection_direct && edge_status == EdgeStatus::Established {
+        PathCompleteness::Complete
+    } else {
+        completeness_for_edge(&edge_kind, &edge_status)
+    };
+    let limitations = if collection_direct {
+        vec![
+            "direct_collection_state_write".to_string(),
+            "static_local_flow_only".to_string(),
+            "observer_reassignment_not_modeled".to_string(),
+        ]
+    } else {
+        vec![
+            "observer_binding_not_modeled".to_string(),
+            "static_local_flow_only".to_string(),
+        ]
+    };
     let mut witness = PropagationWitnessV1 {
         schema_version: SCHEMA_VERSION,
         behavior: BehaviorIdentity {
@@ -159,10 +178,7 @@ pub(in crate::analysis) fn current_path_witness(
             line: sink.line,
         },
         completeness,
-        limitations: vec![
-            "observer_binding_not_modeled".to_string(),
-            "static_local_flow_only".to_string(),
-        ],
+        limitations,
         semantic_digest: String::new(),
     };
     witness.semantic_digest = witness.compute_semantic_digest();
@@ -249,13 +265,23 @@ pub(in crate::analysis) fn complete_direct_witness(
         && witness.edges[0].status == EdgeStatus::Established
         && witness.edges[0].from == witness.source.identity
         && witness.edges[0].to == witness.sink.identity
-        && matches!(
-            witness.edges[0].kind,
-            PropagationEdgeKind::DirectReturn
-                | PropagationEdgeKind::ErrorVariant
-                | PropagationEdgeKind::StructField
-        )
+        && complete_direct_edge(probe, witness)
         && witness.sink.kind != FlowSinkKind::Unknown.as_str()
+}
+
+fn complete_direct_edge(probe: &Probe, witness: &PropagationWitnessV1) -> bool {
+    let Some(edge) = witness.edges.first() else {
+        return false;
+    };
+    match edge.kind {
+        PropagationEdgeKind::DirectReturn
+        | PropagationEdgeKind::ErrorVariant
+        | PropagationEdgeKind::StructField => true,
+        PropagationEdgeKind::EffectTarget => {
+            witness.sink.kind == FlowSinkKind::StateWrite.as_str()
+                && direct_collection_mutation_receiver(&probe.expression).is_some()
+        }
+    }
 }
 
 pub(in crate::analysis) fn valid_owner_bound_partial_witness(
@@ -307,6 +333,156 @@ fn edge_status(source: &str, sink: &str) -> EdgeStatus {
     } else {
         EdgeStatus::Candidate
     }
+}
+
+/// Bare identifier mutated by a collection StateWrite method (`items.push(x)`).
+///
+/// This is the #4575 family: a directly passed mutable collection, not
+/// `self.field.push`, a call result, or a helper/dynamic receiver.
+pub(in crate::analysis) fn direct_collection_mutation_receiver(expression: &str) -> Option<&str> {
+    let trimmed = expression.trim().trim_end_matches([';', ',']).trim();
+    let dot = trimmed.find('.')?;
+    let receiver = trimmed[..dot].trim();
+    if !is_bare_ident(receiver) {
+        return None;
+    }
+    let after = trimmed.get(dot + 1..)?;
+    let method_end = after.find('(')?;
+    let method = after[..method_end].trim();
+    (method == "push").then_some(receiver)
+}
+
+fn is_bare_ident(text: &str) -> bool {
+    !text.is_empty()
+        && text
+            .chars()
+            .all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+        && text
+            .chars()
+            .next()
+            .is_some_and(|ch| ch == '_' || ch.is_ascii_alphabetic())
+}
+
+pub(in crate::analysis) fn is_direct_collection_state_write(
+    probe: &Probe,
+    sink: &FlowSinkFact,
+) -> bool {
+    matches!(
+        probe.family,
+        ProbeFamily::SideEffect | ProbeFamily::CallDeletion
+    ) && sink.kind == FlowSinkKind::StateWrite
+        && direct_collection_mutation_receiver(&probe.expression).is_some()
+        && direct_collection_mutation_receiver(&sink.text)
+            == direct_collection_mutation_receiver(&probe.expression)
+}
+
+/// True when the assertion's primary observed subject is `receiver`.
+///
+/// `assert_eq!(items, expected)` observes `items`. `assert_eq!(other, items)`
+/// observes `other` and must not credit a token on the expected side.
+pub(in crate::analysis) fn assertion_observes_direct_collection(
+    assertion_text: &str,
+    receiver: &str,
+) -> bool {
+    if !is_bare_ident(receiver) {
+        return false;
+    }
+    let Some(subject) = assertion_primary_subject(assertion_text) else {
+        return false;
+    };
+    subject_names_collection(&subject, receiver)
+}
+
+fn assertion_primary_subject(text: &str) -> Option<String> {
+    let payload = macro_payload(text, "assert_eq")
+        .or_else(|| macro_payload(text, "assert_ne"))
+        .or_else(|| macro_payload(text, "assert"))?;
+    first_call_argument(payload)
+}
+
+fn macro_payload<'a>(text: &'a str, name: &str) -> Option<&'a str> {
+    let trimmed = text.trim_start();
+    let needle = format!("{name}!");
+    if !trimmed.starts_with(&needle) {
+        return None;
+    }
+    let after = trimmed.get(needle.len()..)?.trim_start();
+    let after = after.strip_prefix('(')?;
+    balanced_inner(after)
+}
+
+fn balanced_inner(after_open: &str) -> Option<&str> {
+    let mut depth = 1usize;
+    for (index, character) in after_open.char_indices() {
+        match character {
+            '(' | '[' | '{' => depth = depth.saturating_add(1),
+            ')' | ']' | '}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return after_open.get(..index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn first_call_argument(payload: &str) -> Option<String> {
+    let mut depth = 0usize;
+    for (index, character) in payload.char_indices() {
+        match character {
+            '(' | '[' | '{' => depth = depth.saturating_add(1),
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => return payload.get(..index).map(|text| text.trim().to_string()),
+            _ => {}
+        }
+    }
+    let trimmed = payload.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+fn subject_names_collection(subject: &str, receiver: &str) -> bool {
+    let mut subject = subject.trim();
+    subject = subject.strip_prefix('&').map_or(subject, str::trim);
+    subject = subject.strip_prefix("mut ").map_or(subject, str::trim);
+    if subject == receiver {
+        return true;
+    }
+    let Some(rest) = subject.strip_prefix(receiver) else {
+        return false;
+    };
+    if rest.starts_with('[') {
+        return true;
+    }
+    collection_read_method(rest).is_some_and(is_collection_read_method)
+}
+
+fn collection_read_method(rest: &str) -> Option<&str> {
+    let rest = rest.strip_prefix('.')?;
+    let end = rest
+        .char_indices()
+        .find(|(_, character)| !character.is_ascii_alphanumeric() && *character != '_')
+        .map(|(index, _)| index)
+        .unwrap_or(rest.len());
+    rest.get(..end).filter(|name| !name.is_empty())
+}
+
+fn is_collection_read_method(name: &str) -> bool {
+    matches!(
+        name,
+        "len"
+            | "is_empty"
+            | "contains"
+            | "get"
+            | "first"
+            | "last"
+            | "iter"
+            | "as_slice"
+            | "as_ref"
+            | "to_vec"
+            | "capacity"
+    )
 }
 
 fn family_accepts_sink(family: &ProbeFamily, kind: &FlowSinkKind) -> bool {
@@ -678,8 +854,11 @@ mod tests {
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
+            impl_context: Default::default(),
         };
         let flow_sinks = super::super::local_flow_sinks(probe, Some(&owner));
         current_path_witness(probe, &flow_sinks)
@@ -1051,5 +1230,134 @@ mod tests {
             alternate_limitations.compute_semantic_digest()
         );
         Ok(())
+    }
+
+    #[test]
+    fn direct_collection_push_completes_effect_target_and_rejects_wrong_observer()
+    -> Result<(), String> {
+        let probe = probe(ProbeFamily::SideEffect, "items.push(5)");
+        let sinks = vec![sink(FlowSinkKind::StateWrite, "items.push(5)", 14)];
+        let witness = current_path_witness(&probe, &sinks)
+            .ok_or_else(|| "direct collection witness was absent".to_string())?;
+        assert_eq!(witness.edges[0].kind, PropagationEdgeKind::EffectTarget);
+        assert_eq!(witness.edges[0].status, EdgeStatus::Established);
+        assert_eq!(witness.completeness, PathCompleteness::Complete);
+        assert!(complete_direct_witness(&probe, Some(&witness)));
+        assert!(
+            witness
+                .limitations
+                .contains(&"direct_collection_state_write".to_string())
+        );
+        assert!(
+            !witness
+                .limitations
+                .contains(&"observer_binding_not_modeled".to_string())
+        );
+        assert_eq!(
+            direct_collection_mutation_receiver("items.push(5)"),
+            Some("items")
+        );
+        assert!(assertion_observes_direct_collection(
+            "assert_eq!(items, expected);",
+            "items"
+        ));
+        assert!(assertion_observes_direct_collection(
+            "assert_eq!(items.len(), 1);",
+            "items"
+        ));
+        assert!(!assertion_observes_direct_collection(
+            "assert_eq!(other, expected);",
+            "items"
+        ));
+        assert!(
+            !assertion_observes_direct_collection("assert_eq!(other, items);", "items"),
+            "expected-side token coincidence must not observe the mutated collection"
+        );
+        assert!(!assertion_observes_direct_collection(
+            "assert_eq!(items_backup, expected);",
+            "items"
+        ));
+        assert!(!assertion_observes_direct_collection(
+            "assert!(result);",
+            "items"
+        ));
+        assert!(!assertion_observes_direct_collection(
+            "assert!(label.contains(\"record_effect\"));",
+            "items"
+        ));
+        assert!(
+            !assertion_observes_direct_collection("assert_eq!(items.clear(), ());", "items"),
+            "a mutating method observes its unit return, not the collection contents"
+        );
+        assert!(
+            !assertion_observes_direct_collection("assert_eq!(items.push(1), ());", "items"),
+            "asserting a second mutation must not confirm the production push"
+        );
+        assert!(
+            !assertion_observes_direct_collection(
+                "assert!(label == \"assert_eq!(items, expected)\");",
+                "items"
+            ),
+            "a quoted assert_eq! must not supply the collection observer"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn self_field_event_and_helper_effects_stay_partial() {
+        assert_eq!(
+            direct_collection_mutation_receiver("self.items.push(5)"),
+            None
+        );
+        assert_eq!(
+            direct_collection_mutation_receiver("cache.entries.push(5)"),
+            None
+        );
+        assert_eq!(
+            direct_collection_mutation_receiver("events.publish(score)"),
+            None
+        );
+        assert_eq!(
+            direct_collection_mutation_receiver("cache.insert(\"result_key\", result)"),
+            None,
+            "CallDeletion cache.insert is a delivered fixture family, not this admission"
+        );
+        assert_eq!(
+            direct_collection_mutation_receiver("items.insert(0, 5)"),
+            None,
+            "Vec::insert is a later sibling, not the push family"
+        );
+        let cache_insert = current_path_witness(
+            &probe(
+                ProbeFamily::CallDeletion,
+                "cache.insert(\"result_key\", result)",
+            ),
+            &[sink(
+                FlowSinkKind::StateWrite,
+                "cache.insert(\"result_key\", result)",
+                15,
+            )],
+        );
+        assert!(cache_insert.is_some_and(|witness| {
+            witness.completeness == PathCompleteness::Partial
+                && !complete_direct_witness(
+                    &probe(
+                        ProbeFamily::CallDeletion,
+                        "cache.insert(\"result_key\", result)",
+                    ),
+                    Some(&witness),
+                )
+        }));
+        let event = current_path_witness(
+            &probe(ProbeFamily::SideEffect, "self.handle(value)"),
+            &[sink(FlowSinkKind::CallEffect, "self.handle(value)", 14)],
+        );
+        assert!(event.is_some_and(|witness| {
+            witness.completeness == PathCompleteness::Partial
+                && !complete_direct_witness(
+                    &probe(ProbeFamily::SideEffect, "self.handle(value)"),
+                    Some(&witness),
+                )
+        }));
     }
 }

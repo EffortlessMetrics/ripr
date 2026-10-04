@@ -3,7 +3,11 @@
 Status: active  
 Owner: product-swarm  
 Plan artifact: RIPR-PLAN-0062  
-Linked goal: `.ripr/goals/active.toml`  
+Linked goal: none; retired singleton goal files do not select work. Live
+authority is the GitHub issues named below, related PRs/checks, and the
+local worktree. `.allow/spec-system/slices/` holds PR-local scope records
+consulted after GitHub selects a live issue or PR (`ImplementationSliceV1`;
+no live execution state).
 Linked issues: #1423, #1424, #1425, #1427, #1440, #1543, #1560
 Starting PRs: #1489, #1487, #1483
 
@@ -28,10 +32,17 @@ RIPR xtask remains the repo-facing proof executor and may invoke cargo-allow,
 but must not independently reimplement the same graph rules. Every campaign
 control-plane PR records cargo-allow doctor, audit, and worklist outputs.
 
-The profile is advisory while its findings are made low-noise. The sole RIPR
-execution manifest at `.ripr/goals/active.toml` is deliberately not enforced
-until cargo-allow issue #2119 can validate its dialect without creating a second
-active goal or discarding execution metadata. The installed cargo-allow 0.1.10
+The profile is advisory while its findings are made low-noise. The former
+`.ripr/goals/active.toml` execution manifest was deleted in #1701 and is
+not a live selector; GitHub issues named in this plan carry current
+execution state. `.allow/spec-system/slices/` remains PR-local scope after
+that selection, not a second scheduler. cargo-allow
+issues [#2260](https://github.com/EffortlessMetrics/cargo-allow/issues/2260)
+and [#2196](https://github.com/EffortlessMetrics/cargo-allow/issues/2196)
+remain the dialect blockers for spec-system validation (the prior #2119
+blocker was closed as not planned on 2026-08-25 when the explicit
+dialect/source-adapter architecture superseded it), not a
+reason to revive the deleted file. The installed cargo-allow 0.1.10
 requires `--config .allow/profiles/spec-system.toml` for this owned profile;
 cargo-allow issue #2117 tracks the owned-versus-legacy default-path friction.
 
@@ -41,7 +52,7 @@ cargo-allow issue #2117 tracks the owned-versus-legacy default-path friction.
 | ---: | --- | --- | --- |
 | 0A | `control-plane/cargo-allow-spec-system-adoption` | — | cargo-allow doctor, audit, and worklist artifacts |
 | 0B | `control-plane/rust-one-shot-goal` | 0A | goals/doc/plan checks and structural indexing |
-| 0C | `control-plane/cargo-allow-active-goal-dialect` | 0A | blocked on cargo-allow #2119 or separately approved migration |
+| 0C | `control-plane/cargo-allow-active-goal-dialect` | 0A | blocked on cargo-allow [#2260](https://github.com/EffortlessMetrics/cargo-allow/issues/2260) / [#2196](https://github.com/EffortlessMetrics/cargo-allow/issues/2196) or separately approved migration |
 | 1A | `output/bounded-start-here` | 0 | human/human-full fixtures and output contracts |
 | 1B | `docs/first-screen-agent-loop` | 1A | README/doc checks |
 | 2A | `review/card-oracle-projection` | 0 | review-card schema and traceability checks |
@@ -117,8 +128,9 @@ Certification is current-head evidence. Receipts name the exact head SHA, later
 mutation invalidates prior certification, and a reviewer who changes the branch
 acts as a fixer rather than an independent reviewer for that pass. Cargo-allow
 remains advisory structural authority, RIPR xtask remains proof executor, and
-`.ripr/goals/active.toml` remains the sole execution manifest until #2119 is
-resolved.
+retired singleton goal files do not select work. Live execution state is the
+GitHub issues named in this plan, related PRs/checks, and the local
+worktree. `.allow/spec-system/slices/` is PR-local scope, not live selection.
 
 ## Contract
 
@@ -204,7 +216,9 @@ gate renderer.
 
 The remaining campaign blockers are explicit: #1543 needs an authorized
 real/current-repository CallPresence receipt before any policy-eligible route
-can be claimed; the cargo-allow active-goal dialect remains blocked on #2119;
+can be claimed; the cargo-allow active-goal dialect remains blocked on
+cargo-allow [#2260](https://github.com/EffortlessMetrics/cargo-allow/issues/2260)
+and [#2196](https://github.com/EffortlessMetrics/cargo-allow/issues/2196);
 and the final dogfood item lacks the required receipt-backed attempts across at
 least three authorized Rust repositories. Synthetic fixture rows do not satisfy
 that corpus requirement.

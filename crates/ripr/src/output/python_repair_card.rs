@@ -358,7 +358,7 @@ fn parse_exception_discriminator(value: &str) -> Option<(&str, String)> {
 fn framework_label(verify_command: &str) -> &'static str {
     if verify_command.starts_with("python -m unittest ") {
         "unittest"
-    } else if verify_command.starts_with("pytest ") {
+    } else if crate::domain::is_pytest_verify_command(verify_command) {
         "pytest"
     } else {
         "Python"
@@ -434,7 +434,7 @@ fn pytest_boundary_parametrization(
     missing_discriminator: &str,
     verify_command: &str,
 ) -> Option<PytestBoundaryParametrization> {
-    if !verify_command.starts_with("pytest ") {
+    if !crate::domain::is_pytest_verify_command(verify_command) {
         return None;
     }
     let (input, boundary) = missing_discriminator.split_once(" == ")?;

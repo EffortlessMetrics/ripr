@@ -1,6 +1,6 @@
 --- a/lib/Pricing.pm
 +++ b/lib/Pricing.pm
-@@ -7,6 +7,7 @@
+@@ -7,3 +7,5 @@
  sub calculate_discount {
      my ($amount) = @_;
 +    my $method = 'calculate_discount';

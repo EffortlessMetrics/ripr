@@ -111,7 +111,7 @@ exercised boundary from a missing one.
 `analysis/classifier/evidence.rs`
 `unresolved_boundary_operand_withholds_repair_prescription`,
 `parameter_boundary_keeps_repair_prescription`;
-`analysis/language/rust.rs` end-to-end retarget+evaluation tests
+`analysis/language/rust/mod.rs` end-to-end retarget+evaluation tests
 (including the #1429 limitation-carrying retarget assertion);
 fixtures `binding_predicate_equality_boundary` (re-blessed flip),
 `binding_value_fail_closed` (re-blessed reason enrichment),

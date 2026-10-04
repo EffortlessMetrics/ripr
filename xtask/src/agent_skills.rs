@@ -14,6 +14,27 @@ const SKILLS: [&str; 7] = [
     "review-pr",
 ];
 
+/// Product-surface module tokens that AGENTS.md, CLAUDE.md, and
+/// docs/ARCHITECTURE.md must name. Pins the #1943/#3774 drift class:
+/// those three maps cannot omit these backticked tokens. Adding a new
+/// product-map surface means adding the token here and in all three maps.
+/// This list is not parsed from `lib.rs`; `git`, `workspace_status`, and
+/// private helpers stay off the product map.
+const REQUIRED_ARCHITECTURE_MODULES: [&str; 10] = [
+    "`domain`",
+    "`app`",
+    "`analysis`",
+    "`output`",
+    "`cli`",
+    "`lsp`",
+    "`agent`",
+    "`config`",
+    "`mcp`",
+    "`provider_contract`",
+];
+
+const ARCHITECTURE_MAP_FILES: [&str; 3] = ["AGENTS.md", "CLAUDE.md", "docs/ARCHITECTURE.md"];
+
 const ROOT_REVIEW_ROUTE_MARKER: &str = "review_route:root_to_review_pr";
 
 const REVIEW_ROUTE_REQUIRED_MARKERS: [(&str, &str); 5] = [
@@ -53,6 +74,58 @@ const REVIEW_PR_REQUIRED_MARKERS: [&str; 17] = [
     "review_contract:blocked_is_not_human_cause",
 ];
 
+/// Pin declarations, not model compliance or semantic truth of the prose.
+/// AGENTS/.agents and CLAUDE/.claude retain separate provider routing.
+const AGENTS_ROOT_OPERATING_MARKERS: [&str; 5] = [
+    "operating_contract:primary_authority",
+    "operating_contract:routine_repo_writes",
+    "operating_contract:ordinary_squash_merge",
+    "operating_contract:delivery_state_ladder",
+    "operating_contract:host_shell_detection",
+];
+
+const AGENTS_SKILL_OPERATING_MARKERS: [(&str, &str); 20] = [
+    ("deliver-goal", "goal_contract:parent_end_state"),
+    ("deliver-goal", "goal_contract:progress_denominator"),
+    ("deliver-goal", "goal_contract:local_work_not_delivery"),
+    (
+        "deliver-goal",
+        "goal_contract:waiting_lane_not_global_blocker",
+    ),
+    (
+        "deliver-goal",
+        "goal_contract:subgoal_does_not_close_parent",
+    ),
+    (
+        "deliver-goal",
+        "goal_contract:primary_sources_before_summary",
+    ),
+    ("deliver-pr", "pr_contract:current_claim_search"),
+    ("deliver-pr", "pr_contract:duplicate_check_before_conflict"),
+    ("deliver-pr", "pr_contract:behind_only_no_restack"),
+    ("deliver-pr", "pr_contract:routine_repo_writes"),
+    ("deliver-pr", "pr_contract:ordinary_squash_merge"),
+    ("deliver-pr", "pr_contract:local_commit_not_delivery"),
+    ("build-candidate", "candidate_contract:host_shell_detection"),
+    ("build-candidate", "candidate_contract:focused_local_proof"),
+    ("build-candidate", "candidate_contract:one_writer_worktree"),
+    (
+        "build-candidate",
+        "candidate_contract:publish_for_remote_evidence",
+    ),
+    ("finish-pr", "finish_contract:routine_repo_writes"),
+    ("finish-pr", "finish_contract:ordinary_squash_merge"),
+    ("finish-pr", "finish_contract:duplicate_recheck"),
+    ("finish-pr", "finish_contract:behind_only_no_restack"),
+];
+
+const OPERATING_MARKER_PREFIXES: [&str; 4] = [
+    "goal_contract:",
+    "pr_contract:",
+    "candidate_contract:",
+    "finish_contract:",
+];
+
 const PROVIDERS: [(&str, &str, &str, &str, Option<&str>); 3] = [
     (
         "codex",
@@ -68,10 +141,6 @@ const PROVIDERS: [(&str, &str, &str, &str, Option<&str>); 3] = [
         ".agents/skills",
         None,
     ),
-    // ZCode reads AGENTS.md and uses the same .agents/skills tree as Codex.
-    // It has no separate override file and no separate skill root; the
-    // provider entry validates that the shared AGENTS.md carries the root
-    // route marker and that the skill tree is complete for this provider too.
     (
         "zcode",
         "AGENTS.md",
@@ -83,6 +152,8 @@ const PROVIDERS: [(&str, &str, &str, &str, Option<&str>); 3] = [
 
 pub(crate) fn check() -> Result<(), String> {
     let mut findings = Vec::new();
+    validate_architecture_maps(&mut findings);
+    validate_agents_operating_contract(&mut findings);
     for (provider, instructions, root, other_root, override_path) in PROVIDERS {
         let text = match fs::read_to_string(instructions) {
             Ok(text) => text,
@@ -110,6 +181,9 @@ pub(crate) fn check() -> Result<(), String> {
                     }
                     if has_active_reference(&override_text, other_root) {
                         findings.push(format!("{provider}: {override_path} imports {other_root}"));
+                    }
+                    for finding in override_operating_contract_findings(&override_text) {
+                        findings.push(format!("{provider}: {override_path} {finding}"));
                     }
                     provider_text.push('\n');
                     provider_text.push_str(&override_text);
@@ -245,7 +319,9 @@ pub(crate) fn check() -> Result<(), String> {
             "prose identity", "section-order symmetry", "equal agent counts",
             "equal model choices", "one role per pass",
             "one provider as generated canonical source", "mandatory separate reviewer identity",
-            "semantic truth of declared review contract markers"
+            "semantic truth of declared review and operating contract markers",
+            "full prose identity beyond the checked operating markers",
+            "provider runtime loading and compliance"
         ]
     });
     crate::write_report(
@@ -255,6 +331,10 @@ pub(crate) fn check() -> Result<(), String> {
             + "\n"),
     )?;
     let mut markdown = format!("# Agent skill structure\n\n- Status: {status}\n\n");
+    markdown.push_str(
+        "Scope: checked files, declared markers, and routes only. This is not proof of \
+         semantic consistency, provider runtime loading, or agent compliance.\n\n",
+    );
     if findings.is_empty() {
         markdown.push_str("## Findings\n\n- none\n");
     } else {
@@ -273,6 +353,144 @@ pub(crate) fn check() -> Result<(), String> {
             report["findings"].as_array().map_or(0, Vec::len)
         ))
     }
+}
+
+fn validate_architecture_maps(findings: &mut Vec<String>) {
+    for path in ARCHITECTURE_MAP_FILES {
+        let text = match fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(error) => {
+                findings.push(format!("architecture-map: {path} unreadable: {error}"));
+                continue;
+            }
+        };
+        findings.extend(architecture_map_findings(path, &text));
+    }
+}
+
+fn architecture_map_findings(path: &str, text: &str) -> Vec<String> {
+    let mut findings = Vec::new();
+    for module in REQUIRED_ARCHITECTURE_MODULES {
+        if !text.contains(module) {
+            findings.push(format!(
+                "architecture-map: {path} omits required module token {module}"
+            ));
+        }
+    }
+    findings
+}
+
+fn validate_agents_operating_contract(findings: &mut Vec<String>) {
+    for (instructions, skill_root) in [
+        ("AGENTS.md", ".agents/skills"),
+        ("CLAUDE.md", ".claude/skills"),
+    ] {
+        let root_text = match fs::read_to_string(instructions) {
+            Ok(text) => text,
+            Err(error) => {
+                findings.push(format!(
+                    "operating-contract: {instructions} unreadable: {error}"
+                ));
+                continue;
+            }
+        };
+        for finding in closed_marker_findings(
+            &root_text,
+            "operating_contract:",
+            &AGENTS_ROOT_OPERATING_MARKERS,
+        ) {
+            findings.push(format!("operating-contract: {instructions} {finding}"));
+        }
+
+        for skill in SKILLS {
+            let relative = format!("{skill_root}/{skill}/SKILL.md");
+            let skill_text = match fs::read_to_string(&relative) {
+                Ok(text) => text,
+                Err(error) => {
+                    findings.push(format!(
+                        "operating-contract: {relative} unreadable: {error}"
+                    ));
+                    continue;
+                }
+            };
+            for finding in skill_operating_contract_findings(skill, &skill_text) {
+                findings.push(format!("operating-contract: {relative} {finding}"));
+            }
+        }
+    }
+}
+
+/// The override is a bootstrap to the checked root, not another declaration owner.
+/// Reject known and unknown operating declarations from every reserved family.
+fn override_operating_contract_findings(text: &str) -> Vec<String> {
+    let mut counts = declared_operating_marker_counts(text);
+    counts.extend(declared_marker_counts(text, "operating_contract:"));
+    counts
+        .keys()
+        .map(|marker| {
+            format!(
+                "declares operating marker `{marker}` in the override; use its root or skill owner"
+            )
+        })
+        .collect()
+}
+
+fn skill_operating_contract_findings(skill: &str, text: &str) -> Vec<String> {
+    let counts = declared_operating_marker_counts(text);
+    let mut findings = Vec::new();
+
+    for (_, required) in AGENTS_SKILL_OPERATING_MARKERS
+        .iter()
+        .filter(|(owner, _)| *owner == skill)
+    {
+        match counts.get(*required).copied().unwrap_or(0) {
+            0 => findings.push(format!("is missing marker `{required}`")),
+            1 => {}
+            count => findings.push(format!("declares marker `{required}` {count} times")),
+        }
+    }
+
+    for declared in counts.keys() {
+        match AGENTS_SKILL_OPERATING_MARKERS
+            .iter()
+            .find(|(_, marker)| *marker == declared.as_str())
+        {
+            None => findings.push(format!("declares unknown marker `{declared}`")),
+            Some((owner, _)) if *owner != skill => findings.push(format!(
+                "declares marker `{declared}` owned by `{owner}`, not `{skill}`"
+            )),
+            Some(_) => {}
+        }
+    }
+    findings
+}
+
+fn declared_operating_marker_counts(text: &str) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for prefix in OPERATING_MARKER_PREFIXES {
+        for (marker, count) in declared_marker_counts(text, prefix) {
+            *counts.entry(marker).or_insert(0) += count;
+        }
+    }
+    counts
+}
+
+fn closed_marker_findings(text: &str, prefix: &str, required: &[&str]) -> Vec<String> {
+    let counts = declared_marker_counts(text, prefix);
+    let mut findings = Vec::new();
+    for marker in required {
+        match counts.get(*marker).copied().unwrap_or(0) {
+            0 => findings.push(format!("is missing marker `{marker}`")),
+            1 => {}
+            count => findings.push(format!("declares marker `{marker}` {count} times")),
+        }
+    }
+    for declared in counts.keys() {
+        if !required.contains(&declared.as_str()) {
+            findings.push(format!("declares unknown marker `{declared}`"));
+        }
+    }
+    findings
 }
 
 fn validate_root_review_route(provider: &str, routing_text: &str, findings: &mut Vec<String>) {
@@ -389,7 +607,11 @@ fn negative_context(lines: &[&str], index: usize) -> bool {
             .and_then(|candidate| lines.get(candidate))
             .map(|line| line.to_ascii_lowercase())
             .is_some_and(|line| {
-                line.contains("do not") || line.contains("no ") || line.contains("without ")
+                line.contains("do not")
+                    || line.contains("no ")
+                    || line.contains("without ")
+                    || line.contains("instead of")
+                    || line.contains("rather than")
             })
     })
 }
@@ -397,6 +619,212 @@ fn negative_context(lines: &[&str], index: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn override_bootstrap_rejects_operating_declarations() -> Result<(), String> {
+        let bootstrap = include_str!("../../AGENTS.override.md");
+        let findings = override_operating_contract_findings(bootstrap);
+        if !findings.is_empty() {
+            return Err(format!("checked-in bootstrap failed: {findings:?}"));
+        }
+        let markers = AGENTS_ROOT_OPERATING_MARKERS.iter().copied().chain(
+            AGENTS_SKILL_OPERATING_MARKERS
+                .iter()
+                .map(|(_, marker)| *marker),
+        );
+        for marker in markers {
+            let mutated = format!("{bootstrap}\n- `{marker}`\n");
+            let findings = override_operating_contract_findings(&mutated);
+            let expected = vec![format!(
+                "declares operating marker `{marker}` in the override; use its root or skill owner"
+            )];
+            if findings != expected {
+                return Err(format!("override accepted {marker}: {findings:?}"));
+            }
+        }
+        for prefix in std::iter::once("operating_contract:").chain(OPERATING_MARKER_PREFIXES) {
+            let marker = format!("{prefix}invented_permission");
+            let mutated = format!("{bootstrap}\n- `{marker}`\n");
+            if override_operating_contract_findings(&mutated).len() != 1 {
+                return Err(format!("override accepted unknown marker {marker}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn operating_markers_reject_each_missing_and_duplicate_declaration() -> Result<(), String> {
+        let root = AGENTS_ROOT_OPERATING_MARKERS
+            .iter()
+            .map(|marker| format!("- `{marker}`"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for marker in AGENTS_ROOT_OPERATING_MARKERS {
+            for changed in [
+                root.replace(&format!("- `{marker}`"), ""),
+                format!("{root}\n- `{marker}`"),
+            ] {
+                let findings = closed_marker_findings(
+                    &changed,
+                    "operating_contract:",
+                    &AGENTS_ROOT_OPERATING_MARKERS,
+                );
+                if findings.len() != 1 || !findings[0].contains(marker) {
+                    return Err(format!("root mutation was not isolated: {findings:?}"));
+                }
+            }
+        }
+        for skill in SKILLS {
+            let complete = AGENTS_SKILL_OPERATING_MARKERS
+                .iter()
+                .filter(|(owner, _)| *owner == skill)
+                .map(|(_, marker)| format!("- `{marker}`"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            if !skill_operating_contract_findings(skill, &complete).is_empty() {
+                return Err(format!("valid operating markers rejected for {skill}"));
+            }
+            for (_, marker) in AGENTS_SKILL_OPERATING_MARKERS
+                .iter()
+                .filter(|(owner, _)| *owner == skill)
+            {
+                for changed in [
+                    complete.replace(&format!("- `{marker}`"), ""),
+                    format!("{complete}\n- `{marker}`"),
+                ] {
+                    let findings = skill_operating_contract_findings(skill, &changed);
+                    if findings.len() != 1 || !findings[0].contains(marker) {
+                        return Err(format!("skill mutation was not isolated: {findings:?}"));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn negative_context_accepts_rejection_phrases_but_not_active_state() -> Result<(), String> {
+        let instead_of = [
+            "Bind background work to its retained task/session handle",
+            "instead of guessing liveness from process names.",
+        ];
+        if !negative_context(&instead_of, 1) {
+            return Err("`instead of` should mark a rejected orchestration term".to_string());
+        }
+
+        let rather_than = [
+            "Task liveness must be bound to the retained task/session handle rather than",
+            "a guessed process name.",
+        ];
+        if !negative_context(&rather_than, 0) {
+            return Err("`rather than` should mark a rejected orchestration term".to_string());
+        }
+
+        let active = ["Track liveness with a process-name registry."];
+        if negative_context(&active, 0) {
+            return Err("active orchestration state must not be treated as rejected".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn operating_contract_markers_are_closed_and_discriminating() -> Result<(), String> {
+        let complete = AGENTS_ROOT_OPERATING_MARKERS
+            .iter()
+            .map(|marker| format!("- `{marker}`"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let findings = closed_marker_findings(
+            &complete,
+            "operating_contract:",
+            &AGENTS_ROOT_OPERATING_MARKERS,
+        );
+        if !findings.is_empty() {
+            return Err(format!(
+                "complete operating contract unexpectedly failed: {findings:?}"
+            ));
+        }
+
+        let removed = AGENTS_ROOT_OPERATING_MARKERS[0];
+        let incomplete = complete.replace(&format!("- `{removed}`"), "");
+        let findings = closed_marker_findings(
+            &incomplete,
+            "operating_contract:",
+            &AGENTS_ROOT_OPERATING_MARKERS,
+        );
+        let expected = vec![format!("is missing marker `{removed}`")];
+        if findings != expected {
+            return Err(format!(
+                "operating contract omission should report only `{removed}`, got {findings:?}"
+            ));
+        }
+
+        let unknown = format!("{complete}\n- `operating_contract:invented_permission`");
+        let findings = closed_marker_findings(
+            &unknown,
+            "operating_contract:",
+            &AGENTS_ROOT_OPERATING_MARKERS,
+        );
+        let expected =
+            vec!["declares unknown marker `operating_contract:invented_permission`".to_string()];
+        if findings != expected {
+            return Err(format!(
+                "unknown operating contract marker was not isolated: {findings:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn skill_operating_markers_reject_foreign_and_ungoverned() -> Result<(), String> {
+        let complete = AGENTS_SKILL_OPERATING_MARKERS
+            .iter()
+            .filter(|(owner, _)| *owner == "deliver-pr")
+            .map(|(_, marker)| format!("- `{marker}`"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let findings = skill_operating_contract_findings("deliver-pr", &complete);
+        if !findings.is_empty() {
+            return Err(format!(
+                "complete deliver-pr operating contract unexpectedly failed: {findings:?}"
+            ));
+        }
+
+        let foreign_marker = "candidate_contract:host_shell_detection";
+        let foreign = format!("{complete}\n- `{foreign_marker}`");
+        let findings = skill_operating_contract_findings("deliver-pr", &foreign);
+        let expected = vec![format!(
+            "declares marker `{foreign_marker}` owned by `build-candidate`, not `deliver-pr`"
+        )];
+        if findings != expected {
+            return Err(format!(
+                "foreign-family marker bypassed ownership: {findings:?}"
+            ));
+        }
+
+        let unknown = format!("{complete}\n- `pr_contract:invented_permission`");
+        let findings = skill_operating_contract_findings("deliver-pr", &unknown);
+        let expected =
+            vec!["declares unknown marker `pr_contract:invented_permission`".to_string()];
+        if findings != expected {
+            return Err(format!(
+                "unknown skill marker was not isolated: {findings:?}"
+            ));
+        }
+
+        let ungoverned = "- `goal_contract:parent_end_state`";
+        let findings = skill_operating_contract_findings("prepare-proof", ungoverned);
+        let expected = vec![
+            "declares marker `goal_contract:parent_end_state` owned by `deliver-goal`, not `prepare-proof`"
+                .to_string(),
+        ];
+        if findings != expected {
+            return Err(format!(
+                "operating marker in ungoverned skill was not rejected: {findings:?}"
+            ));
+        }
+        Ok(())
+    }
 
     #[test]
     fn review_contract_markers_are_closed_and_discriminating() -> Result<(), String> {
@@ -470,7 +898,7 @@ mod tests {
         ];
         if findings != expected {
             return Err(format!(
-                "review route omission was not isolated: {findings:?}"
+                "review route omission did not isolate the required marker: {findings:?}"
             ));
         }
 
@@ -484,6 +912,39 @@ mod tests {
             return Err(format!(
                 "unknown review route marker was not isolated: {findings:?}"
             ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn architecture_map_tokens_are_closed_and_discriminating() -> Result<(), String> {
+        let complete = REQUIRED_ARCHITECTURE_MODULES.join("\n");
+        let findings = architecture_map_findings("AGENTS.md", &complete);
+        if !findings.is_empty() {
+            return Err(format!(
+                "complete architecture map unexpectedly failed: {findings:?}"
+            ));
+        }
+
+        let incomplete = complete.replace("`mcp`", "mcp");
+        let findings = architecture_map_findings("AGENTS.md", &incomplete);
+        let expected =
+            vec!["architecture-map: AGENTS.md omits required module token `mcp`".to_string()];
+        if findings != expected {
+            return Err(format!(
+                "architecture map omission should report only `mcp` without backticks, got {findings:?}"
+            ));
+        }
+
+        if ARCHITECTURE_MAP_FILES != ["AGENTS.md", "CLAUDE.md", "docs/ARCHITECTURE.md"] {
+            return Err(format!(
+                "architecture map file set drifted: {ARCHITECTURE_MAP_FILES:?}"
+            ));
+        }
+        for required in ["`mcp`", "`provider_contract`", "`agent`", "`config`"] {
+            if !REQUIRED_ARCHITECTURE_MODULES.contains(&required) {
+                return Err(format!("required architecture set omits {required}"));
+            }
         }
         Ok(())
     }

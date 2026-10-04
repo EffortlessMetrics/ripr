@@ -2,12 +2,13 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/rust_transitive_reach_test_helper_chain/input
 
-Summary: 2 probe(s), 0 exposed, 0 weak, 0 unrevealed, 2 no path, 0 unknown
+Summary: 2 probe(s), 0 exposed, 0 weakly_exposed, 0 reachable_unrevealed, 2 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 2 of 2 finding(s) unsuppressed
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
 
 WARNING fixtures/rust_transitive_reach_test_helper_chain/input/src/eval.rs:3
+  id: probe:src_eval.rs:predicate:f66d616d
 
 Changed
   before: return value > limit;
@@ -36,7 +37,7 @@ Weakness
   - No strong discriminator was detected
 
 Stop reasons:
-  - transitive_reach_unresolved
+  - transitive_reach_unresolved — a candidate test path exists but passes through calls ripr only matched by name
 
 Static limitation
   rust_integration_public_api_path_unresolved — An integration test may reach this change through a crate public API or test-helper path ripr cannot fully trace. This is a named limitation, not a coverage claim.
@@ -52,8 +53,12 @@ Limitation detail
 
 Next step
   ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.
+Drill in:
+  ripr explain --root fixtures/rust_transitive_reach_test_helper_chain/input --diff fixtures/rust_transitive_reach_test_helper_chain/diff.patch --mode fast probe:src_eval.rs:predicate:f66d616d
+  ripr context --root fixtures/rust_transitive_reach_test_helper_chain/input --diff fixtures/rust_transitive_reach_test_helper_chain/diff.patch --mode fast --at probe:src_eval.rs:predicate:f66d616d
 
 WARNING fixtures/rust_transitive_reach_test_helper_chain/input/src/eval.rs:3
+  id: probe:src_eval.rs:return_value:7334f366
 
 Changed
   before: return value > limit;
@@ -81,7 +86,7 @@ Weakness
   - No strong discriminator was detected
 
 Stop reasons:
-  - transitive_reach_unresolved
+  - transitive_reach_unresolved — a candidate test path exists but passes through calls ripr only matched by name
 
 Static limitation
   rust_integration_public_api_path_unresolved — An integration test may reach this change through a crate public API or test-helper path ripr cannot fully trace. This is a named limitation, not a coverage claim.
@@ -97,6 +102,9 @@ Limitation detail
 
 Next step
   ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.
+Drill in:
+  ripr explain --root fixtures/rust_transitive_reach_test_helper_chain/input --diff fixtures/rust_transitive_reach_test_helper_chain/diff.patch --mode fast probe:src_eval.rs:return_value:7334f366
+  ripr context --root fixtures/rust_transitive_reach_test_helper_chain/input --diff fixtures/rust_transitive_reach_test_helper_chain/diff.patch --mode fast --at probe:src_eval.rs:return_value:7334f366
 
 
 Note: ripr found no static test path for any of the 2 changed expression(s) in this diff. Scope

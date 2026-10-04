@@ -6,22 +6,25 @@
 //! baselines, or change seam grip classifications.
 
 use crate::agent::loop_commands::{
-    WORKFLOW_AGENT_RECEIPT_ARTIFACT, WORKFLOW_AGENT_VERIFY_ARTIFACT, agent_receipt_command,
+    WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_RECEIPT_ARTIFACT,
+    WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_receipt_command,
+    shell_arg,
 };
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::canonical_gap::CanonicalGapIdentity;
 use crate::analysis::repair_route::{
-    RepairRouteState, RepairTargetSelection, repair_route_readiness,
+    RepairRouteState, RepairTargetSelection, repair_packet_eligibility, repair_route_readiness,
 };
 // The cross-language producer facts now live in `analysis::repair_route`
 // (the repair-packet eligibility authority). Re-exported here so existing
 // output/lsp callers keep compiling until their migration slice lands.
+use crate::analysis::is_test_surface_path;
 pub(crate) use crate::analysis::repair_route::{
     cross_language_oracle_visibility_unresolved, cross_language_test_target_unresolved,
 };
 use crate::analysis::seams::{SeamGripClass, SeamKind};
 use crate::analysis::test_grip_evidence::{RelationReason, oracle_semantics_for};
-use crate::domain::CommandSpec;
+use crate::domain::{CommandSpec, EvidenceState};
 use crate::domain::{OracleKind, OracleStrength, StageEvidence, StageState};
 use crate::output::agent_seam_packets::{
     AssertionShape, CandidateValue, RecommendedTest, assertion_shape_for_entry,
@@ -46,9 +49,57 @@ const REPAIR_ROUTE_EVIDENCE_CATEGORY: &str = "repair_route_evidence_incomplete";
 const REPAIR_ROUTE_EVIDENCE_REPAIR_ROUTE: &str = "analysis/producer-evidence-route";
 const TEST_TARGET_PROVENANCE_CATEGORY: &str = "test_target_provenance_unresolved";
 const TEST_TARGET_PROVENANCE_REPAIR_ROUTE: &str = "analysis/test-target-resolution";
+/// A changed owner that static evidence shows no existing test reaching.
+/// This is a test gap in the change, not an analyzer limitation; it keeps
+/// the fail-closed `static_limitation` gap state only because the route
+/// authority proposes no first-test target (#4216 row 2).
+pub(crate) const NO_TEST_REACHES_OWNER_CATEGORY: &str = "no_test_reaches_changed_owner";
 
 const MAX_RELATED_TESTS_PER_EVIDENCE_RECORD: usize = 8;
+
+/// Default verify command: the editor pilot snapshot family, whose producer
+/// is the pilot run the editor flow performs (`ripr pilot` writes
+/// `target/ripr/pilot/repo-exposure.json`). Producers whose documents write
+/// their own snapshots pass their family to
+/// [`evidence_record_with_verify_command`] instead.
+///
+/// The advisory verify display an actionable record offers (#4307).
+///
+/// Written non-claim (#4307 fork): this route does not persist a verify chain.
+/// The display stays Direct (stdout) over the pilot snapshots the
+/// record-producing flow maintains (`ripr pilot` writes exactly these files),
+/// and it must stay that way:
+///
+/// - a redirect (`> <root>/target/ripr/workflow/agent-verify.json`) would
+///   retype the route `shell_required`, and the bounded `agent verify-execute`
+///   authority executes Direct leaf verify routes only — packets built from
+///   these records are its producer-owned input, so a redirected display
+///   leaves them with zero executable routes (`verification_rejected_policy`);
+/// - the editor gap-cockpit safety filter refuses any `>` payload
+///   (#4225/#4239), so a redirected display also goes inert there;
+/// - an anchored redirect would embed the rendering process's working
+///   directory into stored snapshots and baselines.
+///
+/// The receipt command reads the workflow loop's `agent-verify.json`; that
+/// artifact is written by the dispatch loop, and `ripr agent status` is the
+/// recovery route that names it when missing. A root-contained persisted
+/// verify (`agent verify --out`) is the proposed future owner of this chain.
 const VERIFY_COMMAND: &str = "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json";
+
+/// Verify command over the workflow snapshot family the repair-loop documents
+/// themselves produce (#4379). The agent seam packet embeds evidence records
+/// beside a `next` block that writes
+/// [`WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT`] and
+/// [`WORKFLOW_AFTER_SNAPSHOT_ARTIFACT`], so its verify specs must read that
+/// same family: an orchestrator following the typed spec would otherwise
+/// verify against pilot snapshots nothing in the document produces. Built
+/// from the shared constants so the family cannot drift from the `next`
+/// block.
+pub(crate) fn workflow_snapshot_verify_command() -> String {
+    format!(
+        "ripr agent verify --root . --before {WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT} --after {WORKFLOW_AFTER_SNAPSHOT_ARTIFACT} --json"
+    )
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct EvidenceRecord {
@@ -110,6 +161,10 @@ pub(crate) struct EvidenceRecordCanonicalItem {
     pub(crate) related_test: Option<EvidenceRecordAlignmentRelatedTest>,
     pub(crate) verify_command: Option<String>,
     pub(crate) receipt_command: Option<String>,
+    /// The documented start of the repair transaction (#3906), present only
+    /// when the gap is actionable and the seam passes the fail-closed
+    /// repair-packet flip. Consumers carry it; none recompute it.
+    pub(crate) repair_command: Option<String>,
     pub(crate) verify_command_spec: Option<CommandSpec>,
     pub(crate) receipt_command_spec: Option<CommandSpec>,
     pub(crate) confidence: EvidenceRecordAlignmentConfidence,
@@ -291,11 +346,36 @@ pub(crate) fn evidence_record_for(
     entry: &ClassifiedSeam,
     canonical_gap: Option<&CanonicalGapIdentity>,
 ) -> EvidenceRecord {
+    evidence_record_with_verify_command(entry, canonical_gap, Some(VERIFY_COMMAND))
+}
+
+/// [`evidence_record_for`] with the verify step bound to a specific snapshot
+/// family. A producer whose document writes the snapshots its verify step
+/// reads passes that family (the agent seam packet passes
+/// [`workflow_snapshot_verify_command`], #4379); the default stays the editor
+/// pilot family. A producer whose document advertises no independent verify
+/// route passes [`None`]: every verify projection then stays null even for an
+/// actionable record (the prepared repair packet, whose after phase verifies
+/// against the attempt's retained before snapshot rather than any path the
+/// document itself names, #4379). The command flows into every verify
+/// projection — `recommendation.verify_command`,
+/// `canonical_item.verify_command`, and the parsed
+/// `canonical_item.command_specs.verify` — so the three cannot disagree.
+pub(crate) fn evidence_record_with_verify_command(
+    entry: &ClassifiedSeam,
+    canonical_gap: Option<&CanonicalGapIdentity>,
+    verify_command: Option<&str>,
+) -> EvidenceRecord {
     let missing_records = missing_discriminator_records_for(entry);
     let recommended_test = recommended_test_for(entry);
     let actionability = actionability_for(entry, &missing_records);
-    let recommendation =
-        recommendation_for(entry, &missing_records, &actionability, &recommended_test);
+    let recommendation = recommendation_for(
+        entry,
+        &missing_records,
+        &actionability,
+        &recommended_test,
+        verify_command,
+    );
     let related_tests_total = entry.evidence.related_tests.len();
     let static_limitations = static_limitations_for(entry);
     let raw_findings = raw_findings_for(entry);
@@ -495,7 +575,7 @@ pub(crate) fn actionability_for(
             ),
             RepairRouteState::Ready if related_test => (
                 "actionable_related_test_extension",
-                "extend the nearest related test with the missing discriminator",
+                "add a focused test with the missing discriminator next to the nearest related test",
             ),
             RepairRouteState::Ready if missing_discriminator || candidate_values => (
                 "actionable_focused_test",
@@ -549,7 +629,8 @@ fn canonical_item_for(
     static_limitations: &[EvidenceRecordStaticLimitation],
     raw_findings: &[EvidenceRecordRawFinding],
 ) -> EvidenceRecordCanonicalItem {
-    let gap_state = gap_state_for(entry, actionability);
+    let evidence_state = evidence_state_for(entry, actionability);
+    let gap_state = evidence_state.as_str();
     let canonical_item_kind = canonical_item_kind_for(gap_state);
     let alignment_actionability = alignment_actionability_for(entry, actionability);
     let raw_group_size = canonical_gap
@@ -587,12 +668,28 @@ fn canonical_item_for(
                     .map(alignment_related_test_for_recommended_target)
             }),
         verify_command: recommendation.verify_command.clone(),
-        receipt_command: canonical_receipt_command_for(entry, gap_state),
+        receipt_command: canonical_receipt_command_for(
+            entry,
+            gap_state,
+            crate::agent::command_specs::PORTABLE_ROOT,
+        ),
+        repair_command: canonical_repair_command_for(
+            entry,
+            gap_state,
+            crate::agent::command_specs::PORTABLE_ROOT,
+        ),
         verify_command_spec: recommendation
             .verify_command
             .as_deref()
-            .and_then(crate::agent::command_specs::agent_command_spec_from_display),
-        receipt_command_spec: (gap_state == "actionable").then(|| {
+            // The canonical verify display is the portable `--root .` shape,
+            // so recovery needs no concrete selected root.
+            .and_then(|display| {
+                crate::agent::command_specs::agent_command_spec_from_display(
+                    display,
+                    std::path::Path::new(crate::agent::command_specs::PORTABLE_ROOT),
+                )
+            }),
+        receipt_command_spec: evidence_state.is_actionable().then(|| {
             crate::agent::command_specs::agent_receipt_command_spec(
                 ".",
                 WORKFLOW_AGENT_VERIFY_ARTIFACT,
@@ -655,16 +752,25 @@ pub(crate) fn gap_state_for(
     entry: &ClassifiedSeam,
     actionability: &EvidenceRecordActionability,
 ) -> &'static str {
+    evidence_state_for(entry, actionability).as_str()
+}
+
+/// One consumer-presentation decision; existing output fields retain their
+/// established names and wire values until each consumer migrates.
+pub(crate) fn evidence_state_for(
+    entry: &ClassifiedSeam,
+    actionability: &EvidenceRecordActionability,
+) -> EvidenceState {
     if actionability.class == "static_limitation" {
-        "static_limitation"
+        EvidenceState::StaticLimitation
     } else if actionability.has_concrete_guidance {
-        "actionable"
+        EvidenceState::Actionable
     } else if matches!(entry.class, SeamGripClass::StronglyGripped) {
-        "already_observed"
+        EvidenceState::AlreadyObserved
     } else if matches!(entry.class, SeamGripClass::Intentional) {
-        "internal_only"
+        EvidenceState::InternalOnly
     } else {
-        "unknown"
+        EvidenceState::Unknown
     }
 }
 
@@ -844,6 +950,7 @@ fn recommendation_for(
     missing_records: &[crate::output::agent_seam_packets::MissingRecord],
     actionability: &EvidenceRecordActionability,
     recommended_test: &RecommendedTest,
+    verify_command: Option<&str>,
 ) -> EvidenceRecordRecommendation {
     let actionable = actionability.has_concrete_guidance;
     let static_limited = actionability.class == "static_limitation";
@@ -859,7 +966,13 @@ fn recommendation_for(
     let assertion_shape = actionable
         .then(|| assertion_shape_record(assertion_shape_for_entry(entry)))
         .flatten();
-    let verify_command = actionable.then(|| VERIFY_COMMAND.to_string());
+    // Fail-closed: a producer that names no verify route (None) keeps every
+    // verify projection null, and actionability alone never manufactures one.
+    let verify_command = if actionable {
+        verify_command.map(str::to_string)
+    } else {
+        None
+    };
     let nearest_test_to_imitate =
         nearest_strong_test_to_imitate(entry.seam.kind(), &entry.evidence)
             .or_else(|| entry.evidence.related_tests.first())
@@ -879,16 +992,66 @@ fn recommendation_for(
     }
 }
 
+/// `ripr agent repair --root . --seam-id <id> --phase before` for an
+/// actionable gap whose seam passes `repair_packet_eligibility`, else `None`.
+/// Actionability alone is not enough: an actionable gap can still fail the
+/// flip (for example, an unresolved cross-language oracle), and `agent repair`
+/// would refuse it. A wrong actionable repair signal is worse than falling
+/// back to the verify and receipt commands (#3906).
+///
+/// Built here rather than in `agent::loop_commands`, whose file xtask
+/// includes into its own tree: a template only output calls reads as dead
+/// code there.
+pub(crate) fn canonical_repair_command_for(
+    entry: &ClassifiedSeam,
+    gap_state: &str,
+    root: &str,
+) -> Option<String> {
+    if gap_state != "actionable" {
+        return None;
+    }
+    repair_start_command_for(entry, root)
+}
+
+/// The `agent repair ... --phase before` command for a seam, or `None` when
+/// the repair transaction would refuse it. Every surface that offers the
+/// repair start builds it here. `root` is the producer's `--root` token:
+/// portable `.` inside durable artifacts, the bound selected root in
+/// copy/paste guidance (#3999/#4000).
+///
+/// Two conditions, both fail-closed:
+/// - the repair-packet flip (`repair_packet_eligibility(..).eligible()`);
+/// - the edit target the packet will name is a test surface. The
+///   transaction refuses any other target before it builds an edit cage
+///   (`app::repair_attempt`, "is not a test surface"), so a seam whose only
+///   test lives in an inline `#[cfg(test)]` module of a source file passes the
+///   flip but cannot start a repair. Offering it would print a command that
+///   fails (#3906).
+pub(crate) fn repair_start_command_for(entry: &ClassifiedSeam, root: &str) -> Option<String> {
+    if !repair_packet_eligibility(entry).eligible() {
+        return None;
+    }
+    if !is_test_surface_path(&recommended_test_for(entry).file) {
+        return None;
+    }
+    Some(format!(
+        "ripr agent repair --root {} --seam-id {} --phase before",
+        shell_arg(root),
+        shell_arg(entry.seam.id().as_str())
+    ))
+}
+
 pub(crate) fn canonical_receipt_command_for(
     entry: &ClassifiedSeam,
     gap_state: &str,
+    root: &str,
 ) -> Option<String> {
     if gap_state != "actionable" {
         return None;
     }
 
     Some(agent_receipt_command(
-        ".",
+        root,
         WORKFLOW_AGENT_VERIFY_ARTIFACT,
         entry.seam.id().as_str(),
         Some(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
@@ -1017,6 +1180,7 @@ pub(crate) fn static_limitations_for(
             .missing_evidence
             .iter()
             .any(|evidence| evidence == "safe test target");
+        let no_test_reaches_owner = missing_target && no_test_reaches_owner(entry);
         let value_family = matches!(
             entry.seam.kind(),
             SeamKind::PredicateBoundary
@@ -1033,8 +1197,23 @@ pub(crate) fn static_limitations_for(
             }
             .to_string(),
             state: "unknown".to_string(),
-            reason: route_readiness.missing_evidence.join("; "),
-            category: if missing_target {
+            reason: if no_test_reaches_owner {
+                format!(
+                    "no existing test reaches `{}` (no static test path to the changed owner); the route authority does not propose a first-test target, so no repair route is available",
+                    entry.seam.owner()
+                )
+            } else {
+                // A prose reason, not a bare noun list: every consumer (the
+                // card's `why_not_actionable`, the gate headline, the
+                // evidence record) shows this text as-is (#4216 row 2 review).
+                format!(
+                    "the repair route is missing evidence: {}",
+                    route_readiness.missing_evidence.join("; ")
+                )
+            },
+            category: if no_test_reaches_owner {
+                NO_TEST_REACHES_OWNER_CATEGORY.to_string()
+            } else if missing_target {
                 TEST_TARGET_PROVENANCE_CATEGORY.to_string()
             } else if value_family {
                 MISSING_DISCRIMINATOR_EVIDENCE_CATEGORY.to_string()
@@ -1052,6 +1231,12 @@ pub(crate) fn static_limitations_for(
     }
 
     limitations
+}
+
+/// Static evidence names no related test and an explicit `reach: no` for
+/// the changed owner. Unknown or opaque reach stays a static limitation.
+fn no_test_reaches_owner(entry: &ClassifiedSeam) -> bool {
+    entry.evidence.related_tests.is_empty() && entry.evidence.reach.state == StageState::No
 }
 
 #[cfg(test)]
@@ -1453,6 +1638,7 @@ fn canonical_item_json(item: &EvidenceRecordCanonicalItem) -> Value {
             .map_or(Value::Null, alignment_related_test_json),
         "verify_command": item.verify_command.as_deref(),
         "receipt_command": item.receipt_command.as_deref(),
+        "repair_command": item.repair_command.as_deref(),
         "command_specs": {
             "verify": item.verify_command_spec.as_ref(),
             "receipt": item.receipt_command_spec.as_ref(),
@@ -1615,6 +1801,32 @@ fn presentation_text_json(presentation_text: &EvidenceRecordPresentationText) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn consumer_evidence_state_preserves_wire_values_and_rejects_unknown_words() {
+        for state in [
+            EvidenceState::Actionable,
+            EvidenceState::AlreadyObserved,
+            EvidenceState::InternalOnly,
+            EvidenceState::StaticLimitation,
+            EvidenceState::Unknown,
+        ] {
+            let encoded = format!("\"{}\"", state.as_str());
+            assert_eq!(
+                serde_json::to_string(&state).ok().as_deref(),
+                Some(encoded.as_str())
+            );
+            assert_eq!(
+                serde_json::from_str::<EvidenceState>(&encoded).ok(),
+                Some(state)
+            );
+        }
+        let decoded = serde_json::from_str::<EvidenceState>("\"unsupported\"");
+        assert!(
+            matches!(decoded, Err(ref error) if error.to_string().contains("unknown variant")),
+            "{decoded:?}"
+        );
+    }
     use crate::analysis::classify_seam;
     use crate::analysis::repair_route::{
         RepairRouteState, RepairTargetSelection, repair_route_readiness,
@@ -1689,6 +1901,7 @@ mod tests {
                         owner: None,
                     }),
                 }],
+                new_test_target: None,
             },
             seam,
             class,
@@ -1751,6 +1964,7 @@ mod tests {
                     reason: "external TypeScript oracle visibility is unresolved".to_string(),
                     flow_sink: None,
                 }],
+                new_test_target: None,
             },
             seam,
             class,
@@ -1819,6 +2033,7 @@ mod tests {
                 discriminate: stage(StageState::Weak, "broad assertion mentions target"),
                 observed_values: Vec::new(),
                 missing_discriminators: Vec::new(),
+                new_test_target: None,
             },
             seam,
             class: SeamGripClass::ActivationUnknown,
@@ -1960,6 +2175,47 @@ mod tests {
     }
 
     #[test]
+    fn evidence_record_names_owner_no_test_reaches_as_test_gap() {
+        let mut entry = sample_classified(StageState::No, SeamGripClass::Ungripped);
+        entry.evidence.related_tests.clear();
+        entry.evidence.reach = stage(StageState::No, "no static test path");
+        entry.evidence.observe = stage(StageState::No, "no reachable oracle");
+        entry.evidence.discriminate = stage(StageState::No, "no reachable assertion");
+
+        let record = evidence_record_for(&entry, None);
+        let json = evidence_record_json_value(&record);
+
+        // The flip stays fail-closed; only the limitation's framing changes.
+        assert_eq!(record.actionability.class, "static_limitation");
+        assert_eq!(json["canonical_item"]["gap_state"], "static_limitation");
+        assert_eq!(json["canonical_item"]["receipt_command"], Value::Null);
+        assert_eq!(
+            json["static_limitations"][0]["category"],
+            NO_TEST_REACHES_OWNER_CATEGORY
+        );
+        assert_eq!(
+            json["static_limitations"][0]["repair_route"],
+            TEST_TARGET_PROVENANCE_REPAIR_ROUTE
+        );
+        assert!(
+            json["static_limitations"][0]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason
+                    .starts_with("no existing test reaches `pricing::discounted_total`"))
+        );
+
+        // A related test without a producer-owned target is still a target
+        // provenance limitation, not an owner that no test reaches.
+        let mut related = sample_classified(StageState::Yes, SeamGripClass::WeaklyGripped);
+        related.evidence.related_tests[0].test_target = None;
+        let json = evidence_record_json_value(&evidence_record_for(&related, None));
+        assert_eq!(
+            json["static_limitations"][0]["category"],
+            TEST_TARGET_PROVENANCE_CATEGORY
+        );
+    }
+
+    #[test]
     fn test_target_without_symbol_identity_is_unresolved() {
         let recommended = RecommendedTest {
             name: "discounted_total_boundary".to_string(),
@@ -2092,6 +2348,20 @@ mod tests {
                 .iter()
                 .any(|evidence| evidence == "safe test target")
         );
+        // #4216 row 2 review (F2): the projected limitation reason reads as
+        // missing evidence, not as a bare noun list, because the review card
+        // and the gate headline show it verbatim.
+        let reasons = static_limitations_for(&entry)
+            .into_iter()
+            .map(|limitation| limitation.reason)
+            .collect::<Vec<_>>();
+        assert!(
+            reasons.iter().any(|reason| {
+                reason.starts_with("the repair route is missing evidence: ")
+                    && reason.ends_with("; safe test target")
+            }),
+            "{reasons:?}"
+        );
         entry.evidence.related_tests[0].test_target = Some(test_target_fixture(
             "below_threshold_has_no_discount",
             "tests/pricing_tests.rs",
@@ -2216,6 +2486,64 @@ mod tests {
         Ok(())
     }
 
+    /// #4307 acceptance (written non-claim fork): the actionable record's
+    /// verify display stays Direct over the pilot snapshots the
+    /// record-producing flow maintains, so record-backed packets keep an
+    /// executable route for the bounded verify-execute authority and the
+    /// editor safety filter keeps accepting the payload. A contributor
+    /// "finishing" the chain with a redirect must fail here first — and would
+    /// then fail the verify-execute journey (`verification_rejected_policy`).
+    #[test]
+    fn actionable_verify_stays_direct_over_producer_maintained_pilot_snapshots()
+    -> Result<(), String> {
+        let entry = sample_classified(StageState::Yes, SeamGripClass::WeaklyGripped);
+        let record = evidence_record_for(&entry, None);
+        let json = evidence_record_json_value(&record);
+        let canonical_item = &json["canonical_item"];
+
+        let verify = canonical_item["verify_command"]
+            .as_str()
+            .ok_or_else(|| "actionable record carries a verify command".to_string())?;
+        assert_eq!(verify, VERIFY_COMMAND);
+
+        // Producer-bound inputs: `ripr pilot` writes exactly these snapshot
+        // files, so a consumer of this record can resolve them under its root.
+        assert!(
+            verify.contains("--before target/ripr/pilot/repo-exposure.json")
+                && verify.contains("--after target/ripr/pilot/after.repo-exposure.json"),
+            "verify inputs must be the pilot snapshots the record flow maintains: {verify}"
+        );
+        // Written non-claim: no redirect. A redirected display would retype
+        // the route shell_required and leave record-backed packets without an
+        // executable route for verify-execute, and the editor safety filter
+        // refuses the payload outright.
+        assert!(
+            !verify.contains('>'),
+            "the record verify display must stay Direct (no redirect): {verify}"
+        );
+
+        let spec = &canonical_item["command_specs"]["verify"];
+        assert_eq!(spec["execution_mode"], "direct");
+        assert_eq!(
+            spec["expected_writes"].as_array().map(Vec::is_empty),
+            Some(true),
+            "a Direct verify display must not claim writes it does not make"
+        );
+
+        // The receipt keeps reading the workflow loop's verify artifact; the
+        // accepted family split (advisory pilot verify vs persisted workflow
+        // artifact) is the non-claim this test pins, with `ripr agent status`
+        // as the recovery route for a missing artifact.
+        let receipt = canonical_item["receipt_command"]
+            .as_str()
+            .ok_or_else(|| "actionable record carries a receipt command".to_string())?;
+        assert!(
+            receipt.contains(&format!("--verify-json {WORKFLOW_AGENT_VERIFY_ARTIFACT}")),
+            "receipt must read the workflow verify artifact: {receipt}"
+        );
+        Ok(())
+    }
+
     #[test]
     fn readiness_terminal_states_follow_classifier_class() {
         let intentional = sample_classified(StageState::Yes, SeamGripClass::Intentional);
@@ -2320,6 +2648,102 @@ mod tests {
                 RepairRouteState::PolicyExcluded
             );
         }
+    }
+
+    /// #3906: the canonical repair card names `agent repair` only for an
+    /// actionable seam past the fail-closed repair-packet flip. The second
+    /// entry keeps its seam id but adds a TypeScript observer beside the Rust
+    /// test, so the flip refuses it (unresolved oracle path) and the item
+    /// becomes a static limitation: a known seam with a non-actionable route
+    /// gets no repair start and no verify or receipt command.
+    #[test]
+    fn canonical_item_names_the_repair_start_only_past_the_repair_packet_flip() -> Result<(), String>
+    {
+        let eligible = sample_classified(StageState::Yes, SeamGripClass::WeaklyGripped);
+        let mut ineligible = eligible.clone();
+        let mut observer = ineligible
+            .evidence
+            .related_tests
+            .first()
+            .cloned()
+            .ok_or("fixture must have a related test")?;
+        observer.file = std::path::PathBuf::from("tests/pricing.test.ts");
+        ineligible.evidence.related_tests.push(observer);
+
+        for (entry, want) in [(eligible, true), (ineligible, false)] {
+            if repair_packet_eligibility(&entry).eligible() != want {
+                return Err(format!("fixture eligibility must be {want}"));
+            }
+            let json = evidence_record_json_value(&evidence_record_for(&entry, None));
+            let item = &json["canonical_item"];
+            let expected_state = if want {
+                "actionable"
+            } else {
+                "static_limitation"
+            };
+            if item["gap_state"] != expected_state {
+                return Err(format!(
+                    "fixture gap_state must be {expected_state}: {item}"
+                ));
+            }
+            let expected = want.then(|| {
+                format!(
+                    "ripr agent repair --root . --seam-id {} --phase before",
+                    entry.seam.id().as_str()
+                )
+            });
+            if item["repair_command"] != json!(expected) {
+                return Err(format!(
+                    "repair_command {} for eligible={want}",
+                    item["repair_command"]
+                ));
+            }
+            // Today actionability already refuses what the flip refuses, so
+            // the record above cannot tell the two checks apart. Hand the
+            // builder an actionable state directly: the flip alone must still
+            // withhold the command if actionability ever drifts wider.
+            if canonical_repair_command_for(&entry, "actionable", ".").is_some() != want {
+                return Err(format!(
+                    "builder must follow the flip, not gap_state, for eligible={want}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// A seam whose related test lives in an inline `#[cfg(test)]` module of
+    /// the source file passes the repair-packet flip, but `agent repair`
+    /// refuses a non-test-surface edit target before it builds a cage. The
+    /// repair start must not be offered for it; the same seam with its test
+    /// under `tests/` keeps it (#3906).
+    #[test]
+    fn repair_start_requires_a_test_surface_edit_target() -> Result<(), String> {
+        let under_tests = sample_classified(StageState::Yes, SeamGripClass::WeaklyGripped);
+        let mut inline = under_tests.clone();
+        for test in &mut inline.evidence.related_tests {
+            test.file = std::path::PathBuf::from("src/lib.rs");
+        }
+
+        for (entry, want) in [(under_tests, true), (inline, false)] {
+            if !repair_packet_eligibility(&entry).eligible() {
+                return Err(format!("fixture must pass the flip (want={want})"));
+            }
+            let target = recommended_test_for(&entry).file;
+            if is_test_surface_path(&target) != want {
+                return Err(format!("fixture edit target `{target}` for want={want}"));
+            }
+            if repair_start_command_for(&entry, ".").is_some() != want {
+                return Err(format!("repair start for edit target `{target}`"));
+            }
+            let json = evidence_record_json_value(&evidence_record_for(&entry, None));
+            if json["canonical_item"]["repair_command"].is_null() == want {
+                return Err(format!(
+                    "canonical_item.repair_command for edit target `{target}`: {}",
+                    json["canonical_item"]["repair_command"]
+                ));
+            }
+        }
+        Ok(())
     }
 
     #[test]
@@ -2437,6 +2861,101 @@ mod tests {
         );
         assert_eq!(json["calibration"]["agreement"], "no_runtime_data");
         assert_eq!(json["static_limitations"].as_array().map(Vec::len), Some(0));
+    }
+
+    /// The default family is the editor pilot family (pinned above); a
+    /// producer whose document writes its own snapshots replaces the family
+    /// in every verify projection at once — `recommendation.verify_command`,
+    /// `canonical_item.verify_command`, and the parsed
+    /// `command_specs.verify` — so the three cannot disagree (#4379).
+    #[test]
+    fn verify_command_family_flows_into_every_verify_projection() -> Result<(), String> {
+        let entry = sample_classified(StageState::Yes, SeamGripClass::WeaklyGripped);
+        let workflow = workflow_snapshot_verify_command();
+        let json = evidence_record_json_value(&evidence_record_with_verify_command(
+            &entry,
+            None,
+            Some(&workflow),
+        ));
+
+        assert_eq!(
+            json["recommendation"]["verify_command"], workflow,
+            "recommendation must carry the passed family"
+        );
+        assert_eq!(
+            json["canonical_item"]["verify_command"], workflow,
+            "canonical item must carry the passed family"
+        );
+        let spec = &json["canonical_item"]["command_specs"]["verify"];
+        assert_eq!(
+            spec["human_display"], workflow,
+            "command spec must recover from the same display"
+        );
+        let args: Vec<String> = spec["args"]
+            .as_array()
+            .ok_or_else(|| format!("verify spec args must be an array: {spec}"))?
+            .iter()
+            .filter_map(|arg| arg.as_str().map(str::to_string))
+            .collect();
+        for family_path in [
+            WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+            WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+        ] {
+            if !args.contains(&family_path.to_string()) {
+                return Err(format!(
+                    "verify spec args must read {family_path}: {args:?}"
+                ));
+            }
+        }
+        if args.iter().any(|arg| arg.contains("pilot/")) {
+            return Err(format!(
+                "workflow family must not name pilot paths: {args:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// A seam without concrete guidance keeps its verify projections null in
+    /// every family: binding a snapshot family must not manufacture an
+    /// actionable verify step (fail-closed, #4379).
+    #[test]
+    fn verify_command_family_override_stays_fail_closed_for_static_limitations() {
+        let limited = sample_cross_language_classified(
+            SeamGripClass::WeaklyGripped,
+            vec![external_typescript_related_test()],
+        );
+        let json = evidence_record_json_value(&evidence_record_with_verify_command(
+            &limited,
+            None,
+            Some(&workflow_snapshot_verify_command()),
+        ));
+
+        assert_eq!(json["recommendation"]["verify_command"], Value::Null);
+        assert_eq!(json["canonical_item"]["verify_command"], Value::Null);
+    }
+
+    /// A producer whose document advertises no independent verify route
+    /// (the prepared repair packet: its after phase verifies against the
+    /// attempt's retained before snapshot) passes [`None`]; an actionable
+    /// record must still keep every verify projection null, so following the
+    /// typed spec can never verify against a snapshot family the document
+    /// does not bind to this attempt (fail-closed, #4379).
+    #[test]
+    fn verify_command_none_keeps_every_verify_projection_null_for_actionable_records() {
+        let entry = sample_classified(StageState::Yes, SeamGripClass::WeaklyGripped);
+        let json =
+            evidence_record_json_value(&evidence_record_with_verify_command(&entry, None, None));
+
+        assert_eq!(
+            json["actionability"]["has_concrete_guidance"],
+            Value::Bool(true)
+        );
+        assert_eq!(json["recommendation"]["verify_command"], Value::Null);
+        assert_eq!(json["canonical_item"]["verify_command"], Value::Null);
+        assert_eq!(
+            json["canonical_item"]["command_specs"]["verify"]["human_display"],
+            Value::Null
+        );
     }
 
     #[test]

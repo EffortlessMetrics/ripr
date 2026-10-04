@@ -24,6 +24,14 @@ const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 120;
 const DEFAULT_REVIEW_MODE: &str = "draft";
 const STATIC_GAP_CLASSES: [&str; 3] = ["weakly_exposed", "reachable_unrevealed", "no_static_path"];
 
+/// Named prefix of the producer error raised when a review-guidance dispatch
+/// is refused at the memory ceiling (#4388). Matched here — in the style of
+/// the `diff_scope_oversized` classification — so the wrapper receipt names
+/// an instrument-limited pass instead of a generic producer failure. Pinned
+/// against the producer's actual error text by the ceiling classification
+/// tests on both sides of this boundary.
+const REVIEW_GUIDANCE_OVERSIZED_PREFIX: &str = "review_guidance_oversized";
+
 #[derive(Debug)]
 struct ReviewCommentsRunError {
     message: String,
@@ -868,7 +876,7 @@ fn error_review_comments_packet(
         "warnings": [
             {
                 "kind": "tool_error",
-                "message": first_line(error),
+                "message": named_guard_line(error).unwrap_or_else(|| first_line(error)),
                 "path": null
             }
         ],
@@ -1222,19 +1230,33 @@ fn review_comments_receipt(
                     "secondary_diagnostics": []
                 }),
             );
+            let producer_error = error.unwrap_or("unknown failure");
+            let limitation_category = if is_review_guidance_oversized(producer_error) {
+                // A dispatch refused at the guidance-payload memory ceiling
+                // (#4388) is an instrument-limited pass: the receipt must
+                // name the ceiling classification, not a generic producer
+                // failure, so a consumer gate can distinguish it from a
+                // real gap.
+                "review_guidance_oversized"
+            } else {
+                "review_comments_failure"
+            };
+            let repair_route = if limitation_category == "review_guidance_oversized" {
+                "raise RIPR_REVIEW_GUIDANCE_MAX_INDEX_FILES or \
+                 RIPR_REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES on a runner with enough memory"
+            } else {
+                "analysis/review-comments-error-diagnostics"
+            };
             object.insert(
                 "limitations".to_string(),
                 serde_json::json!([{
-                    "category": "review_comments_failure",
-                    "repair_route": "analysis/review-comments-error-diagnostics"
+                    "category": limitation_category,
+                    "repair_route": repair_route,
                 }]),
             );
             object.insert(
                 "non_claims".to_string(),
-                serde_json::json!([format!(
-                    "failure: {}",
-                    first_line(error.unwrap_or("unknown failure"))
-                )]),
+                serde_json::json!([format!("failure: {}", first_line(producer_error))]),
             );
         }
     }
@@ -1367,6 +1389,32 @@ fn first_line(value: &str) -> String {
         .to_string()
 }
 
+/// True when the producer failed at the guidance-payload memory ceiling
+/// (#4388). The wrapper's failure text embeds the producer stderr under a
+/// leading summary line, so the named prefix is matched line-wise, not on
+/// the first line. `ripr` reports the raw guard error as
+/// `ripr: review_guidance_oversized: ...`, so exactly that reporter prefix
+/// is stripped before matching. Require the category's colon delimiter so
+/// a different error with a lookalike prefix remains a generic failure.
+fn is_review_guidance_oversized(producer_error: &str) -> bool {
+    named_guard_line(producer_error).is_some()
+}
+
+/// The producer's named ceiling guard line, when its stderr carried one.
+/// The wrapper's generic first line (`ripr review-comments failed`) would
+/// otherwise hide the reason from the rendered error packet; the guard line
+/// is the disclosure that names the exceeded ceiling and its env levers.
+fn named_guard_line(producer_error: &str) -> Option<String> {
+    producer_error.lines().find_map(|line| {
+        let trimmed = line.trim();
+        let without_reporter = trimmed.strip_prefix("ripr: ").unwrap_or(trimmed);
+        without_reporter
+            .strip_prefix(REVIEW_GUIDANCE_OVERSIZED_PREFIX)
+            .filter(|suffix| suffix.starts_with(':'))
+            .map(|_| without_reporter.to_string())
+    })
+}
+
 fn md_escape(value: &str) -> String {
     value.replace('|', "\\|").replace('\n', " ")
 }
@@ -1403,9 +1451,45 @@ fn resolve_tree_identity(repo: &Path, revision: &str) -> String {
 }
 
 fn has_changed_paths(repo: &Path, base: &str, head: &str) -> Result<bool, String> {
+    Ok(!changed_paths(repo, base, head)?.is_empty())
+}
+
+fn changed_paths(repo: &Path, base: &str, head: &str) -> Result<Vec<String>, String> {
+    // Raw NUL-delimited inventory (#4006): `-z` output is never C-quoted,
+    // so exotic names survive byte-exact; parsing rules come from the
+    // shared authority in `decode_changed_paths`, not from line splitting
+    // here.
     let range = format!("{base}..{head}");
-    let output = run_git_output(repo, &["diff", "--name-only", range.as_str()])?;
-    Ok(output.lines().any(|line| !line.trim().is_empty()))
+    let mut git_args = vec!["-C".to_string(), repo.display().to_string()];
+    git_args.extend(
+        ["diff", "--name-only", "-z", range.as_str()]
+            .iter()
+            .map(|arg| (*arg).to_string()),
+    );
+    let output = crate::run::capture_process_output("git", &git_args, &[])
+        .map_err(|error| format!("git diff --name-only -z inventory: {}", error.message))?;
+    decode_changed_paths(&output)
+}
+
+/// Decode raw `--name-only -z` bytes through the shared NUL path-record
+/// authority (#4006). Strict: non-UTF-8 or empty records fail loudly
+/// instead of collapsing through lossy conversion.
+fn decode_changed_paths(output: &[u8]) -> Result<Vec<String>, String> {
+    ripr::analysis::parse_git_path_records(output)
+        .map_err(|err| format!("review-comments changed-path inventory: {err}"))
+        .and_then(|paths| {
+            paths
+                .iter()
+                .map(|path| {
+                    path.to_str().map(str::to_string).ok_or_else(|| {
+                        format!(
+                            "review-comments changed-path inventory: decoded path {} is not valid UTF-8",
+                            path.display()
+                        )
+                    })
+                })
+                .collect()
+        })
 }
 
 fn command_root_arg(repo: &Path, root: &str) -> String {
@@ -2075,6 +2159,109 @@ mod tests {
     }
 
     #[test]
+    fn write_wrapper_classifies_named_guidance_ceiling_failure() -> Result<(), String> {
+        // #4388: a producer refused at the guidance-payload memory ceiling
+        // must be classified as an instrument-limited pass in the wrapper
+        // receipt — the named limitation category, not the generic producer
+        // failure — so a consumer gate can distinguish it from a real gap.
+        let producer_error = "ripr review-comments failed\nstdout:\n\nstderr:\nripr: \
+             review_guidance_oversized: 1700 closure input files exceed the review-guidance \
+             ceiling (RIPR_REVIEW_GUIDANCE_MAX_INDEX_FILES=800); the guidance pass was not run \
+             to protect runner memory.";
+        let (repo, options) = prepared_review_repo("ripr-review-comments-ceiling")?;
+        write_review_comments_with_runner(&repo, &options, move |_repo, _options| {
+            Err(ReviewCommentsRunError::from(producer_error.to_string()))
+        })?;
+
+        let packet = read_packet(&repo)?;
+        assert_eq!(packet["status"], "error");
+        assert_eq!(packet["run_receipt"]["status"], "failed");
+        assert_eq!(
+            packet["run_receipt"]["limitations"][0]["category"],
+            "review_guidance_oversized"
+        );
+        assert!(
+            packet["run_receipt"]["limitations"][0]["repair_route"]
+                .as_str()
+                .is_some_and(|route| route.contains("RIPR_REVIEW_GUIDANCE_MAX_INDEX_FILES")),
+            "wrapper repair route must name the ceiling env: {packet}"
+        );
+        assert!(
+            packet["warnings"][0]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("review_guidance_oversized")),
+            "packet warning must carry the named ceiling error: {packet}"
+        );
+        let standalone: Value = serde_json::from_str(
+            &fs::read_to_string(repo.join(REVIEW_COMMENTS_RECEIPT))
+                .map_err(|err| format!("read standalone receipt: {err}"))?,
+        )
+        .map_err(|err| format!("parse standalone receipt: {err}"))?;
+        assert_eq!(
+            standalone["limitations"][0]["category"],
+            "review_guidance_oversized"
+        );
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn producer_error_matching_distinguishes_ceiling_from_other_failures() {
+        // Raw and `ripr:`-reported guard lines match.
+        assert!(is_review_guidance_oversized(
+            "review_guidance_oversized: 3 closure input files exceed the ceiling"
+        ));
+        assert!(is_review_guidance_oversized(
+            "ripr: review_guidance_oversized: 3 closure input files exceed the ceiling"
+        ));
+        // The wrapper embeds the stderr under a leading summary line.
+        assert!(is_review_guidance_oversized(
+            "ripr review-comments failed\nstdout:\n\nstderr:\nripr: \
+             review_guidance_oversized: 3 closure input files"
+        ));
+        // A real producer warning may precede the guard on stderr.
+        assert!(is_review_guidance_oversized(
+            "ripr: warning: working tree has uncommitted changes\nripr: review_guidance_oversized: 3 closure input files"
+        ));
+        assert!(is_review_guidance_oversized(
+            " \tripr: warning: before guard\r\n\t ripr: review_guidance_oversized: 3 files \t\r\n"
+        ));
+        // The category is an exact colon-terminated tag, not a namespace
+        // prefix that can reclassify an unrelated producer failure.
+        for lookalike in [
+            "review_guidance_oversizedness: unrelated failure",
+            "ripr: review_guidance_oversized_metadata: unrelated failure",
+            "review_guidance_oversized",
+            "review_guidance_oversized without a tag delimiter",
+            "review_guidance_oversized : invalid delimiter",
+            "review_guidance_oversized\n: invalid delimiter",
+            "review_guidance_oversized\r\n: invalid delimiter",
+            "review_guidance_oversized\t: invalid delimiter",
+            "diff_scope_oversized: a different guard",
+            "repo_scope_oversized: a different guard",
+            "git_invocation_timeout: a different guard",
+            "analysis cancelled: DeadlineExceeded",
+        ] {
+            assert!(
+                !is_review_guidance_oversized(lookalike),
+                "misclassified {lookalike}"
+            );
+        }
+        // Generic failures, later-line prose, and non-line-start mentions
+        // are not the named guard error.
+        assert!(!is_review_guidance_oversized("synthetic producer failure"));
+        assert!(!is_review_guidance_oversized(
+            "a failure mentioned review_guidance_oversized in its context"
+        ));
+        assert!(!is_review_guidance_oversized(
+            "context\nthe review_guidance_oversized guard was discussed"
+        ));
+        assert!(!is_review_guidance_oversized(
+            "review-comments timed out during canonical_analysis"
+        ));
+    }
+
+    #[test]
     fn write_wrapper_skips_producer_for_empty_diff() -> Result<(), String> {
         let name = if cfg!(unix) {
             r"ripr-review\comments-empty"
@@ -2144,12 +2331,62 @@ mod tests {
     }
 
     #[test]
+    fn strict_changed_path_inventory_rejects_non_utf8() -> Result<(), String> {
+        // The strict-failure side of the NUL authority at the
+        // review-comments decode boundary: non-UTF-8 records fail loudly
+        // instead of collapsing through lossy conversion.
+        let err = match decode_changed_paths(b"ok.txt\0\xffbad\0") {
+            Err(err) => err,
+            Ok(paths) => {
+                return Err(format!("non-UTF-8 inventory must fail, decoded {paths:?}"));
+            }
+        };
+        if !err.contains("not valid UTF-8") {
+            return Err(format!("unexpected strict-decode error: {err}"));
+        }
+        Ok(())
+    }
+
+    #[test]
     fn changed_path_detection_distinguishes_empty_and_non_empty_diffs() -> Result<(), String> {
         let (repo, options) = prepared_review_repo("ripr-review-comments-diff")?;
 
         assert!(has_changed_paths(&repo, &options.base, &options.head)?);
         assert!(!has_changed_paths(&repo, "HEAD", "HEAD")?);
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn changed_paths_decode_exotic_names_exact() -> Result<(), String> {
+        // Discriminates NUL-delimited inventory (#4006): space and
+        // non-ASCII names must decode byte-exact; the old line parser kept
+        // git's C-quoted octal form. Asserts through the real
+        // `changed_paths` production path.
+        let repo = temp_repo("ripr-review-comments-names")?;
+        run_git(&repo, &["init"])?;
+        run_git(
+            &repo,
+            &["config", "user.email", "ripr-review@example.invalid"],
+        )?;
+        run_git(&repo, &["config", "user.name", "RIPR Review Test"])?;
+        write_repo_file(&repo, "base.txt", "base\n")?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+        write_repo_file(&repo, "sp ace.txt", "spaces\n")?;
+        write_repo_file(&repo, "uni-\u{e9}.txt", "unicode\n")?;
+        run_git(&repo, &["add", "-A"])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "exotic"])?;
+
+        let mut paths = changed_paths(&repo, "HEAD~1", "HEAD")?;
+        paths.sort();
+        let expected = vec!["sp ace.txt".to_string(), "uni-\u{e9}.txt".to_string()];
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        if paths != expected {
+            return Err(format!(
+                "exotic changed-path inventory mismatch: got {paths:?}, want {expected:?}"
+            ));
+        }
         Ok(())
     }
 
@@ -2411,5 +2648,295 @@ mod tests {
 
     fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
         run_git_output(repo, args).map(|_| ())
+    }
+
+    // #3913: the `--gap-ledger` route was the one review-comments route whose
+    // real bytes no test validated against the published schema. These tests
+    // drive the production CLI in process (argument parsing, ledger producer,
+    // review-comments renderer, run receipt) and validate what it wrote with
+    // the same validator `check-verification-contracts` uses.
+
+    use crate::verification_contracts::validate_value_against_schema;
+
+    const GAP_LEDGER_ROUTE_SCHEMA: &str = "schemas/ripr/review-comments.schema.json";
+
+    fn run_ripr(args: &[&str]) -> Result<(), String> {
+        let mut cli_args = vec!["ripr".to_string()];
+        cli_args.extend(args.iter().map(|arg| (*arg).to_string()));
+        ripr::cli::run(cli_args).map_err(|error| format!("ripr {}: {error}", args.join(" ")))
+    }
+
+    fn path_arg(path: &Path) -> Result<&str, String> {
+        path.to_str()
+            .ok_or_else(|| format!("non-UTF-8 scratch path {}", path.display()))
+    }
+
+    fn read_json_value(path: &Path) -> Result<Value, String> {
+        let text =
+            fs::read_to_string(path).map_err(|err| format!("read {}: {err}", path.display()))?;
+        serde_json::from_str(&text).map_err(|err| format!("parse {}: {err}", path.display()))
+    }
+
+    fn schema_violations(packet: &Value) -> Result<Vec<String>, String> {
+        let schema = read_json_value(&repo_root()?.join(GAP_LEDGER_ROUTE_SCHEMA))?;
+        let mut violations = Vec::new();
+        validate_value_against_schema(
+            packet,
+            &schema,
+            &schema,
+            "comments.json".to_string(),
+            &mut violations,
+        );
+        Ok(violations)
+    }
+
+    fn assert_schema_valid(packet: &Value, subject: &str) -> Result<(), String> {
+        let violations = schema_violations(packet)?;
+        if violations.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "{subject} does not match {GAP_LEDGER_ROUTE_SCHEMA}:\n{}",
+                violations.join("\n")
+            ))
+        }
+    }
+
+    /// `ripr reports gap-ledger --check-output` over a committed `ripr check`
+    /// golden, then `ripr review-comments --gap-ledger` over that ledger.
+    /// Returns the ledger and the review-comments packet the CLI wrote.
+    fn gap_ledger_route_from_check_golden(
+        scratch: &Path,
+        check_golden: &str,
+    ) -> Result<(Value, Value), String> {
+        let root = scratch.join("root");
+        fs::create_dir_all(&root).map_err(|err| format!("create {}: {err}", root.display()))?;
+        let check = repo_root()?.join(check_golden);
+        let ledger = scratch.join("gap-decision-ledger.json");
+        run_ripr(&[
+            "reports",
+            "gap-ledger",
+            "--check-output",
+            path_arg(&check)?,
+            "--root",
+            path_arg(&root)?,
+            "--out",
+            path_arg(&ledger)?,
+            "--out-md",
+            path_arg(&scratch.join("gap-decision-ledger.md"))?,
+        ])?;
+        let comments = review_comments_over_ledger(scratch, &ledger, "comments.json")?;
+        Ok((read_json_value(&ledger)?, comments))
+    }
+
+    fn review_comments_over_ledger(
+        scratch: &Path,
+        ledger: &Path,
+        out_name: &str,
+    ) -> Result<Value, String> {
+        let root = scratch.join("root");
+        let out = scratch.join(out_name);
+        run_ripr(&[
+            "review-comments",
+            "--root",
+            path_arg(&root)?,
+            "--base",
+            "base-rev",
+            "--head",
+            "head-rev",
+            "--gap-ledger",
+            path_arg(ledger)?,
+            "--out",
+            path_arg(&out)?,
+        ])?;
+        read_json_value(&out)
+    }
+
+    fn array_len(value: &Value, key: &str) -> usize {
+        value.get(key).and_then(Value::as_array).map_or(0, Vec::len)
+    }
+
+    fn suppressed_reasons(packet: &Value) -> Vec<String> {
+        packet
+            .get("suppressed")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|item| item.get("reason").and_then(Value::as_str))
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    #[test]
+    fn gap_ledger_route_bytes_from_check_goldens_match_published_schema() -> Result<(), String> {
+        // Rust boundary_gap derives no PR-local GapRecord, so this is the
+        // zero-record envelope #3913 first reported (`inputs` rejected).
+        // Python boundary_gap derives one pr_comment-eligible record with no
+        // seam identity, which renders as a gap-keyed card (#4524).
+        for (check_golden, expected_records, expected_comments) in [
+            ("fixtures/boundary_gap/expected/check.json", 0, 0),
+            ("fixtures/python_boundary_gap/expected/check.json", 1, 1),
+        ] {
+            let scratch = temp_repo("ripr-gap-ledger-route-check")?;
+            let result = gap_ledger_route_from_check_golden(&scratch, check_golden);
+            let _ = fs::remove_dir_all(&scratch);
+            let (ledger, packet) = result?;
+            if array_len(&ledger, "records") != expected_records
+                || array_len(&packet, "comments") != expected_comments
+                || array_len(&packet, "suppressed") != 0
+            {
+                return Err(format!(
+                    "{check_golden}: unexpected route subject: {} records, packet {packet}",
+                    array_len(&ledger, "records")
+                ));
+            }
+            if packet.pointer("/inputs/gap_ledger").is_none() || packet.get("run_receipt").is_none()
+            {
+                return Err(format!(
+                    "{check_golden}: packet is not gap-ledger route output: {packet}"
+                ));
+            }
+            assert_schema_valid(&packet, check_golden)?;
+        }
+        Ok(())
+    }
+
+    /// Real ledger records from the Python check golden, given producer seam
+    /// identity (the `--check-output` derivation carries none), multiplied
+    /// past both render caps, plus records each eligibility gate rejects.
+    /// Returns the rendered packet.
+    fn eligible_gap_ledger_route_packet(scratch: &Path) -> Result<Value, String> {
+        let (ledger, _) = gap_ledger_route_from_check_golden(
+            scratch,
+            "fixtures/python_boundary_gap/expected/check.json",
+        )?;
+        let Some(template) = ledger
+            .get("records")
+            .and_then(Value::as_array)
+            .and_then(|records| records.first())
+        else {
+            return Err(format!(
+                "the Python check golden derived no record: {ledger}"
+            ));
+        };
+        let variant = |suffix: &str| -> Result<Value, String> {
+            let mut record = template.clone();
+            for key in ["gap_id", "canonical_gap_id"] {
+                let id = record
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| format!("template record has no {key}"))?;
+                record[key] = json!(format!("{id}:{suffix}"));
+            }
+            record["seam_id"] = json!(format!("seam:python:discount:{suffix}"));
+            let fingerprint = record
+                .pointer("/anchor/dedupe_fingerprint")
+                .and_then(Value::as_str)
+                .ok_or("template record has no dedupe fingerprint")?
+                .to_string();
+            record["anchor"]["dedupe_fingerprint"] = json!(format!("{fingerprint}:{suffix}"));
+            Ok(record)
+        };
+        let inline_cap = 3;
+        let summary_cap = 10;
+        let mut records = Vec::new();
+        for index in 0..inline_cap + summary_cap + 2 {
+            records.push(variant(&index.to_string())?);
+        }
+        let mut no_anchor = variant("no-anchor")?;
+        no_anchor["anchor"] = Value::Null;
+        records.push(no_anchor);
+        let mut waived = variant("waived")?;
+        waived["policy_state"] = json!("waived");
+        records.push(waived);
+        let mut duplicate = variant("duplicate")?;
+        duplicate["anchor"]["dedupe_fingerprint"] =
+            records[0]["anchor"]["dedupe_fingerprint"].clone();
+        records.push(duplicate);
+
+        let input = scratch.join("records.json");
+        fs::write(&input, json!({ "gap_records": records }).to_string())
+            .map_err(|err| format!("write {}: {err}", input.display()))?;
+        let ledger = scratch.join("eligible-gap-decision-ledger.json");
+        run_ripr(&[
+            "reports",
+            "gap-ledger",
+            "--records",
+            path_arg(&input)?,
+            "--root",
+            path_arg(&scratch.join("root"))?,
+            "--out",
+            path_arg(&ledger)?,
+            "--out-md",
+            path_arg(&scratch.join("eligible-gap-decision-ledger.md"))?,
+        ])?;
+        review_comments_over_ledger(scratch, &ledger, "eligible-comments.json")
+    }
+
+    #[test]
+    fn eligible_gap_ledger_route_cards_match_published_schema() -> Result<(), String> {
+        let scratch = temp_repo("ripr-gap-ledger-route-eligible")?;
+        let result = eligible_gap_ledger_route_packet(&scratch);
+        let _ = fs::remove_dir_all(&scratch);
+        let packet = result?;
+
+        // Assert the subject before the schema: inline cards, summary-only
+        // cards past the inline cap, and every suppression shape this route
+        // writes, so a validator pass cannot come from an empty packet.
+        let reasons = suppressed_reasons(&packet);
+        for reason in [
+            "summary_cap",
+            "missing_anchor",
+            "policy_state_not_commentable",
+            "duplicate_dedupe_fingerprint",
+        ] {
+            if !reasons.iter().any(|seen| seen == reason) {
+                return Err(format!("no `{reason}` suppression in {reasons:?}"));
+            }
+        }
+        if array_len(&packet, "comments") != 3 || array_len(&packet, "summary_only") != 10 {
+            return Err(format!("render caps not reached: {packet}"));
+        }
+        let card = &packet["comments"][0];
+        // The placement mode is left to the schema, which pins it for
+        // gap-record cards; asserting it here would pre-empt that check.
+        if card["source"] != "gap_decision_ledger" || card.get("repair_card").is_none() {
+            return Err(format!(
+                "first card is not a gap-record card: {}",
+                card["id"]
+            ));
+        }
+        if packet["summary_only"][0].get("summary_reason").is_none() {
+            return Err("summary-only card carries no summary_reason".to_string());
+        }
+        assert_schema_valid(&packet, "eligible gap-ledger route packet")?;
+
+        // Discriminating negatives: the schema must reject the shapes #3913
+        // reported, applied to these same real bytes.
+        type Mutation = (&'static str, fn(&mut Value));
+        let mutations: [Mutation; 4] = [
+            ("unknown placement mode", |packet| {
+                packet["comments"][0]["placement"]["mode"] = json!("gap_record");
+            }),
+            ("gap card without gap_id", |packet| {
+                if let Some(card) = packet["comments"][0].as_object_mut() {
+                    card.remove("gap_id");
+                }
+            }),
+            ("undeclared suppressed field", |packet| {
+                packet["suppressed"][0]["seam"] = json!("s");
+            }),
+            ("undeclared envelope field", |packet| {
+                packet["gap_ledger_inputs"] = json!({});
+            }),
+        ];
+        for (name, mutate) in mutations {
+            let mut mutated = packet.clone();
+            mutate(&mut mutated);
+            if schema_violations(&mutated)?.is_empty() {
+                return Err(format!("the schema accepted a mutated packet: {name}"));
+            }
+        }
+        Ok(())
     }
 }

@@ -1,0 +1,6 @@
+ripr progress: loading_input [diff]
+ripr progress: analyzing [diff]
+ripr progress: analyzing still active after 2s
+ripr: 17 Rust include boundary limitation(s): tests/test_backtrack.rs:36:rust_include_ambiguous_parent, tests/test_backtrack.rs:37:rust_include_ambiguous_parent, tests/test_backtrack_bytes.rs:36:rust_include_ambiguous_parent, tests/test_backtrack_bytes.rs:37:rust_include_ambiguous_parent, tests/test_backtrack_utf8bytes.rs:38:rust_include_ambiguous_parent, tests/test_backtrack_utf8bytes.rs:39:rust_include_ambiguous_parent, tests/test_crates_regex.rs:53:rust_include_nested_module_context, tests/test_default.rs:39:rust_include_ambiguous_parent, tests/test_default.rs:40:rust_include_ambiguous_parent, tests/test_default_bytes.rs:28:rust_include_ambiguous_parent, tests/test_default_bytes.rs:29:rust_include_ambiguous_parent, tests/test_nfa.rs:30:rust_include_ambiguous_parent, tests/test_nfa.rs:31:rust_include_ambiguous_parent, tests/test_nfa_bytes.rs:36:rust_include_ambiguous_parent, tests/test_nfa_bytes.rs:37:rust_include_ambiguous_parent, tests/test_nfa_utf8bytes.rs:34:rust_include_ambiguous_parent, tests/test_nfa_utf8bytes.rs:35:rust_include_ambiguous_parent; affected compilation-unit relations remain fail-closed.
+ripr progress: building_output [diff]
+ripr progress: completed [diff]

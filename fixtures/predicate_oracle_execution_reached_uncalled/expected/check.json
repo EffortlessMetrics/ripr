@@ -1,0 +1,152 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/predicate_oracle_execution_reached_uncalled/input",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":1,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:5d4572db105b9569851eb9f3a73b99059a4626019d7d43b7053c8b29c660f668","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:c80557eb",
+      "classification": "reachable_unrevealed",
+      "severity": "warning",
+      "confidence": 0.79,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:c80557eb",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/predicate_oracle_execution_reached_uncalled/input/src/lib.rs",
+        "line": 2,
+        "expression": "amount >= discount_threshold"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach discounted_total: equality_threshold_discounts"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Detected related test input at the changed boundary"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: amount - 10"},
+        "observe": {"state":"no","confidence":"medium","summary":"No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)"},
+        "discriminate": {"state":"no","confidence":"medium","summary":"No statically established assertion can discriminate the changed behavior; execution or macro binding is unestablished (rust_assertion_context_unestablished)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach discounted_total: equality_threshold_discounts", "infection yes: Detected related test input at the changed boundary", "propagation yes: Changed behavior appears to influence returned value: amount - 10", "observation no: No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)", "discriminator no: No statically established assertion can discriminate the changed behavior; execution or macro binding is unestablished (rust_assertion_context_unestablished)", "local flow reaches returned value: amount - 10 (line 3)", "related test src/lib.rs:13 equality_threshold_discounts uses none unknown oracle", "source function argument value amount = 100 at line 14", "source function argument value amount == discount_threshold at line 14", "source function argument value discount_threshold = 100 at line 14", "source assertion argument value 90 at line 15", "source function argument value amount = 100 at line 15", "source function argument value amount == discount_threshold at line 15", "source function argument value discount_threshold = 100 at line 15"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"amount - 10","line":3}
+      ],
+      "evidence": ["Changed behavior appears to influence returned value: amount - 10", "Detected related test input at the changed boundary", "No statically established assertion can discriminate the changed behavior; execution or macro binding is unestablished (rust_assertion_context_unestablished)", "No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)", "Related tests appear to reach discounted_total: equality_threshold_discounts"],
+      "missing": ["No detected assertion observes the changed value, error, field, or effect", "No relevant oracle was detected", "No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)", "No strong discriminator was detected"],
+      "assertion_texts": {
+        "14": "let _ = discounted_total(100, 100);",
+        "15": "assert_eq!(discounted_total(100, 100), 90);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 14,
+            "value": "amount = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 14,
+            "value": "amount == discount_threshold",
+            "context": "function_argument",
+            "provenance": "let _ = discounted_total(100, 100); | exact input amount = 100; exact input discount_threshold = 100"
+          },
+          {
+            "line": 14,
+            "value": "discount_threshold = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 15,
+            "value": "90",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 15,
+            "value": "amount = 100",
+            "context": "function_argument",
+            "provenance": "let _unused = || { assert_eq!(discounted_total(100, 100), 90); };"
+          },
+          {
+            "line": 15,
+            "value": "amount == discount_threshold",
+            "context": "function_argument",
+            "provenance": "let _unused = || { assert_eq!(discounted_total(100, 100), 90); }; | exact input amount = 100; exact input discount_threshold = 100"
+          },
+          {
+            "line": 15,
+            "value": "discount_threshold = 100",
+            "context": "function_argument",
+            "provenance": "let _unused = || { assert_eq!(discounted_total(100, 100), 90); };"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 14,
+          "value": "amount = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 14,
+          "value": "amount == discount_threshold",
+          "context": "function_argument",
+          "provenance": "let _ = discounted_total(100, 100); | exact input amount = 100; exact input discount_threshold = 100"
+        },
+        {
+          "line": 14,
+          "value": "discount_threshold = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 15,
+          "value": "90",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 15,
+          "value": "amount = 100",
+          "context": "function_argument",
+          "provenance": "let _unused = || { assert_eq!(discounted_total(100, 100), 90); };"
+        },
+        {
+          "line": 15,
+          "value": "amount == discount_threshold",
+          "context": "function_argument",
+          "provenance": "let _unused = || { assert_eq!(discounted_total(100, 100), 90); }; | exact input amount = 100; exact input discount_threshold = 100"
+        },
+        {
+          "line": 15,
+          "value": "discount_threshold = 100",
+          "context": "function_argument",
+          "provenance": "let _unused = || { assert_eq!(discounted_total(100, 100), 90); };"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "equality_threshold_discounts",
+          "file": "src/lib.rs",
+          "line": 13,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "Establish that the test is collected and enabled, that the assertion runs on its executed path, and that it resolves to the intended standard macro, then check the changed returned value.",
+      "suggested_next_action": "Establish that the test is collected and enabled, that the assertion runs on its executed path, and that it resolves to the intended standard macro, then check the changed returned value.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

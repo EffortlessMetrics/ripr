@@ -1,10 +1,12 @@
 use crate::agent::command_specs::{command_display_is_nonblank, command_displays_are_complete};
 use crate::agent::loop_commands::shell_arg;
 use crate::domain::{CommandRole, CommandSpec};
+use crate::output::gap_source_subject::{self, GapSourceSubject};
 use crate::output::receipt_write::receipt_write_command;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "gap_decision_ledger";
@@ -50,6 +52,16 @@ pub(crate) struct GapDecisionLedgerReport {
     inputs: GapDecisionLedgerInputs,
     summary: GapDecisionLedgerSummary,
     analysis_outcome: Option<Value>,
+    /// The analysis input's `source_subject` stamp and root, kept so a writer
+    /// can derive the ledger stamp from them (#4544). Never rendered.
+    input_source_subject: Option<Value>,
+    input_root: Option<String>,
+    /// Content digests the analysis saw for the files the records name,
+    /// copied from the input stamp. `None` until a writer derives it.
+    source_subject: Option<GapSourceSubject>,
+    /// Why the writer could not derive a stamp (for example the input carried
+    /// none). Editor consumers then report `unverifiable_subject`.
+    source_subject_unavailable: Option<&'static str>,
     records: Vec<GapRecord>,
     warnings: Vec<String>,
     limits: Vec<String>,
@@ -192,7 +204,7 @@ where
 /// report-regeneration routes gain their typed specs at read time — a pure
 /// enrichment; records whose routes are not canonical keep empty typed
 /// collections and stay legacy-string-only.
-fn recover_regeneration_command_specs(record: &mut GapRecord) {
+fn recover_regeneration_command_specs(record: &mut GapRecord, selected_root: &Path) {
     let already_typed = record
         .command_specs
         .as_ref()
@@ -203,7 +215,10 @@ fn recover_regeneration_command_specs(record: &mut GapRecord) {
     let mut recovered = Vec::new();
     for display in &record.regeneration_commands {
         if let Some(spec) =
-            crate::agent::command_specs::report_regeneration_command_spec_from_display(display)
+            crate::agent::command_specs::report_regeneration_command_spec_from_display(
+                display,
+                selected_root,
+            )
         {
             recovered.push(spec);
         }
@@ -409,11 +424,25 @@ pub(crate) fn build_gap_decision_ledger_report(
 ) -> GapDecisionLedgerReport {
     let mut warnings = Vec::new();
     let mut analysis_outcome = None;
+    let mut input_source_subject = None;
+    let mut input_root = None;
     let mut records = match input.records_json {
         Ok(contents) => {
-            analysis_outcome = serde_json::from_str::<Value>(&contents)
-                .ok()
+            let source_value = serde_json::from_str::<Value>(&contents).ok();
+            analysis_outcome = source_value
+                .as_ref()
                 .and_then(|value| value.get("analysis_outcome").cloned());
+            // #4544: the ledger's stamp is derived from the stamp the analysis
+            // output (or an earlier ledger) carries, never from the workspace
+            // as it is when this ledger is written.
+            if let Some(value) = source_value.as_ref() {
+                input_source_subject = value.get("source_subject").cloned();
+                input_root = value
+                    .get("root")
+                    .or_else(|| value.pointer("/artifact/repository/root"))
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned);
+            }
             match parse_gap_decision_source(input.source_kind, &contents) {
                 Ok(records) => records,
                 Err(err) => {
@@ -437,7 +466,7 @@ pub(crate) fn build_gap_decision_ledger_report(
     // every downstream surface (LSP projections, first-pr, review packets)
     // sees the typed form without any upstream emitter change.
     for record in &mut records {
-        recover_regeneration_command_specs(record);
+        recover_regeneration_command_specs(record, Path::new(&input.root));
     }
 
     for record in &records {
@@ -464,6 +493,10 @@ pub(crate) fn build_gap_decision_ledger_report(
         },
         summary,
         analysis_outcome,
+        input_source_subject,
+        input_root,
+        source_subject: None,
+        source_subject_unavailable: None,
         records,
         warnings,
         limits: vec![
@@ -494,6 +527,10 @@ pub(crate) fn render_gap_decision_ledger_json(
         summary: &'a GapDecisionLedgerSummary,
         #[serde(skip_serializing_if = "Option::is_none")]
         analysis_outcome: Option<&'a Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        source_subject: Option<&'a GapSourceSubject>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        source_subject_unavailable: Option<&'a str>,
         records: &'a [Value],
         warnings: &'a [String],
         limits: &'a [String],
@@ -509,11 +546,69 @@ pub(crate) fn render_gap_decision_ledger_json(
         inputs: &report.inputs,
         summary: &report.summary,
         analysis_outcome: report.analysis_outcome.as_ref(),
+        source_subject: report.source_subject.as_ref(),
+        source_subject_unavailable: report.source_subject_unavailable,
         records: &records,
         warnings: &report.warnings,
         limits: &report.limits,
     })
     .map_err(|err| format!("serialize gap decision ledger JSON failed: {err}"))
+}
+
+/// Derive the ledger's `source_subject` for the selected `root` (#4544).
+/// Every file a record names must appear in the analysis input's stamp, whose
+/// digest is copied; nothing is hashed here. So a ledger written after a
+/// checkout or an edit still describes the bytes the analysis saw, and the
+/// editor discloses it as stale. When the input carries no usable stamp, or
+/// omits a named file, the ledger gets no stamp and records why in
+/// `source_subject_unavailable`; editors then report `unverifiable_subject`.
+pub(crate) fn stamp_gap_decision_ledger_source_subject(
+    report: &mut GapDecisionLedgerReport,
+    root: &Path,
+) -> Result<(), String> {
+    let mut required = BTreeSet::new();
+    for record in &report.records {
+        required.extend(gap_source_subject::gap_record_subject_paths(
+            root,
+            &gap_record_json_value(record)?,
+        ));
+    }
+    let input_root = report.input_root.as_deref().map_or(root, Path::new);
+    match gap_source_subject::derive_source_subject(
+        report.input_source_subject.as_ref(),
+        input_root,
+        root,
+        &required,
+    ) {
+        Ok(subject) => {
+            report.source_subject = Some(subject);
+            report.source_subject_unavailable = None;
+        }
+        Err(reason) => {
+            report.source_subject = None;
+            report.source_subject_unavailable = Some(reason);
+        }
+    }
+    Ok(())
+}
+
+/// Every workspace file a ledger derived from this analysis output would
+/// name, spelled relative to `root`. The `ripr check` JSON producer stamps
+/// exactly these files so the ledger writer can copy their digests.
+pub(crate) fn check_output_subject_paths(
+    contents: &str,
+    root: &Path,
+) -> Result<BTreeSet<String>, String> {
+    let mut records = gap_records_from_check_output_json(contents)?;
+    attach_check_output_preview_receipt_routes(&mut records, &root.to_string_lossy());
+    let mut paths = BTreeSet::new();
+    for record in &records {
+        paths.extend(gap_source_subject::gap_record_subject_paths(
+            root,
+            &gap_record_json_value(record)?,
+        ));
+    }
+    Ok(paths)
 }
 
 fn gap_record_json_value(record: &GapRecord) -> Result<Value, String> {
@@ -646,12 +741,38 @@ pub(crate) fn render_gap_decision_ledger_markdown(report: &GapDecisionLedgerRepo
     out
 }
 
+/// Parse a persisted ledger for a CLI consumer. The CLI resolves `--root .`
+/// against its own working directory, so that directory is the selected root
+/// typed recovery binds to (#3999).
 pub(crate) fn parse_gap_records_json(contents: &str) -> Result<Vec<GapRecord>, String> {
     parse_gap_record_source_json(contents).map(|source| source.records)
 }
 
+/// Parse a persisted ledger for a consumer that owns its selected root
+/// rather than inheriting the process working directory (#4287). The LSP
+/// passes its workspace root, so a root-bound regeneration display keeps its
+/// typed route when the editor starts the server elsewhere. `None` is the
+/// legacy-only path for a caller without a trusted root: records keep their
+/// displays and gain no recovered typed regeneration specs.
+pub(crate) fn parse_gap_records_json_for_root(
+    contents: &str,
+    selected_root: Option<&Path>,
+) -> Result<Vec<GapRecord>, String> {
+    parse_gap_record_source_json_with_root(contents, selected_root).map(|source| source.records)
+}
+
 pub(crate) fn parse_gap_record_source_json(
     contents: &str,
+) -> Result<ParsedGapRecordSource, String> {
+    parse_gap_record_source_json_with_root(
+        contents,
+        Some(Path::new(crate::agent::command_specs::PORTABLE_ROOT)),
+    )
+}
+
+fn parse_gap_record_source_json_with_root(
+    contents: &str,
+    selected_root: Option<&Path>,
 ) -> Result<ParsedGapRecordSource, String> {
     let value: Value =
         serde_json::from_str(contents).map_err(|err| format!("invalid JSON: {err}"))?;
@@ -670,9 +791,16 @@ pub(crate) fn parse_gap_record_source_json(
     // legacy string-only records with the typed regeneration specs, so the
     // LSP loaders (diagnostics/backend) see the typed form too. The
     // enrichment is idempotent: a record already carrying typed
-    // regeneration specs is left untouched.
-    for record in &mut records {
-        recover_regeneration_command_specs(record);
+    // regeneration specs is left untouched. A persisted ledger carries no
+    // selected-root authority of its own (its `root` field is producer text,
+    // not a consumer selection), so a display bound to a concrete root gains
+    // a typed spec here only when that root is the consumer's selected root;
+    // any other bound root stays legacy-string-only (#3999). Without a
+    // trusted selected root nothing is recovered (#4287).
+    if let Some(selected_root) = selected_root {
+        for record in &mut records {
+            recover_regeneration_command_specs(record, selected_root);
+        }
     }
     Ok(ParsedGapRecordSource {
         root,
@@ -768,8 +896,11 @@ fn gap_records_from_check_output_json(contents: &str) -> Result<Vec<GapRecord>, 
             }
             let Some(mut record) = gap_record_from_python_repair_finding(finding, index)
                 .or_else(|| gap_record_from_typescript_repair_finding(finding, index))
+                .or_else(|| gap_record_from_typescript_not_delegatable_finding(finding, index))
+                .or_else(|| gap_record_from_typescript_no_action_finding(finding, index))
                 .or_else(|| gap_record_from_python_static_limit_finding(finding, index))
                 .or_else(|| gap_record_from_python_no_action_finding(finding, index))
+                .or_else(|| gap_record_from_python_no_repair_card_finding(finding, index))
                 .or_else(|| gap_record_from_perl_preview_finding(finding, index))
             else {
                 continue;
@@ -1361,6 +1492,250 @@ fn gap_record_from_typescript_repair_finding(finding: &Value, index: usize) -> O
     })
 }
 
+/// A TypeScript preview finding whose repair packet the shared validator kept
+/// closed (#4224). `check` emits `typescript_repair_packet` only for a ready
+/// packet, so without this record the ledger stayed empty, reported
+/// `blocked`, and first-pr looped on "refresh the evidence".
+///
+/// Readiness and the reason are read from `preview_actionability`, which is
+/// the JSON projection of `preview_actionability_for` (the only flip
+/// authority). This path never promotes: it requires
+/// `repair_packet_ready == false`, emits no repair route, verify command or
+/// receipt, and is shaped like the Python static-limit record so every
+/// authority projection (agent packet, PR comment, gate, badge) stays off.
+fn gap_record_from_typescript_not_delegatable_finding(
+    finding: &Value,
+    index: usize,
+) -> Option<GapRecord> {
+    if string_at(finding, &["language"]) != Some("typescript")
+        || finding.get("typescript_repair_packet").is_some()
+    {
+        return None;
+    }
+    let actionability = finding.get("preview_actionability")?;
+    if actionability
+        .get("repair_packet_ready")
+        .and_then(Value::as_bool)
+        != Some(false)
+    {
+        return None;
+    }
+    // Only a weakly exposed finding is a gap whose repair packet failed
+    // closed. An exposed finding has nothing to repair, and a no-path finding
+    // is a test gap rather than an analyzer limitation; neither may be framed
+    // as a not-delegatable static limitation (#4226 review).
+    if string_at(finding, &["classification"]) != Some("weakly_exposed")
+        || string_at(actionability, &["gap_state"]) == Some("already_observed")
+    {
+        return None;
+    }
+    let reason = string_at(actionability, &["why_not_actionable"]).and_then(non_empty)?;
+    let category =
+        string_at(actionability, &["actionability_category"]).unwrap_or("incomplete_repair_packet");
+    let behavior_kind = string_at(finding, &["typescript_preview_card", "probe_family"])
+        .or_else(|| string_at(finding, &["probe", "family"]))
+        .unwrap_or("typescript_preview");
+    let source_file = string_at(finding, &["probe", "file"]).map(ToString::to_string);
+    let source_line = u64_at(finding, &["probe", "line"]);
+    let changed_owner = string_at(finding, &["typescript_preview_card", "owner"])
+        .or_else(|| string_at(finding, &["probe", "owner"]))
+        .map(ToString::to_string);
+    let static_limit_kind = "typescript_repair_packet_not_delegatable";
+    let canonical_gap_id = string_at(finding, &["canonical_gap_id"])
+        .map(ToString::to_string)
+        .unwrap_or_else(|| {
+            let file = source_file
+                .as_deref()
+                .map(|file| file.replace('\\', "/"))
+                .filter(|file| !file.trim().is_empty())
+                .unwrap_or_else(|| format!("check-output-item-{index}"));
+            let owner = changed_owner
+                .as_deref()
+                .and_then(non_empty)
+                .map(python_static_limit_gap_component)
+                .unwrap_or_else(|| "module".to_string());
+            format!(
+                "gap:typescript:{file}:{owner}:not_delegatable:{}",
+                python_static_limit_gap_component(behavior_kind)
+            )
+        });
+    let mut static_limits = vec![serde_json::json!({
+        "kind": category,
+        "detail": reason,
+    })];
+    let discriminator = string_at(
+        finding,
+        &["typescript_preview_card", "missing_discriminator"],
+    )
+    .or_else(|| first_missing_discriminator_value(finding))
+    .and_then(non_empty);
+    let shape = string_at(
+        finding,
+        &["typescript_preview_card", "suggested_assertion_shape"],
+    )
+    .and_then(non_empty)
+    .map(ToString::to_string)
+    .or_else(|| discriminator.map(|d| format!("an exact assertion for `{d}`")));
+    if let Some(shape) = shape {
+        static_limits.push(serde_json::json!({
+            "kind": "not_delegatable_target_shape",
+            "detail": shape,
+        }));
+    }
+    let has_local_anchor = source_file.is_some() && source_line.is_some();
+    let anchor = GapAnchor {
+        file: source_file,
+        line: source_line,
+        owner: changed_owner,
+        dedupe_fingerprint: Some(canonical_gap_id.clone()),
+    };
+    let mut evidence_ids = Vec::new();
+    if let Some(id) = string_at(finding, &["id"]) {
+        evidence_ids.push(id.to_string());
+    }
+    if !evidence_ids.iter().any(|id| id == &canonical_gap_id) {
+        evidence_ids.push(canonical_gap_id.clone());
+    }
+
+    Some(GapRecord {
+        source_currentness: None,
+        gap_id: format!("gap:pr:{canonical_gap_id}"),
+        canonical_gap_id,
+        seam_id: None,
+        kind: "StaticLimitation".to_string(),
+        language: "typescript".to_string(),
+        language_status: string_at(finding, &["language_status"])
+            .unwrap_or("preview")
+            .to_string(),
+        scope: "pr_local".to_string(),
+        evidence_class: category.to_string(),
+        gap_state: "static_limitation".to_string(),
+        policy_state: "not_policy_targeted".to_string(),
+        repairability: "analyzer_limitation".to_string(),
+        repair_route: None,
+        static_limit_kind: Some(static_limit_kind.to_string()),
+        static_limit_detail: Some(reason.to_string()),
+        static_limits,
+        anchor: Some(anchor),
+        evidence_ids,
+        projection_eligibility: projection_eligibility_from_pr_evidence(
+            "analyzer_limitation",
+            false,
+            false,
+            has_local_anchor,
+            "static_limitation",
+        ),
+        verification_commands: Vec::new(),
+        command_specs: None,
+        receipt_command: None,
+        regeneration_commands: Vec::new(),
+        receipt: None,
+        safe_gate_predicate: None,
+        authority_boundary: "preview_advisory_only".to_string(),
+    })
+}
+
+/// An exposed or no-path TypeScript preview finding as a report-only
+/// no-action record, mirroring the Python no-action record. Without it a
+/// TypeScript diff whose boundary test now exists (for example after
+/// following a delegatable repair packet) left the ledger empty, so it read
+/// `blocked` and first-pr looped on "refresh the first-run evidence". It
+/// never promotes: no repair route, verify command, receipt, or gate
+/// predicate, and every authority projection stays off.
+fn gap_record_from_typescript_no_action_finding(
+    finding: &Value,
+    index: usize,
+) -> Option<GapRecord> {
+    if string_at(finding, &["language"]) != Some("typescript")
+        || finding.get("typescript_repair_packet").is_some()
+        || string_at(finding, &["static_limit_kind"]).is_some()
+    {
+        return None;
+    }
+    let (gap_state, kind) = match string_at(finding, &["classification"])? {
+        "exposed" => ("already_observed", "NoActionAlreadyObserved"),
+        "no_static_path" => ("no_related_test", "NoActionNoRelatedTest"),
+        _ => return None,
+    };
+    let behavior_kind = string_at(finding, &["typescript_preview_card", "probe_family"])
+        .or_else(|| string_at(finding, &["probe", "family"]))
+        .unwrap_or("typescript_preview");
+    let source_file = string_at(finding, &["probe", "file"]).map(ToString::to_string);
+    let source_line = u64_at(finding, &["probe", "line"]);
+    let changed_owner = string_at(finding, &["typescript_preview_card", "owner"])
+        .or_else(|| string_at(finding, &["probe", "owner"]))
+        .map(ToString::to_string);
+    let canonical_gap_id = string_at(finding, &["canonical_gap_id"])
+        .map(ToString::to_string)
+        .unwrap_or_else(|| {
+            let file = source_file
+                .as_deref()
+                .map(|file| file.replace('\\', "/"))
+                .filter(|file| !file.trim().is_empty())
+                .unwrap_or_else(|| format!("check-output-item-{index}"));
+            let owner = changed_owner
+                .as_deref()
+                .and_then(non_empty)
+                .map(python_static_limit_gap_component)
+                .unwrap_or_else(|| "module".to_string());
+            format!(
+                "gap:typescript:{file}:{owner}:{gap_state}:{}",
+                python_static_limit_gap_component(behavior_kind)
+            )
+        });
+    let has_local_anchor = source_file.is_some() && source_line.is_some();
+    let anchor = GapAnchor {
+        file: source_file,
+        line: source_line,
+        owner: changed_owner,
+        dedupe_fingerprint: Some(canonical_gap_id.clone()),
+    };
+    let mut evidence_ids = Vec::new();
+    if let Some(id) = string_at(finding, &["id"]) {
+        evidence_ids.push(id.to_string());
+    }
+    if !evidence_ids.iter().any(|id| id == &canonical_gap_id) {
+        evidence_ids.push(canonical_gap_id.clone());
+    }
+
+    Some(GapRecord {
+        gap_id: format!("gap:pr:{canonical_gap_id}"),
+        canonical_gap_id,
+        seam_id: None,
+        source_currentness: None,
+        kind: kind.to_string(),
+        language: "typescript".to_string(),
+        language_status: string_at(finding, &["language_status"])
+            .unwrap_or("preview")
+            .to_string(),
+        scope: "pr_local".to_string(),
+        evidence_class: behavior_kind.to_string(),
+        gap_state: gap_state.to_string(),
+        policy_state: "not_policy_targeted".to_string(),
+        repairability: "no_action".to_string(),
+        repair_route: None,
+        static_limit_kind: None,
+        static_limit_detail: None,
+        static_limits: Vec::new(),
+        anchor: Some(anchor),
+        evidence_ids,
+        projection_eligibility: projection_eligibility_from_pr_evidence(
+            "no_action",
+            false,
+            false,
+            has_local_anchor,
+            gap_state,
+        ),
+        verification_commands: Vec::new(),
+        command_specs: None,
+        receipt_command: None,
+        regeneration_commands: Vec::new(),
+        receipt: None,
+        safe_gate_predicate: None,
+        authority_boundary: "preview_advisory_only".to_string(),
+    })
+}
+
 fn first_missing_discriminator_value(finding: &Value) -> Option<&str> {
     finding
         .get("missing_discriminators")
@@ -1696,6 +2071,115 @@ fn gap_record_from_python_no_action_finding(finding: &Value, index: usize) -> Op
     })
 }
 
+/// A weakly exposed Python preview finding that `check` emitted without a
+/// repair card (the card is the Python repair-route authority) and without a
+/// structured static limit. Without this record the ledger held only no-action
+/// records and first-pr ended at a bare generic "no actionable gap", while
+/// check already said why no ripr command routes the finding (#4216). Mirrors
+/// the TypeScript not-delegatable record (#4224): it never promotes, carries
+/// no repair route, verify command, receipt or gate predicate, and every
+/// authority projection stays off. Exposed and no-path findings are not
+/// analyzer limitations, and heuristic-only findings already get a no-action
+/// record, so none of them reach this producer.
+fn gap_record_from_python_no_repair_card_finding(
+    finding: &Value,
+    index: usize,
+) -> Option<GapRecord> {
+    if string_at(finding, &["language"]) != Some("python")
+        || finding.get("python_repair_card").is_some()
+        || string_at(finding, &["static_limit_kind"]).is_some()
+        || string_at(finding, &["classification"]) != Some("weakly_exposed")
+        || python_finding_is_heuristic_only(finding)
+    {
+        return None;
+    }
+    let static_limit_kind = "python_repair_card_unavailable";
+    let reason = if first_missing_discriminator_value(finding).is_none() {
+        "static evidence names no concrete missing discriminator"
+    } else {
+        "its test placement or related-test evidence is incomplete"
+    };
+    let detail = format!(
+        "this Python preview finding has no repair card ({reason}), so `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add or strengthen a test by hand, then rerun `ripr check`"
+    );
+    let behavior_kind = string_at(finding, &["canonical_gap", "behavior_kind"])
+        .or_else(|| string_at(finding, &["probe", "family"]))
+        .unwrap_or("python_preview");
+    let source_file = string_at(finding, &["canonical_gap", "file"])
+        .or_else(|| string_at(finding, &["probe", "file"]))
+        .map(ToString::to_string);
+    let source_line = u64_at(finding, &["probe", "line"]);
+    let changed_owner = string_at(finding, &["canonical_gap", "owner"])
+        .or_else(|| string_at(finding, &["probe", "owner"]))
+        .map(ToString::to_string);
+    let canonical_gap_id = string_at(finding, &["canonical_gap_id"])
+        .or_else(|| string_at(finding, &["canonical_gap", "id"]))
+        .map(ToString::to_string)
+        .unwrap_or_else(|| {
+            python_static_limit_gap_id(
+                source_file.as_deref(),
+                changed_owner.as_deref(),
+                behavior_kind,
+                static_limit_kind,
+                index,
+            )
+        });
+    let has_local_anchor = source_file.is_some() && source_line.is_some();
+    let anchor = GapAnchor {
+        file: source_file,
+        line: source_line,
+        owner: changed_owner,
+        dedupe_fingerprint: Some(canonical_gap_id.clone()),
+    };
+    let mut evidence_ids = Vec::new();
+    if let Some(id) = string_at(finding, &["id"]) {
+        evidence_ids.push(id.to_string());
+    }
+    if !evidence_ids.iter().any(|id| id == &canonical_gap_id) {
+        evidence_ids.push(canonical_gap_id.clone());
+    }
+
+    Some(GapRecord {
+        source_currentness: None,
+        gap_id: format!("gap:pr:{canonical_gap_id}"),
+        canonical_gap_id,
+        seam_id: None,
+        kind: "StaticLimitation".to_string(),
+        language: "python".to_string(),
+        language_status: string_at(finding, &["language_status"])
+            .unwrap_or("preview")
+            .to_string(),
+        scope: "pr_local".to_string(),
+        evidence_class: static_limit_kind.to_string(),
+        gap_state: "static_limitation".to_string(),
+        policy_state: "not_policy_targeted".to_string(),
+        repairability: "analyzer_limitation".to_string(),
+        repair_route: None,
+        static_limit_kind: Some(static_limit_kind.to_string()),
+        static_limit_detail: Some(detail.clone()),
+        static_limits: vec![serde_json::json!({
+            "kind": static_limit_kind,
+            "detail": detail,
+        })],
+        anchor: Some(anchor),
+        evidence_ids,
+        projection_eligibility: projection_eligibility_from_pr_evidence(
+            "analyzer_limitation",
+            false,
+            false,
+            has_local_anchor,
+            "static_limitation",
+        ),
+        verification_commands: Vec::new(),
+        command_specs: None,
+        receipt_command: None,
+        regeneration_commands: Vec::new(),
+        receipt: None,
+        safe_gate_predicate: None,
+        authority_boundary: "preview_advisory_only".to_string(),
+    })
+}
+
 fn python_finding_is_heuristic_only(finding: &Value) -> bool {
     string_array_at(finding, &["evidence"])
         .into_iter()
@@ -1806,25 +2290,7 @@ fn attach_check_output_preview_receipt_routes(records: &mut [GapRecord], root: &
                 .as_deref()
                 .is_some_and(|command| command.starts_with("ripr receipt write --gap "))
         {
-            let fallback_slug = if record.language == "typescript" {
-                "typescript-gap"
-            } else {
-                "python-gap"
-            };
-            let receipt_path = default_preview_receipt_path(record, fallback_slug);
-            let gap_id_for_receipt = non_empty(&record.canonical_gap_id)
-                .or_else(|| non_empty(&record.gap_id))
-                .unwrap_or(fallback_slug);
-            let verify_cmd = record
-                .verification_commands
-                .first()
-                .map(|s| s.as_str())
-                .unwrap_or("ripr check --root . --json");
-            record.receipt_command = Some(receipt_write_command(
-                gap_id_for_receipt,
-                verify_cmd,
-                Some(&receipt_path),
-            ));
+            record.receipt_command = Some(preview_receipt_write_command(record));
         }
         if !record
             .regeneration_commands
@@ -1836,6 +2302,31 @@ fn attach_check_output_preview_receipt_routes(records: &mut [GapRecord], root: &
                 .push(after_check_command.clone());
         }
     }
+}
+
+/// Canonical `ripr receipt write` command for a Python or TypeScript preview
+/// gap record (RIPR-SPEC-0079).
+///
+/// Shared by the ledger's check-output fallback and the TypeScript preview
+/// packet projection so every surface emits the same command string for the
+/// same gap: the record's canonical gap id, its first verification command,
+/// and the ledger's default preview receipt path.
+pub(crate) fn preview_receipt_write_command(record: &GapRecord) -> String {
+    let fallback_slug = if record.language == "typescript" {
+        "typescript-gap"
+    } else {
+        "python-gap"
+    };
+    let receipt_path = default_preview_receipt_path(record, fallback_slug);
+    let gap_id_for_receipt = non_empty(&record.canonical_gap_id)
+        .or_else(|| non_empty(&record.gap_id))
+        .unwrap_or(fallback_slug);
+    let verify_cmd = record
+        .verification_commands
+        .first()
+        .map(|s| s.as_str())
+        .unwrap_or("ripr check --root . --json");
+    receipt_write_command(gap_id_for_receipt, verify_cmd, Some(&receipt_path))
 }
 
 fn default_preview_receipt_path(record: &GapRecord, fallback_slug: &str) -> String {
@@ -3328,6 +3819,67 @@ mod tests {
         Ok(())
     }
 
+    /// #4307 (written non-claim fork): the repo-exposure → gap-record bridge
+    /// must carry the record's canonical verify and receipt identity verbatim
+    /// — the advisory Direct pilot-snapshot verify and the receipt reading the
+    /// workflow loop's verify artifact — so the gate carry pinned by
+    /// `gap_record_carry_keeps_the_direct_verify_and_the_receipt_input` cannot
+    /// be reentered from the bridge side (a redirect, a snapshot-family swap,
+    /// or a dropped receipt input). The ends alone are pinned at the record
+    /// owner and the gate; this pins the seam between them.
+    #[test]
+    fn repo_exposure_seam_carries_the_record_verify_and_receipt_identity() -> Result<(), String> {
+        let verify = "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json";
+        let receipt = crate::agent::loop_commands::agent_receipt_command(
+            ".",
+            crate::agent::loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
+            "seam-pricing-threshold",
+            Some(crate::agent::loop_commands::WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+        );
+        let mut seam =
+            make_repo_exposure_seam("actionable", "add_focused_test", "predicate_boundary");
+        seam["evidence_record"]["canonical_item"]["verify_command"] =
+            Value::String(verify.to_string());
+        seam["evidence_record"]["canonical_item"]["receipt_command"] =
+            Value::String(receipt.clone());
+        let payload = serde_json::json!({"seams": [seam]});
+        let records = gap_records_from_repo_exposure_json(&payload.to_string())
+            .map_err(|error| format!("bridge parse failed: {error}"))?;
+        let record = records
+            .first()
+            .ok_or_else(|| "seam with canonical commands did not produce a record".to_string())?;
+
+        assert_eq!(
+            record.verification_commands,
+            vec![verify.to_string()],
+            "bridge must carry the record verify identity verbatim"
+        );
+        assert!(
+            !record.verification_commands[0].contains('>'),
+            "bridged verify must stay Direct (no redirect): {}",
+            record.verification_commands[0]
+        );
+        let carried_receipt = record
+            .receipt_command
+            .as_deref()
+            .ok_or_else(|| "bridge must carry the record receipt command".to_string())?;
+        assert_eq!(
+            carried_receipt, receipt,
+            "bridge must carry the record receipt identity verbatim"
+        );
+        let verify_json_at = carried_receipt
+            .split("--verify-json ")
+            .nth(1)
+            .and_then(|rest| rest.split(' ').next())
+            .ok_or_else(|| "carried receipt must name its verify-json input".to_string())?;
+        assert_eq!(
+            verify_json_at,
+            crate::agent::loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
+            "bridged receipt must keep reading the workflow verify artifact"
+        );
+        Ok(())
+    }
+
     #[test]
     fn repo_exposure_json_error_paths() -> Result<(), String> {
         // invalid JSON
@@ -3946,7 +4498,18 @@ mod tests {
                 }
             }
         }
-        if (direct, no_strong, orthogonal) != (2, 28, 10) {
+        // RIPR-SPEC-0028 boundary rule: downgrading the src-layout
+        // `bulk_discount` finding from `exposed` to `weakly_exposed` gives it a
+        // repair card it previously could not carry, raising the direct-aligned
+        // repair-card inventory from 2 to 3 (the boundary-downgraded card in
+        // `python_src_layout_package_import`). #4227: resolving module-level
+        // named-constant thresholds adds two more direct-aligned boundary cards
+        // (`python_named_constant_boundary_repair_gap` and the
+        // `DISCOUNT_THRESHOLD` boundary in
+        // `python_same_stem_sibling_owner_not_related`). A returned relational
+        // comparison read as a predicate adds one more direct-aligned boundary
+        // card (`python_return_comparison_boundary`).
+        if (direct, no_strong, orthogonal) != (6, 28, 11) {
             return Err(format!(
                 "corpus inventory drift: direct={direct}, unknown={no_strong}, orthogonal={orthogonal}"
             ));
@@ -4206,6 +4769,353 @@ mod tests {
         Ok(())
     }
 
+    /// Real `check --json` output for a TypeScript finding whose repair packet
+    /// the shared validator failed closed (#4105 unreachable boundary input).
+    fn typescript_fail_closed_packet_check_output() -> String {
+        include_str!(
+            "../../../../fixtures/ts_repair_packet_boundary_unreachable/expected/check.json"
+        )
+        .to_string()
+    }
+
+    fn check_output_ledger(records_json: String) -> GapDecisionLedgerReport {
+        build_gap_decision_ledger_report(GapDecisionLedgerInput {
+            root: ".".to_string(),
+            generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::CheckOutput,
+            records_path: "check.json".to_string(),
+            records_json: Ok(records_json),
+        })
+    }
+
+    #[test]
+    fn check_output_typescript_fail_closed_packet_becomes_non_delegatable_static_limit()
+    -> Result<(), String> {
+        let payload = typescript_fail_closed_packet_check_output();
+        // Fixture premise: the validator kept the packet closed and check
+        // emitted no packet.
+        let value: Value = serde_json::from_str(&payload)
+            .map_err(|error| format!("parse fixture check output: {error}"))?;
+        let finding = &value["findings"][0];
+        assert_eq!(finding["language"], "typescript");
+        assert!(finding.get("typescript_repair_packet").is_none());
+        assert_eq!(
+            finding["preview_actionability"]["repair_packet_ready"],
+            false
+        );
+
+        let report = check_output_ledger(payload);
+        assert_eq!(report.status, "advisory", "{:?}", report.warnings);
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        assert_eq!(report.records.len(), 1);
+        let record = &report.records[0];
+        assert_eq!(record.kind, "StaticLimitation");
+        assert_eq!(record.language, "typescript");
+        assert_eq!(record.scope, "pr_local");
+        assert_eq!(record.gap_state, "static_limitation");
+        assert_eq!(record.repairability, "analyzer_limitation");
+        assert_eq!(
+            record.static_limit_kind.as_deref(),
+            Some("typescript_repair_packet_not_delegatable")
+        );
+        // The reason is the shared validator's projection, carried verbatim.
+        assert_eq!(
+            record.static_limit_detail.as_deref(),
+            finding["preview_actionability"]["why_not_actionable"].as_str()
+        );
+        assert!(record.static_limit_detail.as_deref().is_some_and(|detail| detail
+            .contains("validator: is not agent-packet eligible: observed call input `login('alice')` does not reach the missing discriminator `user.length == 3`")));
+        assert!(record.static_limits.iter().any(|limit| {
+            limit["kind"] == "not_delegatable_target_shape"
+                && limit["detail"] == "Add an exact boundary assertion for `user.length == 3`."
+        }));
+        assert_eq!(
+            record
+                .anchor
+                .as_ref()
+                .and_then(|anchor| anchor.file.as_deref()),
+            Some("src/auth.ts")
+        );
+        assert_eq!(report.summary.static_limitation_total, 1);
+        Ok(())
+    }
+
+    // #4226 review: an exposed TypeScript finding also carries
+    // `repair_packet_ready: false`, but it has nothing to repair; it must not
+    // become a not-delegatable static limitation.
+    #[test]
+    fn check_output_typescript_exposed_finding_is_not_a_static_limitation() {
+        let check = include_str!(
+            "../../../../fixtures/ts_predicate_boundary_optional_chaining/expected/check.json"
+        );
+        assert!(check.contains("\"already_observed\""));
+        let report = check_output_ledger(check.to_string());
+        assert!(
+            report
+                .records
+                .iter()
+                .all(|record| record.static_limit_kind.as_deref()
+                    != Some("typescript_repair_packet_not_delegatable")),
+            "{:?}",
+            report.records
+        );
+    }
+
+    // An exposed TypeScript finding (for example after the boundary test a
+    // delegatable packet asked for) is a report-only no-action record, so the
+    // ledger is not empty and first-pr does not loop on "blocked".
+    #[test]
+    fn check_output_typescript_exposed_finding_is_a_report_only_no_action_record() {
+        let check = include_str!(
+            "../../../../fixtures/ts_predicate_boundary_optional_chaining/expected/check.json"
+        );
+        assert!(check.contains("\"classification\": \"exposed\""));
+        let report = check_output_ledger(check.to_string());
+        assert_eq!(report.status, "advisory", "{:?}", report.warnings);
+        assert!(!report.records.is_empty());
+        for record in &report.records {
+            assert_eq!(record.language, "typescript");
+            assert_eq!(record.gap_state, "already_observed");
+            assert_eq!(record.kind, "NoActionAlreadyObserved");
+            assert_eq!(record.repairability, "no_action");
+            assert!(record.repair_route.is_none());
+            assert!(record.verification_commands.is_empty());
+            assert!(record.receipt_command.is_none());
+            for projection in ["agent_packet", "pr_comment", "gate_candidate"] {
+                assert!(!projection_eligible(record, projection), "{projection}");
+            }
+        }
+        assert_eq!(report.summary.no_action_total, report.records.len());
+    }
+
+    #[test]
+    fn check_output_typescript_fail_closed_packet_is_never_delegatable() -> Result<(), String> {
+        let report = check_output_ledger(typescript_fail_closed_packet_check_output());
+        let record = report
+            .records
+            .first()
+            .ok_or_else(|| "fail-closed TypeScript finding produced no record".to_string())?;
+        assert!(record.repair_route.is_none());
+        assert!(record.verification_commands.is_empty());
+        assert!(record.receipt_command.is_none());
+        assert!(record.safe_gate_predicate.is_none());
+        for projection in [
+            "agent_packet",
+            "pr_comment",
+            "gate_candidate",
+            "lsp_diagnostic",
+            "ripr_zero_count",
+            "ripr_plus_count",
+        ] {
+            assert!(
+                !projection_eligible(record, projection),
+                "{projection} must stay ineligible"
+            );
+        }
+        assert!(
+            crate::output::agent_seam_packets::validate_agent_gap_record_packet(record).is_err(),
+            "the shared validator must reject the non-delegatable record"
+        );
+        assert_eq!(report.summary.projection_agent_packet_eligible, 0);
+        assert_eq!(report.summary.projection_gate_candidate, 0);
+
+        // This path reads readiness only from the validator's projection: a
+        // finding that claims readiness without a packet, or carries no
+        // readiness at all, gets no record here (and so no promotion).
+        for ready in [Some(Value::Bool(true)), None] {
+            let mut payload: Value =
+                serde_json::from_str(&typescript_fail_closed_packet_check_output())
+                    .map_err(|error| format!("parse fixture check output: {error}"))?;
+            let actionability = payload["findings"][0]["preview_actionability"]
+                .as_object_mut()
+                .ok_or_else(|| "preview_actionability missing".to_string())?;
+            match ready {
+                Some(value) => {
+                    actionability.insert("repair_packet_ready".to_string(), value);
+                }
+                None => {
+                    actionability.remove("repair_packet_ready");
+                }
+            }
+            let report = check_output_ledger(payload.to_string());
+            assert!(
+                report.records.is_empty(),
+                "no packet and repair_packet_ready != false must not form a record: {:?}",
+                report.records
+            );
+        }
+        Ok(())
+    }
+
+    // The no-card premise is the rebound-constant fixture: `global` can rebind
+    // `DISCOUNT_THRESHOLD`, so it stays unresolved and no card forms (#4227).
+    // The same-stem sibling fixture carried this premise until #4227 resolved
+    // its once-bound constant and gave it a card.
+    fn python_no_repair_card_check_output() -> String {
+        include_str!(
+            "../../../../fixtures/python_rebound_constant_boundary_limit/expected/check.json"
+        )
+        .to_string()
+    }
+
+    fn python_no_repair_card_records(report: &GapDecisionLedgerReport) -> Vec<&GapRecord> {
+        report
+            .records
+            .iter()
+            .filter(|record| {
+                record.static_limit_kind.as_deref() == Some("python_repair_card_unavailable")
+            })
+            .collect()
+    }
+
+    // #4216: a weakly exposed Python finding that check emitted without a
+    // repair card and without a static limit used to form no ledger record, so
+    // first-pr ended at a bare generic "no actionable gap". It now forms a
+    // non-delegatable static-limitation record that names why and the manual
+    // step, and never promotes.
+    #[test]
+    fn check_output_python_no_repair_card_finding_is_never_delegatable() -> Result<(), String> {
+        let payload = python_no_repair_card_check_output();
+        // Fixture premise: one weakly exposed Python finding with no card, no
+        // static limit, no missing discriminator and a non-heuristic relation.
+        let value: Value = serde_json::from_str(&payload)
+            .map_err(|error| format!("parse fixture check output: {error}"))?;
+        let weak = value["findings"]
+            .as_array()
+            .ok_or_else(|| "findings missing".to_string())?
+            .iter()
+            .filter(|finding| finding["classification"] == "weakly_exposed")
+            .collect::<Vec<_>>();
+        assert_eq!(weak.len(), 1);
+        assert_eq!(weak[0]["language"], "python");
+        assert!(weak[0].get("python_repair_card").is_none());
+        assert!(weak[0].get("static_limit_kind").is_none());
+        assert!(!python_finding_is_heuristic_only(weak[0]));
+
+        let report = check_output_ledger(payload);
+        let records = python_no_repair_card_records(&report);
+        assert_eq!(records.len(), 1, "{:?}", report.records);
+        let record = records[0];
+        assert_eq!(record.kind, "StaticLimitation");
+        assert_eq!(record.gap_state, "static_limitation");
+        assert_eq!(record.repairability, "analyzer_limitation");
+        assert_eq!(
+            record.static_limit_detail.as_deref(),
+            Some(
+                "this Python preview finding has no repair card (static evidence names no concrete missing discriminator), so `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add or strengthen a test by hand, then rerun `ripr check`"
+            )
+        );
+        assert!(record.repair_route.is_none());
+        assert!(record.verification_commands.is_empty());
+        assert!(record.receipt_command.is_none());
+        assert!(record.safe_gate_predicate.is_none());
+        for projection in [
+            "agent_packet",
+            "pr_comment",
+            "gate_candidate",
+            "lsp_diagnostic",
+            "ripr_zero_count",
+            "ripr_plus_count",
+        ] {
+            assert!(
+                !projection_eligible(record, projection),
+                "{projection} must stay ineligible"
+            );
+        }
+        assert!(
+            crate::output::agent_seam_packets::validate_agent_gap_record_packet(record).is_err(),
+            "the shared validator must reject the non-delegatable record"
+        );
+        assert_eq!(report.summary.projection_agent_packet_eligible, 0);
+        assert_eq!(report.summary.projection_gate_candidate, 0);
+        Ok(())
+    }
+
+    // The other reason branch: a finding that names a missing discriminator
+    // but still has no card is held by incomplete placement or related-test
+    // evidence, and says so.
+    #[test]
+    fn check_output_python_no_repair_card_with_discriminator_names_incomplete_evidence()
+    -> Result<(), String> {
+        let mut payload: Value = serde_json::from_str(&python_no_repair_card_check_output())
+            .map_err(|error| format!("parse fixture check output: {error}"))?;
+        let findings = payload["findings"]
+            .as_array_mut()
+            .ok_or_else(|| "findings missing".to_string())?;
+        for finding in findings
+            .iter_mut()
+            .filter(|finding| finding["classification"] == "weakly_exposed")
+        {
+            finding["missing_discriminators"] =
+                serde_json::json!([{"value": "amount == discount_threshold"}]);
+        }
+        let report = check_output_ledger(payload.to_string());
+        let records = python_no_repair_card_records(&report);
+        assert_eq!(records.len(), 1, "{:?}", report.records);
+        assert_eq!(
+            records[0].static_limit_detail.as_deref(),
+            Some(
+                "this Python preview finding has no repair card (its test placement or related-test evidence is incomplete), so `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add or strengthen a test by hand, then rerun `ripr check`"
+            )
+        );
+        assert!(records[0].repair_route.is_none());
+        Ok(())
+    }
+
+    // #4226 review, carried to Python: an exposed finding has nothing to
+    // repair and a no-path finding is a test gap, not an analyzer limitation.
+    // A card, a static limit, or a heuristic-only link also keeps the finding
+    // on its own existing path. None may become this static limitation.
+    #[test]
+    fn check_output_python_no_repair_card_record_excludes_other_findings() -> Result<(), String> {
+        type FindingMutation = (&'static str, fn(&mut Value));
+        let mutations: [FindingMutation; 5] = [
+            ("exposed", |finding| {
+                finding["classification"] = Value::from("exposed");
+            }),
+            ("no_static_path", |finding| {
+                finding["classification"] = Value::from("no_static_path");
+            }),
+            ("repair card", |finding| {
+                finding["python_repair_card"] = serde_json::json!({});
+            }),
+            ("static limit", |finding| {
+                finding["static_limit_kind"] = Value::from("dynamic_dispatch");
+            }),
+            ("heuristic only", |finding| {
+                if let Some(evidence) = finding["evidence"].as_array_mut() {
+                    evidence.push(Value::from("related_test_uncertain: name similarity"));
+                }
+            }),
+        ];
+        for (label, mutate) in mutations {
+            let mut payload: Value = serde_json::from_str(&python_no_repair_card_check_output())
+                .map_err(|error| format!("parse fixture check output: {error}"))?;
+            let findings = payload["findings"]
+                .as_array_mut()
+                .ok_or_else(|| "findings missing".to_string())?;
+            for finding in findings
+                .iter_mut()
+                .filter(|finding| finding["classification"] == "weakly_exposed")
+            {
+                mutate(finding);
+                // The producer's own gate, independent of dispatch order
+                // (the no-action producer runs first for exposed/no-path).
+                assert!(
+                    gap_record_from_python_no_repair_card_finding(finding, 0).is_none(),
+                    "{label} finding must not form a no-repair-card record"
+                );
+            }
+            let report = check_output_ledger(payload.to_string());
+            assert!(
+                python_no_repair_card_records(&report).is_empty(),
+                "{label} finding must not become a no-repair-card static limitation: {:?}",
+                report.records
+            );
+        }
+        Ok(())
+    }
+
     #[test]
     fn check_output_typescript_fixture_synthesizes_receipt_write_for_packet() -> Result<(), String>
     {
@@ -4237,7 +5147,7 @@ mod tests {
         assert!(!projection_eligible(record, "gate_candidate"));
         assert_eq!(
             record.verification_commands,
-            vec!["jest tests/discount.test.ts".to_string()]
+            vec!["npx --no-install jest tests/discount.test.ts".to_string()]
         );
         let route = record
             .repair_route
@@ -5999,7 +6909,7 @@ mod tests {
     #[test]
     fn regeneration_collection_shares_object_or_array_contract() -> Result<(), String> {
         let spec = crate::agent::command_specs::report_regeneration_command_spec_from_display(
-            "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md",
+            "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md", std::path::Path::new(".")
         )
         .ok_or("canonical gap-ledger route was not recoverable")?;
         // Null collection deserializes to empty.
@@ -6082,6 +6992,69 @@ mod tests {
         Ok(())
     }
 
+    /// #3999: a persisted ledger carries no selected-root authority, so a
+    /// regeneration display bound to some other absolute root stays
+    /// legacy-string-only when read; the same display bound to the reading
+    /// directory recovers the portable typed route.
+    #[test]
+    fn parse_keeps_a_display_bound_to_a_foreign_root_legacy_string_only() -> Result<(), String> {
+        use crate::agent::loop_commands::{bound_root, check_repo_exposure_command};
+        let record = |display: &str| {
+            serde_json::json!([{
+                "gap_id": "gap:bound-regen",
+                "kind": "MissingValueAssertion",
+                "regeneration_commands": [display]
+            }])
+            .to_string()
+        };
+        let reading_root = bound_root(".");
+        let foreign_root = bound_root("../ripr-foreign-selected-root");
+        assert_ne!(reading_root, foreign_root);
+
+        // Control: bound to the reading directory, the route is typed and
+        // its argv carries the portable root.
+        let local = check_repo_exposure_command(
+            &reading_root,
+            "instant",
+            "target/ripr/reports/repo-exposure.json",
+        );
+        let records = parse_gap_records_json(&record(&local))?;
+        let specs = records[0]
+            .command_specs
+            .as_ref()
+            .ok_or_else(|| format!("reading-root display was not typed: {local}"))?;
+        if specs.regeneration.len() != 1
+            || !specs.regeneration[0]
+                .args
+                .windows(2)
+                .any(|pair| pair == ["--root", "."])
+        {
+            return Err(format!("unexpected typed route: {:?}", specs.regeneration));
+        }
+
+        // Foreign root: the display is kept, no typed spec is invented.
+        let foreign = check_repo_exposure_command(
+            &foreign_root,
+            "instant",
+            "target/ripr/reports/repo-exposure.json",
+        );
+        let records = parse_gap_records_json(&record(&foreign))?;
+        if records[0].regeneration_commands != vec![foreign.clone()] {
+            return Err(format!("legacy display was not kept: {:?}", records[0]));
+        }
+        if records[0]
+            .command_specs
+            .as_ref()
+            .is_some_and(|specs| !specs.regeneration.is_empty())
+        {
+            return Err(format!(
+                "a display bound to a foreign root gained typed authority: {:?}",
+                records[0].command_specs
+            ));
+        }
+        Ok(())
+    }
+
     /// FIX (round-1 review): every persisted-ledger parse path enriches
     /// legacy string-only records with typed regeneration specs, and the
     /// enrichment is idempotent — producer-carried collections are never
@@ -6139,7 +7112,7 @@ mod tests {
         );
         let mut producer_spec =
             crate::agent::command_specs::report_regeneration_command_spec_from_display(
-                "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md",
+                "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md", std::path::Path::new(".")
             )
             .ok_or("canonical gap-ledger route was not recoverable")?;
         producer_spec.command_id = "ripr:producer:gap-ledger".to_string();
@@ -6177,6 +7150,7 @@ mod tests {
     -> Result<(), String> {
         let spec = crate::agent::command_specs::report_regeneration_command_spec_from_display(
             "ripr check --root . --mode instant --format repo-exposure-json > repo.json",
+            std::path::Path::new("."),
         )
         .ok_or("canonical repo-exposure route was not recoverable")?;
         let base = serde_json::json!({

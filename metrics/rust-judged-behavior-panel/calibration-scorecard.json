@@ -1,0 +1,843 @@
+{
+  "authority": "EffortlessMetrics/ripr-swarm#4795",
+  "candidates": {
+    "false_actionable": {
+      "case_ids": [],
+      "denominator": 0,
+      "excluded_case_ids": [],
+      "numerator": 0,
+      "rate": "not_measurable"
+    },
+    "false_exposed": {
+      "case_ids": [],
+      "denominator": 0,
+      "excluded_case_ids": [],
+      "numerator": 0,
+      "rate": "not_measurable"
+    },
+    "limitation_correct": {
+      "case_ids": [],
+      "denominator": 3,
+      "excluded_case_ids": [],
+      "numerator": 0,
+      "rate": "0/3"
+    },
+    "static_under_credit": {
+      "case_ids": [],
+      "denominator": 0,
+      "excluded_case_ids": [],
+      "numerator": 0,
+      "rate": "not_measurable"
+    },
+    "wrong_target": {
+      "case_ids": [],
+      "denominator": 21,
+      "excluded_case_ids": [],
+      "numerator": 0,
+      "rate": "0/21"
+    }
+  },
+  "cases": [
+    {
+      "automatic_false_exposed": false,
+      "case_id": "p1617-command-rows-quiet",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_stay_quiet",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_gap",
+      "terminal_structural_judgment": "confirmed_should_gap"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "p1617-dispatch-rows-gap",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_gap",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_gap",
+      "terminal_structural_judgment": "confirmed_should_gap"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "p1705-headline-rows-gap",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_gap",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_stay_quiet",
+      "terminal_structural_judgment": "confirmed_should_stay_quiet"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "p1705-headline-survivor-quiet",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_stay_quiet",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_stay_quiet",
+      "terminal_structural_judgment": "confirmed_should_stay_quiet"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "p1705-passthrough-rows-quiet",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_stay_quiet",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_gap",
+      "terminal_structural_judgment": "confirmed_should_gap"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "p1706-helper-rows-quiet",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_stay_quiet",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_stay_quiet",
+      "terminal_structural_judgment": "confirmed_should_stay_quiet"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "p1706-wiring-rows-gap",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_gap",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_gap",
+      "terminal_structural_judgment": "confirmed_should_gap"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "p1731-quiet-test-only",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_stay_quiet",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_stay_quiet",
+      "terminal_structural_judgment": "confirmed_should_stay_quiet"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "p1732-quiet-test-only",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_stay_quiet",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_stay_quiet",
+      "terminal_structural_judgment": "confirmed_should_stay_quiet"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "p1741-helper-rows-quiet",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_stay_quiet",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_gap",
+      "terminal_structural_judgment": "confirmed_should_gap"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "p1741-pair-rows-gap",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_gap",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_gap",
+      "terminal_structural_judgment": "confirmed_should_gap"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "p1744-quiet-test-only",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_stay_quiet",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_stay_quiet",
+      "terminal_structural_judgment": "confirmed_should_stay_quiet"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "p1745-catalog-row-quiet",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_stay_quiet",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_gap",
+      "terminal_structural_judgment": "confirmed_should_gap"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "p1745-triple-rows-gap",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_gap",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_stay_quiet",
+      "terminal_structural_judgment": "confirmed_should_stay_quiet"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "p1745-wedge-rows-quiet",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_stay_quiet",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_stay_quiet",
+      "terminal_structural_judgment": "confirmed_should_stay_quiet"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "s2864-fast-mode-notice-limit",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_limit",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_limit",
+      "terminal_structural_judgment": "confirmed_should_limit"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "s3755-aligned-rows-quiet",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_stay_quiet",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_stay_quiet",
+      "terminal_structural_judgment": "confirmed_should_stay_quiet"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "s3755-weak-rows-gap",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_gap",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_gap",
+      "terminal_structural_judgment": "confirmed_should_gap"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "s3759-match-arm-quiet",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_stay_quiet",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_stay_quiet",
+      "terminal_structural_judgment": "confirmed_should_stay_quiet"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "s3866-doctor-packet-subprocess-limit",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_limit",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_limit",
+      "terminal_structural_judgment": "confirmed_should_limit"
+    },
+    {
+      "automatic_false_exposed": false,
+      "case_id": "s3956-pilot-baseline-file-limit",
+      "eligibility": "ineligible_unauthorized",
+      "expected_direction": "should_limit",
+      "instrument_kind": null,
+      "limitations": [
+        "no exact calibration receipt; eligibility `ineligible_unauthorized`"
+      ],
+      "non_calibration_reason": "ineligible_unauthorized",
+      "receipt_digest": null,
+      "runtime_result": "not_run",
+      "static_direction": "should_limit",
+      "terminal_structural_judgment": "confirmed_should_limit"
+    }
+  ],
+  "counts": {
+    "attempted": 0,
+    "calibration_eligible": 0,
+    "completed": 0,
+    "inconclusive": 0,
+    "judged": 21,
+    "selected": 21
+  },
+  "coverage": {
+    "by_behavior_family": {
+      "aligned_catalog_wiring": {
+        "case_ids": [
+          "p1617-command-rows-quiet"
+        ],
+        "count": 1
+      },
+      "aligned_helper_construction": {
+        "case_ids": [
+          "p1741-helper-rows-quiet"
+        ],
+        "count": 1
+      },
+      "aligned_helper_dedup": {
+        "case_ids": [
+          "p1706-helper-rows-quiet"
+        ],
+        "count": 1
+      },
+      "aligned_match_arm_observation": {
+        "case_ids": [
+          "s3759-match-arm-quiet"
+        ],
+        "count": 1
+      },
+      "aligned_parameter_identity": {
+        "case_ids": [
+          "s3755-aligned-rows-quiet"
+        ],
+        "count": 1
+      },
+      "aligned_passthrough_arms": {
+        "case_ids": [
+          "p1705-passthrough-rows-quiet"
+        ],
+        "count": 1
+      },
+      "aligned_wedge_naming": {
+        "case_ids": [
+          "p1745-wedge-rows-quiet"
+        ],
+        "count": 1
+      },
+      "file_side_channel_branch": {
+        "case_ids": [
+          "s3956-pilot-baseline-file-limit"
+        ],
+        "count": 1
+      },
+      "stderr_notice_on_effective_config": {
+        "case_ids": [
+          "s2864-fast-mode-notice-limit"
+        ],
+        "count": 1
+      },
+      "stdout_guidance_branch": {
+        "case_ids": [
+          "s3866-doctor-packet-subprocess-limit"
+        ],
+        "count": 1
+      },
+      "structural_oracle_specificity_residual": {
+        "case_ids": [
+          "p1745-catalog-row-quiet"
+        ],
+        "count": 1
+      },
+      "test_only_quiet_control": {
+        "case_ids": [
+          "p1731-quiet-test-only",
+          "p1732-quiet-test-only",
+          "p1744-quiet-test-only"
+        ],
+        "count": 3
+      },
+      "unexercised_arm_wiring": {
+        "case_ids": [
+          "p1617-dispatch-rows-gap"
+        ],
+        "count": 1
+      },
+      "unlinked_aligned_guard": {
+        "case_ids": [
+          "p1705-headline-rows-gap",
+          "p1705-headline-survivor-quiet"
+        ],
+        "count": 2
+      },
+      "unlinked_boundary_tests": {
+        "case_ids": [
+          "s3755-weak-rows-gap"
+        ],
+        "count": 1
+      },
+      "unobserved_adapter_wiring": {
+        "case_ids": [
+          "p1706-wiring-rows-gap"
+        ],
+        "count": 1
+      },
+      "wrong_owner_structural_credit": {
+        "case_ids": [
+          "p1741-pair-rows-gap",
+          "p1745-triple-rows-gap"
+        ],
+        "count": 2
+      }
+    },
+    "by_expected_direction": {
+      "should_gap": {
+        "case_ids": [
+          "p1617-dispatch-rows-gap",
+          "p1705-headline-rows-gap",
+          "p1706-wiring-rows-gap",
+          "p1741-pair-rows-gap",
+          "p1745-triple-rows-gap",
+          "s3755-weak-rows-gap"
+        ],
+        "count": 6
+      },
+      "should_limit": {
+        "case_ids": [
+          "s2864-fast-mode-notice-limit",
+          "s3866-doctor-packet-subprocess-limit",
+          "s3956-pilot-baseline-file-limit"
+        ],
+        "count": 3
+      },
+      "should_stay_quiet": {
+        "case_ids": [
+          "p1617-command-rows-quiet",
+          "p1705-headline-survivor-quiet",
+          "p1705-passthrough-rows-quiet",
+          "p1706-helper-rows-quiet",
+          "p1731-quiet-test-only",
+          "p1732-quiet-test-only",
+          "p1741-helper-rows-quiet",
+          "p1744-quiet-test-only",
+          "p1745-catalog-row-quiet",
+          "p1745-wedge-rows-quiet",
+          "s3755-aligned-rows-quiet",
+          "s3759-match-arm-quiet"
+        ],
+        "count": 12
+      }
+    },
+    "by_oracle_class": {
+      "exact_value": {
+        "case_ids": [
+          "p1617-command-rows-quiet",
+          "p1705-headline-survivor-quiet",
+          "p1705-passthrough-rows-quiet",
+          "p1706-helper-rows-quiet",
+          "p1741-helper-rows-quiet",
+          "p1745-catalog-row-quiet",
+          "s3755-aligned-rows-quiet",
+          "s3759-match-arm-quiet"
+        ],
+        "count": 8
+      },
+      "file_json_pointer": {
+        "case_ids": [
+          "s3956-pilot-baseline-file-limit"
+        ],
+        "count": 1
+      },
+      "membership_assertion": {
+        "case_ids": [
+          "p1745-wedge-rows-quiet"
+        ],
+        "count": 1
+      },
+      "none": {
+        "case_ids": [
+          "p1731-quiet-test-only",
+          "p1732-quiet-test-only",
+          "p1744-quiet-test-only"
+        ],
+        "count": 3
+      },
+      "relational_check": {
+        "case_ids": [
+          "p1617-dispatch-rows-gap",
+          "p1705-headline-rows-gap",
+          "p1706-wiring-rows-gap",
+          "p1741-pair-rows-gap",
+          "p1745-triple-rows-gap",
+          "s3755-weak-rows-gap"
+        ],
+        "count": 6
+      },
+      "stderr_substring": {
+        "case_ids": [
+          "s2864-fast-mode-notice-limit"
+        ],
+        "count": 1
+      },
+      "stdout_substring": {
+        "case_ids": [
+          "s3866-doctor-packet-subprocess-limit"
+        ],
+        "count": 1
+      }
+    },
+    "by_relation_basis": {
+      "direct_owner_call": {
+        "case_ids": [
+          "p1617-command-rows-quiet",
+          "p1705-headline-survivor-quiet",
+          "p1705-passthrough-rows-quiet",
+          "p1706-helper-rows-quiet",
+          "p1741-helper-rows-quiet",
+          "p1745-catalog-row-quiet",
+          "p1745-wedge-rows-quiet",
+          "s3755-aligned-rows-quiet",
+          "s3759-match-arm-quiet"
+        ],
+        "count": 9
+      },
+      "none": {
+        "case_ids": [
+          "p1731-quiet-test-only",
+          "p1732-quiet-test-only",
+          "p1744-quiet-test-only"
+        ],
+        "count": 3
+      },
+      "subprocess_binary": {
+        "case_ids": [
+          "s2864-fast-mode-notice-limit",
+          "s3866-doctor-packet-subprocess-limit",
+          "s3956-pilot-baseline-file-limit"
+        ],
+        "count": 3
+      },
+      "weak_token_substring": {
+        "case_ids": [
+          "p1617-dispatch-rows-gap",
+          "p1705-headline-rows-gap",
+          "p1706-wiring-rows-gap",
+          "p1741-pair-rows-gap",
+          "p1745-triple-rows-gap",
+          "s3755-weak-rows-gap"
+        ],
+        "count": 6
+      }
+    },
+    "by_witness_completeness": {
+      "aligned": {
+        "case_ids": [
+          "p1617-command-rows-quiet",
+          "p1705-headline-rows-gap",
+          "p1705-headline-survivor-quiet",
+          "p1705-passthrough-rows-quiet",
+          "p1706-helper-rows-quiet",
+          "p1741-helper-rows-quiet",
+          "p1745-catalog-row-quiet",
+          "p1745-wedge-rows-quiet",
+          "s3755-aligned-rows-quiet",
+          "s3755-weak-rows-gap",
+          "s3759-match-arm-quiet"
+        ],
+        "count": 11
+      },
+      "missing_observer": {
+        "case_ids": [
+          "p1617-dispatch-rows-gap",
+          "p1706-wiring-rows-gap",
+          "p1731-quiet-test-only",
+          "p1732-quiet-test-only",
+          "p1741-pair-rows-gap",
+          "p1744-quiet-test-only",
+          "p1745-triple-rows-gap",
+          "s2864-fast-mode-notice-limit",
+          "s3866-doctor-packet-subprocess-limit",
+          "s3956-pilot-baseline-file-limit"
+        ],
+        "count": 10
+      }
+    }
+  },
+  "digest": "sha256:4d69c040435ff1ac8e6b8824271a55144dfbbe5298cfae9353b16670564fbe78",
+  "equivalent_or_unusable_case_ids": [],
+  "inconclusive_case_ids": [],
+  "inherited_authorities": [
+    "EffortlessMetrics/ripr-swarm#3164",
+    "EffortlessMetrics/ripr-swarm#3806",
+    "EffortlessMetrics/ripr-swarm#4578"
+  ],
+  "instrument_failed_case_ids": [],
+  "judgments_sha256": "sha256:04ad4167e930af01d48041e518796f1167d9c3347b5e51445976c80586f6c869",
+  "kind": "rust_judged_panel_calibration_scorecard",
+  "limits": [
+    "Runtime results cannot rewrite independently accepted structural judgments.",
+    "A survived mutant is a review candidate, not an automatic false-exposed conclusion.",
+    "A caught mutant on a static gap is an under-credit candidate, not an automatic analyzer defect.",
+    "should_limit remains a static-boundary judgment even when a runtime experiment completes.",
+    "Equivalent, failed, timed-out, unavailable, stale and inconclusive rows stay in the denominator.",
+    "No denominator is not_measurable, never a fake zero percent.",
+    "#3076 route-yield denominators are referenced and never merged.",
+    "#4578 rolling observation identity is bound and never merged into this classification denominator.",
+    "No single quality score, support-tier, release, or publication claim."
+  ],
+  "non_claims": [
+    "universal analyzer accuracy",
+    "mutation adequacy",
+    "representative sampling",
+    "release readiness",
+    "support promotion",
+    "route-yield merger"
+  ],
+  "not_run_case_ids": [
+    "p1617-command-rows-quiet",
+    "p1617-dispatch-rows-gap",
+    "p1705-headline-rows-gap",
+    "p1705-headline-survivor-quiet",
+    "p1705-passthrough-rows-quiet",
+    "p1706-helper-rows-quiet",
+    "p1706-wiring-rows-gap",
+    "p1731-quiet-test-only",
+    "p1732-quiet-test-only",
+    "p1741-helper-rows-quiet",
+    "p1741-pair-rows-gap",
+    "p1744-quiet-test-only",
+    "p1745-catalog-row-quiet",
+    "p1745-triple-rows-gap",
+    "p1745-wedge-rows-quiet",
+    "s2864-fast-mode-notice-limit",
+    "s3755-aligned-rows-quiet",
+    "s3755-weak-rows-gap",
+    "s3759-match-arm-quiet",
+    "s3866-doctor-packet-subprocess-limit",
+    "s3956-pilot-baseline-file-limit"
+  ],
+  "rolling_observation_sha256": "sha256:0441b6329f7cfcbfa242213003cdf4d8f5cc9545d6168ebc02405998952ea940",
+  "schema_version": "0.1",
+  "selection_sha256": "sha256:69c9b45616bd4c9bd13e8da0d668e52c39bca32485f93335589009e77c3fdd72",
+  "stale_case_ids": [],
+  "static_runtime_matrix": {
+    "should_gap": {
+      "caught": {
+        "case_ids": [],
+        "count": 0
+      },
+      "equivalent_or_unusable": {
+        "case_ids": [],
+        "count": 0
+      },
+      "inconclusive": {
+        "case_ids": [],
+        "count": 0
+      },
+      "instrument_failure": {
+        "case_ids": [],
+        "count": 0
+      },
+      "not_run": {
+        "case_ids": [
+          "p1617-command-rows-quiet",
+          "p1617-dispatch-rows-gap",
+          "p1705-passthrough-rows-quiet",
+          "p1706-wiring-rows-gap",
+          "p1741-helper-rows-quiet",
+          "p1741-pair-rows-gap",
+          "p1745-catalog-row-quiet",
+          "s3755-weak-rows-gap"
+        ],
+        "count": 8
+      },
+      "stale_or_wrong_subject": {
+        "case_ids": [],
+        "count": 0
+      },
+      "survived": {
+        "case_ids": [],
+        "count": 0
+      }
+    },
+    "should_limit": {
+      "caught": {
+        "case_ids": [],
+        "count": 0
+      },
+      "equivalent_or_unusable": {
+        "case_ids": [],
+        "count": 0
+      },
+      "inconclusive": {
+        "case_ids": [],
+        "count": 0
+      },
+      "instrument_failure": {
+        "case_ids": [],
+        "count": 0
+      },
+      "not_run": {
+        "case_ids": [
+          "s2864-fast-mode-notice-limit",
+          "s3866-doctor-packet-subprocess-limit",
+          "s3956-pilot-baseline-file-limit"
+        ],
+        "count": 3
+      },
+      "stale_or_wrong_subject": {
+        "case_ids": [],
+        "count": 0
+      },
+      "survived": {
+        "case_ids": [],
+        "count": 0
+      }
+    },
+    "should_stay_quiet": {
+      "caught": {
+        "case_ids": [],
+        "count": 0
+      },
+      "equivalent_or_unusable": {
+        "case_ids": [],
+        "count": 0
+      },
+      "inconclusive": {
+        "case_ids": [],
+        "count": 0
+      },
+      "instrument_failure": {
+        "case_ids": [],
+        "count": 0
+      },
+      "not_run": {
+        "case_ids": [
+          "p1705-headline-rows-gap",
+          "p1705-headline-survivor-quiet",
+          "p1706-helper-rows-quiet",
+          "p1731-quiet-test-only",
+          "p1732-quiet-test-only",
+          "p1744-quiet-test-only",
+          "p1745-triple-rows-gap",
+          "p1745-wedge-rows-quiet",
+          "s3755-aligned-rows-quiet",
+          "s3759-match-arm-quiet"
+        ],
+        "count": 10
+      },
+      "stale_or_wrong_subject": {
+        "case_ids": [],
+        "count": 0
+      },
+      "survived": {
+        "case_ids": [],
+        "count": 0
+      }
+    }
+  },
+  "unavailable_case_ids": [
+    "p1617-command-rows-quiet",
+    "p1617-dispatch-rows-gap",
+    "p1705-headline-rows-gap",
+    "p1705-headline-survivor-quiet",
+    "p1705-passthrough-rows-quiet",
+    "p1706-helper-rows-quiet",
+    "p1706-wiring-rows-gap",
+    "p1731-quiet-test-only",
+    "p1732-quiet-test-only",
+    "p1741-helper-rows-quiet",
+    "p1741-pair-rows-gap",
+    "p1744-quiet-test-only",
+    "p1745-catalog-row-quiet",
+    "p1745-triple-rows-gap",
+    "p1745-wedge-rows-quiet",
+    "s2864-fast-mode-notice-limit",
+    "s3755-aligned-rows-quiet",
+    "s3755-weak-rows-gap",
+    "s3759-match-arm-quiet",
+    "s3866-doctor-packet-subprocess-limit",
+    "s3956-pilot-baseline-file-limit"
+  ]
+}

@@ -15,7 +15,7 @@
   "supported_profiles": ["actionable"],
   "reserved_profiles": ["actionable", "full"],
   "diagnostic_modes": ["push"],
-  "snapshot_handles": true,
+  "snapshot_handles": false,
   "continuations": false,
   "work_done_progress": false,
   "cancellation": true,

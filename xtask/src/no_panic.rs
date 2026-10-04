@@ -1291,7 +1291,7 @@ fn semantic_selector_identity(entry: &PanicAllowEntryV2, selector: &PanicFamilyS
 /// the gate has no external date dependency. Returns a fallback far-future
 /// date if the system clock is before the Unix epoch (a pre-epoch clock
 /// would make expired entries appear valid — fail-safe, not fail-open).
-fn today_date_string() -> String {
+pub(crate) fn today_date_string() -> String {
     match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
         Ok(duration) => date_from_secs(duration.as_secs()),
         Err(_) => "9999-12-31".to_string(), // clock before epoch: fail-safe
@@ -1315,10 +1315,11 @@ fn date_from_secs(secs: u64) -> String {
     format!("{year:04}-{m:02}-{d:02}")
 }
 
-/// Validate that `date` is a well-formed `YYYY-MM-DD` string with plausible
-/// month (01-12) and day (01-31) values. Used to guard the expiry comparison
-/// so a malformed date like `2026-13-45` does not silently bypass the check.
-fn is_valid_iso_date(date: &str) -> bool {
+/// Validate that `date` is a real Gregorian `YYYY-MM-DD` (month-specific
+/// day limits and leap years). Used to guard expiry/target comparison so a
+/// malformed date like `2026-13-45` or `2027-02-31` does not silently bypass
+/// the check.
+pub(crate) fn is_valid_iso_date(date: &str) -> bool {
     let bytes = date.as_bytes();
     if bytes.len() != 10
         || bytes[4] != b'-'
@@ -1329,9 +1330,19 @@ fn is_valid_iso_date(date: &str) -> bool {
     {
         return false;
     }
+    let year = date[..4].parse::<u32>().unwrap_or(0);
     let month = date[5..7].parse::<u32>().unwrap_or(0);
     let day = date[8..10].parse::<u32>().unwrap_or(0);
-    (1..=12).contains(&month) && (1..=31).contains(&day)
+    let max_day = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+            if leap { 29 } else { 28 }
+        }
+        _ => return false,
+    };
+    (1..=max_day).contains(&day)
 }
 
 /// Short label for an entry, preferring the stable `id` when available.
@@ -1643,6 +1654,37 @@ fn check_duplicate_panic_allow_entries(
     Ok(())
 }
 
+/// Schema 0.3 `id` is the stable identifier referenced in PRs and cleanup
+/// work. Colliding ids make that identifier unusable; the v0.1 coordinate
+/// duplicate check and the evaluate-time semantic-identity check do not
+/// cover this. Empty ids are skipped so schema 0.2 rows still parse (#3799).
+fn check_duplicate_panic_allow_ids(
+    entries: &[PanicAllowEntryVersioned],
+    path: &str,
+) -> Result<(), String> {
+    let mut seen = BTreeMap::new();
+    for entry in entries {
+        let Some(id) = panic_allow_entry_id(entry) else {
+            continue;
+        };
+        if let Some(previous) = seen.get(id) {
+            return Err(format!(
+                "{path}: duplicate allowlist id `{id}` ({previous} and {})",
+                panic_allow_entry_label(entry)
+            ));
+        }
+        seen.insert(id.to_string(), panic_allow_entry_label(entry));
+    }
+    Ok(())
+}
+
+fn panic_allow_entry_id(entry: &PanicAllowEntryVersioned) -> Option<&str> {
+    match entry {
+        PanicAllowEntryVersioned::V1(_) => None,
+        PanicAllowEntryVersioned::V2(v2) => v2.id.as_deref().filter(|id| !id.trim().is_empty()),
+    }
+}
+
 fn check_old_panic_allowlist_exists() -> Result<(), String> {
     if Path::new(".ripr/no-panic-allowlist.txt").exists() {
         return Err(
@@ -1654,13 +1696,12 @@ fn check_old_panic_allowlist_exists() -> Result<(), String> {
 }
 
 #[derive(Debug, Clone)]
-#[allow(
-    clippy::large_enum_variant,
-    reason = "V2 grows with exact-identity snippet/count fields; boxing is a post-0.5.1 refactor"
-)]
 enum PanicAllowEntryVersioned {
     V1(PanicAllowEntry),
-    V2(PanicAllowEntryV2),
+    // #3995: V2 carries the selector/count payload. Boxing keeps the enum
+    // from tripping clippy::large_enum_variant; the allow and
+    // clippy-exception-0001 recorded that deferral and are gone.
+    V2(Box<PanicAllowEntryV2>),
 }
 
 fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVersioned>, String> {
@@ -1794,7 +1835,7 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
                 count: e_count,
             };
             validate_panic_allow_entry_v2(&entry, path, start_line, schema_version)?;
-            Ok(Some(PanicAllowEntryVersioned::V2(entry)))
+            Ok(Some(PanicAllowEntryVersioned::V2(Box::new(entry))))
         } else if e_line > 0 {
             // v0.1 entry with line number
             let entry = PanicAllowEntry {
@@ -2025,6 +2066,7 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
         entries.push(entry);
     }
 
+    check_duplicate_panic_allow_ids(&entries, path)?;
     Ok(entries)
 }
 

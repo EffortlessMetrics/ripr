@@ -6,14 +6,14 @@ Spec: RIPR-SPEC-0028
 
 An adversarial **non-delta operand** over-credit trap. The changed owner
 `Account.balance` (a `@property`) wraps its return in `max(0, ...)`; the only
-related test reads the **unchanged backing field** `_balance` and never invokes
+same-stem test reads the **unchanged backing field** `_balance` and never invokes
 the changed property:
 
 ```python
 # changed owner: Account.balance  (delta: wrap in max(0, ...))
 return max(0, self._balance)
 
-# the ONLY related test — observes the UNCHANGED operand `_balance`, never the property
+# the ONLY same-stem test — observes the UNCHANGED operand `_balance`, never the property
 from src.account import Account
 
 def test_account_init():
@@ -38,6 +38,11 @@ alignment credits only when a strong oracle observes a token that is part of the
 unchanged operand that merely appears on the changed line. Here the only delta
 token is `max`, which the oracle does not observe, so the change is treated as
 observing a different sink.
+
+The test file shares the owner file stem, but the test references neither the
+`balance` property (it reads `._balance`) nor any other attribute named
+`balance`, so it is not a related test (RIPR-SPEC-0028): reach reads `no`, and
+the `@property` decorator keeps the class at `static_unknown`.
 
 **This fixture must NEVER read `exposed`.** The companion unit test
 `changed_sink_token_credits_when_oracle_observes_the_delta_value` pins the

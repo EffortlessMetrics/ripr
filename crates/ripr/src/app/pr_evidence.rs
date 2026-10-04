@@ -11,7 +11,9 @@
 //! This avoids recompilation and keeps the analysis in-process.
 
 use crate::app::{CheckInput, Mode, OutputFormat, check_workspace, render_check};
+use crate::cli::unknown_argument;
 use crate::config::{load_for_root, repo_exposure_config_identity_hash};
+use crate::output::markdown::{code_span, inline_prose, table_cell_text, table_code_span};
 use crate::review_input::{
     CanonicalFindingIndexV1, REVIEW_INDEX_MAX_BYTES, REVIEW_INDEX_MAX_ENTRIES,
     REVIEW_INDEX_SCHEMA_VERSION, REVIEW_INPUT_PROJECTION_LIMIT, REVIEW_INPUT_SCHEMA_VERSION,
@@ -25,7 +27,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::time::Duration;
 
 const DEFAULT_ROOT: &str = ".";
 const DEFAULT_BASE: &str = "origin/main";
@@ -42,6 +44,9 @@ const REVIEW_INPUT_MAX_BYTES: usize = 128 * 1024;
 struct PrEvidenceOptions {
     root: String,
     base: String,
+    /// `false` when `--base` was omitted: `base` then holds a placeholder
+    /// until [`run_pr_evidence`] resolves the repository's default branch.
+    base_explicit: bool,
     head: String,
     check: bool,
 }
@@ -51,6 +56,7 @@ impl Default for PrEvidenceOptions {
         Self {
             root: DEFAULT_ROOT.to_string(),
             base: DEFAULT_BASE.to_string(),
+            base_explicit: false,
             head: DEFAULT_HEAD.to_string(),
             check: false,
         }
@@ -71,8 +77,18 @@ pub(crate) fn run_pr_evidence(args: &[String]) -> Result<(), String> {
         print_help();
         return Ok(());
     }
-    let options = parse_options(args)?;
+    let mut options = parse_options(args)?;
     let repo = repo_root()?;
+    ensure_root_inside_invocation_repo(&repo, &options.root)?;
+    if !options.base_explicit {
+        // #3952 / RIPR-SPEC-0084: resolve the repository's default branch
+        // through the diff loader's authority instead of assuming
+        // `origin/main`, which need not exist; nothing resolving is a named
+        // failure, never a guessed base recorded in the packet.
+        options.base =
+            crate::analysis::resolve_effective_base(&repo, None, Some(PR_EVIDENCE_GIT_DEADLINE))
+                .map_err(|err| format!("pr-evidence: {err}"))?;
+    }
     if options.check {
         check_pr_evidence(&repo, &options)
     } else {
@@ -92,13 +108,14 @@ fn parse_options(args: &[String]) -> Result<PrEvidenceOptions, String> {
             "--base" => {
                 i += 1;
                 options.base = non_empty_arg(args, i, "--base")?.to_string();
+                options.base_explicit = true;
             }
             "--head" => {
                 i += 1;
                 options.head = non_empty_arg(args, i, "--head")?.to_string();
             }
             "--check" => options.check = true,
-            other => return Err(format!("unknown pr-evidence argument `{other}`")),
+            other => return Err(unknown_argument("pr-evidence", other)),
         }
         i += 1;
     }
@@ -116,22 +133,33 @@ fn non_empty_arg<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a
 }
 
 fn print_help() {
-    println!("usage: ripr pr-evidence [--base <rev>] [--head <rev>] [--root <path>] [--check]");
-    println!();
-    println!("Options:");
-    println!("  --base <rev>   PR base revision. Defaults to {DEFAULT_BASE}.");
-    println!("  --head <rev>   PR head revision. Defaults to {DEFAULT_HEAD}.");
-    println!("  --root <path>  Workspace root label. Defaults to current directory.");
-    println!("  --check        Verify the existing PR evidence packet is contract-valid.");
-    println!();
-    println!("Outputs:");
-    println!("  {PR_EVIDENCE_JSON}  — PR evidence JSON packet");
-    println!("  {PR_EVIDENCE_MD}   — PR evidence Markdown panel");
-    println!("  {PR_DIFF}          — analyzed PR diff");
-    println!();
-    println!("This packet is diff-scoped and advisory. It does not post review");
-    println!("comments, edit source, or change gate semantics.");
+    println!("{PR_EVIDENCE_HELP}");
 }
+
+/// Help body for `ripr pr-evidence`. Also the flag source for unknown-argument
+/// suggestions; keep accepted flags on option-list lines.
+pub(crate) const PR_EVIDENCE_HELP: &str = "\
+Write the diff-scoped PR evidence packet for one base and head.
+
+Usage: ripr pr-evidence [--base <rev>] [--head <rev>] [--root <path>] [--check]
+
+Options:
+  --base <rev>   PR base revision. When omitted, resolved like `ripr check`:
+                 origin/HEAD, then origin/main, origin/master, main, master.
+  --head <rev>   PR head revision. Defaults to HEAD.
+  --root <path>  Workspace to analyze, inside the repository of the current
+                 directory (Git history and outputs stay there). Defaults to
+                 the current directory.
+  --check        Verify the existing PR evidence packet is contract-valid.
+
+Outputs:
+  target/ripr/pr/repo-exposure.json  — PR evidence JSON packet
+  target/ripr/pr/repo-exposure.md   — PR evidence Markdown panel
+  target/ripr/pr/pr.diff          — analyzed PR diff
+
+This packet is diff-scoped and advisory. It does not post review
+comments, edit source, or change gate semantics.
+";
 
 fn write_pr_evidence(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
     write_pr_evidence_with_runner(repo, options, run_ripr_check)
@@ -652,23 +680,56 @@ fn verify_revision(repo: &Path, rev: &str) -> Result<(), String> {
 }
 
 fn changed_files(repo: &Path, options: &PrEvidenceOptions) -> Result<Vec<String>, String> {
+    // Raw NUL-delimited inventory (#4006): `-z` output is never C-quoted,
+    // so exotic names survive byte-exact; parsing rules come from the
+    // shared authority in `decode_changed_files`, not from line splitting
+    // here. The `--diff-filter=ACMR` scope contract is unchanged.
     let range = format!("{}...{}", options.base, options.head);
-    let output = run_git_output(
+    let output = run_git_output_bytes(
         repo,
-        &["diff", "--name-only", "--diff-filter=ACMR", range.as_str()],
+        &[
+            "diff",
+            "--name-only",
+            "-z",
+            "--diff-filter=ACMR",
+            range.as_str(),
+        ],
     )?;
-    Ok(output
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(str::to_string)
-        .collect())
+    decode_changed_files(&output)
+}
+
+/// Decode raw `--name-only -z` bytes through the shared NUL path-record
+/// authority (#4006). Strict: non-UTF-8 or empty records fail loudly
+/// instead of collapsing through lossy conversion.
+fn decode_changed_files(output: &[u8]) -> Result<Vec<String>, String> {
+    crate::analysis::parse_git_path_records(output)
+        .map_err(|err| format!("pr-evidence changed-file inventory: {err}"))
+        .and_then(|paths| {
+            paths
+                .iter()
+                .map(|path| {
+                    path.to_str().map(str::to_string).ok_or_else(|| {
+                        format!(
+                            "pr-evidence changed-file inventory: decoded path {} is not valid UTF-8",
+                            path.display()
+                        )
+                    })
+                })
+                .collect()
+        })
 }
 
 fn write_diff(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
     let out = repo.join(PR_DIFF);
-    let range = format!("{}...{}", options.base, options.head);
-    let diff = run_git_output(repo, &["diff", "--binary", "--no-ext-diff", range.as_str()])?;
+    // Route the packet diff through the shared pinned Git assembly (issue
+    // #3930) rather than restating flags: ambient presentation helpers
+    // (external diff, textconv, color) must not change what the packet
+    // records. `--binary` stays the caller extra and the evidence path
+    // selects three context lines (the pre-#3930 presentation); the
+    // assembly pins `-c core.quotePath=true`, `--no-ext-diff`,
+    // `--no-textconv`, `--no-color`, `--src-prefix=a/`,
+    // `--dst-prefix=b/`, and `--inter-hunk-context=0`.
+    let diff = crate::analysis::load_pr_evidence_diff_range(repo, &options.base, &options.head)?;
     write_parented_file(&out, PR_DIFF, diff)
 }
 
@@ -695,6 +756,41 @@ fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, St
     render_check(&output, &OutputFormat::Json)
 }
 
+/// `pr-evidence` reads Git history and writes `target/ripr/pr/` from the
+/// invocation directory, and analyzes the `--root` workspace with that diff.
+/// A `--root` outside the invocation repository would pair one repository's
+/// diff with another's source and stamp the packet with the selected root,
+/// so a clean-looking packet could describe a change it never read. Refuse
+/// a missing, file-typed, or foreign root before any Git read or write.
+fn ensure_root_inside_invocation_repo(repo: &Path, root: &str) -> Result<(), String> {
+    let root_path = command_root_path(repo, root);
+    if !root_path.is_dir() {
+        return Err(format!(
+            "pr-evidence root {root} is not a directory; pass `--root` naming an existing \
+             directory inside the repository you run `ripr pr-evidence` from"
+        ));
+    }
+    let same_directory = match (fs::canonicalize(repo), fs::canonicalize(&root_path)) {
+        (Ok(repo), Ok(root)) => repo == root,
+        _ => false,
+    };
+    if same_directory {
+        return Ok(());
+    }
+    let toplevel =
+        |dir: &Path| crate::git::discovered_work_tree_toplevel(dir, PR_EVIDENCE_GIT_DEADLINE);
+    match (toplevel(repo), toplevel(&root_path)) {
+        (Some(invocation), Some(selected)) if invocation == selected => Ok(()),
+        _ => Err(format!(
+            "pr-evidence root {root} is not inside the Git work tree of the current directory \
+             ({}); pr-evidence reads history and writes target/ripr/pr/ from the current \
+             directory, so run it from the repository that contains the root \
+             (for example `cd <repository> && ripr pr-evidence --root <member>`)",
+            repo.display()
+        )),
+    }
+}
+
 fn command_root_path(repo: &Path, root: &str) -> PathBuf {
     let root_path = Path::new(root);
     if root_path.is_absolute() {
@@ -711,15 +807,36 @@ fn resolve_revision(repo: &Path, revision: &str, object: &str) -> Result<String,
 }
 
 fn run_git_output(repo: &Path, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repo)
-        .args(args)
-        .output()
+    String::from_utf8(run_git_output_bytes(repo, args)?)
+        .map_err(|err| format!("git {args:?} produced non-UTF-8 output: {err}"))
+}
+
+/// Cooperative deadline for every git probe in this file (#2303, #4363).
+/// PR evidence answers bounded revision and path-inventory questions; a hung
+/// git must not pin the command. One minute matches the other bounded git
+/// consumers.
+const PR_EVIDENCE_GIT_DEADLINE: Duration = Duration::from_mins(1);
+
+/// Capture raw git stdout bytes through this file's single git call site
+/// (#4006). Path inventories decode through the shared NUL authority at
+/// the call site; other callers keep the strict UTF-8 wrapper above. The
+/// spawn goes through the shared `crate::git` deadline and process-owner
+/// authority (#4363).
+fn run_git_output_bytes(repo: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
+    run_git_output_bytes_within(repo, args, PR_EVIDENCE_GIT_DEADLINE)
+}
+
+/// [`run_git_output_bytes`] with the deadline as a parameter, so a test can
+/// prove the deadline reaches the git runner.
+fn run_git_output_bytes_within(
+    repo: &Path,
+    args: &[&str],
+    deadline: Duration,
+) -> Result<Vec<u8>, String> {
+    let output = crate::git::run_git_output_with_deadline(repo, args, Some(deadline))
         .map_err(|err| format!("failed to run git {args:?}: {err}"))?;
     if output.status.success() {
-        String::from_utf8(output.stdout)
-            .map_err(|err| format!("git {args:?} produced non-UTF-8 output: {err}"))
+        Ok(output.stdout)
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -1193,16 +1310,16 @@ fn render_pr_evidence_markdown(packet: &Value) -> String {
         string_field(packet, "status", "unknown")
     ));
     out.push_str(&format!(
-        "- root: `{}`\n",
-        md_escape(string_field(packet, "root", "."))
+        "- root: {}\n",
+        code_span(string_field(packet, "root", "."))
     ));
     out.push_str(&format!(
-        "- base: `{}`\n",
-        md_escape(string_field(packet, "base", DEFAULT_BASE))
+        "- base: {}\n",
+        code_span(string_field(packet, "base", DEFAULT_BASE))
     ));
     out.push_str(&format!(
-        "- head: `{}`\n",
-        md_escape(string_field(packet, "head", DEFAULT_HEAD))
+        "- head: {}\n",
+        code_span(string_field(packet, "head", DEFAULT_HEAD))
     ));
     out.push_str(&format!("- changed files: {changed_files}\n\n"));
 
@@ -1220,8 +1337,8 @@ fn render_pr_evidence_markdown(packet: &Value) -> String {
         "- requires_targeted_mutation: {requires_targeted_mutation}\n"
     ));
     out.push_str(&format!(
-        "- routing_reason: `{}`\n\n",
-        md_escape(routing_reason)
+        "- routing_reason: {}\n\n",
+        code_span(routing_reason)
     ));
     render_targeted_mutation_route(
         &mut out,
@@ -1234,10 +1351,10 @@ fn render_pr_evidence_markdown(packet: &Value) -> String {
     if let Some(artifacts) = packet.get("artifacts").and_then(Value::as_array) {
         for artifact in artifacts {
             out.push_str(&format!(
-                "| {} | `{}` | {} | {} |\n",
-                md_escape(string_field(artifact, "label", "artifact")),
-                md_escape(string_field(artifact, "path", "unknown")),
-                md_escape(string_field(artifact, "scope", "unknown")),
+                "| {} | {} | {} | {} |\n",
+                table_cell_text(string_field(artifact, "label", "artifact")),
+                table_code_span(string_field(artifact, "path", "unknown")),
+                table_cell_text(string_field(artifact, "scope", "unknown")),
                 artifact
                     .get("available")
                     .and_then(Value::as_bool)
@@ -1253,8 +1370,8 @@ fn render_pr_evidence_markdown(packet: &Value) -> String {
         for warning in warnings {
             out.push_str(&format!(
                 "- {}: {}\n",
-                md_escape(string_field(warning, "kind", "warning")),
-                md_escape(string_field(
+                inline_prose(string_field(warning, "kind", "warning")),
+                inline_prose(string_field(
                     warning,
                     "message",
                     "PR evidence generation warning"
@@ -1277,30 +1394,30 @@ fn render_targeted_mutation_route(out: &mut String, route: Option<&Value>) {
         .get("status")
         .and_then(Value::as_str)
         .unwrap_or("unknown");
-    out.push_str(&format!("- route: `{status}`\n"));
+    out.push_str(&format!("- route: {}\n", code_span(status)));
     if let Some(candidates) = route.get("candidates").and_then(Value::as_array) {
         for candidate in candidates {
             let Some(candidate) = candidate.as_object() else {
                 continue;
             };
             out.push_str(&format!(
-                "- candidate: `{}`:{} {} -> {}\n- command: `{}`\n- expected: {}\n",
-                md_escape(
+                "- candidate: {}:{} {} -> {}\n- command: {}\n- expected: {}\n",
+                code_span(
                     candidate
                         .get("file")
                         .and_then(Value::as_str)
                         .unwrap_or("unknown")
                 ),
                 candidate.get("line").and_then(Value::as_u64).unwrap_or(0),
-                candidate.get("from").and_then(Value::as_str).unwrap_or("?"),
-                candidate.get("to").and_then(Value::as_str).unwrap_or("?"),
-                md_escape(
+                inline_prose(candidate.get("from").and_then(Value::as_str).unwrap_or("?")),
+                inline_prose(candidate.get("to").and_then(Value::as_str).unwrap_or("?")),
+                code_span(
                     candidate
                         .get("command")
                         .and_then(Value::as_str)
                         .unwrap_or("unknown")
                 ),
-                md_escape(
+                inline_prose(
                     candidate
                         .get("expected_observation")
                         .and_then(Value::as_str)
@@ -1312,8 +1429,8 @@ fn render_targeted_mutation_route(out: &mut String, route: Option<&Value>) {
     if let Some(limitations) = route.get("limitations").and_then(Value::as_array) {
         for limitation in limitations {
             out.push_str(&format!(
-                "- limitation: `{}`\n",
-                md_escape(
+                "- limitation: {}\n",
+                code_span(
                     limitation
                         .get("message")
                         .and_then(Value::as_str)
@@ -1334,10 +1451,6 @@ fn bool_field(summary: Option<&Map<String, Value>>, key: &str) -> bool {
 
 fn string_field<'a>(packet: &'a Value, key: &str, fallback: &'a str) -> &'a str {
     packet.get(key).and_then(Value::as_str).unwrap_or(fallback)
-}
-
-fn md_escape(value: &str) -> String {
-    value.replace('|', "\\|").replace('\n', " ")
 }
 
 /// Resolve the repo root. In the ripr binary, this is the current working
@@ -1364,16 +1477,228 @@ mod tests {
         PrEvidenceOptions {
             root: ".".to_string(),
             base: "origin/main".to_string(),
+            base_explicit: true,
             head: "HEAD".to_string(),
             check: false,
         }
     }
 
     #[test]
+    fn run_git_output_bytes_forwards_its_deadline_to_git() -> Result<(), String> {
+        // #4363: a zero deadline is refused before spawn with the named
+        // timeout error. Dropping the deadline would instead report the
+        // missing root as a spawn failure, which this rejects.
+        let missing = std::env::temp_dir().join(format!(
+            "ripr-pr-evidence-deadline-missing-{}",
+            std::process::id()
+        ));
+        let bounded =
+            run_git_output_bytes_within(&missing, &["rev-parse", "HEAD"], Duration::from_mins(1));
+        match bounded {
+            Err(err) if !err.contains(crate::git::GIT_INVOCATION_TIMEOUT_PREFIX) => {}
+            other => return Err(format!("control: expected a spawn failure, got {other:?}")),
+        }
+        match run_git_output_bytes_within(&missing, &["rev-parse", "HEAD"], Duration::ZERO) {
+            Err(err) if err.contains(crate::git::GIT_INVOCATION_TIMEOUT_PREFIX) => Ok(()),
+            other => Err(format!("zero deadline must be refused, got {other:?}")),
+        }
+    }
+
+    /// Issue #3930: the PR-evidence diff rides the same pinned Git
+    /// presentation as the analysis loaders. On an ordinary repository the
+    /// packet diff must be byte-identical to the pre-repair argv output;
+    /// non-UTF-8 git output must fail with a named error rather than
+    /// record replacement characters (the pre-#3930 contract); and a
+    /// textconv driver that hides source must not reach the packet
+    /// artifact: the pre-repair argv is the control (an empty patch proves
+    /// the fixture hides the edit), and `write_diff` must retain the
+    /// source edit.
+    #[test]
+    fn write_diff_ignores_textconv_like_analysis_loaders() -> Result<(), String> {
+        use crate::testing::fixture_git::{fixture_git_ok, remove_fixture_tree};
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        /// Scoped cleanup: the unique temporary repository is removed on
+        /// every exit, including early `?` returns and panics (Windows
+        /// readonly Git objects included).
+        struct FixtureGuard<'a> {
+            repo: &'a Path,
+        }
+        impl Drop for FixtureGuard<'_> {
+            fn drop(&mut self) {
+                let _ = remove_fixture_tree(self.repo);
+            }
+        }
+
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| format!("system time before unix epoch: {error}"))?
+            .as_nanos();
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-pr-evidence-textconv-{}-{stamp}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _guard = FixtureGuard { repo: &repo };
+        fs::create_dir_all(repo.join("src"))
+            .map_err(|error| format!("create fixture src failed: {error}"))?;
+        fixture_git_ok(&repo, &["init", "--initial-branch=main"])?;
+        for (key, value) in [
+            ("user.name", "PR Evidence"),
+            ("user.email", "pr-evidence@example.com"),
+            ("commit.gpgsign", "false"),
+            ("core.autocrlf", "false"),
+        ] {
+            fixture_git_ok(&repo, &["config", "--local", key, value])?;
+        }
+        fs::write(repo.join(".gitattributes"), "src/lib.rs diff=audit\n")
+            .map_err(|error| format!("write gitattributes failed: {error}"))?;
+        // Seven lines with the edit on line 4: three context lines exist
+        // on each side, so `--unified=0` and `--unified=3` produce
+        // different bytes and the byte-identity pin below discriminates
+        // the evidence-path context selection.
+        fs::write(
+            repo.join("src/lib.rs"),
+            "pub const A: u32 = 1;\n\
+             pub const B: u32 = 2;\n\
+             pub const C: u32 = 3;\n\
+             pub const VALUE: u32 = 1;\n\
+             pub const D: u32 = 4;\n\
+             pub const E: u32 = 5;\n\
+             pub const F: u32 = 6;\n",
+        )
+        .map_err(|error| format!("write base source failed: {error}"))?;
+        fixture_git_ok(&repo, &["add", "."])?;
+        fixture_git_ok(&repo, &["commit", "--quiet", "-m", "base"])?;
+        fixture_git_ok(&repo, &["tag", "evidence-base"])?;
+        fs::write(
+            repo.join("src/lib.rs"),
+            "pub const A: u32 = 1;\n\
+             pub const B: u32 = 2;\n\
+             pub const C: u32 = 3;\n\
+             pub const VALUE: u32 = 2;\n\
+             pub const D: u32 = 4;\n\
+             pub const E: u32 = 5;\n\
+             pub const F: u32 = 6;\n",
+        )
+        .map_err(|error| format!("write edited source failed: {error}"))?;
+        fixture_git_ok(&repo, &["add", "src/lib.rs"])?;
+        fixture_git_ok(&repo, &["commit", "--quiet", "-m", "edit"])?;
+        let range = "evidence-base...HEAD";
+        let options = PrEvidenceOptions {
+            root: ".".to_string(),
+            base: "evidence-base".to_string(),
+            base_explicit: true,
+            head: "HEAD".to_string(),
+            check: false,
+        };
+        // Byte-compatibility: with no ambient diff configuration yet, the
+        // routed packet diff must be byte-identical to the pre-repair argv
+        // output (three context lines, the pre-#3930 presentation). The
+        // baseline states context and color explicitly so ambient
+        // `diff.context` / color configuration cannot move it while the
+        // packet command stays pinned; on ordinary repositories this is
+        // exactly what the pre-repair argv emitted.
+        let baseline = &[
+            "diff",
+            "--binary",
+            "--no-ext-diff",
+            "--unified=3",
+            "--no-color",
+            range,
+        ];
+        let raw = run_git_output(&repo, baseline)?;
+        write_diff(&repo, &options)?;
+        let pinned = fs::read(repo.join(PR_DIFF))
+            .map_err(|error| format!("read packet diff failed: {error}"))?;
+        assert_eq!(
+            pinned,
+            raw.as_bytes(),
+            "packet diff must stay byte-identical to the pre-repair argv on ordinary repositories"
+        );
+        // Strictness: a tracked text file with non-UTF-8 bytes must fail
+        // the packet diff with a named error (the pre-#3930 contract),
+        // never record replacement characters. No textconv driver is
+        // configured yet, so the raw bytes reach the decode. The edit is
+        // restored afterwards for the textconv phases below.
+        fs::write(
+            repo.join("src/lib.rs"),
+            b"pub const VALUE: u32 = 1;\nlatin1: \xe9\n",
+        )
+        .map_err(|error| format!("write non-UTF-8 source failed: {error}"))?;
+        fixture_git_ok(&repo, &["add", "src/lib.rs"])?;
+        fixture_git_ok(&repo, &["commit", "--quiet", "-m", "non-utf8"])?;
+        match write_diff(&repo, &options) {
+            Ok(()) => {
+                return Err("packet diff must reject non-UTF-8 git output".to_string());
+            }
+            Err(err) => assert!(
+                err.contains("UTF-8"),
+                "unexpected strict-decode error: {err}"
+            ),
+        }
+        fs::write(
+            repo.join("src/lib.rs"),
+            "pub const A: u32 = 1;\n\
+             pub const B: u32 = 2;\n\
+             pub const C: u32 = 3;\n\
+             pub const VALUE: u32 = 2;\n\
+             pub const D: u32 = 4;\n\
+             pub const E: u32 = 5;\n\
+             pub const F: u32 = 6;\n",
+        )
+        .map_err(|error| format!("restore edited source failed: {error}"))?;
+        fixture_git_ok(&repo, &["add", "src/lib.rs"])?;
+        fixture_git_ok(&repo, &["commit", "--quiet", "-m", "restore"])?;
+        // Git itself is the constant-output helper on Unix and
+        // Windows; no shell script, executable permission, or global
+        // environment mutation.
+        fixture_git_ok(
+            &repo,
+            &["config", "--local", "diff.audit.textconv", "git --version"],
+        )?;
+        // Control: the pre-repair argv lets the textconv hide the source
+        // edit. Without this control a broken fixture could let the
+        // regression pass. Same isolated baseline as above; the textconv
+        // driver still comes from the fixture-local configuration, so the
+        // control keeps its meaning under ambient git configuration.
+        let raw = run_git_output(&repo, baseline)?;
+        assert!(
+            raw.trim().is_empty(),
+            "the constant textconv must hide the source edit"
+        );
+        write_diff(&repo, &options)?;
+        let diff = fs::read_to_string(repo.join(PR_DIFF))
+            .map_err(|error| format!("read packet diff failed: {error}"))?;
+        assert!(
+            diff.contains("pub const VALUE"),
+            "packet diff must retain the source edit despite textconv"
+        );
+        assert!(
+            diff.contains("pub const C: u32 = 3;") && diff.contains("pub const D: u32 = 4;"),
+            "packet diff must keep the three-line presentation around the edit"
+        );
+        assert!(
+            !diff.contains('\u{1b}'),
+            "packet diff must not contain color"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn parse_defaults_and_check_mode() -> Result<(), String> {
-        assert_eq!(parse_options(&[])?, options());
+        assert_eq!(
+            parse_options(&[])?,
+            PrEvidenceOptions {
+                base_explicit: false,
+                ..options()
+            }
+        );
         let parsed = parse_options(&["--base".into(), "main".into(), "--check".into()])?;
         assert_eq!(parsed.base, "main");
+        assert!(parsed.base_explicit);
         assert!(parsed.check);
         Ok(())
     }
@@ -1907,5 +2232,72 @@ mod tests {
 
     fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
         run_git_output(repo, args).map(|_| ())
+    }
+
+    #[test]
+    fn strict_changed_file_inventory_rejects_non_utf8() -> Result<(), String> {
+        // The strict-failure side of the NUL authority at the product
+        // pr-evidence decode boundary: non-UTF-8 records fail loudly
+        // instead of collapsing through lossy conversion.
+        let err = match decode_changed_files(b"ok.txt\0\xffbad\0") {
+            Err(err) => err,
+            Ok(files) => {
+                return Err(format!("non-UTF-8 inventory must fail, decoded {files:?}"));
+            }
+        };
+        if !err.contains("not valid UTF-8") {
+            return Err(format!("unexpected strict-decode error: {err}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn changed_files_decode_exotic_names_exact() -> Result<(), String> {
+        // Discriminates NUL-delimited inventory (#4006): space and
+        // non-ASCII names must decode byte-exact; the old line parser kept
+        // git's C-quoted octal form. Asserts through the real
+        // `changed_files` production path.
+        let repo = names_repo("ripr-pr-evidence-names")?;
+        run_git(&repo, &["init"])?;
+        run_git(&repo, &["config", "user.email", "ripr@example.invalid"])?;
+        run_git(&repo, &["config", "user.name", "RIPR Test"])?;
+        write_repo_file(&repo, "base.txt", "base\n")?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+        write_repo_file(&repo, "sp ace.txt", "spaces\n")?;
+        write_repo_file(&repo, "uni-\u{e9}.txt", "unicode\n")?;
+        run_git(&repo, &["add", "-A"])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "exotic"])?;
+
+        let options = PrEvidenceOptions {
+            base: "HEAD~1".to_string(),
+            head: "HEAD".to_string(),
+            ..PrEvidenceOptions::default()
+        };
+        let mut files = changed_files(&repo, &options)?;
+        files.sort();
+        let expected = vec!["sp ace.txt".to_string(), "uni-\u{e9}.txt".to_string()];
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        if files != expected {
+            return Err(format!(
+                "exotic changed-file inventory mismatch: got {files:?}, want {expected:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    fn names_repo(name: &str) -> Result<PathBuf, String> {
+        let unique = format!(
+            "{}-{}-{}",
+            name,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|err| format!("system clock before epoch: {err}"))?
+                .as_nanos()
+        );
+        let path = std::env::temp_dir().join(unique);
+        fs::create_dir_all(&path).map_err(|err| format!("create {}: {err}", path.display()))?;
+        Ok(path)
     }
 }

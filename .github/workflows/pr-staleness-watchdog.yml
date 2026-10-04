@@ -1,0 +1,144 @@
+name: PR Staleness Watchdog
+
+# GitHub sometimes silently drops the `pull_request` event delivery that would
+# create the routed-rust.yml run for a pushed PR head SHA (#4937). When that
+# happens the PR's only required check (`Ripr Rust Small Result`) never
+# appears: no red X and no pending dot — the merge stays blocked with nothing
+# to retry. PRs #4528/#4537 sat dark for ~9 hours until someone manually
+# dispatched the workflow; PR #4923 waited ~35 minutes for its required check
+# to exist at all.
+#
+# This watchdog is the automated form of that manual remedy — the issue's
+# preferred option (bounded auto-dispatch: a 9-hour dark window costs more
+# than a rare double-run):
+#
+# - Every 30 minutes, list open PRs and, for each head SHA, ask the checks
+#   API whether the required `Ripr Rust Small Result` check run exists on
+#   that SHA. Zero runs for the head SHA is one dark cause (#4937), but run
+#   existence alone is not the discriminator: an unrelated `labeled` event
+#   produces a same-workflow run whose result job renames itself to the
+#   non-required `Ripr Rust Small Ignored Label Event` (routed-rust.yml:228;
+#   two of the three runs on #4923's opened head), so coverage is judged by
+#   the presence of the exact check branch protection requires.
+# - Dark heads get one `gh workflow run routed-rust.yml --ref <head branch>`
+#   dispatch (a same-repo PR branch exists on origin by definition). The
+#   dispatched run admits the route unconditionally
+#   (routed-rust.yml:38) and posts `Ripr Rust Small Result` on the head SHA —
+#   exactly what satisfied protection in the #4528 incident. The dispatched
+#   route exercises the small gates with workflow_dispatch semantics: the
+#   `pull_request`-scoped PR-evidence steps (rust-gates.yml "PR evidence")
+#   do not re-run, the same evidence level as the manual incident remedy;
+#   wiring PR evidence into the dispatched route is a separate change to the
+#   shared required lane.
+#
+# Bounds:
+# - max 5 dispatches per watchdog run;
+# - drafts are skipped;
+# - fork PRs (head repo != this repository) are skipped, matching
+#   routed-rust.yml's own untrusted-PR guard (routed-rust.yml:61,69);
+# - the pre-dispatch required-check check dedupes successive sweeps. That
+#   check is racy while a dispatched run's check runs are still being
+#   created right after a dispatch, so the next sweep could re-dispatch the
+#   same head once; the per-run cap plus the 30-minute cadence bound that
+#   blast radius to a rare single double-run instead of the hours-dark
+#   alternative.
+#
+# No PR comments are posted: the dispatched run itself delivers the required
+# `Ripr Rust Small Result` check to the PR head, which is the state a human or
+# agent acts on; comments would add API write surface and duplicate-comment
+# risk without adding information. Each sweep's summary table (PR | head |
+# disposition | dispatched run) is the per-run audit trail.
+#
+# Alert-only alternative (issue option ii): replace the dispatch step with a
+# summary-only report and drop `actions: write` — zero duplicate-gate risk by
+# construction, but a dark PR stays blocked until someone reads the alert.
+# The two options compose; revisit the flip if a sweep ever double-runs in a
+# way that matters.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+  checks: read
+
+jobs:
+  watchdog:
+    name: Dispatch routed-rust for dark PR heads
+    if: github.repository == 'EffortlessMetrics/ripr-swarm'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Serialize overlapping fires so two sweeps cannot dispatch the same dark
+    # head concurrently. Do not cancel: an in-progress sweep must finish
+    # writing its summary.
+    concurrency:
+      group: pr-staleness-watchdog-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - name: Sweep open PR heads for missing routed-rust runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          WATCHED_WORKFLOW: routed-rust.yml
+          REQUIRED_CHECK: Ripr Rust Small Result
+          MAX_DISPATCHES: "5"
+        run: |
+          set -euo pipefail
+
+          prs="$(gh api "repos/$REPOSITORY/pulls?state=open&per_page=100" --paginate --jq '.[] | [.number, .head.sha, .head.ref, (.head.repo.full_name // ""), (.draft | tostring)] | @tsv')"
+
+          {
+            echo "### PR Staleness Watchdog"
+            echo ""
+            echo "Dark = no \`$REQUIRED_CHECK\` check run on the PR head SHA (#4937)."
+            echo "Cap: $MAX_DISPATCHES dispatch(es) per sweep. No PR comments are posted;"
+            echo "the dispatched run itself delivers the required \`Ripr Rust Small Result\` check."
+            echo ""
+            echo "| PR | head | disposition | dispatched run |"
+            echo "| --- | --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          scanned=0 dark=0 dispatched=0
+          while IFS=$'\t' read -r number head_sha head_ref head_repo draft; do
+            [ -n "${number:-}" ] || continue
+            scanned=$((scanned + 1))
+            run_cell="n/a"
+            if [ "$draft" = "true" ]; then
+              disposition="skip: draft"
+            elif [ "$head_repo" != "$REPOSITORY" ]; then
+              disposition="skip: fork/untrusted head (${head_repo:-deleted})"
+            else
+              count="$(gh api --paginate "repos/$REPOSITORY/commits/$head_sha/check-runs?per_page=100" --jq "[.check_runs[] | select(.name == \"$REQUIRED_CHECK\")] | length" | awk '{s+=$1} END{print s+0}')"
+              if [ "$count" != "0" ]; then
+                disposition="covered ($count required check(s) on head)"
+              elif [ "$dispatched" -ge "$MAX_DISPATCHES" ]; then
+                disposition="DARK; skip: per-run cap reached"
+              else
+                dark=$((dark + 1))
+                if gh workflow run "$WATCHED_WORKFLOW" --repo "$REPOSITORY" --ref="$head_ref"; then
+                  dispatched=$((dispatched + 1))
+                  disposition="DARK; dispatched"
+                  # Audit-link lookup: the newest workflow_dispatch run for
+                  # this head (a label run is event=pull_request, never this
+                  # link). The list can lag; an empty list formats as a lone
+                  # tab under @tsv, so the filter must emit nothing instead;
+                  # the next sweep dedupes when the run appears later.
+                  new_run="$(gh api "repos/$REPOSITORY/actions/workflows/$WATCHED_WORKFLOW/runs?head_sha=$head_sha&event=workflow_dispatch&per_page=1" --jq 'if (.workflow_runs | length) == 0 then empty else .workflow_runs[0] | [.id, .html_url] | @tsv end' 2>/dev/null || true)"
+                  if [ -n "$new_run" ]; then
+                    run_cell="[${new_run%%$'\t'*}](${new_run#*$'\t'})"
+                  else
+                    run_cell="pending (run list lag)"
+                  fi
+                else
+                  disposition="DARK; dispatch failed"
+                fi
+              fi
+            fi
+            echo "| #$number | \`${head_sha:0:8}\` | $disposition | $run_cell |" >> "$GITHUB_STEP_SUMMARY"
+          done <<<"$prs"
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Open PRs scanned: $scanned; dark heads dispatched: $dispatched/$MAX_DISPATCHES." >> "$GITHUB_STEP_SUMMARY"

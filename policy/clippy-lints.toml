@@ -132,7 +132,8 @@ level = "deny"
 # Silent failure: ignoring a Result, future, or lock guard loses evidence the
 # analyzer cannot reconstruct. `let_underscore_must_use` is intentionally
 # deferred because best-effort cleanup patterns (`let _ = fs::remove_dir_all`)
-# are pervasive across tests; tracked as a follow-up flip.
+# are pervasive across tests; recorded as clippy-debt-0001 in
+# policy/clippy-debt.toml.
 [[active.silent_failure]]
 name = "clippy::let_underscore_future"
 level = "deny"
@@ -218,17 +219,29 @@ level = "deny"
 name = "clippy::out_of_bounds_indexing"
 level = "deny"
 
+# `activate_when_msrv` is compared to `[workspace.package] rust-version`.
+# When that version is already met, a remaining non-MSRV `blocked_by` is
+# required or the lint must be promoted. A `blocked_by` that only names an
+# MSRV/Rust version is treated as missing. `reason` is narrative and does
+# not satisfy the gate. The field is not verified available-since (some
+# historical values are planned-MSRV guesses; `clippy::manual_pop_if`
+# records `1.95` while `blocked_by` says pinned 1.95.0 Clippy does not
+# recognize the lint). `check-lint-policy` also ensures planned lints are
+# absent from Cargo.toml.
+
 [[planned]]
 name = "clippy::indexing_slicing"
 level = "deny"
 activate_when_msrv = "1.93"
 reason = "Requires per-call `#[expect]` receipts on parser/diff bounded indexing; deferred until receipts are scripted."
+blocked_by = "Requires per-call `#[expect]` receipts on parser/diff bounded indexing; deferred until receipts are scripted."
 
 [[planned]]
 name = "clippy::string_slice"
 level = "deny"
 activate_when_msrv = "1.93"
 reason = "Requires per-call `#[expect]` receipts on AST-bounded text slicing; pairs with `indexing_slicing` flip."
+blocked_by = "Requires per-call `#[expect]` receipts on AST-bounded text slicing; pairs with `indexing_slicing` flip."
 
 # Collection / ownership helpers enabled after the Rust 1.95 MSRV ratchet.
 [[active.collection_ownership]]
@@ -354,19 +367,27 @@ name = "unsafe_op_in_unsafe_fn"
 level = "deny"
 note = "Belt-and-suspenders for `unsafe_code = \"forbid\"`: keeps unsafe operations inside an unsafe fn from skipping the explicit `unsafe { ... }` block if a future PR ever carves out an unsafe island."
 
-# Lints planned for activation when MSRV advances. Recorded here so reviewers
-# can see the trajectory without scanning Cargo.toml history. They are not
-# active until MSRV reaches the listed version and the matching xtask gate is
-# updated to verify the move.
+# Lints planned for activation when the remaining blockers in `blocked_by`
+# are cleared. Recorded here so reviewers can see the trajectory without
+# scanning Cargo.toml history. `activate_when_msrv` is compared to workspace
+# `rust-version`; an already-met value requires a remaining non-MSRV
+# `blocked_by` (MSRV-only text fails). `reason` is narrative and does not
+# satisfy that gate. The field is not verified available-since.
+# `check-lint-policy` also ensures planned lints are absent from Cargo.toml.
+# Promotion still requires the matching Cargo.toml line, the receipts or
+# config listed in `blocked_by`, and a ledger move from `[[planned]]` to
+# `[[active.<group>]]`.
 
 [[planned]]
 name = "clippy::disallowed_fields"
 level = "deny"
 activate_when_msrv = "1.95"
 reason = "Retained after PR 03 because promotion requires a reviewed `clippy.toml` `disallowed-fields = [...]` protected-seam list; the lint is a no-op without that config."
+blocked_by = "Retained after PR 03 because promotion requires a reviewed `clippy.toml` `disallowed-fields = [...]` protected-seam list; the lint is a no-op without that config."
 
 [[planned]]
 name = "clippy::manual_pop_if"
 level = "warn"
 activate_when_msrv = "1.95"
 reason = "Retained after PR 03 because Rust 1.95.0 Clippy does not recognize this lint; promote only after the pinned toolchain supports it."
+blocked_by = "Retained after PR 03 because Rust 1.95.0 Clippy does not recognize this lint; promote only after the pinned toolchain supports it."

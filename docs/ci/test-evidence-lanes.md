@@ -32,11 +32,16 @@ routed reusable Rust gate workflow.
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo clippy --workspace --all-targets -- -D warnings
-cargo nextest run --workspace
+cargo nextest run --workspace --profile ci
+cargo test --workspace --doc
 cargo xtask precommit
 + routed lane-only repository invariants
 + bounded PR evidence
 ```
+
+Nextest owns the compiled test binaries it selects. Cargo and rustdoc own
+workspace doctests. Both are blocking propositions; neither command's success
+is projected as evidence for the other command's subject set.
 
 The default lane does not also run full instrumented coverage, all-feature Test
 Analytics, VS Code E2E, a duplicate MSRV build, or release packaging.
@@ -51,7 +56,8 @@ coverage label
 
 full-ci label
   + coverage
-  + all-feature Test Analytics and doc tests
+  + all-feature Test Analytics/JUnit replay
+  + duplicate doc-test receipt for the analytics lane
   + named MSRV proof
   + VS Code compile/package/E2E
   + Perl and release-surface proof
@@ -73,7 +79,7 @@ evidence without taxing every pull request:
 
 ```text
 coverage report
-Test Analytics JUnit and doc-test proof
+Test Analytics JUnit and duplicate doc-test receipt
 future Clippy readiness
 source-of-truth and security posture
 ```

@@ -5,12 +5,17 @@ Spec: RIPR-SPEC-0087
 ## Given
 
 A TypeScript owner `formatCurrency` changes a predicate (`<` → `<=`). The
-test file `formatter.test.ts` references the owner name in a describe block
-but does NOT directly import `formatCurrency` — only a heuristic same-file
-proximity relation is established (`has_oracle_eligible_relation == false`).
+test file `formatter.test.ts` imports `formatCurrency` and references it as a
+value (`const format = formatCurrency; format(10, 'USD')`) but never calls it
+by name, so no owner-call or import-call relation is established. Because the
+test does reference the owner, the same-stem file earns a heuristic same-file
+proximity relation (`has_oracle_eligible_relation == false`). A test that only
+names the owner in a title or calls an unrelated object's `formatCurrency`
+method would not be related at all (RIPR-SPEC-0027).
 
 This fixture models F3 (heuristic-only relation): G-D fails because the
-related-test link is name-proximity only, not import-aware or owner-call.
+related-test link is same-stem proximity over a value reference, not an
+owner call or import call.
 The finding stays preview with `ambiguous_related_test`.
 
 ## When

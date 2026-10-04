@@ -1,5 +1,6 @@
 [package]
 name = "ripr"
+autobins = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -27,7 +28,8 @@ include = [
   "examples/*.rs",
   "README.md",
   "LICENSE-*",
-  "Cargo.toml"
+  "Cargo.toml",
+  "build.rs"
 ]
 
 [lib]
@@ -43,8 +45,9 @@ oxc_allocator = { version = "0.130", optional = true }
 oxc_ast = { version = "0.130", optional = true }
 oxc_parser = { version = "0.130", optional = true }
 oxc_span = { version = "0.130", optional = true }
-ra_ap_syntax = { version = "0.0.330", optional = true }
+ra_ap_syntax = { version = "0.0.349", optional = true }
 rayon = "1"
+rmcp = { version = "=3.5.0", default-features = false, features = ["server", "transport-async-rw"] }
 # Default features pull `malachite-bigint` (LGPL-3.0-only), which is
 # incompatible with our MIT/Apache-2.0 license posture. Disable the
 # default and select `num-bigint` (MIT/Apache-2.0) for arbitrary-precision
@@ -54,23 +57,58 @@ rustpython-parser = { version = "0.4", optional = true, default-features = false
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-toml = "0.9"
-tokio = { version = "1", features = ["rt-multi-thread", "io-std", "io-util", "time", "macros"] }
+toml = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "io-std", "io-util", "time", "macros", "sync"] }
+tokio-util = { version = "0.7", features = ["codec"] }
 tower-lsp-server = "0.23.0"
+# The Service trait only, for the layer that answers `$/` requests the
+# tower-lsp-server service drops (#4456). Same 0.5 line tower-lsp-server
+# already builds, so the graph gains no crate.
+tower = { version = "0.5", default-features = false }
+# Not used directly. ra-ap-rustc_lexer (via ra_ap_syntax) const-asserts that
+# unicode-ident and unicode-properties 0.1.4 share one Unicode version;
+# unicode-ident 1.0.25+ moved ahead and fails that assert at compile time.
+# A lockfile pin alone does not reach `cargo install ripr` without
+# `--locked`, which resolves fresh, so the pin lives in the manifest (#3787).
+# Remove when a unicode-properties release matches unicode-ident's Unicode
+# version, or when the selected ra_ap_syntax drops the assert.
+unicode-ident = { version = "=1.0.24", optional = true }
 
 [target.'cfg(windows)'.dependencies]
-winsafe = { version = "0.0.28", default-features = false, features = ["kernel"] }
+# #5213: `kernel` for HPROCESS::GetProcessTimes (per-process user/kernel CPU
+# time); `psapi` for HPROCESS::GetProcessMemoryInfo (per-process
+# PeakWorkingSetSize). Both are safe `fn` wrappers - the `unsafe` lives inside
+# winsafe, which is what this crate's `unsafe_code = "forbid"` posture needs.
+winsafe = { version = "0.0.29", default-features = false, features = [
+  "kernel",
+  "psapi",
+] }
+# #3803: safe Job Object process-tree ownership (assign-before-execution) for
+# every shipped bounded subprocess path. winsafe exposes no Job Object APIs,
+# and the windows/windows-sys crates are `unsafe fn` surfaces excluded by the
+# crate's `unsafe_code = "forbid"` policy; process-wrap 10 (the reviewed safe
+# wrapper named in #3803) provides the suspended-spawn, assign, resume, and
+# job-termination lifecycle through a safe public API.
+process-wrap = { version = "10.0.1", default-features = false, features = [
+  "std",
+  "job-object",
+] }
 
 [features]
 default = ["lang-rust", "lang-typescript", "lang-python"]
-lang-rust = ["dep:ra_ap_syntax"]
+lang-rust = ["dep:ra_ap_syntax", "dep:unicode-ident"]
 lang-typescript = ["dep:oxc_allocator", "dep:oxc_ast", "dep:oxc_parser", "dep:oxc_span"]
 lang-python = ["dep:rustpython-parser"]
 lang-perl = []
 
 [dev-dependencies]
 proptest = "1"
-serial_test = "3"
+rmcp = { version = "=3.5.0", default-features = false, features = ["client", "transport-async-rw"] }
+serial_test = "4"
+# Dev-only: deterministic initialize-delivery witnesses (#3802) pause tokio
+# time and drive the service layers (tower Service) directly.
+tokio = { version = "1", features = ["test-util", "process"] }
+tower = { version = "0.5", default-features = false, features = ["util"] }
 
 [lints]
 workspace = true

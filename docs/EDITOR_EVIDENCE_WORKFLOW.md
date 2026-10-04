@@ -88,13 +88,18 @@ does not have enough evidence for that specific handoff.
 
 For external agents or clipboard-driven workflows, use:
 
+- `Start repair: copy repair command` when it is shown: it copies
+  `ripr agent repair --root . --seam-id <id> --phase before` and appears only
+  for a seam that passes the repair-packet flip (RIPR-SPEC-0087 §8) with a
+  test-surface target;
 - `Agent handoff: copy packet command`;
 - `Agent handoff: copy brief command`;
 - `ripr.collectEvidenceContext` through the existing copy-context path.
 
 The evidence context packet is bounded JSON. It includes seam identity,
 file/range, evidence path, missing discriminator, related test, suggested test
-shape, shared agent-loop commands, and static limits. It does not call a model
+shape, shared agent-loop commands, `repair_command` (the repair start for a
+repair-eligible seam, otherwise `null`), and static limits. It does not call a model
 provider and does not authorize broad edits.
 
 When handing it to an agent, keep the task narrow:

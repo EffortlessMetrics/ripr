@@ -42,7 +42,269 @@ fixture implementation lands. A valid corpus includes:
 Each case must declare its evidence class and whether it is static-only,
 fixture-backed, calibrated, ambiguous, or unsupported in current scope.
 
+### Expected-behavior validity is a separate fixture axis
+
+An optional case-level `semantic_oracle` describes the correctness of a test's
+expected behavior. Its closed statuses are `valid`, `invalid`, and
+`unreviewed`. Omission on a legacy row means **unreviewed**, never valid.
+Malformed reviewed declarations or unsupported statuses reject. An explicit
+`unreviewed` declaration makes no acceptance claim; its other metadata is not
+validated by this axis. An invalid-oracle negative control can
+be valid corpus data; fixture acceptance must preserve its invalid label.
+
+This bounded contract supports a corrected test, the original wrong-sign test,
+and a weak variant that removes exactly the two named boundary assertions.
+`semantic_oracle.variant` is `corrected` for a valid declaration or `original`
+for an invalid declaration. The declaration references `answer_key`,
+`native_pairing`, and `independent_review` files by contained relative `path`,
+exact `bytes`, and `sha256`,
+using the existing retained-fixture file checks. Paths in these files resolve
+from the corpus directory. No command is executed during fixture validation.
+
+Reviewed keys declare a contained `production_source_path` separately from the
+library target's source path. Every basis entry has a closed `kind`:
+`source_document` preserves an opaque cited document, while
+`separate_matcher_semantic_witness` identifies the structured retained matcher
+record. Missing, null or unknown kinds reject rather than falling back to text.
+The typed matcher entry declares its own package/version, library target,
+manifest/source paths and `native_test_variant`. That variant identifies the
+captured workspace input envelope; it does not claim that the standalone
+matcher program executes the primary HIR test.
+
+The answer key binds:
+
+- exact case, package/version, library target, manifest/library source paths,
+  full test ID, and original test source path;
+- independent expected-behavior claim and retained semantic source artifacts
+  with their source URLs;
+- fixed/broken production and corrected/original/weak complete test files;
+- the two corrected assertions and their original opposite-polarity forms;
+- the actual source line of each intended assertion failure.
+
+The validator checks that the weak file differs from the corrected file only
+by removing those two assertions, preserving all neighboring assertions. It
+rejects identical fixed/broken source, wrong assertion polarity, unresolved
+artifacts, wrong case identities, stale hashes, or a failure line that points
+to a neighboring assertion. Retained citations and independent review carry
+the semantic judgment; the checker does not infer arbitrary domain semantics
+or authenticate who authored that judgment.
+
+The separate independent-review record has accepted `disposition`, nonblank
+`reviewer` and `rationale`, and an exact `reviewed_subject` object containing
+the case ID, declared status, variant, and complete answer-key/native-pairing
+file descriptors. Those file hashes transitively bind the claim, citations,
+source/test bytes and every retained native capture to the actual judgment.
+Refreshing ordinary file hashes cannot carry an old review forward to changed
+subjects or a changed verdict. Review covers semantic basis and historical
+native capture together. This is a reviewed declaration, not an automated
+derivation of semantic truth or an authenticated attestation service.
+
+Valid/invalid acceptance also requires all six exact observed pairings:
+
+| Production | Test | Required native observation |
+| --- | --- | --- |
+| Fixed | Corrected | Pass |
+| Broken | Corrected | Intended corrected-assertion failure |
+| Fixed | Weak | Pass |
+| Broken | Weak | Pass |
+| Fixed | Original | Intended original wrong-sign assertion failure |
+| Broken | Original | Pass |
+
+Each observation carries before/after source, test and generated-lock input
+digests, exact runner/compiled-artifact hashes, tool versions, resolved final
+and intermediate build paths, working directory, command, test identity and
+counts. Its retained stdout/stderr must match their hashes. The isolated
+Cargo/libtest route selects one exact library test through an absolute Linux
+Cargo executable with `test --locked --offline --manifest-path Cargo.toml -p
+<package> --lib <test-id> -- --exact`. Intended, discovered, selected and
+executed counts are each one. Passed/failed/ignored counts, native exit,
+complete libtest terminal line and named test row must agree. Failing controls
+must identify the exact named assertion and its source line. Missing, repeated,
+zero-subject, ignored, setup-failed, timed-out, compile-failed, process-failed,
+stale or wrong-subject observations cannot establish validity.
+
+Each observation also references one compact `retained_native_capture` file.
+Its case and complete observation must match the pairing row exactly. It binds
+the Cargo-selected package ID, manifest, library target/source, test profile
+and executable path to a nonempty artifact's byte count/digest. The retained
+executable, exact one-test discovery, and direct frozen
+artifact replay must agree with that artifact and the expected native result.
+Discovery/replay output is retained and checked by the same file/output
+machinery. Missing, swapped, duplicate or malformed capture records, or bare
+hash strings without these bindings, reject. Identical executable bytes across
+variants are allowed when the independently reviewed capture supports them.
+A retained `post_capture_frozen_executable_rehash` record names its observation
+time and exact frozen artifact descriptor. It describes a later measurement
+of the retained executable, not a contemporaneous measurement of the mutable
+compiler-selected path. The record must match the capture's frozen artifact.
+
+Every native capture must retain both full-workspace input inventories. The
+native capture owner verifies their bytes and requires equal before/after
+arrays with unique contained logical paths, file/symlink kinds, byte counts and
+SHA-256 digests. The selected production, complete test and lock entries must
+match the reviewed key and pairing; selected manifest/library paths must exist.
+When an original parent inventory is declared, the entire footprint must equal
+that baseline after only the declared production/test substitutions and lock
+insertion. The baseline's `type` is mapped explicitly to capture `kind`; no
+other input is discarded. The Regex case keeps all 249 rows, including parent
+CHANGELOG and unchanged manifests. A three-row source/test/lock subset is not
+an equivalent original workspace. Generic absence of a parent envelope does
+not make the capture's before/after fences optional.
+
+The typed matcher retains fixed and broken observations, each with original
+and observed program roles. All program, output and input descriptors are
+verified. Its input inventories must equal the declared primary native variant;
+its separate compiler package/target/manifest/source, linked-library identity,
+artifact argv, zero exit and recorded value/output format must agree. Its
+nonconsumption citation must identify a declared source document. The checker
+validates this recorded consistency, without deriving semantic truth from Rust
+program text or executing a matcher. Linked libraries and matcher executables
+remain external identity declarations; their current availability and bytes
+are not established by this check.
+
+Artifact custody is explicit. `local` custody requires a contained retained
+file whose actual bytes match the captured executable; missing/corrupt local
+bytes reject without an external fallback. The canonical file path must stay
+within the canonical fixture root. In-root file/parent links, root aliases and
+root relocation remain valid; outside file/parent links reject even when their
+bytes match. This is containment for a stable fixture snapshot; resistance to
+concurrent filesystem replacement is outside this contract. `external` custody carries a
+nonblank task-evidence locator and no local file claim. Routine fixture checks
+validate compact capture/review identities and disclose external executable
+bytes as **NOT_REVERIFIED**. They neither require large executables in Git nor
+claim to have inspected unavailable bytes. Historical native execution,
+independently reviewed capture, current local byte checks, and fresh execution
+remain separate facts. Portable replay retains source/tests and declared lock
+resolution; it never substitutes old capture for a new run.
+
+The native-pairing file binds the same case and answer-key digest and retains
+the exact Cargo.lock artifact. This is a replay lock generated for the stated
+toolchain when upstream has no lock; it must not be presented as an original
+upstream lock. Exact input and artifact fences plus contrasting behavior are
+required when capturing evidence; a Git build stamp alone is insufficient.
+Original workspace replay precedes any source/manifest reduction, whose
+equivalence needs separate observed evidence.
+
+Declared native-pairing support is checked through the same contained-path,
+byte-count and digest authority. `original_workspace` may be absent. When
+present it must be an object with `archives`, `inventories` and `provenance`
+object maps. Archives and inventories each require `parent` and `fixed`;
+provenance requires `parent-git-commit.json`, `fixed-git-commit.json`,
+`parent-git-tree.json` and `fixed-git-tree.json`. Every declared map entry,
+including additional entries, is verified. Archive payloads are opaque bytes;
+inventory payloads must parse as JSON arrays and provenance payloads as JSON
+objects. Empty or malformed maps and missing required slots reject.
+
+The top-level `native_packet`, `native_receipt`, `resolution_receipt`,
+`offline_setup_receipt` and `capture_checker_interruption` descriptors are
+individually optional. Every present descriptor must resolve to the declared
+bytes and parse as a JSON object; null is not absence. Future cases need not
+invent setup or interruption history. The concrete Regex membership test pins
+all thirteen existing support descriptors. Removing or corrupting their files
+must reject through the production fixture report even when the pairing and
+review bytes are unchanged. Generic declarations without this support metadata
+and absent legacy controls retain their existing behavior. These checks do not
+extract archives, replay commands, recursively interpret historical paths,
+authenticate provenance, or reverify external executable bytes.
+
+`check-fixture-contracts` consumes this axis through the existing benchmark
+validator and emits a `PolicyDisclosure` in `fixture-contracts.md` with
+valid/invalid/unreviewed, legacy-absent and rejected declaration counts. A
+failed declaration is reported as rejected, not silently counted as its claimed
+valid status. Missing/unreadable corpus data yields NOT_ESTABLISHED rather
+than a successful zero-count disclosure. The disclosure is rendered on both
+passing and failing fixture checks.
+The report calls valid/invalid labels reviewed expected-behavior declarations,
+reports local byte-check and external NOT_REVERIFIED artifact counts, and states
+that the fixture check does not rerun tests or authenticate the producer.
+These custody totals count accepted observation references/checks, not unique
+executable files; two declarations may refer to the same retained binaries.
+The totals cover the six primary native test observations per accepted view.
+Matcher executable and linked-library references have separate external
+NOT_REVERIFIED disclosure and are not silently included in those totals.
+
+This fixture axis does not change static discrimination, `evidence_record`,
+Lane 1 audit/scorecard semantics, #3806 judgments, #4795 runtime calibration,
+or frozen selection/opportunity denominators. Connecting these separate
+consumers remains work for their existing owners. No real upstream case is
+accepted solely by this contract extension; source-only proposals and synthetic
+unit-test receipt models remain outside the accepted corpus until real native
+pairing and independent semantic review exist.
+
 ## Required Evidence
+
+### Historical semantic controls outside the static case denominator
+
+The same corpus may carry an optional top-level `semantic_oracle_controls`
+array. It contains exact reviewed alternate oracle views of historical cases,
+without requiring an `evidence_class`, `expected_repo_exposure` record or a
+normative static classification. The existing `cases` collection retains its
+static/calibration meaning and unique-ID rule. Controls add no pilot, calibration,
+blind-opportunity or frozen-selection membership.
+
+A control is an object with nonblank `id` and `fixture_reference`, a complete
+explicit reviewed `semantic_oracle`, and an `observed_static` retained-file
+descriptor. Legacy missing-status fallback does not apply to controls. The
+closed reviewed variants remain corrected/valid and original/invalid; weak is
+only the linked six-pair removal control. Control identity is `(id, variant)`.
+Duplicate views reject, and same-ID views must reference identical answer-key,
+native-pairing and historical static-capture descriptors. The semantic checker
+and exact independent-review subject binding are reused without a new runner.
+Every declared control case must retain both successfully reviewed roles.
+Omitting either view, substituting a duplicate role, or disagreeing on the
+shared subject rejects the case. Complete historical-case counts exclude these
+cases; individually reviewed row judgments remain visible alongside an explicit
+incomplete-case count. Absence of the whole optional collection retains the
+legacy behavior.
+
+The observed static capture is historical data, explicitly marked as having
+no normative static expectation. Its retained producer and execution receipts
+must agree on source head/tree, selected executable, byte count/digest, command,
+root, diff and per-command identity fences. The selected artifact's own head/tree
+must also match, and its compiler target must be the `ripr` binary. Three distinct
+corrected/original/weak observations bind exact retained stdout/stderr and before/after input
+inventories to their actual commands. Each full inventory must equal its
+fixed-production native variant inventory and carry the exact fixed source, test and
+lock identities. Report root/shape and any retained classification summary
+must agree with the captured JSON. Missing or corrupt reports, wrong variants,
+stale inputs/producers and conflicting same-case subjects reject. This checks
+retained capture consistency, not current executable bytes or analyzer truth.
+
+Declared static `subject_alignment`, `corrected_summary`,
+`original_summary_before_correction` and `old_attempt.receipt` attachments must
+match their retained bytes and parse as JSON objects. Their historical internal
+paths are not live corpus dependencies. The obsolete summary and budget stop
+remain history, not current analysis authority. The static production path must
+agree with the reviewed key's production path.
+
+The report keeps benchmark-case counts separate from historical control-view
+and historical-case counts. Malformed collections are unavailable; rejected
+views are not accepted or silently treated as unreviewed. Semantic review does
+not accept the newly attached static capture. Both native and static external
+executable custody remain NOT_REVERIFIED by the fixture command.
+
+The first locked historical case is rust-lang/regex PR 860's second commit,
+parent `72f09f1aeb0ff3f703b1afdbdd21f5ff63162fb4` to fixed
+`88a2a62d861d189faae539990f63cb9cf195bd8c`. Its 32/35/33-assertion original,
+corrected and weak tests retain all neighbors and the independent matcher
+witness. Exact native pairing and expected-behavior judgments are distinct
+from the recorded RIPR 68770f7c observation: all three outputs happened to be
+identical `exposed` call-deletion findings. That output is not a desired
+permanent analyzer behavior. The eight related tests are a capped reported
+list; absence means not reported, not internally unselected. The call-omission
+counterfactual also differs from the historical argument change, so these
+observations establish no deletion-specific false exposure.
+
+Real-corpus tests pin both views, exact upstream and source/test identities,
+and the production validation/report route. They do not pin a desired analyzer
+classification. The 82 existing static/calibration rows remain unchanged.
+
+Real-case preservation tests also pin README, three license copies, three
+auxiliary patches and the curated historical native review note. These eight
+files remain required package contents even though ordinary semantic validation
+does not use their bytes as proof authority. The complete bounded local graph
+has 120 unique referenced files; metadata inventories distinguish those checked
+dependencies from documentary preservation and external artifact declarations.
 
 The benchmark corpus must include fixture classes for:
 
@@ -161,6 +423,13 @@ assertion-target affinity. Specific call target tokens remain eligible for
 affinity.
 
 ## Test Mapping
+
+- `xtask/src/fixture_contracts/benchmark_oracles/tests.rs` contains synthetic
+  contract tests for absent/unreviewed status, corrected/original polarity,
+  independent basis, exact weak-test removal, complete pairing, input fences,
+  actual subjects, intended failures, retained-file identity, and the production
+  fixture reader plus common policy-report disclosure renderer. These modeled
+  records are not real upstream runtime receipts.
 
 - `xtask::tests::evidence_quality_benchmark_corpus_is_valid` validates the
   checked-in corpus.

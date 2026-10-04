@@ -1,7 +1,7 @@
 //! `ripr plus` — binary-first RIPR+ repo receipt (composition-only).
 //!
 //! Ports `cargo xtask ripr-plus` into the `ripr` binary so downstream
-//! consumers can produce the repo-wide RIPR+ quality-gate receipt without
+//! consumers can compose an informational RIPR+ receipt without
 //! compiling their own xtask.
 //!
 //! # Binary-first scope
@@ -27,6 +27,7 @@
 //!
 //! Output: `target/ripr/reports/ripr-plus.{json,md}`.
 
+use crate::cli::unknown_argument;
 use crate::config::RiprConfig;
 use crate::output;
 use serde_json::{Value, json};
@@ -41,6 +42,7 @@ const RIPR_PLUS_MD: &str = "target/ripr/reports/ripr-plus.md";
 struct RiprPlusOptions {
     repo_exposure_summary: Option<PathBuf>,
     gap_ledger: Option<PathBuf>,
+    check: bool,
 }
 
 /// Entry point for `ripr plus`. Composes a RIPR+ repo receipt from a
@@ -54,11 +56,30 @@ pub(crate) fn run_ripr_plus(args: &[String]) -> Result<(), String> {
     let options = parse_options(args)?;
     let repo = repo_root()?;
     let head = git_head(&repo);
-    match ripr_plus_receipt_from_options(&options, &head) {
-        Ok(receipt) => write_receipt(&repo, &receipt),
+    compose_and_write_receipt(&repo, &options, &head)
+}
+
+/// Writes the receipt for `options`. When the named artifact cannot be read
+/// or composed, the `indeterminate` receipt is still written so CI keeps a
+/// record, and the error is returned so the command exits 2 (could not
+/// complete) rather than 0 (#4727).
+fn compose_and_write_receipt(
+    repo: &Path,
+    options: &RiprPlusOptions,
+    head: &str,
+) -> Result<(), String> {
+    match ripr_plus_receipt_from_options(options, head).and_then(qualify_legacy_receipt) {
+        Ok(receipt) => {
+            write_receipt(repo, &receipt)?;
+            if options.check && receipt["zero_unresolved_established"] != true {
+                return Err("RIPR+ zero is not established; inspect the receipt's incomplete-evidence warnings".to_string());
+            }
+            Ok(())
+        }
         Err(err) => {
-            let receipt = error_ripr_plus_receipt(&head, &err);
-            write_receipt(&repo, &receipt)
+            let receipt = error_ripr_plus_receipt(head, &err);
+            write_receipt(repo, &receipt)?;
+            Err(err)
         }
     }
 }
@@ -68,7 +89,7 @@ fn parse_options(args: &[String]) -> Result<RiprPlusOptions, String> {
     let mut index = 0usize;
     while index < args.len() {
         match args[index].as_str() {
-            "--check" => {}
+            "--check" => options.check = true,
             "--gap-ledger" => {
                 index += 1;
                 options.gap_ledger =
@@ -82,7 +103,7 @@ fn parse_options(args: &[String]) -> Result<RiprPlusOptions, String> {
                     "--repo-exposure-summary",
                 )?));
             }
-            other => return Err(format!("unknown plus argument `{other}`")),
+            other => return Err(unknown_argument("plus", other)),
         }
         index += 1;
     }
@@ -115,25 +136,82 @@ fn non_empty_arg<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a
 }
 
 fn print_help() {
-    println!("usage: ripr plus --repo-exposure-summary <path> | --gap-ledger <path> [--check]");
-    println!();
-    println!("Options:");
-    println!(
-        "  --repo-exposure-summary <path>  Compose the receipt from a repo-exposure-summary-json artifact (pure composition)."
+    println!("{PLUS_HELP}");
+}
+
+/// Help body for `ripr plus`. Also the flag source for unknown-argument
+/// suggestions; keep accepted flags on option-list lines.
+pub(crate) const PLUS_HELP: &str = "\
+Compose the repo-wide RIPR+ receipt from an existing report artifact.
+
+Usage: ripr plus --repo-exposure-summary <path> | --gap-ledger <path> [--check]
+
+Options:
+  --repo-exposure-summary <path>  Compose the receipt from a repo-exposure-summary-json artifact (pure composition).
+  --gap-ledger <path>             Compose the receipt from a gap decision ledger (ledger-only composition; no repo scan).
+  --check                         Require established zero; incomplete evidence exits 2.
+
+Exit status: 0 when the receipt was composed; 2 when the named artifact
+cannot be read or composed, or --check cannot establish zero (an
+`indeterminate` receipt is still written).
+
+Outputs:
+  target/ripr/reports/ripr-plus.json
+  target/ripr/reports/ripr-plus.md
+
+Current inputs contain exposure or ledger evidence only. They do not establish
+complete test-efficiency measurement or bind that evidence to current candidate
+bytes. Known actionable counts remain informational; complete unresolved debt
+and candidate authority remain indeterminate, so --check cannot pass from these
+inputs. This command does not scan a repository or turn raw seams into debt.
+";
+
+/// The supported legacy inputs have no complete test-quality/current-candidate
+/// contract. A zero exposure counter cannot cross that missing proof boundary.
+pub(crate) fn qualify_legacy_receipt(mut receipt: Value) -> Result<Value, String> {
+    let fields = receipt
+        .as_object_mut()
+        .ok_or_else(|| "RIPR+ receipt must be an object".to_string())?;
+    let known = fields
+        .get("known_actionable_unresolved")
+        .or_else(|| fields.get("unresolved"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let observed_head = fields
+        .get("observed_repository_head")
+        .or_else(|| fields.get("head"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    fields.insert("known_actionable_unresolved".to_string(), known);
+    fields.insert("observed_repository_head".to_string(), observed_head);
+    fields.insert("unresolved".to_string(), Value::Null);
+    fields.insert("head".to_string(), Value::Null);
+    fields.insert("status".to_string(), json!("indeterminate"));
+    fields.insert("zero_unresolved_established".to_string(), json!(false));
+    fields.insert("candidate_binding".to_string(), json!("not_established"));
+    fields.insert(
+        "machine_readable_cause".to_string(),
+        json!("quality_evidence_incomplete"),
     );
-    println!(
-        "  --gap-ledger <path>             Compose the receipt from a gap decision ledger (ledger-only composition; no repo scan)."
+    fields.insert(
+        "incomplete_evidence".to_string(),
+        json!([
+            "complete_test_efficiency_measurement",
+            "current_candidate_binding",
+            "blocked_and_unsupported_scope_disposition"
+        ]),
     );
-    println!("  --check                         Accepted for xtask parity (no-op).");
-    println!();
-    println!("Outputs:");
-    println!("  {RIPR_PLUS_JSON}");
-    println!("  {RIPR_PLUS_MD}");
-    println!();
-    println!("This receipt is the repo-wide RIPR+ quality-gate input. It uses the");
-    println!("public canonical actionable gap basis and does not count raw seam");
-    println!("inventory as unresolved debt. The binary-first `ripr plus` is");
-    println!("artifact-composition-only: it does not run an in-process full-repo scan.");
+    let warnings = fields.entry("warnings").or_insert_with(|| json!([]));
+    let warnings = warnings
+        .as_array_mut()
+        .ok_or_else(|| "RIPR+ receipt warnings must be an array".to_string())?;
+    let warning = json!(
+        "Exposure/ledger counts alone do not establish complete RIPR+ zero. Test-efficiency measurement, current-candidate binding and blocked/unsupported scope disposition are not established; inspect the source evidence and do not use this receipt as a zero gate."
+    );
+    if !warnings.contains(&warning) {
+        warnings.push(warning);
+    }
+    Ok(receipt)
 }
 
 fn ripr_plus_receipt_from_options(options: &RiprPlusOptions, head: &str) -> Result<Value, String> {
@@ -175,7 +253,14 @@ fn render_gap_ledger_repo_badge_json(gap_ledger: &Path) -> Result<String, String
         &text,
         output::badge::BadgeKind::Ripr,
         policy,
-    )?;
+    )
+    .map_err(|err| {
+        format!(
+            "plus --gap-ledger {} is not a gap decision ledger: {err}. \
+             Pass the ledger written by `ripr gap-ledger` (default target/ripr/reports/gap-decision-ledger.json).",
+            gap_ledger.display()
+        )
+    })?;
     output::badge::attach_public_projection(&mut summary, &gap_ledger.display().to_string());
     Ok(output::badge::render_native_json(&summary))
 }
@@ -381,7 +466,10 @@ fn error_ripr_plus_receipt(head: &str, err: &str) -> Value {
         "unresolved": null,
         "top_files": [],
         "suppressed": null,
-        "head": head,
+        "head": null,
+        "observed_repository_head": head,
+        "candidate_binding": "not_established",
+        "zero_unresolved_established": false,
         "counts": {},
         "reason_counts": {},
         "machine_readable_cause": machine_readable_cause,
@@ -403,7 +491,7 @@ fn error_ripr_plus_receipt(head: &str, err: &str) -> Value {
 
 fn ripr_plus_receipt_markdown(receipt: &Value) -> String {
     let mut body = String::from("# ripr+ Repo Receipt\n\n");
-    body.push_str("This report is the repo-wide RIPR+ quality-gate input. It uses the public canonical actionable gap basis and does not count raw seam inventory as unresolved debt.\n\n");
+    body.push_str("This is an informational projection of supplied exposure/ledger evidence. It does not establish complete test-quality measurement or a current-candidate zero result. Raw seams are not actionable debt.\n\n");
     body.push_str("## Basis\n\n");
     body.push_str("| Field | Value |\n");
     body.push_str("| --- | --- |\n");
@@ -444,13 +532,21 @@ fn ripr_plus_receipt_markdown(receipt: &Value) -> String {
             .and_then(Value::as_u64)
             .unwrap_or(0)
     ));
+    if let Some(known) = receipt
+        .get("known_actionable_unresolved")
+        .and_then(Value::as_u64)
+    {
+        body.push_str(&format!(
+            "| Known actionable exposure items (unqualified) | {known} |\n"
+        ));
+    }
     body.push_str(&format!(
-        "| Head | `{}` |\n",
+        "| Qualified candidate head | `{}` |\n",
         markdown_cell(&json_string_field_value(receipt, "head"))
     ));
     if is_indeterminate || unresolved_is_null {
         body.push_str("\n## Evaluation Status\n\n");
-        body.push_str("> **Indeterminate** — the evaluation did not complete. No gap count is available from this run. This receipt must not be treated as evidence of zero unresolved gaps.\n\n");
+        body.push_str("> **Indeterminate** — a complete, current quality result is not established. Any known exposure count above is partial evidence, not the complete unresolved total. This receipt must not be treated as evidence of zero unresolved gaps.\n\n");
         if let Some(warnings) = receipt
             .get("warnings")
             .and_then(Value::as_array)
@@ -650,12 +746,18 @@ fn normalize_path(path: &Path) -> String {
         .to_string()
 }
 
+/// Cooperative deadline for the receipt HEAD stamp (#4363): a hung git
+/// records `unknown` instead of pinning `ripr plus`.
+const RIPR_PLUS_GIT_HEAD_DEADLINE: std::time::Duration = std::time::Duration::from_mins(1);
+
 fn git_head(repo: &Path) -> String {
-    std::process::Command::new("git")
-        .arg("-C")
-        .arg(repo)
-        .args(["rev-parse", "HEAD"])
-        .output()
+    git_head_within(repo, RIPR_PLUS_GIT_HEAD_DEADLINE)
+}
+
+/// [`git_head`] with the deadline as a parameter, so a test can prove the
+/// deadline reaches the shared git runner.
+fn git_head_within(repo: &Path, deadline: std::time::Duration) -> String {
+    crate::git::run_git_output_with_deadline(repo, &["rev-parse", "HEAD"], Some(deadline))
         .ok()
         .and_then(|output| {
             if output.status.success() {
@@ -678,7 +780,8 @@ fn write_parented_file(path: &Path, label: &str, contents: impl AsRef<[u8]>) -> 
         fs::create_dir_all(parent)
             .map_err(|err| format!("failed to create parent dir for {label}: {err}"))?;
     }
-    fs::write(path, contents).map_err(|err| format!("failed to write {label}: {err}"))
+    crate::output::file_write::write(path, contents.as_ref())
+        .map_err(|err| format!("failed to write {label}: {err}"))
 }
 
 #[cfg(test)]
@@ -854,6 +957,78 @@ mod tests {
         }
     }
 
+    /// #4727: a named `--gap-ledger` that cannot be read must not exit 0.
+    /// The indeterminate receipt is still written for CI, and the error is
+    /// returned so the process exits 2.
+    #[test]
+    fn unreadable_gap_ledger_writes_indeterminate_receipt_and_fails() -> Result<(), String> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| format!("clock failed: {err}"))?
+            .as_nanos();
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-plus-unreadable-ledger-{}-{nanos}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&repo).map_err(|err| format!("mkdir {}: {err}", repo.display()))?;
+        let options = RiprPlusOptions {
+            repo_exposure_summary: None,
+            gap_ledger: Some(repo.join("nope.json")),
+            check: false,
+        };
+        let result = compose_and_write_receipt(&repo, &options, "deadbeef");
+        let written = fs::read_to_string(repo.join(RIPR_PLUS_JSON));
+        let _ = fs::remove_dir_all(&repo);
+        match result {
+            Err(msg) if msg.contains("failed to read gap ledger") => {}
+            other => return Err(format!("expected read failure, got {other:?}")),
+        }
+        let receipt: Value = serde_json::from_str(
+            &written.map_err(|err| format!("indeterminate receipt was not written: {err}"))?,
+        )
+        .map_err(|err| format!("receipt is not JSON: {err}"))?;
+        assert_eq!(receipt["status"], "indeterminate");
+        assert_eq!(receipt["machine_readable_cause"], "evaluation_error");
+        Ok(())
+    }
+
+    /// A readable file that is not a gap ledger must fail with the exit code,
+    /// the written receipt, and a message naming the file and the fix agreeing.
+    #[test]
+    fn unrecognized_gap_ledger_fails_and_receipt_is_indeterminate() -> Result<(), String> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| format!("clock failed: {err}"))?
+            .as_nanos();
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-plus-foreign-ledger-{}-{nanos}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&repo).map_err(|err| format!("mkdir {}: {err}", repo.display()))?;
+        let ledger = repo.join("foreign.json");
+        fs::write(&ledger, r#"{"foo":1}"#).map_err(|err| format!("write ledger: {err}"))?;
+        let options = RiprPlusOptions {
+            repo_exposure_summary: None,
+            gap_ledger: Some(ledger),
+            check: false,
+        };
+        let result = compose_and_write_receipt(&repo, &options, "deadbeef");
+        let written = fs::read_to_string(repo.join(RIPR_PLUS_JSON));
+        let _ = fs::remove_dir_all(&repo);
+        match result {
+            Err(msg)
+                if msg.contains("foreign.json") && msg.contains("not a gap decision ledger") => {}
+            other => return Err(format!("expected unrecognized-ledger error, got {other:?}")),
+        }
+        let receipt: Value = serde_json::from_str(
+            &written.map_err(|err| format!("receipt was not written: {err}"))?,
+        )
+        .map_err(|err| format!("receipt is not JSON: {err}"))?;
+        assert_eq!(receipt["status"], "indeterminate");
+        assert_ne!(receipt["zero_unresolved_established"], true);
+        Ok(())
+    }
+
     #[test]
     fn error_receipt_is_indeterminate() -> Result<(), String> {
         let receipt = error_ripr_plus_receipt("unknown", "the scan timed out after 1000 ms");
@@ -907,5 +1082,51 @@ mod tests {
         assert!(markdown.contains("## Evaluation Status"));
         assert!(markdown.contains("Indeterminate"));
         assert!(markdown.contains("N/A"));
+    }
+
+    #[test]
+    fn git_head_forwards_its_deadline_to_git() -> Result<(), String> {
+        // #4363: a zero deadline is refused before spawn, so the stamp must
+        // fall back to `unknown` even where HEAD resolves; dropping the
+        // deadline would stamp the real commit.
+        use crate::testing::fixture_git::{fixture_git_ok, remove_fixture_tree};
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-plus-git-head-deadline-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&repo).map_err(|err| err.to_string())?;
+        let result = (|| {
+            fixture_git_ok(&repo, &["init", "--quiet"])?;
+            fixture_git_ok(
+                &repo,
+                &[
+                    "-c",
+                    "user.email=ripr@example.invalid",
+                    "-c",
+                    "user.name=RIPR Test",
+                    "commit",
+                    "--quiet",
+                    "--allow-empty",
+                    "--no-gpg-sign",
+                    "-m",
+                    "init",
+                ],
+            )?;
+            let bounded = git_head_within(&repo, std::time::Duration::from_mins(1));
+            if bounded.len() != 40 {
+                return Err(format!("control: expected a commit id, got {bounded}"));
+            }
+            let refused = git_head_within(&repo, std::time::Duration::ZERO);
+            if refused != "unknown" {
+                return Err(format!("zero deadline must stamp unknown, got {refused}"));
+            }
+            Ok(())
+        })();
+        let _ = remove_fixture_tree(&repo);
+        result
     }
 }

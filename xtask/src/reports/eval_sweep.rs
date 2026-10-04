@@ -565,9 +565,7 @@ fn run_check(binary: &Path, checkout: &Path, diff: &str, args: &SweepArgs) -> Ch
 }
 
 fn ripr_binary_path() -> PathBuf {
-    PathBuf::from("target")
-        .join("debug")
-        .join(format!("ripr{}", std::env::consts::EXE_SUFFIX))
+    crate::ripr_debug_binary()
 }
 
 fn build_ripr() -> Result<(), String> {

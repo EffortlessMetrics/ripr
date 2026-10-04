@@ -29,7 +29,7 @@ pub fn classify_changed_line(text: &str) -> Vec<ProbeFamily> {
     if has_field_shape(text) {
         out.push(ProbeFamily::FieldConstruction);
     }
-    if text.starts_with("match ") || text.contains("=>") {
+    if text.starts_with("match ") || has_match_arm_arrow(&masked) {
         out.push(ProbeFamily::MatchArm);
     }
     if out.is_empty() {
@@ -67,7 +67,7 @@ fn classify_constant_declaration(text: &str) -> Vec<ProbeFamily> {
     if has_effect_shape(scan) {
         out.push(ProbeFamily::SideEffect);
     }
-    if scan.starts_with("match ") || scan.contains("=>") {
+    if scan.starts_with("match ") || has_match_arm_arrow(scan) {
         out.push(ProbeFamily::MatchArm);
     }
     out.push(ProbeFamily::StaticUnknown);
@@ -100,6 +100,58 @@ fn initializer_span(masked: &str) -> &str {
         index += 1;
     }
     masked
+}
+
+/// Whether a masked line carries a match-arm `=>`. An arrow counts when no
+/// delimiter encloses it on this line (`Some(v) => v + 1,`, `}) => break,`)
+/// or when its innermost enclosing delimiter is an arm block: the brace
+/// after a `match` scrutinee (`.map(|x| match x { A => 1 })`) or the rule
+/// brace of a `macro_rules!` definition. An arrow inside any other group is
+/// macro input (`buf_try_get_impl!(be => self, ..)`, `hash_map!{k => v}`,
+/// `route!(key => match value)`), not an arm. Strings and comments are
+/// already masked.
+fn has_match_arm_arrow(masked: &str) -> bool {
+    if !masked.contains("=>") {
+        return false;
+    }
+    // One entry per open delimiter: whether arrows directly inside it are arms.
+    let mut groups: Vec<bool> = Vec::new();
+    let mut arms_follow = false;
+    let chars: Vec<char> = masked.chars().collect();
+    let mut index = 0;
+    while index < chars.len() {
+        let current = chars[index];
+        if current.is_alphanumeric() || current == '_' {
+            let start = index;
+            while index < chars.len() && (chars[index].is_alphanumeric() || chars[index] == '_') {
+                index += 1;
+            }
+            let word: String = chars[start..index].iter().collect();
+            if word == "match" || (word == "macro_rules" && chars.get(index) == Some(&'!')) {
+                arms_follow = true;
+            }
+            continue;
+        }
+        match current {
+            '{' => {
+                groups.push(arms_follow);
+                arms_follow = false;
+            }
+            '(' | '[' => groups.push(false),
+            ')' | ']' | '}' => {
+                groups.pop();
+            }
+            '=' if chars.get(index + 1) == Some(&'>') => {
+                if groups.last().copied().unwrap_or(true) {
+                    return true;
+                }
+                index += 1;
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    false
 }
 
 fn has_predicate_shape(text: &str) -> bool {
@@ -223,6 +275,8 @@ fn is_assertion_macro(text: &str) -> bool {
 
 fn has_call_shape(text: &str) -> bool {
     !is_constant_declaration(text)
+        && !is_tuple_type_declaration(text)
+        && !parens_are_only_visibility(text)
         && text.contains('(')
         && text.contains(')')
         && !is_function_signature(text)
@@ -231,6 +285,279 @@ fn has_call_shape(text: &str) -> bool {
         && !starts_with_binding_or_control(text)
         && !text.trim_end().ends_with(',')
         && call_prefix_is_named(text)
+}
+
+/// Whether the only parentheses on the line are a restricted visibility
+/// (`pub(crate) struct Holder<'a> {`, `pub(super) use a::b;`). The
+/// visibility is declaration syntax, so `pub` must not read as a callee.
+fn parens_are_only_visibility(text: &str) -> bool {
+    strip_pub_visibility(skip_outer_attributes(text.trim())).is_some_and(|rest| !rest.contains('('))
+}
+
+/// Tuple enum variants and tuple structs are declarations, not executable
+/// calls (#3740, #3749). `Invalid(String)`, `struct Wrap(PathBuf);`, and
+/// `pub struct Wrapper(pub String);` must not become `call_deletion` probes.
+/// Generics between the name and the tuple (`Foo<T>(pub T)`) belong to the
+/// declaration. A same-line outer attribute (`#[derive(Clone)] struct ...`)
+/// and a tuple-struct `where` tail are still the declaration. A value
+/// argument (`NotFound(id)`, `Foo(value)`) and an expression statement
+/// (`Invalid(msg);`) stay calls. `Err` / `Ok` / `Some` are constructors,
+/// not variant declarations.
+fn is_tuple_type_declaration(text: &str) -> bool {
+    let mut rest = skip_outer_attributes(text.trim());
+    if let Some(after_visibility) = strip_pub_visibility(rest) {
+        rest = after_visibility.trim_start();
+    }
+    let struct_form = if let Some(after_struct) = rest.strip_prefix("struct ") {
+        rest = after_struct.trim_start();
+        true
+    } else {
+        false
+    };
+    let Some((name, after_name)) = take_rust_ident(rest) else {
+        return false;
+    };
+    if matches!(name, "Err" | "Ok" | "Some") {
+        return false;
+    }
+    if !name.starts_with(|ch: char| ch.is_ascii_uppercase()) {
+        return false;
+    }
+    let mut after_name = after_name.trim_start();
+    if after_name.starts_with('<') {
+        let Some(skipped) = skip_balanced_generics(after_name) else {
+            return false;
+        };
+        after_name = skipped.trim_start();
+    }
+    let Some(after_open) = after_name.strip_prefix('(') else {
+        return false;
+    };
+    let Some((inner, tail)) = split_matching_paren(after_open) else {
+        return false;
+    };
+    if !type_argument_list(inner) {
+        return false;
+    }
+    let tail = tail.trim();
+    if struct_form {
+        return tail.is_empty() || tail == ";" || is_where_clause(tail);
+    }
+    if tail.is_empty() || tail == "," || tail == "}" || tail == "}," {
+        return true;
+    }
+    numeric_discriminant(tail)
+}
+
+/// `#[...]` / `#![...]` prefixes on the same line as a declaration.
+/// A line that is not an attribute is returned unchanged.
+fn skip_outer_attributes(text: &str) -> &str {
+    let mut rest = text.trim_start();
+    loop {
+        let Some(after_hash) = rest.strip_prefix('#') else {
+            return rest;
+        };
+        let after_inner = after_hash.strip_prefix('!').unwrap_or(after_hash);
+        let Some(inside) = after_inner.trim_start().strip_prefix('[') else {
+            return rest;
+        };
+        let Some(after_attr) = skip_balanced_delims(inside, '[', ']') else {
+            return rest;
+        };
+        rest = after_attr.trim_start();
+    }
+}
+
+fn skip_balanced_delims(text: &str, open: char, close: char) -> Option<&str> {
+    let mut depth = 1usize;
+    for (index, ch) in text.char_indices() {
+        if ch == open {
+            depth += 1;
+        } else if ch == close {
+            depth -= 1;
+            if depth == 0 {
+                return Some(&text[index + ch.len_utf8()..]);
+            }
+        }
+    }
+    None
+}
+
+fn is_where_clause(tail: &str) -> bool {
+    let Some(after) = tail.strip_prefix("where") else {
+        return false;
+    };
+    // A `where` bound needs no whitespace after the keyword (`where'a: 'b`,
+    // `where[T; 4]: Clone`). Only a trailing identifier character means the
+    // line names something else (`whereabouts`, `where_clause`).
+    after.is_empty() || after.starts_with(|ch: char| !ch.is_alphanumeric() && ch != '_')
+}
+
+fn numeric_discriminant(tail: &str) -> bool {
+    let Some(after_eq) = tail.strip_prefix('=') else {
+        return false;
+    };
+    let mut text = after_eq.trim();
+    if let Some(without_comma) = text.strip_suffix(',') {
+        text = without_comma.trim();
+    }
+    !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn strip_pub_visibility(text: &str) -> Option<&str> {
+    let rest = text.trim_start();
+    let after_pub = rest.strip_prefix("pub")?;
+    // Do not trim before the word-boundary check. `pub struct` has a space
+    // after `pub`; trimming it makes `struct` look like an identifier suffix.
+    if let Some(after_paren) = after_pub.strip_prefix('(') {
+        let (_, after_visibility) = split_matching_paren(after_paren)?;
+        return Some(after_visibility);
+    }
+    if after_pub.is_empty() || after_pub.starts_with(|ch: char| ch.is_whitespace()) {
+        return Some(after_pub);
+    }
+    None
+}
+
+fn take_rust_ident(text: &str) -> Option<(&str, &str)> {
+    let mut end = 0usize;
+    for (index, ch) in text.char_indices() {
+        let ok = if index == 0 {
+            ch == '_' || ch.is_ascii_alphabetic()
+        } else {
+            ch == '_' || ch.is_ascii_alphanumeric()
+        };
+        if !ok {
+            break;
+        }
+        end = index + ch.len_utf8();
+    }
+    if end == 0 {
+        None
+    } else {
+        Some((&text[..end], &text[end..]))
+    }
+}
+
+fn split_matching_paren(text: &str) -> Option<(&str, &str)> {
+    let mut depth = 1usize;
+    for (index, ch) in text.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some((&text[..index], &text[index + ch.len_utf8()..]));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Text after a `<...>` generic argument list, or `None` when the brackets
+/// do not close. Nested `Foo<Bar<T>>` stays inside the declaration name.
+fn skip_balanced_generics(text: &str) -> Option<&str> {
+    let inner = text.trim_start().strip_prefix('<')?;
+    let mut depth = 1usize;
+    for (index, ch) in inner.char_indices() {
+        match ch {
+            '<' => depth += 1,
+            '>' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&inner[index + ch.len_utf8()..]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+const TYPE_ARGUMENT_WORDS: &[&str] = &[
+    "str", "bool", "char", "dyn", "mut", "const", "i8", "i16", "i32", "i64", "i128", "isize", "u8",
+    "u16", "u32", "u64", "u128", "usize", "f32", "f64",
+];
+
+fn type_argument_list(inner: &str) -> bool {
+    let text = inner.trim();
+    if text.is_empty() {
+        return false;
+    }
+    let bytes = text.as_bytes();
+    let mut index = 0usize;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte.is_ascii_whitespace()
+            || matches!(
+                byte,
+                b'&' | b',' | b'<' | b'>' | b'[' | b']' | b'(' | b')' | b'*'
+            )
+        {
+            index += 1;
+            continue;
+        }
+        if byte == b':' {
+            if bytes.get(index + 1) == Some(&b':') {
+                index += 2;
+                continue;
+            }
+            return false;
+        }
+        if byte == b'\'' {
+            index += 1;
+            let Some((ident, _)) = take_rust_ident(&text[index..]) else {
+                return false;
+            };
+            index += ident.len();
+            continue;
+        }
+        if byte.is_ascii_alphabetic() || byte == b'_' {
+            let Some((ident, _)) = take_rust_ident(&text[index..]) else {
+                return false;
+            };
+            if ident == "pub" {
+                let Some(after_vis) = skip_field_visibility(&text[index..]) else {
+                    return false;
+                };
+                index = text.len() - after_vis.len();
+                continue;
+            }
+            if ident.starts_with(|ch: char| ch.is_ascii_lowercase())
+                && !TYPE_ARGUMENT_WORDS.contains(&ident)
+            {
+                let rest = text[index + ident.len()..].trim_start();
+                if !rest.starts_with("::") {
+                    return false;
+                }
+            }
+            index += ident.len();
+            continue;
+        }
+        return false;
+    }
+    true
+}
+
+/// Remainder after tuple-field visibility (`pub` or `pub(...)`).
+///
+/// `pub String` and `pub(crate) u32` are types. A bare `pub` is not, so
+/// `Foo(pub)` stays a value argument.
+fn skip_field_visibility(text: &str) -> Option<&str> {
+    let after_pub = text.strip_prefix("pub")?;
+    let trimmed = after_pub.trim_start();
+    if let Some(after_open) = trimmed.strip_prefix('(') {
+        let (_, after_vis) = split_matching_paren(after_open)?;
+        return Some(after_vis);
+    }
+    if trimmed.starts_with(|ch: char| {
+        ch.is_ascii_alphabetic() || matches!(ch, '_' | '&' | '\'' | '[' | '*')
+    }) {
+        return Some(after_pub);
+    }
+    None
 }
 
 fn starts_with_binding_or_control(text: &str) -> bool {
@@ -253,6 +580,7 @@ fn call_prefix_is_named(text: &str) -> bool {
 
 fn has_field_shape(text: &str) -> bool {
     !is_constant_declaration(text)
+        && !is_tuple_type_declaration(text)
         && text.contains(':')
         && !text.contains("::")
         && !is_function_signature(text)
@@ -325,6 +653,29 @@ fn is_constant_declaration(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restricted_visibility_parens_are_not_a_call() {
+        for line in [
+            "pub(crate) struct IgnoreRef<'a> {",
+            "pub(super) enum Mode {",
+            "#[derive(Clone)] pub(in crate::walk) struct Walk {",
+            "pub(crate) use self::walk::Walk;",
+            "pub(crate) mod dir;",
+        ] {
+            assert!(
+                !classify_changed_line(line).contains(&ProbeFamily::CallDeletion),
+                "`{line}` is a declaration, not a call"
+            );
+        }
+        for line in ["send_invoice(invoice)", "self.inner.parent.clone()"] {
+            let families = classify_changed_line(line);
+            assert!(
+                families.contains(&ProbeFamily::CallDeletion),
+                "`{line}` must stay a call: {families:?}"
+            );
+        }
+    }
 
     #[test]
     fn classify_changed_line_detects_core_probe_shapes() {
@@ -474,6 +825,63 @@ mod tests {
         );
     }
 
+    /// #3740 / #3749: tuple enum variants and tuple structs are declarations.
+    /// The reported `Invalid(String),` lines already fail the trailing-comma
+    /// gate; the last variant (no comma) and a tuple struct still matched
+    /// `call_deletion`. Field visibility and generics are part of the
+    /// declaration. Value arguments and `Err(...)` stay calls.
+    #[test]
+    fn tuple_type_declarations_are_not_call_deletion() {
+        for text in [
+            "Invalid(String),",
+            "Ambiguous(String),",
+            "Invalid(String)",
+            "pub(crate) Invalid(&str)",
+            "Invalid(Box<String>)",
+            "Invalid(std::path::PathBuf) = 1",
+            "struct Wrap(String);",
+            "pub struct Wrap(std::path::PathBuf);",
+            "struct Foo(String);",
+            "pub struct Foo(pub String);",
+            "pub(crate) struct Foo(pub(crate) u32);",
+            "pub struct Foo<T>(pub T);",
+            "struct Foo<'a>(&'a str);",
+            "struct Foo<T: Clone>(T);",
+            "#[derive(Clone)] struct Wrap(String);",
+            "#[repr(transparent)] pub struct Wrap(String);",
+            "#[derive(Debug)] #[repr(transparent)] pub struct Wrap(u32);",
+            "#[derive(Debug)] Invalid(String),",
+            "struct Foo<T>(T) where T: Clone;",
+            "pub struct Foo<T>(pub T) where T: Clone;",
+            "#[derive(Clone)] pub struct Foo<T>(T) where T: Clone;",
+            "struct Foo<'a, 'b>(&'a str) where'a: 'b;",
+            "struct Foo<T>(T) where[T; 4]: Clone;",
+        ] {
+            let families = classify_changed_line(text);
+            assert_eq!(
+                families,
+                vec![ProbeFamily::StaticUnknown],
+                "{text} must be a non-executable declaration, got {families:?}"
+            );
+        }
+        for text in [
+            "send_invoice(invoice)",
+            "NotFound(id)",
+            "Invalid(msg);",
+            "Err(AuthError::Revoked)",
+            "Foo(value)",
+            "Id(0)",
+            "#[inline] send_invoice(invoice)",
+            "#[allow(unused)] Foo(value)",
+        ] {
+            let families = classify_changed_line(text);
+            assert!(
+                families.contains(&ProbeFamily::CallDeletion),
+                "{text} must stay call_deletion, got {families:?}"
+            );
+        }
+    }
+
     #[test]
     fn classify_changed_line_detects_fallible_error_context() {
         let families = classify_changed_line("let parsed = parse()?; ErrKind::Invalid");
@@ -511,6 +919,45 @@ mod tests {
             assert!(
                 families.contains(&ProbeFamily::SideEffect),
                 "{text} did not classify as side_effect"
+            );
+        }
+    }
+
+    /// R3 (OSS replay, tokio-rs/bytes 7930d93): an arrow inside a macro
+    /// call's arguments is macro syntax, not a match arm.
+    #[test]
+    fn macro_argument_arrows_are_not_match_arms() {
+        for text in [
+            "buf_try_get_impl!(be => self, i64, 8);",
+            "let map = hash_map!{ \"a\" => 1 };",
+            "vec![a => b]",
+            "log(\"a => b\");",
+            "route!(key => match value);",
+            "const X: u32 = choose!(a => 1);",
+            "static MAP: Map = phf_map! { \"a\" => 1 };",
+        ] {
+            let families = classify_changed_line(text);
+            assert!(
+                !families.contains(&ProbeFamily::MatchArm),
+                "{text} must not classify as match_arm, got {families:?}"
+            );
+        }
+        for text in [
+            "Some(value) => value + 1,",
+            "(Ok(a), Ok(b)) => a == b,",
+            "Point { x, y } => x + y,",
+            "}) => break,",
+            ".map(|x| match x { A => 1, B => 2 })",
+            "let n = match state { State::On => 1, _ => 0 };",
+            "Some(v) => match v { A => 1, _ => 0 },",
+            "macro_rules! choose { ($v:expr) => { $v } }",
+            "($x:expr) => { $x };",
+            "const X: u32 = match MODE { Mode::A => 1, _ => 2 };",
+        ] {
+            let families = classify_changed_line(text);
+            assert!(
+                families.contains(&ProbeFamily::MatchArm),
+                "{text} must classify as match_arm, got {families:?}"
             );
         }
     }

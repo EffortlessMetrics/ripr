@@ -124,8 +124,10 @@ Unit tests in
 1. `gap3_vitest_no_lockfile_emits_package_manager_unresolved_not_runner_unresolved`
    — Control 1 (the repro): vitest devDep, no lockfile → framework=Vitest,
    runner=None → `typescript_package_manager_unresolved` emitted,
-   `typescript_runner_hint_unresolved` NOT emitted, `vitest run` command
-   available.
+   `typescript_runner_hint_unresolved` NOT emitted,
+   `npx --no-install vitest run` command available (the framework binary is
+   launched through `npx --no-install` when no package manager resolves,
+   because `node_modules/.bin` is not on `PATH`).
 
 2. `gap3_no_framework_no_lockfile_emits_strong_runner_unresolved`
    — Control 2 (strong fail-closed preserved): package.json with only
@@ -156,7 +158,7 @@ Input: `package.json` with `vitest` in devDependencies, no lockfile present.
 
 ```
 typescript_package_limitation: typescript_package_manager_unresolved
-typescript_verify_command: vitest run tests/foo.test.ts
+typescript_verify_command: npx --no-install vitest run tests/foo.test.ts
 ```
 
 `typescript_runner_hint_unresolved` must NOT appear.
@@ -178,7 +180,7 @@ Input: `package.json` with `vitest` in devDependencies, `pnpm-lock.yaml` present
 
 ```
 typescript_package_confidence: high
-typescript_verify_command: vitest run tests/foo.test.ts
+typescript_verify_command: pnpm exec vitest run tests/foo.test.ts
 ```
 
 No runner or PM limitation emitted.

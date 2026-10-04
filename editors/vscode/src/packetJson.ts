@@ -29,9 +29,169 @@ export function stringValues(value: Record<string, unknown> | undefined): string
 
 /**
  * Check if a command contains shell metacharacters that could inject.
+ *
+ * Refused anywhere: line breaks, NUL, `` ` ``, `;`, `&`, `|`, `\`, `"` and
+ * the typographic quotes PowerShell treats as quotes (U+2018..U+201F). The
+ * server's `shell_arg` emits none of them outside a single-quoted span, and
+ * with them gone a single-quoted span means the same thing in bash, zsh,
+ * fish and PowerShell: nothing inside it expands.
+ *
+ * Refused outside single-quoted spans: `$`, `(` and `)`, which open command
+ * and process substitution (`$(cmd)`, `<(cmd)`, `>(cmd)`; #4225). The server
+ * quotes all three, so a quoted gap id such as `'len(x)>0'` still passes.
+ * An unterminated span is refused.
  */
 export function hasUnsafeShellMetacharacter(command: string): boolean {
-  return /[\r\n\0`;&|\\]/.test(command);
+  if (/[\r\n\0`;&|\\"\u2018-\u201f]/.test(command)) {
+    return true;
+  }
+  const spans = command.split("'");
+  return spans.length % 2 === 0 || spans.some((span, index) => index % 2 === 0 && /[$()]/.test(span));
+}
+
+/**
+ * Test-runner verify commands the preview-language producers emit, which the
+ * editor may offer to copy: Python's pytest and unittest routes, and the
+ * TypeScript launchers that run only the package's installed binary
+ * (RIPR-SPEC-0085). `npx` without `--no-install` and `bunx` are absent on
+ * purpose: they fetch a missing package from the registry.
+ */
+export const TEST_RUNNER_VERIFY_COMMAND_PREFIXES: readonly string[] = [
+  'python -m pytest',
+  'pytest',
+  'python -m unittest',
+  ...['jest', 'vitest run', 'ava'].flatMap((bin) => [
+    `npx --no-install ${bin}`,
+    `pnpm exec ${bin}`,
+    `yarn ${bin}`,
+    `bun run ${bin}`
+  ]),
+  'bun test',
+  'node --test',
+  'npm test --',
+  'pnpm test --',
+  'yarn test'
+];
+
+/**
+ * A test-runner verify command names package-relative test paths and node ids,
+ * as the LSP's `command_payload_is_safe` requires: an option token could load
+ * a config, plugin or module beyond the one test the packet points at, and an
+ * absolute, home or parent path (`/`, `C:`, `~`, `..`) could run tests outside
+ * the producer's package-local scope.
+ */
+export function testRunnerCommandLeavesScope(normalized: string): boolean {
+  const prefix = TEST_RUNNER_VERIFY_COMMAND_PREFIXES.find((candidate) =>
+    normalized === candidate || normalized.startsWith(`${candidate} `)
+  );
+  if (prefix === undefined) {
+    return false;
+  }
+  return normalized.includes('../')
+    || normalized.includes('..\\')
+    || normalized.slice(prefix.length).split(' ').some((word) => {
+      const bare = word.replace(/^['"]/, '');
+      return /^[-/\\~]/.test(bare) || /^[A-Za-z]:/.test(bare) || bare === '..';
+    });
+}
+
+/**
+ * Quote one argument exactly as the server's `shell_arg`
+ * (`crates/ripr/src/agent/loop_commands.rs`): bare when every character is in
+ * `[A-Za-z0-9._/:-]`, otherwise single-quoted with `'` written as `'\''`.
+ */
+export function serverShellArg(value: string): string {
+  return /^[A-Za-z0-9._/:-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * Whether the tail of a `> file` redirect writes exactly `artifact`.
+ *
+ * The server renders the tail with its `shell_arg` quoting: bare when every
+ * character is in `[A-Za-z0-9._/:-]`, otherwise single-quoted. Since #3938 it
+ * anchors the target at the resolved `--root` with forward slashes, so a
+ * `--root .` command names `artifact` under the server's cwd. The legacy
+ * relative form is still accepted. Any other root, file, `..` segment or
+ * trailing token is rejected. Callers check the text before the redirect
+ * with `hasUnsafeShellMetacharacter`; this function owns the tail.
+ */
+export function redirectTargetMatches(
+  tail: string,
+  artifact: string,
+  roots: readonly string[]
+): boolean {
+  const target = redirectTailPath(tail);
+  if (target === undefined) {
+    return false;
+  }
+  if (target === artifact) {
+    return true;
+  }
+  if (!path.isAbsolute(target) || target.split('/').includes('..')) {
+    return false;
+  }
+  const expected = normalizePath(target);
+  return roots.some((root) => normalizePath(path.join(root, artifact)) === expected);
+}
+
+/**
+ * The path a redirect tail names: one bare `shell_arg` token, or one
+ * single-quoted span. The quoted span may hold a workspace path's `&`, `;` or
+ * `$`, since callers compare it with a local root (#4225). Line breaks,
+ * backslashes and typographic quotes are refused, since they end or escape
+ * the span in some shell (fish reads `\'` inside single quotes as an escape;
+ * PowerShell closes a span on U+2018..U+201B).
+ */
+function redirectTailPath(tail: string): string | undefined {
+  const quoted = /^'([^']*)'$/.exec(tail);
+  const target = quoted ? quoted[1] : /^[A-Za-z0-9._/:-]+$/.test(tail) ? tail : undefined;
+  return target === undefined || target === '' || /[\r\n\0\\\u2018-\u201f]/.test(target)
+    ? undefined
+    : target;
+}
+
+/**
+ * Whether every shell redirect in `command` writes inside the workspace
+ * (#4265). Call it only on a command `hasUnsafeShellMetacharacter` accepts:
+ * with `"` and `\` refused, single quotes alone delimit the spans a shell
+ * leaves literal, so a quoted `>` (a gap id such as `'amount>=threshold'`,
+ * or a quoted `--verify-command`) is not a redirect.
+ *
+ * Outside those spans there is no `<`, and at most one `>`, written ` > `
+ * and followed by exactly one final token: no `>>`, `2>`, second redirect or
+ * trailing argument. The target is either relative with no `..` segment and
+ * no `:` (a drive-relative `C:x` leaves the directory), or absolute under
+ * one of `roots`.
+ */
+export function redirectStaysInWorkspace(command: string, roots: readonly string[]): boolean {
+  let at = -1;
+  let quoted = false;
+  for (let index = 0; index < command.length && at < 0; index += 1) {
+    const character = command[index];
+    if (character === "'") {
+      quoted = !quoted;
+    } else if (!quoted && character === '<') {
+      return false;
+    } else if (!quoted && character === '>') {
+      at = index;
+    }
+  }
+  if (at < 0) {
+    return true;
+  }
+  // The tail must be one token, so a second `>` or `<` after it fails there.
+  if (command[at - 1] !== ' ' || command[at + 1] !== ' ') {
+    return false;
+  }
+  const target = redirectTailPath(command.slice(at + 2));
+  if (target === undefined || target.split('/').includes('..')) {
+    return false;
+  }
+  if (!path.isAbsolute(target) && !path.posix.isAbsolute(target)) {
+    return !target.includes(':');
+  }
+  const normalized = normalizePath(target);
+  return roots.some((root) => normalized.startsWith(`${normalizePath(root).replace(/\/$/, '')}/`));
 }
 
 /**

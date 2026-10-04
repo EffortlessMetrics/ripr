@@ -1110,6 +1110,7 @@ spec = "RIPR-SPEC-0018"
 evidence = [
   "docs/specs/RIPR-SPEC-0018-pr-evidence-ledger.md defines the PR evidence ledger contract",
   "ripr pr-ledger record writes advisory pr-evidence-ledger JSON and Markdown from existing PR guidance, gap decision ledger, gate decision, baseline debt delta, RIPR Zero status, recommendation calibration, agent receipt, optional coverage, and optional history inputs",
+  "ripr pr-ledger record --out-jsonl appends one compact record object; generated CI never passes that flag",
   "crates/ripr/src/output/pr_evidence_ledger.rs renders PR movement, visible waivers, suppressions, repair receipts, top repair route, coverage/grip frontier status, and history summaries without changing gate authority, routing repairable stable Rust GapRecord inputs before legacy fallback artifacts and carrying gap_id/canonical_gap_id when supplied",
   "crates/ripr/src/cli/commands.rs generated GitHub workflow runs pr-ledger record on pull requests when PR guidance exists, uploads pr-evidence-ledger JSON/Markdown with the normal artifact packet, and appends a PR movement summary while keeping gate decisions as the pass/fail authority",
   "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed pins checked JSON and Markdown output for a mixed acknowledged/suppressed/resolved/new-debt case",
@@ -1306,7 +1307,7 @@ evidence = [
   "docs/PR_INLINE_COMMENT_PUBLISHER_PROPOSAL.md records Campaign 26's proposal and non-goals",
   "fixtures/boundary_gap/expected/pr-inline-comment-publisher/ pins publishable changed-line, summary-only excluded, cap overflow, dedupe/upsert, stale-existing, fork or no-token, and missing-input publish-plan cases",
   "xtask/src/main.rs validates the PR inline comment publisher fixture corpus through check-fixture-contracts and dogfood receipts",
-  ".ripr/goals/active.toml marks Campaign 26 complete after closeout",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md marks Campaign 26 complete after closeout",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/pr-inline-comment-publisher"
@@ -1570,6 +1571,7 @@ evidence = [
   "python_test_placement_verify pins suggested pytest and unittest test placement, verify commands, and verify-command confidence for direct weak Python findings",
   "direct weak Python findings with canonical gaps, concrete missing discriminators, placement, and verify commands now carry python_repair_card output with changed owner, changed behavior, current test evidence, test shape, suggested assertion, suggested location, verify command, preview/advisory authority boundary, receipt status, stop conditions, and limits",
   "fixtures/python_parametrized_boundary_repair_gap pins pytest boundary repair-card guidance that keeps the equality case as the minimum repair while offering optional below/equal/above parameterized rows without invented expected values",
+  "fixtures/python_named_constant_boundary_repair_gap pins a module-level named-constant threshold resolving to its literal so the boundary gets a repair card; fixtures/python_rebound_constant_boundary_limit pins a constant that a global declaration can rebind staying unresolved with no repair card (#4227)",
   "field/object Python repair cards now specialize suggested assertions for returned mapping fields, response JSON fields, and response status-code fields without changing canonical gap identity",
   "fixtures/python_model_field_repair_gap pins a syntax-only returned constructor keyword field repair card that recommends result.active object-field evidence and adds a stop condition when the object does not expose the keyword as a public attribute",
   "ripr pilot projects the top Python preview repair card into pilot-summary.{json,md} and terminal first-use output for Python diff runs",
@@ -1633,6 +1635,8 @@ evidence = [
 fixtures = [
   "fixtures/python_boundary_gap",
   "fixtures/python_parametrized_boundary_repair_gap",
+  "fixtures/python_named_constant_boundary_repair_gap",
+  "fixtures/python_rebound_constant_boundary_limit",
   "fixtures/python_unittest_basic",
   "fixtures/python_method_owner",
   "fixtures/python_parametrize_basic",
@@ -1661,6 +1665,7 @@ fixtures = [
   "fixtures/python_owner_file_match",
   "fixtures/python_cross_file_import_reference",
   "fixtures/python_same_stem_test",
+  "fixtures/python_same_stem_sibling_owner_not_related",
   "fixtures/python_related_test_name_similarity",
   "fixtures/python_fixture_name_relation",
   "fixtures/python_unrelated_test_mention",
@@ -1854,7 +1859,7 @@ evidence = [
   "docs/OUTPUT_SCHEMA.md SARIF contract section",
   "docs/CI.md SARIF and Policy Contract section",
   "crates/ripr/src/output/sarif.rs renders diff-scoped Finding SARIF and repo-scoped seam SARIF",
-  "ripr init --ci github generates an advisory GitHub workflow that runs ripr pilot, uploads pilot/report/agent/review artifacts, writes a RIPR advisory summary, writes repo badge JSON and Shields artifacts, optionally renders an operator cockpit when the repo-local xtask exists, and makes SARIF rendering/upload optional through RIPR_UPLOAD_SARIF",
+  "ripr init --ci github generates an advisory GitHub workflow that runs ripr pilot, uploads pilot/report/agent/review artifacts, writes a RIPR advisory summary, writes repo badge JSON and Shields artifacts, and makes SARIF rendering/upload optional through RIPR_UPLOAD_SARIF",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture pins the generated workflow artifact packet, optional SARIF gates, non-blocking posture, and badge outputs",
   "crates/ripr/src/cli/commands.rs init CI generation tests cover advisory workflow content, report upload, optional SARIF, and overwrite guards",
   "cargo xtask dogfood validates generated-CI cockpit receipts for Start here guidance, known cockpit regeneration commands, report artifact upload, preview language grouping, advisory default posture, and gate-decision authority boundaries",
@@ -1936,6 +1941,7 @@ evidence = [
   "crates/ripr/src/output/policy_history.rs builds and renders the policy_history JSON and Markdown shape",
   "crates/ripr/src/cli/commands.rs wires ripr policy history with parser and write-path tests",
   "generated GitHub CI writes, uploads, indexes, and summarizes policy-history JSON and Markdown without appending .ripr/policy-history.jsonl automatically",
+  "ripr policy history --out-jsonl appends one compact example_append_record snapshot; generated CI never passes that flag",
   "docs/OUTPUT_SCHEMA.md documents the policy_history output contract",
   "docs/POLICY_OPERATIONS_WORKFLOW.md documents how maintainers use history before promotion and after manual policy changes",
   "docs/handoffs/2026-05-13-policy-operations-closeout.md records the closed Lane 2 policy operations audit and future-lane boundary"

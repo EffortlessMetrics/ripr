@@ -139,6 +139,25 @@ run those expensive reports itself or promote badge/gate authority.
 
 ## Required Evidence
 
+### Advisory output acquisition
+
+The report index and advisory producers sharing its file-write authority,
+including `outcome`, `calibrate cargo-mutants`, and `agent receipt`, may create
+new outputs and update existing regular files. They must not follow a planted
+destination symlink or truncate an object before the opened handle is validated
+as a regular file. Supported Linux and macOS targets must refuse FIFO outputs
+without waiting for a reader; Windows acquisition opens the reparse point rather
+than following it. Unsupported targets return an explicit output error.
+
+The review-comments run receipt stages through exclusive temporary-file
+creation. A planted staging leaf is refused without writing its target,
+removing that unowned leaf, or publishing a receipt. Existing nonregular final
+receipt destinations are refused. These acquisition rules do not change report
+schemas, advisory status, or regular-file overwrite behavior. They do not claim
+ancestor-directory confinement, hard-link isolation, multi-file transactions,
+or stronger durability/atomic replacement guarantees than the existing receipt
+publication path.
+
 The index can only summarize evidence already present in supplied directories
 and known explicit artifact paths. A useful index should provide:
 
@@ -166,6 +185,7 @@ The index should account for these artifacts when present:
 
 | Surface | Primary path | Group | Expected when |
 | --- | --- | --- | --- |
+| First PR start here | `target/ripr/reports/start-here.md` | `start_here` | a first-PR packet was generated |
 | PR review front panel | `target/ripr/reports/pr-review-front-panel.md` | `start_here` | PR summary inputs exist |
 | First useful action | `target/ripr/reports/first-useful-action.md` | `pr_review_story` | PR guidance or assistant proof exists |
 | Assistant proof | `target/ripr/reports/test-oracle-assistant-proof.md` | `repair_agent_handoff` | proof inputs exist |
@@ -192,7 +212,7 @@ authority rules stable.
 
 `group` must be one of:
 
-- `start_here`: the first artifact a reviewer should open;
+- `start_here`: the artifacts a reviewer should open first;
 - `pr_review_story`: PR guidance, first action, and review-comment surfaces;
 - `repair_agent_handoff`: assistant proof, health, agent packets, and workflow
   artifacts that route focused repair;
@@ -360,7 +380,14 @@ Field contract:
 ## Markdown Shape
 
 The Markdown sibling should fit in a generated GitHub job summary while still
-being useful as the uploaded packet front door:
+being useful as the uploaded packet front door.
+
+The `start_here` group is hoisted into the leading `Start here:` block and is
+not repeated as a group section below it, so one document carries exactly one
+`Start here:` heading. Each hoisted line uses that artifact's own label, so the
+block names what it points at. When no first-screen artifact is available there
+is nothing to hoist, and the group renders in the listing like any other so a
+missing artifact keeps its regeneration command:
 
 ```md
 # RIPR Report Packet Index
@@ -456,6 +483,12 @@ pass/fail authority.
 ## Test Mapping
 
 Follow-up tests and fixtures should cover:
+
+- actual shipped commands creating fresh reports and updating regular files;
+- planted output links for the index, outcome, calibration, and agent receipt;
+- bounded actual-command refusal of a FIFO without a reader on supported Unix;
+- production receipt staging refusing a planted temporary link while preserving
+  its outside sentinel and leaving `atomic_write_status = "not_written"`.
 
 - complete packet;
 - sparse advisory packet;

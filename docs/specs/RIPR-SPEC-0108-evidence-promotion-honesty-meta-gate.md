@@ -101,6 +101,14 @@ says it was re-blessed to."
     assertion types fail closed. Legacy fields such as
     `must_remain_non_promoted` and `expected_promoted` remain compatibility
     aliases, but the canonical corpus shape is the typed assertion list.
+    A case may also declare an optional case-level `probe_family` selector:
+    a non-empty string judged against each finding's `probe.family`, so one
+    fixture can carry both a refused-family control and a promoted-family
+    positive control without widening either claim to the whole fixture.
+    A selector that matches no finding is a violation, never a vacuous pass,
+    and a present-but-malformed `probe_family` (missing, empty, or not a
+    string) fails the gate. Assertions without the selector keep judging every
+    finding of the source artifact.
     Supported assertion types are:
     - `must_promote`
     - `must_not_promote`
@@ -430,6 +438,7 @@ gate-specific artifacts.
 | rust_macro_reach_named_limitation | rust | rust_macro_reach_limitation | macro_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_macro_reach_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-macro-aware-reach` + `must_not_claim_no_tests_found`) |
 | rust_macro_wrapped_test_call_named_limitation | rust | rust_macro_wrapped_test_call_limitation | direct_test_macro_call_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_macro_wrapped_test_call_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-macro-aware-reach` + `must_not_claim_no_tests_found`) |
 | rust_macro_wrapped_assertion_named_limitation | rust | rust_macro_wrapped_assertion_limitation | custom_assertion_macro_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_macro_wrapped_assertion_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-macro-assertion-oracle` + `must_not_claim_no_tests_found`) |
+| rust_same_method_other_type | rust | rust_adversarial_same_method_other_type | method_owner_same_name_different_impl_type_identity (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
 | perl_preview_card_advisory_no_repair_packet | perl | reports/perl-preview-advisory-no-packet.json | perl_preview_card_advisory_only (also `expected_class=weakly_exposed`, production-shaped `perl_preview_card.v1`, `must_not_report_clean`, `must_disclose_scope`, no `verify_command`/`receipt_command` delegation fields, no promotion, and no repair packet) |
 | scope_committed_diff_changed_rust_file | rust | boundary_gap | committed_diff_changed_file_scope_count (also `must_not_report_clean` + `must_disclose_scope` + `expected_changed_rust_files: 1` + no verify/receipt commands + no repair packet + `expected_class: weakly_exposed`) |
 | scope_no_scope_empty_not_clean | rust | reports/scope-no-scope-empty-not-clean.json | empty_result_no_scope_disclosure_not_clean (also `must_disclose_no_scope`) |
@@ -461,16 +470,27 @@ gate-specific artifacts.
 |---|---|---|---|---|
 | rust_semver_matches_greater_external_limitation | rust | `https://github.com/dtolnay/semver` | `2c18cc482244f4bb9cc65003b07426c18a79a190` | semver public API to internal transitive reach must disclose `rust_integration_public_api_path_unresolved` with exact limitation detail and route `analysis/rust-public-api-transitive-reach`, no verify/receipt commands, not clean or actionable |
 
-### Control cases (must_promote)
+### Control cases (including must_promote)
 
 | id | language | source artifact |
 |---|---|---|
 | rust_strong_error_oracle_control | rust | strong_error_oracle |
 | rust_unwrap_err_variant_positive_control | rust | unwrap_err_variant_positive |
+| rust_same_method_owner_type_positive_control | rust | rust_same_method_owner_type_positive (`must_promote`; the after-expression return_value finding stays `exposed`, the before-expression sibling stays below `exposed`, no repair packet or receipt command) |
+| rust_split_test_boundary_oracle_return_value_pin | rust | fixtures/split_test_boundary_oracle (`probe_family=return_value`, `must_promote`, `maximum_class=exposed`; the return_value finding reads `exposed` through the RIPR-SPEC-0197 owner-return pin on `assert_eq!(gate(100), true)`, while the same fixture's `predicate` case keeps `same_test_pairing_missing` below `exposed`) |
+| rust_owner_pin_direct / rust_owner_pin_called_closure | rust | matched RIPR-SPEC-0197 effective-test controls: exactly one return-value finding, `must_promote`, `expected_class=exposed` |
+| rust_owner_pin_uncalled_closure / rust_owner_pin_shadowed_assertion | rust | matched ineffective-test controls: exactly one finding, `must_not_promote`, `maximum_class=reachable_unrevealed`; wrong compiled library still passes |
+| rust_owner_pin_expired_closure_binding / rust_owner_pin_deferred_closure_binding / rust_owner_pin_macro_operand_return / rust_owner_pin_macro_return | rust | independent-review execution traps: exactly one finding, `must_not_promote`, `maximum_class=reachable_unrevealed` |
+| rust_owner_pin_if_false / rust_owner_pin_unpolled_async | rust | deferred/conditional execution controls: exactly one finding, `must_not_promote`, `maximum_class=reachable_unrevealed` |
+| rust_owner_pin_token_overlap | rust | token-confirmation bypass control: exactly one finding, `must_not_promote`, `expected_class=reachable_unrevealed` |
+| rust_owner_pin_token_direct / rust_owner_pin_token_called_closure | rust | token-bearing positive controls: exactly one finding, `must_promote`, `expected_class=exposed` |
+| rust_owner_pin_no_assertion | rust | removal control: exactly one finding, `expected_class=reachable_unrevealed` |
+| rust_owner_pin_unknown_singleton | rust | original-cardinality control: refusing an equality cannot manufacture an Unknown-helper match; exactly one return-value finding remains `reachable_unrevealed` |
+| rust_owner_pin_nested_test / rust_owner_pin_cfg_false_module / rust_owner_pin_cfg_false_file / rust_owner_pin_cfg_attr_module / rust_owner_pin_out_of_line_cfg | rust | non-collectable test controls: one collected runtime smoke/outer test, one return-value finding, `expected_class=reachable_unrevealed` and `must_not_promote` |
 | ts_strong_oracle_control | typescript | typescript_strong_oracle |
 | ts_ava_t_is_exact_value | typescript | ts_runner_detect_ava_devdep (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
 | ts_tape_equal_exact_value | typescript | typescript_tape_equal_oracle (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
-| ts_dynamic_expected_incomplete_packet | typescript | typescript_dynamic_assertion_unresolved (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
+| ts_dynamic_expected_incomplete_packet | typescript | typescript_dynamic_assertion_unresolved (`expected_oracle=exact_value/strong`, `expected_class=weakly_exposed`, `maximum_class=weakly_exposed` because `clamp(-5, 0, 10)` does not reach the changed `value < min` boundary under the RIPR-SPEC-0027 boundary witness, no repair packet or receipt command) |
 | ts_same_method_owner_identity_positive_control | typescript | typescript_same_method_owner_identity_positive (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
 | perl_sink_aligned_positive_control | perl | reports/perl_sink_aligned_positive_control.json (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
 | scope_clean_complete_empty_may_be_clean | rust | reports/scope-clean-complete-empty-may-be-clean.json (`expected_changed_rust_files: 0`) |
@@ -529,11 +549,20 @@ or tampered fingerprint at ingestion.
 | token substring collision | `perl_token_substring` | `weakly_exposed` (sink alignment requires exact equality) |
 | fixture/harness test reaches but does not discriminate | `perl_fixture_setup_no_discrimination` | `reachable_unrevealed` (fixture-setup relations are advisory-only) |
 
+Rust family coverage for same-method-other-impl identity (#4760):
+
+| family | corpus case | expected state |
+|---|---|---|
+| same trait method name on a different impl type | `rust_same_method_other_type` | `weakly_exposed` (name-only; trait impl may be reached unseen) |
+| true owner constructed and observed | `rust_same_method_owner_type_positive_control` | `exposed` (`direct_owner_call`) |
+
 Positive controls (same-entity relations must still fire; preview/advisory
 per support policy, no gate, badge, or RIPR Zero role):
 
 - `ts_same_method_owner_identity_positive_control` — true receiver identity
   (`new TokenValidator(...)` + exact-value assertion) keeps `exposed`.
+- `rust_same_method_owner_type_positive_control` — true receiver identity
+  (`let it = WhileSome { … }` + exact-value assertion) keeps `exposed`.
 - `perl_sink_aligned_positive_control` — direct owner call with a strong
   oracle whose observed sink exactly aligns to the changed observable keeps
   `exposed` (already-observed).

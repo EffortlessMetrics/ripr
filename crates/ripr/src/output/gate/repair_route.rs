@@ -39,6 +39,8 @@ pub(super) fn build_gate_repair_route(candidate: &GateCandidate) -> GateRepairRo
         missing_discriminator: facts.missing_discriminator.clone(),
         repair_target: facts.repair_target.clone(),
         test_intent: facts.test_intent.clone(),
+        repair_command: facts.repair_command.clone(),
+        analysis_outcome_command: facts.analysis_outcome_command.clone(),
         verify_command: facts.verify_command.clone(),
         receipt_command: facts.receipt_command.clone(),
         inspection_command: facts.inspection_command.clone(),
@@ -111,6 +113,10 @@ fn review_card_route_facts(item: &Value) -> GateRouteFacts {
         repair_target: review_card_repair_target(item),
         test_intent: string_field(item.pointer("/llm_guidance/prompt"))
             .or_else(|| string_field(item.pointer("/suggested_test/intent"))),
+        repair_command: string_field(item.pointer("/llm_guidance/repair_command")),
+        analysis_outcome_command: string_field(
+            item.pointer("/llm_guidance/analysis_outcome_command"),
+        ),
         verify_command: string_field(item.pointer("/llm_guidance/verify_command")),
         receipt_command: string_field(item.get("receipt_command")),
         inspection_command: string_field(item.pointer("/llm_guidance/command")),
@@ -147,6 +153,13 @@ fn gap_record_route_facts(record: &GapRecord) -> GateRouteFacts {
             .and_then(|route| route.assertion_shape.as_deref())
             .and_then(non_empty_str)
             .map(ToString::to_string),
+        // Gap records carry no repair start (#3906). Repo-scoped records are
+        // never gate candidates, and PR-local ones come from check findings
+        // (probe ids, not seam ids) or presentation-text items, none of which
+        // passed the seam repair-packet flip. The route under-emits and keeps
+        // its verify and inspection commands.
+        repair_command: None,
+        analysis_outcome_command: None,
         verify_command: record
             .verification_commands
             .first()
@@ -269,6 +282,8 @@ mod tests {
                     line: 42,
                 }),
                 test_intent: Some("Exercise foo::dispatch and assert Event::Ready".to_string()),
+                repair_command: None,
+                analysis_outcome_command: None,
                 verify_command: Some("cargo test -p foo dispatches_ready_event".to_string()),
                 receipt_command: Some("ripr receipt write --gap gap:shared".to_string()),
                 inspection_command: Some(
@@ -287,6 +302,7 @@ mod tests {
             configured_off: false,
             suppression_reason: None,
             summary_reason: None,
+            why_not_actionable: None,
             gap_ledger_gate_candidate: false,
             gap_ledger_gate_reason: None,
             gap_ledger_safe_gate_predicate: false,
@@ -302,6 +318,82 @@ mod tests {
             .and_then(|comments| comments.first())
             .cloned()
             .ok_or_else(|| "current comments fixture has no review card".to_string())
+    }
+
+    /// #3906: the gate carries a review card's repair start unchanged and
+    /// never derives one; a card without it projects `None`, and the route's
+    /// completeness does not depend on it.
+    #[test]
+    fn review_card_repair_start_is_carried_not_derived() -> Result<(), String> {
+        let command = "ripr agent repair --root . --seam-id seam-a --phase before";
+        let with = review_card_route_facts(&json!({
+            "seam_id": "seam-a",
+            "gap_state": "actionable",
+            "llm_guidance": {
+                "prompt": "p",
+                "command": "ripr agent brief --root . --seam-id seam-a --json",
+                "verify_command": "ripr agent verify --root . --json",
+                "repair_command": command,
+            },
+        }));
+        require_equal(with.repair_command.as_deref(), Some(command), "carried")?;
+
+        let without = review_card_route_facts(&json!({
+            "seam_id": "seam-a",
+            "gap_state": "actionable",
+            "llm_guidance": {
+                "prompt": "p",
+                "command": "ripr agent brief --root . --seam-id seam-a --json",
+                "verify_command": "ripr agent verify --root . --json",
+            },
+        }));
+        require_equal(without.repair_command, None, "not derived from seam_id")?;
+
+        let mut candidate = complete_candidate();
+        candidate.route_facts.repair_command = None;
+        require(
+            gate_repair_route_is_complete(&candidate),
+            "a missing repair start must not make the route incomplete",
+        )
+    }
+
+    #[test]
+    fn review_card_outcome_step_is_carried_without_changing_completeness() -> Result<(), String> {
+        let command = "ripr check --root . --mode draft --format json > target/ripr/workflow/analysis-outcome.json";
+        for supplied in [None, Some(command)] {
+            let mut item = json!({"llm_guidance": {}});
+            if let Some(command) = supplied {
+                item["llm_guidance"]["analysis_outcome_command"] = json!(command);
+            }
+            let facts = review_card_route_facts(&item);
+            require_equal(
+                facts.analysis_outcome_command.as_deref(),
+                supplied,
+                "carried outcome",
+            )?;
+            let mut candidate = complete_candidate();
+            candidate.route_facts.analysis_outcome_command = facts.analysis_outcome_command;
+            require(
+                gate_repair_route_is_complete(&candidate),
+                "optional outcome must not change completeness",
+            )?;
+            let route = build_gate_repair_route(&candidate);
+            let value = super::super::presentation::repair_route_json(&route);
+            match supplied {
+                Some(command) => require_equal(
+                    value
+                        .get("analysis_outcome_command")
+                        .and_then(Value::as_str),
+                    Some(command),
+                    "rendered outcome",
+                )?,
+                None => require(
+                    value.get("analysis_outcome_command").is_none(),
+                    "older route must omit outcome",
+                )?,
+            }
+        }
+        Ok(())
     }
 
     #[test]
@@ -560,6 +652,59 @@ mod tests {
                 .iter()
                 .any(|field| field == "receipt_command"),
             "blank receipt command must be named missing",
+        )
+    }
+
+    /// #4307 (written non-claim fork): a gap record carrying the canonical
+    /// evidence-record pair must keep that pair verbatim through the gate
+    /// gap-record route — the advisory Direct pilot-snapshot verify and the
+    /// receipt that reads the workflow loop's verify artifact. The route must
+    /// not gain a redirect: record-backed packets are verify-execute's
+    /// producer-owned input, and its authority executes Direct leaf verify
+    /// routes only.
+    #[test]
+    fn gap_record_carry_keeps_the_direct_verify_and_the_receipt_input() -> Result<(), String> {
+        let verify = "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json";
+        let receipt = crate::agent::loop_commands::agent_receipt_command(
+            ".",
+            crate::agent::loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
+            "seam-pricing-threshold",
+            Some(crate::agent::loop_commands::WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+        );
+        let record = GapRecord {
+            verification_commands: vec![verify.to_string()],
+            receipt_command: Some(receipt),
+            ..GapRecord::default()
+        };
+        let candidate = crate::output::gate::candidate_from_gap_record(&record);
+        let route = build_gate_repair_route(&candidate);
+        let rendered = crate::output::gate::presentation::repair_route_json(&route);
+
+        let carried_verify = rendered
+            .get("verify_command")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "gap-record route must carry the record verify command".to_string())?;
+        let carried_receipt = rendered
+            .get("receipt_command")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "gap-record route must carry the record receipt command".to_string())?;
+
+        require(
+            carried_verify == verify,
+            "gate gap-record route must carry the record verify display verbatim",
+        )?;
+        require(
+            !carried_verify.contains('>'),
+            "the carried verify display must stay Direct (no redirect): {carried_verify}",
+        )?;
+        let verify_json_at = carried_receipt
+            .split("--verify-json ")
+            .nth(1)
+            .and_then(|rest| rest.split(' ').next())
+            .ok_or_else(|| "carried receipt must name its verify-json input".to_string())?;
+        require(
+            verify_json_at == crate::agent::loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
+            "carried receipt must read the workflow verify artifact",
         )
     }
 

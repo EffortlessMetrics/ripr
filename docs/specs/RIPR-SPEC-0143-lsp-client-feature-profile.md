@@ -80,6 +80,11 @@ profile fields.
 - workspace-folder support;
 - `workspace.codeLens.refreshSupport` (RIPR-SPEC-0138);
 - `workspace/didChangeWatchedFiles` dynamic registration (required for automatic `ripr.toml`/`Cargo.toml` reload; clients without it must use `ripr: Refresh Full Analysis` after config edits — #2629);
+- `workspace/didChangeWatchedFiles` `relativePatternSupport` (#4896): the
+  root gap ledger and root `.git/HEAD` watchers register as a
+  `RelativePattern` anchored at the effective root when supported, otherwise
+  as absolute string globs (skipped when the root path contains glob
+  metacharacters), and are re-registered on every root transition;
 - the session-configuration transport (RIPR-SPEC-0136).
 
 ### Captured RIPR experimental blocks
@@ -249,6 +254,19 @@ and never the raw capability document or the client name.
 - `crates/ripr/src/lsp/tests.rs::initialize_surfaces_poisoned_client_features_store_as_a_session_failure`
   — a poisoned profile store surfaces a `session_state_inconsistent`
   blocking failure instead of a silently torn session.
+- `crates/ripr/src/lsp/client_features.rs::tests::watched_files_relative_pattern_support_is_parsed_and_fails_closed`
+  — `relativePatternSupport` is captured only when advertised.
+- `crates/ripr/src/lsp/backend.rs::workspace_input_tests::dynamic_watchers_anchor_diagnostics_inputs_at_the_root`
+  — diagnostics-input watchers are root-anchored `RelativePattern`s or
+  absolute string globs, never bare relative strings.
+- `crates/ripr/src/lsp/backend.rs::workspace_input_tests::dynamic_watchers_skip_absolute_diagnostics_globs_for_metacharacter_roots`
+  — a root with glob metacharacters registers no string glob.
+- `crates/ripr/src/lsp/tests.rs::watched_diagnostics_inputs_register_root_anchored_and_refresh_over_the_wire`
+  — the separate diagnostics-input registration is root-anchored and its
+  events refresh diagnostics over the wire.
+- `crates/ripr/src/lsp/tests.rs::workspace_folder_transitions_root_switch_reanchors_diagnostics_input_watchers`
+  — a root switch unregisters the old-root watchers and registers the new
+  root.
 - `editors/vscode/test/suite/extension.test.ts::initialize advertises the RIPR experimental capability block`
   — the extension advertises the riprEditor block.
 

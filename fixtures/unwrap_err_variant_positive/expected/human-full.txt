@@ -2,12 +2,13 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/unwrap_err_variant_positive/input
 
-Summary: 2 probe(s), 2 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 2 probe(s), 2 exposed, 0 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 2 of 2 finding(s) unsuppressed
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
 
-WARNING fixtures/unwrap_err_variant_positive/input/src/lib.rs:8
+INFO fixtures/unwrap_err_variant_positive/input/src/lib.rs:8
+  id: probe:src_lib.rs:error_path:6b37a3bc
 
 Changed
   before: return Err(CalcError::TooLarge);
@@ -19,7 +20,7 @@ Probe
   owner:  src/lib.rs::compute
 
 Static exposure
-  exposed (warning, confidence 1.00)
+  exposed (info, confidence 1.00)
 
 Evidence
   - reach yes: Related tests appear to reach compute: negative_input_rejects_with_negative_error
@@ -29,10 +30,14 @@ Evidence
   - discriminator yes: Strong oracle found: exact error variant assertion
   - local flow reaches error variant: Result::Err(CalcError::Negative) (line 8)
   - related test tests/errors.rs:4 negative_input_rejects_with_negative_error uses strong exact error variant oracle: assert_eq!(err, CalcError::Negative);
-  - observed function argument value x = -1 at line 5
-  - observed enum variant value CalcError::Negative at line 6
+  - source function argument value x = -1 at line 5
+  - source enum variant value CalcError::Negative at line 6
+Drill in:
+  ripr explain --root fixtures/unwrap_err_variant_positive/input --diff fixtures/unwrap_err_variant_positive/diff.patch --mode fast probe:src_lib.rs:error_path:6b37a3bc
+  ripr context --root fixtures/unwrap_err_variant_positive/input --diff fixtures/unwrap_err_variant_positive/diff.patch --mode fast --at probe:src_lib.rs:error_path:6b37a3bc
 
-WARNING fixtures/unwrap_err_variant_positive/input/src/lib.rs:8
+INFO fixtures/unwrap_err_variant_positive/input/src/lib.rs:8
+  id: probe:src_lib.rs:return_value:832c68b7
 
 Changed
   before: return Err(CalcError::TooLarge);
@@ -44,7 +49,7 @@ Probe
   owner:  src/lib.rs::compute
 
 Static exposure
-  exposed (warning, confidence 1.00)
+  exposed (info, confidence 1.00)
 
 Evidence
   - reach yes: Related tests appear to reach compute: negative_input_rejects_with_negative_error
@@ -54,5 +59,8 @@ Evidence
   - discriminator yes: Strong oracle found: exact error variant assertion
   - local flow reaches error variant: Result::Err(CalcError::Negative) (line 8)
   - related test tests/errors.rs:4 negative_input_rejects_with_negative_error uses strong exact error variant oracle: assert_eq!(err, CalcError::Negative);
-  - observed function argument value x = -1 at line 5
-  - observed enum variant value CalcError::Negative at line 6
+  - source function argument value x = -1 at line 5
+  - source enum variant value CalcError::Negative at line 6
+Drill in:
+  ripr explain --root fixtures/unwrap_err_variant_positive/input --diff fixtures/unwrap_err_variant_positive/diff.patch --mode fast probe:src_lib.rs:return_value:832c68b7
+  ripr context --root fixtures/unwrap_err_variant_positive/input --diff fixtures/unwrap_err_variant_positive/diff.patch --mode fast --at probe:src_lib.rs:return_value:832c68b7

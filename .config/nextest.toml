@@ -1,3 +1,8 @@
+# Keep report storage workspace-relative, independent of scratch Cargo outputs.
+# rust-gates.yml retains only this profile's current XML and run identity.
+[store]
+dir = "target/nextest"
+
 [profile.ci]
 retries = 0
 failure-output = "immediate-final"

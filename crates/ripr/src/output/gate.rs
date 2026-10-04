@@ -6,6 +6,7 @@ mod presentation;
 mod repair_route;
 
 use super::gap_decision_ledger::{self, GapRecord};
+use super::review_comments::SUMMARY_REASON_NO_SAFE_PLACEMENT;
 use crate::domain::DeltaAttribution;
 use causal::CausalDeltaAuthority;
 #[cfg(test)]
@@ -398,6 +399,9 @@ fn candidate_from_guidance_item(
         .or_else(|| item.get("suppression_reason").and_then(Value::as_str))
         .map(ToOwned::to_owned);
     let summary_reason = string_field(item.get("summary_reason"));
+    let why_not_actionable = (route_facts.gap_state.as_deref() == Some("static_limitation"))
+        .then(|| string_field(item.get("why_not_actionable")))
+        .flatten();
     GateCandidate {
         source: source.to_string(),
         source_id,
@@ -431,6 +435,7 @@ fn candidate_from_guidance_item(
         configured_off: suppression_reason.as_deref() == Some("severity_off"),
         suppression_reason,
         summary_reason,
+        why_not_actionable,
         gap_ledger_gate_candidate: false,
         gap_ledger_gate_reason: None,
         gap_ledger_safe_gate_predicate: false,
@@ -496,9 +501,12 @@ fn candidate_from_gap_record(record: &GapRecord) -> GateCandidate {
                 .safe_gate_predicate
                 .as_ref()
                 .is_some_and(|predicate| predicate.suppressed),
-        configured_off: record.policy_state == "not_policy_targeted",
+        // `not_policy_targeted` also describes already-observed/no-action
+        // records. The ledger has no explicit configured-off fact to carry.
+        configured_off: false,
         suppression_reason: (record.policy_state == "suppressed").then(|| "suppressed".to_string()),
         summary_reason: None,
+        why_not_actionable: None,
         gap_ledger_gate_candidate: gate_candidate,
         gap_ledger_gate_reason: gate_reason,
         gap_ledger_safe_gate_predicate: gap_decision_ledger::safe_gate_predicate_satisfied(record),
@@ -589,6 +597,7 @@ fn gate_decision(
         &policy.acknowledgement_labels,
     );
     let repair_route = build_gate_repair_route(candidate);
+    let changed_line_anchored = !candidate_lacks_changed_line_placement(candidate);
     GateDecision {
         id: format!("ripr-gate-{}", stable_identity(candidate)),
         source: if candidate.source == "summary_only" {
@@ -629,6 +638,7 @@ fn gate_decision(
             mutation_calibration,
         },
         repair_route,
+        changed_line_anchored,
         is_baseline_new,
         baseline_match_kind,
         delta_attribution: causal_attribution,
@@ -689,6 +699,15 @@ fn candidate_is_policy_eligible_without_route(candidate: &GateCandidate) -> bool
         && candidate.placement.path.is_some()
         && candidate.placement.line.is_some()
         && !placement_excluded
+}
+
+/// A PR-guidance summary item the review producer demoted because it found
+/// no safe changed-line placement (RIPR-SPEC-0012). The seam is not anchored
+/// to this PR's changed lines, so it stays advisory and is never presented
+/// as changed code.
+fn candidate_lacks_changed_line_placement(candidate: &GateCandidate) -> bool {
+    candidate.source == "summary_only"
+        && candidate.summary_reason.as_deref() == Some(SUMMARY_REASON_NO_SAFE_PLACEMENT)
 }
 
 fn candidate_class_is_policy_eligible(class: Option<&str>) -> bool {
@@ -851,6 +870,11 @@ fn gate_reason(
             );
         }
         if candidate.source == "gap_decision_ledger" {
+            // A closed gap needs no action whatever eligibility its projection claims.
+            if candidate.gap_state.as_deref() == Some("already_observed") {
+                return "gap decision ledger record is already observed; no action required"
+                    .to_string();
+            }
             if !candidate.gap_ledger_gate_candidate {
                 return format!(
                     "gap decision ledger record is not gate-candidate eligible: {}",
@@ -873,8 +897,20 @@ fn gate_reason(
                     .to_string();
             }
         }
+        if candidate_lacks_changed_line_placement(candidate) {
+            return "seam is outside this PR's changed lines, so the summary-only recommendation remains visible and advisory".to_string();
+        }
         if candidate.source == "summary_only" {
             return "summary-only recommendation remains visible and advisory".to_string();
+        }
+        // The producer already declared this card non-actionable and named
+        // why (for example, no existing test reaches the changed owner).
+        // That per-card reason outranks the PR-wide nearby-test flag, which
+        // would otherwise claim a focused test changed near an owner no test
+        // reaches (#4216 row 2). Eligibility is unchanged; only the stated
+        // reason follows the producer.
+        if let Some(why) = candidate.why_not_actionable.as_deref() {
+            return format!("static limitation keeps this candidate advisory: {why}");
         }
         if candidate.nearby_test_changed {
             return "nearby focused test changed in this PR, so the candidate stays advisory"
@@ -1092,12 +1128,25 @@ fn canonical_gap_id_from_value(value: &Value) -> Option<String> {
         .or_else(|| string_field(value.pointer("/evidence_record/canonical_gap_id")))
 }
 
+/// Statuses `ripr review-comments` writes (or its schema admits) at the
+/// top level of a guidance document. `advisory` is the healthy producer run;
+/// `incomplete` / `error` / `timeout` are recognized failure states that
+/// [`pr_guidance_producer_error`] then fails closed on with a specific
+/// message. Any other value means the document did not come from the
+/// review-comments producer.
+const PR_GUIDANCE_KNOWN_STATUSES: [&str; 4] = ["advisory", "incomplete", "error", "timeout"];
+
 /// Returns `Some(defect_description)` if `value` is not a recognized
 /// `ripr review-comments` guidance document, or `None` if it is valid.
 ///
 /// A valid guidance document must have:
 /// - `schema_version`: a non-empty string (the ripr schema marker)
+/// - `tool`: exactly `"ripr"` (the producer marker)
+/// - `status`: one of [`PR_GUIDANCE_KNOWN_STATUSES`]
 /// - `comments`: a JSON array (the primary findings list consumed by the gate)
+///
+/// `analysis_outcome` is deliberately not required: the gap-ledger
+/// review-comments path emits none.
 ///
 /// A valid document with an empty `comments` array is accepted — that is a
 /// legitimate "zero findings" result and must still produce `status=advisory`.
@@ -1107,15 +1156,42 @@ fn pr_guidance_document_defect(value: &Value) -> Option<String> {
         .and_then(Value::as_str)
         .is_some_and(|s| !s.is_empty());
     let has_comments_array = value.get("comments").is_some_and(|v| v.is_array());
-    match (has_schema_version, has_comments_array) {
-        (false, false) => {
-            Some("missing required fields `schema_version` and `comments`".to_string())
+    let mut missing = Vec::new();
+    if !has_schema_version {
+        missing.push("`schema_version`");
+    }
+    if !has_comments_array {
+        missing.push("`comments` (expected a JSON array)");
+    }
+    if !missing.is_empty() {
+        let noun = if missing.len() == 1 {
+            "field"
+        } else {
+            "fields"
+        };
+        return Some(format!("missing required {noun} {}", missing.join(" and ")));
+    }
+    match value.get("tool") {
+        Some(Value::String(tool)) if tool == "ripr" => {}
+        Some(other) => {
+            return Some(format!(
+                "field `tool` is {other}, expected \"ripr\" (not a ripr review-comments document)"
+            ));
         }
-        (false, true) => Some("missing required field `schema_version`".to_string()),
-        (true, false) => {
-            Some("missing required field `comments` (expected a JSON array)".to_string())
+        None => return Some("missing required field `tool` (expected \"ripr\")".to_string()),
+    }
+    match value.get("status") {
+        Some(Value::String(status)) if PR_GUIDANCE_KNOWN_STATUSES.contains(&status.as_str()) => {
+            None
         }
-        (true, true) => None,
+        Some(other) => Some(format!(
+            "field `status` is {other}, expected one of {}",
+            PR_GUIDANCE_KNOWN_STATUSES.join(", ")
+        )),
+        None => Some(format!(
+            "missing required field `status` (expected one of {})",
+            PR_GUIDANCE_KNOWN_STATUSES.join(", ")
+        )),
     }
 }
 

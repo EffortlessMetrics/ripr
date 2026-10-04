@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 309c065..d547c12 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -192,7 +192,7 @@ where
+ {
+     let sim = generic_jaro(a, b);
+ 
+-    if sim > 0.7 {
++    if 0.7 < sim {
+         let prefix_length = a
+             .into_iter()
+             .take(4)

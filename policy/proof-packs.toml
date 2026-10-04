@@ -112,3 +112,12 @@ ci_lane = "release-readiness-proof"
 proves = "Release-bearing surfaces always pay the full release proof: workspace tests, clippy, check-pr, package contents, publish dry-run, and release-readiness (release-notes and known-limits docs)."
 does_not_prove = "It does not demonstrate marketplace publish success, which stays a release-workflow concern."
 never_routed = true
+
+[[pack]]
+id = "identity-registry"
+paths = ["crates/ripr/src/domain/identity/**", "docs/identity/**", "xtask/src/identity_registry.rs"]
+required_commands = ["cargo xtask check-identity-registry", "cargo test -p ripr", "cargo test -p xtask"]
+advisory_commands = []
+ci_lane = "routed-rust-small"
+proves = "The governed identity catalog stays internally consistent, generated Markdown/JSON match the catalog, and unknown identity-shaped fields on scanned surfaces fail closed."
+does_not_prove = "It does not demonstrate that consumers have migrated onto typed wrappers, or that any identity-bearing operation is correct."

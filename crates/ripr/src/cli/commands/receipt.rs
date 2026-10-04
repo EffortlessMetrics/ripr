@@ -5,8 +5,8 @@
 //! and calling into the app layer.
 
 use crate::app::receipt::{
-    ReceiptCheckOptions, ReceiptWriteOptions, check_receipt, receipt_out_path,
-    validate_current_head, write_receipt,
+    RECEIPT_SCHEMA_VERSION, ReceiptCheckOptions, ReceiptCrossRefResult, ReceiptWriteOptions,
+    check_receipt, receipt_out_path, validate_current_head, write_receipt,
 };
 use crate::cli::parse::expect_value;
 use crate::cli::suggest::unknown_argument;
@@ -75,7 +75,14 @@ fn run_receipt_check(args: &[String]) -> Result<(), String> {
 
     let opts = parse_receipt_check_options(args)?;
     let (msg, cross_ref) = check_receipt(&opts)?;
-    println!("{msg}");
+    if opts.json {
+        // Machine-readable mode: one JSON document carrying the typed
+        // cross-reference verdict. The human sentence stays the default.
+        let rendered = render_receipt_check_json(&msg, &cross_ref)?;
+        print!("{rendered}");
+    } else {
+        println!("{msg}");
+    }
 
     // Non-zero exit when the cross-reference reveals a real problem
     // (orphan_receipt or receipt_gap_mismatch).
@@ -86,6 +93,24 @@ fn run_receipt_check(args: &[String]) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// Render the `ripr receipt check --json` document: the typed cross-reference
+/// verdict serialized with the same vocabulary the app layer uses
+/// (`ReceiptCrossRefResult::as_str`).
+fn render_receipt_check_json(
+    msg: &str,
+    cross_ref: &ReceiptCrossRefResult,
+) -> Result<String, String> {
+    let value = serde_json::json!({
+        "schema_version": RECEIPT_SCHEMA_VERSION,
+        "ok": !cross_ref.is_error(),
+        "cross_reference": {
+            "kind": cross_ref.as_str(),
+            "detail": msg,
+        }
+    });
+    output::json::render_pretty_with_newline(&value, "receipt check")
 }
 
 // ── option parsers ────────────────────────────────────────────────────────────
@@ -185,6 +210,7 @@ pub(in crate::cli) fn parse_receipt_check_options(
     let mut gap: Option<String> = None;
     let mut path: Option<PathBuf> = None;
     let mut ledger: Option<PathBuf> = None;
+    let mut json = false;
 
     let mut i = 0usize;
     while i < args.len() {
@@ -227,12 +253,18 @@ pub(in crate::cli) fn parse_receipt_check_options(
                 }
                 path = Some(PathBuf::from(other));
             }
+            "--json" => json = true,
             other => return Err(unknown_argument("receipt check", other)),
         }
         i += 1;
     }
 
-    Ok(ReceiptCheckOptions { gap, path, ledger })
+    Ok(ReceiptCheckOptions {
+        gap,
+        path,
+        ledger,
+        json,
+    })
 }
 
 // ── help text ─────────────────────────────────────────────────────────────────
@@ -307,7 +339,7 @@ The legacy alias `ripr agent receipt` continues to work during the transition.
 pub(in crate::cli) const RECEIPT_CHECK_HELP: &str = r#"Validate a receipt JSON file against structure and optionally the live gap set.
 
 Usage: ripr receipt check [--path <receipt_path>] [--gap <canonical_gap_id>]
-                          [--ledger <gap-decision-ledger.json>]
+                          [--ledger <gap-decision-ledger.json>] [--json]
        ripr receipt check <receipt_path>
 
 Options:
@@ -317,6 +349,8 @@ Options:
                     filename-unsafe characters (`:`, etc.) percent-encoded. The
                     complete relative default path is capped at 260 bytes;
                     long IDs use the same bounded prefix and digest.
+                    With --path, the receipt's canonical_gap_id must equal
+                    ID; a receipt for another gap exits non-zero.
   --ledger PATH     Path to a gap-decision-ledger JSON file.  When provided,
                     cross-references the receipt's canonical_gap_id against the
                     live gap set and classifies the result as:
@@ -325,13 +359,29 @@ Options:
                       receipt_gap_mismatch — gap moved/changed identity (exits non-zero).
                     When omitted, cross-reference result is not_available.
                     IMPORTANT: absence of --ledger is NOT interpreted as "receipt ok".
+                    A named ledger that cannot be read or parsed exits non-zero.
+  --json            Emit one machine-readable JSON document instead of the
+                    human sentence:
+                      {"schema_version": "0.1", "ok": <bool>,
+                       "cross_reference": {"kind": <receipt_ok|orphan_receipt|
+                       receipt_gap_mismatch|not_available>, "detail": <message>}}
+                    `ok` is true whenever no error verdict was reached; it is
+                    also true when no cross-reference was performed at all
+                    (kind not_available).  Consumers that require a performed
+                    cross-reference must assert kind != "not_available" —
+                    `ok` alone does not prove a check ran.
+                    Exit codes are unchanged: non-zero still means a structural
+                    error, an unreadable --ledger, a --gap mismatch, or an
+                    orphan_receipt / receipt_gap_mismatch verdict.
 
 When --gap is provided without --path, the path is resolved from the canonical
 location.
 
 Exits 0 when structural validation passes and the cross-reference (if run) is
-receipt_ok or not_available.  Exits non-zero on structural errors or when the
-cross-reference reveals orphan_receipt or receipt_gap_mismatch.
+receipt_ok or not_available (no --ledger given).  Exits non-zero on structural
+errors, when a named --ledger cannot be read or parsed, when --gap names a
+different gap than the receipt, or when the cross-reference reveals
+orphan_receipt or receipt_gap_mismatch.
 "#;
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -651,6 +701,82 @@ mod tests {
         }
     }
 
+    #[test]
+    fn receipt_check_parse_json_flag_defaults_false() -> Result<(), String> {
+        let without = parse_receipt_check_options(&args(&[]))?;
+        assert!(!without.json);
+        let with = parse_receipt_check_options(&args(&[
+            "--path",
+            "target/ripr/receipts/r.json",
+            "--json",
+        ]))?;
+        assert!(with.json);
+        assert_eq!(
+            with.path,
+            Some(PathBuf::from("target/ripr/receipts/r.json"))
+        );
+        Ok(())
+    }
+
+    // ── check --json rendering ────────────────────────────────────────────────
+
+    #[test]
+    fn receipt_check_json_ok_shape() -> Result<(), String> {
+        let msg = "receipt at target/ripr/receipts/r.json is structurally valid; cross_reference: receipt_ok";
+        let rendered = render_receipt_check_json(msg, &ReceiptCrossRefResult::ReceiptOk)?;
+        let value: serde_json::Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("receipt check JSON must parse: {err}"))?;
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["ok"], true);
+        assert_eq!(value["cross_reference"]["kind"], "receipt_ok");
+        assert_eq!(value["cross_reference"]["detail"], msg);
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_check_json_not_available_is_not_an_error() -> Result<(), String> {
+        let rendered = render_receipt_check_json(
+            "receipt at r.json is structurally valid; cross_reference: not_available",
+            &ReceiptCrossRefResult::NotAvailable,
+        )?;
+        let value: serde_json::Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("receipt check JSON must parse: {err}"))?;
+        // No cross-reference was performed, so there is no error verdict and
+        // the document reports ok=true — while still naming the
+        // not_available kind. Consumers requiring a performed check must
+        // assert on kind, not ok alone.
+        assert_eq!(value["ok"], true);
+        assert_eq!(value["cross_reference"]["kind"], "not_available");
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_check_json_error_shapes() -> Result<(), String> {
+        for (cross_ref, kind) in [
+            (ReceiptCrossRefResult::OrphanReceipt, "orphan_receipt"),
+            (
+                ReceiptCrossRefResult::ReceiptGapMismatch,
+                "receipt_gap_mismatch",
+            ),
+        ] {
+            let rendered = render_receipt_check_json(
+                &format!("receipt at r.json is structurally valid; cross_reference: {kind}"),
+                &cross_ref,
+            )?;
+            let value: serde_json::Value = serde_json::from_str(&rendered)
+                .map_err(|err| format!("receipt check JSON must parse: {err}"))?;
+            assert_eq!(value["ok"], false, "{kind} must render ok=false");
+            assert_eq!(value["cross_reference"]["kind"], kind);
+            assert!(
+                value["cross_reference"]["detail"]
+                    .as_str()
+                    .is_some_and(|detail| detail.contains(kind)),
+                "{kind} detail must name the typed state"
+            );
+        }
+        Ok(())
+    }
+
     // ── dispatch ──────────────────────────────────────────────────────────────
 
     #[test]
@@ -693,6 +819,7 @@ mod tests {
         assert!(RECEIPT_CHECK_HELP.contains("--path"));
         assert!(RECEIPT_CHECK_HELP.contains("--gap"));
         assert!(RECEIPT_CHECK_HELP.contains("--ledger"));
+        assert!(RECEIPT_CHECK_HELP.contains("--json"));
         // Confirm orphan outcome is documented
         assert!(RECEIPT_CHECK_HELP.contains("orphan_receipt"));
         // Confirm the fail-closed sentinel is documented

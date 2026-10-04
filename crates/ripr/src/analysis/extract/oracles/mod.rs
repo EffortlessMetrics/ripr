@@ -3,7 +3,7 @@ mod classify;
 mod patterns;
 mod scan;
 
-pub(crate) use arguments::equality_assertion_arguments;
+pub(crate) use arguments::{assertion_oracle_text, equality_assertion_arguments};
 pub(crate) use classify::classify_assertion;
 #[cfg(test)]
 pub(crate) use patterns::contains_macro_invocation;
@@ -47,6 +47,54 @@ mod tests {
             OracleKind::BroadError,
             OracleStrength::Weak,
         );
+    }
+
+    #[test]
+    fn diagnostic_operands_cannot_create_typed_error_oracles() {
+        for text in [
+            r#"assert_eq!(rdr.len(), 10, "Err(ReadError::Closed)");"#,
+            r#"assert_eq!(rdr.len(), 10, "{}", unrelated.is_err());"#,
+            r#"assert_eq!(rdr.len(), 10, "{:?}", matches!(unrelated, Err(ReadError::Closed)));"#,
+        ] {
+            assert_classification(text, OracleKind::ExactValue, OracleStrength::Strong);
+        }
+        let variables = std::collections::BTreeSet::from(["failure".to_string()]);
+        assert!(!is_unwrap_err_bound_error_assertion(
+            r#"assert_eq!(rdr.len(), 10, "failure ReadError::Closed");"#,
+            &variables,
+        ));
+        assert!(is_unwrap_err_bound_error_assertion(
+            r#"assert_eq!(failure, ReadError::Closed, "context");"#,
+            &variables,
+        ));
+    }
+
+    #[test]
+    fn projected_line_comments_preserve_error_payload_and_duplicate_operands() -> Result<(), String>
+    {
+        use crate::analysis::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter};
+        let source = r#"
+#[test]
+fn pins_error_payload() {
+    let failure = read_all(rdr).unwrap_err();
+    assert_eq!(failure, "closed" // explanation
+    );
+}
+"#;
+        let facts =
+            RaRustSyntaxAdapter.summarize_file(std::path::Path::new("src/lib.rs"), source)?;
+        assert_eq!(facts.tests.len(), 1);
+        assert_eq!(facts.tests[0].assertions.len(), 1);
+        assert_eq!(
+            facts.tests[0].assertions[0].kind,
+            OracleKind::ExactErrorVariant
+        );
+        assert_classification(
+            "assert_eq!(rdr_error // same\n, rdr_error // same\n, \"message\")",
+            OracleKind::RelationalCheck,
+            OracleStrength::Weak,
+        );
+        Ok(())
     }
 
     #[test]
@@ -231,3 +279,6 @@ expect_metric_recorded(counter);
         assert_eq!(oracles[0].strength, OracleStrength::Medium);
     }
 }
+
+#[cfg(test)]
+mod relational_tests;

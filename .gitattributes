@@ -22,3 +22,37 @@
 *.patch -whitespace
 *.diff  -whitespace
 *.md    -whitespace
+# A unified diff encodes an empty context line as one space.
+# That byte is patch syntax, not source trailing whitespace.
+fixtures/*/diff.patch whitespace=-blank-at-eol
+
+# Judged-panel diffs are byte-exact frozen captures bound by recorded digests.
+# Trailing whitespace in them is source content and must not be rewritten.
+metrics/rust-judged-behavior-panel/diffs/*.diff -whitespace
+
+# SPEC-0035 retains the upstream matcher, native output, and patches verbatim.
+# Their recorded digests include original line endings and intentional blanks.
+fixtures/evidence-quality-benchmark/regex-word-boundary-empty/basis/matcher-original.rs.txt -text -whitespace
+fixtures/evidence-quality-benchmark/regex-word-boundary-empty/outputs/*.stdout -text -whitespace
+fixtures/evidence-quality-benchmark/regex-word-boundary-empty/patches/*.patch -text whitespace=-blank-at-eol
+
+# Exact Git commit object used only by the custody boundary fixture. Its signed
+# header contains significant space-only continuation lines; never normalize it.
+xtask/src/reports/release/candidate_harness/live_head/fixtures/last-integrated.commit -text -whitespace
+
+# Labeled verdict corpus (RIPR-SPEC-0219): case diffs carry patch-syntax
+# context spaces, and retained subjects are byte-identical upstream files
+# pinned by sha256, so whitespace rules cannot rewrite either.
+fixtures/rust-verdict-corpus/cases/*.diff whitespace=-blank-at-eol,-blank-at-eof
+fixtures/rust-verdict-corpus/subjects/** -whitespace
+
+# Append-only logs: entries are self-contained blocks added at the head of
+# their section, so concurrent additions union cleanly (evidence: 5 PRs in
+# 2026-09-29..10-01 hand-resolved the identical keep-both union). Rewrites
+# (release cuts, stale sweeps) are deliberate consolidation events. Union
+# never emits conflict markers: if two sides carry divergent wordings of the
+# same entry, BOTH survive — clean up in review or the periodic sweep.
+# `/CHANGELOG.md` is root-anchored so nested fixture and editor CHANGELOG.md
+# files keep the default merge driver.
+/CHANGELOG.md merge=union
+docs/LEARNINGS.md merge=union

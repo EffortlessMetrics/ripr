@@ -313,7 +313,12 @@ analyzed root's `ripr.toml` presence), the input digests (packet, before
 snapshot), the declared edit surface (allowed and forbidden paths), the
 authorization, and the standing non-claims. The record carries no timestamps:
 equivalent preparation is byte-identical, and the manifest location is the
-declared telemetry.
+declared telemetry. Equivalence requires identical accepted packet and before
+snapshot bytes, configuration, analyzer, selection, and authorization inputs.
+Two fresh durable attempts have different exact continuations in their sealed
+packets and therefore different packet input digests, even for the same selected
+row. Each binding pins its own final packet bytes; attempt identity is never
+removed from the packet digest as telemetry.
 
 ### Apply phase (recording the applied edit)
 

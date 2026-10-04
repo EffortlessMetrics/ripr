@@ -10,24 +10,34 @@ pub(crate) mod badge;
 pub(crate) mod baseline;
 pub(crate) mod baseline_delta;
 pub(crate) mod baseline_update;
+pub(crate) mod ci_summary;
 pub(crate) mod coverage_grip_frontier;
 pub(crate) mod diff_report;
+pub(crate) mod discriminator_line;
 pub(crate) mod doctor;
+pub(crate) mod doctor_binary;
 pub(crate) mod evidence_health;
 pub(crate) mod evidence_record;
+pub(crate) mod executed_control;
+pub(crate) mod feedback;
+pub(crate) mod file_write;
 pub(crate) mod first_pr;
 pub(crate) mod first_useful_action;
 pub(crate) mod format;
 pub(crate) mod gap_decision_ledger;
 pub(crate) mod gap_decision_ledger_live;
+pub(crate) mod gap_source_subject;
+pub(crate) mod gap_vocabulary;
 pub(crate) mod gate;
 pub mod github;
 pub mod human;
+pub(crate) mod intervention_study;
 pub mod json;
 pub(crate) mod limited_check;
 pub(crate) mod markdown;
 pub(crate) mod mutation_calibration;
 pub(crate) mod next_step;
+pub(crate) mod observed_values;
 pub(crate) mod outcome;
 pub(crate) mod path;
 pub(crate) mod perl_gap_record_projection;
@@ -65,12 +75,46 @@ pub(crate) mod typescript_packet_projection;
 pub(crate) mod typescript_preview_card;
 pub(crate) mod value_path;
 pub(crate) mod waiver_aging;
+pub(crate) mod workflow_escape;
 
 // #2973 owns a source-level compatibility inventory, not a binary discovery
 // surface or a migration of every emitter's version authority. This reference
 // keeps the catalog compile-checked outside #[cfg(test)] while live producers
 // continue to own serialization. Optimized binary retention is not claimed.
 const _: usize = schemas::AGENT_ARTIFACT_SCHEMAS.len();
+const _: fn(&crate::domain::ExecutedControlPacketV1) -> Result<String, String> =
+    executed_control::render_packet_json;
+const _: fn(&crate::domain::ExecutedControlPacketV1) -> Result<String, String> =
+    executed_control::render_packet_markdown;
+
+// #4649 owns preregistration only: no CLI or runner consumes these projections
+// yet (#4652). Keep parser, seal, and renderers compile-checked so a later
+// consumer cannot drop them without a type error.
+const _: fn(
+    &str,
+) -> Result<
+    crate::domain::RiprInterventionStudyV1,
+    crate::domain::InterventionStudyError,
+> = intervention_study::parse_study_json;
+const _: fn(
+    crate::domain::RiprInterventionStudyV1,
+) -> Result<
+    crate::domain::RiprInterventionStudyV1,
+    crate::domain::InterventionStudyError,
+> = intervention_study::seal;
+const _: fn(
+    &crate::domain::RiprInterventionStudyV1,
+) -> Result<String, crate::domain::InterventionStudyError> = intervention_study::render_study_json;
+const _: fn(
+    &crate::domain::RiprInterventionStudyV1,
+) -> Result<String, crate::domain::InterventionStudyError> =
+    intervention_study::render_study_markdown;
+const _: fn(
+    &crate::domain::RiprInterventionStudyV1,
+    &crate::domain::RiprInterventionStudyV1,
+) -> Result<(), crate::domain::InterventionStudyError> =
+    crate::domain::RiprInterventionStudyV1::validate_successor;
+const _: &str = crate::domain::RIPR_INTERVENTION_STUDY_SCHEMA_VERSION;
 
 #[cfg(test)]
 pub(crate) mod test_support {

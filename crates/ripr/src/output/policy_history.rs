@@ -2,7 +2,7 @@ use serde_json::{Value, json};
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "policy_history";
-const LIMITS_NOTE: &str = "Read-only advisory policy history report. It reads explicit history inputs and never appends, mutates policy, or changes gate authority.";
+const LIMITS_NOTE: &str = "Read-only advisory policy history report. It reads explicit history inputs and does not mutate policy or change gate authority. Default execution and generated CI do not append history; `--out-jsonl` is the opt-in producer.";
 
 pub(crate) const DEFAULT_POLICY_HISTORY_OUT: &str = "target/ripr/reports/policy-history.json";
 pub(crate) const DEFAULT_POLICY_HISTORY_MD_OUT: &str = "target/ripr/reports/policy-history.md";
@@ -248,7 +248,27 @@ pub(crate) fn build_policy_history_report(input: PolicyHistoryInput) -> PolicyHi
 }
 
 pub(crate) fn render_policy_history_json(report: &PolicyHistoryReport) -> Result<String, String> {
-    serde_json::to_string_pretty(&json!({
+    serde_json::to_string_pretty(&policy_history_json_value(report))
+        .map_err(|err| format!("failed to render policy history JSON: {err}"))
+}
+
+/// Compact snapshot line for `--out-jsonl`. Matches `example_append_record`.
+pub(crate) fn render_policy_history_jsonl_record(
+    report: &PolicyHistoryReport,
+) -> Result<String, String> {
+    serde_json::to_string(&snapshot_json(&report.example_append_record))
+        .map_err(|err| format!("failed to render policy history JSONL record: {err}"))
+}
+
+pub(crate) fn policy_history_current_is_durable(report: &PolicyHistoryReport) -> bool {
+    !report
+        .unknowns
+        .iter()
+        .any(|notice| notice.kind == "current_policy_operations_unavailable")
+}
+
+fn policy_history_json_value(report: &PolicyHistoryReport) -> Value {
+    json!({
         "schema_version": SCHEMA_VERSION,
         "tool": "ripr",
         "kind": REPORT_KIND,
@@ -262,8 +282,7 @@ pub(crate) fn render_policy_history_json(report: &PolicyHistoryReport) -> Result
         "unknowns": report.unknowns.iter().map(notice_json).collect::<Vec<_>>(),
         "input_artifacts": report.input_artifacts.iter().map(input_artifact_json).collect::<Vec<_>>(),
         "limits_note": LIMITS_NOTE,
-    }))
-    .map_err(|err| format!("failed to render policy history JSON: {err}"))
+    })
 }
 
 pub(crate) fn render_policy_history_markdown(report: &PolicyHistoryReport) -> String {
@@ -363,7 +382,7 @@ pub(crate) fn render_policy_history_markdown(report: &PolicyHistoryReport) -> St
 
     out.push_str("\n## Append Record\n\n");
     out.push_str(
-        "The command may show this record for manual review, but it does not write history automatically.\n",
+        "The command may show this record for manual review. Default execution and generated CI do not write history; `--out-jsonl` is the opt-in producer.\n",
     );
     out.push_str("\nLimits:\n");
     out.push_str(LIMITS_NOTE);
@@ -1250,6 +1269,10 @@ mod tests {
                 .iter()
                 .any(|warning| warning.kind == "policy_operations_malformed")
         );
+        assert!(
+            !policy_history_current_is_durable(&report),
+            "malformed current must not be treated as a durable snapshot"
+        );
     }
 
     #[test]
@@ -1284,6 +1307,34 @@ mod tests {
         assert!(json.contains("\"example_append_record\""));
         assert!(markdown.contains("# RIPR Policy History"));
         assert!(markdown.contains("The command may show this record for manual review"));
+        Ok(())
+    }
+
+    #[test]
+    fn policy_history_jsonl_record_is_one_line_snapshot() -> Result<(), String> {
+        let report = build_policy_history_report(input(&operations(
+            "ready_for_acknowledgeable",
+            &["visible-only", "acknowledgeable"],
+        )));
+        assert!(
+            policy_history_current_is_durable(&report),
+            "parsed current operations must be durable"
+        );
+        let line = render_policy_history_jsonl_record(&report)?;
+        assert!(
+            !line.contains('\n') && !line.contains('\r'),
+            "jsonl record must be one line: {line}"
+        );
+        let parsed: Value = serde_json::from_str(&line)
+            .map_err(|err| format!("jsonl record must parse as JSON: {err}"))?;
+        assert_eq!(
+            parsed.get("current_policy_ceiling").and_then(Value::as_str),
+            Some("ready_for_acknowledgeable")
+        );
+        assert!(
+            parsed.get("kind").is_none(),
+            "snapshot line is not the full report: {line}"
+        );
         Ok(())
     }
 
@@ -1399,6 +1450,10 @@ mod tests {
         );
         assert_eq!(report.current.current_policy_ceiling, "config_error");
         assert_eq!(report.input_artifacts[0].status, "malformed");
+        assert!(
+            !policy_history_current_is_durable(&report),
+            "unavailable current must not be treated as a durable snapshot"
+        );
     }
 
     #[test]

@@ -35,11 +35,21 @@ Any off-the-shelf LSP client (Neovim, Helix, Eglot, etc.) that implements
 the base LSP specification.
 
 Consumes:
+- incremental document sync advertised as
+  `{openClose: true, change: 2, willSave: false, willSaveWaitUntil: false,
+  save: {includeText: false}}` (#1746), so every conforming client sends
+  `textDocument/didSave` (saved content is the analysis input; the options
+  form's `save` member requests save notifications and `includeText: false`
+  avoids resending the whole document on each save)
+- `MethodNotFound` (`-32601`, method named in `data`) for any unhandled
+  request whose method starts with `$/`; unhandled `$/` notifications stay
+  silent (LSP 3.17 "$ Notifications and Requests", #4456)
 - `textDocument/publishDiagnostics` (push) or `textDocument/diagnostic` (pull)
 - `textDocument/hover`
 - `textDocument/codeAction` (kind strings are metadata visible to every
-  layer: the advertised `quickfix.ripr` / `source.ripr.*` hierarchy; the
-  negotiated surface is the command IDs inside the actions, not the kinds)
+  layer: the advertised `quickfix.ripr.*` / `source.ripr.refresh`
+  hierarchy; the negotiated surface is the command IDs inside the actions,
+  not the kinds)
 - `workspace/status` via custom notification
 
 Does NOT consume:
@@ -100,8 +110,8 @@ Consumes everything in Layer 1, plus:
 - `experimental.riprEditor` client-command actions (`ripr.copyContext`,
   `ripr.copyAgentPacket`, `ripr.openRelatedTest`, etc.)
 - `ripr.collectWorkspaceStatus` / `collectRepairPacket` (legacy execute-command surface)
-- `codeAction` kinds: `source.ripr.inspect`, `source.ripr.navigate`,
-  `source.ripr.verify`, `source.ripr.refresh`
+- `codeAction` kinds: `quickfix.ripr.inspect`, `quickfix.ripr.navigate`,
+  `quickfix.ripr.verify`, `source.ripr.refresh`
 - Managed server provisioning (#1624)
 - Workspace Trust enforcement (#1623)
 
@@ -183,11 +193,19 @@ does not advertise fails the parity tests.
 
 ## Acceptance Examples
 
+Diagnostic fallbacks for findings without a recommendation and gaps without a
+repair route use plain-language explanations and direct readers to hover the
+highlighted code for static evidence. They must not promise a clipboard code
+action that a standard client cannot execute, a repair packet that an
+inspect-only gap does not own, or an absent next step. Missing test paths remain
+qualified as static analysis results; diagnostic codes and data remain stable.
+
 - A standard LSP client (e.g. Neovim) that does NOT advertise
   `experimental.riprEditor` receives zero `ripr.copyContext` or
   `ripr.openRelatedTest` command IDs in code actions — only server-executed
-  commands. The `source.ripr.*` kind strings still appear as kind metadata
-  for every client; they carry no negotiation requirement.
+  commands. The `quickfix.ripr.*` / `source.ripr.refresh` kind strings
+  still appear as kind metadata for every client; they carry no negotiation
+  requirement.
 - A client that forwards a command the server does not execute — an unknown
   command ID, or a client-registered command such as `ripr.copyContext` —
   receives a stable `InvalidParams` rejection naming the command
@@ -202,7 +220,7 @@ does not advertise fails the parity tests.
   Analysis) stay active; only the client-command actions that the omission
   path would have stripped are disabled.
 - A VS Code client that advertises `experimental.riprEditor` with
-  `client_commands: ["ripr.copyContext"]` receives `source.ripr.inspect`
+  `client_commands: ["ripr.copyContext"]` receives `quickfix.ripr.inspect`
   code actions containing `ripr.copyContext` commands.
 - Push and pull diagnostic delivery produce the same code-action
   availability for the same negotiated client capabilities (#1628
@@ -231,6 +249,12 @@ does not advertise fails the parity tests.
 
 - `capabilities.rs` tests verify the capability advertisement shape
   (pull diagnostics, code action kinds, riprAgent capability).
+- `tests/lsp_lifecycle.rs::initialize_advertises_incremental_sync_with_save_notifications`
+  verifies over the real wire that the document-sync advertisement requests
+  incremental changes and `didSave` without resending the document (#1746).
+- `tests/lsp_lifecycle.rs::dollar_request_is_answered_method_not_found`
+  verifies over the real wire that a `$/` request gets `-32601` naming the
+  method, while the same `$/` notification gets no response.
 - `tests.rs` code-action tests verify the negotiated client-command filter
   (#1776): an unenhanced client receives only server-executed commands, a
   client advertising a subset keeps exactly that subset, and every emitted
@@ -242,7 +266,12 @@ does not advertise fails the parity tests.
   and the emitted-kinds ⊆ advertised-kinds parity invariant.
 - `action_contract.rs` tests verify the versioned data payload shape, the
   deterministic `action_id`, and the closed disabled-reason vocabulary
-  (#1892); `actions.rs` tests verify the fail-closed emit guard; further
+  (#1892); identity-law tests (#1932) prove `action_id` ignores title,
+  range, message, snapshot `input_identity`, evidence handles, client
+  capability, and disabled reason, trims/falls through canonical
+  identities, and that `parse_validated_action_data` round-trips the
+  retained production fingerprint and rejects a swapped sibling
+  `action_id`. `actions.rs` tests verify the fail-closed emit guard; further
   `tests.rs` tests verify the omit-vs-disabled policy both directions, the
   disabled-never-executes invariant across scenarios, the kind retention
   under `context.only`, and the named suppression reasons (`stale_snapshot`,
@@ -271,8 +300,12 @@ does not advertise fails the parity tests.
 - `tests.rs::capabilities_advertise_code_lens_provider` plus
   `code_lens_refresh_is_not_attempted_for_unsupported_clients` and
   `code_lens_refresh_tracks_semantic_view_changes_for_supported_clients`
-  verify the advisory codeLens surface (display-only, `resolve_provider:
-  false`) and its refresh negotiation.
+  verify the cached advisory codeLens surface and its refresh negotiation.
+  `lens.rs::tests::code_lens_wire_advertises_an_honest_registered_refresh` and
+  `tests.rs::framed_code_lens_refresh_follows_semantic_lens_view_changes` verify
+  that clicking invokes the registered `ripr.refresh` saved-workspace action;
+  `resolve_provider: false` means no deferred lens resolution, not an inert
+  command. The action does not run tests or apply repairs (SPEC-0100).
 - `tests.rs` hover tests (`hover_response_keeps_current_guidance_text`,
   `hover_for_position_uses_latest_matching_diagnostic`,
   `hover_for_position_shows_snapshot_age_and_refresh_duration`,
@@ -342,15 +375,26 @@ client supports:
   `supported_requests: []`) so a Layer 3 client can detect the server.
 - `experimental.riprEditor` negotiation (#1628, delivered in #1776) filters
   client-command code actions to clients that advertise support.
-- Code action kinds are advertised as `quickfix.ripr` and
-  `source.ripr.*` (#1750, landed). Every kind the server emits stays within
+- Code action kinds are advertised as `quickfix.ripr`,
+  `quickfix.ripr.inspect`, `quickfix.ripr.navigate`, `quickfix.ripr.verify`
+  and `source.ripr.refresh` (#1750, landed). Per-diagnostic actions that act
+  on one finding (inspect, navigate, and the reserved verify family) use
+  `quickfix.ripr.*` kinds because VS Code's lightbulb / Ctrl+. Quick Fix
+  menu never lists `source.*` actions — they appear only under "Source
+  Action...", so a `source.ripr.inspect` action on a gap diagnostic left
+  Quick Fix reporting "No code actions available". The workspace-level
+  Refresh Analysis action is not a fix for one diagnostic, so it stays the
+  `source.ripr.refresh` source action. `quickfix.ripr` itself and
+  `quickfix.ripr.verify` are advertised-but-unemitted (reserved). Every
+  kind the server emits stays within
   the advertised set (parity-pinned by
   `tests.rs::code_action_response_emitted_kinds_stay_within_the_advertised_set`
   against the shared `ADVERTISED_CODE_ACTION_KINDS` constant).
 - `textDocument/codeAction` honors `CodeActionContext.only` (#1750): with
   LSP 3.17 hierarchical kind semantics, an action survives when any
   requested kind equals the action's kind or is a dot-segment prefix of it
-  (`source` keeps every `source.ripr.*` action; `source.ripr.navigate`
+  (`quickfix` keeps every per-diagnostic `quickfix.ripr.*` action;
+  `source` keeps only `source.ripr.refresh`; `quickfix.ripr.navigate`
   keeps only that subtree). An absent `only` leaves the response
   unfiltered, and an action with no kind fails closed. The kind filter
   compounds with the negotiated client-command filter.

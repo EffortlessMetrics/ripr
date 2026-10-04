@@ -1,3 +1,5 @@
+use crate::agent::loop_commands::{bound_root, shell_arg};
+use crate::cli::unknown_argument;
 use std::path::PathBuf;
 
 use super::{
@@ -10,6 +12,9 @@ use super::{
 pub(super) struct FirstPrOptions {
     pub(super) root: String,
     pub(super) base: String,
+    /// `false` when `--base` was omitted: `base` then holds a placeholder
+    /// until the CLI entry resolves the repository's default branch.
+    pub(super) base_explicit: bool,
     pub(super) head: String,
     pub(super) check_output: Option<String>,
     pub(super) gap_ledger: String,
@@ -26,11 +31,44 @@ pub(super) struct FirstPrOptions {
     pub(crate) git_ceiling: Option<PathBuf>,
 }
 
+impl FirstPrOptions {
+    /// The selected root bound once for product-generated commands (#3999):
+    /// an existing root follows filesystem traversal, including symlink/`..`.
+    /// A relative `--root` resolves against this process's working directory,
+    /// the same directory `repo_root` resolved it against, so a pasted command
+    /// analyzes and writes the selected repository from any directory.
+    pub(super) fn command_root(&self) -> String {
+        let root = std::path::Path::new(&self.root);
+        root.canonicalize()
+            .ok()
+            .and_then(|resolved| crate::output::path::command_root_display(root, &resolved).ok())
+            .unwrap_or_else(|| bound_root(&self.root))
+    }
+
+    /// A first-pr artifact path rendered as a generated command argument,
+    /// quoted for the shell. first-pr resolves its artifact paths against the
+    /// selected root, while `first-action`, `review-comments`, `agent packet`,
+    /// `gate evaluate`, `reports gap-ledger` and shell redirects resolve them
+    /// against the invocation working directory. Anchoring at the bound root
+    /// keeps `--root` and every path naming the same repository when a command
+    /// is pasted elsewhere (#3948, #4287); an absolute path passes through.
+    pub(super) fn anchored_arg(&self, path: &str) -> String {
+        let path = std::path::Path::new(path);
+        let anchored = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            PathBuf::from(self.command_root()).join(path)
+        };
+        shell_arg(&crate::output::path::human_path(&anchored))
+    }
+}
+
 impl Default for FirstPrOptions {
     fn default() -> Self {
         Self {
             root: DEFAULT_ROOT.to_string(),
             base: DEFAULT_BASE.to_string(),
+            base_explicit: false,
             head: DEFAULT_HEAD.to_string(),
             check_output: None,
             gap_ledger: DEFAULT_GAP_LEDGER.to_string(),
@@ -63,6 +101,7 @@ pub(super) fn parse_options(args: &[String]) -> Result<FirstPrOptions, String> {
             "--base" => {
                 i += 1;
                 options.base = non_empty_arg(args, i, "--base")?.to_string();
+                options.base_explicit = true;
             }
             "--head" => {
                 i += 1;
@@ -102,7 +141,7 @@ pub(super) fn parse_options(args: &[String]) -> Result<FirstPrOptions, String> {
                 options.out_dir = non_empty_arg(args, i, "--out-dir")?.to_string();
             }
             "--check" => options.check = true,
-            other => return Err(format!("unknown first-pr argument {other:?}")),
+            other => return Err(unknown_argument("first-pr", other)),
         }
         i += 1;
     }
@@ -120,9 +159,40 @@ fn non_empty_arg<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a
 }
 
 pub(super) fn print_help() {
-    println!("{}", first_pr_help_text());
+    println!("{FIRST_PR_HELP}");
 }
 
-pub(super) fn first_pr_help_text() -> &'static str {
-    "Create the start-here packet for one PR from existing RIPR artifacts.\n\nusage: ripr first-pr|start-here [--root <path>] [--base <rev>] [--head <rev>] [--check-output <path>] [--gap-ledger <path>] [--first-action <path>] [--review-comments <path>] [--agent-packet <path>] [--gate-decision <path>] [--receipts-dir <path>] [--out-dir <path>] [--check]\n\nStart-here language:\n  - start here: open target/ripr/reports/start-here.md first when it exists\n  - safe next action: repair one named gap, regenerate missing evidence, or stop on no-action\n  - missing artifact / stale evidence / wrong root / malformed artifact: fail closed before repair work\n  - no actionable gap: advisory no-action, not runtime adequacy or mutation proof\n  - preview-limited evidence: syntax-first and advisory, with static limits before repair language\n  - receipt lifecycle: receipt_missing, receipt_found, receipt_stale, receipt_gap_mismatch, receipt_movement_improved, receipt_movement_unchanged, receipt_not_applicable\n  - verify command / receipt command / receipt path: static movement proof rail"
-}
+/// Help body for `ripr first-pr` / `ripr start-here`. Also the flag source for
+/// unknown-argument suggestions, so accepted flags have to appear as
+/// option-list lines, not only inside the usage brackets.
+pub(crate) const FIRST_PR_HELP: &str = "\
+Create the start-here packet for one PR from existing RIPR artifacts.
+
+Usage: ripr first-pr|start-here [--root <path>] [--base <rev>] [--head <rev>] [--check-output <path>] [--gap-ledger <path>] [--first-action <path>] [--review-comments <path>] [--agent-packet <path>] [--gate-decision <path>] [--receipts-dir <path>] [--out-dir <path>] [--check]
+
+Options:
+  --root <path>              Workspace root. Defaults to .
+  --base <rev>               PR base revision. When omitted, resolved like
+                             `ripr check`: origin/HEAD, then origin/main,
+                             origin/master, main, and master.
+  --head <rev>               PR head revision. Defaults to HEAD.
+  --check-output <path>      Existing `ripr check --json` output to derive the gap ledger from.
+                             first-pr never runs analysis itself.
+  --gap-ledger <path>        Gap-decision ledger JSON. Defaults to target/ripr/reports/gap-decision-ledger.json.
+  --first-action <path>      First-useful-action JSON. Defaults to target/ripr/reports/first-useful-action.json.
+  --review-comments <path>   Review-comments JSON. Defaults to target/ripr/review/comments.json.
+  --agent-packet <path>      Agent packet JSON. Defaults to target/ripr/workflow/agent-packet.json.
+  --gate-decision <path>     Gate-decision JSON. Defaults to target/ripr/reports/gate-decision.json.
+  --receipts-dir <path>      Receipt directory. Defaults to target/ripr/receipts.
+  --out-dir <path>           Output directory. Defaults to target/ripr/reports.
+  --check                    Verify the existing start-here packet is up to date.
+
+Start-here language:
+  - start here: open target/ripr/reports/start-here.md first when it exists
+  - safe next action: repair one named gap, regenerate missing evidence, or stop on no-action
+  - missing artifact / stale evidence / wrong root / malformed artifact: fail closed before repair work
+  - no actionable gap: advisory no-action, not runtime adequacy or mutation proof
+  - preview-limited evidence: syntax-first and advisory, with static limits before repair language
+  - receipt lifecycle: receipt_missing, receipt_found, receipt_stale, receipt_gap_mismatch, receipt_movement_improved, receipt_movement_unchanged, receipt_not_applicable
+  - verify command / receipt command / receipt path: static movement proof rail
+";

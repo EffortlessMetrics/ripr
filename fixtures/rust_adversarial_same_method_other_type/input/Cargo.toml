@@ -1,0 +1,8 @@
+[package]
+name = "rust_adversarial_same_method_other_type_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "rust_adversarial_same_method_other_type_fixture"
+path = "src/lib.rs"

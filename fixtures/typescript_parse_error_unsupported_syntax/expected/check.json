@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/typescript_parse_error_unsupported_syntax/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1,"changed_files_by_language":[{"language":"rust","files":0},{"language":"typescript","files":1}]},
   "analysis_outcome": {
     "analysis_complete": false,
-    "outcome": {"schema_version":"0.1","kind":"partial_with_limitations","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:e9884f41573c5f5ba126a7604bbf0cc24b32fc546ca8ad6acff7fbb46a2874d6","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[{"kind":"language_scope_unsupported","producer_stage":"language_adapter","path":"src/broken.ts","affected_items":1,"bounded_detail":"1 parser error(s)","recovery":{"kind":"retry","detail":"Fix the TypeScript or JavaScript parse error, then re-run the analysis."}}],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"partial_with_limitations","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:8df7e6e36206964d01b91d9155b585af6cbba1cc65f1bb43bce060a5e8b32855","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[{"kind":"language_scope_unsupported","producer_stage":"language_adapter","path":"src/broken.ts","affected_items":1,"bounded_detail":"1 parser error(s): Unexpected token","recovery":{"kind":"retry","detail":"Fix the TypeScript or JavaScript parse error, then re-run the analysis."}}],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -24,17 +23,17 @@
         "expression": "  const next = ;"
        },
       "ripr": {
-        "reach": {"state":"unknown","confidence":"low","summary":"TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)"},
-        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)"},
-        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)"},
-        "observe": {"state":"unknown","confidence":"low","summary":"TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)"},
-        "discriminate": {"state":"unknown","confidence":"low","summary":"TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)"}
+        "reach": {"state":"unknown","confidence":"low","summary":"TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s): Unexpected token"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s): Unexpected token"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s): Unexpected token"},
+        "observe": {"state":"unknown","confidence":"low","summary":"TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s): Unexpected token"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s): Unexpected token"}
        },
-      "evidence_path": ["reach unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)", "infection unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)", "propagation unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)", "observation unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)", "discriminator unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)"],
+      "evidence_path": ["reach unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s): Unexpected token", "infection unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s): Unexpected token", "propagation unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s): Unexpected token", "observation unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s): Unexpected token", "discriminator unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s): Unexpected token"],
       "flow_sinks": [
       ],
-      "evidence": ["static_limit unsupported_syntax: 1 parser error(s)", "gap_state: static_limitation", "actionability_category: unsupported_syntax", "why_not_actionable: static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s)", "repair_route: fix or isolate the unsupported syntax before relying on repair guidance", "evidence_needed_to_promote: resolve the named static limit and re-run TypeScript preview evidence extraction", "raw_evidence_ref: file=src/broken.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_broken.ts:typescript_preview_unsupported_syntax:7027d4b0", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved"],
-      "missing": ["Static limit `unsupported_syntax`: malformed TypeScript/JavaScript prevented syntax-first owner, test, and probe extraction for `src/broken.ts`. Repair route: fix or isolate the unsupported syntax before relying on repair guidance.", "TypeScript preview actionability `static_limitation` / `unsupported_syntax`: static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s). Repair route: fix or isolate the unsupported syntax before relying on repair guidance"],
+      "evidence": ["static_limit unsupported_syntax: 1 parser error(s): Unexpected token", "gap_state: static_limitation", "actionability_category: unsupported_syntax", "why_not_actionable: static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s): Unexpected token", "repair_route: fix or isolate the unsupported syntax before relying on repair guidance", "evidence_needed_to_promote: resolve the named static limit and re-run TypeScript preview evidence extraction", "raw_evidence_ref: file=src/broken.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_broken.ts:typescript_preview_unsupported_syntax:7027d4b0", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved"],
+      "missing": ["Static limit `unsupported_syntax`: malformed TypeScript/JavaScript prevented syntax-first owner, test, and probe extraction for `src/broken.ts`. Repair route: fix or isolate the unsupported syntax before relying on repair guidance.", "TypeScript preview actionability `static_limitation` / `unsupported_syntax`: static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s): Unexpected token. Repair route: fix or isolate the unsupported syntax before relying on repair guidance"],
       "assertion_texts": {
       },
       "activation": {
@@ -79,7 +78,7 @@
         "verify": {
           "command": null
         },
-        "why_not_actionable": "static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s)"
+        "why_not_actionable": "static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s): Unexpected token"
       },
       "preview_actionability": {
         "actionability_category": "unsupported_syntax",
@@ -103,7 +102,7 @@
         "repair_packet_ready": false,
         "repair_route": "fix or isolate the unsupported syntax before relying on repair guidance",
         "unlock_condition": null,
-        "why_not_actionable": "static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s)"
+        "why_not_actionable": "static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s): Unexpected token"
       },
       "stop_reasons": ["static_probe_unknown"],
       "oracle_kind": "unknown",

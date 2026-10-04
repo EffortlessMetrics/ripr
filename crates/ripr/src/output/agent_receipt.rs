@@ -11,9 +11,91 @@ use crate::app::analysis_outcome_artifact::{
 };
 use serde_json::Value;
 
-use super::receipt_lifecycle::receipt_lifecycle_state_from_movement;
+use super::receipt_lifecycle::{
+    RECEIPT_MOVEMENT_IMPROVED, receipt_lifecycle_state_from_movement,
+    receipt_lifecycle_state_from_receipt_value,
+};
 
 pub(crate) const AGENT_RECEIPT_SCHEMA_VERSION: &str = "0.5";
+/// RIPR-SPEC-0135 verification-axis state for a receipt that ran no command.
+pub(crate) const VERIFICATION_NOT_RUN: &str = "verification_not_run";
+/// RIPR-SPEC-0135 non-claim every static-only receipt carries.
+const STATIC_ONLY_ASSURANCE: &str = "static_only_assurance";
+
+/// Receipt `status` for a receipt issued over a complete, valid producer
+/// analysis outcome. `incomplete` and `invalid` receipts carry static movement
+/// but no completeness evidence.
+pub(crate) const AGENT_RECEIPT_STATUS_ADVISORY: &str = "advisory";
+
+/// Static movements for a seam present in both snapshots whose grip class did
+/// not rise: the gap the receipt names is still open.
+const GAP_OPEN_MOVEMENTS: &[&str] = &["unchanged", "changed", "regressed"];
+
+/// An issued agent receipt read back through the vocabulary this module
+/// renders, so consumers such as `ripr agent status` do not re-derive what a
+/// receipt means. It reads recorded fields only; it does not re-validate the
+/// receipt's inputs.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AgentReceiptReading {
+    pub(crate) status: Option<String>,
+    pub(crate) movement: Option<String>,
+    pub(crate) receipt_state: String,
+    pub(crate) recommended_action: Option<String>,
+    pub(crate) analysis_outcome_error: Option<String>,
+    /// `verification.status`: whether any test ran for this receipt. The
+    /// ordinary repair path always records `verification_not_run`.
+    pub(crate) verification_status: Option<String>,
+    /// The test file the edit cage measured changing, when one was named.
+    pub(crate) test_changed: Option<String>,
+}
+
+impl AgentReceiptReading {
+    pub(crate) fn from_value(receipt: &Value) -> Self {
+        let text = |pointer: &str| {
+            receipt
+                .pointer(pointer)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+        };
+        Self {
+            status: text("/status"),
+            movement: text("/provenance/movement").or_else(|| text("/seam/change")),
+            receipt_state: receipt_lifecycle_state_from_receipt_value(receipt),
+            recommended_action: text("/summary/next_action/recommended_action"),
+            analysis_outcome_error: text("/analysis_outcome_error"),
+            verification_status: text("/verification/status"),
+            test_changed: text("/test_changed"),
+        }
+    }
+
+    /// No test ran for this receipt: its movement is static evidence only, and
+    /// a failing test can still show `improved`.
+    pub(crate) fn test_not_run(&self) -> bool {
+        self.verification_status.as_deref() == Some(VERIFICATION_NOT_RUN)
+    }
+
+    /// The receipt was issued over a complete, valid producer analysis outcome.
+    pub(crate) fn is_advisory(&self) -> bool {
+        self.status.as_deref() == Some(AGENT_RECEIPT_STATUS_ADVISORY)
+    }
+
+    /// The only reading that shows the targeted gap closed: an advisory
+    /// receipt whose static grip improved. Anything else (an `invalid` or
+    /// `incomplete` receipt, or any other movement) does not.
+    pub(crate) fn shows_gap_closed(&self) -> bool {
+        self.is_advisory() && self.receipt_state == RECEIPT_MOVEMENT_IMPROVED
+    }
+
+    /// The seam is in both snapshots and its grip class did not rise, so the
+    /// gap is still open whatever the receipt's status.
+    pub(crate) fn leaves_gap_open(&self) -> bool {
+        self.movement
+            .as_deref()
+            .is_some_and(|movement| GAP_OPEN_MOVEMENTS.contains(&movement))
+    }
+}
 
 pub(crate) use crate::app::analysis_outcome_artifact::AnalysisOutcomeUnavailableStatus as AgentReceiptUnavailableStatus;
 
@@ -119,7 +201,9 @@ pub(crate) fn render_agent_receipt_value_json(
         }
     };
     let status = match &analysis_outcome {
-        AgentReceiptAnalysisOutcome::Present(outcome) if outcome.kind.is_complete() => "advisory",
+        AgentReceiptAnalysisOutcome::Present(outcome) if outcome.kind.is_complete() => {
+            AGENT_RECEIPT_STATUS_ADVISORY
+        }
         AgentReceiptAnalysisOutcome::Present(_) => "incomplete",
         AgentReceiptAnalysisOutcome::Unavailable {
             status: AgentReceiptUnavailableStatus::Missing,
@@ -127,6 +211,12 @@ pub(crate) fn render_agent_receipt_value_json(
         } => "incomplete",
         AgentReceiptAnalysisOutcome::Unavailable { .. } => "invalid",
     };
+    let (next_recommendation, recommended_action) = receipt_next_step(
+        status,
+        analysis_projection.status,
+        analysis_projection.error.as_deref(),
+        &guidance,
+    );
 
     let value = serde_json::json!({
         "schema_version": AGENT_RECEIPT_SCHEMA_VERSION,
@@ -153,17 +243,22 @@ pub(crate) fn render_agent_receipt_value_json(
             "evidence_delta": seam.evidence_delta
         },
         "test_changed": test_changed,
+        // The receipt never executes a command: `commands_run` is what the
+        // caller reports, so the verification axis stays `not_run` (SPEC-0135)
+        // whatever that list holds.
         "verification": {
-            "commands_run": commands_run
+            "status": VERIFICATION_NOT_RUN,
+            "commands_run": commands_run,
+            "non_claims": [STATIC_ONLY_ASSURANCE]
         },
         "summary": {
             "receipt_state": receipt_state,
             "remaining_gap": guidance.remaining_gap,
-            "next_recommendation": guidance.next_recommendation,
+            "next_recommendation": next_recommendation,
             "next_action": {
                 "kind": guidance.kind,
                 "summary": guidance.summary,
-                "recommended_action": guidance.recommended_action
+                "recommended_action": recommended_action
             }
         }
     });
@@ -291,14 +386,52 @@ fn one_sided_receipt_seam(
     })
 }
 
+/// The receipt's next step, as `(next_recommendation, recommended_action)`.
+///
+/// This is the one owner of the rule that only an `advisory` receipt is review
+/// evidence: only it carries the movement guidance, which may recommend
+/// including the receipt in review. Any other status replaces both fields with
+/// a statement that the receipt is not review evidence and the recovery for
+/// its analysis outcome. The `agent repair` after phase prints this field
+/// rather than restating the rule.
+fn receipt_next_step(
+    status: &str,
+    analysis_outcome_status: &str,
+    analysis_outcome_error: Option<&str>,
+    guidance: &AgentReceiptGuidance,
+) -> (String, String) {
+    if status == "advisory" {
+        return (
+            guidance.next_recommendation.to_string(),
+            guidance.recommended_action.to_string(),
+        );
+    }
+    let reason = match analysis_outcome_error {
+        Some(error) => format!(" ({})", error.trim_end_matches('.')),
+        None if analysis_outcome_status == "incomplete" => {
+            " (the analysis outcome is not complete; see `analysis_outcome`)".to_string()
+        }
+        None => String::new(),
+    };
+    let recovery = if analysis_outcome_status == "incomplete" {
+        "Resolve what kept the analysis from completing"
+    } else {
+        "Regenerate the analysis outcome for this workspace with `ripr check --format json`, written beside the agent verify JSON"
+    };
+    let step = format!(
+        "This receipt is not review evidence because its status is `{status}`{reason}; do not include it in review. {recovery}, then rerun agent verify and agent receipt; in the repair loop, start a new attempt with `ripr agent repair --seam-id <seam-id> --phase before` and run the `--phase after` command it prints."
+    );
+    (step.clone(), step)
+}
+
 fn receipt_guidance(change: &str) -> AgentReceiptGuidance {
     match change {
         "improved" => AgentReceiptGuidance {
             remaining_gap: "No remaining static gap is named by this receipt; inspect the current seam packet if review needs final assertion detail.",
-            next_recommendation: "Keep the focused test and attach this receipt with the agent verify JSON.",
+            next_recommendation: "Run the focused test with the project's test command and keep it only if it passes; ripr compared static evidence and did not run it. Then attach this receipt with the agent verify JSON.",
             kind: "improved",
             summary: "Static grip improved.",
-            recommended_action: "Keep the focused test and include this receipt in review.",
+            recommended_action: "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.",
         },
         "changed" => AgentReceiptGuidance {
             remaining_gap: "Static evidence changed without a higher grip class; inspect the evidence delta and current seam packet.",
@@ -617,6 +750,45 @@ mod tests {
         Ok(())
     }
 
+    /// #3797 control 6: a focused test that fails `cargo test` still moves
+    /// static grip, and the receipt cannot tell it from a passing one. So the
+    /// improved guidance must never tell the agent to keep a test ripr did not
+    /// run, and the verification axis stays `verification_not_run` even when
+    /// the caller reports commands it ran.
+    #[test]
+    fn improved_receipt_does_not_keep_a_test_ripr_did_not_run() -> Result<(), String> {
+        for commands_run in [Vec::new(), vec!["cargo test pricing_boundary".to_string()]] {
+            let rendered = render_agent_receipt_json(
+                agent_verify_json(),
+                "target/ripr/workflow/agent-verify.json".to_string(),
+                "seam-a",
+                Some("tests::pricing_boundary"),
+                &commands_run,
+                fixed_provenance(),
+            )?;
+            let value: Value = serde_json::from_str(&rendered)
+                .map_err(|err| format!("receipt JSON should parse: {err}"))?;
+
+            assert_eq!(value["status"], "advisory");
+            assert_eq!(value["seam"]["change"], "improved");
+            assert_eq!(value["verification"]["status"], "verification_not_run");
+            assert_eq!(
+                value["verification"]["non_claims"],
+                serde_json::json!(["static_only_assurance"])
+            );
+            for field in [
+                &value["summary"]["next_recommendation"],
+                &value["summary"]["next_action"]["recommended_action"],
+            ] {
+                let text = field.as_str().unwrap_or_default();
+                assert!(!text.starts_with("Keep"), "{text}");
+                assert!(text.contains("keep it only if it passes"), "{text}");
+                assert!(text.contains("did not run it"), "{text}");
+            }
+        }
+        Ok(())
+    }
+
     #[test]
     fn agent_receipt_json_selects_new_gap() -> Result<(), String> {
         let rendered = render_agent_receipt_json(
@@ -646,7 +818,7 @@ mod tests {
             "seam-a",
             "improved",
             "Static grip improved.",
-            "Keep the focused test and include this receipt in review.",
+            "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.",
         )
     }
 
@@ -831,6 +1003,155 @@ mod tests {
         assert_eq!(value["status"], "invalid");
         assert_eq!(value["analysis_outcome_status"], status.as_str());
         assert_eq!(value["analysis_outcome"], Value::Null);
+        Ok(())
+    }
+
+    /// The reading consumers use to call a repair loop complete is tied to the
+    /// fields this module renders: only an `advisory` receipt whose grip
+    /// improved shows the gap closed; an `invalid` one with the same movement
+    /// does not, and unchanged, changed, or regressed movement leaves the gap
+    /// open whatever the status. A new or resolved seam is neither.
+    #[test]
+    fn agent_receipt_reading_ties_gap_closure_to_status_and_movement() -> Result<(), String> {
+        let verify: Value =
+            serde_json::from_str(agent_verify_json()).map_err(|error| error.to_string())?;
+        let render = |seam_id: &str, analysis_outcome| -> Result<AgentReceiptReading, String> {
+            let rendered = render_agent_receipt_value_json(
+                &verify,
+                "target/ripr/workflow/agent-verify.json".to_string(),
+                seam_id,
+                None,
+                &[],
+                fixed_provenance(),
+                analysis_outcome,
+            )?;
+            let value: Value =
+                serde_json::from_str(&rendered).map_err(|error| error.to_string())?;
+            Ok(AgentReceiptReading::from_value(&value))
+        };
+        let complete = || -> Result<AgentReceiptAnalysisOutcome, String> {
+            Ok(AgentReceiptAnalysisOutcome::Present(Box::new(
+                test_complete_analysis_outcome()?,
+            )))
+        };
+        let invalid = || AgentReceiptAnalysisOutcome::Unavailable {
+            status: AgentReceiptUnavailableStatus::Invalid,
+            reason: "producer identity is stale".to_string(),
+        };
+
+        let improved = render("seam-a", complete()?)?;
+        assert_eq!(
+            improved.status.as_deref(),
+            Some(AGENT_RECEIPT_STATUS_ADVISORY)
+        );
+        assert_eq!(improved.movement.as_deref(), Some("improved"));
+        assert!(improved.shows_gap_closed());
+        assert!(!improved.leaves_gap_open());
+
+        let improved_invalid = render("seam-a", invalid())?;
+        assert_eq!(improved_invalid.status.as_deref(), Some("invalid"));
+        assert_eq!(
+            improved_invalid.analysis_outcome_error.as_deref(),
+            Some("producer identity is stale")
+        );
+        assert!(!improved_invalid.shows_gap_closed());
+        assert!(!improved_invalid.leaves_gap_open());
+
+        for seam_id in ["seam-b", "seam-d", "seam-e"] {
+            let open = render(seam_id, complete()?)?;
+            assert!(open.is_advisory(), "{seam_id}");
+            assert!(!open.shows_gap_closed(), "{seam_id}");
+            assert!(open.leaves_gap_open(), "{seam_id}");
+            assert!(open.recommended_action.is_some(), "{seam_id}");
+        }
+        for seam_id in ["seam-c", "seam-f"] {
+            let neither = render(seam_id, complete()?)?;
+            assert!(!neither.shows_gap_closed(), "{seam_id}");
+            assert!(!neither.leaves_gap_open(), "{seam_id}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn agent_receipt_recommends_review_only_for_an_advisory_receipt() -> Result<(), String> {
+        let verify: Value =
+            serde_json::from_str(agent_verify_json()).map_err(|error| error.to_string())?;
+        let render = |outcome: AgentReceiptAnalysisOutcome| -> Result<Value, String> {
+            let rendered = render_agent_receipt_value_json(
+                &verify,
+                "target/ripr/workflow/agent-verify.json".to_string(),
+                "seam-a",
+                None,
+                &[],
+                fixed_provenance(),
+                outcome,
+            )?;
+            serde_json::from_str(&rendered).map_err(|error| error.to_string())
+        };
+
+        // The improved seam's movement guidance recommends review inclusion,
+        // and an advisory receipt keeps it.
+        let advisory = render(AgentReceiptAnalysisOutcome::Present(Box::new(
+            test_complete_analysis_outcome()?,
+        )))?;
+        assert_eq!(advisory["status"], "advisory");
+        assert_eq!(
+            advisory["summary"]["next_action"]["recommended_action"],
+            "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review."
+        );
+        assert_eq!(
+            advisory["summary"]["next_recommendation"],
+            "Run the focused test with the project's test command and keep it only if it passes; ripr compared static evidence and did not run it. Then attach this receipt with the agent verify JSON."
+        );
+
+        let invalid = render(AgentReceiptAnalysisOutcome::Unavailable {
+            status: AgentReceiptUnavailableStatus::Invalid,
+            reason: "Analysis outcome artifact base does not match its typed identity.".to_string(),
+        })?;
+        let invalid_step = "This receipt is not review evidence because its status is `invalid` (Analysis outcome artifact base does not match its typed identity); do not include it in review. Regenerate the analysis outcome for this workspace with `ripr check --format json`, written beside the agent verify JSON, then rerun agent verify and agent receipt; in the repair loop, start a new attempt with `ripr agent repair --seam-id <seam-id> --phase before` and run the `--phase after` command it prints.";
+        assert_eq!(invalid["status"], "invalid");
+        assert_eq!(
+            invalid["summary"]["next_action"]["recommended_action"],
+            invalid_step
+        );
+        assert_eq!(invalid["summary"]["next_recommendation"], invalid_step);
+        // The movement itself is still described; only the next step changes.
+        assert_eq!(invalid["summary"]["next_action"]["kind"], "improved");
+        assert_eq!(
+            invalid["summary"]["next_action"]["summary"],
+            "Static grip improved."
+        );
+
+        let missing = render(AgentReceiptAnalysisOutcome::Unavailable {
+            status: AgentReceiptUnavailableStatus::Missing,
+            reason: "producer artifact is missing".to_string(),
+        })?;
+        let partial = render(AgentReceiptAnalysisOutcome::Present(Box::new(
+            test_incomplete_analysis_outcome(AnalysisOutcomeKind::PartialWithLimitations)?,
+        )))?;
+        assert_eq!(
+            partial["summary"]["next_action"]["recommended_action"],
+            "This receipt is not review evidence because its status is `incomplete` (the analysis outcome is not complete; see `analysis_outcome`); do not include it in review. Resolve what kept the analysis from completing, then rerun agent verify and agent receipt; in the repair loop, start a new attempt with `ripr agent repair --seam-id <seam-id> --phase before` and run the `--phase after` command it prints."
+        );
+        for receipt in [&invalid, &missing, &partial] {
+            assert_ne!(receipt["status"], "advisory", "{receipt}");
+            for pointer in [
+                "/summary/next_action/recommended_action",
+                "/summary/next_recommendation",
+            ] {
+                let text = receipt
+                    .pointer(pointer)
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| format!("{pointer} is not a string: {receipt}"))?;
+                assert!(
+                    text.contains("is not review evidence")
+                        && !text.contains("include this receipt in review")
+                        && !text.contains("attach this receipt"),
+                    "{pointer} of a `{}` receipt: {text}",
+                    receipt["status"]
+                );
+            }
+        }
         Ok(())
     }
 }

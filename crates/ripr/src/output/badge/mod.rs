@@ -1,7 +1,7 @@
 //! Private badge summary model and renderer.
 //!
-//! This module is the rendering substrate for the `ripr` and (future)
-//! `ripr+` badges. Its types are intentionally crate-private — the public
+//! This module is the rendering substrate for the `ripr` and `ripr+`
+//! badges. Its types are intentionally crate-private — the public
 //! contract is the JSON wire shape, not the Rust types. See
 //! [`docs/BADGE_POLICY.md`](../../../../../../docs/BADGE_POLICY.md) for the
 //! locked semantics, color thresholds, and JSON shape.

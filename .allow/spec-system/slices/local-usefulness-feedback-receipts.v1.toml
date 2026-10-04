@@ -1,0 +1,69 @@
+schema_version = "2.0"
+id = "ripr.slice.local-usefulness-feedback-receipts.v1"
+generation = 1
+
+source_issue = "issue:4585"
+design_reference = "RIPR-SPEC-0179#behavior"
+change_class = "behavior_change"
+
+claim_boundary = """
+Adds an explicit local CLI that records result-bound usefulness feedback
+receipts and a read-only join onto existing route-quality rows. Recording
+changes no diagnostic, classification, baseline, suppression, gate, or gap
+closure state. Identity is snapshot plus optional canonical item, not
+file/line. This slice does not add editor, LSP, or MCP write surfaces, a
+second attempt ledger, hosted telemetry, or support promotion.
+"""
+
+non_goals = [
+  "editor UI",
+  "custom LSP requests",
+  "MCP write tools",
+  "attempt retention",
+  "second attempt ledger",
+  "suppression proposals",
+  "hosted telemetry",
+  "support-tier promotion",
+  "0.11 release membership",
+]
+
+return_conditions = [
+  "Return to root if recording mutates diagnostics, classification, baseline, suppressions, gates, or gap closure.",
+  "Return to root if file/line is accepted as result identity.",
+  "Return to root if the same idempotency key and payload creates a second record.",
+  "Return to root if unreviewed or agent feedback is relabelled human-approved or turned into a success percentage.",
+  "Return to root if this slice adds an editor, LSP, or MCP write surface.",
+]
+
+owned_seams = [
+  "seam:ripr:domain:usefulness-feedback",
+  "seam:ripr:app:usefulness-feedback",
+  "seam:ripr:cli:feedback-command",
+  "seam:ripr:output:usefulness-feedback",
+]
+
+shared_seams = [
+  "seam:ripr:output:atomic-file",
+  "seam:ripr:contract:route-quality-join",
+]
+
+forbidden_seams = [
+  "seam:ripr:lsp",
+  "seam:ripr:mcp",
+  "seam:ripr:output:gate-authority",
+  "seam:ripr:agent:command-runner",
+  "seam:ripr:release:promotion",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0179#behavior"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

@@ -911,6 +911,7 @@ mod tests {
                     reason: "equality boundary not observed".to_string(),
                     flow_sink: None,
                 }],
+                new_test_target: None,
             },
             class: SeamGripClass::WeaklyGripped,
         }
@@ -974,6 +975,7 @@ mod tests {
                 ),
                 observed_values: Vec::new(),
                 missing_discriminators: Vec::new(),
+                new_test_target: None,
             },
             class: SeamGripClass::Ungripped,
         }

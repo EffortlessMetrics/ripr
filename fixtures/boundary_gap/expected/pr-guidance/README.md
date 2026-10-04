@@ -14,10 +14,13 @@ Cases:
 
 - `exact-line`: seam maps directly to a changed line.
 - `owner-function-line`: seam maps to the changed owner function.
-- `same-file-line`: seam falls back to the nearest changed line in the same file.
+- `same-file-line`: seam lands on a changed line inside its owner's span that
+  owner attribution bound to a nested function; a nearer changed line outside
+  the owner span is not used.
 - `summary-only`: no safe changed-line placement is available.
 - `capped`: inline and summary caps suppress excess recommendations.
-- `changed-test-skip`: a nearby recommended test file changed, so guidance is suppressed.
+- `changed-test-skip`: historical case name; a nearby recommended test file
+  changed, but the unresolved headline-eligible seam retains its guidance.
 - `configured-off`: selector warnings explain configured-off seams without comments.
 
 The fixture test is read-only. Refresh these files intentionally by inspecting

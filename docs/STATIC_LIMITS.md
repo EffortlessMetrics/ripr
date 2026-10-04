@@ -36,6 +36,8 @@ rust_macro_wrapped_test_call_unresolved
 rust_macro_wrapped_assertion_unresolved
 rust_value_propagation_unresolved
 rust_subprocess_binary_reach_unresolved
+wrapper_error_binding_unresolved
+python_transitive_reach_unresolved
 ```
 
 When `static_limit_kind` is absent but stable static-limit text is present,
@@ -63,6 +65,37 @@ action.
 | `rust_macro_wrapped_assertion_unresolved` | A Rust test reaches the changed owner, but the visible assertion-like custom macro is not classified as an oracle. | Treat this as first-run evidence that RIPR saw a candidate assertion macro but could not confirm its discriminator. It is not a clean result, oracle claim, or repair packet. |
 | `rust_value_propagation_unresolved` | A changed Rust `let` binding uses a bounded `find`/`rfind` or `len_utf8` operation normalized through `map_or`, but syntax-first analysis cannot carry that value into a same-owner equality predicate. | Treat this as a named `static_unknown` analyzer limitation. Do not add a duplicate discriminator test or infer coverage, repair readiness, or a runtime result. |
 | `rust_subprocess_binary_reach_unresolved` | An integration test invokes a Cargo-built binary, but ripr does not yet map that executable back to the changed owner. | Treat this as a named `no_static_path` limitation. Inspect the subprocess test and binary target manually; do not infer reach, receipt validity, coverage, or repair readiness. |
+| `wrapper_error_binding_unresolved` | A wrapper error conversion (`callee(..).map_err(..)`) takes its error-variant identity from the converted callee, and RIPR cannot establish that the boxed conversion preserves that variant. | Keep the seam below `exposed`; verify the variant through the wrapper directly. This names the unresolved conversion binding, not a coverage or repair claim. |
+| `python_transitive_reach_unresolved` | A Python test constructs or calls into the owner's class, and a bounded same-class method path may lead toward the changed method. | Treat this as a named `no_static_path` limitation. Inspect the candidate class/method path before adding or delegating repair work. It is not a related-test or coverage claim. |
+
+## External-Language Related-Test Inventory
+
+Which related-test files count as external-language evidence is read from the
+routed TypeScript/JavaScript extension authority in
+`crates/ripr/src/analysis/language/router.rs`
+(`TYPESCRIPT_SOURCE_EXTENSIONS` / `JAVASCRIPT_SOURCE_EXTENSIONS`), the same
+owner the language router dispatches on. The fail-closed cross-language gate
+(`analysis::repair_route`) and the navigation-only external observer projection
+(`output/agent_seam_packets.rs`) both consume it, so a routed extension such as
+`.mts` or `.cts` cannot be analyzed as TypeScript while its test is still
+treated as an unknown language.
+
+| Extension | Published external-language label |
+| --- | --- |
+| `.ts`, `.tsx`, `.mts`, `.cts` | `typescript` |
+| `.js`, `.jsx`, `.mjs`, `.cjs` | `javascript` |
+| `.py` | `python` |
+| `.rb` | `ruby` |
+| `.java` | `java` |
+| `.c`, `.cc`, `.cpp`, `.cxx`, `.swift`, `.kt`, `.kts` | none; still external evidence in the repair route, so the limitation stays unresolved |
+
+Admitting an extension never promotes a finding. It only keeps the
+`cross_language_oracle_visibility_unresolved` gate and the navigation-only
+external observer label in step with the router. Matching is exact on the
+case-folded extension, so a near-miss suffix such as `.mtsx` or `.ctsx` is
+unknown rather than external. The bridge languages above remain a repair-route
+list: they are external evidence without a routed adapter or a published
+label.
 
 ## What Static Limits Do Not Mean
 

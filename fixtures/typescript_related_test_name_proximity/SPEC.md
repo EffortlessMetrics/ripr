@@ -36,8 +36,12 @@ ripr check \
 
 The TypeScript preview adapter:
 
-- relates same-stem, describe-name, and test-name proximity as uncertain links;
-- does not use strong assertions from heuristic-only links as proof;
+- does not relate a same-stem file, a `describe(...)` title, or a test title
+  to the owner, because none of these tests references `applyDiscount`
+  (RIPR-SPEC-0027: a test is related only when it references the owner;
+  proximity and names only rank tests that already do);
+- classifies the change `no_static_path` with reach `no` and the missing
+  reference named (`No test references \`applyDiscount(\``);
 - keeps partial-token names out of related-test evidence;
 - preserves `language = "typescript"` and `language_status = "preview"`;
 - remains syntax-first and advisory.
@@ -46,6 +50,7 @@ The TypeScript preview adapter:
 
 - Resolve a package graph, invoke `tsc`, or run Jest/Vitest.
 - Treat heuristic proximity as a complete repair packet or strong proof.
+- List a test that never references the owner as a related test.
 - Treat partial owner tokens such as `discount` as `applyDiscount`.
 - Promote TypeScript preview evidence into gates, badges, baselines, or RIPR
   Zero.

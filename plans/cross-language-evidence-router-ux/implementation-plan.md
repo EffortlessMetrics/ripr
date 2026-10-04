@@ -1,12 +1,12 @@
 # Cross-Language Evidence Router UX Plan
 
-Status: active; first eight implementation work items complete
+Status: complete; all ten implementation work items done
 Owner: language-adapter-swarm
 Plan artifact: RIPR-PLAN-0063
 Linked proposal: n/a
 Linked specs: RIPR-SPEC-0027, RIPR-SPEC-0062, RIPR-SPEC-0063
 Linked ADRs: n/a
-Active goal: `cross-language-evidence-router-ux` in `.ripr/goals/active.toml`
+Active goal: `cross-language-evidence-router-ux` (historical; `.ripr/goals/active.toml` retired in #1701)
 
 ## Current State
 

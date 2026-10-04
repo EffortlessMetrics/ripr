@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 01c4440..21c9e25 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -189,7 +189,7 @@ pub fn to_string(bytes: u64, si_prefix: bool) -> String {
+     };
+     let unit_suffix = if si_prefix { "iB" } else { "B" };
+ 
+-    if bytes < unit {
++    if bytes <= unit {
+         format!("{} B", bytes)
+     } else {
+         let size = bytes as f64;

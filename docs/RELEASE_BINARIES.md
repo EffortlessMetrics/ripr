@@ -1,4 +1,4 @@
-# Server Binary Release
+# Server Binary Rehearsal
 
 The VS Code/Open VSX extension can self-provision only when GitHub Releases has
 native `ripr` server archives and a manifest.
@@ -11,13 +11,14 @@ Use:
 .github/workflows/release-server-binaries.yml
 ```
 
-Manual dispatch:
+Dispatch from the selected swarm branch:
 
 ```bash
-gh workflow run release-server-binaries.yml -f version=0.8.0
+gh workflow run release-server-binaries.yml --ref <candidate-branch> -f version=<candidate-package-version>
 ```
 
-The workflow builds:
+This read-only entrypoint calls `server-archive-qualification.yml` with the
+dispatch commit's exact SHA. It builds and verifies:
 
 ```text
 x86_64-pc-windows-msvc
@@ -26,6 +27,44 @@ aarch64-apple-darwin
 x86_64-unknown-linux-gnu
 aarch64-unknown-linux-gnu
 ```
+
+Download the `ripr-server-qualification-*` Actions artifacts to inspect all
+five archives, per-target checksums, manifest, `SHA256SUMS`, and the
+JSON/Markdown receipt. The machine-readable receipt records the exact swarm
+SHA, version, each target archive digest and resolved Rust/Cargo toolchain,
+plus the Cargo.lock, workflow, manifest, and `SHA256SUMS` digests for the
+source-repo handoff. Actions artifacts expire and are not public release
+assets. The prospective URLs in the rehearsal manifest name the swarm repo;
+the source release must generate its own manifest for its selected source
+commit and independently verify the promoted assets. Public release creation
+and asset upload belong only to `EffortlessMetrics/ripr`.
+
+### Final native payload identity
+
+Each target job stages the bytes that packaging is allowed to consume under:
+
+```text
+target/ripr/distribution/v<VERSION>/<target>/payload/
+```
+
+Beside that directory it writes `payload-identity.json` and
+`payload-identity.md`. The strict identity binds the product, native version,
+target, executable, source commit and tree, `Cargo.lock`, selected features,
+Rust/Cargo toolchain, bounded runner identity, ordered payload file
+paths/roles/sizes/digests, and one aggregate payload digest. Runtime
+compatibility evidence is copied from `policy/distribution.toml`; it remains
+`unqualified` until #4489 records measured compatibility.
+
+`release-server-archive` archives only this staged directory. The qualification
+workflow extracts the resulting archive and runs the same Rust verifier over
+the extracted bytes before recording `archive_readback_verified: true` in that
+target's build identity; the aggregate receipt repeats the field only after an
+all-targets gate asserts every per-target readback flag. It
+retains the exact JSON/Markdown identities with each target's build identity,
+then requires five selected, five executed, zero failed, and zero not-run
+targets before writing the aggregate receipt. This proves payload and archive
+shape for the exact candidate; it does not establish a public release, wheel,
+npm package, or native runtime compatibility floor.
 
 ## Exact-candidate qualification (read-only)
 
@@ -37,7 +76,8 @@ but must resolve to the same commit. Every matrix job fetches that
 SHA, builds the existing five-target server matrix, verifies the archive
 checksum, extracts the flat package, and checks both the archive label and the
 candidate-built binary's `--version` command, including that the requested
-qualification version matches the candidate package version. The manifest job verifies
+qualification version matches the candidate package version and that the
+binary names the candidate commit. The manifest job verifies
 `SHA256SUMS` and emits a
 machine-readable and Markdown qualification receipt.
 
@@ -61,9 +101,9 @@ diagnostics on every failure, then fail closed if the endpoint or shape is
 unavailable. Its only writes are scoped
 GitHub Actions artifacts containing the archives, manifest, checksums, and
 qualification receipt. An Actions artifact is rehearsal evidence, not a
-GitHub Release asset and not publication proof. The existing
-`release-server-binaries.yml` workflow remains the separate publication
-authority and must not be used as the qualification receipt.
+GitHub Release asset and not publication proof. The swarm
+`release-server-binaries.yml` entrypoint uses this same qualification receipt;
+the source repository's separate release workflow owns publication.
 
 
 Packaging and manifest assembly intentionally live in Rust-first automation:
@@ -71,13 +111,10 @@ Packaging and manifest assembly intentionally live in Rust-first automation:
 ```bash
 cargo xtask release-server-archive --version <VERSION> --target <target> --executable <ripr-or-ripr.exe> --archive <zip-or-tar.gz>
 cargo xtask release-server-manifest --version <VERSION> --repository <owner/repo>
-cargo xtask release-upload-assets --version <VERSION>
 ```
 
-The workflow should only orchestrate those commands instead of keeping archive,
-checksum, manifest, or upload branching logic in shell or PowerShell.
-
-and uploads these assets to the matching GitHub Release:
+The qualification workflow orchestrates packaging and checksums. A later,
+separately authorized source-repo release may publish assets named:
 
 ```text
 ripr-server-v<VERSION>-<target>.zip
@@ -176,6 +213,41 @@ The `SHA256SUMS` sidecar is `sha256sum -c SHA256SUMS`-compatible (one
 same manifest under the legacy name `checksums.txt`; the content format is
 unchanged.
 
+### RC placement and the embedded manifest digest (#3798)
+
+The server manifest is placement-neutral per distribution generation: the
+generation's manifest bytes (and archive identities) are identical on the
+exact stable release and on the one public RC release of the same generation,
+so one raw-byte manifest SHA-256 admits both placements. Build the RC release
+from the generation's version (`release-server-manifest --version 0.11.0`),
+upload those bytes to the RC tag, and upload the identical bytes to the stable
+tag when it is cut.
+
+`cargo xtask release-server-manifest` also regenerates
+`editors/vscode/src/serverDescriptor.ts` with that digest. The release cut
+must run the manifest command and commit the refreshed descriptor **before**
+packaging the extension VSIX, so the packaged extension embeds the real
+digest. A generation without an embedded descriptor has no fallback row: a
+prerelease request's stable absence stays terminal.
+
+With the descriptor embedded, a clean RC extension requests its own version
+(for example `0.11.0-rc.1`) and the downloader resolves:
+
+```text
+fetch the exact stable placement v<GENERATION>/ripr-server-manifest-v<GENERATION>.json
+  accepted      -> selected_stable_exact
+  direct 404    -> fetch the one predeclared RC placement
+                   v<REQUESTED>/ripr-server-manifest-v<GENERATION>.json
+                   admitted by the same digest
+                -> selected_rc_exact_after_stable_absent
+  anything else -> fail closed with the original typed reason
+```
+
+A redirected 404, DNS/connect/TLS failure, timeout, 401/403, 5xx, redirect
+loop, malformed or wrong-digest manifest, or a target-set identity conflict is
+never absence and never falls back. No other RC, `latest` query, version
+range, or mutable lookup is ever derived.
+
 Each server archive contains:
 
 ```text
@@ -187,8 +259,9 @@ README-server.txt
 
 ## Release Proof
 
-The last verified public release line before 0.8.0 execution is `v0.7.0`,
-published on May 20, 2026:
+The last release whose proof is recorded here is `v0.7.0`, published on
+May 20, 2026; 0.8.0 through 0.10.0 were published later without a proof
+recorded in this file. The proof ran:
 
 - The GitHub Release has `ripr-0.7.0.vsix`.
 - The release has `ripr-server-manifest-v0.7.0.json`.
@@ -250,7 +323,7 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-code --install-extension dist/ripr-0.8.0.vsix --force
+code --install-extension dist/ripr-<VERSION>.vsix --force
 ```
 
 For the defaults-first release line, also run the server archive smoke from

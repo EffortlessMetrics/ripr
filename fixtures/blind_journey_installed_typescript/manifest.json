@@ -1,0 +1,229 @@
+{
+ "schema_version": "blind_journey_installed_typescript_fixture.v1",
+ "spec": "RIPR-SPEC-0210",
+ "issues": ["#4519", "#4508", "#4600", "#3797", "#4510", "#4604", "#4603"],
+ "fixture": {
+  "name": "installed-typescript-threshold-boundary",
+  "language": "typescript",
+  "summary": "Bounded npm/Vitest repository whose committed production change moves one discount-threshold comparison from exclusive to inclusive while the related test only covers below/above; the expected repair adds one equality test and no production edit. Negative snapshots retain every rebindable, imported, shadowed, computed and nonliteral shape the accepted implementation contract leaves unresolved."
+ },
+ "environment": {
+  "package_manager": "npm",
+  "test_framework": "vitest",
+  "node_identity": "node v22.14.0",
+  "npm_identity": "npm 10.9.2",
+  "runner_identity": "vitest 3.2.4 via the package-lock.json-selected npm runner",
+  "lockfile_note": "the retained package-lock.json root entry backs the npm-runner selection used by the printed command; full dependency locking belongs to the journey environment, which records the installed node/npm/vitest identities above"
+ },
+ "repository": {
+  "identity": "fixtures/blind_journey_installed_typescript/repository",
+  "default_base_ref": "main",
+  "snapshots": {
+   "base": {
+    "commit": "5d48dbf2080a1596bfb267593402ab8b38cd63fa",
+    "tree": "5a86f441fd9e21c2f2e1963c5dc3ef58d2840578",
+    "files": {
+     "package-lock.json": "33b11eeaac39f8f8ef3da4bfe5f2857b638f7a63b46af961f0e130e04cc71379",
+     "package.json": "3a6a29b8a24f3a57abecdd9324e3e887353a12e7a372a8e970a04480d6f780dd",
+     "src/pricing.ts": "90729bd40d79fa2580a2bdbd3ecda07e5a1ea371eebaf73d970b18095d1423d8",
+     "test/pricing.test.ts": "57e14e54b5ce8302d8457fa1b9ff947571cabf4d6448ef9c3e2fc293e85250da"
+    }
+   },
+   "head": {
+    "commit": "94339d4e11d39461f5fec6893453cd9073609f5a",
+    "tree": "8da68b121a26fbbb50a96d2c11c54a3628db4dc9",
+    "files": {
+     "package-lock.json": "33b11eeaac39f8f8ef3da4bfe5f2857b638f7a63b46af961f0e130e04cc71379",
+     "package.json": "3a6a29b8a24f3a57abecdd9324e3e887353a12e7a372a8e970a04480d6f780dd",
+     "src/pricing.ts": "d5305cef7b658d2b658de2ade29832b7991205373a167b52450fb8b91dbe1500",
+     "test/pricing.test.ts": "57e14e54b5ce8302d8457fa1b9ff947571cabf4d6448ef9c3e2fc293e85250da"
+    }
+   },
+   "variant-let-binding": {
+    "commit": "0df41e78033463d4a506a12189a77d2889d5b61c",
+    "tree": "30f83a8fc868a7bc2d91981fb14bb5a03a6b95b0",
+    "files": {
+     "package-lock.json": "33b11eeaac39f8f8ef3da4bfe5f2857b638f7a63b46af961f0e130e04cc71379",
+     "package.json": "3a6a29b8a24f3a57abecdd9324e3e887353a12e7a372a8e970a04480d6f780dd",
+     "src/pricing.ts": "bd018e6af9928204494165e91405d7bf4a6324e7a5645faae206c8fac8c5d17c",
+     "test/pricing.test.ts": "57e14e54b5ce8302d8457fa1b9ff947571cabf4d6448ef9c3e2fc293e85250da"
+    }
+   },
+   "variant-reassignment": {
+    "commit": "30bc6938ed104b69056324a86760f647818457a1",
+    "tree": "afd28c7e75c32083e4a4fb21a2e893604c5dc103",
+    "files": {
+     "package-lock.json": "33b11eeaac39f8f8ef3da4bfe5f2857b638f7a63b46af961f0e130e04cc71379",
+     "package.json": "3a6a29b8a24f3a57abecdd9324e3e887353a12e7a372a8e970a04480d6f780dd",
+     "src/pricing.ts": "284b0a47aeb33eea010f2a0ff4cd0a235e0231c11947047640b63729fa925646",
+     "test/pricing.test.ts": "57e14e54b5ce8302d8457fa1b9ff947571cabf4d6448ef9c3e2fc293e85250da"
+    }
+   },
+   "variant-shadowing": {
+    "commit": "d7a7d61fd7e3998de2d306d8f834b1fe45708fcc",
+    "tree": "cd6aef1e0edfa31d25c0aa794c86d1ba8e02da11",
+    "files": {
+     "package-lock.json": "33b11eeaac39f8f8ef3da4bfe5f2857b638f7a63b46af961f0e130e04cc71379",
+     "package.json": "3a6a29b8a24f3a57abecdd9324e3e887353a12e7a372a8e970a04480d6f780dd",
+     "src/pricing.ts": "3b2212d0addb6b2a07592aa47af5c3d9abcb3805f32dfe40fa3884f2c59a4117",
+     "test/pricing.test.ts": "57e14e54b5ce8302d8457fa1b9ff947571cabf4d6448ef9c3e2fc293e85250da"
+    }
+   },
+   "variant-imported-constant": {
+    "commit": "1c39e0396b7a13cb8099d0f2fdc3241bd6d09aed",
+    "tree": "e69e259ab36958446bb08c7416164550acc63cb5",
+    "files": {
+     "package-lock.json": "33b11eeaac39f8f8ef3da4bfe5f2857b638f7a63b46af961f0e130e04cc71379",
+     "package.json": "3a6a29b8a24f3a57abecdd9324e3e887353a12e7a372a8e970a04480d6f780dd",
+     "src/constants.ts": "ece5808de14af715353fb9c452676811af467d89bae5005560e3906bd5844985",
+     "src/pricing.ts": "14122b860abd68530b4a48355b6b1dc2a3bdbc15f313ceeff1f16d25496e5d66",
+     "test/pricing.test.ts": "57e14e54b5ce8302d8457fa1b9ff947571cabf4d6448ef9c3e2fc293e85250da"
+    }
+   },
+   "variant-object-namespace-write": {
+    "commit": "7923c0a1949798e5d2e4852a17f70a5efa0150c4",
+    "tree": "6fd139f3a5c8e2cf29817f46e96388bb07419970",
+    "files": {
+     "package-lock.json": "33b11eeaac39f8f8ef3da4bfe5f2857b638f7a63b46af961f0e130e04cc71379",
+     "package.json": "3a6a29b8a24f3a57abecdd9324e3e887353a12e7a372a8e970a04480d6f780dd",
+     "src/pricing.ts": "1f6b591b6924961ae3b2025991df3d1d22350f3540c53369651101be90565dca",
+     "test/pricing.test.ts": "57e14e54b5ce8302d8457fa1b9ff947571cabf4d6448ef9c3e2fc293e85250da"
+    }
+   },
+   "variant-enum-computed-initializer": {
+    "commit": "a1acaf82c19f82345ec9b9af526ee6ac0681acae",
+    "tree": "d802fbd63d7d3aee5c7ab07fae27a400646d85cc",
+    "files": {
+     "package-lock.json": "33b11eeaac39f8f8ef3da4bfe5f2857b638f7a63b46af961f0e130e04cc71379",
+     "package.json": "3a6a29b8a24f3a57abecdd9324e3e887353a12e7a372a8e970a04480d6f780dd",
+     "src/pricing.ts": "e0c5ef9ad991eeb14f09b3a5048274c17a9d04823a19ae78353a6aa6c17fa8e4",
+     "test/pricing.test.ts": "57e14e54b5ce8302d8457fa1b9ff947571cabf4d6448ef9c3e2fc293e85250da"
+    }
+   },
+   "variant-nonliteral-arithmetic": {
+    "commit": "fd9b8b4116c44daf80541861ae907cc4c324cfdf",
+    "tree": "b0432c297b291cef884299389f9baae6493e5eca",
+    "files": {
+     "package-lock.json": "33b11eeaac39f8f8ef3da4bfe5f2857b638f7a63b46af961f0e130e04cc71379",
+     "package.json": "3a6a29b8a24f3a57abecdd9324e3e887353a12e7a372a8e970a04480d6f780dd",
+     "src/pricing.ts": "b8f7c3436adb6d0d6fc3839330b4b48e0a74d692d55a5a701875bc2f1327aa11",
+     "test/pricing.test.ts": "57e14e54b5ce8302d8457fa1b9ff947571cabf4d6448ef9c3e2fc293e85250da"
+    }
+   },
+   "variant-reach-barrier": {
+    "commit": "b2c2cda458029d64ebf470a4f50637b99ee163f3",
+    "tree": "3b3ae62869b666121e7eeaaace61e996a2a0db83",
+    "files": {
+     "package-lock.json": "33b11eeaac39f8f8ef3da4bfe5f2857b638f7a63b46af961f0e130e04cc71379",
+     "package.json": "3a6a29b8a24f3a57abecdd9324e3e887353a12e7a372a8e970a04480d6f780dd",
+     "src/pricing.ts": "3670a98b9c8210f9fa522758786e6613591f13d4e2e7e8ee1f3add7314ffcc05",
+     "test/pricing.test.ts": "57e14e54b5ce8302d8457fa1b9ff947571cabf4d6448ef9c3e2fc293e85250da"
+    }
+   }
+  },
+  "construction_recipe": [
+   "git init -b main . && git config core.autocrlf false && git config user.name 'ripr fixture' && git config user.email 'fixture@example.invalid'",
+   "write the base snapshot files (repository/base/*) and `git add -A`",
+   "GIT_AUTHOR_DATE=2026-10-04T00:00:00Z GIT_COMMITTER_DATE=2026-10-04T00:00:00Z git commit -m 'base: exclusive discount threshold with below/above tests'",
+   "write the head snapshot files (repository/head/*) and `git add -A`",
+   "GIT_AUTHOR_DATE=2026-10-04T00:01:00Z GIT_COMMITTER_DATE=2026-10-04T00:01:00Z git commit -m 'head: move discount threshold to include exactly 10000'",
+   "for each variant, branch variant/<name> at the base commit, write the variant snapshot files (repository/variant-<name>/*), and commit with the same fixed one-minute-stepped dates to reproduce the variant commit"
+  ],
+  "recipe_note": "Pinned author/committer identity, fixed timestamps and core.autocrlf=false make every commit and tree object reproducible; the recorded commit and tree identities were reproduced twice from this recipe before being committed."
+ },
+ "journey": {
+  "eligible_items": ["seam-pricing-threshold-equality"],
+  "quiet_neighbors": ["seam-pricing-standard-branch"],
+  "expected_edit_cage": ["test/pricing.test.ts"],
+  "forbidden_edits": ["src/pricing.ts", "package.json", "src/constants.ts"],
+  "discriminator_family": "boundary-constant",
+  "known_product_limitations": ["no-network"],
+  "selected_repair": {
+   "edit_target": "test/pricing.test.ts",
+   "added_test": "discounts a subtotal exactly at the threshold",
+   "focused_verification_command": "vitest run test/pricing.test.ts",
+   "expected_verification_exit": 0,
+   "independent_understanding": "head makes discountedTotal(10000) apply the discount; the retained test only asserts subtotals 9999 and 10001, so one equality assertion at 10000 is the complete bounded repair"
+  },
+  "printed_command_templates": {
+   "doctor": "ripr doctor --root <selected-root>",
+   "check": "ripr check --root <selected-root>",
+   "pilot": "ripr pilot --root <selected-root>",
+   "agent_status": "ripr agent status --root <selected-root>",
+   "repair_before": "ripr agent repair --root <selected-root> --seam-id seam-pricing-threshold-equality --phase before",
+   "repair_after": "ripr agent repair --root <selected-root> --attempt <repair-attempt-id> --phase after",
+   "agent_receipt": "ripr agent receipt --root <selected-root> --attempt <repair-attempt-id> --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-pricing-threshold-equality --json --out target/ripr/reports/agent-receipt.json",
+   "verification": "vitest run test/pricing.test.ts"
+  },
+  "substitution_contract": "<selected-root> and <repair-attempt-id> are the only placeholders; the product prints concrete values and the scripted transcript records the printed bytes literally, executed from a foreign launch directory against the selected root; the printed vitest command runs in the documented npm environment selected by the retained lockfile."
+ },
+ "journey_scenario_ids": [
+  "installed_typescript_positive_journey_emits_receipt",
+  "installed_typescript_imported_constant_variant_unresolved",
+  "installed_typescript_let_binding_variant_unresolved",
+  "installed_typescript_reassignment_variant_unresolved",
+  "installed_typescript_shadowing_variant_unresolved",
+  "installed_typescript_object_namespace_write_variant_unresolved",
+  "installed_typescript_enum_computed_initializer_variant_unresolved",
+  "installed_typescript_nonliteral_arithmetic_variant_unresolved",
+  "installed_typescript_reach_barrier_variant_unresolved",
+  "installed_typescript_failing_vitest_visible",
+  "installed_typescript_verification_skipped_visible",
+  "installed_typescript_cyclic_route_discoverability_failure",
+  "installed_typescript_deleted_before_artifact_names_recovery",
+  "installed_typescript_workspace_binary_rejected",
+  "installed_typescript_interrupted_receipt_write_recovers",
+  "installed_typescript_second_root_portable_identity"
+ ],
+ "scenario_snapshot_bindings": {
+  "installed_typescript_positive_journey_emits_receipt": "head",
+  "installed_typescript_imported_constant_variant_unresolved": "variant-imported-constant",
+  "installed_typescript_let_binding_variant_unresolved": "variant-let-binding",
+  "installed_typescript_reassignment_variant_unresolved": "variant-reassignment",
+  "installed_typescript_shadowing_variant_unresolved": "variant-shadowing",
+  "installed_typescript_object_namespace_write_variant_unresolved": "variant-object-namespace-write",
+  "installed_typescript_enum_computed_initializer_variant_unresolved": "variant-enum-computed-initializer",
+  "installed_typescript_nonliteral_arithmetic_variant_unresolved": "variant-nonliteral-arithmetic",
+  "installed_typescript_reach_barrier_variant_unresolved": "variant-reach-barrier",
+  "installed_typescript_failing_vitest_visible": "head",
+  "installed_typescript_verification_skipped_visible": "head",
+  "installed_typescript_cyclic_route_discoverability_failure": "head",
+  "installed_typescript_deleted_before_artifact_names_recovery": "head",
+  "installed_typescript_workspace_binary_rejected": "head",
+  "installed_typescript_interrupted_receipt_write_recovers": "head",
+  "installed_typescript_second_root_portable_identity": "head"
+ },
+ "control_mapping": {
+  "removed_same_file_literal_resolution_fails_packet": "installed_typescript_imported_constant_variant_unresolved",
+  "negative_binding_reach_shapes_stay_unresolved": [
+   "installed_typescript_let_binding_variant_unresolved",
+   "installed_typescript_reassignment_variant_unresolved",
+   "installed_typescript_shadowing_variant_unresolved",
+   "installed_typescript_imported_constant_variant_unresolved",
+   "installed_typescript_object_namespace_write_variant_unresolved",
+   "installed_typescript_enum_computed_initializer_variant_unresolved",
+   "installed_typescript_nonliteral_arithmetic_variant_unresolved",
+   "installed_typescript_reach_barrier_variant_unresolved"
+  ],
+  "failing_printed_vitest_command_stays_visible": "installed_typescript_failing_vitest_visible",
+  "skipped_project_verification_stays_not_run": "installed_typescript_verification_skipped_visible",
+  "cyclic_route_without_terminal_instruction_fails": "installed_typescript_cyclic_route_discoverability_failure",
+  "deleted_or_stale_artifact_names_recovery": "installed_typescript_deleted_before_artifact_names_recovery",
+  "foreign_cwd_decoy_keeps_selected_root": "installed_typescript_positive_journey_emits_receipt",
+  "workspace_or_alternate_binary_substitution_rejected": "installed_typescript_workspace_binary_rejected",
+  "interrupted_artifact_production_yields_no_partial_receipt": "installed_typescript_interrupted_receipt_write_recovers",
+  "second_temporary_root_repeat_agrees": "installed_typescript_second_root_portable_identity"
+ },
+ "claims": {
+  "limitations": [
+   "the scripted rows bind the retained fixture snapshots by content digest and recorded git identity; the frozen-candidate run through the #4510 harness rebinds live process and package identities",
+   "recorded command output bytes are the retained literal observations of the printed route; the real installed run may print equivalent concrete roots and attempt ids",
+   "the retained lockfile root entry backs the npm-runner selection; the full npm dependency tree and the installed node/npm/vitest identities belong to the journey environment recorded in the transcript"
+  ],
+  "non_claims": [
+   "no installed usefulness, candidate qualification or blind acceptance is claimed",
+   "no claim that every TypeScript project or boundary expression is supported",
+   "no mutation-adequacy or runtime-mutation result is claimed anywhere in the rows"
+  ]
+ }
+}

@@ -111,7 +111,7 @@ check schema version.
   diff evidence while retaining the projected new-side coordinate for
   removed-only probes; the disposition carries base-side semantics until
   #3281 re-coordinates consumer surfaces.
-- `crates/ripr/src/analysis/language/rust.rs` wires the resolution into the
+- `crates/ripr/src/analysis/language/rust/mod.rs` wires the resolution into the
   diff loop and marks repo-mode findings candidate-current.
 - `crates/ripr/src/output/json/report.rs` emits the field;
   `docs/OUTPUT_SCHEMA.md` and `policy/output_contracts.txt` carry the wire

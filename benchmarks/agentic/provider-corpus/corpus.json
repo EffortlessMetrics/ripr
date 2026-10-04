@@ -1,0 +1,146 @@
+{
+  "schema_version": "agentic_provider_corpus.v1",
+  "bases": {
+    "request": "valid-request.json",
+    "receipt": "valid-receipt.json",
+    "capabilities": "valid-capabilities.json"
+  },
+  "cases": [
+    { "id": "request-valid", "base": "request", "mutations": [], "expect": "Ok" },
+    {
+      "id": "request-tree-uppercase-id",
+      "base": "request",
+      "mutations": [
+        { "pointer": "/repository/snapshot_id", "value": "git-tree:0123456789ABCDEF0123456789ABCDEF01234567" }
+      ],
+      "expect": "MalformedIdentity"
+    },
+    {
+      "id": "request-tree-short-id",
+      "base": "request",
+      "mutations": [
+        { "pointer": "/repository/snapshot_id", "value": "git-tree:0123456789abcdef0123456789abcdef0123456" }
+      ],
+      "expect": "MalformedIdentity"
+    },
+    {
+      "id": "request-tree-digest-mismatch",
+      "base": "request",
+      "mutations": [
+        { "pointer": "/repository/source_digest", "value": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+      ],
+      "expect": "IdentityMismatch"
+    },
+    {
+      "id": "request-derived-view-unbound",
+      "base": "request",
+      "mutations": [{ "pointer": "/repository/source_view", "value": "git_index" }],
+      "expect": "IdentityMismatch"
+    },
+    {
+      "id": "request-sha256-identity-valid",
+      "base": "request",
+      "variant": "valid-identity",
+      "mutations": [
+        { "pointer": "/repository/snapshot_id", "value": "git-tree:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" },
+        { "pointer": "/repository/source_digest", "value": "sha256:6abeb43714bf5518cc497c7b6531cd712ca892edc8b5b63974645bdec678793a" }
+      ],
+      "expect": "Ok"
+    },
+    {
+      "id": "request-absolute-output-root",
+      "base": "request",
+      "mutations": [{ "pointer": "/output_root", "value": "/tmp/ripr-out" }],
+      "expect": "UnsafeOutputRoot"
+    },
+    {
+      "id": "request-empty-claim",
+      "base": "request",
+      "mutations": [{ "pointer": "/requested_claim", "value": "" }],
+      "expect": "MissingField"
+    },
+    { "id": "capabilities-valid", "base": "capabilities", "mutations": [], "expect": "Ok" },
+    {
+      "id": "capabilities-writes-source",
+      "base": "capabilities",
+      "mutations": [{ "pointer": "/capabilities/0/writes_source", "value": true }],
+      "expect": "AuthorityViolation"
+    },
+    {
+      "id": "capabilities-uses-network",
+      "base": "capabilities",
+      "mutations": [{ "pointer": "/capabilities/0/uses_network", "value": true }],
+      "expect": "AuthorityViolation"
+    },
+    {
+      "id": "capabilities-executes-project-commands",
+      "base": "capabilities",
+      "mutations": [{ "pointer": "/capabilities/0/executes_project_commands", "value": true }],
+      "expect": "AuthorityViolation"
+    },
+    {
+      "id": "capabilities-duplicate",
+      "base": "capabilities",
+      "mutations": [
+        {
+          "pointer": "/capabilities/-",
+          "value": {
+            "capability": "test_grip_summary",
+            "reads_source": true,
+            "writes_source": false,
+            "executes_project_commands": false,
+            "uses_network": false,
+            "supported_request_schema": "ripr_analysis_request.v1",
+            "supported_receipt_schema": "ripr_analysis_receipt.v1",
+            "claim_boundary": "Static RIPR evidence for one exact source snapshot and selected seam; no runtime test execution, mutation adequacy, semantic correctness, or merge-readiness claim.",
+            "excluded_claims": ["runtime_test_execution", "mutation_adequacy", "semantic_correctness", "merge_readiness"]
+          }
+        }
+      ],
+      "expect": "DuplicateCapability"
+    },
+    { "id": "receipt-valid", "base": "receipt", "mutations": [], "expect": "Ok" },
+    {
+      "id": "receipt-truncated-complete",
+      "base": "receipt",
+      "mutations": [{ "pointer": "/truncated", "value": true }],
+      "expect": "CompletenessConflict"
+    },
+    {
+      "id": "receipt-partial-with-status",
+      "base": "receipt",
+      "mutations": [{ "pointer": "/result_class", "value": "partial" }],
+      "expect": "CompletenessConflict"
+    },
+    {
+      "id": "receipt-stale-with-summary",
+      "base": "receipt",
+      "mutations": [{ "pointer": "/result_class", "value": "stale_input" }],
+      "expect": "CompletenessConflict"
+    },
+    {
+      "id": "receipt-missing-exceeds-analyzed",
+      "base": "receipt",
+      "mutations": [{ "pointer": "/summary/missing_discriminator_count", "value": 2 }],
+      "expect": "CompletenessConflict"
+    },
+    {
+      "id": "receipt-strongest-oracle-mismatch",
+      "base": "receipt",
+      "mutations": [{ "pointer": "/summary/strongest_oracle", "value": "medium" }],
+      "expect": "CompletenessConflict"
+    },
+    {
+      "id": "receipt-bad-binary-digest",
+      "base": "receipt",
+      "mutations": [{ "pointer": "/binary_digest", "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }],
+      "expect": "MalformedIdentity"
+    },
+    {
+      "id": "receipt-wrong-schema",
+      "base": "receipt",
+      "mutations": [{ "pointer": "/schema_version", "value": "ripr_analysis_receipt.v9" }],
+      "expect": "UnsupportedSchema"
+    }
+  ]
+}

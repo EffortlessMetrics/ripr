@@ -1,0 +1,13 @@
+diff --git a/src/eval.rs b/src/eval.rs
+index e6e3894..219120c 100644
+--- a/src/eval.rs
++++ b/src/eval.rs
+@@ -110,7 +110,7 @@ fn matches_less(cmp: &Comparator, ver: &Version) -> bool {
+         }
+     }
+ 
+-    ver.pre < cmp.pre
++    cmp.pre > ver.pre
+ }
+ 
+ fn matches_tilde(cmp: &Comparator, ver: &Version) -> bool {

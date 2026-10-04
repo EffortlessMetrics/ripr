@@ -1,0 +1,13 @@
+diff --git a/src/inner_connection.rs b/src/inner_connection.rs
+index 4d4db40..afbd3b4 100644
+--- a/src/inner_connection.rs
++++ b/src/inner_connection.rs
+@@ -431,7 +431,7 @@ fn ensure_safe_sqlite_threading_mode() -> Result<()> {
+     const SQLITE_SINGLETHREADED_MUTEX_MAGIC: usize = 8;
+     let is_singlethreaded = unsafe {
+         let mutex_ptr = ffi::sqlite3_mutex_alloc(0);
+-        let is_singlethreaded = mutex_ptr as usize == SQLITE_SINGLETHREADED_MUTEX_MAGIC;
++        let is_singlethreaded = SQLITE_SINGLETHREADED_MUTEX_MAGIC == mutex_ptr as usize;
+         ffi::sqlite3_mutex_free(mutex_ptr);
+         is_singlethreaded
+     };

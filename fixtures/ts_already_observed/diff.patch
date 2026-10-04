@@ -1,6 +1,6 @@
 --- a/src/validator.ts
 +++ b/src/validator.ts
-@@ -1,6 +1,6 @@
+@@ -1,5 +1,5 @@
  export function validateScore(score: number): boolean {
 -    if (score > 60) {
 +    if (score >= 60) {

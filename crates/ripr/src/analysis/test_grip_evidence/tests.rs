@@ -2,7 +2,11 @@ use super::related_tests::context::*;
 use super::related_tests::*;
 use super::*;
 use crate::analysis::facts::{FunctionSourceRole, WorkspaceRootAuthority, build_index};
+use crate::analysis::repair_route::{
+    RepairRouteState, RepairTargetSelection, is_safe_for_repair_packet, repair_packet_eligibility,
+};
 use crate::analysis::rust_index::{RaRustSyntaxAdapter, RustSyntaxAdapter};
+use crate::analysis::seam_classification::ClassifiedSeam;
 use crate::analysis::seam_inventory::inventory_seams_from_index;
 use crate::analysis::seams::{ExpectedSink, RequiredDiscriminator, SeamGripClass};
 use std::fs;
@@ -11,26 +15,48 @@ use std::os::unix::fs::symlink as symlink_file;
 #[cfg(windows)]
 use std::os::windows::fs::symlink_file;
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn index_from_files(files: &[(PathBuf, &str)]) -> Result<FixtureIndex, String> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_nanos();
+    index_from_files_at_stamp(files, stamp)
+}
+
+fn claim_index_fixture_root(stamp: u128) -> Result<AuthorityFixtureRoot, String> {
+    static NEXT_FIXTURE_ID: AtomicU64 = AtomicU64::new(0);
+    for _ in 0..32 {
+        let id = NEXT_FIXTURE_ID.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "ripr-3410-memory-{}-{stamp}-{id}",
+            std::process::id()
+        ));
+        match fs::create_dir(&root) {
+            Ok(()) => return Ok(AuthorityFixtureRoot(root)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("claim index fixture {}: {error}", root.display())),
+        }
+    }
+    Err("could not claim a unique index fixture root after 32 attempts".to_string())
+}
+
+fn index_from_files_at_stamp(
+    files: &[(PathBuf, &str)],
+    stamp: u128,
+) -> Result<FixtureIndex, String> {
     let adapter = RaRustSyntaxAdapter;
     let mut index = RustIndex::default();
     for (path, source) in files {
         let facts = adapter.summarize_file(path, source)?;
-        index.tests.extend(facts.tests.iter().cloned());
-        index.functions.extend(facts.functions.iter().cloned());
-        index.files.insert(path.clone(), facts);
+        index.extend_tests(facts.tests.iter().cloned());
+        index.extend_functions(facts.functions.iter().cloned());
+        index.insert_file_only(path.clone(), facts);
     }
-    let root = std::env::temp_dir().join(format!(
-        "ripr-3410-memory-{}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| error.to_string())?
-            .as_nanos()
-    ));
-    fs::create_dir_all(&root).map_err(|error| error.to_string())?;
-    let fixture_root = AuthorityFixtureRoot(root);
+    let fixture_root = claim_index_fixture_root(stamp)?;
     fs::write(
         fixture_root.join("Cargo.toml"),
         "[package]\nname = \"memory-fixture\"\nversion = \"0.1.0\"\n",
@@ -43,9 +69,12 @@ fn index_from_files(files: &[(PathBuf, &str)]) -> Result<FixtureIndex, String> {
         }
         fs::write(full, source).map_err(|error| error.to_string())?;
     }
-    index.workspace_authority = Some(WorkspaceRootAuthority::from_index(
+    index.workspace_authority = Some(WorkspaceRootAuthority::from_sources(
         &fixture_root,
-        &index.files,
+        index
+            .files()
+            .iter()
+            .map(|(path, facts)| (path, facts.data().source.as_str())),
     ));
     Ok(FixtureIndex {
         index,
@@ -120,6 +149,121 @@ fn authority_fixture_target(root: &Path) -> Result<(RustIndex, RepoSeam, String)
         seam,
         fs::read_to_string(root.join(file)).map_err(|error| error.to_string())?,
     ))
+}
+
+/// Resolve one test target through a fresh evidence context, as the
+/// production seam loop does; fresh so each call sees the index as mutated.
+fn target_for_index(
+    index: &RustIndex,
+    seam: &RepoSeam,
+    test: &TestSummary,
+    relation: RelationReason,
+) -> Option<TestTargetEvidence> {
+    let context = CompactGripContext::new(index);
+    test_target_evidence(&context, seam, test, relation)
+}
+
+fn fixture_thread_panic(label: &str, payload: Box<dyn std::any::Any + Send>) -> String {
+    let detail = payload
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| payload.downcast_ref::<&str>().copied())
+        .unwrap_or("non-string panic payload");
+    format!("{label} index fixture thread panicked: {detail}")
+}
+
+#[test]
+fn simultaneous_same_stamp_indexes_keep_distinct_live_target_authority() -> Result<(), String> {
+    let file = PathBuf::from("src/lib.rs");
+    let source = "pub fn score(amount: i32, threshold: i32) -> i32 { if amount >= threshold { 1 } else { 0 } }\n#[cfg(test)]\nmod tests { #[test] fn score_boundary() { assert_eq!(super::score(1, 1), 1); } }\n";
+    let files = [(file.clone(), source)];
+    let barrier = Arc::new(std::sync::Barrier::new(2));
+    let (first, second) = std::thread::scope(|scope| {
+        let first_barrier = Arc::clone(&barrier);
+        let second_barrier = Arc::clone(&barrier);
+        let files_ref = &files;
+        let first_thread = scope.spawn(move || {
+            let _ = first_barrier.wait();
+            index_from_files_at_stamp(files_ref, 4377)
+        });
+        let second_thread = scope.spawn(move || {
+            let _ = second_barrier.wait();
+            index_from_files_at_stamp(files_ref, 4377)
+        });
+        let first = first_thread
+            .join()
+            .map_err(|payload| fixture_thread_panic("first", payload))??;
+        let second = second_thread
+            .join()
+            .map_err(|payload| fixture_thread_panic("second", payload))??;
+        Ok::<(FixtureIndex, FixtureIndex), String>((first, second))
+    })?;
+
+    let first_root = first._fixture_root.0.clone();
+    let second_root = second._fixture_root.0.clone();
+    if first_root == second_root {
+        return Err(format!(
+            "same-stamp index fixtures shared one root: {}",
+            first_root.display()
+        ));
+    }
+    let indexed_target = |fixture: &FixtureIndex| -> Result<TestTargetEvidence, String> {
+        let seam = inventory_seams_from_index(std::slice::from_ref(&file), fixture)
+            .into_iter()
+            .find(|seam| seam.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "fixture lost its predicate seam".to_string())?;
+        let test = fixture
+            .tests()
+            .iter()
+            .find(|test| test.name == "score_boundary")
+            .ok_or_else(|| "fixture lost its indexed test".to_string())?;
+        target_for_index(fixture, &seam, test, RelationReason::DirectOwnerCall)
+            .ok_or_else(|| "live fixture lost its current indexed target".to_string())
+    };
+    let first_target = indexed_target(&first)?;
+    let second_target = indexed_target(&second)?;
+    if first_target.symbol_id() != second_target.symbol_id() {
+        return Err("identical indexed fixtures disagreed on the test symbol".to_string());
+    }
+    let expected_digest = crate::analysis::facts::source_digest(source.as_bytes());
+    let second_digest = second
+        .workspace_authority
+        .as_ref()
+        .and_then(|authority| authority.files.get(&file))
+        .map(|authority| authority.source_digest.as_str())
+        .ok_or_else(|| "second fixture lost its indexed source digest".to_string())?;
+    if second_digest != expected_digest {
+        return Err(format!(
+            "second fixture digest changed: expected {expected_digest}, got {second_digest}"
+        ));
+    }
+
+    drop(first);
+    let current_source = fs::read_to_string(second_root.join(&file))
+        .map_err(|error| format!("peer cleanup removed the surviving fixture: {error}"))?;
+    if current_source != source {
+        return Err("peer cleanup changed the surviving fixture source".to_string());
+    }
+    let surviving_target = indexed_target(&second)?;
+    if surviving_target.symbol_id() != second_target.symbol_id() {
+        return Err("peer cleanup changed the surviving indexed test symbol".to_string());
+    }
+
+    fs::write(second_root.join(&file), format!("{source}// stale\n"))
+        .map_err(|error| format!("write stale fixture source: {error}"))?;
+    let seam = inventory_seams_from_index(std::slice::from_ref(&file), &second)
+        .into_iter()
+        .find(|seam| seam.kind() == SeamKind::PredicateBoundary)
+        .ok_or_else(|| "stale fixture lost its indexed seam".to_string())?;
+    let test = second
+        .tests()
+        .iter()
+        .find(|test| test.name == "score_boundary")
+        .ok_or_else(|| "stale fixture lost its indexed test".to_string())?;
+    if target_for_index(&second, &seam, test, RelationReason::DirectOwnerCall).is_some() {
+        return Err("stale fixture source retained an indexed target".to_string());
+    }
+    Ok(())
 }
 
 #[test]
@@ -218,28 +362,147 @@ fn production_target_evidence_carries_portable_root_and_currentness_authority() 
 }
 
 #[test]
+fn production_target_evidence_hashes_each_test_file_once_per_context() -> Result<(), String> {
+    let root = authority_fixture_root("digest-memo")?;
+    fs::write(
+        root.join("src/lib.rs"),
+        "pub fn score(amount: i32, threshold: i32) -> i32 { if amount >= threshold { 1 } else { 0 } }\n#[cfg(test)]\nmod tests {\n#[test] fn score_boundary() { assert_eq!(super::score(1, 1), 1); }\n#[test] fn score_below() { assert_eq!(super::score(0, 1), 0); }\n}\n",
+    )
+    .map_err(|error| error.to_string())?;
+    let (index, seam, _) = authority_fixture_target(&root)?;
+    let file = PathBuf::from("src/lib.rs");
+    let authority_digest = index
+        .workspace_authority
+        .as_ref()
+        .and_then(|authority| authority.files.get(&file))
+        .map(|file| file.source_digest.clone())
+        .ok_or_else(|| "missing file authority".to_string())?;
+    let context = CompactGripContext::new(&index);
+    let related = context
+        .tests
+        .iter()
+        .filter(|indexed| indexed.test.file == file)
+        .map(|indexed| indexed.test)
+        .collect::<Vec<_>>();
+    if related.len() < 2 {
+        return Err(format!(
+            "fixture needs two tests in one file, got {}",
+            related.len()
+        ));
+    }
+    for test in &related {
+        if test_target_evidence(&context, &seam, test, RelationReason::DirectOwnerCall).is_none() {
+            return Err(format!("current target `{}` was rejected", test.name));
+        }
+    }
+    let cache = memo(&context.source_digest_cache);
+    if cache.len() != 1 || cache.get(file.as_path()) != Some(&authority_digest) {
+        return Err(format!(
+            "expected one memoized digest equal to the authority digest, got {cache:?}"
+        ));
+    }
+    drop(cache);
+    // Reuse, not just presence: a poisoned memo entry must decide the next
+    // validation, so a lookup that recomputes the digest would be caught.
+    memo(&context.source_digest_cache).insert(file.as_path(), "sha256:poisoned".to_string());
+    if test_target_evidence(&context, &seam, related[0], RelationReason::DirectOwnerCall).is_some()
+    {
+        return Err("validation recomputed the digest instead of reusing the memo".to_string());
+    }
+    if context
+        .indexed_source_digest(Path::new("src/unindexed.rs"))
+        .is_some()
+    {
+        return Err("unindexed file produced a digest".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn value_facts_share_one_file_scan_per_file() -> Result<(), String> {
+    let root = authority_fixture_root("file-scan-memo")?;
+    fs::write(
+        root.join("src/lib.rs"),
+        "const LIMIT: i32 = 7;\npub fn score(amount: i32, threshold: i32) -> i32 { if amount >= threshold { 1 } else { 0 } }\n#[cfg(test)]\nmod tests {\n#[test] fn score_boundary() { assert_eq!(super::score(LIMIT, LIMIT), 1); }\n#[test] fn score_below() { assert_eq!(super::score(0, LIMIT), 0); }\n}\n",
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(
+        root.join("src/other.rs"),
+        "#[test] fn other_score() { assert_eq!(crate::score(2, 1), 1); }\n",
+    )
+    .map_err(|error| error.to_string())?;
+    let files = [PathBuf::from("src/lib.rs"), PathBuf::from("src/other.rs")];
+    let index = build_index(&root, &files)?;
+    let context = CompactGripContext::new(&index);
+    let in_file = |file: &Path| {
+        context
+            .tests
+            .iter()
+            .filter(|indexed| indexed.test.file == file)
+            .collect::<Vec<_>>()
+    };
+    let lib_tests = in_file(&files[0]);
+    let other_tests = in_file(&files[1]);
+    let ([first, second], [other]) = (lib_tests.as_slice(), other_tests.as_slice()) else {
+        return Err(format!(
+            "fixture expects two lib tests and one other test, got {} and {}",
+            lib_tests.len(),
+            other_tests.len()
+        ));
+    };
+    if !Arc::ptr_eq(&first.file_value_scan, &second.file_value_scan) {
+        return Err("tests in one file must share one file scan".to_string());
+    }
+    if Arc::ptr_eq(&first.file_value_scan, &other.file_value_scan) {
+        return Err("tests in different files must not share a file scan".to_string());
+    }
+    first.value_facts(&index);
+    if second.file_value_scan.get().is_none() {
+        return Err("first test's facts did not populate the shared file scan".to_string());
+    }
+    // Identity alone would pass with an empty shared scan: both tests must
+    // still resolve the same-file constant through it.
+    let seam = inventory_seams_from_index(&files[..1], &index)
+        .into_iter()
+        .next()
+        .ok_or_else(|| "expected a fixture seam".to_string())?;
+    for indexed in [first, second] {
+        let env =
+            crate::analysis::value_resolution::ValueEnv::new(&seam, indexed.value_facts(&index));
+        let resolved = env.resolve("LIMIT");
+        if !resolved.iter().any(|(value, _)| value == "7") {
+            return Err(format!(
+                "`{}` did not resolve LIMIT through the shared scan: {resolved:?}",
+                indexed.test.name
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn production_target_evidence_rejects_authority_failures() -> Result<(), String> {
     let root = authority_fixture_root("negative")?;
     let (mut index, seam, source) = authority_fixture_target(&root)?;
     let file = PathBuf::from("src/lib.rs");
     let test = index
-        .files
+        .files()
         .get(&file)
         .and_then(|facts| facts.tests.first())
         .cloned()
         .ok_or_else(|| "missing fixture test".to_string())?;
-    if test_target_evidence(&index, &seam, &test, RelationReason::DirectOwnerCall).is_none() {
+    if target_for_index(&index, &seam, &test, RelationReason::DirectOwnerCall).is_none() {
         return Err("baseline authority target unexpectedly missing".to_string());
     }
 
     fs::write(root.join(&file), format!("{source}// stale\n"))
         .map_err(|error| error.to_string())?;
-    if test_target_evidence(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
+    if target_for_index(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
         return Err("stale source was accepted".to_string());
     }
     fs::write(root.join(&file), &source).map_err(|error| error.to_string())?;
     fs::remove_file(root.join(&file)).map_err(|error| error.to_string())?;
-    if test_target_evidence(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
+    if target_for_index(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
         return Err("missing source was accepted".to_string());
     }
     fs::write(root.join(&file), &source).map_err(|error| error.to_string())?;
@@ -249,7 +512,7 @@ fn production_target_evidence_rejects_authority_failures() -> Result<(), String>
         .as_mut()
         .ok_or_else(|| "missing authority".to_string())?
         .root = root.join("wrong-root");
-    if test_target_evidence(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
+    if target_for_index(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
         return Err("wrong root authority was accepted".to_string());
     }
     index
@@ -286,7 +549,7 @@ fn production_target_evidence_rejects_authority_failures() -> Result<(), String>
         seam.required_discriminator().clone(),
         seam.expected_sink(),
     );
-    if test_target_evidence(
+    if target_for_index(
         &index,
         &mismatch_seam,
         &test,
@@ -311,7 +574,7 @@ fn production_target_evidence_rejects_authority_failures() -> Result<(), String>
         .ok_or_else(|| "missing file authority".to_string())?
         .package_identity = original_package;
     let duplicate = index
-        .files
+        .files()
         .get(&file)
         .and_then(|facts| {
             facts
@@ -321,13 +584,12 @@ fn production_target_evidence_rejects_authority_failures() -> Result<(), String>
                 .cloned()
         })
         .ok_or_else(|| "missing test function".to_string())?;
-    index
-        .files
-        .get_mut(&file)
-        .ok_or_else(|| "missing file facts".to_string())?
-        .functions
-        .push(duplicate);
-    if test_target_evidence(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
+    let mut facts = index
+        .owned_file(&file)
+        .ok_or_else(|| "missing file facts".to_string())?;
+    facts.functions.push(duplicate);
+    index.insert_file_only(file.clone(), facts);
+    if target_for_index(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
         return Err("duplicate target identity was accepted".to_string());
     }
 
@@ -340,7 +602,7 @@ fn production_target_evidence_rejects_authority_failures() -> Result<(), String>
     if authority.validates_target(&traversal.file, seam.file(), &source) {
         return Err("authority accepted traversal target".to_string());
     }
-    if test_target_evidence(&index, &seam, &traversal, RelationReason::DirectOwnerCall).is_some() {
+    if target_for_index(&index, &seam, &traversal, RelationReason::DirectOwnerCall).is_some() {
         return Err("traversal target was accepted".to_string());
     }
     let mut absolute = test;
@@ -348,7 +610,7 @@ fn production_target_evidence_rejects_authority_failures() -> Result<(), String>
     if authority.validates_target(&absolute.file, seam.file(), &source) {
         return Err("authority accepted absolute target".to_string());
     }
-    if test_target_evidence(&index, &seam, &absolute, RelationReason::DirectOwnerCall).is_some() {
+    if target_for_index(&index, &seam, &absolute, RelationReason::DirectOwnerCall).is_some() {
         return Err("absolute target was accepted".to_string());
     }
     Ok(())
@@ -777,9 +1039,12 @@ fn call_arguments_uses_identifier_boundary_for_callee_name() {
     );
 }
 
+/// The evidence phases ride the shared trace-line owner (#5213), so these
+/// assert the *evidence* phase labels reach the wire in that one shape rather
+/// than pinning a second copy of the format.
 #[test]
 fn latency_trace_line_uses_repo_exposure_trace_shape() {
-    let line = latency_trace_line(
+    let line = crate::analysis::resource_cost::latency_trace_line(
         "evidence_for_seams_progress",
         "processed_500_of_12337",
         Duration::from_millis(42),
@@ -793,7 +1058,11 @@ fn latency_trace_line_uses_repo_exposure_trace_shape() {
 
 #[test]
 fn latency_trace_line_can_report_evidence_context_start() {
-    let line = latency_trace_line("evidence_context", "start_seams_12337", Duration::ZERO);
+    let line = crate::analysis::resource_cost::latency_trace_line(
+        "evidence_context",
+        "start_seams_12337",
+        Duration::ZERO,
+    );
 
     assert_eq!(
         line,
@@ -1090,6 +1359,396 @@ fn far_above_threshold_discounts() {
                 .map(|f| f.value.clone())
                 .collect::<Vec<_>>()
         ));
+    }
+    Ok(())
+}
+
+/// #4214: grip must name the equality boundary for strict predicates too.
+/// `amount > 100` and `amount >= 100` differ only at `amount == 100`, so
+/// tests at 50 and 200 cannot tell the operators apart. `check` already
+/// names that discriminator; the grip path used to skip strict operators
+/// and grade the seam `strongly_gripped` with nothing missing.
+#[test]
+fn given_strict_boundary_seam_when_tests_skip_equal_value_then_grip_names_missing_boundary()
+-> Result<(), String> {
+    // (operator, boundary literal, boundary test input, expected missing
+    // equality boundary). Inputs are source spellings so digit separators
+    // can differ between the predicate and the test.
+    let cases = [
+        (">", "100", None, true),
+        ("<", "100", None, true),
+        (">", "100", Some("101"), true),
+        ("<", "100", Some("99"), true),
+        (">", "100", Some("100"), false),
+        ("<", "100", Some("100"), false),
+        (">=", "100", None, true),
+        (">=", "100", Some("100"), false),
+        ("<=", "100", None, true),
+        ("<=", "100", Some("100"), false),
+        (">", "1_000", Some("1000"), false),
+        (">", "1000", Some("1_000"), false),
+        (">", "1_000", Some("1001"), true),
+    ];
+    for (operator, boundary, boundary_input, expect_missing) in cases {
+        let prod = PathBuf::from("src/lib.rs");
+        let prod_src = format!(
+            "pub fn fee(amount: u64) -> u64 {{ if amount {operator} {boundary} {{ 0 }} else {{ 5 }} }}\n"
+        );
+        let numeric = |literal: &str| literal.replace('_', "").parse::<u64>();
+        let threshold = numeric(boundary).map_err(|error| error.to_string())?;
+        // Keep every fixture assertion true for its operator.
+        let taken: fn(u64, u64) -> bool = match operator {
+            ">" => |amount, threshold| amount > threshold,
+            "<" => |amount, threshold| amount < threshold,
+            ">=" => |amount, threshold| amount >= threshold,
+            "<=" => |amount, threshold| amount <= threshold,
+            other => return Err(format!("fixture has no model for operator `{other}`")),
+        };
+        let fee = |amount: u64| if taken(amount, threshold) { 0 } else { 5 };
+        let boundary_test = match boundary_input {
+            Some(input) => format!(
+                "#[test]\nfn near_boundary() {{ assert_eq!(fee({input}), {}); }}\n",
+                fee(numeric(input).map_err(|error| error.to_string())?)
+            ),
+            None => String::new(),
+        };
+        let (low, high) = (threshold / 2, threshold * 2);
+        let tests_src = format!(
+            "#[test]\nfn low() {{ assert_eq!(fee({low}), {}); }}\n#[test]\nfn high() {{ assert_eq!(fee({high}), {}); }}\n{boundary_test}",
+            fee(low),
+            fee(high)
+        );
+        let tests = PathBuf::from("tests/fee.rs");
+        let index = index_from_files(&[(prod, prod_src.as_str()), (tests, tests_src.as_str())])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/lib.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|seam| seam.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| {
+                format!("expected a predicate seam for `amount {operator} {boundary}`")
+            })?;
+        if predicate.expression().trim() != format!("amount {operator} {boundary}") {
+            return Err(format!(
+                "fixture parsed the wrong subject: `{}`",
+                predicate.expression()
+            ));
+        }
+        let evidence = evidence_for_seam(predicate, &index);
+        if evidence.related_tests.len() < 2 {
+            return Err(format!(
+                "`{operator}` fixture should relate the value tests, got {:?}",
+                evidence.related_tests
+            ));
+        }
+        let missing: Vec<&str> = evidence
+            .missing_discriminators
+            .iter()
+            .map(|fact| fact.value.as_str())
+            .collect();
+        let class = crate::analysis::seam_classification::classify_seam(predicate, &evidence);
+        if expect_missing {
+            if missing != [format!("{boundary} (equality boundary)")] {
+                return Err(format!(
+                    "`{operator} {boundary}` with boundary input {boundary_input:?} must name the equality boundary, got {missing:?}"
+                ));
+            }
+            if class == SeamGripClass::StronglyGripped {
+                return Err(format!(
+                    "`{operator} {boundary}` with boundary input {boundary_input:?} must not be strongly gripped"
+                ));
+            }
+        } else if !missing.is_empty() || class != SeamGripClass::StronglyGripped {
+            return Err(format!(
+                "`{operator} {boundary}` with boundary input {boundary_input:?} should be strongly gripped with nothing missing, got {} {missing:?}",
+                class.as_str()
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// #4228: a reversed literal (`100 < amount`) or a local boundary
+/// (`let limit = 100;`) names its boundary and closes only when a test
+/// passes the boundary value. The same shapes close in `check`
+/// (`classify::activation` tests), including a folded local on the left
+/// (#4270). A local no evaluator can fold stays a static limitation,
+/// never strongly gripped.
+#[test]
+fn given_reversed_or_local_boundary_when_test_hits_boundary_then_grip_closes() -> Result<(), String>
+{
+    // (owner body lines, compared subject, `amount` above the boundary
+    // takes the branch, boundary is inclusive, boundary token in the
+    // missing discriminator; `None` means a static limitation).
+    let shapes = [
+        (
+            "    if 100 < amount { 0 } else { 5 }",
+            "100 < amount",
+            false,
+            Some("100"),
+        ),
+        (
+            "    if 100 <= amount { 0 } else { 5 }",
+            "100 <= amount",
+            true,
+            Some("100"),
+        ),
+        (
+            "    let limit = 100;\n    if amount > limit { 0 } else { 5 }",
+            "amount > limit",
+            false,
+            Some("limit"),
+        ),
+        (
+            "    let limit = 100;\n    if amount >= limit { 0 } else { 5 }",
+            "amount >= limit",
+            true,
+            Some("limit"),
+        ),
+        (
+            "    let limit = 100;\n    if limit < amount { 0 } else { 5 }",
+            "limit < amount",
+            false,
+            Some("limit"),
+        ),
+        (
+            "    let limit = 100;\n    if limit <= amount { 0 } else { 5 }",
+            "limit <= amount",
+            true,
+            Some("limit"),
+        ),
+        // #4270: only a local the evaluator folds orients the predicate;
+        // an input-derived left-hand local stays a static limitation.
+        (
+            "    let limit = amount / 2 + 50;\n    if limit < amount { 0 } else { 5 }",
+            "limit < amount",
+            false,
+            None,
+        ),
+        (
+            "    let limit = 100; if amount > limit { 0 } else { 5 }",
+            "amount > limit",
+            false,
+            None,
+        ),
+        (
+            "    let limit = amount / 2 + 50;\n    if amount > limit { 0 } else { 5 }",
+            "amount > limit",
+            false,
+            None,
+        ),
+    ];
+    for (body, subject, inclusive, token) in shapes {
+        let fee = |amount: u64| {
+            let taken = if inclusive {
+                amount >= 100
+            } else {
+                amount > 100
+            };
+            if taken { 0 } else { 5 }
+        };
+        for boundary_input in [None, Some(99_u64), Some(101), Some(100)] {
+            let prod_src = format!("pub fn fee(amount: u64) -> u64 {{\n{body}\n}}\n");
+            let boundary_test = boundary_input.map_or_else(String::new, |input| {
+                format!(
+                    "#[test]\nfn near_boundary() {{ assert_eq!(fee({input}), {}); }}\n",
+                    fee(input)
+                )
+            });
+            let tests_src = format!(
+                "#[test]\nfn low() {{ assert_eq!(fee(50), 5); }}\n#[test]\nfn high() {{ assert_eq!(fee(200), 0); }}\n{boundary_test}"
+            );
+            let index = index_from_files(&[
+                (PathBuf::from("src/lib.rs"), prod_src.as_str()),
+                (PathBuf::from("tests/fee.rs"), tests_src.as_str()),
+            ])?;
+            let seams = inventory_seams_from_index(&[PathBuf::from("src/lib.rs")], &index);
+            let predicate = seams
+                .iter()
+                .find(|seam| seam.kind() == SeamKind::PredicateBoundary)
+                .ok_or_else(|| format!("expected a predicate seam for `{subject}`"))?;
+            if predicate.expression().trim() != subject {
+                return Err(format!(
+                    "fixture parsed the wrong subject: `{}`",
+                    predicate.expression()
+                ));
+            }
+            let evidence = evidence_for_seam(predicate, &index);
+            if evidence.related_tests.len() < 2 {
+                return Err(format!(
+                    "`{subject}` fixture should relate the value tests, got {:?}",
+                    evidence.related_tests
+                ));
+            }
+            let missing: Vec<&str> = evidence
+                .missing_discriminators
+                .iter()
+                .map(|fact| fact.value.as_str())
+                .collect();
+            let class = crate::analysis::seam_classification::classify_seam(predicate, &evidence);
+            let label = format!("`{subject}` ({body:?}) with boundary input {boundary_input:?}");
+            match token {
+                None => {
+                    if !missing.is_empty()
+                        || class == SeamGripClass::StronglyGripped
+                        || evidence.activate.state != StageState::Unknown
+                    {
+                        return Err(format!(
+                            "{label} must stay a static limitation, got {} {missing:?}",
+                            class.as_str()
+                        ));
+                    }
+                }
+                Some(_) if boundary_input == Some(100) => {
+                    if !missing.is_empty() || class != SeamGripClass::StronglyGripped {
+                        return Err(format!(
+                            "{label} should be strongly gripped with nothing missing, got {} {missing:?}",
+                            class.as_str()
+                        ));
+                    }
+                }
+                Some(token) => {
+                    if missing != [format!("{token} (equality boundary)")]
+                        || class == SeamGripClass::StronglyGripped
+                    {
+                        return Err(format!(
+                            "{label} must name `{token}` as the missing boundary, got {} {missing:?}",
+                            class.as_str()
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// #4228 review: a reversed negative or char literal is named whole, and
+/// a same-named local declared only after the predicate does not hide the
+/// constant the predicate compares.
+#[test]
+fn given_whole_literal_or_later_shadow_when_test_hits_boundary_then_grip_closes()
+-> Result<(), String> {
+    // (production source, compared subject, off-boundary call, boundary
+    // call, missing token).
+    let cases = [
+        (
+            "pub fn fee(amount: i64) -> u64 {\n    if -100 < amount { 0 } else { 5 }\n}\n",
+            "-100 < amount",
+            "fee(-99)",
+            "fee(-100)",
+            "-100",
+        ),
+        // #4271: a decimal boundary is read whole, so a test at `1.2`
+        // does not stand in for the boundary `1.5`.
+        (
+            "pub fn fee(amount: f64) -> u64 {\n    if amount > 1.5 { 0 } else { 5 }\n}\n",
+            "amount > 1.5",
+            "fee(1.2)",
+            "fee(1.5)",
+            "1.5",
+        ),
+        // A suffixed decimal keeps its fraction too: `fee(1.0)` does not
+        // hit `1.5f64`.
+        (
+            "pub fn fee(amount: f64) -> u64 {\n    if amount > 1.5f64 { 0 } else { 5 }\n}\n",
+            "amount > 1.5f64",
+            "fee(1.0)",
+            "fee(1.5)",
+            "1.5",
+        ),
+        // A type suffix is not a second literal: `9.5f64` is 9.5, not 64,
+        // and `99u32` is 99, not 32.
+        (
+            "pub fn fee(amount: f64) -> u64 {\n    if amount > 9.5f64 { 0 } else { 5 }\n}\n",
+            "amount > 9.5f64",
+            "fee(64)",
+            "fee(9.5)",
+            "9.5",
+        ),
+        (
+            "pub fn fee(amount: u32) -> u64 {\n    if amount > 99u32 { 0 } else { 5 }\n}\n",
+            "amount > 99u32",
+            "fee(32)",
+            "fee(99)",
+            "99",
+        ),
+        (
+            "pub fn fee(amount: f64) -> u64 {\n    if 1.5f64 < amount { 0 } else { 5 }\n}\n",
+            "1.5f64 < amount",
+            "fee(1.0)",
+            "fee(1.5)",
+            "1.5",
+        ),
+        (
+            "pub fn fee(amount: f64) -> u64 {\n    if -1.5 < amount { 0 } else { 5 }\n}\n",
+            "-1.5 < amount",
+            "fee(-1.2)",
+            "fee(-1.5)",
+            "-1.5",
+        ),
+        (
+            "pub fn fee(grade: char) -> u64 {\n    if 'm' < grade { 0 } else { 5 }\n}\n",
+            "'m' < grade",
+            "fee('n')",
+            "fee('m')",
+            "'m'",
+        ),
+        (
+            "const LIMIT: u64 = 100;\npub fn fee(amount: u64) -> u64 {\n    let charged = if amount > LIMIT { 0 } else { 5 };\n    let LIMIT = 200;\n    charged + LIMIT - LIMIT\n}\n",
+            "amount > LIMIT",
+            "fee(101)",
+            "fee(100)",
+            "LIMIT",
+        ),
+    ];
+    for (prod_src, subject, off_call, at_call, token) in cases {
+        for (call, expect_closed) in [(off_call, false), (at_call, true)] {
+            let tests_src = format!(
+                "#[test]\nfn far() {{ assert_eq!({far}, 5); }}\n#[test]\nfn boundary() {{ assert_eq!({call}, {expected}); }}\n",
+                expected = if expect_closed { 5 } else { 0 },
+                far = off_call
+                    .replace("-99", "-150")
+                    .replace("'n'", "'a'")
+                    .replace("101", "50"),
+            );
+            let index = index_from_files(&[
+                (PathBuf::from("src/lib.rs"), prod_src),
+                (PathBuf::from("tests/fee.rs"), tests_src.as_str()),
+            ])?;
+            let seams = inventory_seams_from_index(&[PathBuf::from("src/lib.rs")], &index);
+            let predicate = seams
+                .iter()
+                .find(|seam| {
+                    seam.kind() == SeamKind::PredicateBoundary
+                        && seam.expression().contains(subject)
+                })
+                .ok_or_else(|| format!("expected a predicate seam for `{subject}`"))?;
+            let evidence = evidence_for_seam(predicate, &index);
+            if evidence.related_tests.is_empty() {
+                return Err(format!("`{subject}` fixture should relate its tests"));
+            }
+            let missing: Vec<&str> = evidence
+                .missing_discriminators
+                .iter()
+                .map(|fact| fact.value.as_str())
+                .collect();
+            let class = crate::analysis::seam_classification::classify_seam(predicate, &evidence);
+            if expect_closed {
+                if !missing.is_empty() {
+                    return Err(format!(
+                        "`{subject}` with {call} must close, got {} {missing:?}",
+                        class.as_str()
+                    ));
+                }
+            } else if missing != [format!("{token} (equality boundary)")]
+                || class == SeamGripClass::StronglyGripped
+            {
+                return Err(format!(
+                    "`{subject}` with {call} must name `{token}` as missing, got {} {missing:?}",
+                    class.as_str()
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -1944,6 +2603,106 @@ fn import_only_mentions_owner() {
     Ok(())
 }
 
+fn parallel_evidence_fixture() -> Result<(FixtureIndex, Vec<RepoSeam>), String> {
+    let prod = PathBuf::from("src/pricing.rs");
+    let prod_src = r#"
+pub struct Quote { pub amount: i32, pub tier: u8 }
+
+pub fn discounted_total(amount: i32, threshold: i32) -> i32 {
+    if amount >= threshold { amount - 10 } else { amount }
+}
+
+pub fn quote(amount: i32) -> Quote {
+    Quote { amount, tier: if amount > 500 { 2 } else { 1 } }
+}
+
+pub fn parse(value: &str) -> Result<i32, String> {
+    if value.is_empty() { return Err("empty".to_string()); }
+    value.parse::<i32>().map_err(|err| err.to_string())
+}
+"#;
+    let tests = PathBuf::from("tests/pricing_tests.rs");
+    let tests_src = r#"
+#[test]
+fn boundary_case() {
+    assert_eq!(discounted_total(100, 100), 90);
+}
+#[test]
+fn quote_tier() {
+    let q = quote(600);
+    assert!(q.tier > 0);
+}
+#[test]
+fn parse_rejects_empty() {
+    assert!(parse("").is_err());
+}
+"#;
+    let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+    let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+    if seams.len() < 4 {
+        return Err(format!(
+            "fixture should yield several seams, got {}",
+            seams.len()
+        ));
+    }
+    Ok((index, seams))
+}
+
+#[test]
+fn evidence_pass_output_is_identical_on_one_and_many_threads() -> Result<(), String> {
+    let (index, seams) = parallel_evidence_fixture()?;
+    let run = |threads: usize| -> Result<String, String> {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .map_err(|err| format!("pool: {err}"))?;
+        let evidence = pool.install(|| evidence_for_seams(&seams, &index));
+        serde_json::to_string(&evidence).map_err(|err| format!("encode: {err}"))
+    };
+    let serial = run(1)?;
+    let parallel = run(4)?;
+    if serial != parallel {
+        return Err("parallel evidence differs from the single-thread pass".into());
+    }
+    if serial.matches("seam_id").count() != seams.len() {
+        return Err("every seam must produce evidence".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn evidence_pass_workers_inherit_the_callers_cancellation() -> Result<(), String> {
+    use crate::analysis::cancellation::{self, AnalysisAbortKind, AnalysisCancellationToken};
+    let (index, seams) = parallel_evidence_fixture()?;
+    // The test thread is not a rayon worker, so the parallel pass injects
+    // every seam into the global pool and none of them runs on the thread
+    // that holds the token. That is the production shape: callers install
+    // the token on their own thread before analysis.
+    if rayon::current_thread_index().is_some() {
+        return Err("the caller must not be a rayon worker".into());
+    }
+    // Build the context outside both scopes: a cancelled token fails the
+    // context build, which would return nothing before any worker runs.
+    let pass = EvidencePass::new(&index);
+    let live = AnalysisCancellationToken::new();
+    let completed = cancellation::with_token(&live, || pass.evidence_for(&seams));
+    if completed.len() != seams.len() {
+        return Err("a live token must not drop seams".into());
+    }
+    let cancelled = AnalysisCancellationToken::new();
+    cancelled.cancel(AnalysisAbortKind::Cancelled);
+    // Workers that did not inherit the token would see no cancellation and
+    // evaluate every seam.
+    let evidence = cancellation::with_token(&cancelled, || pass.evidence_for(&seams));
+    if !evidence.is_empty() {
+        return Err(format!(
+            "cancelled pass evaluated {} seams on rayon workers",
+            evidence.len()
+        ));
+    }
+    Ok(())
+}
+
 #[test]
 fn given_compact_evidence_when_direct_owner_call_reaches_error_seam_then_activation_is_yes()
 -> Result<(), String> {
@@ -2696,6 +3455,133 @@ fn given_direct_owner_call_and_same_file_match_when_related_tests_are_ranked_the
     Ok(())
 }
 
+/// #4760: compact grip must not credit `direct_owner_call` when the test
+/// calls a same-named trait method on a different impl type.
+#[test]
+fn given_two_impls_when_compact_grip_sees_other_type_call_then_not_direct_owner_call()
+-> Result<(), String> {
+    let prod_src = r#"
+pub struct WhileSome { pub remaining: usize }
+pub struct Combinations { pub remaining: usize }
+impl Iterator for WhileSome {
+    type Item = usize;
+    fn next(&mut self) -> Option<Self::Item> { None }
+    fn size_hint(&self) -> (usize, Option<usize>) { (0, Some(self.remaining)) }
+}
+impl Iterator for Combinations {
+    type Item = usize;
+    fn next(&mut self) -> Option<Self::Item> { None }
+    fn size_hint(&self) -> (usize, Option<usize>) { (self.remaining, Some(self.remaining)) }
+}
+"#;
+    let other_type_test = (
+        "tests/size_hints.rs",
+        r#"
+#[test]
+fn combinations_inexact_size_hints() {
+    let it = Combinations { remaining: 3 };
+    assert_eq!(it.size_hint().1, Some(3));
+}
+"#,
+    );
+    let files: Vec<(PathBuf, &str)> = vec![
+        (PathBuf::from("src/lib.rs"), prod_src),
+        (PathBuf::from(other_type_test.0), other_type_test.1),
+    ];
+    let index = index_from_files(&files)?;
+    let seams = inventory_seams_from_index(&[PathBuf::from("src/lib.rs")], &index);
+    let while_some = seams
+        .iter()
+        .find(|s| {
+            s.kind() == SeamKind::ReturnValue
+                && s.expression().contains("(0, Some(self.remaining))")
+        })
+        .ok_or_else(|| {
+            format!(
+                "WhileSome size_hint return seam present; seams: {:?}",
+                seams
+                    .iter()
+                    .map(|s| (s.kind(), s.expression().to_string()))
+                    .collect::<Vec<_>>()
+            )
+        })?;
+    let evidence = evidence_for_seam(while_some, &index);
+    let labels: Vec<_> = evidence
+        .related_tests
+        .iter()
+        .map(|g| (g.test_name.clone(), g.relation_reason))
+        .collect();
+    assert!(
+        !labels.is_empty(),
+        "the same-named call is still related: {labels:?}"
+    );
+    assert!(
+        labels
+            .iter()
+            .all(|(_, reason)| *reason != RelationReason::DirectOwnerCall),
+        "other-type size_hint must not be direct_owner_call: {labels:?}"
+    );
+    Ok(())
+}
+
+/// #4760: compact grip keeps `direct_owner_call` when the test constructs
+/// the changed impl type.
+#[test]
+fn given_two_impls_when_compact_grip_sees_owner_type_call_then_direct_owner_call()
+-> Result<(), String> {
+    let prod_src = r#"
+pub struct WhileSome { pub remaining: usize }
+pub struct Combinations { pub remaining: usize }
+impl Iterator for WhileSome {
+    type Item = usize;
+    fn next(&mut self) -> Option<Self::Item> { None }
+    fn size_hint(&self) -> (usize, Option<usize>) { (0, Some(self.remaining)) }
+}
+impl Iterator for Combinations {
+    type Item = usize;
+    fn next(&mut self) -> Option<Self::Item> { None }
+    fn size_hint(&self) -> (usize, Option<usize>) { (self.remaining, Some(self.remaining)) }
+}
+"#;
+    let owner_type_test = (
+        "tests/size_hints.rs",
+        r#"
+#[test]
+fn while_some_size_hint_upper_bound() {
+    let it = WhileSome { remaining: 2 };
+    assert_eq!(it.size_hint().1, Some(it.remaining));
+}
+"#,
+    );
+    let files: Vec<(PathBuf, &str)> = vec![
+        (PathBuf::from("src/lib.rs"), prod_src),
+        (PathBuf::from(owner_type_test.0), owner_type_test.1),
+    ];
+    let index = index_from_files(&files)?;
+    let seams = inventory_seams_from_index(&[PathBuf::from("src/lib.rs")], &index);
+    let while_some = seams
+        .iter()
+        .find(|s| {
+            s.kind() == SeamKind::ReturnValue
+                && s.expression().contains("(0, Some(self.remaining))")
+        })
+        .ok_or_else(|| "WhileSome size_hint return seam present".to_string())?;
+    let evidence = evidence_for_seam(while_some, &index);
+    let labels: Vec<_> = evidence
+        .related_tests
+        .iter()
+        .map(|g| (g.test_name.clone(), g.relation_reason))
+        .collect();
+    assert!(
+        labels
+            .iter()
+            .any(|(name, reason)| name == "while_some_size_hint_upper_bound"
+                && *reason == RelationReason::DirectOwnerCall),
+        "owner-type size_hint must stay direct_owner_call: {labels:?}"
+    );
+    Ok(())
+}
+
 #[test]
 fn producer_records_real_rust_test_symbol_identity_for_inline_and_integration_tests()
 -> Result<(), String> {
@@ -2738,7 +3624,7 @@ mod tests {
     assert_eq!(
         inline_target.symbol_id,
         inline_index
-            .files
+            .files()
             .get(&prod)
             .and_then(|file| {
                 file.functions
@@ -2803,8 +3689,11 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
         literals: Vec::new(),
         source_role: FunctionSourceRole::Production,
         attrs: Vec::new(),
+        impl_attrs: Vec::new(),
         nested_fn_names: Vec::new(),
         let_bindings: Vec::new(),
+        item: Default::default(),
+        impl_context: Default::default(),
     };
     let test = TestSummary {
         name: "discounted_total_helper".to_string(),
@@ -2820,7 +3709,7 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
         let_bindings: Vec::new(),
     };
     let mut index = RustIndex::default();
-    index.files.insert(
+    index.insert_file_only(
         file.clone(),
         crate::analysis::facts::FileFacts {
             path: file.clone(),
@@ -2832,6 +3721,7 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
             probe_shapes: Vec::new(),
             used_lexical_fallback: false,
             module_declarations: Vec::new(),
+            unresolved_property_macros: Vec::new(),
             role_provenance: Default::default(),
             source: "fn discounted_total_helper() {}".to_string(),
         },
@@ -2849,7 +3739,7 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
         ExpectedSink::ReturnValue,
     );
 
-    assert!(test_target_evidence(&index, &seam, &test, RelationReason::DirectOwnerCall,).is_none());
+    assert!(target_for_index(&index, &seam, &test, RelationReason::DirectOwnerCall,).is_none());
     Ok(())
 }
 
@@ -4733,7 +5623,7 @@ mod nested {
         .as_ref()
         .ok_or_else(|| "nested pipeline relation lost its indexed test target".to_string())?;
     let nested_function = index
-        .tests
+        .tests()
         .iter()
         .find(|test| test.name == "nested_module_test_observes_pipeline_target")
         .ok_or_else(|| "nested test must be indexed".to_string())?;
@@ -6194,7 +7084,7 @@ fn aliased_direct_imported_support_helper_reaches_pipeline() {
         ("exercise_after", "gamma"),
     ] {
         let function = index
-            .functions
+            .functions()
             .iter()
             .find(|function| {
                 function.name == helper
@@ -6240,7 +7130,7 @@ fn aliased_direct_imported_support_helper_reaches_pipeline() {
         ("exercise_after", "calculate", "pipeline"),
     ] {
         let function = index
-            .functions
+            .functions()
             .iter()
             .find(|function| {
                 function.name == helper
@@ -6308,7 +7198,7 @@ fn aliased_direct_imported_support_helper_reaches_pipeline() {
         "pipeline helper relation lost its indexed test target after presence check".to_string()
     })?;
     let pipeline_function = index
-        .functions
+        .functions()
         .iter()
         .find(|function| {
             function.source_role.is_evidence_role()
@@ -6360,7 +7250,7 @@ fn aliased_direct_imported_support_helper_reaches_pipeline() {
         "report helper relation lost its indexed test target after presence check".to_string()
     })?;
     let report_function = index
-        .functions
+        .functions()
         .iter()
         .find(|function| {
             function.source_role.is_evidence_role()
@@ -10364,8 +11254,8 @@ fn given_foreign_separator_paths_when_grip_associates_then_same_test_file_still_
              owner={owner_fn:?} owner_stem_norm={:?} owner_stem_native={:?} \
              test_stem_norm={:?} test_stem_native={:?}",
             evidence.related_tests,
-            index.files.keys().collect::<Vec<_>>(),
-            index.tests.len(),
+            index.files().keys().collect::<Vec<_>>(),
+            index.tests().len(),
             context.tests_by_file_stem.keys().collect::<Vec<_>>(),
             predicate.file(),
             predicate.display_line(),
@@ -10591,6 +11481,229 @@ fn same_module_matches_parent_prefix_and_underscore_form() {
     assert!(same_module("a/b/c", "a_b/d"));
     assert!(!same_module("flat", "anything"));
     assert!(!same_module("pricing/discount", "billing/integration"));
+}
+
+#[test]
+fn close_module_keeps_owner_children_parent_and_test_named_siblings() {
+    for (test_module, close) in [
+        ("analysis", true),
+        ("analysis/cancellation", true),
+        ("analysis/cancellation/tests", true),
+        ("analysis/tests", true),
+        ("analysis/pipeline_tests/cases", true),
+        ("analysis/test_support", true),
+        ("analysis_cancellation", false),
+        ("analysis/classify", false),
+        ("analysis/classify/tests", false),
+        ("output/tests", false),
+    ] {
+        assert_eq!(
+            close_module("analysis/cancellation", test_module),
+            close,
+            "{test_module}"
+        );
+    }
+    assert!(close_module("a/b/c", "a_b/tests"));
+    assert!(!close_module("a/b/c", "a_b/d"));
+    assert!(!close_module("flat", "flat"));
+    assert_eq!(crowded_relation_limit(10), 64);
+    assert_eq!(crowded_relation_limit(20_000), 200);
+}
+
+/// #4434: in a workspace whose parent module and asserted field names cover
+/// most of the suite, `review-comments` related every seam to thousands of
+/// tests. Past the crowded limit a distant sibling module and a suite-wide
+/// assertion token relate nothing; below it both rules still relate.
+#[test]
+fn given_assertion_token_common_only_in_another_crate_then_local_test_still_relates()
+-> Result<(), String> {
+    let owner = PathBuf::from("crates/a/src/cancellation.rs");
+    let owner_src =
+        "pub fn cancel_after(elapsed: i32, deadline: i32) -> bool { elapsed >= deadline }\n";
+    let local_src = "#[test] fn local_deadline() { let deadline = 1; assert_eq!(deadline, 1); }\n";
+    let foreign_src =
+        "#[test] fn foreign_deadline() { let deadline = 2; assert_eq!(deadline, 2); }\n";
+    let mut files: Vec<(PathBuf, &str)> = vec![
+        (owner.clone(), owner_src),
+        (PathBuf::from("crates/a/tests/timing.rs"), local_src),
+    ];
+    for k in 0..70 {
+        files.push((
+            PathBuf::from(format!("crates/b/tests/foreign_{k}.rs")),
+            foreign_src,
+        ));
+    }
+    let index = index_from_files(&files)?;
+    let seams = inventory_seams_from_index(std::slice::from_ref(&owner), &index);
+    let predicate = seams
+        .iter()
+        .find(|s| s.kind() == SeamKind::PredicateBoundary)
+        .ok_or_else(|| "predicate seam present".to_string())?;
+    let related = evidence_for_seam(predicate, &index).related_tests;
+    assert!(
+        related.iter().any(|g| {
+            g.file.to_string_lossy().replace('\\', "/") == "crates/a/tests/timing.rs"
+                && g.relation_reason == RelationReason::AssertionTargetAffinity
+        }),
+        "{related:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn given_crowded_parent_module_and_common_assertion_token_then_distant_tests_do_not_relate()
+-> Result<(), String> {
+    let owner = PathBuf::from("src/analysis/cancellation.rs");
+    let owner_src =
+        "pub fn cancel_after(elapsed: i32, deadline: i32) -> bool { elapsed >= deadline }\n";
+    let sibling_src = "#[test] fn sibling_smoke() { let v = 1; assert_eq!(v, 1); }\n";
+    let affinity_src =
+        "#[test] fn deadline_smoke() { let deadline = 1; assert_eq!(deadline, 1); }\n";
+    let near_src = "#[test] fn near_smoke() { let v = 2; assert_eq!(v, 2); }\n";
+    let reasons = |crowd: usize| -> Result<Vec<(String, RelationReason)>, String> {
+        let mut files: Vec<(PathBuf, &str)> = vec![
+            (owner.clone(), owner_src),
+            (PathBuf::from("src/analysis/tests.rs"), near_src),
+            (
+                PathBuf::from("src/analysis/cancellation/tests.rs"),
+                near_src,
+            ),
+        ];
+        for k in 0..crowd {
+            files.push((
+                PathBuf::from(format!("src/analysis/sibling_{k}.rs")),
+                sibling_src,
+            ));
+            files.push((
+                PathBuf::from(format!("src/elsewhere/affinity_{k}.rs")),
+                affinity_src,
+            ));
+        }
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(std::slice::from_ref(&owner), &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        Ok(evidence_for_seam(predicate, &index)
+            .related_tests
+            .iter()
+            .map(|g| {
+                (
+                    g.file.to_string_lossy().replace('\\', "/"),
+                    g.relation_reason,
+                )
+            })
+            .collect())
+    };
+    let count = |rows: &[(String, RelationReason)], prefix: &str, reason: RelationReason| {
+        rows.iter()
+            .filter(|(file, r)| file.starts_with(prefix) && *r == reason)
+            .count()
+    };
+    let small = reasons(4)?;
+    assert_eq!(
+        count(&small, "src/analysis/sibling_", RelationReason::SameModule),
+        4,
+        "{small:?}"
+    );
+    assert_eq!(
+        count(
+            &small,
+            "src/elsewhere/",
+            RelationReason::AssertionTargetAffinity
+        ),
+        4,
+        "{small:?}"
+    );
+    let crowded = reasons(70)?;
+    assert_eq!(
+        count(
+            &crowded,
+            "src/analysis/sibling_",
+            RelationReason::SameModule
+        ),
+        0,
+        "{crowded:?}"
+    );
+    assert_eq!(
+        count(
+            &crowded,
+            "src/elsewhere/",
+            RelationReason::AssertionTargetAffinity
+        ),
+        0,
+        "{crowded:?}"
+    );
+    assert_eq!(
+        count(
+            &crowded,
+            "src/analysis/tests.rs",
+            RelationReason::SameModule
+        ),
+        1,
+        "{crowded:?}"
+    );
+    assert_eq!(
+        count(
+            &crowded,
+            "src/analysis/cancellation/tests.rs",
+            RelationReason::SameModule
+        ) + count(
+            &crowded,
+            "src/analysis/cancellation/tests.rs",
+            RelationReason::SameTestFile
+        ),
+        1,
+        "{crowded:?}"
+    );
+    Ok(())
+}
+
+/// #4434: two target tokens that are each under the crowded limit can still
+/// relate most of the suite together. Past the limit the affinity relation
+/// keeps the tests that assert the most target tokens.
+#[test]
+fn given_affinity_union_past_the_limit_then_tests_asserting_more_target_tokens_win()
+-> Result<(), String> {
+    let owner = PathBuf::from("src/cancellation.rs");
+    let owner_src =
+        "pub fn cancel_after(elapsed: i32, deadline: i32) -> bool { elapsed >= deadline }\n";
+    let deadline_src =
+        "#[test] fn deadline_only() { let deadline = 1; assert_eq!(deadline, 1); }\n";
+    let elapsed_src = "#[test] fn elapsed_only() { let elapsed = 1; assert_eq!(elapsed, 1); }\n";
+    let both_src = "#[test] fn both_tokens() { let (elapsed, deadline) = (1, 2); assert!(elapsed < deadline); }\n";
+    let mut files: Vec<(PathBuf, &str)> = vec![(owner.clone(), owner_src)];
+    for k in 0..40 {
+        files.push((
+            PathBuf::from(format!("tests/deadline_{k}.rs")),
+            deadline_src,
+        ));
+        files.push((PathBuf::from(format!("tests/elapsed_{k}.rs")), elapsed_src));
+    }
+    files.push((PathBuf::from("tests/zz_both.rs"), both_src));
+    let index = index_from_files(&files)?;
+    let seams = inventory_seams_from_index(std::slice::from_ref(&owner), &index);
+    let predicate = seams
+        .iter()
+        .find(|s| s.kind() == SeamKind::PredicateBoundary)
+        .ok_or_else(|| "predicate seam present".to_string())?;
+    let affinity = evidence_for_seam(predicate, &index)
+        .related_tests
+        .iter()
+        .filter(|g| g.relation_reason == RelationReason::AssertionTargetAffinity)
+        .map(|g| g.file.to_string_lossy().replace('\\', "/"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        affinity.len(),
+        crowded_relation_limit(index.tests().len()),
+        "{affinity:?}"
+    );
+    assert!(
+        affinity.iter().any(|file| file == "tests/zz_both.rs"),
+        "{affinity:?}"
+    );
+    Ok(())
 }
 
 #[test]
@@ -11122,7 +12235,7 @@ pub fn discounted_total(raw_amount: Option<i32>, raw_amount_extra: Option<i32>, 
 }
 
 #[test]
-fn given_boundary_owner_call_when_match_alias_is_comment_then_operand_stays_unresolved()
+fn given_boundary_owner_call_when_match_alias_is_comment_then_local_boundary_stays_open()
 -> Result<(), String> {
     let prod_src = r#"
 pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
@@ -11134,7 +12247,7 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
     let test = (
         "tests/pricing_tests.rs",
         "#[test] fn at_threshold() { \
-                 assert_eq!(discounted_total(Some(50), 50), -9); \
+                 assert_eq!(discounted_total(Some(50), 50), 1); \
              }\n",
     );
     let mut files: Vec<(PathBuf, &str)> = vec![(PathBuf::from("src/pricing.rs"), prod_src)];
@@ -11148,22 +12261,11 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
                 && s.expression().contains("amount >= threshold")
         })
         .ok_or_else(|| "amount predicate seam present".to_string())?;
-    let evidence = evidence_for_seam(predicate, &index);
-    assert!(
-        evidence.observed_values.is_empty(),
-        "commented match aliases must not resolve boundary operands; got {:?}",
-        evidence.observed_values
-    );
-    assert!(
-        evidence.missing_discriminators.is_empty(),
-        "unresolved commented match alias should stay a limitation, not an exact repair candidate; got {:?}",
-        evidence.missing_discriminators
-    );
-    Ok(())
+    assert_commented_alias_leaves_local_boundary_open(predicate, &index)
 }
 
 #[test]
-fn given_boundary_owner_call_when_inline_match_alias_is_comment_then_operand_stays_unresolved()
+fn given_boundary_owner_call_when_inline_match_alias_is_comment_then_local_boundary_stays_open()
 -> Result<(), String> {
     let prod_src = r#"
 pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
@@ -11175,7 +12277,7 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
     let test = (
         "tests/pricing_tests.rs",
         "#[test] fn at_threshold() { \
-                 assert_eq!(discounted_total(Some(50), 50), -9); \
+                 assert_eq!(discounted_total(Some(50), 50), 1); \
              }\n",
     );
     let mut files: Vec<(PathBuf, &str)> = vec![(PathBuf::from("src/pricing.rs"), prod_src)];
@@ -11189,22 +12291,11 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
                 && s.expression().contains("amount >= threshold")
         })
         .ok_or_else(|| "amount predicate seam present".to_string())?;
-    let evidence = evidence_for_seam(predicate, &index);
-    assert!(
-        evidence.observed_values.is_empty(),
-        "inline commented match aliases must not resolve boundary operands; got {:?}",
-        evidence.observed_values
-    );
-    assert!(
-        evidence.missing_discriminators.is_empty(),
-        "unresolved inline commented match alias should stay a limitation, not an exact repair candidate; got {:?}",
-        evidence.missing_discriminators
-    );
-    Ok(())
+    assert_commented_alias_leaves_local_boundary_open(predicate, &index)
 }
 
 #[test]
-fn given_boundary_owner_call_when_match_wrapper_is_comment_then_operand_stays_unresolved()
+fn given_boundary_owner_call_when_match_wrapper_is_comment_then_local_boundary_stays_open()
 -> Result<(), String> {
     let prod_src = r#"
 pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
@@ -11217,7 +12308,7 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
     let test = (
         "tests/pricing_tests.rs",
         "#[test] fn at_threshold() { \
-                 assert_eq!(discounted_total(Some(50), 50), -9); \
+                 assert_eq!(discounted_total(Some(50), 50), 1); \
              }\n",
     );
     let mut files: Vec<(PathBuf, &str)> = vec![(PathBuf::from("src/pricing.rs"), prod_src)];
@@ -11231,22 +12322,11 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
                 && s.expression().contains("amount >= threshold")
         })
         .ok_or_else(|| "amount predicate seam present".to_string())?;
-    let evidence = evidence_for_seam(predicate, &index);
-    assert!(
-        evidence.observed_values.is_empty(),
-        "commented wrapper patterns must not resolve boundary operands; got {:?}",
-        evidence.observed_values
-    );
-    assert!(
-        evidence.missing_discriminators.is_empty(),
-        "unresolved commented wrapper pattern should stay a limitation, not an exact repair candidate; got {:?}",
-        evidence.missing_discriminators
-    );
-    Ok(())
+    assert_commented_alias_leaves_local_boundary_open(predicate, &index)
 }
 
 #[test]
-fn given_boundary_owner_call_when_inline_match_wrapper_is_comment_then_operand_stays_unresolved()
+fn given_boundary_owner_call_when_inline_match_wrapper_is_comment_then_local_boundary_stays_open()
 -> Result<(), String> {
     let prod_src = r#"
 pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
@@ -11258,7 +12338,7 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
     let test = (
         "tests/pricing_tests.rs",
         "#[test] fn at_threshold() { \
-                 assert_eq!(discounted_total(Some(50), 50), -9); \
+                 assert_eq!(discounted_total(Some(50), 50), 1); \
              }\n",
     );
     let mut files: Vec<(PathBuf, &str)> = vec![(PathBuf::from("src/pricing.rs"), prod_src)];
@@ -11272,17 +12352,40 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
                 && s.expression().contains("amount >= threshold")
         })
         .ok_or_else(|| "amount predicate seam present".to_string())?;
-    let evidence = evidence_for_seam(predicate, &index);
-    assert!(
-        evidence.observed_values.is_empty(),
-        "inline commented wrapper patterns must not resolve boundary operands; got {:?}",
-        evidence.observed_values
-    );
-    assert!(
-        evidence.missing_discriminators.is_empty(),
-        "unresolved inline commented wrapper should stay a limitation, not an exact repair candidate; got {:?}",
-        evidence.missing_discriminators
-    );
+    assert_commented_alias_leaves_local_boundary_open(predicate, &index)
+}
+
+/// #4270: with the commented alias ignored, `amount` is the local
+/// `let amount = 1;`, so both owners compare `threshold` against 1. The
+/// test passes `threshold = 50` while `raw_amount` is also 50: reading the
+/// commented alias would make `amount` equal `threshold` and close the
+/// boundary. The local reading leaves `amount == threshold` open, as
+/// `check` reports it (`classify::activation` commented-alias test).
+fn assert_commented_alias_leaves_local_boundary_open(
+    predicate: &RepoSeam,
+    index: &RustIndex,
+) -> Result<(), String> {
+    let evidence = evidence_for_seam(predicate, index);
+    let observed: Vec<&str> = evidence
+        .observed_values
+        .iter()
+        .map(|fact| fact.value.as_str())
+        .collect();
+    let missing: Vec<&str> = evidence
+        .missing_discriminators
+        .iter()
+        .map(|fact| fact.value.as_str())
+        .collect();
+    let class = crate::analysis::seam_classification::classify_seam(predicate, &evidence);
+    if observed != ["50"]
+        || missing != ["amount (equality boundary)"]
+        || class == SeamGripClass::StronglyGripped
+    {
+        return Err(format!(
+            "a commented alias must not close `amount >= threshold`; expected the local boundary open, got {} observed {observed:?} missing {missing:?}",
+            class.as_str()
+        ));
+    }
     Ok(())
 }
 
@@ -11497,8 +12600,11 @@ fn closure_boundary_operand_route_ignores_comment_only_closure_pattern() {
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
+            impl_context: Default::default(),
         };
 
     assert!(!boundary_operand_is_closure_derived(&owner, "amount"));
@@ -12536,7 +13642,7 @@ fn given_unresolved_identifier_arg_when_extracting_values_then_no_observed_value
 #[test]
 fn same_file_test_helper_call_counts_as_owner_call_evidence() {
     let file = PathBuf::from("src/pricing.rs");
-    let index = RustIndex {
+    let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![FunctionSummary {
                 id: crate::domain::SymbolId("src/pricing.rs::discounted_total".to_string()),
                 name: "discounted_total".to_string(),
@@ -12549,8 +13655,11 @@ fn same_file_test_helper_call_counts_as_owner_call_evidence() {
                 literals: Vec::new(),
                 source_role: FunctionSourceRole::Production,
                 attrs: Vec::new(),
+                impl_attrs: Vec::new(),
                 nested_fn_names: Vec::new(),
                 let_bindings: Vec::new(),
+                item: Default::default(),
+                impl_context: Default::default(),
             }, FunctionSummary {
                 id: crate::domain::SymbolId("src/pricing.rs::case_at_threshold".to_string()),
                 name: "case_at_threshold".to_string(),
@@ -12567,8 +13676,11 @@ fn same_file_test_helper_call_counts_as_owner_call_evidence() {
                 literals: Vec::new(),
                 source_role: FunctionSourceRole::Production,
                 attrs: Vec::new(),
+                impl_attrs: Vec::new(),
                 nested_fn_names: Vec::new(),
                 let_bindings: Vec::new(),
+                item: Default::default(),
+                impl_context: Default::default(),
             }],
             tests: vec![TestSummary {
                 name: "unit_test_uses_same_file_helper".to_string(),
@@ -12594,8 +13706,8 @@ fn same_file_test_helper_call_counts_as_owner_call_evidence() {
                 nested_fn_names: Vec::new(),
                 let_bindings: Vec::new(),
             }],
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
     let context = CompactGripContext::new(&index);
 
@@ -13026,23 +14138,379 @@ fn constructor_field_evidence(
     test_source: &str,
     field: &str,
 ) -> Result<(TestGripEvidence, SeamGripClass), String> {
-    let production_path = PathBuf::from("crates/parser/src/hir/lower.rs");
+    let case = constructor_field_case(production, test_path, test_source, field)?;
+    Ok((case.classified.evidence.clone(), case.classified.class))
+}
+
+struct ConstructorFieldCase {
+    index: FixtureIndex,
+    seam: RepoSeam,
+    classified: ClassifiedSeam,
+}
+
+fn constructor_field_case(
+    production: &str,
+    test_path: &str,
+    test_source: &str,
+    field: &str,
+) -> Result<ConstructorFieldCase, String> {
+    constructor_field_case_at(
+        "crates/parser/src/hir/lower.rs",
+        production,
+        test_path,
+        test_source,
+        field,
+    )
+}
+
+fn constructor_field_case_at(
+    production_path: &str,
+    production: &str,
+    test_path: &str,
+    test_source: &str,
+    field: &str,
+) -> Result<ConstructorFieldCase, String> {
+    let production_path = PathBuf::from(production_path);
     let files = vec![
         (production_path.clone(), production),
         (PathBuf::from(test_path), test_source),
     ];
-    let index = index_from_files(&files)?;
-    let seams = inventory_seams_from_index(&[production_path], &index);
+    classified_from_files(&files, &production_path, field)
+}
+
+fn classified_from_files(
+    files: &[(PathBuf, &str)],
+    production_path: &Path,
+    field: &str,
+) -> Result<ConstructorFieldCase, String> {
+    classified_from_index(index_from_files(files)?, production_path, field)
+}
+
+fn classified_from_index(
+    index: FixtureIndex,
+    production_path: &Path,
+    field: &str,
+) -> Result<ConstructorFieldCase, String> {
+    let seams = inventory_seams_from_index(&[production_path.to_path_buf()], &index);
     let seam = seams
         .iter()
         .find(|seam| {
             seam.kind() == SeamKind::FieldConstruction
                 && record_field_name(seam.expression()) == Some(field.trim_end_matches(':'))
         })
+        .cloned()
         .ok_or_else(|| format!("field-construction seam for `{field}` must be inventoried"))?;
-    let evidence = evidence_for_seam(seam, &index);
-    let class = crate::analysis::seam_classification::classify_seam(seam, &evidence);
-    Ok((evidence, class))
+    let evidence = evidence_for_seam(&seam, &index);
+    let class = crate::analysis::seam_classification::classify_seam(&seam, &evidence);
+    let classified = ClassifiedSeam {
+        seam: seam.clone(),
+        evidence,
+        class,
+    };
+    Ok(ConstructorFieldCase {
+        index,
+        seam,
+        classified,
+    })
+}
+
+const ADAPTER_DIAGNOSTICS_PRODUCTION: &str = r#"
+pub struct DiagnosticRefreshPlan {
+    pub suppressed_payload_bytes: usize,
+    pub published_payload_bytes: usize,
+}
+
+pub fn diagnostic_refresh_plan(value: usize) -> DiagnosticRefreshPlan {
+    DiagnosticRefreshPlan {
+        suppressed_payload_bytes: value,
+        published_payload_bytes: 0,
+    }
+}
+"#;
+
+fn adapter_diagnostics_import_case(import: &str) -> Result<ConstructorFieldCase, String> {
+    let adapter = format!(
+        "mod diagnostics;\n{import}\n\n#[test]\nfn observes_plan() {{\n    let plan = diagnostic_refresh_plan(7);\n    assert!(plan.suppressed_payload_bytes > 0);\n}}\n"
+    );
+    let files = [
+        (PathBuf::from("src/lib.rs"), "mod adapter;\n"),
+        (PathBuf::from("src/adapter.rs"), adapter.as_str()),
+        (
+            PathBuf::from("src/adapter/diagnostics.rs"),
+            ADAPTER_DIAGNOSTICS_PRODUCTION,
+        ),
+        (
+            PathBuf::from("diagnostics/src/lib.rs"),
+            ADAPTER_DIAGNOSTICS_PRODUCTION,
+        ),
+    ];
+    classified_from_index(
+        index_from_edition2021_diagnostics_workspace(&files)?,
+        Path::new("src/adapter/diagnostics.rs"),
+        "suppressed_payload_bytes",
+    )
+}
+
+fn index_from_edition2021_diagnostics_workspace(
+    files: &[(PathBuf, &str)],
+) -> Result<FixtureIndex, String> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_nanos();
+    let adapter = RaRustSyntaxAdapter;
+    let mut index = RustIndex::default();
+    for (path, source) in files {
+        let facts = adapter.summarize_file(path, source)?;
+        index.extend_tests(facts.tests.iter().cloned());
+        index.extend_functions(facts.functions.iter().cloned());
+        index.insert_file_only(path.clone(), facts);
+    }
+    let fixture_root = claim_index_fixture_root(stamp)?;
+    fs::write(
+        fixture_root.join("Cargo.toml"),
+        concat!(
+            "[package]\n",
+            "name = \"memory-fixture\"\n",
+            "version = \"0.1.0\"\n",
+            "edition = \"2021\"\n",
+            "\n",
+            "[dependencies]\n",
+            "diagnostics = { path = \"diagnostics\" }\n",
+        ),
+    )
+    .map_err(|error| error.to_string())?;
+    fs::create_dir_all(fixture_root.join("diagnostics")).map_err(|error| error.to_string())?;
+    fs::write(
+        fixture_root.join("diagnostics/Cargo.toml"),
+        concat!(
+            "[package]\n",
+            "name = \"diagnostics\"\n",
+            "version = \"0.1.0\"\n",
+            "edition = \"2021\"\n",
+        ),
+    )
+    .map_err(|error| error.to_string())?;
+    for (path, source) in files {
+        let full = fixture_root.join(path);
+        if let Some(parent) = full.parent() {
+            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        fs::write(full, source).map_err(|error| error.to_string())?;
+    }
+    index.workspace_authority = Some(WorkspaceRootAuthority::from_sources(
+        &fixture_root,
+        index
+            .files()
+            .iter()
+            .map(|(path, facts)| (path, facts.data().source.as_str())),
+    ));
+    Ok(FixtureIndex {
+        index,
+        _fixture_root: fixture_root,
+    })
+}
+
+const REFRESH_PLAN_PRODUCTION: &str = r#"
+pub struct DiagnosticRefreshPlan {
+    pub suppressed_payload_bytes: usize,
+    pub published_payload_bytes: usize,
+}
+
+pub fn diagnostic_refresh_plan(suppressed: usize, published: usize) -> DiagnosticRefreshPlan {
+    DiagnosticRefreshPlan {
+        suppressed_payload_bytes: suppressed,
+        published_payload_bytes: published,
+    }
+}
+"#;
+
+fn refresh_plan_case(test_source: &str) -> Result<ConstructorFieldCase, String> {
+    let path = PathBuf::from("src/diagnostics.rs");
+    let source = format!("{REFRESH_PLAN_PRODUCTION}\n{test_source}");
+    classified_from_files(
+        &[(path.clone(), source.as_str())],
+        &path,
+        "suppressed_payload_bytes",
+    )
+}
+
+fn refresh_plan_split_case(test_source: &str) -> Result<ConstructorFieldCase, String> {
+    constructor_field_case_at(
+        "src/diagnostics.rs",
+        REFRESH_PLAN_PRODUCTION,
+        "tests/refresh.rs",
+        test_source,
+        "suppressed_payload_bytes",
+    )
+}
+
+/// #1580 sibling-file shape: production owner in `src/lsp/diagnostics.rs`,
+/// tests in `src/lsp/tests.rs` with a grouped nested-`super` import.
+fn refresh_plan_sibling_tests_case(test_source: &str) -> Result<ConstructorFieldCase, String> {
+    refresh_plan_sibling_tests_case_at(REFRESH_PLAN_PRODUCTION, &[], test_source)
+}
+
+fn refresh_plan_sibling_tests_case_at(
+    production: &str,
+    extra: &[(&str, &str)],
+    test_source: &str,
+) -> Result<ConstructorFieldCase, String> {
+    let production_path = PathBuf::from("src/lsp/diagnostics.rs");
+    let mut files: Vec<(PathBuf, &str)> = vec![
+        (production_path.clone(), production),
+        (PathBuf::from("src/lsp/tests.rs"), test_source),
+    ];
+    files.extend(
+        extra
+            .iter()
+            .map(|(path, source)| (PathBuf::from(*path), *source)),
+    );
+    classified_from_files(&files, &production_path, "suppressed_payload_bytes")
+}
+
+const GROUPED_NESTED_SUPER_OWNER_IMPORT: &str = r#"
+use super::diagnostics::{diagnostic_refresh_plan};
+
+#[test]
+fn diagnostic_refresh_plan_suppresses_unchanged_uri() {
+    let unchanged = diagnostic_refresh_plan(8, 0);
+    assert!(unchanged.suppressed_payload_bytes > 0);
+}
+"#;
+
+const WEAK_TWO_BINDING_REFRESH_TEST: &str = r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_suppresses_unchanged_uri_and_publishes_changed_uri() {
+        let unchanged = diagnostic_refresh_plan(8, 0);
+        let changed_plan = diagnostic_refresh_plan(0, 8);
+        assert!(unchanged.suppressed_payload_bytes > 0);
+        assert!(changed_plan.published_payload_bytes > 0);
+    }
+}
+"#;
+
+const WEAK_SINGLE_BINDING_REFRESH_TEST: &str = r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_suppresses_unchanged_uri_and_publishes_changed_uri() {
+        let unchanged = diagnostic_refresh_plan(8, 0);
+        assert!(unchanged.suppressed_payload_bytes > 0);
+    }
+}
+"#;
+
+const WEAK_SPLIT_REFRESH_TEST: &str = r#"
+#[test]
+fn diagnostic_refresh_plan_suppresses_unchanged_uri_and_publishes_changed_uri() {
+    let unchanged = diagnostic_refresh_plan(8, 0);
+    assert!(unchanged.suppressed_payload_bytes > 0);
+}
+"#;
+
+fn required_field(seam: &RepoSeam) -> Result<String, String> {
+    match seam.required_discriminator() {
+        RequiredDiscriminator::FieldValue { field } => Ok(field.clone()),
+        other => Err(format!("expected FieldValue discriminator, got {other:?}")),
+    }
+}
+
+fn route_must_be_ready(case: &ConstructorFieldCase) -> Result<(), String> {
+    let eligibility = repair_packet_eligibility(&case.classified);
+    let readiness = &eligibility.readiness;
+    let related = case
+        .classified
+        .evidence
+        .related_tests
+        .iter()
+        .find(|test| {
+            test.relation_reason == RelationReason::DirectOwnerCall && test.test_target.is_some()
+        })
+        .or_else(|| {
+            case.classified
+                .evidence
+                .related_tests
+                .iter()
+                .find(|test| test.test_target.is_some())
+        });
+    let required = required_field(&case.seam)?;
+    let missing = &case.classified.evidence.missing_discriminators;
+    if case.classified.class != SeamGripClass::WeaklyGripped
+        || case.classified.evidence.activate.state != StageState::Yes
+        || case.classified.evidence.discriminate.state != StageState::Weak
+        || !missing.iter().any(|fact| fact.value == required)
+        || related.is_none()
+        || related.is_some_and(|test| test.test_target.is_none())
+        || related.is_some_and(|test| test.relation_reason != RelationReason::DirectOwnerCall)
+        || related.is_some_and(|test| test.oracle_strength != OracleStrength::Weak)
+        || readiness.state != RepairRouteState::Ready
+        || !eligibility.eligible()
+        || !is_safe_for_repair_packet(&case.classified)
+    {
+        return Err(format!(
+            "weak owner-result field observation must complete the producer route: class={:?}, activate={:?}, discriminate={:?}, missing={:?}, related={:?}, readiness={:?}, eligible={}",
+            case.classified.class,
+            case.classified.evidence.activate.state,
+            case.classified.evidence.discriminate.state,
+            missing,
+            related.cloned().map(|test| (
+                test.test_name,
+                test.relation_reason,
+                test.test_target.is_some(),
+                test.oracle_kind.clone(),
+                test.oracle_strength.clone()
+            )),
+            readiness.state,
+            eligibility.eligible()
+        ));
+    }
+    let Some(target) = related.and_then(|test| test.test_target.as_ref()) else {
+        return Err("ready route lost its producer target".to_string());
+    };
+    if target.provenance() != TestTargetProvenance::RustIndexFunction {
+        return Err(format!(
+            "ready route must use indexed target provenance, got {:?}",
+            target.provenance()
+        ));
+    }
+    Ok(())
+}
+
+fn route_must_stay_unready(case: &ConstructorFieldCase, label: &str) -> Result<(), String> {
+    let eligibility = repair_packet_eligibility(&case.classified);
+    if is_safe_for_repair_packet(&case.classified) || eligibility.eligible() {
+        return Err(format!(
+            "{label} must stay non-ready: class={:?}, activate={:?}, missing={:?}, eligible={}",
+            case.classified.class,
+            case.classified.evidence.activate.state,
+            case.classified.evidence.missing_discriminators,
+            eligibility.eligible()
+        ));
+    }
+    Ok(())
+}
+
+fn authority_must_refuse_packet(classified: &ClassifiedSeam, reason: &str) -> Result<(), String> {
+    let eligibility = repair_packet_eligibility(classified);
+    match &eligibility.readiness.target_selection {
+        RepairTargetSelection::Missing => {}
+        other => {
+            return Err(format!(
+                "{reason}: unadmitted existing target must stay Missing, got {other:?}"
+            ));
+        }
+    }
+    if eligibility.eligible() || is_safe_for_repair_packet(classified) {
+        return Err(reason.to_string());
+    }
+    Ok(())
 }
 
 const CONSTRUCTOR_FIELD_PRODUCTION: &str = r#"
@@ -13536,13 +15004,13 @@ mod tests {
     assert_eq!(helper_relation.oracle_strength, OracleStrength::Weak);
     assert!(
         !index
-            .tests
+            .tests()
             .iter()
             .any(|test| test.name == "exercise_device_labels"),
         "a plain helper must not become an executable TestFact selector"
     );
     assert!(
-        index.functions.iter().any(|function| {
+        index.functions().iter().any(|function| {
             function.name == "exercise_device_labels"
                 && function.source_role == FunctionSourceRole::CfgTestModule
         }),
@@ -13593,7 +15061,7 @@ mod other {
     let index = index_from_files(&[(source, source_src)])?;
     assert_eq!(
         index
-            .tests
+            .tests()
             .iter()
             .filter(|test| test.name == "exercise_device_labels")
             .count(),
@@ -13602,7 +15070,7 @@ mod other {
     );
     assert_eq!(
         index
-            .functions
+            .functions()
             .iter()
             .filter(|function| function.name == "exercise_device_labels")
             .count(),
@@ -13863,7 +15331,7 @@ fn nested_alias_ancestry_reaches_every_indexed_owner() {
         ("exercise_tail", "compute_alpha", "alpha"),
     ] {
         let function = index
-            .functions
+            .functions()
             .iter()
             .find(|function| function.name == helper && function.file == support)
             .ok_or_else(|| format!("missing helper identity {helper}"))?;
@@ -13945,7 +15413,7 @@ fn nested_alias_ancestry_reaches_every_indexed_owner() {
         .as_ref()
         .ok_or_else(|| "nested helper relation lost its indexed test target".to_string())?;
     let test_function = index
-        .functions
+        .functions()
         .iter()
         .find(|function| {
             function.source_role.is_evidence_role()
@@ -14040,7 +15508,7 @@ pub fn exercise_tail() -> String {
         .collect::<BTreeSet<_>>();
     let owners_for = |helper: &str| -> Result<BTreeSet<String>, String> {
         let function = index
-            .functions
+            .functions()
             .iter()
             .find(|function| function.name == helper && function.file == support)
             .ok_or_else(|| format!("missing helper identity {helper}"))?;
@@ -14065,6 +15533,1248 @@ pub fn exercise_tail() -> String {
         owners_for("exercise_tail")?,
         BTreeSet::from(["compute_alpha".to_string()]),
         "the outer binding must still apply after the conflicted nested module"
+    );
+    Ok(())
+}
+
+fn named_constant_boundary_evidence(
+    constant: &str,
+    test_calls: &[&str],
+) -> Result<TestGripEvidence, String> {
+    let tests = test_calls
+        .iter()
+        .enumerate()
+        .map(|(index, call)| {
+            format!(
+                "    #[test]\n    fn case_{index}() {{\n        assert_eq!({call}, 0);\n    }}\n"
+            )
+        })
+        .collect::<String>();
+    let source = format!(
+        "{constant}\n\npub fn discounted_total(amount: u64) -> u64 {{\n    if amount >= DISCOUNT_THRESHOLD {{\n        amount - amount / 10\n    }} else {{\n        amount\n    }}\n}}\n\n#[cfg(test)]\nmod tests {{\n    use super::*;\n\n{tests}}}\n"
+    );
+    let path = PathBuf::from("src/lib.rs");
+    let config = PathBuf::from("src/config.rs");
+    let index = index_from_files(&[
+        (path.clone(), source.as_str()),
+        (config, "pub const DISCOUNT_THRESHOLD: u64 = 10_000;\n"),
+    ])?;
+    let seams = inventory_seams_from_index(&[path], &index);
+    let predicate = seams
+        .iter()
+        .find(|seam| {
+            seam.kind() == SeamKind::PredicateBoundary
+                && seam.expression().contains("amount >= DISCOUNT_THRESHOLD")
+        })
+        .ok_or_else(|| format!("named-constant predicate seam present: {seams:?}"))?;
+    Ok(evidence_for_seam(predicate, &index))
+}
+
+#[test]
+fn given_literal_input_at_same_file_constant_value_then_equality_boundary_is_observed()
+-> Result<(), String> {
+    let evidence = named_constant_boundary_evidence(
+        "pub const DISCOUNT_THRESHOLD: u64 = 10_000;",
+        &["discounted_total(5_000)", "discounted_total(10_000)"],
+    )?;
+    if !evidence.missing_discriminators.is_empty() || evidence.activate.state != StageState::Yes {
+        return Err(format!(
+            "a literal input equal to the constant's value hits the boundary: {:?} / {:?}",
+            evidence.activate, evidence.missing_discriminators
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn given_inputs_off_the_same_file_constant_value_then_equality_boundary_names_its_value()
+-> Result<(), String> {
+    let evidence = named_constant_boundary_evidence(
+        "pub const DISCOUNT_THRESHOLD: u64 = 10_000;",
+        &["discounted_total(5_000)", "discounted_total(20_000)"],
+    )?;
+    let [missing] = evidence.missing_discriminators.as_slice() else {
+        return Err(format!(
+            "exactly one missing boundary discriminator: {:?}",
+            evidence.missing_discriminators
+        ));
+    };
+    if missing.value != "DISCOUNT_THRESHOLD (equality boundary)"
+        || !missing.reason.contains("(DISCOUNT_THRESHOLD = 10_000)")
+    {
+        return Err(format!(
+            "missing discriminator names the value: {missing:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn given_argument_naming_a_declared_constant_then_equality_boundary_is_observed()
+-> Result<(), String> {
+    // The constant's initializer is computed, so its value is opaque, but
+    // passing the constant itself is the boundary by identity.
+    let evidence = named_constant_boundary_evidence(
+        "pub const DISCOUNT_THRESHOLD: u64 = 10 * 1_000;",
+        &[
+            "discounted_total(5_000)",
+            "discounted_total(crate::DISCOUNT_THRESHOLD)",
+        ],
+    )?;
+    if !evidence.missing_discriminators.is_empty() {
+        return Err(format!(
+            "an argument naming the constant satisfies the boundary: {:?}",
+            evidence.missing_discriminators
+        ));
+    }
+    let without_constant_argument = named_constant_boundary_evidence(
+        "pub const DISCOUNT_THRESHOLD: u64 = 10 * 1_000;",
+        &["discounted_total(5_000)", "discounted_total(10_000)"],
+    )?;
+    let [missing] = without_constant_argument.missing_discriminators.as_slice() else {
+        return Err(format!(
+            "an opaque constant stays a named missing boundary: {:?}",
+            without_constant_argument.missing_discriminators
+        ));
+    };
+    if !missing
+        .reason
+        .contains("ripr cannot see the value of constant DISCOUNT_THRESHOLD statically")
+    {
+        return Err(format!("opaque constant reason is honest: {missing:?}"));
+    }
+    Ok(())
+}
+
+fn named_constant_boundary_evidence_from_test_file(
+    test_file: &str,
+) -> Result<TestGripEvidence, String> {
+    let source = "pub const DISCOUNT_THRESHOLD: u64 = 10 * 1_000;\n\npub fn discounted_total(amount: u64) -> u64 {\n    if amount >= DISCOUNT_THRESHOLD {\n        amount - amount / 10\n    } else {\n        amount\n    }\n}\n";
+    let path = PathBuf::from("src/lib.rs");
+    let index = index_from_files(&[
+        (path.clone(), source),
+        (PathBuf::from("tests/pricing.rs"), test_file),
+    ])?;
+    let seams = inventory_seams_from_index(&[path], &index);
+    let predicate = seams
+        .iter()
+        .find(|seam| {
+            seam.kind() == SeamKind::PredicateBoundary
+                && seam.expression().contains("amount >= DISCOUNT_THRESHOLD")
+        })
+        .ok_or_else(|| format!("named-constant predicate seam present: {seams:?}"))?;
+    Ok(evidence_for_seam(predicate, &index))
+}
+
+#[test]
+fn given_test_file_declaring_its_own_same_name_constant_then_identity_is_not_credited()
+-> Result<(), String> {
+    let tests = "#[test]\nfn below() {\n    assert_eq!(discounted_total(5_000), 5_000);\n}\n\n#[test]\nfn at_constant() {\n    assert_eq!(discounted_total(DISCOUNT_THRESHOLD), 0);\n}\n";
+    let imported = named_constant_boundary_evidence_from_test_file(&format!(
+        "use app::{{discounted_total, DISCOUNT_THRESHOLD}};\n\n{tests}"
+    ))?;
+    if !imported.missing_discriminators.is_empty() {
+        return Err(format!(
+            "an imported owner constant is the boundary by identity: {:?}",
+            imported.missing_discriminators
+        ));
+    }
+    let shadowed = named_constant_boundary_evidence_from_test_file(&format!(
+        "use app::discounted_total;\n\nconst DISCOUNT_THRESHOLD: u64 = 5;\n\n{tests}"
+    ))?;
+    if shadowed.missing_discriminators.len() != 1 {
+        return Err(format!(
+            "a test file's own same-name constant is not the owner's boundary: {:?}",
+            shadowed.missing_discriminators
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn given_constant_not_declared_in_owner_file_then_boundary_is_a_named_limitation()
+-> Result<(), String> {
+    let evidence = named_constant_boundary_evidence(
+        "mod config;\nuse config::DISCOUNT_THRESHOLD;",
+        &["discounted_total(5_000)", "discounted_total(10_000)"],
+    )?;
+    if !evidence.missing_discriminators.is_empty()
+        || evidence.activate.state != StageState::Unknown
+        || !evidence
+            .activate
+            .summary
+            .contains("Boundary constant `DISCOUNT_THRESHOLD` has no statically visible value")
+    {
+        return Err(format!(
+            "an unresolvable constant is a limitation, not an actionable gap: {:?} / {:?}",
+            evidence.activate, evidence.missing_discriminators
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn weak_owner_result_field_observation_completes_canonical_route() -> Result<(), String> {
+    let case = refresh_plan_case(WEAK_TWO_BINDING_REFRESH_TEST)?;
+    route_must_be_ready(&case)
+}
+
+#[test]
+fn compact_field_construction_path_emits_compatible_missing_fact() -> Result<(), String> {
+    let case = refresh_plan_case(WEAK_TWO_BINDING_REFRESH_TEST)?;
+    route_must_be_ready(&case)?;
+    let context = CompactGripContext::new(&case.index);
+    let compact = compact_evidence_for_seam(&case.seam, &context);
+    let required = required_field(&case.seam)?;
+    if compact.activate.state != StageState::Yes
+        || !compact
+            .missing_discriminators
+            .iter()
+            .any(|fact| fact.value == required)
+    {
+        return Err(format!(
+            "compact FieldConstruction path must reuse the same missing fact: activate={:?}, missing={:?}",
+            compact.activate.state, compact.missing_discriminators
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn exact_owner_result_field_equality_stays_already_gripped() -> Result<(), String> {
+    let case = constructor_field_case(
+        CONSTRUCTOR_FIELD_PRODUCTION,
+        "crates/parser/tests/lower.rs",
+        r#"
+#[test]
+fn lower_body_preserves_storage() {
+    let statement = lower_ast("item".to_string(), "our".to_string());
+    assert_eq!(statement.storage, "our");
+}
+"#,
+        "storage",
+    )?;
+    let eligibility = repair_packet_eligibility(&case.classified);
+    let readiness = &eligibility.readiness;
+    if case.classified.class != SeamGripClass::StronglyGripped
+        || case.classified.evidence.discriminate.state != StageState::Yes
+        || readiness.state != RepairRouteState::AlreadyGripped
+        || is_safe_for_repair_packet(&case.classified)
+    {
+        return Err(format!(
+            "exact field equality must stay AlreadyGripped: class={:?}, discriminate={:?}, readiness={:?}, eligible={}",
+            case.classified.class,
+            case.classified.evidence.discriminate.state,
+            readiness.state,
+            eligibility.eligible()
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn proximity_related_test_with_unknown_activation_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+pub fn other_plan() -> DiagnosticRefreshPlan {
+    DiagnosticRefreshPlan {
+        suppressed_payload_bytes: 8,
+        published_payload_bytes: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_name_only_observes_other_plan() {
+        let other = other_plan();
+        assert!(other.suppressed_payload_bytes > 0);
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "a name-related test with unknown owner activation")?;
+    let required = required_field(&case.seam)?;
+    if case
+        .classified
+        .evidence
+        .missing_discriminators
+        .iter()
+        .any(|fact| fact.value == required)
+        && case.classified.evidence.activate.state != StageState::Yes
+    {
+        return Err(format!(
+            "unknown activation must not grow a compatible missing fact: activate={:?}, missing={:?}",
+            case.classified.evidence.activate.state,
+            case.classified.evidence.missing_discriminators
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn wrapper_initializer_does_not_credit_owner_result_binding() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+fn wrap(plan: DiagnosticRefreshPlan) -> DiagnosticRefreshPlan { plan }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_wrapped_initializer() {
+        let unchanged = wrap(diagnostic_refresh_plan(8, 0));
+        assert!(unchanged.suppressed_payload_bytes > 0);
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "wrapper(owner()) initializer")
+}
+
+#[test]
+fn unused_owner_call_beside_unrelated_object_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+pub fn other_plan() -> DiagnosticRefreshPlan {
+    DiagnosticRefreshPlan {
+        suppressed_payload_bytes: 8,
+        published_payload_bytes: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_unused_owner_call() {
+        let _ignored = diagnostic_refresh_plan(1, 0);
+        let other = other_plan();
+        assert!(other.suppressed_payload_bytes > 0);
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "unused owner call beside unrelated returned object")
+}
+
+#[test]
+fn shadowed_receiver_before_assertion_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+pub fn other_plan() -> DiagnosticRefreshPlan {
+    DiagnosticRefreshPlan {
+        suppressed_payload_bytes: 8,
+        published_payload_bytes: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_shadowed_receiver() {
+        let unchanged = diagnostic_refresh_plan(8, 0);
+        let unchanged = other_plan();
+        assert!(unchanged.suppressed_payload_bytes > 0);
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "receiver shadowed after owner call")
+}
+
+#[test]
+fn reassigned_receiver_before_assertion_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+pub fn other_plan() -> DiagnosticRefreshPlan {
+    DiagnosticRefreshPlan {
+        suppressed_payload_bytes: 8,
+        published_payload_bytes: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_reassigned_receiver() {
+        let mut unchanged = diagnostic_refresh_plan(8, 0);
+        unchanged = other_plan();
+        assert!(unchanged.suppressed_payload_bytes > 0);
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "receiver reassigned before assertion")
+}
+
+#[test]
+fn field_read_before_binding_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_read_before_binding() {
+        let other = DiagnosticRefreshPlan {
+            suppressed_payload_bytes: 8,
+            published_payload_bytes: 0,
+        };
+        assert!(other.suppressed_payload_bytes > 0);
+        let unchanged = diagnostic_refresh_plan(8, 0);
+        let _keep = unchanged.published_payload_bytes;
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "field read before owner-result binding")
+}
+
+#[test]
+fn nested_closure_binding_outside_assertion_scope_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_closure_local_binding() {
+        let make = || {
+            let unchanged = diagnostic_refresh_plan(8, 0);
+            unchanged
+        };
+        let other = DiagnosticRefreshPlan {
+            suppressed_payload_bytes: 8,
+            published_payload_bytes: 0,
+        };
+        assert!(other.suppressed_payload_bytes > 0);
+        let _keep = make;
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "closure-local owner-result binding")
+}
+
+#[test]
+fn qualified_same_name_callee_without_resolution_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+mod other {
+    pub fn diagnostic_refresh_plan(suppressed: usize, published: usize) -> super::DiagnosticRefreshPlan {
+        super::DiagnosticRefreshPlan {
+            suppressed_payload_bytes: suppressed,
+            published_payload_bytes: published,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_qualified_callee() {
+        let unchanged = other::diagnostic_refresh_plan(8, 0);
+        assert!(unchanged.suppressed_payload_bytes > 0);
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "qualified same-name callee without exact resolution")
+}
+
+#[test]
+fn sibling_field_assertion_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_sibling_field() {
+        let unchanged = diagnostic_refresh_plan(8, 0);
+        assert!(unchanged.published_payload_bytes > 0);
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "sibling-field assertion")
+}
+
+#[test]
+fn token_coincident_field_on_other_binding_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+pub fn other_plan() -> DiagnosticRefreshPlan {
+    DiagnosticRefreshPlan {
+        suppressed_payload_bytes: 8,
+        published_payload_bytes: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_token_collision() {
+        let unchanged = diagnostic_refresh_plan(1, 0);
+        let unchanged_copy = other_plan();
+        assert!(unchanged_copy.suppressed_payload_bytes > 0);
+        let _keep = unchanged.published_payload_bytes;
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "token-coincident field on another object")
+}
+
+#[test]
+fn helper_transfer_owner_result_stays_limited() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+fn helper() -> DiagnosticRefreshPlan {
+    diagnostic_refresh_plan(8, 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_via_helper() {
+        let unchanged = helper();
+        assert!(unchanged.suppressed_payload_bytes > 0);
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "helper-transfer result flow")
+}
+
+#[test]
+fn field_overwrite_before_observation_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_field_overwrite() {
+        let mut unchanged = diagnostic_refresh_plan(8, 0);
+        unchanged.suppressed_payload_bytes = 0;
+        assert!(unchanged.suppressed_payload_bytes > 0);
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "field overwrite before observation")
+}
+
+#[test]
+fn mutable_field_borrow_before_observation_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+fn overwrite(slot: &mut usize) {
+    *slot = 0;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_mutable_field_borrow() {
+        let mut unchanged = diagnostic_refresh_plan(8, 0);
+        overwrite(&mut unchanged.suppressed_payload_bytes);
+        assert!(unchanged.suppressed_payload_bytes > 0);
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "mutable borrow of the observed field")
+}
+
+#[test]
+fn assertion_message_only_field_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_message_only_field() {
+        let unchanged = diagnostic_refresh_plan(8, 0);
+        let unrelated = 1usize;
+        assert!(unrelated > 0, "field: {}", unchanged.suppressed_payload_bytes);
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "field named only in an assertion message")
+}
+
+#[test]
+fn assertion_condition_field_with_message_stays_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_condition_and_message() {
+        let unchanged = diagnostic_refresh_plan(8, 0);
+        assert!(
+            unchanged.suppressed_payload_bytes > 0,
+            "field: {}",
+            unchanged.suppressed_payload_bytes
+        );
+    }
+}
+"#,
+    )?;
+    route_must_be_ready(&case)
+}
+
+#[test]
+fn assertion_local_shadow_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+pub fn other_plan() -> DiagnosticRefreshPlan {
+    DiagnosticRefreshPlan {
+        suppressed_payload_bytes: 8,
+        published_payload_bytes: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_assertion_local_shadow() {
+        let unchanged = diagnostic_refresh_plan(8, 0);
+        assert!({
+            let unchanged = other_plan();
+            unchanged.suppressed_payload_bytes > 0
+        });
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "assertion-local shadow of the owner-result binding")
+}
+
+#[test]
+fn local_same_name_constructor_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn diagnostic_refresh_plan(suppressed: usize, published: usize) -> DiagnosticRefreshPlan {
+        DiagnosticRefreshPlan {
+            suppressed_payload_bytes: suppressed,
+            published_payload_bytes: published,
+        }
+    }
+
+    #[test]
+    fn diagnostic_refresh_plan_local_constructor() {
+        let unchanged = diagnostic_refresh_plan(8, 0);
+        assert!(unchanged.suppressed_payload_bytes > 0);
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "same-name constructor defined in the test module")
+}
+
+#[test]
+fn nested_same_name_constructor_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_nested_constructor() {
+        fn diagnostic_refresh_plan(suppressed: usize, published: usize) -> DiagnosticRefreshPlan {
+            DiagnosticRefreshPlan {
+                suppressed_payload_bytes: suppressed,
+                published_payload_bytes: published,
+            }
+        }
+        let unchanged = diagnostic_refresh_plan(8, 0);
+        assert!(unchanged.suppressed_payload_bytes > 0);
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "same-name constructor nested in the test function")
+}
+
+#[test]
+fn imported_same_name_callee_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+mod other {
+    pub fn diagnostic_refresh_plan(suppressed: usize, published: usize) -> super::DiagnosticRefreshPlan {
+        super::DiagnosticRefreshPlan {
+            suppressed_payload_bytes: suppressed,
+            published_payload_bytes: published,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::other::diagnostic_refresh_plan;
+
+    #[test]
+    fn diagnostic_refresh_plan_imported_callee() {
+        let unchanged = diagnostic_refresh_plan(8, 0);
+        assert!(unchanged.suppressed_payload_bytes > 0);
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "same-name callee imported from another module")
+}
+
+#[test]
+fn grouped_nested_super_owner_import_completes_canonical_route() -> Result<(), String> {
+    let case = refresh_plan_sibling_tests_case(GROUPED_NESTED_SUPER_OWNER_IMPORT)?;
+    route_must_be_ready(&case)
+}
+
+#[test]
+fn grouped_nested_super_import_from_foreign_module_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_sibling_tests_case_at(
+        REFRESH_PLAN_PRODUCTION,
+        &[(
+            "src/lsp/other.rs",
+            r#"
+pub struct DiagnosticRefreshPlan {
+    pub suppressed_payload_bytes: usize,
+    pub published_payload_bytes: usize,
+}
+
+pub fn diagnostic_refresh_plan(suppressed: usize, published: usize) -> DiagnosticRefreshPlan {
+    DiagnosticRefreshPlan {
+        suppressed_payload_bytes: suppressed,
+        published_payload_bytes: published,
+    }
+}
+"#,
+        )],
+        r#"
+use super::other::{diagnostic_refresh_plan};
+
+#[test]
+fn diagnostic_refresh_plan_imported_from_other() {
+    let unchanged = diagnostic_refresh_plan(8, 0);
+    assert!(unchanged.suppressed_payload_bytes > 0);
+}
+"#,
+    )?;
+    route_must_stay_unready(
+        &case,
+        "grouped nested-super import of a same-name callee from another module",
+    )
+}
+
+#[test]
+fn cfg_ambiguous_same_name_owners_stay_non_ready() -> Result<(), String> {
+    let case = refresh_plan_sibling_tests_case_at(
+        r#"
+pub struct DiagnosticRefreshPlan {
+    pub suppressed_payload_bytes: usize,
+    pub published_payload_bytes: usize,
+}
+
+#[cfg(unix)]
+pub fn diagnostic_refresh_plan(suppressed: usize, published: usize) -> DiagnosticRefreshPlan {
+    DiagnosticRefreshPlan {
+        suppressed_payload_bytes: suppressed,
+        published_payload_bytes: published,
+    }
+}
+
+#[cfg(windows)]
+pub fn diagnostic_refresh_plan(suppressed: usize, published: usize) -> DiagnosticRefreshPlan {
+    DiagnosticRefreshPlan {
+        suppressed_payload_bytes: suppressed,
+        published_payload_bytes: published,
+    }
+}
+"#,
+        &[],
+        GROUPED_NESTED_SUPER_OWNER_IMPORT,
+    )?;
+    route_must_stay_unready(&case, "cfg-ambiguous same-name production owners")
+}
+
+#[test]
+fn self_nested_owner_import_completes_canonical_route() -> Result<(), String> {
+    let case =
+        adapter_diagnostics_import_case("use self::diagnostics::{diagnostic_refresh_plan};")?;
+    route_must_be_ready(&case)
+}
+
+#[test]
+fn extern_prelude_owner_import_stays_non_ready() -> Result<(), String> {
+    let case = adapter_diagnostics_import_case("use ::diagnostics::{diagnostic_refresh_plan};")?;
+    route_must_stay_unready(
+        &case,
+        "leading :: extern-prelude import of a same-name dependency crate",
+    )
+}
+
+#[test]
+fn local_owner_name_binding_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+pub fn other_plan(suppressed: usize, published: usize) -> DiagnosticRefreshPlan {
+    DiagnosticRefreshPlan {
+        suppressed_payload_bytes: suppressed,
+        published_payload_bytes: published,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_local_callee_binding() {
+        let diagnostic_refresh_plan = other_plan;
+        let unchanged = diagnostic_refresh_plan(8, 0);
+        assert!(unchanged.suppressed_payload_bytes > 0);
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "local binding that shadows the owner callee")
+}
+
+#[test]
+fn same_name_owner_result_binding_completes_canonical_route() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_same_name_result_binding() {
+        let diagnostic_refresh_plan = diagnostic_refresh_plan(8, 0);
+        assert!(diagnostic_refresh_plan.suppressed_payload_bytes > 0);
+    }
+}
+"#,
+    )?;
+    route_must_be_ready(&case)
+}
+
+#[test]
+fn nested_field_receiver_token_collision_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+pub struct Wrapper {
+    pub plan: DiagnosticRefreshPlan,
+}
+
+pub fn other_plan() -> DiagnosticRefreshPlan {
+    DiagnosticRefreshPlan {
+        suppressed_payload_bytes: 8,
+        published_payload_bytes: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_nested_receiver() {
+        let plan = diagnostic_refresh_plan(8, 0);
+        let other = Wrapper {
+            plan: other_plan(),
+        };
+        assert!(other.plan.suppressed_payload_bytes > 0);
+        let _keep = plan.published_payload_bytes;
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "nested receiver other.plan.field")
+}
+
+#[test]
+fn medium_snapshot_owner_result_field_stays_already_gripped() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_snapshot_field() {
+        let unchanged = diagnostic_refresh_plan(8, 0);
+        assert_snapshot!(unchanged.suppressed_payload_bytes);
+    }
+}
+"#,
+    )?;
+    let eligibility = repair_packet_eligibility(&case.classified);
+    let readiness = &eligibility.readiness;
+    if case.classified.class != SeamGripClass::StronglyGripped
+        || case.classified.evidence.discriminate.state != StageState::Yes
+        || !case.classified.evidence.missing_discriminators.is_empty()
+        || readiness.state != RepairRouteState::AlreadyGripped
+        || is_safe_for_repair_packet(&case.classified)
+    {
+        return Err(format!(
+            "matching Medium snapshot must stay AlreadyGripped: class={:?}, discriminate={:?}, missing={:?}, readiness={:?}, eligible={}",
+            case.classified.class,
+            case.classified.evidence.discriminate.state,
+            case.classified.evidence.missing_discriminators,
+            readiness.state,
+            eligibility.eligible()
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn method_same_name_callee_without_resolution_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+struct Helper;
+
+impl Helper {
+    fn diagnostic_refresh_plan(&self, suppressed: usize, published: usize) -> DiagnosticRefreshPlan {
+        diagnostic_refresh_plan(suppressed, published)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_method_callee() {
+        let unchanged = Helper.diagnostic_refresh_plan(8, 0);
+        assert!(unchanged.suppressed_payload_bytes > 0);
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "method same-name callee without exact resolution")
+}
+
+#[test]
+fn unrelated_strong_assertion_on_other_object_stays_non_ready() -> Result<(), String> {
+    let case = refresh_plan_case(
+        r#"
+pub fn other_plan() -> DiagnosticRefreshPlan {
+    DiagnosticRefreshPlan {
+        suppressed_payload_bytes: 8,
+        published_payload_bytes: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_refresh_plan_unrelated_strong() {
+        let unchanged = diagnostic_refresh_plan(8, 0);
+        let other = other_plan();
+        assert_eq!(other.suppressed_payload_bytes, 8);
+        let _keep = unchanged.published_payload_bytes;
+    }
+}
+"#,
+    )?;
+    route_must_stay_unready(&case, "unrelated strong assertion on another object")
+}
+
+#[test]
+fn changed_test_bytes_invalidate_target_admission() -> Result<(), String> {
+    let case = refresh_plan_case(WEAK_SINGLE_BINDING_REFRESH_TEST)?;
+    route_must_be_ready(&case)?;
+    let Some(test_path) = case
+        .index
+        .workspace_authority
+        .as_ref()
+        .map(|authority| authority.root.join("src/diagnostics.rs"))
+    else {
+        return Err("fixture lost workspace authority".to_string());
+    };
+    let current = fs::read_to_string(&test_path).map_err(|error| error.to_string())?;
+    fs::write(&test_path, format!("{current}// stale\n")).map_err(|error| error.to_string())?;
+    let evidence = evidence_for_seam(&case.seam, &case.index);
+    let classified = ClassifiedSeam {
+        seam: case.seam.clone(),
+        class: crate::analysis::seam_classification::classify_seam(&case.seam, &evidence),
+        evidence,
+    };
+    authority_must_refuse_packet(
+        &classified,
+        "changed test bytes must not keep a repair packet",
+    )
+}
+
+#[test]
+fn changed_production_bytes_invalidate_target_admission() -> Result<(), String> {
+    let case = refresh_plan_split_case(WEAK_SPLIT_REFRESH_TEST)?;
+    route_must_be_ready(&case)?;
+    let Some(production_path) = case
+        .index
+        .workspace_authority
+        .as_ref()
+        .map(|authority| authority.root.join("src/diagnostics.rs"))
+    else {
+        return Err("fixture lost workspace authority".to_string());
+    };
+    let current = fs::read_to_string(&production_path).map_err(|error| error.to_string())?;
+    fs::write(&production_path, format!("{current}// stale\n"))
+        .map_err(|error| error.to_string())?;
+    let evidence = evidence_for_seam(&case.seam, &case.index);
+    let classified = ClassifiedSeam {
+        seam: case.seam.clone(),
+        class: crate::analysis::seam_classification::classify_seam(&case.seam, &evidence),
+        evidence,
+    };
+    authority_must_refuse_packet(
+        &classified,
+        "changed production bytes must not keep a repair packet",
+    )
+}
+
+#[test]
+fn different_package_identity_invalidates_target_admission() -> Result<(), String> {
+    let mut case = refresh_plan_split_case(WEAK_SPLIT_REFRESH_TEST)?;
+    route_must_be_ready(&case)?;
+    let test_file = PathBuf::from("tests/refresh.rs");
+    let Some(authority) = case.index.workspace_authority.as_mut() else {
+        return Err("fixture lost workspace authority".to_string());
+    };
+    let Some(file) = authority.files.get_mut(&test_file) else {
+        return Err("lost test file authority".to_string());
+    };
+    file.package_identity = "other-package".to_string();
+    let evidence = evidence_for_seam(&case.seam, &case.index);
+    let classified = ClassifiedSeam {
+        seam: case.seam.clone(),
+        class: crate::analysis::seam_classification::classify_seam(&case.seam, &evidence),
+        evidence,
+    };
+    authority_must_refuse_packet(
+        &classified,
+        "different package identity must not keep a repair packet",
+    )
+}
+
+#[test]
+fn symlink_escape_invalidates_target_admission() -> Result<(), String> {
+    let case = refresh_plan_split_case(WEAK_SPLIT_REFRESH_TEST)?;
+    route_must_be_ready(&case)?;
+    let Some(authority) = case.index.workspace_authority.as_ref() else {
+        return Err("fixture lost workspace authority".to_string());
+    };
+    let test_path = authority.root.join("tests/refresh.rs");
+    let outside = authority.root.parent().map(|parent| {
+        parent.join(format!(
+            "ripr-1981-outside-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0)
+        ))
+    });
+    let Some(outside) = outside else {
+        return Err("could not place an outside path".to_string());
+    };
+    fs::create_dir_all(&outside).map_err(|error| error.to_string())?;
+    let escaped = outside.join("refresh.rs");
+    let current = fs::read_to_string(&test_path).map_err(|error| error.to_string())?;
+    fs::write(&escaped, &current).map_err(|error| error.to_string())?;
+    fs::remove_file(&test_path).map_err(|error| error.to_string())?;
+    if let Err(error) = symlink_file(&escaped, &test_path) {
+        let _ = fs::remove_dir_all(&outside);
+        let privilege_missing = error.kind() == std::io::ErrorKind::PermissionDenied
+            || error.raw_os_error() == Some(1314);
+        if privilege_missing {
+            eprintln!(
+                "skipping symlink containment check: fixture creation is not permitted ({error})"
+            );
+            return Ok(());
+        }
+        return Err(format!(
+            "symlink containment fixture could not be created: {error}"
+        ));
+    }
+    let evidence = evidence_for_seam(&case.seam, &case.index);
+    let classified = ClassifiedSeam {
+        seam: case.seam.clone(),
+        class: crate::analysis::seam_classification::classify_seam(&case.seam, &evidence),
+        evidence,
+    };
+    let _ = fs::remove_dir_all(&outside);
+    authority_must_refuse_packet(&classified, "symlink escape must not keep a repair packet")
+}
+
+#[test]
+fn absent_workspace_authority_invalidates_target_admission() -> Result<(), String> {
+    let mut case = refresh_plan_case(WEAK_SINGLE_BINDING_REFRESH_TEST)?;
+    route_must_be_ready(&case)?;
+    case.index.workspace_authority = None;
+    let evidence = evidence_for_seam(&case.seam, &case.index);
+    let classified = ClassifiedSeam {
+        seam: case.seam.clone(),
+        class: crate::analysis::seam_classification::classify_seam(&case.seam, &evidence),
+        evidence,
+    };
+    authority_must_refuse_packet(
+        &classified,
+        "absent authority must not keep a repair packet",
+    )
+}
+
+#[test]
+fn duplicate_evidence_function_identity_invalidates_target() -> Result<(), String> {
+    let mut case = refresh_plan_case(WEAK_SINGLE_BINDING_REFRESH_TEST)?;
+    route_must_be_ready(&case)?;
+    let file = PathBuf::from("src/diagnostics.rs");
+    let Some(mut facts) = case.index.owned_file(&file) else {
+        return Err("lost indexed file facts".to_string());
+    };
+    let Some(function) = facts.functions.iter().find(|function| {
+        function.name
+            == "diagnostic_refresh_plan_suppresses_unchanged_uri_and_publishes_changed_uri"
+    }) else {
+        return Err("lost the evidence-role test function".to_string());
+    };
+    let duplicate = function.clone();
+    facts.functions.push(duplicate.clone());
+    case.index.insert_file_only(file, facts);
+    case.index.push_function(duplicate);
+    let evidence = evidence_for_seam(&case.seam, &case.index);
+    let classified = ClassifiedSeam {
+        seam: case.seam.clone(),
+        class: crate::analysis::seam_classification::classify_seam(&case.seam, &evidence),
+        evidence,
+    };
+    authority_must_refuse_packet(
+        &classified,
+        "duplicate evidence-function identity must not keep a repair packet",
+    )
+}
+
+#[test]
+fn direct_collection_mutation_discriminates_actual_observer_not_sibling_collection()
+-> Result<(), String> {
+    let prod = PathBuf::from("src/rows.rs");
+    let prod_src = r#"
+pub fn record_effect(items: &mut Vec<u32>) {
+    items.push(5);
+}
+"#;
+    let tests = PathBuf::from("tests/rows_tests.rs");
+    let wrong_src = r#"
+#[test]
+fn observes_other() {
+    let mut items = Vec::new();
+    let other = vec![7u32];
+    record_effect(&mut items);
+    assert_eq!(other, vec![7u32]);
+}
+"#;
+    let actual_src = r#"
+#[test]
+fn observes_items() {
+    let mut items = Vec::new();
+    record_effect(&mut items);
+    assert_eq!(items, vec![5u32]);
+}
+"#;
+    let wrong_index = index_from_files(&[(prod.clone(), prod_src), (tests.clone(), wrong_src)])?;
+    let actual_index = index_from_files(&[(prod.clone(), prod_src), (tests.clone(), actual_src)])?;
+    let wrong_seams = inventory_seams_from_index(&[PathBuf::from("src/rows.rs")], &wrong_index);
+    let actual_seams = inventory_seams_from_index(&[PathBuf::from("src/rows.rs")], &actual_index);
+    let wrong_seam = wrong_seams
+        .iter()
+        .find(|seam| seam.kind() == SeamKind::SideEffect)
+        .ok_or_else(|| {
+            format!(
+                "expected side_effect seam for wrong observer, got {:?}",
+                wrong_seams
+                    .iter()
+                    .map(|seam| seam.kind().as_str())
+                    .collect::<Vec<_>>()
+            )
+        })?;
+    let actual_seam = actual_seams
+        .iter()
+        .find(|seam| seam.kind() == SeamKind::SideEffect)
+        .ok_or_else(|| {
+            format!(
+                "expected side_effect seam for actual observer, got {:?}",
+                actual_seams
+                    .iter()
+                    .map(|seam| seam.kind().as_str())
+                    .collect::<Vec<_>>()
+            )
+        })?;
+    assert_eq!(wrong_seam.expression(), actual_seam.expression());
+    let wrong = evidence_for_seam(wrong_seam, &wrong_index);
+    let actual = evidence_for_seam(actual_seam, &actual_index);
+    assert_ne!(
+        wrong.discriminate.state,
+        StageState::Yes,
+        "asserting collection B must not discriminate collection A: {:?}",
+        wrong.discriminate
+    );
+    assert_eq!(
+        actual.discriminate.state,
+        StageState::Yes,
+        "asserting the affected collection must retain discrimination: {:?}",
+        actual.discriminate
+    );
+    assert_eq!(
+        actual.propagate.state,
+        StageState::Yes,
+        "the actual observer must count as the collection sink: {:?}",
+        actual.propagate
+    );
+    assert_ne!(
+        wrong.propagate.state,
+        StageState::Yes,
+        "the sibling collection must not count as the collection sink: {:?}",
+        wrong.propagate
     );
     Ok(())
 }

@@ -1,0 +1,51 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/predicate_oracle_execution_reached_uncalled/input
+
+Summary: 1 probe(s), 0 exposed, 0 weakly_exposed, 1 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 1 of 1 finding(s) unsuppressed
+
+Analysis outcome: findings below (analysis complete; complete_with_findings).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+WARNING fixtures/predicate_oracle_execution_reached_uncalled/input/src/lib.rs:2
+  id: probe:src_lib.rs:predicate:c80557eb
+
+Changed
+  before: if amount > discount_threshold {
+  after:  amount >= discount_threshold
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  src/lib.rs::discounted_total
+
+Static exposure
+  reachable_unrevealed (warning, confidence 0.79)
+
+Evidence
+  - reach yes: Related tests appear to reach discounted_total: equality_threshold_discounts
+  - infection yes: Detected related test input at the changed boundary
+  - propagation yes: Changed behavior appears to influence returned value: amount - 10
+  - observation no: No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)
+  - discriminator no: No statically established assertion can discriminate the changed behavior; execution or macro binding is unestablished (rust_assertion_context_unestablished)
+  - local flow reaches returned value: amount - 10 (line 3)
+  - related test src/lib.rs:13 equality_threshold_discounts uses none unknown oracle
+  - source function argument value amount = 100 at line 14
+  - source function argument value amount == discount_threshold at line 14
+  - source function argument value discount_threshold = 100 at line 14
+  - source assertion argument value 90 at line 15
+  - source function argument value amount = 100 at line 15
+  - source function argument value amount == discount_threshold at line 15
+  - source function argument value discount_threshold = 100 at line 15
+
+Weakness
+  - No detected assertion observes the changed value, error, field, or effect
+  - No relevant oracle was detected
+  - No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)
+  - No strong discriminator was detected
+
+Next step
+  Establish that the test is collected and enabled, that the assertion runs on its executed path, and that it resolves to the intended standard macro, then check the changed returned value.
+Drill in:
+  ripr explain --root fixtures/predicate_oracle_execution_reached_uncalled/input --diff fixtures/predicate_oracle_execution_reached_uncalled/diff.patch --mode fast probe:src_lib.rs:predicate:c80557eb
+  ripr context --root fixtures/predicate_oracle_execution_reached_uncalled/input --diff fixtures/predicate_oracle_execution_reached_uncalled/diff.patch --mode fast --at probe:src_lib.rs:predicate:c80557eb

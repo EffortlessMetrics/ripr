@@ -20,7 +20,8 @@ Rust and repository-policy proof:
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo clippy --workspace --all-targets -- -D warnings
-cargo nextest run --workspace
+cargo nextest run --workspace --profile ci
+cargo test --workspace --doc
 cargo xtask precommit
 cargo xtask check-evidence-promotion-honesty
 cargo xtask check-agent-skills
@@ -30,6 +31,12 @@ cargo xtask check-network-policy
 cargo xtask goldens check
 cargo xtask fixtures
 ```
+
+The two Rust test commands have distinct required roles: nextest executes the
+compiled test binaries it selects, while Cargo and rustdoc compile and execute
+workspace doctests. A green nextest run cannot stand in for the doctest row,
+and the advisory all-feature Test Analytics replay cannot stand in for either
+protected-lane proposition.
 
 Formatting runs before nextest installation and hosted cache restoration. A
 required failure skips broad advisory report generation. Ordinary successful
@@ -44,6 +51,9 @@ only distinct proof:
 - Perl feature-adapter check and focused Perl language-analysis tests;
 - package list, publish dry-run, and release-readiness proof on `main`,
   `release-check`, or `full-ci`;
+- the Rust-only feature lane (`--no-default-features --features lang-rust`)
+  on `main` pushes and on pull requests that change the Rust crate, fixtures,
+  or Cargo manifests;
 - the named duplicate MSRV proof on manual or `full-ci` runs;
 - VS Code compile, package, and real-server E2E proof on pushes, manual runs,
   and `full-ci` pull requests.

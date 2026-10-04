@@ -1,9 +1,15 @@
 use super::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Best-effort temp-dir teardown. The `io::Result` is matched with `if let`
+/// so a `#[must_use]` cleanup failure is an explicit ignore.
+fn ignore_remove_dir_all(path: impl AsRef<Path>) {
+    if let Ok(()) = fs::remove_dir_all(path) {}
+}
+
 #[test]
 fn gate_visible_only_records_pr_guidance_without_blocking() -> Result<(), String> {
-    let input = fixture_input(GateMode::VisibleOnly);
+    let input = fixture_input(GateMode::VisibleOnly)?;
     let report = build_gate_decision_report(&input)?;
     assert_eq!(report.status, "advisory");
     assert_eq!(report.summary.evaluated, 1);
@@ -28,7 +34,7 @@ fn gate_visible_only_records_pr_guidance_without_blocking() -> Result<(), String
 
 #[test]
 fn gate_acknowledgeable_blocks_policy_candidate_without_label() -> Result<(), String> {
-    let input = fixture_input(GateMode::Acknowledgeable);
+    let input = fixture_input(GateMode::Acknowledgeable)?;
     let report = build_gate_decision_report(&input)?;
     assert_eq!(report.status, "blocked");
     assert_eq!(report.summary.blocking, 1);
@@ -43,11 +49,13 @@ fn gate_acknowledgeable_blocks_policy_candidate_without_label() -> Result<(), St
 }
 
 #[test]
-fn gate_inline_failure_detail_names_seam_location_and_inspection_command() -> Result<(), String> {
+fn gate_inline_failure_detail_names_seam_location_and_next_command() -> Result<(), String> {
     // #1440: at the point of failure the inline detail must name the exact
-    // seam location and the producer-owned inspection command so consumers
-    // do not need artifact archaeology to act on a correct signal.
-    let input = fixture_input(GateMode::Acknowledgeable);
+    // seam location and the producer-owned next command so consumers do not
+    // need artifact archaeology to act on a correct signal. #3906: that
+    // command is the repair start when the card carries one, else the
+    // inspection brief.
+    let input = fixture_input(GateMode::Acknowledgeable)?;
     let report = build_gate_decision_report(&input)?;
     assert_eq!(report.status, "blocked");
     let inline = gate_decision_inline_detail(&report);
@@ -77,9 +85,26 @@ fn gate_inline_failure_detail_names_seam_location_and_inspection_command() -> Re
         inline.contains("[src/pricing.rs:88]"),
         "inline detail missing seam location: {inline}"
     );
+    // #3906: the fixture seam passes the repair-packet flip, so the blocked
+    // gate names the repair transaction's start, not the inspection brief.
     assert!(
         inline.contains(
-            "`ripr agent brief --root . --seam-id 8f7fa8644fd12280 --json > target/ripr/workflow/agent-brief.json`",
+            "; start the repair with `ripr agent repair --root . --seam-id 8f7fa8644fd12280 --phase before`",
+        ),
+        "inline detail missing the repair start: {inline}"
+    );
+    assert!(
+        !inline.contains("inspect with"),
+        "inline detail must offer one route: {inline}"
+    );
+
+    // Without a carried repair start the inspection brief stays the route.
+    let mut without_repair = report.clone();
+    without_repair.decisions[0].repair_route.repair_command = None;
+    let inline = gate_decision_inline_detail(&without_repair);
+    assert!(
+        inline.contains(
+            "; inspect with `ripr agent brief --root . --seam-id 8f7fa8644fd12280 --json > <cwd>/target/ripr/workflow/agent-brief.json`",
         ),
         "inline detail missing inspection command: {inline}"
     );
@@ -88,7 +113,7 @@ fn gate_inline_failure_detail_names_seam_location_and_inspection_command() -> Re
 
 #[test]
 fn gate_inline_failure_detail_preserves_line_only_anchor() -> Result<(), String> {
-    let input = fixture_input(GateMode::Acknowledgeable);
+    let input = fixture_input(GateMode::Acknowledgeable)?;
     let mut report = build_gate_decision_report(&input)?;
     report.decisions[0].placement.path = None;
     report.decisions[0].placement.line = Some(88);
@@ -102,7 +127,7 @@ fn gate_inline_failure_detail_preserves_line_only_anchor() -> Result<(), String>
 
 #[test]
 fn gate_acknowledgeable_keeps_waived_candidate_visible() -> Result<(), String> {
-    let mut input = fixture_input(GateMode::Acknowledgeable);
+    let mut input = fixture_input(GateMode::Acknowledgeable)?;
     input.labels.push("ripr-waive".to_string());
     let report = build_gate_decision_report(&input)?;
     assert_eq!(report.status, "acknowledged");
@@ -117,7 +142,7 @@ fn gate_acknowledgeable_keeps_waived_candidate_visible() -> Result<(), String> {
 
 #[test]
 fn gate_calibrated_mode_requires_explicit_baseline() -> Result<(), String> {
-    let input = fixture_input(GateMode::CalibratedGate);
+    let input = fixture_input(GateMode::CalibratedGate)?;
     let report = build_gate_decision_report(&input)?;
     assert_eq!(report.status, "config_error");
     assert_eq!(report.summary.evaluated, 0);
@@ -142,6 +167,7 @@ fn gate_fails_closed_on_limited_partial_scope_pr_guidance() -> Result<(), String
         "comments.json",
         r#"{
           "schema_version": "0.1",
+          "tool": "ripr",
           "status": "advisory",
           "comments": [],
           "analysis_scope": {
@@ -150,7 +176,7 @@ fn gate_fails_closed_on_limited_partial_scope_pr_guidance() -> Result<(), String
           }
         }"#,
     )?;
-    let mut input = fixture_input(GateMode::VisibleOnly);
+    let mut input = fixture_input(GateMode::VisibleOnly)?;
     input.pr_guidance = Some(guidance);
 
     let report = build_gate_decision_report(&input)?;
@@ -169,7 +195,7 @@ fn gate_fails_closed_on_limited_partial_scope_pr_guidance() -> Result<(), String
         "config error must name the partial run state: {:?}",
         report.config_errors
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -181,6 +207,7 @@ fn gate_fails_closed_on_typed_incomplete_analysis_outcome() -> Result<(), String
         "comments.json",
         r#"{
           "schema_version": "0.1",
+          "tool": "ripr",
           "status": "advisory",
           "comments": [],
           "analysis_outcome": {
@@ -197,7 +224,7 @@ fn gate_fails_closed_on_typed_incomplete_analysis_outcome() -> Result<(), String
           }
         }"#,
     )?;
-    let mut input = fixture_input(GateMode::VisibleOnly);
+    let mut input = fixture_input(GateMode::VisibleOnly)?;
     input.pr_guidance = Some(guidance);
 
     let report = build_gate_decision_report(&input)?;
@@ -211,7 +238,7 @@ fn gate_fails_closed_on_typed_incomplete_analysis_outcome() -> Result<(), String
             .iter()
             .any(|error| { error.contains("unsupported_input") && error.contains("incomplete") })
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -226,7 +253,7 @@ fn gate_gap_ledger_and_baseline_rejections_name_typed_outcome_kind() -> Result<(
     }"#;
 
     let gap_ledger = write_temp_json(&dir, "gap-ledger.json", envelope)?;
-    let mut gap_input = fixture_input(GateMode::VisibleOnly);
+    let mut gap_input = fixture_input(GateMode::VisibleOnly)?;
     gap_input.pr_guidance = None;
     gap_input.gap_ledger = Some(gap_ledger);
     let gap_report = build_gate_decision_report(&gap_input)?;
@@ -242,7 +269,7 @@ fn gate_gap_ledger_and_baseline_rejections_name_typed_outcome_kind() -> Result<(
     );
 
     let baseline = write_temp_json(&dir, "baseline.json", envelope)?;
-    let mut baseline_input = fixture_input(GateMode::CalibratedGate);
+    let mut baseline_input = fixture_input(GateMode::CalibratedGate)?;
     baseline_input.pr_guidance = None;
     baseline_input.baseline = Some(baseline);
     let baseline_report = build_gate_decision_report(&baseline_input)?;
@@ -256,7 +283,7 @@ fn gate_gap_ledger_and_baseline_rejections_name_typed_outcome_kind() -> Result<(
         baseline_report.config_errors
     );
 
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -289,7 +316,7 @@ fn check_output_gap_ledger_preserves_incomplete_outcome_for_gate_consumers() -> 
     );
     let ledger_path = write_temp_json(&dir, "gap-ledger.json", &ledger_json)?;
 
-    let mut gate_input = fixture_input(GateMode::VisibleOnly);
+    let mut gate_input = fixture_input(GateMode::VisibleOnly)?;
     gate_input.pr_guidance = None;
     gate_input.gap_ledger = Some(ledger_path);
     let report = build_gate_decision_report(&gate_input)?;
@@ -305,7 +332,7 @@ fn check_output_gap_ledger_preserves_incomplete_outcome_for_gate_consumers() -> 
         report.config_errors
     );
 
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -323,7 +350,7 @@ fn gate_fails_closed_on_limited_partial_scope_gap_ledger() -> Result<(), String>
           ]
         }"#,
     )?;
-    let mut input = fixture_input(GateMode::VisibleOnly);
+    let mut input = fixture_input(GateMode::VisibleOnly)?;
     input.pr_guidance = None;
     input.gap_ledger = Some(ledger);
 
@@ -339,7 +366,7 @@ fn gate_fails_closed_on_limited_partial_scope_gap_ledger() -> Result<(), String>
         "config error must name the partial run state: {:?}",
         report.config_errors
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -355,7 +382,7 @@ fn gate_fails_closed_on_limited_partial_scope_baseline() -> Result<(), String> {
           "analysis_scope": {"run_status": "limited_partial_scope"}
         }"#,
     )?;
-    let mut input = fixture_input(GateMode::CalibratedGate);
+    let mut input = fixture_input(GateMode::CalibratedGate)?;
     input.baseline = Some(baseline);
 
     let report = build_gate_decision_report(&input)?;
@@ -370,7 +397,7 @@ fn gate_fails_closed_on_limited_partial_scope_baseline() -> Result<(), String> {
         "config error must name the partial run state: {:?}",
         report.config_errors
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -427,7 +454,7 @@ fn gate_calibrated_mode_blocks_new_supported_candidate() -> Result<(), String> {
     let baseline = dir.join("baseline.json");
     fs::write(&baseline, r#"{"schema_version":"0.1","decisions":[]}"#)
         .map_err(|err| format!("write baseline failed: {err}"))?;
-    let mut input = fixture_input(GateMode::CalibratedGate);
+    let mut input = fixture_input(GateMode::CalibratedGate)?;
     input.baseline = Some(baseline);
     input.recommendation_calibration = Some(PathBuf::from(
         "fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.json",
@@ -442,7 +469,89 @@ fn gate_calibrated_mode_blocks_new_supported_candidate() -> Result<(), String> {
             .confidence_effect,
         "supports_static_gap"
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
+    Ok(())
+}
+
+// -- #4724 regression: a baseline must be a recognized baseline shape --
+
+#[test]
+fn given_baseline_of_unrecognized_kind_when_gate_evaluated_then_config_error() -> Result<(), String>
+{
+    let cases = [
+        ("empty-object.json", "{}", "no identity array found"),
+        ("array.json", "[]", "expected a JSON object"),
+        (
+            "other-kind.json",
+            r#"{"schema_version":"0.1","kind":"gap_ledger","entries":[]}"#,
+            "field `kind` is \"gap_ledger\"",
+        ),
+        (
+            "kind-without-entries.json",
+            r#"{"schema_version":"0.1","kind":"gate_baseline"}"#,
+            "requires an `entries` array",
+        ),
+        (
+            "no-identity-array.json",
+            r#"{"schema_version":"0.1","records":[{"seam_id":"8f7fa8644fd12280"}]}"#,
+            "no identity array found",
+        ),
+    ];
+    for mode in [GateMode::BaselineCheck, GateMode::CalibratedGate] {
+        for (name, contents, expected_defect) in cases {
+            let dir = temp_dir("gate-baseline-kind")?;
+            let baseline = write_temp_json(&dir, name, contents)?;
+            let mut input = fixture_input(mode)?;
+            input.baseline = Some(baseline);
+            let report = build_gate_decision_report(&input)?;
+            assert_eq!(
+                report.status,
+                "config_error",
+                "{} {name}: an unrecognized baseline must be config_error, got {:?}",
+                mode.as_str(),
+                report.status,
+            );
+            assert!(
+                report.config_errors.iter().any(|error| error.contains(name)
+                    && error.contains("is not a recognized gate baseline")
+                    && error.contains(expected_defect)),
+                "{} {name}: config_errors must name `{expected_defect}`, got {:?}",
+                mode.as_str(),
+                report.config_errors,
+            );
+            ignore_remove_dir_all(dir);
+        }
+    }
+
+    // Documented compatibility shapes stay accepted (docs/CI.md): a
+    // `gate_baseline` ledger, a hand-built `decisions` baseline, and a
+    // review-comments document whose ids are indexed.
+    for (name, contents) in [
+        (
+            "ledger.json",
+            r#"{"schema_version":"0.1","kind":"gate_baseline","entries":[]}"#,
+        ),
+        (
+            "decisions.json",
+            r#"{"schema_version":"0.1","decisions":[]}"#,
+        ),
+        (
+            "comments.json",
+            r#"{"schema_version":"0.1","tool":"ripr","status":"advisory","comments":[]}"#,
+        ),
+    ] {
+        let dir = temp_dir("gate-baseline-kind-ok")?;
+        let baseline = write_temp_json(&dir, name, contents)?;
+        let mut input = fixture_input(GateMode::BaselineCheck)?;
+        input.baseline = Some(baseline);
+        let report = build_gate_decision_report(&input)?;
+        assert!(
+            report.config_errors.is_empty(),
+            "{name}: a recognized baseline shape must not be a config error, got {:?}",
+            report.config_errors,
+        );
+        ignore_remove_dir_all(dir);
+    }
     Ok(())
 }
 
@@ -473,7 +582,7 @@ fn gate_calibrated_mode_uses_imported_mutation_support() -> Result<(), String> {
             }"#,
     )
     .map_err(|err| format!("write mutation calibration failed: {err}"))?;
-    let mut input = fixture_input(GateMode::CalibratedGate);
+    let mut input = fixture_input(GateMode::CalibratedGate)?;
     input.baseline = Some(baseline);
     input.mutation_calibration = Some(mutation);
     let report = build_gate_decision_report(&input)?;
@@ -491,7 +600,7 @@ fn gate_calibrated_mode_uses_imported_mutation_support() -> Result<(), String> {
             .gate_reason
             .contains("imported mutation calibration")
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -501,12 +610,12 @@ fn gate_labels_json_acknowledges_candidate() -> Result<(), String> {
     let labels = dir.join("labels.json");
     fs::write(&labels, r#"{"labels":["ripr-waive"]}"#)
         .map_err(|err| format!("write labels failed: {err}"))?;
-    let mut input = fixture_input(GateMode::Acknowledgeable);
+    let mut input = fixture_input(GateMode::Acknowledgeable)?;
     input.labels_json = Some(labels);
     let report = build_gate_decision_report(&input)?;
     assert_eq!(report.status, "acknowledged");
     assert_eq!(report.inputs.labels, vec!["ripr-waive".to_string()]);
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -524,7 +633,7 @@ fn gate_baseline_check_keeps_existing_candidate_advisory() -> Result<(), String>
             }"#,
     )
     .map_err(|err| format!("write baseline failed: {err}"))?;
-    let mut input = fixture_input(GateMode::BaselineCheck);
+    let mut input = fixture_input(GateMode::BaselineCheck)?;
     input.baseline = Some(baseline);
     let report = build_gate_decision_report(&input)?;
     assert_eq!(report.status, "advisory");
@@ -535,7 +644,7 @@ fn gate_baseline_check_keeps_existing_candidate_advisory() -> Result<(), String>
             .gate_reason
             .contains("explicit baseline")
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -562,7 +671,7 @@ fn gate_baseline_check_reads_baseline_ledger_entries() -> Result<(), String> {
             }"#,
     )
     .map_err(|err| format!("write baseline failed: {err}"))?;
-    let mut input = fixture_input(GateMode::BaselineCheck);
+    let mut input = fixture_input(GateMode::BaselineCheck)?;
     input.baseline = Some(baseline);
     let report = build_gate_decision_report(&input)?;
     assert_eq!(report.status, "advisory");
@@ -573,7 +682,7 @@ fn gate_baseline_check_reads_baseline_ledger_entries() -> Result<(), String> {
             .gate_reason
             .contains("explicit baseline")
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -603,6 +712,8 @@ fn gate_baseline_check_matches_canonical_gap_id_from_evidence_record() -> Result
         "comments.json",
         r#"{
               "schema_version": "0.1",
+              "tool": "ripr",
+              "status": "advisory",
               "summary": {"unchanged_tests": true},
               "comments": [
                 {
@@ -643,7 +754,7 @@ fn gate_baseline_check_matches_canonical_gap_id_from_evidence_record() -> Result
               "suppressed": []
             }"#,
     )?;
-    let mut input = fixture_input(GateMode::BaselineCheck);
+    let mut input = fixture_input(GateMode::BaselineCheck)?;
     input.pr_guidance = Some(guidance);
     input.baseline = Some(baseline);
 
@@ -672,7 +783,7 @@ fn gate_baseline_check_matches_canonical_gap_id_from_evidence_record() -> Result
             .gate_reason
             .contains("explicit baseline")
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -695,7 +806,7 @@ fn gate_baseline_fallback_only_match_discloses_warning_and_match_kind() -> Resul
               ]
             }"#,
     )?;
-    let mut input = fixture_input(GateMode::BaselineCheck);
+    let mut input = fixture_input(GateMode::BaselineCheck)?;
     input.baseline = Some(baseline);
 
     let report = build_gate_decision_report(&input)?;
@@ -741,7 +852,7 @@ fn gate_baseline_fallback_only_match_discloses_warning_and_match_kind() -> Resul
         markdown.contains("matched baseline evidence by fallback path/line/static_class"),
         "fallback disclosure must be visible in human output"
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -766,7 +877,7 @@ fn gate_baseline_canonical_match_has_no_fallback_disclosure() -> Result<(), Stri
               ]
             }"#,
     )?;
-    let mut input = fixture_input(GateMode::BaselineCheck);
+    let mut input = fixture_input(GateMode::BaselineCheck)?;
     input.baseline = Some(baseline);
 
     let report = build_gate_decision_report(&input)?;
@@ -784,7 +895,7 @@ fn gate_baseline_canonical_match_has_no_fallback_disclosure() -> Result<(), Stri
         !rendered.contains("\"baseline_match_kind\""),
         "canonical-match decisions must render byte-identical (no baseline_match_kind key)"
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -796,7 +907,7 @@ fn gate_baseline_new_candidate_has_no_fallback_disclosure() -> Result<(), String
         "baseline.json",
         r#"{"schema_version": "0.1", "kind": "gate_baseline", "entries": []}"#,
     )?;
-    let mut input = fixture_input(GateMode::BaselineCheck);
+    let mut input = fixture_input(GateMode::BaselineCheck)?;
     input.baseline = Some(baseline);
 
     let report = build_gate_decision_report(&input)?;
@@ -814,7 +925,7 @@ fn gate_baseline_new_candidate_has_no_fallback_disclosure() -> Result<(), String
         !rendered.contains("\"baseline_match_kind\""),
         "baseline-new decisions must render byte-identical (no baseline_match_kind key)"
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -912,7 +1023,7 @@ fn gate_mode_parse_covers_all_values_and_unknowns() {
 fn gate_optional_inputs_emit_warnings_and_markdown_sections() -> Result<(), String> {
     let dir = temp_dir("gate-optional-warnings")?;
     let invalid = write_temp_json(&dir, "invalid.json", "{")?;
-    let mut input = fixture_input(GateMode::VisibleOnly);
+    let mut input = fixture_input(GateMode::VisibleOnly)?;
     input.root = dir.clone();
     input.pr_guidance = Some(write_temp_json(&dir, "comments.json", PR_GUIDANCE_JSON)?);
     input.repo_exposure = Some(PathBuf::from("missing-repo.json"));
@@ -933,7 +1044,7 @@ fn gate_optional_inputs_emit_warnings_and_markdown_sections() -> Result<(), Stri
     let mut warning_report = report.clone();
     warning_report
         .warnings
-        .push("manual | warning\nwith newline".to_string());
+        .push("manual | warning\nwith newline @octocat <img>".to_string());
     let markdown = render_gate_decision_markdown(&warning_report);
 
     assert_eq!(report.status, "advisory");
@@ -950,8 +1061,10 @@ fn gate_optional_inputs_emit_warnings_and_markdown_sections() -> Result<(), Stri
             .any(|warning| warning.contains("optional labels_json"))
     );
     assert!(markdown.contains("## Warnings"));
-    assert!(markdown.contains("manual \\| warning with newline"));
-    let _ = fs::remove_dir_all(dir);
+    // A list item is not a table cell: `|` stays literal, the line ending
+    // becomes a space, and prose cannot mention or render raw HTML (#4468).
+    assert!(markdown.contains("- manual | warning with newline @\u{2060}octocat &lt;img>\n"));
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -968,7 +1081,10 @@ fn exception_input(dir: &Path, ledger: &str) -> Result<GateEvaluateInput, String
     let policy = dir.join("quality-gate-exceptions.toml");
     fs::write(&policy, ledger).map_err(|err| format!("write ledger failed: {err}"))?;
     Ok(GateEvaluateInput {
-        root: PathBuf::from("."),
+        // Root at the hermetic temp dir, never the process working
+        // directory: the default-path causal loads resolve against the root,
+        // so a CWD root would couple these tests to ambient generated state.
+        root: dir.to_path_buf(),
         repo_exposure: None,
         pr_guidance: Some(guidance),
         gap_ledger: None,
@@ -999,6 +1115,10 @@ fn gate_exception_policy_active_ledger_reports_section_without_blocking() -> Res
     let json = render_gate_decision_json(&report)?;
     let markdown = render_gate_decision_markdown(&report);
 
+    // The gate evaluates against the explicit root, never the process CWD:
+    // the report echoes the temp root the inputs were resolved against
+    // (slash-normalized like display_path, so the echo holds on Windows).
+    assert_eq!(report.root, dir.display().to_string().replace('\\', "/"));
     assert_ne!(report.status, "blocked");
     assert_ne!(report.status, "config_error");
     let value: Value =
@@ -1013,7 +1133,7 @@ fn gate_exception_policy_active_ledger_reports_section_without_blocking() -> Res
     assert!(value["inputs"]["exception_policy"].as_str().is_some());
     assert!(markdown.contains("## Exception Policy"));
     assert!(markdown.contains("total-burndown"));
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -1052,7 +1172,7 @@ fn gate_exception_policy_expired_entry_blocks() -> Result<(), String> {
             || markdown.contains("quality_exception_expired"),
         "markdown missing expired violation: {markdown}"
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -1083,7 +1203,7 @@ fn gate_exception_policy_review_due_warn_surfaces_warning_not_block() -> Result<
     )?;
     let report = build_gate_decision_report(&input)?;
     assert_eq!(report.status, "blocked");
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -1092,7 +1212,9 @@ fn gate_exception_policy_missing_or_malformed_ledger_is_config_error() -> Result
     let dir = temp_dir("gate-exception-config-error")?;
     let guidance = write_temp_json(&dir, "comments.json", PR_GUIDANCE_JSON)?;
     let mut input = GateEvaluateInput {
-        root: PathBuf::from("."),
+        // Hermetic temp-dir root (see exception_input): a CWD root would
+        // resolve the default-path causal loads against ambient state.
+        root: dir.to_path_buf(),
         repo_exposure: None,
         pr_guidance: Some(guidance),
         gap_ledger: None,
@@ -1135,14 +1257,14 @@ fn gate_exception_policy_missing_or_malformed_ledger_is_config_error() -> Result
     assert!(report.exception_policy.is_none());
     let json = render_gate_decision_json(&report)?;
     assert!(!json.contains("exception_policy"));
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
 #[test]
 fn gate_config_errors_render_markdown_and_fail_status() -> Result<(), String> {
     let input = GateEvaluateInput {
-        root: repo_root(),
+        root: crate::testing::fixture_workspace::hermetic_gate_fixture_root()?,
         repo_exposure: None,
         pr_guidance: Some(PathBuf::from("missing-comments.json")),
         gap_ledger: None,
@@ -1173,7 +1295,7 @@ fn gate_config_errors_render_markdown_and_fail_status() -> Result<(), String> {
 fn gate_summary_only_and_suppressed_candidates_remain_visible() -> Result<(), String> {
     let dir = temp_dir("gate-summary-suppressed")?;
     let guidance = write_temp_json(&dir, "comments.json", SUMMARY_AND_SUPPRESSED_JSON)?;
-    let mut input = fixture_input(GateMode::Acknowledgeable);
+    let mut input = fixture_input(GateMode::Acknowledgeable)?;
     input.root = dir.clone();
     input.pr_guidance = Some(
         guidance
@@ -1199,7 +1321,7 @@ fn gate_summary_only_and_suppressed_candidates_remain_visible() -> Result<(), St
             .iter()
             .any(|decision| decision.gate_reason.contains("configured-hidden"))
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -1207,7 +1329,7 @@ fn gate_summary_only_and_suppressed_candidates_remain_visible() -> Result<(), St
 fn gate_changed_test_and_missing_guidance_candidates_stay_advisory() -> Result<(), String> {
     let dir = temp_dir("gate-ineligible")?;
     let guidance = write_temp_json(&dir, "comments.json", INELIGIBLE_GUIDANCE_JSON)?;
-    let mut input = fixture_input(GateMode::Acknowledgeable);
+    let mut input = fixture_input(GateMode::Acknowledgeable)?;
     input.root = dir.clone();
     input.pr_guidance = Some(
         guidance
@@ -1240,7 +1362,96 @@ fn gate_changed_test_and_missing_guidance_candidates_stay_advisory() -> Result<(
             .iter()
             .any(|decision| decision.gate_reason.contains("missing concrete"))
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
+    Ok(())
+}
+
+/// #4216 row 2: a review card the producer declared a static limitation
+/// because no test reaches the changed owner must not be headlined with the
+/// PR-wide "nearby focused test changed" reason. The headline follows the
+/// card's own `why_not_actionable`; the nearby-test flag and the advisory
+/// decision are unchanged. A card without a static limitation keeps the
+/// nearby-test reason (control).
+#[test]
+fn gate_static_limitation_reason_outranks_pr_wide_nearby_test_flag() -> Result<(), String> {
+    let dir = temp_dir("gate-no-test-reaches-owner")?;
+    let guidance = write_temp_json(&dir, "comments.json", NO_TEST_REACHES_OWNER_GUIDANCE_JSON)?;
+    for mode in [GateMode::VisibleOnly, GateMode::Acknowledgeable] {
+        let mut input = fixture_input(mode)?;
+        input.root = dir.clone();
+        input.pr_guidance = Some(
+            guidance
+                .strip_prefix(&dir)
+                .map_err(|err| err.to_string())?
+                .to_path_buf(),
+        );
+
+        let report = build_gate_decision_report(&input)?;
+
+        assert_eq!(report.summary.blocking, 0);
+        let limited = report
+            .decisions
+            .iter()
+            .find(|decision| decision.source_id == "loyalty")
+            .ok_or("missing static-limitation decision")?;
+        assert!(
+            limited
+                .gate_reason
+                .contains("no existing test reaches `src/lib.rs::loyalty_price`"),
+            "{}",
+            limited.gate_reason
+        );
+        assert!(
+            !limited.gate_reason.contains("nearby focused test changed"),
+            "{}",
+            limited.gate_reason
+        );
+        assert!(limited.evidence.nearby_test_changed);
+        assert_ne!(limited.decision, "blocking");
+        let control = report
+            .decisions
+            .iter()
+            .find(|decision| decision.source_id == "changed-test")
+            .ok_or("missing control decision")?;
+        assert!(
+            control.gate_reason.contains("nearby focused test changed"),
+            "{}",
+            control.gate_reason
+        );
+    }
+    // N3 pin: with no test changed in the PR the same card is otherwise
+    // policy-eligible without a route, so it is headlined by the gate's own
+    // incomplete-route limitation. This pins current behavior; the order is
+    // not changed here.
+    let unchanged = write_temp_json(
+        &dir,
+        "unchanged.json",
+        &NO_TEST_REACHES_OWNER_GUIDANCE_JSON
+            .replace(r#""unchanged_tests": false"#, r#""unchanged_tests": true"#),
+    )?;
+    let mut input = fixture_input(GateMode::VisibleOnly)?;
+    input.root = dir.clone();
+    input.pr_guidance = Some(
+        unchanged
+            .strip_prefix(&dir)
+            .map_err(|err| err.to_string())?
+            .to_path_buf(),
+    );
+    let report = build_gate_decision_report(&input)?;
+    let limited = report
+        .decisions
+        .iter()
+        .find(|decision| decision.source_id == "loyalty")
+        .ok_or("missing unchanged-tests decision")?;
+    assert!(!limited.evidence.nearby_test_changed);
+    assert!(
+        limited
+            .gate_reason
+            .starts_with("incomplete_repair_route: missing "),
+        "{}",
+        limited.gate_reason
+    );
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -1248,7 +1459,7 @@ fn gate_changed_test_and_missing_guidance_candidates_stay_advisory() -> Result<(
 fn gate_baseline_check_blocks_new_candidate() -> Result<(), String> {
     let dir = temp_dir("gate-baseline-new")?;
     let baseline = write_temp_json(&dir, "baseline.json", r#"{"decisions":[]}"#)?;
-    let mut input = fixture_input(GateMode::BaselineCheck);
+    let mut input = fixture_input(GateMode::BaselineCheck)?;
     input.baseline = Some(baseline);
 
     let report = build_gate_decision_report(&input)?;
@@ -1256,7 +1467,7 @@ fn gate_baseline_check_blocks_new_candidate() -> Result<(), String> {
     assert_eq!(report.status, "blocked");
     assert_eq!(report.summary.blocking, 1);
     assert!(report.decisions[0].gate_reason.contains("baseline-check"));
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -1338,7 +1549,162 @@ fn gate_acknowledgeable_blocks_complete_gap_ledger_route_with_typed_seam_identit
         Value::Array(Vec::new()),
         "gap ledger records do not carry test input variants"
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
+    Ok(())
+}
+
+#[test]
+fn gate_closed_gap_is_not_misreported_as_configured_off() -> Result<(), String> {
+    let dir = temp_dir("gate-closed-gap")?;
+    let mut ledger: Value = serde_json::from_str(GAP_LEDGER_BLOCKING_JSON)
+        .map_err(|err| format!("parse gap ledger fixture: {err}"))?;
+    let record = &mut ledger["gap_records"][0];
+    record["kind"] = Value::from("NoActionAlreadyObserved");
+    record["gap_state"] = Value::from("already_observed");
+    record["policy_state"] = Value::from("not_policy_targeted");
+    record["repairability"] = Value::from("no_action");
+    record["projection_eligibility"]["gate_candidate"]["eligible"] = Value::Bool(false);
+    record["projection_eligibility"]["gate_candidate"]["reason"] = Value::from("already_observed");
+    record["safe_gate_predicate"]["policy_target_enabled"] = Value::Bool(false);
+    let gap_ledger = write_temp_json(&dir, "gap-ledger.json", &ledger.to_string())?;
+    let input = GateEvaluateInput {
+        root: dir.clone(),
+        repo_exposure: None,
+        pr_guidance: None,
+        gap_ledger: Some(
+            gap_ledger
+                .strip_prefix(&dir)
+                .map_err(|err| err.to_string())?
+                .to_path_buf(),
+        ),
+        sarif_policy: None,
+        labels_json: None,
+        labels: Vec::new(),
+        agent_verify: None,
+        agent_receipt: None,
+        recommendation_calibration: None,
+        mutation_calibration: None,
+        baseline: None,
+        mode: GateMode::Acknowledgeable,
+        acknowledgement_labels: Vec::new(),
+        exception_policy: None,
+    };
+
+    let report = build_gate_decision_report(&input)?;
+    assert!(
+        report.config_errors.is_empty(),
+        "{:?}",
+        report.config_errors
+    );
+    assert_eq!(report.status, "pass");
+    assert_eq!(report.summary.not_applicable, 1);
+    assert_eq!(report.summary.suppressed, 0);
+    let rendered = render_gate_decision_json(&report)?;
+    let value: Value =
+        serde_json::from_str(&rendered).map_err(|err| format!("parse gate decision: {err}"))?;
+    let decision = &value["decisions"][0];
+    assert_eq!(decision["decision"], "not_applicable");
+    assert_eq!(decision["evidence"]["configured_off"], false);
+    assert_eq!(decision["evidence"]["suppressed"], false);
+    assert!(
+        decision["gate_reason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("already observed; no action required"))
+    );
+    let markdown = render_gate_decision_markdown(&report);
+    assert!(
+        markdown.contains("already observed; no action required"),
+        "{markdown}"
+    );
+
+    // Fail closed: dropping the inferred configured-off flag must not let a
+    // non-targeted record block even when its projection claims eligibility.
+    // The shared safe-gate predicate still requires a `new`/`blocked` policy.
+    ledger["gap_records"][0]["projection_eligibility"]["gate_candidate"]["eligible"] =
+        Value::Bool(true);
+    ledger["gap_records"][0]["safe_gate_predicate"]["policy_target_enabled"] = Value::Bool(true);
+    fs::write(&gap_ledger, ledger.to_string()).map_err(|err| err.to_string())?;
+    let claimed = build_gate_decision_report(&input)?;
+    assert_eq!(claimed.status, "pass");
+    assert_eq!(claimed.summary.not_applicable, 1);
+    assert_eq!(claimed.decisions[0].decision, "not_applicable");
+    assert!(
+        claimed.decisions[0]
+            .gate_reason
+            .contains("already observed; no action required"),
+        "claimed eligibility must still name the closed gap: {}",
+        claimed.decisions[0].gate_reason
+    );
+
+    // An explicit suppression still has its own gate decision and evidence.
+    ledger["gap_records"][0]["policy_state"] = Value::from("suppressed");
+    fs::write(&gap_ledger, ledger.to_string()).map_err(|err| err.to_string())?;
+    let suppressed = build_gate_decision_report(&input)?;
+    assert_eq!(suppressed.summary.suppressed, 1);
+    assert_eq!(suppressed.decisions[0].decision, "suppressed");
+    assert!(suppressed.decisions[0].evidence.suppressed);
+    assert!(!suppressed.decisions[0].evidence.configured_off);
+    ignore_remove_dir_all(dir);
+    Ok(())
+}
+
+/// Root-honoring control: the gate resolves the producer-owned canonical
+/// delta against the explicit root, never the process working directory. A
+/// root-planted complete delta attributing the ledger gap to a causal class
+/// keeps the acknowledgeable blocker and renders the attribution; the same
+/// gap re-attributed to a non-causal class flips the decision advisory. An
+/// implementation that ignored the artifact (or read it from the CWD) would
+/// report blocking in both arms.
+#[test]
+fn gate_reads_root_planted_canonical_delta_for_causal_decisions() -> Result<(), String> {
+    let dir = temp_dir("gate-root-planted-delta")?;
+    let gap_ledger = write_temp_json(&dir, "gap-ledger.json", GAP_LEDGER_BLOCKING_JSON)?;
+    plant_canonical_delta(&dir, "introduced_by_change")?;
+    let input = GateEvaluateInput {
+        root: dir.clone(),
+        repo_exposure: None,
+        pr_guidance: None,
+        gap_ledger: Some(
+            gap_ledger
+                .strip_prefix(&dir)
+                .map_err(|err| err.to_string())?
+                .to_path_buf(),
+        ),
+        sarif_policy: None,
+        labels_json: None,
+        labels: Vec::new(),
+        agent_verify: None,
+        agent_receipt: None,
+        recommendation_calibration: None,
+        mutation_calibration: None,
+        baseline: None,
+        mode: GateMode::Acknowledgeable,
+        acknowledgement_labels: Vec::new(),
+        exception_policy: None,
+    };
+
+    let report = build_gate_decision_report(&input)?;
+    assert!(
+        report.config_errors.is_empty(),
+        "root-planted delta must load cleanly: {:?}",
+        report.config_errors
+    );
+    assert_eq!(report.decisions[0].decision, "blocking");
+    let rendered = render_gate_decision_json(&report)?;
+    let value: Value = serde_json::from_str(&rendered)
+        .map_err(|err| format!("gate decision JSON should parse: {err}"))?;
+    assert_eq!(
+        value["decisions"][0]["delta_attribution"], "introduced_by_change",
+        "the blocker must carry the root-planted causal attribution: {rendered}"
+    );
+
+    plant_canonical_delta(&dir, "baseline_existing")?;
+    let report = build_gate_decision_report(&input)?;
+    assert_eq!(
+        report.decisions[0].decision, "advisory",
+        "a non-causal root-planted attribution must suppress blocking"
+    );
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -1384,7 +1750,7 @@ fn gate_acknowledgeable_gap_ledger_block_names_the_expected_label() -> Result<()
         "gap-ledger block must name the expected label; got: {}",
         report.decisions[0].gate_reason
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -1432,7 +1798,7 @@ fn conflicting_gap_ledger_seam_identities_fail_closed_as_config_error() -> Resul
     assert!(report.config_errors.iter().any(|error| {
         error.contains("conflicting seam identities for canonical gap pricing::discount::threshold")
     }));
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -1478,7 +1844,7 @@ fn multiple_legacy_gap_ledger_records_remain_route_limited() -> Result<(), Strin
     assert!(report.decisions.iter().all(|decision| {
         decision.decision == "advisory" && decision.gate_reason.contains("incomplete_repair_route")
     }));
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -1519,7 +1885,7 @@ fn gate_gap_ledger_static_unknown_only_stays_report_only() -> Result<(), String>
             .gate_reason
             .contains("not gate-candidate eligible")
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -1527,7 +1893,7 @@ fn gate_gap_ledger_static_unknown_only_stays_report_only() -> Result<(), String>
 fn gate_labels_array_supports_custom_acknowledgement_label() -> Result<(), String> {
     let dir = temp_dir("gate-label-array")?;
     let labels = write_temp_json(&dir, "labels.json", r#"["accepted-risk"]"#)?;
-    let mut input = fixture_input(GateMode::Acknowledgeable);
+    let mut input = fixture_input(GateMode::Acknowledgeable)?;
     input.labels_json = Some(labels);
     input.acknowledgement_labels = vec!["accepted-risk".to_string()];
 
@@ -1558,7 +1924,7 @@ fn gate_labels_array_supports_custom_acknowledgement_label() -> Result<(), Strin
         "policy-eligible gap blocks under acknowledgeable mode without a matching acknowledgement label (expected: `accepted-risk`, `ops-waiver`)"
     );
 
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -1587,7 +1953,7 @@ fn gate_calibration_can_keep_candidates_advisory() -> Result<(), String> {
               "ambiguous_file_line_matches": [{"file":"src/lib.rs","line":7}]
             }"#,
     )?;
-    let mut input = fixture_input(GateMode::CalibratedGate);
+    let mut input = fixture_input(GateMode::CalibratedGate)?;
     input.baseline = Some(baseline);
     input.recommendation_calibration = Some(recommendation);
     input.mutation_calibration = Some(mutation);
@@ -1608,13 +1974,13 @@ fn gate_calibration_can_keep_candidates_advisory() -> Result<(), String> {
             .iter()
             .any(|warning| warning.contains("ambiguous file/line"))
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
 #[test]
 fn gate_markdown_projects_complete_repair_route_for_ci_summary() -> Result<(), String> {
-    let input = fixture_input(GateMode::Acknowledgeable);
+    let input = fixture_input(GateMode::Acknowledgeable)?;
     let report = build_gate_decision_report(&input)?;
     let rendered = render_gate_decision_markdown(&report);
 
@@ -1641,7 +2007,7 @@ fn gate_markdown_projects_complete_repair_route_for_ci_summary() -> Result<(), S
         ),
         (
             "inspection command",
-            "  - Inspect: `ripr agent brief --root . --seam-id 8f7fa8644fd12280 --json > target/ripr/workflow/agent-brief.json`",
+            "  - Inspect: `ripr agent brief --root . --seam-id 8f7fa8644fd12280 --json > <cwd>/target/ripr/workflow/agent-brief.json`",
         ),
         (
             "authority boundary",
@@ -1655,14 +2021,32 @@ fn gate_markdown_projects_complete_repair_route_for_ci_summary() -> Result<(), S
         "  - Add: Write one focused Rust test",
         "test intent",
     )?;
+    // #3906 (F60-14): this corpus card carries a repair start, so the
+    // after phase follows it and verify and receipt are the manual
+    // alternative under the shared labels, not peer steps.
     require_contains(
         &rendered,
-        "  - Verify: `ripr agent verify",
+        &format!(
+            "  - {}: {}\n",
+            crate::output::first_pr::REPAIR_AFTER_PHASE_LABEL,
+            crate::output::first_pr::REPAIR_AFTER_PHASE_STEP
+        ),
+        "repair after phase",
+    )?;
+    require_contains(
+        &rendered,
+        &format!(
+            "  - {}: `ripr agent verify",
+            crate::output::first_pr::MANUAL_VERIFY_LABEL
+        ),
         "verify command",
     )?;
     require_contains(
         &rendered,
-        "  - Receipt: `ripr agent receipt",
+        &format!(
+            "  - {}: `ripr agent receipt",
+            crate::output::first_pr::MANUAL_RECEIPT_LABEL
+        ),
         "receipt command",
     )
 }
@@ -1670,7 +2054,7 @@ fn gate_markdown_projects_complete_repair_route_for_ci_summary() -> Result<(), S
 #[test]
 fn gate_markdown_projects_incomplete_route_limitation_without_fabricated_command()
 -> Result<(), String> {
-    let mut input = fixture_input(GateMode::Acknowledgeable);
+    let mut input = fixture_input(GateMode::Acknowledgeable)?;
     input.pr_guidance = Some(PathBuf::from(
         "fixtures/boundary_gap/expected/calibrated-gate/summary-and-suppressed/pr-guidance.json",
     ));
@@ -1697,7 +2081,7 @@ fn gate_markdown_projects_incomplete_route_limitation_without_fabricated_command
 #[test]
 fn gate_markdown_names_an_absent_anchor_instead_of_rendering_a_broken_location()
 -> Result<(), String> {
-    let input = fixture_input(GateMode::Acknowledgeable);
+    let input = fixture_input(GateMode::Acknowledgeable)?;
     let report = build_gate_decision_report(&input)?;
 
     // A decision with a complete placement is untouched. This is why no
@@ -1841,7 +2225,7 @@ fn calibrated_gate_fixture_matrix_matches_checked_outputs() -> Result<(), String
     ];
 
     for case in cases {
-        let input = case.input();
+        let input = case.input()?;
         let mut report = build_gate_decision_report(&input)?;
         report.root = ".".to_string();
         let rendered_json = render_gate_decision_json(&report)?;
@@ -1880,7 +2264,7 @@ fn baseline_fallback_disclosure_fixture_matrix_matches_checked_outputs() -> Resu
     ] {
         let dir = corpus.join(scenario);
         let input = GateEvaluateInput {
-            root: repo_root(),
+            root: crate::testing::fixture_workspace::hermetic_gate_fixture_root()?,
             repo_exposure: None,
             pr_guidance: Some(dir.join("pr-guidance.json")),
             gap_ledger: None,
@@ -1930,7 +2314,7 @@ fn display_path_normalizes_empty_and_dot_prefixed_paths() {
 fn given_both_pr_guidance_and_gap_ledger_missing_when_evaluated_then_config_error()
 -> Result<(), String> {
     let input = GateEvaluateInput {
-        root: repo_root(),
+        root: crate::testing::fixture_workspace::hermetic_gate_fixture_root()?,
         repo_exposure: None,
         pr_guidance: None,
         gap_ledger: None,
@@ -2001,7 +2385,7 @@ fn given_invalid_gap_ledger_json_when_evaluated_then_config_error_includes_parse
         "expected parse-failure config error, got {:?}",
         report.config_errors,
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -2045,7 +2429,7 @@ fn given_unreadable_gap_ledger_when_evaluated_then_config_error_includes_read_fa
         "expected read-failure config error, got {:?}",
         report.config_errors,
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -2056,7 +2440,7 @@ fn given_unreadable_baseline_in_baseline_mode_then_config_error_includes_invalid
     let baseline_dir = dir.join("baseline.json");
     fs::create_dir_all(&baseline_dir)
         .map_err(|err| format!("create baseline dir failed: {err}"))?;
-    let mut input = fixture_input(GateMode::BaselineCheck);
+    let mut input = fixture_input(GateMode::BaselineCheck)?;
     input.baseline = Some(baseline_dir);
 
     let report = build_gate_decision_report(&input)?;
@@ -2069,7 +2453,7 @@ fn given_unreadable_baseline_in_baseline_mode_then_config_error_includes_invalid
         "expected required-baseline-invalid config error, got {:?}",
         report.config_errors,
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -2090,7 +2474,7 @@ fn given_recommendation_calibration_with_unknown_outcome_then_confidence_effect_
               ]
             }"#,
     )?;
-    let mut input = fixture_input(GateMode::CalibratedGate);
+    let mut input = fixture_input(GateMode::CalibratedGate)?;
     input.baseline = Some(baseline);
     input.recommendation_calibration = Some(recommendation);
 
@@ -2102,7 +2486,7 @@ fn given_recommendation_calibration_with_unknown_outcome_then_confidence_effect_
             .confidence_effect,
         "unknown"
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -2123,7 +2507,7 @@ fn given_mutation_calibration_with_unknown_outcome_then_confidence_effect_is_unk
               ]
             }"#,
     )?;
-    let mut input = fixture_input(GateMode::CalibratedGate);
+    let mut input = fixture_input(GateMode::CalibratedGate)?;
     input.baseline = Some(baseline);
     input.mutation_calibration = Some(mutation);
 
@@ -2135,7 +2519,7 @@ fn given_mutation_calibration_with_unknown_outcome_then_confidence_effect_is_unk
             .confidence_effect,
         "unknown"
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -2156,7 +2540,7 @@ fn given_mutation_calibration_match_without_outcome_then_confidence_effect_is_no
               ]
             }"#,
     )?;
-    let mut input = fixture_input(GateMode::CalibratedGate);
+    let mut input = fixture_input(GateMode::CalibratedGate)?;
     input.baseline = Some(baseline);
     input.mutation_calibration = Some(mutation);
 
@@ -2168,7 +2552,7 @@ fn given_mutation_calibration_match_without_outcome_then_confidence_effect_is_no
             .confidence_effect,
         "not_used"
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -2188,7 +2572,7 @@ fn given_mutation_calibration_match_without_seam_id_then_match_is_skipped() -> R
               ]
             }"#,
     )?;
-    let mut input = fixture_input(GateMode::CalibratedGate);
+    let mut input = fixture_input(GateMode::CalibratedGate)?;
     input.baseline = Some(baseline);
     input.mutation_calibration = Some(mutation);
 
@@ -2202,7 +2586,7 @@ fn given_mutation_calibration_match_without_seam_id_then_match_is_skipped() -> R
         "match without seam_id must not populate the mutation calibration index",
     );
     assert_eq!(report.status, "advisory");
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -2215,6 +2599,8 @@ fn given_guidance_with_recommended_file_only_then_recommended_test_is_file_path(
         "comments.json",
         r#"{
               "schema_version": "0.1",
+              "tool": "ripr",
+              "status": "advisory",
               "summary": {"unchanged_tests": true},
               "comments": [
                 {
@@ -2234,7 +2620,7 @@ fn given_guidance_with_recommended_file_only_then_recommended_test_is_file_path(
               "suppressed": []
             }"#,
     )?;
-    let mut input = fixture_input(GateMode::VisibleOnly);
+    let mut input = fixture_input(GateMode::VisibleOnly)?;
     input.root = dir.clone();
     input.pr_guidance = Some(
         guidance
@@ -2249,7 +2635,7 @@ fn given_guidance_with_recommended_file_only_then_recommended_test_is_file_path(
         Some("tests/pricing.rs"),
         "with no near_test the recommended file alone becomes the recommended test path",
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -2281,6 +2667,7 @@ fn given_candidate_without_any_identity_then_baseline_identity_uses_path_line_cl
         configured_off: false,
         suppression_reason: None,
         summary_reason: None,
+        why_not_actionable: None,
         gap_ledger_gate_candidate: false,
         gap_ledger_gate_reason: None,
         gap_ledger_safe_gate_predicate: false,
@@ -2328,7 +2715,7 @@ fn given_calibrated_gate_with_mutation_keeps_advisory_then_gate_reason_cites_mut
               ]
             }"#,
     )?;
-    let mut input = fixture_input(GateMode::CalibratedGate);
+    let mut input = fixture_input(GateMode::CalibratedGate)?;
     input.baseline = Some(baseline);
     input.mutation_calibration = Some(mutation);
 
@@ -2342,7 +2729,7 @@ fn given_calibrated_gate_with_mutation_keeps_advisory_then_gate_reason_cites_mut
         "expected mutation-calibration advisory reason, got {:?}",
         report.decisions[0].gate_reason,
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -2351,7 +2738,7 @@ fn given_calibrated_gate_without_any_calibration_then_gate_reason_falls_through_
 -> Result<(), String> {
     let dir = temp_dir("gate-calibrated-no-calibration-default")?;
     let baseline = write_temp_json(&dir, "baseline.json", r#"{"decisions":[]}"#)?;
-    let mut input = fixture_input(GateMode::CalibratedGate);
+    let mut input = fixture_input(GateMode::CalibratedGate)?;
     input.baseline = Some(baseline);
 
     let report = build_gate_decision_report(&input)?;
@@ -2361,7 +2748,7 @@ fn given_calibrated_gate_without_any_calibration_then_gate_reason_falls_through_
         report.decisions[0].gate_reason, "candidate remains advisory under current policy inputs",
         "with neither calibration available the default advisory reason applies",
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -2451,7 +2838,7 @@ fn given_gap_ledger_record_with_eligible_projection_but_unsafe_predicate_then_re
         "expected safe-gate-predicate reason, got {:?}",
         report.decisions[0].gate_reason,
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -2535,7 +2922,7 @@ fn given_gap_ledger_record_with_safe_predicate_but_missing_anchor_then_reason_ci
         "expected missing-anchor reason, got {:?}",
         report.decisions[0].gate_reason,
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -2585,7 +2972,7 @@ fn given_gap_ledger_record_without_typed_seam_identity_then_baseline_check_fails
         "expected fail-closed route reason, got {:?}",
         report.decisions[0].gate_reason,
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -2598,6 +2985,8 @@ fn given_class_not_policy_eligible_with_concrete_guidance_then_reason_cites_clas
         "comments.json",
         r#"{
               "schema_version": "0.1",
+              "tool": "ripr",
+              "status": "advisory",
               "summary": {"unchanged_tests": true},
               "comments": [
                 {
@@ -2617,7 +3006,7 @@ fn given_class_not_policy_eligible_with_concrete_guidance_then_reason_cites_clas
               "suppressed": []
             }"#,
     )?;
-    let mut input = fixture_input(GateMode::Acknowledgeable);
+    let mut input = fixture_input(GateMode::Acknowledgeable)?;
     input.root = dir.clone();
     input.pr_guidance = Some(
         guidance
@@ -2635,7 +3024,7 @@ fn given_class_not_policy_eligible_with_concrete_guidance_then_reason_cites_clas
         "expected policy-eligible-class fallthrough reason, got {:?}",
         report.decisions[0].gate_reason,
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -2657,7 +3046,7 @@ fn given_read_json_value_pointed_at_directory_then_error_describes_non_not_found
         error.starts_with("read not-a-file.json failed:") && !error.contains("not found"),
         "expected non-not-found read error, got {error}",
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -2713,7 +3102,80 @@ fn given_non_guidance_json_object_when_gate_evaluated_then_config_error_not_advi
         report.decisions.is_empty(),
         "no decisions must be emitted for a config_error guidance doc",
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
+    Ok(())
+}
+
+// -- #4723 regression: guidance must come from `ripr review-comments` --
+
+#[test]
+fn given_guidance_without_ripr_producer_marker_or_known_status_when_gate_evaluated_then_config_error()
+-> Result<(), String> {
+    let cases = [
+        (
+            "stub.json",
+            r#"{"schema_version":"x","comments":[]}"#,
+            "missing required field `tool`",
+        ),
+        (
+            "other-tool.json",
+            r#"{"schema_version":"0.1","tool":"not-ripr","status":"advisory","comments":[]}"#,
+            "field `tool` is \"not-ripr\"",
+        ),
+        (
+            "unknown-status.json",
+            r#"{"schema_version":"0.1","tool":"ripr","status":"passed","comments":[]}"#,
+            "field `status` is \"passed\"",
+        ),
+        (
+            "no-status.json",
+            r#"{"schema_version":"0.1","tool":"ripr","comments":[]}"#,
+            "missing required field `status`",
+        ),
+    ];
+    for (name, contents, expected_defect) in cases {
+        let dir = temp_dir("gate-non-ripr-guidance")?;
+        let guidance = write_temp_json(&dir, name, contents)?;
+        let input = GateEvaluateInput {
+            root: dir.clone(),
+            repo_exposure: None,
+            pr_guidance: Some(
+                guidance
+                    .strip_prefix(&dir)
+                    .map_err(|err| err.to_string())?
+                    .to_path_buf(),
+            ),
+            gap_ledger: None,
+            sarif_policy: None,
+            labels_json: None,
+            labels: Vec::new(),
+            agent_verify: None,
+            agent_receipt: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            baseline: None,
+            mode: GateMode::Acknowledgeable,
+            acknowledgement_labels: Vec::new(),
+            exception_policy: None,
+        };
+
+        let report = build_gate_decision_report(&input)?;
+
+        assert_eq!(
+            report.status, "config_error",
+            "{name}: a document that is not ripr review-comments output must be config_error, got {:?}",
+            report.status,
+        );
+        assert!(gate_decision_should_fail(&report), "{name}: must fail");
+        assert!(
+            report.config_errors.iter().any(|error| error.contains(name)
+                && error.contains("not a recognized review-comments guidance document")
+                && error.contains(expected_defect)),
+            "{name}: config_errors must name the file and `{expected_defect}`, got {:?}",
+            report.config_errors,
+        );
+        ignore_remove_dir_all(dir);
+    }
     Ok(())
 }
 
@@ -2726,6 +3188,8 @@ fn given_valid_guidance_doc_with_zero_findings_when_gate_evaluated_then_advisory
         "comments.json",
         r#"{
               "schema_version": "0.1",
+              "tool": "ripr",
+              "status": "advisory",
               "summary": {"unchanged_tests": true},
               "comments": [],
               "summary_only": [],
@@ -2771,7 +3235,7 @@ fn given_valid_guidance_doc_with_zero_findings_when_gate_evaluated_then_advisory
         !gate_decision_should_fail(&report),
         "gate_decision_should_fail must be false for a genuinely clean guidance doc",
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -2850,7 +3314,7 @@ fn given_well_formed_error_status_packet_when_gate_evaluated_then_config_error_n
         report.decisions.is_empty(),
         "no decisions must be emitted for a crashed-producer config_error",
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -2871,6 +3335,8 @@ fn given_cap_demoted_summary_only_gap_when_gate_evaluated_then_blocking_not_advi
         "cap-demoted.json",
         r#"{
               "schema_version": "0.1",
+              "tool": "ripr",
+              "status": "advisory",
               "summary": {"unchanged_tests": true},
               "comments": [
                 {
@@ -2984,7 +3450,7 @@ fn given_cap_demoted_summary_only_gap_when_gate_evaluated_then_blocking_not_advi
         "the cap-demoted gap must resolve to 'blocking', got {:?}",
         cap_decision.decision,
     );
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -2999,7 +3465,7 @@ fn new_unsuppressed_counts_advisory_policy_eligible_candidates_not_just_blocking
 -> Result<(), String> {
     // visible-only: the standard fixture has 1 policy-eligible candidate
     // that will become "advisory" (not "blocking").
-    let input = fixture_input(GateMode::VisibleOnly);
+    let input = fixture_input(GateMode::VisibleOnly)?;
     let report = build_gate_decision_report(&input)?;
     // Baseline assertion: blocking is 0 (visible-only never blocks).
     assert_eq!(
@@ -3042,7 +3508,7 @@ fn new_unsuppressed_excludes_advisory_candidates_with_incomplete_repair_routes()
     let guidance_text = serde_json::to_string_pretty(&guidance)
         .map_err(|err| format!("render incomplete PR guidance: {err}"))?;
     let guidance_path = write_temp_json(&dir, "comments.json", &guidance_text)?;
-    let mut input = fixture_input(GateMode::Acknowledgeable);
+    let mut input = fixture_input(GateMode::Acknowledgeable)?;
     input.root = dir.clone();
     input.pr_guidance = Some(
         guidance_path
@@ -3079,7 +3545,7 @@ fn new_unsuppressed_excludes_advisory_candidates_with_incomplete_repair_routes()
         ));
     }
 
-    let _ = fs::remove_dir_all(dir);
+    ignore_remove_dir_all(dir);
     Ok(())
 }
 
@@ -3090,7 +3556,7 @@ fn new_unsuppressed_excludes_advisory_candidates_with_incomplete_repair_routes()
 fn new_unsuppressed_config_error_produces_null_basis_and_zero_count_with_reason()
 -> Result<(), String> {
     // Use calibrated-gate mode without a baseline: guaranteed config_error.
-    let input = fixture_input(GateMode::CalibratedGate);
+    let input = fixture_input(GateMode::CalibratedGate)?;
     let report = build_gate_decision_report(&input)?;
     assert_eq!(
         report.status, "config_error",
@@ -3121,9 +3587,30 @@ fn new_unsuppressed_config_error_produces_null_basis_and_zero_count_with_reason(
     Ok(())
 }
 
-fn fixture_input(mode: GateMode) -> GateEvaluateInput {
-    GateEvaluateInput {
-        root: repo_root(),
+/// #3742 class (b): matrix evaluations must not root at the live
+/// repository, where ambient generated state (a producer canonical delta
+/// under `target/ripr/pr/`) silently changes decisions and receipt fields.
+/// The report must echo a hermetic root, never the workspace root.
+#[test]
+fn gate_matrix_evaluations_root_outside_the_live_repo() -> Result<(), String> {
+    let input = fixture_input(GateMode::Acknowledgeable)?;
+    let report = build_gate_decision_report(&input)?;
+    assert_eq!(report.decisions.len(), 1);
+    assert_ne!(
+        report.root,
+        repo_root().display().to_string().replace('\\', "/"),
+        "matrix evaluation leaked the live repo root"
+    );
+    Ok(())
+}
+
+fn fixture_input(mode: GateMode) -> Result<GateEvaluateInput, String> {
+    // #3742 class (b): matrix evaluations root at a hermetic corpus copy,
+    // never the live repo, so ambient generated state cannot leak into
+    // decisions or receipt fields. Relative input strings are unchanged
+    // because the copy preserves the corpus layout.
+    Ok(GateEvaluateInput {
+        root: crate::testing::fixture_workspace::hermetic_gate_fixture_root()?,
         repo_exposure: None,
         pr_guidance: Some(PathBuf::from(
             "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
@@ -3140,7 +3627,7 @@ fn fixture_input(mode: GateMode) -> GateEvaluateInput {
         mode,
         acknowledgement_labels: Vec::new(),
         exception_policy: None,
-    }
+    })
 }
 
 struct GateFixtureCase {
@@ -3155,9 +3642,9 @@ struct GateFixtureCase {
 }
 
 impl GateFixtureCase {
-    fn input(&self) -> GateEvaluateInput {
-        GateEvaluateInput {
-            root: repo_root(),
+    fn input(&self) -> Result<GateEvaluateInput, String> {
+        Ok(GateEvaluateInput {
+            root: crate::testing::fixture_workspace::hermetic_gate_fixture_root()?,
             repo_exposure: None,
             pr_guidance: Some(PathBuf::from(self.pr_guidance)),
             gap_ledger: None,
@@ -3176,7 +3663,7 @@ impl GateFixtureCase {
             mode: self.mode,
             acknowledgement_labels: Vec::new(),
             exception_policy: None,
-        }
+        })
     }
 }
 
@@ -3199,10 +3686,84 @@ fn temp_dir(name: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+/// #3742 class (e): a leaked bare `RIPR_UPDATE_FIXTURES` (present but
+/// without the explicit opt-in value) must not convert the fixture assert
+/// into a silent re-bless. Only `RIPR_UPDATE_FIXTURES=1` rewrites.
+///
+/// The leak is simulated through the ambient environment — run this test as
+/// `RIPR_UPDATE_FIXTURES= cargo test -p ripr --lib gate_rebless` — because
+/// the crate forbids `unsafe_code` and `set_var` is `unsafe` in edition
+/// 2024. With the variable unset the assert path runs and the test passes
+/// on both sides of the repair; with a bare value present it fails
+/// pre-repair (silent rewrite) and passes post-repair.
+#[test]
+fn gate_rebless_requires_the_explicit_opt_in_value() -> Result<(), String> {
+    // The probe lives under the ignored target/ tree so even a rewrite
+    // leaves no tracked residue.
+    let path = Path::new("target/ripr-test-rebless-probe.tmp");
+    let resolved = repo_root().join(path);
+    if let Ok(()) = fs::remove_file(&resolved) {}
+    let outcome = assert_repo_fixture(path, "probe-rendered", "re-bless probe");
+    let written = resolved.exists();
+    let content = fs::read_to_string(&resolved).unwrap_or_default();
+    if let Ok(()) = fs::remove_file(&resolved) {}
+    if crate::testing::rebless::fixture_rebless_enabled() {
+        // Explicit opt-in: the rewrite is authorized and must carry the
+        // rendered content.
+        assert!(
+            outcome.is_ok(),
+            "explicit opt-in must still re-bless: {outcome:?}"
+        );
+        assert!(written, "opt-in rewrite must write the probe file");
+        assert_eq!(content, "probe-rendered");
+        return Ok(());
+    }
+    assert!(
+        outcome.is_err(),
+        "bare RIPR_UPDATE_FIXTURES presence must assert, not re-bless: {outcome:?}"
+    );
+    assert!(
+        !written,
+        "no fixture file may be written without the explicit opt-in"
+    );
+    Ok(())
+}
+
 fn write_temp_json(dir: &Path, name: &str, contents: &str) -> Result<PathBuf, String> {
     let path = dir.join(name);
     fs::write(&path, contents).map_err(|err| format!("write {name} failed: {err}"))?;
     Ok(path)
+}
+
+/// Plant a producer-shaped canonical delta at the default location under an
+/// explicit root (`<root>/target/ripr/pr/canonical-delta.json`), covering
+/// both gate readers (the blocking authority and the rendered projection).
+fn plant_canonical_delta(dir: &Path, attribution: &str) -> Result<(), String> {
+    let path = dir.join("target/ripr/pr/canonical-delta.json");
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| format!("create delta dir failed: {err}"))?;
+    }
+    let contents = format!(
+        r#"{{
+          "schema_version": "0.1",
+          "coverage": {{
+            "base_items": 1, "head_items": 1, "matched_items": 1,
+            "ambiguous_items": 0, "unknown_items": 0
+          }},
+          "deltas": [
+            {{
+              "canonical_gap_id": "pricing::discount::threshold",
+              "delta_attribution": "{attribution}",
+              "base_state": null,
+              "head_state": null,
+              "attribution_basis": [],
+              "comparison_confidence": "high"
+            }}
+          ]
+        }}"#
+    );
+    fs::write(&path, contents).map_err(|err| format!("write canonical delta failed: {err}"))?;
+    Ok(())
 }
 
 fn read_repo_fixture(path: &Path) -> Result<String, String> {
@@ -3233,7 +3794,9 @@ fn require_not_contains(actual: &str, unexpected: &str, label: &str) -> Result<(
 
 fn assert_repo_fixture(path: &Path, rendered: &str, label: &str) -> Result<(), String> {
     let resolved = repo_root().join(path);
-    if std::env::var("RIPR_UPDATE_FIXTURES").is_ok() {
+    // #3742 class (e): only the explicit RIPR_UPDATE_FIXTURES=1 opt-in
+    // rewrites; a leaked bare variable must assert, never re-bless.
+    if crate::testing::rebless::fixture_rebless_enabled() {
         fs::write(&resolved, rendered)
             .map_err(|err| format!("write {} failed: {err}", resolved.display()))?;
         return Ok(());
@@ -3245,6 +3808,8 @@ fn assert_repo_fixture(path: &Path, rendered: &str, label: &str) -> Result<(), S
 
 const PR_GUIDANCE_JSON: &str = r#"{
       "schema_version": "0.1",
+      "tool": "ripr",
+      "status": "advisory",
       "summary": {"unchanged_tests": true},
       "comments": [
         {
@@ -3266,6 +3831,8 @@ const PR_GUIDANCE_JSON: &str = r#"{
 
 const SUMMARY_AND_SUPPRESSED_JSON: &str = r#"{
       "schema_version": "0.1",
+      "tool": "ripr",
+      "status": "advisory",
       "summary": {"unchanged_tests": true},
       "comments": [],
       "summary_only": [
@@ -3291,8 +3858,41 @@ const SUMMARY_AND_SUPPRESSED_JSON: &str = r#"{
       ]
     }"#;
 
+const NO_TEST_REACHES_OWNER_GUIDANCE_JSON: &str = r#"{
+      "schema_version": "0.1",
+      "tool": "ripr",
+      "status": "advisory",
+      "summary": {"unchanged_tests": false},
+      "comments": [
+        {
+          "id": "loyalty",
+          "seam_id": "7d5754b6ffcd5c82",
+          "gap_state": "static_limitation",
+          "grip_class": "ungripped",
+          "severity": "warning",
+          "owner": "src/lib.rs::loyalty_price",
+          "missing_discriminator": "5 (boundary value)",
+          "seam": {"expression": "member_years >= 5", "file": "src/lib.rs", "line": 29},
+          "placement": {"path": "src/lib.rs", "line": 29},
+          "why_not_actionable": "no existing test reaches `src/lib.rs::loyalty_price` (no static test path to the changed owner); the route authority does not propose a first-test target, so no repair route is available"
+        },
+        {
+          "id": "changed-test",
+          "seam_id": "changed-test-seam",
+          "gap_state": "actionable",
+          "grip_class": "weakly_gripped",
+          "severity": "warning",
+          "missing_discriminator": "amount == discount_threshold",
+          "placement": {"path": "src/pricing.rs", "line": 88},
+          "why_not_actionable": "ignored: only static_limitation cards carry a producer reason"
+        }
+      ]
+    }"#;
+
 const INELIGIBLE_GUIDANCE_JSON: &str = r#"{
       "schema_version": "0.1",
+      "tool": "ripr",
+      "status": "advisory",
       "summary": {"unchanged_tests": false},
       "comments": [
         {
@@ -3317,6 +3917,8 @@ const INELIGIBLE_GUIDANCE_JSON: &str = r#"{
 
 const MISSING_GUIDANCE_JSON: &str = r#"{
       "schema_version": "0.1",
+      "tool": "ripr",
+      "status": "advisory",
       "summary": {"unchanged_tests": true},
       "comments": [
         {

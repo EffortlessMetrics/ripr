@@ -101,8 +101,11 @@ mod tests {
             let_bindings: Vec::new(),
 
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
+            item: Default::default(),
+            impl_context: Default::default(),
         };
-        RustIndex {
+        RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -111,8 +114,8 @@ mod tests {
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        }
+            ..crate::analysis::facts::OwnedRustIndex::default()
+        })
     }
 
     #[test]

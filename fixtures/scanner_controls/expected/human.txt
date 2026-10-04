@@ -2,31 +2,36 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/scanner_controls/input
 
-Summary: 4 probe(s), 0 exposed, 4 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 4 probe(s), 0 exposed, 4 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 4 of 4 finding(s) unsuppressed
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 8 changed line(s), 4 candidate line(s), 4 probe(s), 4 finding(s).
 
 Start here:
-  State: top_gap
+  State: a test gap to inspect or repair (top_gap)
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/scanner_controls/input/src/lib.rs:16
-  Static exposure: weakly_exposed (warning, confidence 0.92)
-  Why weakly_exposed: the evidence path is partially complete — see full form for details
+  Static exposure: weak (weakly_exposed, warning, confidence 0.92)
+  Why weak: a related test reaches this change, but no test input tells the old and new behavior apart
   Changed behavior: if final_state == "text" {
   Missing discriminator: final_state == "text"
-  Related test: tests/classify.rs:12 bound_long_trailing_space_is_blank
+  Related test (1 of 2): tests/classify.rs:12 bound_long_trailing_space_is_blank
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
-  Evidence:
+  Evidence: reach yes · infection weak · propagation yes · observation yes · discriminator missing
     - reach yes: Related tests appear to reach classify_bound: bound_long_trailing_space_is_blank, bound_long_word_is_word
     - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
-    - 10 more evidence line(s) hidden
+    - 10 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/scanner_controls/input --diff fixtures/scanner_controls/diff.patch --mode fast probe:src_lib.rs:predicate:f4ed635d
   ripr context --root fixtures/scanner_controls/input --diff fixtures/scanner_controls/diff.patch --mode fast --at probe:src_lib.rs:predicate:f4ed635d
+Write a test for it:
+  ripr agent stub --root fixtures/scanner_controls/input --at src/lib.rs:16
 
 Hidden:
   3 lower-priority finding(s) omitted from default human output.
+    - fixtures/scanner_controls/input/src/lib.rs:38 (weakly_exposed)
+    - fixtures/scanner_controls/input/src/lib.rs:64 (weakly_exposed)
+    - fixtures/scanner_controls/input/src/lib.rs:87 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

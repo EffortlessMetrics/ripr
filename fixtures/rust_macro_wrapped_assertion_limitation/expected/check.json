@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/rust_macro_wrapped_assertion_limitation/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":2,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:e6b07f9c23f81b00229a85da986cb10dc30ce24e0a35b1b804c97230c01a6e91","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:e6b07f9c23f81b00229a85da986cb10dc30ce24e0a35b1b804c97230c01a6e91","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -30,7 +29,7 @@
         "observe": {"state":"no","confidence":"medium","summary":"Related tests were found, but no assertion appears to observe the changed value, error, field, or effect"},
         "discriminate": {"state":"no","confidence":"medium","summary":"No assertion found on related tests"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach inner: test_inner_with_custom_assertion_macro", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: a - b", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches returned value: a - b (line 3)", "related test tests/it.rs:8 test_inner_with_custom_assertion_macro uses none unknown oracle", "observed function argument value a = 10 at line 9", "observed function argument value b = 3 at line 9", "missing discriminator a == b: No related test call uses a equal to b; observed a values: 10; observed b values: 3"],
+      "evidence_path": ["reach yes: Related tests appear to reach inner: test_inner_with_custom_assertion_macro", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: a - b", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches returned value: a - b (line 3)", "related test tests/it.rs:8 test_inner_with_custom_assertion_macro uses none unknown oracle", "source function argument value a = 10 at line 9", "source function argument value b = 3 at line 9", "missing discriminator a == b: No related test call uses a equal to b; observed a values: 10; observed b values: 3"],
       "flow_sinks": [
         {"kind":"return_value","text":"a - b","line":3}
       ],
@@ -128,7 +127,7 @@
         "observe": {"state":"no","confidence":"medium","summary":"Related tests were found, but no assertion appears to observe the changed value, error, field, or effect"},
         "discriminate": {"state":"no","confidence":"medium","summary":"No assertion found on related tests"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach inner: test_inner_with_custom_assertion_macro", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: a - b", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches returned value: a - b (line 3)", "related test tests/it.rs:8 test_inner_with_custom_assertion_macro uses none unknown oracle", "observed function argument value a = 10 at line 9", "observed function argument value b = 3 at line 9", "missing discriminator a == b: No related test call uses a equal to b; observed a values: 10; observed b values: 3"],
+      "evidence_path": ["reach yes: Related tests appear to reach inner: test_inner_with_custom_assertion_macro", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: a - b", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches returned value: a - b (line 3)", "related test tests/it.rs:8 test_inner_with_custom_assertion_macro uses none unknown oracle", "source function argument value a = 10 at line 9", "source function argument value b = 3 at line 9", "missing discriminator a == b: No related test call uses a equal to b; observed a values: 10; observed b values: 3"],
       "flow_sinks": [
         {"kind":"return_value","text":"a - b","line":3}
       ],

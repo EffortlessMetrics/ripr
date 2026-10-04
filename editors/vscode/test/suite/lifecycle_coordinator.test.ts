@@ -3,6 +3,8 @@ import {
   ExtensionLifecycleCoordinator,
   LifecycleController,
   LifecycleWait,
+  RiprClientLifecycleTimeoutError,
+  waitForLifecyclePromise,
 } from '../../src/lifecycleCoordinator';
 
 interface Deferred {
@@ -37,6 +39,30 @@ function manualTimeoutWait(timeout: Deferred): LifecycleWait {
 }
 
 suite('Extension Lifecycle Coordinator', () => {
+  test('default lifecycle waiter rejects a real timeout with the typed timedOut error', async () => {
+    const never = new Promise<void>(() => undefined);
+    let caught: unknown;
+    try {
+      await waitForLifecyclePromise(never, 5, 'ripr server startup');
+    } catch (error) {
+      caught = error;
+    }
+
+    assert.ok(
+      caught instanceof RiprClientLifecycleTimeoutError,
+      'the shared default waiter must produce the typed timeout error'
+    );
+    assert.strictEqual((caught as { kind?: unknown }).kind, 'timedOut');
+    assert.match(
+      (caught as Error).message,
+      /^ripr server startup did not settle within 5ms; refusing an unsafe ripr lifecycle transition\.$/
+    );
+  });
+
+  test('default lifecycle waiter settles without a timeout when the operation completes', async () => {
+    await waitForLifecyclePromise(Promise.resolve(), 1_000, 'ripr server startup');
+  });
+
   test('restart waits for in-flight startup before stopping or creating a replacement', async () => {
     const coordinator = new ExtensionLifecycleCoordinator();
     const firstStart = deferred();
@@ -278,6 +304,92 @@ suite('Extension Lifecycle Coordinator', () => {
     await restart;
     assert.strictEqual(stopCalls, 0, 'rejected startup does not own a running session to stop');
     assert.strictEqual(startCalls, 2, 'recovery starts one fresh session after rejection');
+  });
+
+  test('a start that leaves no session lets a later start try again', async () => {
+    // Activation in an untrusted or folderless window resolves start()
+    // without a server. The trust-grant and folder-added listeners call
+    // start() again; it must reach the controller.
+    const coordinator = new ExtensionLifecycleCoordinator();
+    let running = false;
+    let startCalls = 0;
+    let stopCalls = 0;
+    const controller: LifecycleController = {
+      start: async () => {
+        startCalls += 1;
+        running = startCalls > 1;
+      },
+      stop: async () => {
+        stopCalls += 1;
+        running = false;
+      },
+      isRunning: () => running,
+    };
+
+    await coordinator.start(controller);
+    assert.strictEqual(running, false);
+    await coordinator.start(controller);
+    assert.strictEqual(startCalls, 2, 'the second start reaches the controller');
+    assert.strictEqual(running, true);
+    await coordinator.start(controller);
+    assert.strictEqual(startCalls, 2, 'a live session still coalesces later starts');
+    await coordinator.stop(controller);
+    assert.strictEqual(stopCalls, 1, 'terminal stop stops the live session once');
+  });
+
+  test('restart and stop reach a session the controller started outside the coordinator', async () => {
+    // An ambiguous multi-root activation starts no session; the workspace
+    // root picker then restarts the controller directly. Restart Server,
+    // folder removal and deactivate must still stop that session.
+    const coordinator = new ExtensionLifecycleCoordinator();
+    let running = false;
+    let startCalls = 0;
+    let stopCalls = 0;
+    const controller: LifecycleController = {
+      start: async () => {
+        startCalls += 1;
+        running = startCalls > 1;
+      },
+      stop: async () => {
+        stopCalls += 1;
+        running = false;
+      },
+      isRunning: () => running,
+    };
+
+    await coordinator.start(controller);
+    assert.strictEqual(running, false);
+    await controller.start();
+    assert.strictEqual(running, true, 'picker started the session out of band');
+
+    await coordinator.restart(controller);
+    assert.strictEqual(stopCalls, 1, 'restart stops the out-of-band session');
+    assert.strictEqual(startCalls, 3);
+    assert.strictEqual(running, true);
+
+    await coordinator.stop(controller);
+    assert.strictEqual(stopCalls, 2, 'terminal stop stops the live session');
+    assert.strictEqual(running, false);
+  });
+
+  test('terminal stop reaches an out-of-band session with no restart in between', async () => {
+    const coordinator = new ExtensionLifecycleCoordinator();
+    let running = false;
+    let stopCalls = 0;
+    const controller: LifecycleController = {
+      start: async () => undefined,
+      stop: async () => {
+        stopCalls += 1;
+        running = false;
+      },
+      isRunning: () => running,
+    };
+
+    await coordinator.start(controller);
+    running = true;
+    await coordinator.stop(controller);
+    assert.strictEqual(stopCalls, 1);
+    assert.strictEqual(running, false);
   });
 
   test('completed startup remains single after a bounded restart timeout', async () => {

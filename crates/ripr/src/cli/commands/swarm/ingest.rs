@@ -57,7 +57,7 @@ pub(super) fn parse_options(args: &[String]) -> Result<Options, String> {
 pub(super) fn run(options: Options) -> Result<(), String> {
     ensure_command_root(&options.root, "swarm ingest")?;
     let result_path = validate_result_path(&options.root, &options.result)?;
-    let contents = std::fs::read_to_string(&result_path).map_err(|err| {
+    let contents = crate::bounded_input::read_to_string(&result_path).map_err(|err| {
         format!(
             "read swarm ingest --result {} failed: {err}",
             options.result.display()

@@ -1,0 +1,12 @@
+diff --git a/src/table.py b/src/table.py
+index 0000000..1111111 100644
+--- a/src/table.py
++++ b/src/table.py
+@@ -9,6 +9,6 @@ class Table:
+         return self._get_padding_width(0)
+ 
+     def _get_padding_width(self, column_index):
+-        if column_index == len(self.columns) - 1:
++        if column_index >= len(self.columns) - 1:
+             return 0
+         return 1

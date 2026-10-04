@@ -2,12 +2,13 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/error_path_sibling_oracle_fake_clean/input
 
-Summary: 2 probe(s), 0 exposed, 2 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 2 probe(s), 0 exposed, 2 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 2 of 2 finding(s) unsuppressed
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
 
 WARNING fixtures/error_path_sibling_oracle_fake_clean/input/src/lib.rs:10
+  id: probe:src_lib.rs:error_path:162493bf
 
 Changed
   before: return Err(ParseError::TooShort);
@@ -29,8 +30,8 @@ Evidence
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches error variant: Result::Err(ParseError::TooLong) (line 10)
   - related test tests/validation.rs:8 valid_input_returns_valid uses strong exact value oracle: assert_eq!(validate_or_default("hello"), Ok("valid"));
-  - observed assertion argument value "valid" at line 9
-  - observed function argument value input = "hello" at line 9
+  - source assertion argument value "valid" at line 9
+  - source function argument value input = "hello" at line 9
 
 Weakness
   - No exact error variant discriminator was detected
@@ -38,8 +39,12 @@ Weakness
 
 Next step
   Assert the exact error variant or payload instead of only is_err().
+Drill in:
+  ripr explain --root fixtures/error_path_sibling_oracle_fake_clean/input --diff fixtures/error_path_sibling_oracle_fake_clean/diff.patch --mode fast probe:src_lib.rs:error_path:162493bf
+  ripr context --root fixtures/error_path_sibling_oracle_fake_clean/input --diff fixtures/error_path_sibling_oracle_fake_clean/diff.patch --mode fast --at probe:src_lib.rs:error_path:162493bf
 
 WARNING fixtures/error_path_sibling_oracle_fake_clean/input/src/lib.rs:10
+  id: probe:src_lib.rs:return_value:ae6d1b32
 
 Changed
   before: return Err(ParseError::TooShort);
@@ -61,8 +66,8 @@ Evidence
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches error variant: Result::Err(ParseError::TooLong) (line 10)
   - related test tests/validation.rs:8 valid_input_returns_valid uses strong exact value oracle: assert_eq!(validate_or_default("hello"), Ok("valid"));
-  - observed assertion argument value "valid" at line 9
-  - observed function argument value input = "hello" at line 9
+  - source assertion argument value "valid" at line 9
+  - source function argument value input = "hello" at line 9
 
 Weakness
   - No strong discriminator was detected
@@ -70,3 +75,6 @@ Weakness
 
 Next step
   Add a test input that reaches the changed error path and assert the exact error variant it returns.
+Drill in:
+  ripr explain --root fixtures/error_path_sibling_oracle_fake_clean/input --diff fixtures/error_path_sibling_oracle_fake_clean/diff.patch --mode fast probe:src_lib.rs:return_value:ae6d1b32
+  ripr context --root fixtures/error_path_sibling_oracle_fake_clean/input --diff fixtures/error_path_sibling_oracle_fake_clean/diff.patch --mode fast --at probe:src_lib.rs:return_value:ae6d1b32

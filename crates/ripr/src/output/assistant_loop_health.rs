@@ -1,6 +1,12 @@
 use serde::Serialize;
 use serde_json::Value;
 
+/// The complete `assistant-loop proof` command over the generated-workflow
+/// artifact paths (#3906). The proof refuses to run without explicit inputs,
+/// and it joins the after snapshot and agent receipt that only the repair's
+/// after phase writes, so it runs after that phase.
+pub(crate) const ASSISTANT_PROOF_COMMAND: &str = "ripr assistant-loop proof --root . --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json --ledger target/ripr/reports/pr-evidence-ledger.json --out target/ripr/reports/test-oracle-assistant-proof.json --out-md target/ripr/reports/test-oracle-assistant-proof.md";
+
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "assistant_loop_health";
 const PROOF_KIND: &str = "test_oracle_assistant_loop";
@@ -784,7 +790,7 @@ fn repair_for_warning(proof: &HealthProof, warning: &HealthWarning) -> Option<Re
             line: None,
             reason: "The supplied proof is missing required selected seam and movement evidence."
                 .to_string(),
-            next_command: "ripr assistant-loop proof --out target/ripr/reports/test-oracle-assistant-proof.json --out-md target/ripr/reports/test-oracle-assistant-proof.md".to_string(),
+            next_command: ASSISTANT_PROOF_COMMAND.to_string(),
             expected_result: "Regenerate a proof packet with selected seam and before/after static movement context.".to_string(),
         }),
         "unchanged_movement" => proof.seam.as_ref().map(|seam| RepairItem {

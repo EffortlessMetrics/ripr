@@ -4,15 +4,19 @@
   "kind": "report_packet_index",
   "status": "warn",
   "root": ".",
-  "generated_at": "2026-05-10T12:00:00Z",
+  "generated_at": "unix_ms:0",
   "inputs": {
     "reports_dir": "target/ripr/reports",
     "review_dir": "target/ripr/review",
-    "receipts_dir": "target/ripr/receipts"
+    "receipts_dir": "target/ripr/receipts",
+    "workflow_dir": "target/ripr/workflow",
+    "agent_dir": "target/ripr/agent",
+    "pilot_dir": "target/ripr/pilot",
+    "ci_dir": "target/ci"
   },
   "summary": {
-    "entries": 6,
-    "available": 4,
+    "entries": 8,
+    "available": 6,
     "missing_expected": 2,
     "warnings": 2,
     "failures": 0,
@@ -32,7 +36,7 @@
           "kind": "markdown",
           "path": "target/ripr/reports/pr-review-front-panel.md",
           "json_path": "target/ripr/reports/pr-review-front-panel.json",
-          "status": "available",
+          "status": "warn",
           "available": true,
           "required": true,
           "authority": false,
@@ -77,7 +81,7 @@
     {
       "group": "repair_agent_handoff",
       "label": "Repair and agent handoff",
-      "summary": "Assistant loop context.",
+      "summary": "Proof, health, and repair routing.",
       "entries": [
         {
           "id": "assistant_proof",
@@ -85,31 +89,44 @@
           "kind": "markdown",
           "path": "target/ripr/reports/test-oracle-assistant-proof.md",
           "json_path": "target/ripr/reports/test-oracle-assistant-proof.json",
-          "status": "missing",
-          "available": false,
+          "status": "available",
+          "available": true,
           "required": false,
           "authority": false,
-          "description": "No assistant proof input was present.",
-          "next_command": "ripr assistant-loop proof --out target/ripr/reports/test-oracle-assistant-proof.json --out-md target/ripr/reports/test-oracle-assistant-proof.md"
+          "description": "Joined repair proof packet.",
+          "next_command": null
+        },
+        {
+          "id": "assistant_loop_health",
+          "label": "Assistant loop health",
+          "kind": "markdown",
+          "path": "target/ripr/reports/assistant-loop-health.md",
+          "json_path": "target/ripr/reports/assistant-loop-health.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Repair loop health over assistant proof inputs.",
+          "next_command": null
         }
       ]
     },
     {
       "group": "calibration",
       "label": "Calibration",
-      "summary": "Optional calibration context.",
+      "summary": "Recommendation and coverage/grip context.",
       "entries": [
         {
-          "id": "coverage_grip_frontier",
-          "label": "Coverage/grip frontier",
+          "id": "recommendation_calibration",
+          "label": "Recommendation calibration",
           "kind": "markdown",
-          "path": "target/ripr/reports/coverage-grip-frontier.md",
-          "json_path": "target/ripr/reports/coverage-grip-frontier.json",
-          "status": "not_applicable",
-          "available": false,
+          "path": "target/ripr/reports/recommendation-calibration.md",
+          "json_path": "target/ripr/reports/recommendation-calibration.json",
+          "status": "available",
+          "available": true,
           "required": false,
           "authority": false,
-          "description": "Coverage/grip frontier is configured off for this packet.",
+          "description": "Recommendation quality evidence.",
           "next_command": null
         }
       ]
@@ -117,16 +134,29 @@
     {
       "group": "validation_receipts",
       "label": "Validation receipts",
-      "summary": "Local readiness reports.",
+      "summary": "Receipts and local readiness reports.",
       "entries": [
+        {
+          "id": "agent_receipt",
+          "label": "Agent receipt",
+          "kind": "json",
+          "path": "target/ripr/reports/agent-receipt.json",
+          "json_path": "target/ripr/reports/agent-receipt.json",
+          "status": "missing",
+          "available": false,
+          "required": false,
+          "authority": false,
+          "description": "Focused repair receipt.",
+          "next_command": "ripr agent status --root ."
+        },
         {
           "id": "check_pr",
           "label": "Check PR",
           "kind": "markdown",
           "path": "target/ripr/reports/check-pr.md",
           "json_path": null,
-          "status": "pass",
-          "available": true,
+          "status": "missing",
+          "available": false,
           "required": false,
           "authority": false,
           "description": "Local review-ready gate receipt.",
@@ -137,33 +167,33 @@
   ],
   "missing_expected": [
     {
-      "id": "assistant_proof",
-      "label": "Assistant proof",
-      "group": "repair_agent_handoff",
-      "path": "target/ripr/reports/test-oracle-assistant-proof.md",
+      "id": "agent_receipt",
+      "label": "Agent receipt",
+      "group": "validation_receipts",
+      "path": "target/ripr/reports/agent-receipt.json",
       "required": false,
-      "reason": "input_not_available",
-      "next_command": "ripr assistant-loop proof --out target/ripr/reports/test-oracle-assistant-proof.json --out-md target/ripr/reports/test-oracle-assistant-proof.md"
+      "reason": "not_generated",
+      "next_command": "ripr agent status --root ."
     },
     {
-      "id": "coverage_grip_frontier",
-      "label": "Coverage/grip frontier",
-      "group": "calibration",
-      "path": "target/ripr/reports/coverage-grip-frontier.md",
+      "id": "check_pr",
+      "label": "Check PR",
+      "group": "validation_receipts",
+      "path": "target/ripr/reports/check-pr.md",
       "required": false,
-      "reason": "configured_off",
+      "reason": "not_generated",
       "next_command": null
     }
   ],
   "warnings": [
     {
       "kind": "missing_expected",
-      "message": "Assistant proof was not generated because no proof input was present.",
+      "message": "Agent receipt is missing.",
       "source_artifact": null
     },
     {
       "kind": "missing_expected",
-      "message": "Coverage/grip frontier is configured off.",
+      "message": "Check PR is missing.",
       "source_artifact": null
     }
   ],

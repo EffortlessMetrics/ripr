@@ -1,0 +1,69 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/rust_same_method_owner_type_positive/input
+
+Summary: 2 probe(s), 1 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 2 of 2 finding(s) unsuppressed
+
+Analysis outcome: findings below (analysis complete; complete_with_findings).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
+
+INFO fixtures/rust_same_method_owner_type_positive/input/src/lib.rs:22
+  id: probe:src_lib.rs:return_value:c861ec7a
+
+Changed
+  before: (0, None)
+  after:  (0, Some(self.remaining))
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::impl Iterator for WhileSome::size_hint
+
+Static exposure
+  exposed (info, confidence 1.00)
+
+Evidence
+  - reach yes: Related tests appear to reach size_hint: while_some_size_hint_upper_bound
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Complete propagation witness reaches returned value: (0, Some(self.remaining))
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator yes: Strong oracle found: exact value or pattern assertion
+  - local flow reaches returned value: (0, Some(self.remaining)) (line 22)
+  - related test tests/size_hints.rs:4 while_some_size_hint_upper_bound uses strong exact value oracle: assert_eq!(it.size_hint().1, Some(it.remaining));
+Drill in:
+  ripr explain --root fixtures/rust_same_method_owner_type_positive/input --diff fixtures/rust_same_method_owner_type_positive/diff.patch --mode fast probe:src_lib.rs:return_value:c861ec7a
+  ripr context --root fixtures/rust_same_method_owner_type_positive/input --diff fixtures/rust_same_method_owner_type_positive/diff.patch --mode fast --at probe:src_lib.rs:return_value:c861ec7a
+
+WARNING fixtures/rust_same_method_owner_type_positive/input/src/lib.rs:22
+  id: probe:src_lib.rs:return_value:d114ce99
+
+Changed
+  before: (0, None)
+  expr:   (0, None)
+  source:  base_deleted — base-side evidence, not a candidate edit target
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::impl Iterator for WhileSome::size_hint
+
+Static exposure
+  weakly_exposed (warning, confidence 0.66)
+
+Evidence
+  - reach yes: Related tests appear to reach size_hint: while_some_size_hint_upper_bound
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation weak: No complete owner-bound propagation witness found for returned value: (0, Some(self.remaining))
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches returned value: (0, Some(self.remaining)) (line 22)
+  - related test tests/size_hints.rs:4 while_some_size_hint_upper_bound uses strong exact value oracle: assert_eq!(it.size_hint().1, Some(it.remaining));
+
+Weakness
+  - No strong discriminator was detected
+
+Next step
+  Replace broad assertions with exact equality or a property that constrains the changed returned value.
+Drill in:
+  ripr explain --root fixtures/rust_same_method_owner_type_positive/input --diff fixtures/rust_same_method_owner_type_positive/diff.patch --mode fast probe:src_lib.rs:return_value:d114ce99
+  ripr context --root fixtures/rust_same_method_owner_type_positive/input --diff fixtures/rust_same_method_owner_type_positive/diff.patch --mode fast --at probe:src_lib.rs:return_value:d114ce99

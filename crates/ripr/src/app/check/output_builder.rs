@@ -12,14 +12,22 @@ pub(super) fn check_output_from_analysis(
         tool: "ripr".to_string(),
         mode: input.mode,
         root: input.root,
-        base: input.base,
+        // #3940: record the base the loader actually used (explicit or
+        // resolved default) rather than only an explicitly supplied one, so
+        // scope-less runs stay consumable by base-matching consumers.
+        base: analysis.effective_base.or(input.base),
         analysis_outcome: analysis.analysis_outcome,
         summary: analysis.summary,
         findings: analysis.findings,
         preview_language_advisories: analysis.preview_language_advisories,
         language_runs: analysis.language_runs,
         no_scope_provided: false,
-        unanalyzed_working_tree: false,
+        // RIPR-SPEC-0112: the note fires only when uncommitted edits touched
+        // a source or test file, i.e. when `--worktree` would differ.
+        unanalyzed_working_tree: !analysis.uncommitted_source_paths.is_empty(),
+        // #5258: name the untracked subset so the note can offer the real
+        // repair; `--worktree` covers only the tracked remainder.
+        untracked_working_tree_source_paths: analysis.untracked_source_paths,
         suppression: None,
         partial_scope: analysis.partial_scope,
     }

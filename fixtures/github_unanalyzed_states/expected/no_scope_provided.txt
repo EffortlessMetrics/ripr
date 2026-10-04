@@ -1,0 +1,1 @@
+::warning title=ripr no analysis scope::No analysis scope was provided — `ripr check` is diff-first. Run `ripr check --base BASE` with BASE set to an existing ref to analyze your changes. An empty result here does NOT mean your changed behavior is covered.

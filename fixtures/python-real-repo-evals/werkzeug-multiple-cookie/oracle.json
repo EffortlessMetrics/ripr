@@ -1,0 +1,32 @@
+{
+  "id": "werkzeug_multiple_cookie_headers_2065",
+  "source": "https://github.com/pallets/werkzeug/pull/2065",
+  "expected_labels_authority": "Upstream bug/fix, complete upstream test, and independent broken/fixed/removal execution; not RIPR output",
+  "changed_owner": "python:src/werkzeug/sansio/request.py::Request.cookies",
+  "selector": "tests/sansio/test_request.py::test_cookies",
+  "fault": "Reading only the first Cookie header silently loses the later a=c cookie",
+  "input": [
+    [
+      "Cookie",
+      "a=b"
+    ],
+    [
+      "Content-Type",
+      "text"
+    ],
+    [
+      "Cookie",
+      "a=c"
+    ]
+  ],
+  "effective_assertion": "assert req.cookies.getlist(\"a\") == [\"b\", \"c\"]",
+  "ineffective_assertion_retained": "assert req.cookies.get(\"a\") == \"b\"",
+  "expected_broken_full_test": "one selected/executed test; assertion failure at getlist (actual [b], expected [b,c]); no setup/import error",
+  "expected_broken_without_only_getlist_assertion": "one selected/executed test passes with original first-value assertion still present",
+  "expected_fixed_full_test": "one selected/executed complete upstream test passes",
+  "expected_control_scope": "single Cookie and unrelated non-Cookie headers stay correct; four original content-length cases stay correct",
+  "curated_upstream_regression": true,
+  "blind_operator_case": false,
+  "real_opportunity_denominator_increment": 0,
+  "package_or_release_qualification": false
+}

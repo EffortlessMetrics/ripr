@@ -46,7 +46,7 @@
         "side": "RIGHT",
         "mode": "exact_seam_line"
       },
-      "body": "### ripr gap: missing boundary assertion\n\nChanged behavior:\n`amount == discount_threshold`\n\nWhy this matters:\nA related test reaches this code, but no equality-boundary assertion was found.\n\nRepair route:\nadd boundary assertion\n\nRepair:\nAdd one focused boundary assertion for `amount == discount_threshold`.\n\nVerify:\n`ripr agent verify`",
+      "body": "### ripr gap: missing boundary assertion\n\nChanged behavior:\n`amount == discount_threshold`\n\nWhy this matters:\nA related test reaches this code, but no equality-boundary assertion was found.\n\nRepair route:\nadd boundary assertion\n\nRepair:\nAdd one focused boundary assertion for `amount == discount_threshold`.\n\nStart the repair:\n`ripr agent repair --root . --seam-id 8f7fa8644fd12280 --phase before`\n\nIt prints the `--attempt ... --phase after` command that verifies the new test.",
       "existing_comment_id": null,
       "skip_reason": null,
       "blocked_reason": null

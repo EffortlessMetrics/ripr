@@ -55,7 +55,7 @@ Missing discriminator:
   Add a focused boundary assertion in tests/pricing.rs:
   assert_eq!(discount(100, 100), 90)
 
-  Verify command:
+  Verify after the test edit:
   cargo xtask fixtures boundary_gap
 ```
 

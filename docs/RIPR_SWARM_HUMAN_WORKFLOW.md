@@ -19,6 +19,27 @@ This is a repair-coordination workflow, not an autonomous code-writing system.
 It consumes `actionable-gaps.json`, not raw findings. Raw findings remain
 supporting evidence only.
 
+## Binary Queue And Ingest
+
+The published `ripr` binary carries two advisory, JSON-only swarm commands that
+external schedulers can call without the repository's `xtask` automation:
+
+```bash
+ripr swarm queue --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json --language python --top 10
+ripr swarm ingest --root . --result target/ripr/workflow/agent-result.json
+```
+
+`swarm queue` ranks GapRecord-backed packets that are already eligible for
+`ripr agent packet --gap-ledger ... --gap-id ...` and groups them by conflict
+group. Only candidates with `queue_state = queued` and
+`staleness_status = current` are assignable; the rest stay visible in
+`blocked_review`. `swarm ingest` classifies one agent result as `closed`,
+`partially_improved`, `verify_failed`, `edited_forbidden_file`,
+`stopped_by_agent`, `stale_packet`, or `uncertain`, and never treats missing
+verify evidence as success. Neither command runs tests, edits files, or writes
+receipts. The `cargo xtask ripr-swarm` commands below are this repository's own
+automation around the same loop.
+
 ## Inputs
 
 Generate or refresh Lane 1 evidence first:

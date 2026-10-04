@@ -14,7 +14,7 @@ diff --git a/tests/pricing.rs b/tests/pricing.rs
 new file mode 100644
 --- /dev/null
 +++ b/tests/pricing.rs
-@@ -0,0 +1,10 @@
+@@ -0,0 +1,11 @@
 +use parity_err_guard::discounted_total;
 +
 +#[test]

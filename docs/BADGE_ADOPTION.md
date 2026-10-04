@@ -97,7 +97,8 @@ run this producer before rendering repo `ripr+` badge artifacts.
 
 Provide a public command contract that external repositories can call directly.
 That contract does not exist in the current `ripr reports` CLI; the current
-public report commands are `ripr reports index` and `ripr reports gap-ledger`.
+`ripr reports` subcommands are `index`, `gap-ledger`, `ts-limitations`, and
+`ts-false-actionable`; none of them writes `test-efficiency.json`.
 A future portable command must write
 `target/ripr/reports/test-efficiency.json` without requiring downstream repos to
 copy this repository's `xtask` wrapper.

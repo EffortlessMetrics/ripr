@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_method_owner/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:57b39d320c9152fbd276a2205f7edc827d47bd8b0339accc46d6af7a5497e84d","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:57b39d320c9152fbd276a2205f7edc827d47bd8b0339accc46d6af7a5497e84d","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -47,7 +46,7 @@
       "flow_sinks": [
         {"kind":"unknown","text":"if amount >= threshold:","line":3}
       ],
-      "evidence": ["owner: DiscountPolicy.apply", "owner_kind: method", "missing_discriminator: amount == threshold", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_policy.py", "suggested_test_name: test_discount_policy_apply", "suggested_test_node_id: tests/test_policy.py::test_discount_policy_apply", "suggested_verify_command: pytest tests/test_policy.py::test_discount_policy_apply", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_discount_policy_apply)", "test_verify_command: pytest tests/test_policy.py::test_discount_policy_apply (test_discount_policy_apply)", "related_test_relation: syntactic_call (test_discount_policy_apply)", "test_oracle_shape: reach_only (test_discount_policy_apply)"],
+      "evidence": ["owner: DiscountPolicy.apply", "owner_kind: method", "missing_discriminator: amount == threshold", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_policy.py", "suggested_test_name: test_discount_policy_apply", "suggested_test_node_id: tests/test_policy.py::test_discount_policy_apply", "suggested_verify_command: python -m pytest tests/test_policy.py::test_discount_policy_apply", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_discount_policy_apply)", "test_verify_command: python -m pytest tests/test_policy.py::test_discount_policy_apply (test_discount_policy_apply)", "related_test_relation: syntactic_call (test_discount_policy_apply)", "test_oracle_shape: reach_only (test_discount_policy_apply)"],
       "missing": ["Related Python test reaches `apply` but the strongest extracted oracle is `unknown`; add or strengthen a focused assertion for the changed boundary."],
       "assertion_texts": {
       },
@@ -86,7 +85,7 @@
         "suggested_test_file": "tests/test_policy.py",
         "suggested_test_name": "test_discount_policy_apply",
         "suggested_test_node_id": "tests/test_policy.py::test_discount_policy_apply",
-        "verify_command": "pytest tests/test_policy.py::test_discount_policy_apply",
+        "verify_command": "python -m pytest tests/test_policy.py::test_discount_policy_apply",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -109,7 +108,7 @@
           "pytest_node_id": "tests/test_policy.py::test_discount_policy_apply"
          },
         "verify": {
-          "command": "pytest tests/test_policy.py::test_discount_policy_apply",
+          "command": "python -m pytest tests/test_policy.py::test_discount_policy_apply",
           "confidence": "high"
          },
         "receipt": {
@@ -144,5 +143,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/policy.py","digest":"sha256:487ade37447e1a0aa4d3a2f727208fcd80da1adc8193895bb2406ce74c1a20c9"},{"path":"tests/test_policy.py","digest":"sha256:15bef1af3f1c7bd36780ac7fd12eeb9cf39dafe26dfdb94943ad69793b0da644"}]}
 }

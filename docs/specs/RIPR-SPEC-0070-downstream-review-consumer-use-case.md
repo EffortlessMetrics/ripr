@@ -287,6 +287,34 @@ any of these states as consumable success:
   (`proof_claim = false` is binding).
 - an empty artifact body presented as a successful scan.
 
+## Bounded review evidence retention (#4691)
+
+The Rust `review-comments` route evaluates full seam evidence in windows of
+32 seams by default. `RIPR_REVIEW_EVIDENCE_WINDOW_SIZE` accepts integers 1–256
+for bounded workload diagnosis; invalid values fail the run. The existing
+classifier, relation logic, ranking and omission policy remain authoritative.
+The route retains at most the requested top ten full classified payloads between
+windows. Hidden matching seams still contribute to the existing bounded named
+warnings and exact per-reason omission counts. Evaluation counts describe all
+considered seams, rather than only the retained display candidates.
+
+The full changed-owner first stage is evaluated before deciding whether it
+already supplies enough ranked guidance; otherwise the remaining stage is
+visited. Canonical inventory deduplication precedes partitioning. An unexpected
+repeated identity at the consumer boundary is refused rather than silently
+changing ranking or counts. Window cancellation and invalid configuration cannot
+produce a complete receipt or an all-clear from the partial selection.
+
+This bounds per-seam full-evidence retention, not total process memory. The
+workspace index, source facts, per-test facts, seam inventory, first/rest ordinal vectors and compact identity
+sets remain corpus-sized; one seam's full evidence can also be large. Index
+admission, reusable exact-subject analysis handoff and full downstream replay
+remain separate work in #4670/#4969, #4692 and #4693. The cooperative timeout
+checks window boundaries and existing inner checkpoints; it is not a hard
+allocator limit or a guarantee against one long parser/evidence operation.
+Existing captured-input semantics are preserved; this change does not add
+concurrent worktree mutation detection.
+
 ## Acceptance Examples
 
 ### Limited diff-first run consumed safely
@@ -330,15 +358,30 @@ verbatim instead of inventing flags.
 
 ## Test Mapping
 
-- None yet.
+The bounded review-evidence slice has executable controls and traceability:
 
-This spec is docs-only. Implementation slices add traceability entries
-when the downstream export contract behavior and its fixtures land;
-mapping names should follow the `output/downstream-export-contract`
-prefix.
+- `crates/ripr/tests/cli_smoke.rs::review_guidance_windows_preserve_output_and_bound_retained_payloads`
+  covers window-size output parity, retained cardinality, and failed-receipt
+  authority for invalid configuration.
+- `crates/ripr/src/app/agent_brief.rs::tests::streamed_selection_matches_complete_ranking_and_omissions_across_windows`
+  and `crates/ripr/src/app/agent_brief.rs::tests::streamed_first_stage_threshold_matches_full_selection_with_hidden_ties`
+  compare the bounded selection with the complete reference.
+- `crates/ripr/src/app/agent_brief.rs::tests::streamed_selection_rejects_duplicate_identity_across_windows`
+  and `crates/ripr/src/app/agent_brief/bounded.rs::tests::late_hidden_scope_match_discards_fallback_and_counter_overflow_refuses`
+  pin identity refusal, fallback replacement, and checked counters.
+- `crates/ripr/src/analysis/seam_inventory.rs::tests::streamed_windows_preserve_full_evidence_and_refuse_boundary_cancellation`
+  pins full related-test evidence and incomplete cancellation across windows.
+
+These tests cover that implemented slice only. The broader downstream export
+contract and reject-list fixtures remain proposed; they are not established by
+window parity or by this mapping. Future export-contract mapping names should
+follow the `output/downstream-export-contract` prefix.
 
 ## Implementation Mapping
 
+- `crates/ripr/src/app/agent_brief/bounded.rs` — bounded canonical selection.
+- `crates/ripr/src/analysis/seam_inventory.rs` — windowed full-evidence producer.
+- `crates/ripr/src/cli/commands/review_comments.rs` — existing receipt/CLI boundary.
 - docs/specs/RIPR-SPEC-0070-downstream-review-consumer-use-case.md —
   this document.
 - plans/use-case-specs/implementation-plan.md (planned) — the

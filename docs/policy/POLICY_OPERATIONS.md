@@ -6,9 +6,11 @@ GitHub tracker: PR stack #859 through #922, closed by the campaign closeout.
 
 This was the focused Lane 2 tracker for policy operations after
 [Policy readiness](POLICY_READINESS.md). It is not the global active campaign
-manifest. Campaign 28 is now closed and archived, and
-`.ripr/goals/active.toml` records `no_current_goal = true` until a successor is
-selected. This tracker records the policy-operations work that landed without
+manifest. Campaign 28 is now closed and archived; live execution state is
+governed by GitHub issues, PRs, and worktree state per
+[Repository Tracking Model](../REPO_TRACKING_MODEL.md) (the former
+`.ripr/goals/active.toml` manifest was retired in #1701). This tracker records
+the policy-operations work that landed without
 changing analyzer behavior, editor behavior, generated tests, mutation
 execution, default CI blocking, config files, baselines, suppressions, or
 preview-language gate eligibility.
@@ -154,12 +156,15 @@ ripr policy history \
   --commit HEAD \
   --pr-number 123 \
   --out target/ripr/reports/policy-history.json \
-  --out-md target/ripr/reports/policy-history.md
+  --out-md target/ripr/reports/policy-history.md \
+  --out-jsonl .ripr/policy-history.jsonl
 ```
 
-The implemented command does not append to `.ripr/policy-history.jsonl`, collect
-telemetry, create dashboards, execute gates, mutate policy files, or promote
-preview evidence.
+The default command and generated workflow do not append to
+`.ripr/policy-history.jsonl`. Pass `--out-jsonl PATH` to append one snapshot
+line (`example_append_record`). Generated CI never passes that flag. The
+command does not collect telemetry, create dashboards, execute gates, mutate
+policy files, or promote preview evidence.
 
 The policy promotion packet is defined by
 [RIPR-SPEC-0042](../specs/RIPR-SPEC-0042-policy-promotion-packets.md). It
@@ -291,7 +296,9 @@ This tracker does not authorize:
 - Policy trackers explain why.
 - Specs define externally meaningful behavior.
 - Implementation plans sequence PR-sized work.
-- `.ripr/goals` manifests encode execution state.
+- GitHub issues, PRs, and worktree state encode live execution state per
+  [Repository Tracking Model](../REPO_TRACKING_MODEL.md) (replacing the retired
+  `.ripr/goals` manifests).
 - Policy ledgers hold exceptions and receipts.
 - Traceability, capability, and output-schema files prove surfaces when the
   corresponding spec or behavior exists.

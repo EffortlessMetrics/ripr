@@ -78,11 +78,14 @@ const CATALOG: &[CatalogEntry] = &[
     entry("ripr-gap-MissingArtifact"),
     // Scope-limitation codes (workspace-scoped guard disclosures).
     entry("ripr-scope-diff-oversized"),
+    // Passive delivery limitation; never an analyzer finding or repair route.
+    entry("ripr-diagnostic-budget-omitted"),
 ];
 
 /// The workspace-scoped warning code emitted when the fail-closed
 /// diff-scope guard converts to a limited snapshot (#2299).
 pub(crate) const DIFF_SCOPE_OVERSIZED_CODE: &str = "ripr-scope-diff-oversized";
+pub(crate) const DIAGNOSTIC_BUDGET_OMITTED_CODE: &str = "ripr-diagnostic-budget-omitted";
 
 /// The governed catalog of diagnostic codes.
 pub(crate) fn catalog() -> &'static [CatalogEntry] {

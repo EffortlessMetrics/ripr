@@ -122,12 +122,8 @@ pub(super) fn parse_old_path_marker(raw: &str) -> bool {
 
 /// Extract and confine the old path from a `--- <path>` marker, symmetrically
 /// with [`parse_new_path_marker`]. Returns `None` when the path escapes the
-/// workspace (traversal, absolute, prefix). Future features that consume the
-/// old path should use this instead of raw string extraction (#2402).
-#[allow(
-    dead_code,
-    reason = "reserved for future rename/copy-detection features that consume the old path (#2402)"
-)]
+/// workspace (traversal, absolute, prefix). Used by the diff parser for
+/// deleted-file and submodule confinement of the old-path marker.
 pub(super) fn parse_old_path_for_confinement(raw: &str) -> Option<PathBuf> {
     let marker = raw.strip_prefix("--- ")?;
     let path = parse_diff_path_token(marker)?;

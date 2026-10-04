@@ -1,5 +1,14 @@
 use super::types::AgentReviewSummaryReport;
-use crate::output::markdown::{COMMAND_SHELL_DISCLOSURE, powershell_command};
+use crate::output::markdown::{COMMAND_SHELL_DISCLOSURE, PowershellForm, powershell_form};
+
+/// What a missing agent receipt means before any repair (#3906, N5).
+///
+/// A receipt is written only after a focused test edit, by the repair's
+/// after phase (or a manual verify and receipt), so its absence before a
+/// repair is the expected state, not a loop step to run now. The generated
+/// CI summary prints the same text; it holds no single quote so the workflow
+/// can carry it in a single-quoted shell string.
+pub(crate) const NO_RECEIPT_BEFORE_REPAIR: &str = "No agent receipt yet. None is expected before a repair: the `--attempt ... --phase after` command writes it after the focused test edit.";
 
 pub(crate) fn render_agent_review_summary_markdown(report: &AgentReviewSummaryReport) -> String {
     let mut rendered = String::new();
@@ -10,6 +19,9 @@ pub(crate) fn render_agent_review_summary_markdown(report: &AgentReviewSummaryRe
         None => rendered.push_str("Target seam: unknown\n"),
     }
     rendered.push_str(&format!("Movement: {}\n", report.static_movement.state));
+    if report.static_movement.state == "missing_artifact" {
+        rendered.push_str(&format!("Receipt: {NO_RECEIPT_BEFORE_REPAIR}\n"));
+    }
     match &report.analysis_outcome {
         Some(outcome) => rendered.push_str(&format!(
             "Analysis outcome: {} ({})\n",
@@ -53,17 +65,24 @@ pub(crate) fn render_agent_review_summary_markdown(report: &AgentReviewSummaryRe
     }
     if let Some(next_command) = &report.next_command {
         rendered.push_str("\nNext command:\n\n");
+        if next_command.runs_after_test_edit() {
+            rendered.push_str(&format!(
+                "{}\n\n",
+                crate::app::agent_status::AFTER_TEST_EDIT_NOTE
+            ));
+        }
         rendered.push_str(COMMAND_SHELL_DISCLOSURE);
         rendered.push_str("```bash\n");
         rendered.push_str(&next_command.command);
         rendered.push_str("\n```\n");
-        match powershell_command(&next_command.command) {
-            Some(line) => {
+        match powershell_form(&next_command.command) {
+            PowershellForm::Translated(line) => {
                 rendered.push_str("\n```powershell\n");
                 rendered.push_str(&line);
                 rendered.push_str("\n```\n");
             }
-            None => rendered.push_str(&format!(
+            PowershellForm::SameAsBash => {}
+            PowershellForm::Unavailable => rendered.push_str(&format!(
                 "{}: `{}`\n",
                 crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE,
                 next_command.command

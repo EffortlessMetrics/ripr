@@ -1,0 +1,37 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "agent_attempt_status",
+  "root": ".",
+  "store": {
+    "locator": "target/ripr/repair-attempts",
+    "location_class": "default_repository",
+    "currentness": "present"
+  },
+  "attempt": {
+    "attempt_id": "repair-attempt-0123456789abcdef01234567",
+    "seam_id": "67fc764ba37d77bd",
+    "manifest": "target/ripr/repair-attempts/repair-attempt-0123456789abcdef01234567/attempt.json",
+    "state": "awaiting_edit",
+    "status_class": "limited",
+    "head_current": null,
+    "currentness": "unknown",
+    "evidence_head": "1a2b3c4d5e6f7890abcdef1234567890abcdef12",
+    "unreadable_reason": null,
+    "receipt": null,
+    "last_after_refusal": null,
+    "diverged_recovery": null
+  },
+  "next_action": null,
+  "test_run": null,
+  "claim_boundary": [
+    "status is read-only: inspecting an attempt never finishes, restarts, rewrites, or deletes it",
+    "no state was inferred from another attempt's receipt or from the store's other rows"
+  ],
+  "limitations": [
+    "the current Git HEAD could not be read or related to the head this attempt was prepared at"
+  ],
+  "non_claims": [
+    "a finished result does not establish the repair is correct or that any project test ran"
+  ]
+}

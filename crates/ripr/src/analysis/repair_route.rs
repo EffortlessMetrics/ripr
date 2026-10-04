@@ -11,12 +11,16 @@
 //! actionability flip is fail-closed and every ineligible state carries a
 //! typed reason.
 
+pub(crate) use super::new_test_target::NewTestTargetAdmission;
 use super::seam_classification::ClassifiedSeam;
 use super::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind};
 use super::test_grip_evidence::{RelatedTestGrip, TestGripEvidence, TestTargetEvidence};
 use crate::analysis::canonical_gap::canonical_gap_identity;
 use crate::domain::{OracleKind, OracleStrength, RelationReason, StageState};
-use std::path::PathBuf;
+
+pub(crate) use super::new_test_target::{
+    NewTestKind, NewTestProposalProvenance, NewTestTargetProposal,
+};
 
 pub(crate) const REPAIR_ROUTE_AUTHORITY_BOUNDARY: &str =
     "analysis/producer-owned-repair-route-readiness";
@@ -35,48 +39,19 @@ pub(crate) enum RepairRouteState {
 /// The producer-owned choice of where a test-only repair may land.
 ///
 /// `Missing` is deliberate: a related-test summary, a path, or a renderer
-/// heuristic is not permission to edit that location. New-test proposals are
-/// represented explicitly so a future producer can supply them without
-/// overloading an existing-test identity.
-#[allow(
-    dead_code,
-    reason = "reserved typed target proposal variants await a RustIndex proposal producer"
-)]
+/// heuristic is not permission to edit that location. Ranking prefers an
+/// admitted `Existing` target. A DirectOwnerCall related test that failed
+/// target admission stays `Missing` rather than inventing a new test.
+/// Advisory observers (`SameModule`, `WeakTokenSubstring`,
+/// `ImportPathAffinity`) do not occupy that slot: a producer-owned
+/// `Proposed` Integration or InlineUnit remains eligible when no suitable
+/// existing target was admitted. `Proposed` is not an existing-test identity.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum RepairTargetSelection {
     Existing(TestTargetEvidence),
     Proposed(NewTestTargetProposal),
     Missing,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
-pub(crate) struct NewTestTargetProposal {
-    pub(crate) kind: NewTestKind,
-    pub(crate) file: PathBuf,
-    pub(crate) owner: String,
-    pub(crate) provenance: NewTestProposalProvenance,
-}
-
-#[allow(
-    dead_code,
-    reason = "reserved typed new-test kinds await a RustIndex proposal producer"
-)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum NewTestKind {
-    InlineUnit,
-    Integration,
-}
-
-#[allow(
-    dead_code,
-    reason = "reserved typed proposal provenance awaits a RustIndex proposal producer"
-)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum NewTestProposalProvenance {
-    ProducerOwned,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
@@ -258,9 +233,13 @@ fn value_route_readiness(seam: &RepoSeam, evidence: &TestGripEvidence) -> Repair
     ];
     let has_discriminator = has_exact_discriminator(seam, evidence);
     let selected_test_target = existing_test_target(evidence, false);
-    // No related test is not evidence of a safe new-test location. A future
-    // producer may populate `Proposed`; until then the target is Missing.
-    let has_safe_target = selected_test_target.is_some();
+    let admission = evidence.new_test_target.as_ref();
+    let target_selection = value_target_selection(
+        selected_test_target.as_ref(),
+        admission,
+        &evidence.related_tests,
+    );
+    let has_safe_target = !matches!(target_selection, RepairTargetSelection::Missing);
     let state = if has_discriminator && has_safe_target {
         RepairRouteState::Ready
     } else {
@@ -272,6 +251,11 @@ fn value_route_readiness(seam: &RepoSeam, evidence: &TestGripEvidence) -> Repair
     }
     if has_safe_target {
         present_evidence.push(SAFE_TEST_TARGET_EVIDENCE.to_string());
+        if matches!(target_selection, RepairTargetSelection::Proposed(_))
+            && let Some(admission) = admission
+        {
+            present_evidence.push(admission.present_reason().to_string());
+        }
     }
     let mut missing_evidence = Vec::new();
     if !has_discriminator {
@@ -279,6 +263,9 @@ fn value_route_readiness(seam: &RepoSeam, evidence: &TestGripEvidence) -> Repair
     }
     if !has_safe_target {
         missing_evidence.push(SAFE_TEST_TARGET_EVIDENCE.to_string());
+        if let Some(reason) = admission.and_then(NewTestTargetAdmission::missing_reason) {
+            missing_evidence.push(reason);
+        }
     }
     RepairRouteReadiness {
         state,
@@ -287,10 +274,7 @@ fn value_route_readiness(seam: &RepoSeam, evidence: &TestGripEvidence) -> Repair
         required_evidence: required,
         present_evidence,
         missing_evidence,
-        target_selection: selected_test_target
-            .clone()
-            .map(RepairTargetSelection::Existing)
-            .unwrap_or(RepairTargetSelection::Missing),
+        target_selection,
         test_target: selected_test_target,
         proposed_oracle: Some(oracle_for_seam(seam.kind())),
         current_oracle: current_oracle(evidence, false, true),
@@ -517,12 +501,13 @@ fn fact_discriminator_key(
                     right,
                 });
             }
-            let right = fact
-                .trim()
+            let trimmed = fact.trim();
+            let right = trimmed
                 .strip_suffix(" (equality boundary)")
+                .or_else(|| trimmed.strip_suffix(" (boundary value)"))
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
-                .map(normalize_identifier)?;
+                .map(normalize_discriminator_text)?;
             Some(DiscriminatorCompatibilityKey::EqualityBoundary { right })
         }
         RequiredDiscriminator::ReturnValue { .. } => exact_key("return_value", fact),
@@ -542,8 +527,8 @@ fn exact_key(kind: &'static str, value: &str) -> Option<DiscriminatorCompatibili
 fn comparison_parts(value: &str) -> Option<(String, String, String)> {
     for operator in [" >= ", " <= ", " == ", " != ", " > ", " < "] {
         if let Some((left, right)) = value.split_once(operator) {
-            let left = normalize_identifier(left);
-            let right = normalize_identifier(right);
+            let left = normalize_discriminator_text(left);
+            let right = normalize_discriminator_text(right);
             if !left.is_empty() && !right.is_empty() {
                 return Some((left, operator.trim().to_string(), right));
             }
@@ -553,11 +538,9 @@ fn comparison_parts(value: &str) -> Option<(String, String, String)> {
 }
 
 fn normalize_discriminator_text(value: &str) -> String {
-    value.trim().to_ascii_lowercase()
-}
-
-fn normalize_identifier(value: &str) -> String {
-    value.trim().to_ascii_lowercase()
+    // Source identities are case-sensitive, including literal contents.
+    // Only surrounding formatting whitespace may be discarded.
+    value.trim().to_string()
 }
 
 fn direct_owner_related_test(evidence: &TestGripEvidence) -> Option<&RelatedTestGrip> {
@@ -572,6 +555,37 @@ fn direct_owner_related_test_with_target(evidence: &TestGripEvidence) -> Option<
         test.relation_reason == crate::domain::RelationReason::DirectOwnerCall
             && test.test_target.is_some()
     })
+}
+
+fn value_target_selection(
+    existing: Option<&TestTargetEvidence>,
+    admission: Option<&NewTestTargetAdmission>,
+    related_tests: &[RelatedTestGrip],
+) -> RepairTargetSelection {
+    if let Some(existing) = existing {
+        return RepairTargetSelection::Existing(existing.clone());
+    }
+    // A DirectOwnerCall observer that failed target admission occupies the
+    // existing-test slot. Falling through to Proposed would keep a repair
+    // packet after authority refused the test we already found. Advisory
+    // relations never supplied a suitable Existing target, so they must not
+    // block an independently admitted producer-owned proposal.
+    if related_tests.iter().any(|test| {
+        test.relation_reason == RelationReason::DirectOwnerCall && test.test_target.is_none()
+    }) {
+        return RepairTargetSelection::Missing;
+    }
+    if let Some(proposal) = admission.and_then(|admission| admission.proposal.clone()) {
+        if !matches!(
+            proposal.kind,
+            NewTestKind::Integration | NewTestKind::InlineUnit
+        ) || proposal.provenance != NewTestProposalProvenance::ProducerOwned
+        {
+            return RepairTargetSelection::Missing;
+        }
+        return RepairTargetSelection::Proposed(proposal);
+    }
+    RepairTargetSelection::Missing
 }
 
 fn existing_test_target(
@@ -676,25 +690,23 @@ fn has_external_language_related_test(entry: &ClassifiedSeam) -> bool {
     })
 }
 
+// One shared inventory, not a private list: #4094 routed `.mts`/`.cts` into the
+// TypeScript adapter, so a modern related test is cross-language evidence here
+// exactly like a `.ts` one. The TS/JS family consumes the routed extension
+// authority from `analysis::language::router`, the same owner the router itself
+// and the agent packet projection read; the remaining bridge languages keep
+// their historical lowercase fold here. See
+// `tests::external_language_test_extensions_cover_bridge_language_families` and
+// `tests::modern_ts_related_tests_keep_the_repair_packet_fail_closed`.
 fn is_external_language_extension(extension: &str) -> bool {
-    matches!(
-        extension.to_ascii_lowercase().as_str(),
-        "ts" | "tsx"
-            | "js"
-            | "jsx"
-            | "mjs"
-            | "cjs"
-            | "py"
-            | "rb"
-            | "java"
-            | "c"
-            | "cc"
-            | "cpp"
-            | "cxx"
-            | "swift"
-            | "kt"
-            | "kts"
-    )
+    let extension = extension.to_ascii_lowercase();
+    // #4116: the TS/JS family consumes the shared extension authority; the
+    // remaining bridge languages keep their historical lowercase fold.
+    crate::analysis::is_ts_js_source_extension(&extension)
+        || matches!(
+            extension.as_str(),
+            "py" | "rb" | "java" | "c" | "cc" | "cpp" | "cxx" | "swift" | "kt" | "kts"
+        )
 }
 
 fn cross_language_surface_hint(entry: &ClassifiedSeam) -> bool {
@@ -777,10 +789,15 @@ fn text_has_cross_language_marker(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    mod case_identity;
+
     use super::{
-        ClassifiedSeam, RepairPacketIneligibility, cross_language_oracle_visibility_unresolved,
-        discriminator_fact_matches, is_safe_for_repair_packet, repair_packet_eligibility,
-        repair_packet_queue_visible,
+        ClassifiedSeam, RepairPacketIneligibility, RepairTargetSelection,
+        cross_language_oracle_visibility_unresolved, discriminator_fact_matches,
+        is_safe_for_repair_packet, repair_packet_eligibility, repair_packet_queue_visible,
+    };
+    use crate::analysis::new_test_target::{
+        NewTestKind, NewTestProposalProvenance, NewTestTargetAdmission, NewTestTargetProposal,
     };
     use crate::analysis::seams::{
         ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind,
@@ -871,8 +888,126 @@ mod tests {
                     reason: "observed values do not include the equality-boundary case".to_string(),
                     flow_sink: None,
                 }],
+                new_test_target: None,
             },
             class,
+        }
+    }
+
+    fn inline_unit_admission() -> NewTestTargetAdmission {
+        NewTestTargetAdmission {
+            proposal: Some(NewTestTargetProposal {
+                kind: NewTestKind::InlineUnit,
+                file: PathBuf::from("src/pricing.rs"),
+                owner: "pricing::discounted_total".to_string(),
+                provenance: NewTestProposalProvenance::ProducerOwned,
+            }),
+            region: None,
+            blocker: None,
+        }
+    }
+
+    #[test]
+    fn producer_owned_inline_unit_proposal_is_a_safe_target() -> Result<(), String> {
+        let mut entry = classified_with(boundary_seam(), SeamGripClass::WeaklyGripped, Vec::new());
+        entry.evidence.new_test_target = Some(inline_unit_admission());
+        let eligibility = repair_packet_eligibility(&entry);
+        match &eligibility.readiness.target_selection {
+            RepairTargetSelection::Proposed(proposal) => {
+                assert_eq!(proposal.kind, NewTestKind::InlineUnit);
+            }
+            other => return Err(format!("expected Proposed InlineUnit, got {other:?}")),
+        }
+        assert!(eligibility.readiness.is_repair_ready());
+        assert!(eligibility.eligible());
+        Ok(())
+    }
+
+    #[test]
+    fn existing_target_stays_preferred_when_an_inline_proposal_is_also_present()
+    -> Result<(), String> {
+        let mut entry = classified_with(
+            boundary_seam(),
+            SeamGripClass::WeaklyGripped,
+            vec![rust_related_test(RelationReason::DirectOwnerCall)],
+        );
+        entry.evidence.new_test_target = Some(inline_unit_admission());
+        match repair_packet_eligibility(&entry).readiness.target_selection {
+            RepairTargetSelection::Existing(_) => Ok(()),
+            other => Err(format!("Existing must outrank Proposed, got {other:?}")),
+        }
+    }
+
+    #[test]
+    fn refused_direct_owner_target_does_not_fall_through_to_proposed() -> Result<(), String> {
+        let mut related = rust_related_test(RelationReason::DirectOwnerCall);
+        related.test_target = None;
+        let mut entry =
+            classified_with(boundary_seam(), SeamGripClass::WeaklyGripped, vec![related]);
+        entry.evidence.new_test_target = Some(inline_unit_admission());
+        let eligibility = repair_packet_eligibility(&entry);
+        match eligibility.readiness.target_selection {
+            RepairTargetSelection::Missing => {}
+            other => {
+                return Err(format!(
+                    "refused DirectOwnerCall must stay Missing, not fall through to {other:?}"
+                ));
+            }
+        }
+        if eligibility.eligible() || eligibility.readiness.is_repair_ready() {
+            return Err(
+                "failed existing-target authority must not keep a repair packet".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn advisory_related_observer_does_not_block_producer_owned_proposal() -> Result<(), String> {
+        for reason in [
+            RelationReason::WeakTokenSubstring,
+            RelationReason::SameModule,
+            RelationReason::ImportPathAffinity,
+        ] {
+            let mut related = rust_related_test(reason);
+            related.test_target = None;
+            let mut entry =
+                classified_with(boundary_seam(), SeamGripClass::WeaklyGripped, vec![related]);
+            entry.evidence.new_test_target = Some(inline_unit_admission());
+            let eligibility = repair_packet_eligibility(&entry);
+            match &eligibility.readiness.target_selection {
+                RepairTargetSelection::Proposed(proposal)
+                    if proposal.kind == NewTestKind::InlineUnit => {}
+                other => {
+                    return Err(format!(
+                        "{reason:?}: advisory observer must not block Proposed, got {other:?}"
+                    ));
+                }
+            }
+            if !eligibility.eligible() || !eligibility.readiness.is_repair_ready() {
+                return Err(format!(
+                    "{reason:?}: independently admitted proposal must stay eligible"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn producer_owned_integration_proposal_is_a_safe_target() -> Result<(), String> {
+        let mut entry = classified_with(boundary_seam(), SeamGripClass::WeaklyGripped, Vec::new());
+        let mut admission = inline_unit_admission();
+        if let Some(proposal) = admission.proposal.as_mut() {
+            proposal.kind = NewTestKind::Integration;
+            proposal.file = PathBuf::from("tests/pricing.rs");
+        }
+        entry.evidence.new_test_target = Some(admission);
+        match repair_packet_eligibility(&entry).readiness.target_selection {
+            RepairTargetSelection::Proposed(proposal) => {
+                assert_eq!(proposal.kind, NewTestKind::Integration);
+                Ok(())
+            }
+            other => Err(format!("expected Proposed Integration, got {other:?}")),
         }
     }
 
@@ -963,11 +1098,16 @@ mod tests {
         Ok(())
     }
 
+    /// Every routed TypeScript/JavaScript extension, including the modern
+    /// `.mts`/`.cts` suffixes from #4094, must stay visible to the
+    /// fail-closed cross-language gate. `.mts`/`.cts` are the discriminating
+    /// rows: without the shared external-language authority this seam looks
+    /// repair-ready while its only related test is a TypeScript observer.
     #[test]
     fn external_language_test_extensions_cover_bridge_language_families() -> Result<(), String> {
         for extension in [
-            "ts", "tsx", "js", "jsx", "mjs", "cjs", "py", "rb", "java", "c", "cc", "cpp", "cxx",
-            "swift", "kt", "kts",
+            "ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "py", "rb", "java", "c", "cc",
+            "cpp", "cxx", "swift", "kt", "kts",
         ] {
             let mut related_test = external_related_test();
             related_test.file = PathBuf::from(format!("tests/bridge.{extension}"));
@@ -983,7 +1123,9 @@ mod tests {
             );
         }
 
-        for extension in ["rs", "txt"] {
+        // Near-miss suffixes stay unknown: admitting routed extensions must not
+        // become broad suffix matching, or an unrelated file would block repair.
+        for extension in ["rs", "txt", "mt", "mjsx", "ctsx"] {
             let mut related_test = external_related_test();
             related_test.file = PathBuf::from(format!("tests/bridge.{extension}"));
             let entry = classified_with(
@@ -998,6 +1140,38 @@ mod tests {
             );
         }
 
+        Ok(())
+    }
+
+    /// End-to-end control for the modern suffixes: a `.mts` related test must
+    /// produce the same fail-closed ineligibility a `.ts` one does, with the
+    /// named reason. #4116/#4120 routed `.mts`/`.cts` through the shared
+    /// extension authority; before that the entry reported repair-ready, which
+    /// is the fail-open this pin guards. `external_language_test_extensions_
+    /// cover_bridge_language_families` pins the extension list itself, so this
+    /// test is the one that fails if the gate stops consulting it.
+    #[test]
+    fn modern_ts_related_tests_keep_the_repair_packet_fail_closed() -> Result<(), String> {
+        for extension in ["ts", "mts", "cts", "tsx"] {
+            let mut related_test = external_related_test();
+            related_test.file = PathBuf::from(format!("tests/bridge.{extension}"));
+            let entry = classified_with(
+                boundary_seam(),
+                SeamGripClass::WeaklyGripped,
+                vec![related_test],
+            );
+
+            let eligibility = repair_packet_eligibility(&entry);
+            assert_eq!(
+                eligibility.ineligibility,
+                Some(RepairPacketIneligibility::CrossLanguageOracleVisibilityUnresolved),
+                ".{extension} related test must block the packet with the cross-language reason"
+            );
+            assert!(
+                !is_safe_for_repair_packet(&entry),
+                ".{extension} related test must not be repair-ready"
+            );
+        }
         Ok(())
     }
 

@@ -11,6 +11,7 @@ are allowlisted exceptions, not casual additions.
 Non-Rust files are allowed when they belong to an approved surface:
 
 - VS Code extension TypeScript under `editors/vscode`
+- stdlib Python portable native-ripr consumer under `tools/python/portable-ripr-consumer` (#4713)
 - GitHub Actions workflow and issue-template YAML
 - fixture inputs used by analyzer tests
 - documentation and snippets
@@ -22,6 +23,34 @@ The canonical allowlist lives in
 `cargo xtask check-file-policy` consumes this TOML directly, so each exception
 records its `surface`, `classification`, `covered_by` checks, owner, and reason
 in one Rust-read policy file.
+
+### Host applicability of test coverage
+
+`covered_by` remains required and applies on every host. Optional
+`covered_by_unix` and `covered_by_windows` arrays supplement those common
+checks with `cargo test` selectors for the named host family. These scoped
+arrays must be nonempty. Unknown platform fields, duplicate keys, malformed
+TOML, and non-test commands in scoped arrays are rejected.
+
+Coverage arrays use decoded TOML string values, including multiline arrays,
+trailing and inter-item comments, quoted `#`, and escaped content. Entry-line
+attribution comes from parsed table spans, so header-like text in strings or
+comments does not create an entry. TOML value-admission checks still apply to
+ignored metadata, including numeric representability; this does not add type
+restrictions to the existing `expires` or `retired` fields.
+
+The existing file-policy validator enumerates every applicable test selector
+and rejects failed enumeration or zero selected tests. It reports the host,
+declared applicability, selected counts, and test identities in
+`target/ripr/reports/file-policy.md`. An inapplicable selector is explicitly
+`not_applicable`, with `selected=not_enumerated`; it provides no coverage on
+that host. Enumeration does not claim the tests executed or passed.
+
+For the portable native consumer, common packet-digest and source controls
+remain required on Windows. The native check/pilot integration target and
+Python runtime/classifier controls are Unix-only. The ledger retains the
+native target under `covered_by_unix`; a native Windows consumer journey is
+not implemented or claimed by this applicability declaration (#5037).
 
 ## Adding A Non-Rust Programming File
 
@@ -39,11 +68,18 @@ files such as `.ts`, `.js`, `.py`, and `.sh`:
 2. the file must match a Rust-coded retention rule for an approved runtime
    surface that cannot reasonably move to Rust.
 
-Today, the only retained programming surface is the VS Code extension
-TypeScript code and tests, because that client runs inside the VS Code
-Extension Host and binds directly to VS Code's TypeScript API. Other repo
-automation, release helpers, fixture runners, and policy checks should be
-converted to Rust/`xtask` rather than newly allowlisted.
+Today, retained programming surfaces are:
+
+- VS Code extension TypeScript under `editors/vscode`, because that client
+  runs inside the VS Code Extension Host and binds directly to VS Code's
+  TypeScript API;
+- the stdlib Python portable native-ripr consumer under
+  `tools/python/portable-ripr-consumer/` (#4713), because the consumer has
+  to run in Python-capable agent environments that cannot compile RIPR or
+  search PATH for it. Packet staging and oracles stay in Rust/`xtask`.
+
+Other repo automation, release helpers, fixture runners, and policy checks
+should be converted to Rust/`xtask` rather than newly allowlisted.
 
 If the file does not match the current allowlist, update the allowlist with an
 owner and reason in the same PR. If it is a programming-language file, also

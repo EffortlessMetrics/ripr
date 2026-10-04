@@ -5,7 +5,7 @@ use crate::agent::loop_commands::{
     WORKFLOW_MANIFEST_ARTIFACT, agent_status_command,
 };
 use crate::analysis_outcome::AnalysisOutcome;
-use crate::app::agent_status::AgentStatusReport;
+use crate::app::agent_status::{AgentStatusReport, artifact_required_by_active_loop};
 use serde_json::Value;
 use std::path::Path;
 
@@ -156,6 +156,24 @@ pub(super) fn agent_status_surface(
         .filter(|artifact| artifact.present)
         .count();
     let missing = status.artifacts.len().saturating_sub(present);
+    // Count only artifacts the active loop mode actually requires, with the
+    // same superseded-artifact rule the status JSON reports, so this summary
+    // cannot call every artifact "required" while a repair attempt makes the
+    // repository-global projections advisory.
+    let repair_attempt_present = !status.repair_attempts.is_empty();
+    let required_count = status
+        .artifacts
+        .iter()
+        .filter(|artifact| artifact_required_by_active_loop(&artifact.name, repair_attempt_present))
+        .count();
+    let required_present = status
+        .artifacts
+        .iter()
+        .filter(|artifact| {
+            artifact.present
+                && artifact_required_by_active_loop(&artifact.name, repair_attempt_present)
+        })
+        .count();
     let warnings = status.warnings.len();
     AgentReviewSurface {
         name: "agent_status".to_string(),
@@ -165,8 +183,11 @@ pub(super) fn agent_status_surface(
         status: status.status().to_string(),
         required: true,
         summary: format!(
-            "{present} required artifacts present, {missing} missing, {warnings} warnings. Command: {}",
-            agent_status_command(root_display, Some(WORKFLOW_AGENT_STATUS_ARTIFACT))
+            "{required_present} of {required_count} required artifacts present, {missing} missing, {warnings} warnings. Command: {}",
+            agent_status_command(
+                &crate::agent::loop_commands::bound_root(root_display),
+                Some(WORKFLOW_AGENT_STATUS_ARTIFACT)
+            )
         ),
     }
 }

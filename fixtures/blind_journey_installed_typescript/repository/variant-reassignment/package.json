@@ -1,0 +1,12 @@
+{
+  "name": "pricing-threshold-fixture",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bounded installed-journey fixture: one discount threshold moved from exclusive to inclusive.",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "3.2.4"
+  }
+}

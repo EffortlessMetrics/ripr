@@ -38,10 +38,12 @@ path, not the changed sink.
 
 ## Then
 
-ripr classifies the change `weakly_exposed`. The render test does not call the
-changed owner (`Badge(...)` is not `formatBadge(...)`), so the only link is
-the same-file-stem proximity heuristic — advisory-only, and heuristic links
-cannot borrow the extracted strong assertion as proof of observation.
+ripr classifies the change `no_static_path`. The render test does not call or
+otherwise reference the changed owner (`Badge(...)` is not `formatBadge(...)`),
+so the same-file stem alone does not relate it (RIPR-SPEC-0027) and the
+extracted strong assertion is never borrowed as proof of observation. The
+transitive `Badge` → `formatBadge` path stays unresolved by the syntax-first
+preview adapter.
 
 **This fixture must NEVER read `exposed`.** Crediting reach-plus-a-strong-
 oracle as `exposed` without evidence the assertion observes the changed sink

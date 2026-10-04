@@ -19,7 +19,7 @@
         "top_blocker": "typescript_tests_not_detected",
         "non_claims": ["no full-repo TypeScript seam model", "no runtime TypeScript execution", "no gate or badge authority"]
       },
-      "repair_route": "TypeScript is analyzed diff-first; run 'ripr check --base origin/main' or '--diff <file>' to evaluate changed TypeScript behavior. Full-repo TypeScript exposure is not yet modeled (named limitation)."
+      "repair_route": "TypeScript is analyzed diff-first; run 'ripr check' or '--diff <file>' to evaluate changed TypeScript behavior. Full-repo TypeScript exposure is not yet modeled (named limitation)."
     }
   ],
   "metrics": {

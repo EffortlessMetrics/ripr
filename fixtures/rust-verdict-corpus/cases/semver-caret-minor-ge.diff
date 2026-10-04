@@ -1,0 +1,13 @@
+diff --git a/src/eval.rs b/src/eval.rs
+index e6e3894..fe94355 100644
+--- a/src/eval.rs
++++ b/src/eval.rs
+@@ -146,7 +146,7 @@ fn matches_caret(cmp: &Comparator, ver: &Version) -> bool {
+     let patch = match cmp.patch {
+         None => {
+             if cmp.major > 0 {
+-                return ver.minor >= minor;
++                return minor <= ver.minor;
+             } else {
+                 return ver.minor == minor;
+             }

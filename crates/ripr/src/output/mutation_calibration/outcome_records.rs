@@ -143,7 +143,12 @@ fn has_record_signal(identity: &OutcomeIdentity, details: &RuntimeDetails) -> bo
 
 impl<'a> OutcomeObjectContext<'a> {
     fn new(object: &'a serde_json::Map<String, Value>) -> Self {
-        let mutant = nested_object(object, "mutant");
+        // cargo-mutants `outcomes.json` nests the mutant under
+        // `scenario.Mutant`; the baseline scenario is the bare string
+        // `"Baseline"` and carries no location, so it never forms a record.
+        let mutant = nested_object(object, "mutant").or_else(|| {
+            nested_object(object, "scenario").and_then(|scenario| nested_object(scenario, "Mutant"))
+        });
         let mutation = nested_object(object, "mutation");
         let location = nested_object(object, "location");
         let span = nested_object(object, "span")
@@ -172,6 +177,7 @@ impl<'a> OutcomeObjectContext<'a> {
         RuntimeDetails {
             mutation_operator: self.mutation_operator(),
             runtime_outcome: string_field_any(self.object, RUNTIME_OUTCOME_KEYS)
+                .map(|label| cargo_mutants_summary_label(&label))
                 .unwrap_or_else(|| "unknown".to_string()),
             duration: string_field_any(self.object, DURATION_KEYS),
             test_command: string_field_any(self.object, TEST_COMMAND_KEYS),
@@ -180,6 +186,8 @@ impl<'a> OutcomeObjectContext<'a> {
 
     fn mutant_id(&self) -> Option<String> {
         string_field_any(self.object, MUTANT_ID_KEYS)
+            .or_else(|| cargo_mutants_name(self.object))
+            .or_else(|| self.mutant.and_then(cargo_mutants_name))
             .or_else(|| {
                 self.mutant
                     .and_then(|nested| string_field_any(nested, MUTANT_ID_KEYS))
@@ -252,6 +260,32 @@ impl<'a> OutcomeObjectContext<'a> {
             })
             .unwrap_or_else(|| "unknown".to_string())
     }
+}
+
+/// cargo-mutants records (in both `mutants.json` and `outcomes.json`) carry
+/// no `id`; their unique `name` (`src/lib.rs:101:9: replace ... with None`)
+/// is the only key shared by the two files. Only objects with the
+/// cargo-mutants record signature (`name` + `file` + `genre`) use it, so a
+/// free-form `name` in other shapes stays an operator description.
+fn cargo_mutants_name(object: &serde_json::Map<String, Value>) -> Option<String> {
+    if object.contains_key("genre") && object.contains_key("file") {
+        string_field_any(object, &["name"])
+    } else {
+        None
+    }
+}
+
+/// Map cargo-mutants `summary` values to the runtime labels the calibration
+/// buckets read. Unrecognized labels pass through unchanged.
+fn cargo_mutants_summary_label(label: &str) -> String {
+    match label {
+        "CaughtMutant" => "caught",
+        "MissedMutant" => "missed",
+        "Timeout" => "timeout",
+        "Unviable" => "unviable",
+        other => other,
+    }
+    .to_string()
 }
 
 fn nested_object<'a>(
@@ -365,6 +399,89 @@ mod tests {
             .ok_or_else(|| "duration-only record should be retained".to_string())?;
         assert_eq!(duration_only.line, Some(2));
         assert_eq!(duration_only.runtime_outcome, "unknown");
+        Ok(())
+    }
+    /// Shapes copied from a cargo-mutants 27.1.0 `mutants.out` (rust-hex),
+    /// combined the way `ripr calibrate --mutants-json <dir>` combines
+    /// `outcomes.json` and `mutants.json`.
+    #[test]
+    fn parses_cargo_mutants_out_directory_shapes() -> Result<(), String> {
+        let records = parse_mutation_outcomes_json(
+            r#"[
+  {
+    "outcomes": [
+      {"scenario": "Baseline", "summary": "Success"},
+      {
+        "scenario": {"Mutant": {
+          "name": "src/lib.rs:101:9: replace next -> Option<Self::Item> with None",
+          "package": "hex",
+          "file": "src/lib.rs",
+          "function": {"function_name": "next", "span": {"start": {"line": 99, "column": 5}, "end": {"line": 109, "column": 6}}},
+          "span": {"start": {"line": 101, "column": 9}, "end": {"line": 108, "column": 10}},
+          "replacement": "None",
+          "genre": "FnValue"
+        }},
+        "summary": "CaughtMutant"
+      },
+      {
+        "scenario": {"Mutant": {
+          "name": "src/lib.rs:104:43: replace >> with << in next",
+          "package": "hex",
+          "file": "src/lib.rs",
+          "span": {"start": {"line": 104, "column": 43}, "end": {"line": 104, "column": 45}},
+          "replacement": "<<",
+          "genre": "BinaryOperator"
+        }},
+        "summary": "MissedMutant"
+      }
+    ],
+    "total_mutants": 2,
+    "caught": 1,
+    "missed": 1
+  },
+  [
+    {
+      "name": "src/lib.rs:101:9: replace next -> Option<Self::Item> with None",
+      "package": "hex",
+      "file": "src/lib.rs",
+      "span": {"start": {"line": 101, "column": 9}, "end": {"line": 108, "column": 10}},
+      "replacement": "None",
+      "genre": "FnValue"
+    },
+    {
+      "name": "src/lib.rs:104:43: replace >> with << in next",
+      "package": "hex",
+      "file": "src/lib.rs",
+      "span": {"start": {"line": 104, "column": 43}, "end": {"line": 104, "column": 45}},
+      "replacement": "<<",
+      "genre": "BinaryOperator"
+    }
+  ]
+]"#,
+        )?;
+
+        assert_eq!(
+            records.len(),
+            2,
+            "one merged record per mutant: {records:?}"
+        );
+        let caught = records
+            .iter()
+            .find(|record| record.line == Some(101))
+            .ok_or_else(|| "line 101 mutant should be imported".to_string())?;
+        assert_eq!(caught.file.as_deref(), Some("src/lib.rs"));
+        assert_eq!(caught.runtime_outcome, "caught");
+        assert_eq!(caught.mutation_operator, "None");
+        let missed = records
+            .iter()
+            .find(|record| record.line == Some(104))
+            .ok_or_else(|| "line 104 mutant should be imported".to_string())?;
+        assert_eq!(missed.runtime_outcome, "missed");
+        assert_eq!(missed.mutation_operator, "<<");
+        assert_eq!(
+            missed.mutant_id.as_deref(),
+            Some("src/lib.rs:104:43: replace >> with << in next")
+        );
         Ok(())
     }
 }

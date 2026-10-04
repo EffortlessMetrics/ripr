@@ -253,7 +253,8 @@ The JSON report uses schema version `0.1`:
       "suggested_test": "Add an equality-boundary assertion.",
       "related_test": "tests/pricing.rs::applies_discount_above_threshold",
       "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json",
-      "agent_command": "ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow"
+      "repair_command": "ripr agent repair --root . --seam-id 67fc764ba37d77bd --phase before",
+      "agent_command": "ripr agent repair --root . --seam-id 67fc764ba37d77bd --phase before"
     }
   ],
   "warnings": [

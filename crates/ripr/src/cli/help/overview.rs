@@ -10,20 +10,21 @@
 /// `help_overview_fits_one_screen` pins the envelope so this cannot silently
 /// grow back into a dump.
 ///
-/// The first line is not free prose: "changed Rust code where the nearby tests
-/// may not actually catch the behavior" is the canonical description of what
-/// `ripr` looks for, listed as such in `docs/TERMINOLOGY.md` and reused in
-/// `docs/QUICKSTART.md`. Reword it there first, everywhere, or not at all —
-/// `help_runs` in `tests/cli_smoke.rs` holds this line to that vocabulary.
-pub(super) const HELP: &str = r#"ripr — find changed Rust code where nearby tests may not actually catch the
-       changed behavior.
+/// The first line is not free prose: "changed code where the nearby tests may
+/// not actually catch the behavior" is the canonical description of what
+/// `ripr` looks for, listed as such in `docs/TERMINOLOGY.md`. Reword it there
+/// first, everywhere, or not at all — `help_runs` in `tests/cli_smoke.rs`
+/// holds this line to that vocabulary. The language note stops Python and
+/// TypeScript users from concluding ripr does not apply to them.
+pub(super) const HELP: &str = r#"ripr — find changed code where nearby tests may not actually catch the
+       changed behavior (Rust; Python and TypeScript in preview).
 
 Usage:
   ripr <command> [options]
 
 Try this first:
   ripr doctor                     Check this workspace can produce evidence.
-  ripr check --base origin/main   Analyze the current diff, name the top gap.
+  ripr check                      Analyze the current diff, name the top gap.
 
 The loop is: ripr names one gap -> you add one focused test -> ripr records
 whether the gap closed. `ripr.toml` is optional; the zero-config run is the
@@ -39,15 +40,14 @@ What are you trying to do?
   Repair one named gap  ripr agent repair --seam-id ID --phase before
                         # edit one focused test
                         ripr agent repair --attempt ID --phase after
-                        # verify the applied attempt
-                        ripr agent repair --attempt ID --phase verify
-  Compose PR evidence   ripr first-pr --root . --base origin/main --head HEAD
+  Compose PR evidence   ripr first-pr --root . --base BASE --head HEAD
   Work in an editor     ripr lsp --stdio
   Adopt advisory CI     ripr init --ci github
 
 More:
   ripr help <command>    Options for one command.
   ripr help --all        Every command, grouped by area.
+  ripr help --json       Versioned machine-readable command catalog.
 
 ripr is static and advisory. It reads changed code, builds mutation-shaped
 probes, and estimates whether tests reach, infect, propagate, and reveal the
@@ -66,13 +66,19 @@ pub(super) const HELP_ALL: &str = r#"ripr — complete command reference.
 
 Task-oriented overview: ripr --help
 Options for one command: ripr help <command>
+Machine catalog: ripr help --json  (this route accepts no other arguments)
+
+Global flags (accepted in any position, before or after the command, except on ripr help --json):
+  -v, --verbose   Extra pipeline diagnostics on stderr: analyzed languages,
+                  mode, and probe/finding counts. A -v/--verbose token is
+                  always this global flag, never another flag's value.
 
 Task map:
   Diagnose setup        ripr doctor
-  Inspect one change    ripr check --base origin/main
+  Inspect one change    ripr check
   Guided repo adoption  ripr pilot --root .
   Repair one named gap  ripr agent repair --seam-id ID --phase before|after|verify
-  Compose PR evidence   ripr first-pr --root . --base origin/main --head HEAD
+  Compose PR evidence   ripr first-pr --root . --base BASE --head HEAD
   Adopt advisory CI     ripr init --ci github
 
 Setup:
@@ -84,49 +90,54 @@ Setup:
 
 Analysis:
   ripr pilot [--root PATH] [--out PATH] [--mode draft] [--max-seams 5] [--timeout-ms 30000]
-  ripr check [--base origin/main] [--worktree] [--diff PATH] [--mode draft] [--format FORMAT]
-  ripr diff [--root .] [--base origin/main] [--head HEAD] [--mode draft] [--json]
-  ripr explain [--base REV|--diff PATH] <finding-id|file:line>
-  ripr context [--base REV|--diff PATH] --at <finding-id|file:line>
-  ripr rerun --changed-test PATH [--root PATH] [--json] [--out PATH]
+  ripr check [--base REV] [--worktree] [--diff PATH] [--mode draft] [--format FORMAT]
+  ripr diff [--root .] [--base REV] [--head HEAD] [--mode draft] [--json]
+  ripr explain [--base REV] [--worktree|--diff PATH] <finding-id|file:line>
+  ripr context [--base REV] [--worktree|--diff PATH] --at <finding-id|file:line>
+  ripr rerun --changed-test PATH[::TEST_NODE] [--root PATH] [--json] [--out PATH]
+  ripr rerun --gap CANONICAL_GAP_ID --gap-ledger PATH [--root PATH] [--json] [--out PATH]
   ripr evidence-health [--root PATH] [--out PATH] [--out-md PATH] [--mutation-calibration PATH]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
 
 Editor & Agent:
   ripr lsp [--stdio]
-  ripr mcp --stdio [--root PATH]
-  ripr agent repair --root . --seam-id ID --phase before|after|verify
-  ripr agent start --root . --seam-id ID [--out target/ripr/workflow]
-  ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
-  ripr agent packet --root . --seam-id ID --json
-  ripr agent verify --root . --before before.json --after after.json --json
-  ripr agent verify-execute --root . --packet packet.json --result-json result.json --authorize --json
-  ripr agent receipt --root . --verify-json agent-verify.json --seam-id ID --json
+  ripr mcp [--stdio] [--root PATH]
+  ripr agent repair --root . --seam-id ID --phase before
+  ripr agent repair --root . (--attempt ID | --seam-id ID) --phase after
+  ripr agent repair --root . --attempt ID --phase verify --verify-authorized --verify-authority ID
+  ripr agent start --root . --seam-id ID [--out target/ripr/workflow]   [advanced]
+  ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json   [advanced]
+  ripr agent packet --root . (--seam-id ID | --gap-ledger PATH --gap-id ID) --json   [advanced]
+  ripr agent card --root . --seam-id ID [--json]   [advanced]
+  ripr agent stub --root . (--seam-id ID | --at FILE:LINE) [--write] [--json]   [advanced]
+  ripr agent verify --root . --before before.json --after after.json --json   [advanced]
+  ripr agent verify-execute --root . --packet packet.json --result-json result.json --authorize --json   [advanced]
+  ripr agent receipt --root . --verify-json agent-verify.json --seam-id ID --json   [advanced]
   ripr agent status --root . [--json]
-  ripr agent review-summary --root . [--json]
+  ripr agent review-summary --root . [--json]   [advanced]
   ripr swarm queue [--root .] [--gap-ledger target/ripr/reports/gap-decision-ledger.json] [--language python] [--top 10]
   ripr swarm ingest [--root .] --result target/ripr/workflow/agent-result.json
   ripr plus (--repo-exposure-summary target/ripr/reports/repo-exposure-summary.json|--gap-ledger target/ripr/reports/gap-decision-ledger.json) [--check]
 
 PR & Review:
   ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
-  ripr first-pr [--root .] [--base origin/main] [--head HEAD] [--gap-ledger target/ripr/reports/gap-decision-ledger.json] [--out-dir target/ripr/reports] [--check]
-  ripr start-here [same options as first-pr]
-  ripr first-action [--root .] [--pr-guidance target/ripr/review/comments.json] [--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json] [--gap-ledger target/ripr/reports/gap-decision-ledger.json] [--ledger target/ripr/reports/pr-evidence-ledger.json] [--out target/ripr/reports/first-useful-action.json]
+  ripr first-pr [--root .] [--base REV] [--head HEAD] [--gap-ledger target/ripr/reports/gap-decision-ledger.json] [--out-dir target/ripr/reports] [--check]
+  ripr start-here [same options as first-pr]   [compatibility]
+  ripr first-action [--root .] (--pr-guidance target/ripr/review/comments.json|--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json|--gap-ledger target/ripr/reports/gap-decision-ledger.json|--ledger target/ripr/reports/pr-evidence-ledger.json) [--out target/ripr/reports/first-useful-action.json]
   ripr review-comments --root . --base SHA --head SHA [--out target/ripr/review/comments.json]
   ripr pr-summary [--check] [--baseline <before.json>]
   ripr pr-evidence [--base <rev>] [--head <rev>] [--root <path>] [--check]
   ripr impacted-evidence [--pr-evidence <path>] [--label <label>] [--labels <csv>] [--check]
   ripr annotations [--comments <path>] [--out <path>] [--check]
-  ripr pr-ledger record --pr-number 123 --base SHA --head SHA [--gate target/ripr/reports/gate-decision.json] [--baseline-delta target/ripr/reports/baseline-debt-delta.json] [--zero-status target/ripr/reports/ripr-zero-status.json] [--out target/ripr/reports/pr-evidence-ledger.json]
+  ripr pr-ledger record --pr-number 123 --base SHA --head SHA [--gate target/ripr/reports/gate-decision.json] [--baseline-delta target/ripr/reports/baseline-debt-delta.json] [--zero-status target/ripr/reports/ripr-zero-status.json] [--out target/ripr/reports/pr-evidence-ledger.json] [--out-jsonl .ripr/pr-evidence-ledger.jsonl]
   ripr pr-comments plan --pr-guidance target/ripr/review/comments.json [--existing-comments target/ripr/review/existing-comments.json] [--mode off|plan|inline] [--out target/ripr/review/comment-publish-plan.json]
-  ripr pr-review front-panel [--pr-guidance target/ripr/review/comments.json] [--first-action target/ripr/reports/first-useful-action.json] [--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json] [--assistant-health target/ripr/reports/assistant-loop-health.json] [--ledger target/ripr/reports/pr-evidence-ledger.json] [--out target/ripr/reports/pr-review-front-panel.json]
+  ripr pr-review front-panel (--pr-guidance target/ripr/review/comments.json|--first-action target/ripr/reports/first-useful-action.json|--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json|--assistant-health target/ripr/reports/assistant-loop-health.json|--ledger target/ripr/reports/pr-evidence-ledger.json) [--out target/ripr/reports/pr-review-front-panel.json]
   ripr coverage-grip frontier (--ledger target/ripr/reports/pr-evidence-ledger.json|--baseline-delta target/ripr/reports/baseline-debt-delta.json|--zero-status target/ripr/reports/ripr-zero-status.json) [--coverage target/ripr/reports/coverage-summary.json] [--out target/ripr/reports/coverage-grip-frontier.json]
   ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json [--out target/ripr/reports/test-oracle-assistant-proof.json]
   ripr assistant-loop health --proof target/ripr/reports/test-oracle-assistant-proof.json [--out target/ripr/reports/assistant-loop-health.json]
 
 Policy & Gate:
-  ripr gate evaluate --pr-guidance PATH [--mode visible-only|acknowledgeable] [--labels-json PATH] [--out target/ripr/reports/gate-decision.json]
+  ripr gate evaluate --pr-guidance PATH [--mode visible-only|acknowledgeable|baseline-check|calibrated-gate] [--labels-json PATH] [--out target/ripr/reports/gate-decision.json]
   # acknowledgeable mode blocks eligible gaps unless the PR carries the configured waiver label (default: ripr-waive)
   ripr baseline create --from target/ripr/reports/gate-decision.json [--out .ripr/gate-baseline.json] [--dry-run] [--force]
   ripr baseline diff --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json [--out target/ripr/reports/baseline-debt-delta.json] [--out-md target/ripr/reports/baseline-debt-delta.md]
@@ -134,7 +145,7 @@ Policy & Gate:
   ripr zero status --delta target/ripr/reports/baseline-debt-delta.json [--baseline .ripr/gate-baseline.json] [--gap-ledger target/ripr/reports/gap-decision-ledger.json] [--gate target/ripr/reports/gate-decision.json] [--out target/ripr/reports/ripr-zero-status.json] [--out-md target/ripr/reports/ripr-zero-status.md]
   ripr policy readiness [--gate-decision target/ripr/reports/gate-decision.json] [--baseline-delta target/ripr/reports/baseline-debt-delta.json] [--out target/ripr/reports/policy-readiness.json] [--out-md target/ripr/reports/policy-readiness.md]
   ripr policy operations --policy-readiness target/ripr/reports/policy-readiness.json [--waiver-aging target/ripr/reports/waiver-aging.json] [--suppression-health target/ripr/reports/suppression-health.json] [--out target/ripr/reports/policy-operations.json] [--out-md target/ripr/reports/policy-operations.md]
-  ripr policy history --current target/ripr/reports/policy-operations.json [--history .ripr/policy-history.jsonl] [--commit HEAD] [--pr-number 123] [--out target/ripr/reports/policy-history.json] [--out-md target/ripr/reports/policy-history.md]
+  ripr policy history --current target/ripr/reports/policy-operations.json [--history .ripr/policy-history.jsonl] [--commit HEAD] [--pr-number 123] [--out target/ripr/reports/policy-history.json] [--out-md target/ripr/reports/policy-history.md] [--out-jsonl .ripr/policy-history.jsonl]
   ripr policy promote --to baseline-check --operations target/ripr/reports/policy-operations.json [--history target/ripr/reports/policy-history.json] [--out target/ripr/reports/policy-promotion-baseline-check.json] [--out-md target/ripr/reports/policy-promotion-baseline-check.md]
   ripr policy preview-promote --language typescript --class boundary_gap [--evidence target/ripr/reports/preview-promotion-evidence.json] [--out target/ripr/reports/preview-promotion-typescript-boundary-gap.json] [--out-md target/ripr/reports/preview-promotion-typescript-boundary-gap.md]
   ripr policy waiver-aging [--ledger target/ripr/reports/pr-evidence-ledger.json] [--history .ripr/pr-evidence-ledger.jsonl] [--out target/ripr/reports/waiver-aging.json] [--out-md target/ripr/reports/waiver-aging.md]
@@ -142,29 +153,35 @@ Policy & Gate:
 
 Reports:
   ripr reports index [--reports-dir target/ripr/reports] [--review-dir target/ripr/review] [--out target/ripr/reports/index.json]
-  ripr reports gap-ledger --records fixtures/gap-decision-ledger/corpus.json [--out target/ripr/reports/gap-decision-ledger.json]
-  ripr reports ts-limitations --check-output <path> [--out target/ripr/reports/ts-limitations.json]
-  ripr reports ts-false-actionable --corpus <path> [--out target/ripr/reports/ts-false-actionable.json]
+  ripr reports ci-packet [--root .]
+  ripr reports ci-summary [--root .] [--base-ref main] >> "$GITHUB_STEP_SUMMARY"
+  ripr reports gap-ledger (--records PATH | --repo-exposure PATH | --check-output PATH) [--out target/ripr/reports/gap-decision-ledger.json]
+  ripr reports ts-limitations --check-output <path> [--out target/ripr/reports/typescript-limitations.json]
+  ripr reports ts-false-actionable --corpus <path> [--out target/ripr/reports/typescript-false-actionable-audit.json]
   ripr receipt write --gap <canonical_gap_id> --verify-command "<cmd>" --status <verify_status> [--packet <packet_id>] [--out PATH] [--json]
   ripr receipt check [--path PATH] [--gap <canonical_gap_id>]
+  ripr feedback record --snapshot ID --reason CODE [--item ID] [--root PATH] [--json]
+  ripr feedback export [--root PATH] [--route-quality PATH] [--out PATH] [--json]
 
 What it does:
-  Reads changed Rust code, creates mutation-like probes, and estimates whether
-  tests appear to reach, infect, propagate, and reveal the changed behavior
-  through meaningful oracles. It does not run mutants.
+  Reads changed Rust code (Python and TypeScript in preview), creates
+  mutation-like probes, and estimates whether tests appear to reach, infect,
+  propagate, and reveal the changed behavior through meaningful oracles. It
+  does not run mutants.
 
 Quick start (one command per group):
   ripr doctor                                             # setup
-  ripr check --base origin/main                           # ordinary first value
+  ripr check                                              # ordinary first value
   ripr agent repair --seam-id ID --phase before           # repair
-  ripr first-pr --root . --base origin/main --head HEAD   # PR evidence
+  ripr first-pr --root . --base BASE --head HEAD          # PR evidence
   ripr init --ci github                                   # advisory CI
+  # Replace BASE with your PR base ref.
   ripr reports index                                      # reports
 
 Start-here path:
   - `ripr doctor` checks whether the local workspace and config can produce evidence.
   - `ripr check` is the ordinary first-value analysis; `ripr pilot` is the guided repo-adoption workflow.
-  - `ripr agent repair` owns the before/edit/after repair transaction; lower-level brief, packet, verify, and receipt commands remain available for control and debugging.
+  - `ripr agent repair` owns the before/edit/after repair transaction; `ripr agent card` is the compact default handoff for one seam, and the lower-level brief, packet, verify, and receipt commands remain available for control and debugging.
   - `ripr first-pr` and `ripr start-here` compose `target/ripr/reports/start-here.{json,md}` from existing artifacts; they do not run analysis or repair a gap.
   - Safe next action means repair one named gap, regenerate a missing or malformed artifact, or stop on no-action.
   - Missing artifact, stale evidence, wrong root, malformed artifact, and no actionable gap are explicit recovery states.

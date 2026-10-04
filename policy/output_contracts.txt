@@ -4,6 +4,11 @@ release_final_server_schema|ripr.release_final_server_subject_inventory.v1|Exact
 release_final_server_schema|ripr.release_final_server_provenance_inputs.v1|Prepared final server attestation inputs; no signing or verification execution.
 release_final_server_schema|ripr.release_final_server_subject_receipt.v1|Bounded successful/rejected final server preparation receipt; publication remains ineligible.
 
+agent_card_refusal_kind|budget_overflow|ripr agent card typed refusal kind: the card builder, route gate, or budget refused to mint the card; fall back to the canonical packet.
+agent_card_refusal_kind|identity_unnameable|ripr agent card typed refusal kind: nothing on the seam names a portable workspace identity; retrieve the full packet instead.
+agent_card_refusal_kind|policy_omitted|ripr agent card typed refusal kind: the seam's grip class is omitted from agent results by policy; check the agent brief policy config.
+agent_card_refusal_kind|seam_not_found|ripr agent card typed refusal kind: the requested seam id names no seam in the current inventory; re-list seams or correct the id.
+agent_card_refusal_kind|witness_unavailable|ripr agent card typed refusal kind: the witness analysis could not produce the seam's witness; rerun the analysis or pick another seam.
 confidence_label|ambiguous_runtime_join|Mutation calibration confidence label.
 confidence_label|contradicts_static_clean|Mutation calibration confidence label.
 confidence_label|contradicts_static_gap|Mutation calibration confidence label.
@@ -29,15 +34,24 @@ exposure_class|reachable_unrevealed|Static classification value.
 exposure_class|static_unknown|Static classification value.
 exposure_class|weakly_exposed|Static classification value.
 flow_sink|call_effect|Flow sink value.
+flow_sink|config_change|Flow sink value.
 flow_sink|error_variant|Flow sink value.
+flow_sink|event_call|Flow sink value.
+flow_sink|log_message|Flow sink value.
 flow_sink|match_arm|Flow sink value.
+flow_sink|persistence|Flow sink value.
 flow_sink|return_value|Flow sink value.
+flow_sink|state_write|Flow sink value.
 flow_sink|struct_field|Flow sink value.
 flow_sink|unknown|Flow sink value.
 ingest_reason|forbidden_edit|Swarm-ingest classifier reason: forbidden-file edit forces unknown outcome.
 ingest_reason|missing_verify|Swarm-ingest classifier reason: verify evidence absent or failing.
 ingest_reason|movement_without_snapshot_provenance|Swarm-ingest classifier reason: movement claimed without before/after sha256 artifact provenance.
 ingest_reason|stale_packet|Swarm-ingest classifier reason: packet marked stale; movement claim discarded.
+kind|agent_card_refusal|Typed refusal envelope of the ripr agent card handoff failure states (#5007, schema 0.1).
+kind|python_repair_driver_binding|Prepare binding and apply record for the governed Python repair driver (schema 0.1).
+kind|python_repair_verification_check_report|Structural check report for Python repair verification receipts (schema 0.1).
+kind|python_repair_verification_receipt|Immutable Python repair verification candidate receipt (schema 0.1).
 oracle_alignment|alias|Python oracle observes an import alias of the changed owner.
 oracle_alignment|changed_sink_token|Python oracle observes a changed-sink token from the changed line.
 oracle_alignment|direct|Python oracle observes the changed owner by name.
@@ -67,6 +81,8 @@ probe_family|predicate|Probe family value.
 probe_family|return_value|Probe family value.
 probe_family|side_effect|Probe family value.
 probe_family|static_unknown|Probe family value.
+repair_card_budget_version|repair-card-budget-v1|Current repair card detail/budget version.
+repair_card_schema_version|repair_card.v1|Current repair card schema version.
 schema_version|0.2|Current check JSON schema version.
 severity|info|Output and LSP severity value.
 severity|note|Output and LSP severity value.
@@ -81,6 +97,25 @@ stage_state|opaque|RIPR stage state value.
 stage_state|unknown|RIPR stage state value.
 stage_state|weak|RIPR stage state value.
 stage_state|yes|RIPR stage state value.
+static_limit_kind|cross_language_oracle_visibility_unresolved|Typed static limitation value.
+static_limit_kind|decorator_indirection|Typed static limitation value.
+static_limit_kind|dynamic_dispatch|Typed static limitation value.
+static_limit_kind|metaprogramming|Typed static limitation value.
+static_limit_kind|missing_import_graph|Typed static limitation value.
+static_limit_kind|mocked_module|Typed static limitation value.
+static_limit_kind|opaque_custom_assertion_helper|Typed static limitation value.
+static_limit_kind|property_based_test|Typed static limitation value.
+static_limit_kind|python_transitive_reach_unresolved|Typed static limitation value.
+static_limit_kind|rust_integration_public_api_path_unresolved|Typed static limitation value.
+static_limit_kind|rust_macro_reach_unresolved|Typed static limitation value.
+static_limit_kind|rust_macro_wrapped_assertion_unresolved|Typed static limitation value.
+static_limit_kind|rust_macro_wrapped_test_call_unresolved|Typed static limitation value.
+static_limit_kind|rust_subprocess_binary_reach_unresolved|Typed static limitation value.
+static_limit_kind|rust_transitive_reach_unresolved|Typed static limitation value.
+static_limit_kind|rust_value_propagation_unresolved|Typed static limitation value.
+static_limit_kind|unresolved_pytest_fixture|Typed static limitation value.
+static_limit_kind|unsupported_syntax|Typed static limitation value.
+static_limit_kind|wrapper_error_binding_unresolved|Typed static limitation value.
 stop_reason|async_boundary_opaque|Static analysis stop reason value.
 stop_reason|dynamic_dispatch_unresolved|Static analysis stop reason value.
 stop_reason|external_crate_boundary|Static analysis stop reason value.

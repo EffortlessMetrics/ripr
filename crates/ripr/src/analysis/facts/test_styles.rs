@@ -1,36 +1,38 @@
 use super::cfg_predicates;
-use super::{FileFacts, FunctionFact, FunctionSourceRole, RustIndex, TestFact};
+use super::index::{FactArena, IndexedFileFacts};
+use super::{FunctionFact, FunctionSourceRole, RustIndex, TestFact};
+use crate::analysis::cancellation;
 use crate::analysis::extract::extract_assertions;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::Path;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct FunctionKey {
-    file: PathBuf,
+struct FunctionKey<'a> {
+    file: &'a Path,
     start_line: usize,
     end_line: usize,
-    name: String,
-    body: String,
+    name: &'a str,
+    body: &'a str,
 }
 
-impl FunctionKey {
-    fn from_function(function: &FunctionFact) -> Self {
+impl<'a> FunctionKey<'a> {
+    fn from_function(function: &'a FunctionFact) -> Self {
         Self {
-            file: function.file.clone(),
+            file: &function.file,
             start_line: function.start_line,
             end_line: function.end_line,
-            name: function.name.clone(),
-            body: function.body.clone(),
+            name: &function.name,
+            body: &function.body,
         }
     }
 
-    fn from_test(test: &TestFact) -> Self {
+    fn from_test(test: &'a TestFact) -> Self {
         Self {
-            file: test.file.clone(),
+            file: &test.file,
             start_line: test.start_line,
             end_line: test.end_line,
-            name: test.name.clone(),
-            body: test.body.clone(),
+            name: &test.name,
+            body: &test.body,
         }
     }
 }
@@ -39,73 +41,77 @@ impl FunctionKey {
 /// attribute vocabulary. This runs immediately after index construction so
 /// every index consumer sees the same executable-test role regardless of
 /// which syntax producer handled the file.
-pub(super) fn normalize_index_test_styles(index: &mut RustIndex) {
+pub(super) fn normalize_index_test_styles(index: &mut RustIndex) -> Result<(), String> {
     for facts in index.files.values_mut() {
-        normalize_file_test_styles(facts);
+        cancellation::checkpoint()?;
+        normalize_indexed_file_test_styles(
+            facts,
+            &mut index.function_facts,
+            &mut index.test_facts,
+        )?;
     }
-
+    index.test_order.clear();
     let mut role_by_function = BTreeMap::new();
     let mut test_by_function = BTreeMap::new();
     for facts in index.files.values() {
-        for function in &facts.functions {
+        cancellation::checkpoint()?;
+        for &id in &facts.functions {
+            cancellation::checkpoint()?;
+            let function = &index.function_facts[id];
             role_by_function.insert(FunctionKey::from_function(function), function.source_role);
         }
-        for test in &facts.tests {
-            test_by_function.insert(FunctionKey::from_test(test), test.clone());
+        for &id in &facts.tests {
+            cancellation::checkpoint()?;
+            test_by_function.insert(FunctionKey::from_test(&index.test_facts[id]), id);
         }
     }
-
-    for function in &mut index.functions {
-        if let Some(role) = role_by_function.get(&FunctionKey::from_function(function)) {
-            function.source_role = *role;
+    let mut updates = Vec::new();
+    for &id in &index.function_order {
+        cancellation::checkpoint()?;
+        let function = &index.function_facts[id];
+        let role = role_by_function
+            .get(&FunctionKey::from_function(function))
+            .copied()
+            .unwrap_or(function.source_role);
+        updates.push((id, role));
+        if role.is_evidence_role()
+            && let Some(test) = test_by_function.remove(&FunctionKey::from_function(function))
+        {
+            index.test_order.push(test);
         }
     }
-
-    let mut normalized_tests = Vec::new();
-    for function in &index.functions {
-        if !function.source_role.is_evidence_role() {
-            continue;
-        }
-        if let Some(test) = test_by_function.remove(&FunctionKey::from_function(function)) {
-            normalized_tests.push(test);
-        }
-    }
-    index.tests = normalized_tests;
+    drop(role_by_function);
+    index.apply_function_roles(updates, std::iter::empty());
+    cancellation::checkpoint()?;
+    Ok(())
 }
 
-fn normalize_file_test_styles(facts: &mut FileFacts) {
+fn normalize_indexed_file_test_styles(
+    facts: &mut IndexedFileFacts,
+    functions: &mut FactArena<FunctionFact>,
+    tests: &mut FactArena<TestFact>,
+) -> Result<(), String> {
     let mut existing_tests = std::mem::take(&mut facts.tests)
         .into_iter()
-        .map(|test| ((test.start_line, test.name.clone()), test))
+        .map(|id| ((tests[id].start_line, tests[id].name.clone()), id))
         .collect::<BTreeMap<_, _>>();
     let lexical_lines = facts
         .used_lexical_fallback
         .then(|| facts.source.lines().collect::<Vec<_>>());
     let mut normalized_tests = Vec::new();
-
-    for function in &mut facts.functions {
-        let key = (function.start_line, function.name.clone());
-        let existing_test = existing_tests.remove(&key);
+    for &id in &facts.functions {
+        cancellation::checkpoint()?;
+        let function = &mut functions[id];
+        let existing = existing_tests.remove(&(function.start_line, function.name.clone()));
         let has_test_attribute = match lexical_lines.as_deref() {
             Some(lines) => {
                 attributes_define_test(lexical_attributes_before(lines, function.start_line))
             }
             None => attributes_define_test(function.attrs.iter().map(String::as_str)),
         };
-
-        // Parser-backed cfg(test) helpers are evidence-role functions without
-        // executable TestFacts. Preserve that producer-owned distinction while
-        // correcting prefix lookalikes that arrived with a TestFact.
         let preserve_cfg_test_role = !has_test_attribute
             && function.source_role.is_evidence_role()
             && is_inside_cfg_test_module(&facts.source, function.start_line);
-        // The normalizer's role law (#3531): the exact attribute vocabulary
-        // makes the function an executable test, the preserved cfg-test walk
-        // keeps evidence-only helper role, and everything else demotes to
-        // production — the same bit the boolean recomputed before the typed
-        // role existed. A promotion-claimed expansion keeps its explicit
-        // test-case provenance; the normalizer credits the same exact
-        // attribute family, so this only preserves which producer said so.
         let promotion_claimed_expansion =
             function.source_role == FunctionSourceRole::ParameterizedExpansion;
         function.source_role = if has_test_attribute {
@@ -119,16 +125,14 @@ fn normalize_file_test_styles(facts: &mut FileFacts) {
         } else {
             FunctionSourceRole::Production
         };
-
         if has_test_attribute {
-            normalized_tests.push(match existing_test {
-                Some(test) => test,
-                None => test_fact_from_function(function),
-            });
+            normalized_tests.push(
+                existing.unwrap_or_else(|| tests.allocate(test_fact_from_function(function))),
+            );
         }
     }
-
     facts.tests = normalized_tests;
+    Ok(())
 }
 
 fn test_fact_from_function(function: &FunctionFact) -> TestFact {

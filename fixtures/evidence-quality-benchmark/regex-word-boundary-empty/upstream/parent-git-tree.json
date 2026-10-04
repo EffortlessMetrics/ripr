@@ -1,0 +1,2264 @@
+{
+  "sha": "e28038bb6f134c486fb94350df945a2497f127b4",
+  "url": "https://api.github.com/repos/rust-lang/regex/git/trees/e28038bb6f134c486fb94350df945a2497f127b4",
+  "tree": [
+    {
+      "path": ".github",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "c8100a72c5212585c14f7b12d5eafc4d545ad84c",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/c8100a72c5212585c14f7b12d5eafc4d545ad84c"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "91151d01742c0cba1456eba36c516af7091a6d9c",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/91151d01742c0cba1456eba36c516af7091a6d9c"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug_report.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ef6cf8906e81c24d438892b0c1da12d836cd96af",
+      "size": 916,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/ef6cf8906e81c24d438892b0c1da12d836cd96af"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/config.yml",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "99fab81a91bf3c562a861090f03875b00e182ae8",
+      "size": 234,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/99fab81a91bf3c562a861090f03875b00e182ae8"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/feature_request.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a3083528f9605eeb1c6771a55fdfd9c578244dec",
+      "size": 591,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/a3083528f9605eeb1c6771a55fdfd9c578244dec"
+    },
+    {
+      "path": ".github/workflows",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "29e652e69bd7b8a4ccab33c782e7e66caa8be2a5",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/29e652e69bd7b8a4ccab33c782e7e66caa8be2a5"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "659cfce6530954d1c27d37279061ce16e7ee961f",
+      "size": 5028,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/659cfce6530954d1c27d37279061ce16e7ee961f"
+    },
+    {
+      "path": ".gitignore",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "8f7a426bd623d40680e08b595fa09362bdc248a2",
+      "size": 68,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/8f7a426bd623d40680e08b595fa09362bdc248a2"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "961b5abb8c71f935ee6b69a5d18845cc790c7ceb",
+      "size": 40898,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/961b5abb8c71f935ee6b69a5d18845cc790c7ceb"
+    },
+    {
+      "path": "Cargo.toml",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6f6ebd4d5cc7afafcc33721d4b8eea5f6941cb21",
+      "size": 6210,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/6f6ebd4d5cc7afafcc33721d4b8eea5f6941cb21"
+    },
+    {
+      "path": "HACKING.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "34af5b517cd96109ff29dcd2d83e7b0b0621ffb8",
+      "size": 16937,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/34af5b517cd96109ff29dcd2d83e7b0b0621ffb8"
+    },
+    {
+      "path": "LICENSE-APACHE",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "16fe87b06e802f094b3fbb0894b137bca2b16ef1",
+      "size": 10847,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/16fe87b06e802f094b3fbb0894b137bca2b16ef1"
+    },
+    {
+      "path": "LICENSE-MIT",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "39d4bdb5acd313c1a92dbeaa1c379aaf0596a315",
+      "size": 1071,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/39d4bdb5acd313c1a92dbeaa1c379aaf0596a315"
+    },
+    {
+      "path": "PERFORMANCE.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "8cd0d9c7194b53790a914e0c662b935e0597bb2d",
+      "size": 13591,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/8cd0d9c7194b53790a914e0c662b935e0597bb2d"
+    },
+    {
+      "path": "README.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9acd5bb4a02a36a4af41259812856d12486ba925",
+      "size": 8238,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/9acd5bb4a02a36a4af41259812856d12486ba925"
+    },
+    {
+      "path": "UNICODE.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "df7d21ed974118ed6b505fadc959c275044d1c2a",
+      "size": 10405,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/df7d21ed974118ed6b505fadc959c275044d1c2a"
+    },
+    {
+      "path": "bench",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "a06ab0cbd4019f0f7ddbec4a30da454512c58c42",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/a06ab0cbd4019f0f7ddbec4a30da454512c58c42"
+    },
+    {
+      "path": "bench/.gitignore",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5761abcfdf0c26a75374c945dfe366eaeee04285",
+      "size": 4,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/5761abcfdf0c26a75374c945dfe366eaeee04285"
+    },
+    {
+      "path": "bench/Cargo.toml",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "be8783573364db7bb28117db4cee5b97175eda37",
+      "size": 1756,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/be8783573364db7bb28117db4cee5b97175eda37"
+    },
+    {
+      "path": "bench/build.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d16cc644d2d90480a9c5ab196d2c3637bdc7f939",
+      "size": 4473,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/d16cc644d2d90480a9c5ab196d2c3637bdc7f939"
+    },
+    {
+      "path": "bench/compile",
+      "mode": "100755",
+      "type": "blob",
+      "sha": "43c9c22e58f6a5e8bdb6974daff025f6e5db4921",
+      "size": 130,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/43c9c22e58f6a5e8bdb6974daff025f6e5db4921"
+    },
+    {
+      "path": "bench/log",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "0d636d553638a4588d2a24e25433125b2f316de2",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/0d636d553638a4588d2a24e25433125b2f316de2"
+    },
+    {
+      "path": "bench/log/.gitignore",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a9a5aecf429fd8a0d81fbd5fd37006bfa498d5c1",
+      "size": 4,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/a9a5aecf429fd8a0d81fbd5fd37006bfa498d5c1"
+    },
+    {
+      "path": "bench/log/01-lazy-dfa",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "e709d02a45112117eefee81218312f151dfc7d0b",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/e709d02a45112117eefee81218312f151dfc7d0b"
+    },
+    {
+      "path": "bench/log/01-lazy-dfa/dynamic",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9ef21737d0c9267b613526529d28d1705a082975",
+      "size": 6999,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/9ef21737d0c9267b613526529d28d1705a082975"
+    },
+    {
+      "path": "bench/log/01-lazy-dfa/dynamic-no-lazy-dfa",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "50d3a136c3c827f7cf86bf449f732feee58771f7",
+      "size": 7678,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/50d3a136c3c827f7cf86bf449f732feee58771f7"
+    },
+    {
+      "path": "bench/log/01-lazy-dfa/native",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "61fc08da41be50e1ccb694fcab0d463efc8ba6dc",
+      "size": 6248,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/61fc08da41be50e1ccb694fcab0d463efc8ba6dc"
+    },
+    {
+      "path": "bench/log/01-lazy-dfa/nfa",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "994137b55ca75d56440795bf9da4872e0e93a2de",
+      "size": 7028,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/994137b55ca75d56440795bf9da4872e0e93a2de"
+    },
+    {
+      "path": "bench/log/01-lazy-dfa/pcre",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "22a66e6a8b27eb8197cf03143c049da08d9cbed5",
+      "size": 5413,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/22a66e6a8b27eb8197cf03143c049da08d9cbed5"
+    },
+    {
+      "path": "bench/log/02-set",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "b32f910321280f32edd625c7f35450dd7b73f19e",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/b32f910321280f32edd625c7f35450dd7b73f19e"
+    },
+    {
+      "path": "bench/log/02-set/dynamic",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "69c9f71754f45bc0e3902e7634c053ab34f1b45a",
+      "size": 7191,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/69c9f71754f45bc0e3902e7634c053ab34f1b45a"
+    },
+    {
+      "path": "bench/log/03-bytes",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "7338c3cb2fc88649f52611f74c803d7bdb57351d",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/7338c3cb2fc88649f52611f74c803d7bdb57351d"
+    },
+    {
+      "path": "bench/log/03-bytes/onig",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "aaf666b431203df6078a6e5404f0882d653e2cfb",
+      "size": 6216,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/aaf666b431203df6078a6e5404f0882d653e2cfb"
+    },
+    {
+      "path": "bench/log/03-bytes/pcre",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "236613ae0ff8736a8c2fd64fa43a5a3b15c03ebf",
+      "size": 6018,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/236613ae0ff8736a8c2fd64fa43a5a3b15c03ebf"
+    },
+    {
+      "path": "bench/log/03-bytes/rust",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6dec097c5c77752b438d78ca2b819af0a8084845",
+      "size": 7516,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/6dec097c5c77752b438d78ca2b819af0a8084845"
+    },
+    {
+      "path": "bench/log/03-bytes/rust-bytes",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "735d259348e89ecd15e783aab44eb5b7384a1297",
+      "size": 6009,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/735d259348e89ecd15e783aab44eb5b7384a1297"
+    },
+    {
+      "path": "bench/log/04",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "27f61ff9b32aecc42a4f0e6ef117c372797df557",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/27f61ff9b32aecc42a4f0e6ef117c372797df557"
+    },
+    {
+      "path": "bench/log/04/onig",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "81b40984fe776f28e1e901b0450bc5d1127a846c",
+      "size": 7154,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/81b40984fe776f28e1e901b0450bc5d1127a846c"
+    },
+    {
+      "path": "bench/log/04/pcre1-jit",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "2118d1f59dea8897305fb1360c6222b11b95c97e",
+      "size": 7081,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/2118d1f59dea8897305fb1360c6222b11b95c97e"
+    },
+    {
+      "path": "bench/log/04/pcre2-jit",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9a110b5ee38a79661b4801771ef8c1e7c49d1319",
+      "size": 7069,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/9a110b5ee38a79661b4801771ef8c1e7c49d1319"
+    },
+    {
+      "path": "bench/log/04/re2",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "31a6e6d48890d314bd50e009093bee36c98a1515",
+      "size": 7263,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/31a6e6d48890d314bd50e009093bee36c98a1515"
+    },
+    {
+      "path": "bench/log/04/rust",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "01e6f440d25a6aa13a735fdb0c8976ce801e62ac",
+      "size": 7455,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/01e6f440d25a6aa13a735fdb0c8976ce801e62ac"
+    },
+    {
+      "path": "bench/log/04/tcl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "934bf6e048667313d67fd534286a4dc944ce73d5",
+      "size": 6559,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/934bf6e048667313d67fd534286a4dc944ce73d5"
+    },
+    {
+      "path": "bench/log/05",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "c50ccccf6bf59ce203dffdf106f3a4ef9f43629d",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/c50ccccf6bf59ce203dffdf106f3a4ef9f43629d"
+    },
+    {
+      "path": "bench/log/05/onig",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "373b14951ed1691624b4e8ca95eb2489266a578c",
+      "size": 9438,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/373b14951ed1691624b4e8ca95eb2489266a578c"
+    },
+    {
+      "path": "bench/log/05/onig-vs-rust",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "4625e8fe897d51c6f0c3316310057c93691400f5",
+      "size": 10640,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/4625e8fe897d51c6f0c3316310057c93691400f5"
+    },
+    {
+      "path": "bench/log/05/pcre1",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "51af3613f51636e708ff76a44acc64188cf66dff",
+      "size": 9281,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/51af3613f51636e708ff76a44acc64188cf66dff"
+    },
+    {
+      "path": "bench/log/05/pcre1-vs-rust",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "1d8c0d632d41afd4ccdd62802fa4256d536e4026",
+      "size": 10528,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/1d8c0d632d41afd4ccdd62802fa4256d536e4026"
+    },
+    {
+      "path": "bench/log/05/pcre2",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "76b3242cb463908ad22f1bb124808d83842cd4fd",
+      "size": 9301,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/76b3242cb463908ad22f1bb124808d83842cd4fd"
+    },
+    {
+      "path": "bench/log/05/pcre2-vs-rust",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3d89e19b32fb497cf4ac83f994de0b7547bb05a8",
+      "size": 10528,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/3d89e19b32fb497cf4ac83f994de0b7547bb05a8"
+    },
+    {
+      "path": "bench/log/05/re2",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d1f0bea4a3303d6709658ce9df08c72d4eab053a",
+      "size": 9619,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/d1f0bea4a3303d6709658ce9df08c72d4eab053a"
+    },
+    {
+      "path": "bench/log/05/re2-vs-rust",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "180e431db4e6602b991669c1e91807c4670f6eb6",
+      "size": 10864,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/180e431db4e6602b991669c1e91807c4670f6eb6"
+    },
+    {
+      "path": "bench/log/05/rust",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "22848ccf54f76cc8a96eb82188f22c1c7908d23e",
+      "size": 9770,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/22848ccf54f76cc8a96eb82188f22c1c7908d23e"
+    },
+    {
+      "path": "bench/log/05/tcl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3e1778b7191ebc17fd5bfeed7b10723a185f4af4",
+      "size": 8933,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/3e1778b7191ebc17fd5bfeed7b10723a185f4af4"
+    },
+    {
+      "path": "bench/log/05/tcl-vs-rust",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "0faefe97daa1e321e898b3de2a41dd4e69e33aff",
+      "size": 10080,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/0faefe97daa1e321e898b3de2a41dd4e69e33aff"
+    },
+    {
+      "path": "bench/log/06",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "7a305c5db55c49c4a0d52d2ffdb8c63443bd1c10",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/7a305c5db55c49c4a0d52d2ffdb8c63443bd1c10"
+    },
+    {
+      "path": "bench/log/06/dphobos-dmd",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "bffdd29d6f11b4ff0f9a58abbb21f92e5e922a7c",
+      "size": 9537,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/bffdd29d6f11b4ff0f9a58abbb21f92e5e922a7c"
+    },
+    {
+      "path": "bench/log/06/dphobos-dmd-ct",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "426fa6ce2a2542262d6ccd5afe57efbae68aaf06",
+      "size": 9437,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/426fa6ce2a2542262d6ccd5afe57efbae68aaf06"
+    },
+    {
+      "path": "bench/log/06/dphobos-ldc",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "29f5595c76114006a671582b479a87104c956470",
+      "size": 9542,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/29f5595c76114006a671582b479a87104c956470"
+    },
+    {
+      "path": "bench/log/06/dphobos-ldc-ct",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6aaa5de7093cb21d0eb796baf26a218b370ed46f",
+      "size": 9456,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/6aaa5de7093cb21d0eb796baf26a218b370ed46f"
+    },
+    {
+      "path": "bench/log/06/pcre1",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f8a9100e1a4314091d0cb8624db90ab96c5e31f2",
+      "size": 9337,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/f8a9100e1a4314091d0cb8624db90ab96c5e31f2"
+    },
+    {
+      "path": "bench/log/06/pcre2",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "518530113f204a2d590846ed833fb4043c51f85a",
+      "size": 9347,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/518530113f204a2d590846ed833fb4043c51f85a"
+    },
+    {
+      "path": "bench/log/06/re2",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3e1585a6464928cf0f8768ead3fd4485972949e1",
+      "size": 9641,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/3e1585a6464928cf0f8768ead3fd4485972949e1"
+    },
+    {
+      "path": "bench/log/06/rust",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "53ab22287e66bfbef0f7e8288709e37a07578ba7",
+      "size": 10792,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/53ab22287e66bfbef0f7e8288709e37a07578ba7"
+    },
+    {
+      "path": "bench/log/07",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "d9cfec70c8e1bbd61325fbe94e1f9d5eecbeb31d",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/d9cfec70c8e1bbd61325fbe94e1f9d5eecbeb31d"
+    },
+    {
+      "path": "bench/log/07/boost",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5a13a1047a2f4e622440f5e37e5fdb9ec1317738",
+      "size": 9131,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/5a13a1047a2f4e622440f5e37e5fdb9ec1317738"
+    },
+    {
+      "path": "bench/log/07/dphobos-dmd",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "835a096e08dd20a73ac1a50c5db78505892dee3f",
+      "size": 9433,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/835a096e08dd20a73ac1a50c5db78505892dee3f"
+    },
+    {
+      "path": "bench/log/07/dphobos-dmd-ct",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9dd6d02fecdcf13b7dac9eaa6ebf24c2e053b3b3",
+      "size": 9254,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/9dd6d02fecdcf13b7dac9eaa6ebf24c2e053b3b3"
+    },
+    {
+      "path": "bench/log/07/oniguruma",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b9e8e29c423673a6117ef16067fc0ad48f0fac24",
+      "size": 9344,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/b9e8e29c423673a6117ef16067fc0ad48f0fac24"
+    },
+    {
+      "path": "bench/log/07/pcre1",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a28d3cb6655ef5fa8fad49201fcd70f7d59fab64",
+      "size": 9273,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/a28d3cb6655ef5fa8fad49201fcd70f7d59fab64"
+    },
+    {
+      "path": "bench/log/07/pcre2",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c2bbd39e2f6f71d2b6544fc4879d0f044fe0349b",
+      "size": 9263,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/c2bbd39e2f6f71d2b6544fc4879d0f044fe0349b"
+    },
+    {
+      "path": "bench/log/07/re2",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6888bea06aa859beadc40eea550a89b14305763b",
+      "size": 9558,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/6888bea06aa859beadc40eea550a89b14305763b"
+    },
+    {
+      "path": "bench/log/07/rust",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f5e73a2c8a47d50c2ad84bb451a3b817326968d8",
+      "size": 10710,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/f5e73a2c8a47d50c2ad84bb451a3b817326968d8"
+    },
+    {
+      "path": "bench/log/07/rust-bytes",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "310d775d7c28680504849a22f8624e3da9b31ba9",
+      "size": 9552,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/310d775d7c28680504849a22f8624e3da9b31ba9"
+    },
+    {
+      "path": "bench/log/07/stdcpp",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "57c25ae602d4d8773818d6f9986e543542c47f0a",
+      "size": 8036,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/57c25ae602d4d8773818d6f9986e543542c47f0a"
+    },
+    {
+      "path": "bench/log/07/stdcpp-libcxx",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ff21e678811e2c3f8578c85dc21c745846e135fd",
+      "size": 8025,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/ff21e678811e2c3f8578c85dc21c745846e135fd"
+    },
+    {
+      "path": "bench/log/07/tcl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "0586935c03591ab25a5eb53c26625db5d7e72622",
+      "size": 8834,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/0586935c03591ab25a5eb53c26625db5d7e72622"
+    },
+    {
+      "path": "bench/log/08-new-memmem",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "dee9627570451a193553c59dcac044d627dcdc5d",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/dee9627570451a193553c59dcac044d627dcdc5d"
+    },
+    {
+      "path": "bench/log/08-new-memmem/rust-after-01",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "521e935f43bc28b9ac2863ba8bb78146a363d17f",
+      "size": 11809,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/521e935f43bc28b9ac2863ba8bb78146a363d17f"
+    },
+    {
+      "path": "bench/log/08-new-memmem/rust-after-02",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "60d057836c5366a0474004f325c76b85351b25f1",
+      "size": 11809,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/60d057836c5366a0474004f325c76b85351b25f1"
+    },
+    {
+      "path": "bench/log/08-new-memmem/rust-before-01",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "1316e6d695e47b6c71baeea2216c8f25437a5ef3",
+      "size": 11812,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/1316e6d695e47b6c71baeea2216c8f25437a5ef3"
+    },
+    {
+      "path": "bench/log/08-new-memmem/rust-before-02",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5d751021895fe4bc596e998e9c3367542fffbe51",
+      "size": 11803,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/5d751021895fe4bc596e998e9c3367542fffbe51"
+    },
+    {
+      "path": "bench/log/README",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "265d3b8bb390ebba67846dd5b2872c9a07769d9e",
+      "size": 72,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/265d3b8bb390ebba67846dd5b2872c9a07769d9e"
+    },
+    {
+      "path": "bench/log/old",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "d69bb4b63a087a2ea8d6be8c337eab8739e6d1e4",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/d69bb4b63a087a2ea8d6be8c337eab8739e6d1e4"
+    },
+    {
+      "path": "bench/log/old/01-before",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "74890a34fed30b8c4d1a85cc63eb7e30cf881e92",
+      "size": 2458,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/74890a34fed30b8c4d1a85cc63eb7e30cf881e92"
+    },
+    {
+      "path": "bench/log/old/02-new-syntax-crate",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "267808ffb7572d9918b40a6fc3cabeec65873e9f",
+      "size": 2460,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/267808ffb7572d9918b40a6fc3cabeec65873e9f"
+    },
+    {
+      "path": "bench/log/old/03-new-syntax-crate",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a50005d85e79f392d397f8d1e4db0a4ab88dd778",
+      "size": 2457,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/a50005d85e79f392d397f8d1e4db0a4ab88dd778"
+    },
+    {
+      "path": "bench/log/old/04-fixed-benchmark",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "1956e9846678ba00d45e608ae360c4a3d58f8af3",
+      "size": 2516,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/1956e9846678ba00d45e608ae360c4a3d58f8af3"
+    },
+    {
+      "path": "bench/log/old/05-thread-caching",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "238f978b39c67a03a83aa378242247bdb8e95bf9",
+      "size": 2535,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/238f978b39c67a03a83aa378242247bdb8e95bf9"
+    },
+    {
+      "path": "bench/log/old/06-major-dynamic",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "123efdde3104f5005e0f41365210bdd5b924afbf",
+      "size": 3007,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/123efdde3104f5005e0f41365210bdd5b924afbf"
+    },
+    {
+      "path": "bench/log/old/06-major-macro",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "199561dfef4dab5c6e9f68d8a9fde5565b786f32",
+      "size": 2993,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/199561dfef4dab5c6e9f68d8a9fde5565b786f32"
+    },
+    {
+      "path": "bench/log/old/07-prefix-improvements",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "55477fdceffde5607987d1356be2688918704808",
+      "size": 2997,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/55477fdceffde5607987d1356be2688918704808"
+    },
+    {
+      "path": "bench/log/old/08-case-fixes",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7609f6c9402b7f9300dd5d35964995b7e3158cfc",
+      "size": 2996,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/7609f6c9402b7f9300dd5d35964995b7e3158cfc"
+    },
+    {
+      "path": "bench/log/old/09-before-compiler-rewrite",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "fe67d096f9e0833b437f73ff74cce9d2df622295",
+      "size": 3002,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/fe67d096f9e0833b437f73ff74cce9d2df622295"
+    },
+    {
+      "path": "bench/log/old/10-compiler-rewrite",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "e25a602d2c12aaadf65ba080f34fd46fa6a880d6",
+      "size": 2998,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/e25a602d2c12aaadf65ba080f34fd46fa6a880d6"
+    },
+    {
+      "path": "bench/log/old/11-compiler-rewrite",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3296d4376b4bfafc33a5fab81ec0693ee8ae0894",
+      "size": 3004,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/3296d4376b4bfafc33a5fab81ec0693ee8ae0894"
+    },
+    {
+      "path": "bench/log/old/12-executor",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "8ec8561b56077dabdf041cefc111def841e3dbc9",
+      "size": 3170,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/8ec8561b56077dabdf041cefc111def841e3dbc9"
+    },
+    {
+      "path": "bench/log/old/12-executor-bytes",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c036920c2b6a25012797ce7681b9caf4f32b22f1",
+      "size": 3176,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/c036920c2b6a25012797ce7681b9caf4f32b22f1"
+    },
+    {
+      "path": "bench/log/old/13-cache-byte-range-suffixes",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5a2ec09d50d787b1699e188215707cea1ce0d9f5",
+      "size": 3177,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/5a2ec09d50d787b1699e188215707cea1ce0d9f5"
+    },
+    {
+      "path": "bench/run",
+      "mode": "100755",
+      "type": "blob",
+      "sha": "800a4d5affa61247758d1c735c137c3e6cde2497",
+      "size": 1492,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/800a4d5affa61247758d1c735c137c3e6cde2497"
+    },
+    {
+      "path": "bench/src",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "491dd686f038ec30706dba02cf7b93d7ca6fd735",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/491dd686f038ec30706dba02cf7b93d7ca6fd735"
+    },
+    {
+      "path": "bench/src/bench.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a1b03deb1417901e6d9bc83128016eb85740c7a9",
+      "size": 10674,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/a1b03deb1417901e6d9bc83128016eb85740c7a9"
+    },
+    {
+      "path": "bench/src/data",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "d15ee317e940474a0d6bc4c752cf151856fd23d5",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/d15ee317e940474a0d6bc4c752cf151856fd23d5"
+    },
+    {
+      "path": "bench/src/data/.gitignore",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "e7833ce8fffd87ee5b88aa1f2b481fa6fd716be6",
+      "size": 27,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/e7833ce8fffd87ee5b88aa1f2b481fa6fd716be6"
+    },
+    {
+      "path": "bench/src/data/1K.txt",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "1220b26690532da36309c38c23b3e4d17acb4ef8",
+      "size": 1025,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/1220b26690532da36309c38c23b3e4d17acb4ef8"
+    },
+    {
+      "path": "bench/src/data/1MB.txt",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "e57ccdeea756fd54f5d742b17a3897645f1afc57",
+      "size": 1048577,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/e57ccdeea756fd54f5d742b17a3897645f1afc57"
+    },
+    {
+      "path": "bench/src/data/32.txt",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d8b35a6d772a61c82352bf5c62774949dc59e568",
+      "size": 33,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/d8b35a6d772a61c82352bf5c62774949dc59e568"
+    },
+    {
+      "path": "bench/src/data/32K.txt",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5e1a8963088f3ac1269bc9a7632830d2ae9909ee",
+      "size": 32769,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/5e1a8963088f3ac1269bc9a7632830d2ae9909ee"
+    },
+    {
+      "path": "bench/src/data/regexdna.txt",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "30be920544cd60da20848d294bcda72ed2354106",
+      "size": 5083411,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/30be920544cd60da20848d294bcda72ed2354106"
+    },
+    {
+      "path": "bench/src/data/sherlock.txt",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c4c3130503be874ea869ec4b2478071c15072a07",
+      "size": 594933,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/c4c3130503be874ea869ec4b2478071c15072a07"
+    },
+    {
+      "path": "bench/src/ffi",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "77941fa863d56cfbeeb02b030b93a11868d7f063",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/77941fa863d56cfbeeb02b030b93a11868d7f063"
+    },
+    {
+      "path": "bench/src/ffi/d_phobos.d",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a48a89e19400471545f7400668095fcff608b104",
+      "size": 1263,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/a48a89e19400471545f7400668095fcff608b104"
+    },
+    {
+      "path": "bench/src/ffi/d_phobos.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5fa291a0899e10e34c8c394e6fe7fd9425711e87",
+      "size": 2308,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/5fa291a0899e10e34c8c394e6fe7fd9425711e87"
+    },
+    {
+      "path": "bench/src/ffi/d_phobos_ct.d",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6f3ed5931740b1c7b6d6eca371f6c957ea7ff9ce",
+      "size": 4795,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/6f3ed5931740b1c7b6d6eca371f6c957ea7ff9ce"
+    },
+    {
+      "path": "bench/src/ffi/mod.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "94191827b6b0e1a7c4d3f754cd6042374722153e",
+      "size": 475,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/94191827b6b0e1a7c4d3f754cd6042374722153e"
+    },
+    {
+      "path": "bench/src/ffi/onig.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "24a18105d5ea0d3a1ce856a6e2e6b5011db01e39",
+      "size": 708,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/24a18105d5ea0d3a1ce856a6e2e6b5011db01e39"
+    },
+    {
+      "path": "bench/src/ffi/pcre1.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b65ab4bc370352edd4ba830b4f5f51899a0b30d3",
+      "size": 3670,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/b65ab4bc370352edd4ba830b4f5f51899a0b30d3"
+    },
+    {
+      "path": "bench/src/ffi/pcre2.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6fc5f6de0be91e664b45ff941151ad690d898f2e",
+      "size": 5561,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/6fc5f6de0be91e664b45ff941151ad690d898f2e"
+    },
+    {
+      "path": "bench/src/ffi/re2.cpp",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "2d7109d1a9170629c5a80e0c95c892116ee2c7fb",
+      "size": 1463,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/2d7109d1a9170629c5a80e0c95c892116ee2c7fb"
+    },
+    {
+      "path": "bench/src/ffi/re2.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6886656346125829ae3b8241a6b7fe9f9b6a6b88",
+      "size": 3962,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/6886656346125829ae3b8241a6b7fe9f9b6a6b88"
+    },
+    {
+      "path": "bench/src/ffi/stdcpp.cpp",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d5abc9cdaef2cc78d5fa282fe0157985ac1d3d34",
+      "size": 1379,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/d5abc9cdaef2cc78d5fa282fe0157985ac1d3d34"
+    },
+    {
+      "path": "bench/src/ffi/stdcpp.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5750de9dfb0564571890090fed14c8f87633967c",
+      "size": 4044,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/5750de9dfb0564571890090fed14c8f87633967c"
+    },
+    {
+      "path": "bench/src/ffi/tcl.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "0c5c52e1906445a182f40c33159bc96cc9166dba",
+      "size": 5477,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/0c5c52e1906445a182f40c33159bc96cc9166dba"
+    },
+    {
+      "path": "bench/src/main.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7da99107d1a88d43fba2a6faed9a0d96b2e2dd0d",
+      "size": 4149,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/7da99107d1a88d43fba2a6faed9a0d96b2e2dd0d"
+    },
+    {
+      "path": "bench/src/misc.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "50bcef0fbc6badfcdac7d15e637ec97236b620b7",
+      "size": 10395,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/50bcef0fbc6badfcdac7d15e637ec97236b620b7"
+    },
+    {
+      "path": "bench/src/regexdna.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7a35aa4563ecd3848536182180bb3ab83bff8741",
+      "size": 1188,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/7a35aa4563ecd3848536182180bb3ab83bff8741"
+    },
+    {
+      "path": "bench/src/rust_compile.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f88e9b181eca8267c7a2d8e2603e8c4d66b7f1f4",
+      "size": 1560,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/f88e9b181eca8267c7a2d8e2603e8c4d66b7f1f4"
+    },
+    {
+      "path": "bench/src/rust_parse.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6dea1c10f8bf3090d3b82eed38c09020c49d302e",
+      "size": 612,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/6dea1c10f8bf3090d3b82eed38c09020c49d302e"
+    },
+    {
+      "path": "bench/src/sherlock.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d1afbdd1be2e8e0b0da6cfa3f440cbae3bd18654",
+      "size": 9292,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/d1afbdd1be2e8e0b0da6cfa3f440cbae3bd18654"
+    },
+    {
+      "path": "examples",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "c8daa9712359f521805292aae96efd6c593b5a7c",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/c8daa9712359f521805292aae96efd6c593b5a7c"
+    },
+    {
+      "path": "examples/regexdna-input.txt",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "fb23263397d9e965fafc88e94dd7c57e074e2d07",
+      "size": 101745,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/fb23263397d9e965fafc88e94dd7c57e074e2d07"
+    },
+    {
+      "path": "examples/regexdna-output.txt",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d36baa5be8d2f5ccc78ad124fa54e73d50fc64a7",
+      "size": 267,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/d36baa5be8d2f5ccc78ad124fa54e73d50fc64a7"
+    },
+    {
+      "path": "examples/shootout-regex-dna-bytes.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "773fd9ba8d774ca98e152de16239ab5d86135b72",
+      "size": 2092,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/773fd9ba8d774ca98e152de16239ab5d86135b72"
+    },
+    {
+      "path": "examples/shootout-regex-dna-cheat.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "1bde7ab1ff07f5c0e84318484d96bfebc6a02afc",
+      "size": 2838,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/1bde7ab1ff07f5c0e84318484d96bfebc6a02afc"
+    },
+    {
+      "path": "examples/shootout-regex-dna-replace.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "20694e06f307d5a5cfbe9d8aaa81d5832190abd7",
+      "size": 462,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/20694e06f307d5a5cfbe9d8aaa81d5832190abd7"
+    },
+    {
+      "path": "examples/shootout-regex-dna-single-cheat.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "70a979c6d445c9207d963a2c4db13ba3d69dfd58",
+      "size": 2218,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/70a979c6d445c9207d963a2c4db13ba3d69dfd58"
+    },
+    {
+      "path": "examples/shootout-regex-dna-single.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b4740596004e7c1cd5e79a2e607b7111129d9810",
+      "size": 1684,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/b4740596004e7c1cd5e79a2e607b7111129d9810"
+    },
+    {
+      "path": "examples/shootout-regex-dna.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b96518e4c432576ba85b0d996c06c1694a4d3ec5",
+      "size": 2019,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/b96518e4c432576ba85b0d996c06c1694a4d3ec5"
+    },
+    {
+      "path": "fuzz",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "e5c6b3fe431a88d8d0885523cb64d3b485149b8c",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/e5c6b3fe431a88d8d0885523cb64d3b485149b8c"
+    },
+    {
+      "path": "fuzz/.gitignore",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a0925114d619b8cee7d72961b052ddcc42023a24",
+      "size": 24,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/a0925114d619b8cee7d72961b052ddcc42023a24"
+    },
+    {
+      "path": "fuzz/Cargo.toml",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "874e19a0f8baa6bd09dd1cb03ff15bf87078fdda",
+      "size": 568,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/874e19a0f8baa6bd09dd1cb03ff15bf87078fdda"
+    },
+    {
+      "path": "fuzz/fuzz_targets",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "4b6244fbf504275955b4b2aca95652a4063bb0b6",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/4b6244fbf504275955b4b2aca95652a4063bb0b6"
+    },
+    {
+      "path": "fuzz/fuzz_targets/fuzz_regex_match.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "bd9eefad54c5eabcf0f7c70f1dd90e5d4d777c71",
+      "size": 738,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/bd9eefad54c5eabcf0f7c70f1dd90e5d4d777c71"
+    },
+    {
+      "path": "regex-capi",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "a1f339240d1fbda212a303ac91c2cd9ab08fdad5",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/a1f339240d1fbda212a303ac91c2cd9ab08fdad5"
+    },
+    {
+      "path": "regex-capi/Cargo.toml",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "bb8a1517e47ae9f9663ce2238c8df331c6690f3a",
+      "size": 549,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/bb8a1517e47ae9f9663ce2238c8df331c6690f3a"
+    },
+    {
+      "path": "regex-capi/LICENSE-APACHE",
+      "mode": "120000",
+      "type": "blob",
+      "sha": "965b606f331b51d566b46025f9ff311a7aad0c12",
+      "size": 17,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/965b606f331b51d566b46025f9ff311a7aad0c12"
+    },
+    {
+      "path": "regex-capi/LICENSE-MIT",
+      "mode": "120000",
+      "type": "blob",
+      "sha": "76219eb72e8524f15c21ec93b9b2592da49b5460",
+      "size": 14,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/76219eb72e8524f15c21ec93b9b2592da49b5460"
+    },
+    {
+      "path": "regex-capi/README.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "af59979773f432dbadd3e0bd215ae2e3e1469741",
+      "size": 4406,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/af59979773f432dbadd3e0bd215ae2e3e1469741"
+    },
+    {
+      "path": "regex-capi/ctest",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "7697c28e023fd6c61611fe263d550d45e87e454a",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/7697c28e023fd6c61611fe263d550d45e87e454a"
+    },
+    {
+      "path": "regex-capi/ctest/.gitignore",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9daeafb9864cf43055ae93beb0afd6c7d144bfa4",
+      "size": 5,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/9daeafb9864cf43055ae93beb0afd6c7d144bfa4"
+    },
+    {
+      "path": "regex-capi/ctest/compile",
+      "mode": "100755",
+      "type": "blob",
+      "sha": "6bbf6aed897675f2e760fe8f00ef5c455bd60e77",
+      "size": 268,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/6bbf6aed897675f2e760fe8f00ef5c455bd60e77"
+    },
+    {
+      "path": "regex-capi/ctest/test.c",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ba3301c33fca4ad6b9713044aae7f9ec731fd6ed",
+      "size": 16603,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/ba3301c33fca4ad6b9713044aae7f9ec731fd6ed"
+    },
+    {
+      "path": "regex-capi/examples",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "0e1f0bc0983ca3fa9f1f86cb42c45a5dadb3373a",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/0e1f0bc0983ca3fa9f1f86cb42c45a5dadb3373a"
+    },
+    {
+      "path": "regex-capi/examples/.gitignore",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7c059f294a6b09a31d048776de98ab07c2200264",
+      "size": 5,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/7c059f294a6b09a31d048776de98ab07c2200264"
+    },
+    {
+      "path": "regex-capi/examples/compile",
+      "mode": "100755",
+      "type": "blob",
+      "sha": "a7566b791dbd8a8500bc2f709c844f578fa0afd6",
+      "size": 349,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/a7566b791dbd8a8500bc2f709c844f578fa0afd6"
+    },
+    {
+      "path": "regex-capi/examples/iter.c",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "47c83e806f8bcc99a57b719123a831a29ae4df40",
+      "size": 3212,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/47c83e806f8bcc99a57b719123a831a29ae4df40"
+    },
+    {
+      "path": "regex-capi/examples/sherlock.txt",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c4c3130503be874ea869ec4b2478071c15072a07",
+      "size": 594933,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/c4c3130503be874ea869ec4b2478071c15072a07"
+    },
+    {
+      "path": "regex-capi/include",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "9e599905760658b7acc6089a4c760f0ebd4ad8ae",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/9e599905760658b7acc6089a4c760f0ebd4ad8ae"
+    },
+    {
+      "path": "regex-capi/include/rure.h",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a87be61a89e3511235e9ade05bf4cf0880848d3d",
+      "size": 22043,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/a87be61a89e3511235e9ade05bf4cf0880848d3d"
+    },
+    {
+      "path": "regex-capi/src",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "45f84378094be96c175ecc72233ddbb5861a3332",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/45f84378094be96c175ecc72233ddbb5861a3332"
+    },
+    {
+      "path": "regex-capi/src/error.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "2ca3fae804bc657a1ca3320bab3f0775ee9d302f",
+      "size": 1921,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/2ca3fae804bc657a1ca3320bab3f0775ee9d302f"
+    },
+    {
+      "path": "regex-capi/src/lib.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "aa03c60affe3609e049af6c1c5a42f0a31c891bc",
+      "size": 96,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/aa03c60affe3609e049af6c1c5a42f0a31c891bc"
+    },
+    {
+      "path": "regex-capi/src/macros.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7807cf8535351c03e2199eb690985596142f4693",
+      "size": 1464,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/7807cf8535351c03e2199eb690985596142f4693"
+    },
+    {
+      "path": "regex-capi/src/rure.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "dc49b20a33781953aec20af87e67b43ff3b69ff9",
+      "size": 17406,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/dc49b20a33781953aec20af87e67b43ff3b69ff9"
+    },
+    {
+      "path": "regex-capi/test",
+      "mode": "100755",
+      "type": "blob",
+      "sha": "ff47485458abbd4b7bbd38aecc5ecbb12ed621e3",
+      "size": 182,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/ff47485458abbd4b7bbd38aecc5ecbb12ed621e3"
+    },
+    {
+      "path": "regex-debug",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "14a220b1e21e73ec3f575d7505dad58639ff62d1",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/14a220b1e21e73ec3f575d7505dad58639ff62d1"
+    },
+    {
+      "path": "regex-debug/Cargo.toml",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "1db4036b9866fbf6b93d3edb092b9e815ea917ad",
+      "size": 554,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/1db4036b9866fbf6b93d3edb092b9e815ea917ad"
+    },
+    {
+      "path": "regex-debug/src",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "b94674645577b991bd4838af418ef634a059eb08",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/b94674645577b991bd4838af418ef634a059eb08"
+    },
+    {
+      "path": "regex-debug/src/main.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a7dd453e1f22d437522489dc99848ad5194ab03b",
+      "size": 11093,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/a7dd453e1f22d437522489dc99848ad5194ab03b"
+    },
+    {
+      "path": "regex-syntax",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "c6c9f2091d58de9583639b96763e66640d5dd4a0",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/c6c9f2091d58de9583639b96763e66640d5dd4a0"
+    },
+    {
+      "path": "regex-syntax/Cargo.toml",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "82700b03a750c09b64b348bb6b5a1a91cc236242",
+      "size": 797,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/82700b03a750c09b64b348bb6b5a1a91cc236242"
+    },
+    {
+      "path": "regex-syntax/LICENSE-APACHE",
+      "mode": "120000",
+      "type": "blob",
+      "sha": "965b606f331b51d566b46025f9ff311a7aad0c12",
+      "size": 17,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/965b606f331b51d566b46025f9ff311a7aad0c12"
+    },
+    {
+      "path": "regex-syntax/LICENSE-MIT",
+      "mode": "120000",
+      "type": "blob",
+      "sha": "76219eb72e8524f15c21ec93b9b2592da49b5460",
+      "size": 14,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/76219eb72e8524f15c21ec93b9b2592da49b5460"
+    },
+    {
+      "path": "regex-syntax/README.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "592f842686a22ca9f18aa5f7e3d4ea001ca0d72e",
+      "size": 4016,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/592f842686a22ca9f18aa5f7e3d4ea001ca0d72e"
+    },
+    {
+      "path": "regex-syntax/benches",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "fd35a5f458b8103a9b96e88922a2e5c7f52198aa",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/fd35a5f458b8103a9b96e88922a2e5c7f52198aa"
+    },
+    {
+      "path": "regex-syntax/benches/bench.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d4703d4fc1ebf0787f6dab301767863de87fadae",
+      "size": 1234,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/d4703d4fc1ebf0787f6dab301767863de87fadae"
+    },
+    {
+      "path": "regex-syntax/src",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "6f3f056a86a53e63bcb84a3f7d07ff2ffbcb2c1e",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/6f3f056a86a53e63bcb84a3f7d07ff2ffbcb2c1e"
+    },
+    {
+      "path": "regex-syntax/src/ast",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "445bec60ed16af45b0b57e5d6bb8ec36c4912e60",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/445bec60ed16af45b0b57e5d6bb8ec36c4912e60"
+    },
+    {
+      "path": "regex-syntax/src/ast/mod.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9b9127b1fce6f89aa9624ea1dda96cfab9a2df46",
+      "size": 50046,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/9b9127b1fce6f89aa9624ea1dda96cfab9a2df46"
+    },
+    {
+      "path": "regex-syntax/src/ast/parse.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9824661c947bac7c5013a9cc5315cb9d91be5a3d",
+      "size": 205680,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/9824661c947bac7c5013a9cc5315cb9d91be5a3d"
+    },
+    {
+      "path": "regex-syntax/src/ast/print.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "045de2eaf281b4da7c46a180c9171a366564478b",
+      "size": 17917,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/045de2eaf281b4da7c46a180c9171a366564478b"
+    },
+    {
+      "path": "regex-syntax/src/ast/visitor.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a0d1e7dd5dcdc2dd24d7ff1854754fee1e3f267a",
+      "size": 18764,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/a0d1e7dd5dcdc2dd24d7ff1854754fee1e3f267a"
+    },
+    {
+      "path": "regex-syntax/src/either.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7ae41e4ced7460d31b8e19f7b534f0924578dc28",
+      "size": 194,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/7ae41e4ced7460d31b8e19f7b534f0924578dc28"
+    },
+    {
+      "path": "regex-syntax/src/error.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "71cfa426a8299e61e38b0fa0ee14dd10f35d2128",
+      "size": 11025,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/71cfa426a8299e61e38b0fa0ee14dd10f35d2128"
+    },
+    {
+      "path": "regex-syntax/src/hir",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "9e7caa258f624e9cb18a2ced076584c0d65d852a",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/9e7caa258f624e9cb18a2ced076584c0d65d852a"
+    },
+    {
+      "path": "regex-syntax/src/hir/interval.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "cfaa2cb45edb4d594d5c7da53b9a8cb1aedcbce8",
+      "size": 19176,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/cfaa2cb45edb4d594d5c7da53b9a8cb1aedcbce8"
+    },
+    {
+      "path": "regex-syntax/src/hir/literal",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "23af900122fdb9efd7ad2d1ae502a37e06a89635",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/23af900122fdb9efd7ad2d1ae502a37e06a89635"
+    },
+    {
+      "path": "regex-syntax/src/hir/literal/mod.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "25ee88b065d820d1c6d56c11e0c1a9d777b5537e",
+      "size": 55940,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/25ee88b065d820d1c6d56c11e0c1a9d777b5537e"
+    },
+    {
+      "path": "regex-syntax/src/hir/mod.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "4969f1265a486d7d7a34f7fcd9bb01cfc430ef49",
+      "size": 82549,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/4969f1265a486d7d7a34f7fcd9bb01cfc430ef49"
+    },
+    {
+      "path": "regex-syntax/src/hir/print.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b71f3897cf1f8d847d0539db36b9a3d7f12e912a",
+      "size": 11639,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/b71f3897cf1f8d847d0539db36b9a3d7f12e912a"
+    },
+    {
+      "path": "regex-syntax/src/hir/translate.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a7ae9bc3806bddd942eb3c78e1cf14606e8e5a15",
+      "size": 109140,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/a7ae9bc3806bddd942eb3c78e1cf14606e8e5a15"
+    },
+    {
+      "path": "regex-syntax/src/hir/visitor.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "4f5a70909c24a1998cc0e9ceaacb6772a1e7856a",
+      "size": 7511,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/4f5a70909c24a1998cc0e9ceaacb6772a1e7856a"
+    },
+    {
+      "path": "regex-syntax/src/lib.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9e9af756a8187fc4dcee9ebc7e2fccd96e77933d",
+      "size": 12089,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/9e9af756a8187fc4dcee9ebc7e2fccd96e77933d"
+    },
+    {
+      "path": "regex-syntax/src/parser.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a5ee524a8eb58f288a1469777e97fd52ee227ddf",
+      "size": 8267,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/a5ee524a8eb58f288a1469777e97fd52ee227ddf"
+    },
+    {
+      "path": "regex-syntax/src/unicode.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b894c7db22a07cdb8b5f1bbdc4002bac690ace19",
+      "size": 34283,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/b894c7db22a07cdb8b5f1bbdc4002bac690ace19"
+    },
+    {
+      "path": "regex-syntax/src/unicode_tables",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "0c485baae2b9bb0fe74af43407b837a1c7b9bfa5",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/0c485baae2b9bb0fe74af43407b837a1c7b9bfa5"
+    },
+    {
+      "path": "regex-syntax/src/unicode_tables/LICENSE-UNICODE",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b82826bdbdd2c34622ca53747e9011919d8b78bf",
+      "size": 2847,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/b82826bdbdd2c34622ca53747e9011919d8b78bf"
+    },
+    {
+      "path": "regex-syntax/src/unicode_tables/age.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7772919ebe8d13471d7ef8aa871980412b969706",
+      "size": 36981,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/7772919ebe8d13471d7ef8aa871980412b969706"
+    },
+    {
+      "path": "regex-syntax/src/unicode_tables/case_folding_simple.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "cfb83f363a8ad04fa518d14f2e69063991a28c12",
+      "size": 64196,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/cfb83f363a8ad04fa518d14f2e69063991a28c12"
+    },
+    {
+      "path": "regex-syntax/src/unicode_tables/general_category.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "33b7b7e6e1ac84f439c177a5e61a6b116641b592",
+      "size": 148645,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/33b7b7e6e1ac84f439c177a5e61a6b116641b592"
+    },
+    {
+      "path": "regex-syntax/src/unicode_tables/grapheme_cluster_break.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7df9d2b9378ed733caaaebcf8ef58efdf2fb1a8e",
+      "size": 31980,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/7df9d2b9378ed733caaaebcf8ef58efdf2fb1a8e"
+    },
+    {
+      "path": "regex-syntax/src/unicode_tables/mod.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "20736c7ac813e4f40f726260232570c1216c2767",
+      "size": 1258,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/20736c7ac813e4f40f726260232570c1216c2767"
+    },
+    {
+      "path": "regex-syntax/src/unicode_tables/perl_decimal.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "2a09259fc3dc75517c9231fa6fb37f4856e5918f",
+      "size": 1678,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/2a09259fc3dc75517c9231fa6fb37f4856e5918f"
+    },
+    {
+      "path": "regex-syntax/src/unicode_tables/perl_space.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c112dd12630d7da2eb8a72d4755cf65f24f19370",
+      "size": 651,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/c112dd12630d7da2eb8a72d4755cf65f24f19370"
+    },
+    {
+      "path": "regex-syntax/src/unicode_tables/perl_word.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "df9eac7d75630e7447349a4cdbf5e6d186cc1d56",
+      "size": 16942,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/df9eac7d75630e7447349a4cdbf5e6d186cc1d56"
+    },
+    {
+      "path": "regex-syntax/src/unicode_tables/property_bool.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "21cbaf9aeebf9262cb408b15780afe6c40837a04",
+      "size": 238079,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/21cbaf9aeebf9262cb408b15780afe6c40837a04"
+    },
+    {
+      "path": "regex-syntax/src/unicode_tables/property_names.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6393df2f869211c7e2fc8a7204038e3a9a68e2f4",
+      "size": 10242,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/6393df2f869211c7e2fc8a7204038e3a9a68e2f4"
+    },
+    {
+      "path": "regex-syntax/src/unicode_tables/property_values.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c46653a7b8da936a2b0013b86caaae7cda79abdc",
+      "size": 31748,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/c46653a7b8da936a2b0013b86caaae7cda79abdc"
+    },
+    {
+      "path": "regex-syntax/src/unicode_tables/script.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "cd86cba0d01258c23a2d26f6a2993ac0cbd6322a",
+      "size": 32471,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/cd86cba0d01258c23a2d26f6a2993ac0cbd6322a"
+    },
+    {
+      "path": "regex-syntax/src/unicode_tables/script_extension.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7fca2af9d0f7bbad11a6255e6ba653457ff882a7",
+      "size": 36248,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/7fca2af9d0f7bbad11a6255e6ba653457ff882a7"
+    },
+    {
+      "path": "regex-syntax/src/unicode_tables/sentence_break.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "67d830f74b509a9b84080dc74940754b199c2619",
+      "size": 50464,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/67d830f74b509a9b84080dc74940754b199c2619"
+    },
+    {
+      "path": "regex-syntax/src/unicode_tables/word_break.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "bd23e00a8727bafd9cef996596c86501bbb8005c",
+      "size": 24786,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/bd23e00a8727bafd9cef996596c86501bbb8005c"
+    },
+    {
+      "path": "regex-syntax/src/utf8.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "dc055033e579538a8174afcded5c28a8495f07f1",
+      "size": 18704,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/dc055033e579538a8174afcded5c28a8495f07f1"
+    },
+    {
+      "path": "regex-syntax/test",
+      "mode": "100755",
+      "type": "blob",
+      "sha": "4b1b9fb1a99964df729e11adcef65c7817e8b3ea",
+      "size": 416,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/4b1b9fb1a99964df729e11adcef65c7817e8b3ea"
+    },
+    {
+      "path": "rustfmt.toml",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "aa37a218b97e5f6ad37a74a62b50727279a5e460",
+      "size": 44,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/aa37a218b97e5f6ad37a74a62b50727279a5e460"
+    },
+    {
+      "path": "scripts",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "a1427a2faf99ef6560b32f85c4bfa7132ef90941",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/a1427a2faf99ef6560b32f85c4bfa7132ef90941"
+    },
+    {
+      "path": "scripts/frequencies.py",
+      "mode": "100755",
+      "type": "blob",
+      "sha": "37eeca7b7d56710c2a1769752e2401fd770db706",
+      "size": 2038,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/37eeca7b7d56710c2a1769752e2401fd770db706"
+    },
+    {
+      "path": "scripts/generate-unicode-tables",
+      "mode": "100755",
+      "type": "blob",
+      "sha": "c01df16e7e84e17bfb936a8e437df013855e93c1",
+      "size": 2331,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/c01df16e7e84e17bfb936a8e437df013855e93c1"
+    },
+    {
+      "path": "scripts/regex-match-tests.py",
+      "mode": "100755",
+      "type": "blob",
+      "sha": "42311285c62988c0e0efec8298212f0f26951271",
+      "size": 2616,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/42311285c62988c0e0efec8298212f0f26951271"
+    },
+    {
+      "path": "scripts/scrape_crates_io.py",
+      "mode": "100755",
+      "type": "blob",
+      "sha": "da21553a7e5c69bb2b93ba9880d49e1383b10162",
+      "size": 5438,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/da21553a7e5c69bb2b93ba9880d49e1383b10162"
+    },
+    {
+      "path": "src",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "6bd355bcbcd7b7a7f6d96c75b85efebd69d2f2ff",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/6bd355bcbcd7b7a7f6d96c75b85efebd69d2f2ff"
+    },
+    {
+      "path": "src/backtrack.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a3d25d6622f9d62588ba2070bba58e6b98169464",
+      "size": 10699,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/a3d25d6622f9d62588ba2070bba58e6b98169464"
+    },
+    {
+      "path": "src/compile.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "069f445c86f24542939a78d87dbf8067eae0350a",
+      "size": 45692,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/069f445c86f24542939a78d87dbf8067eae0350a"
+    },
+    {
+      "path": "src/dfa.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "4aee8039c6c1ac8dc75ceebe17b05c8ccbb74b33",
+      "size": 75523,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/4aee8039c6c1ac8dc75ceebe17b05c8ccbb74b33"
+    },
+    {
+      "path": "src/error.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3e0ec7521004c791d2e17c13442839d1614f3a61",
+      "size": 2396,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/3e0ec7521004c791d2e17c13442839d1614f3a61"
+    },
+    {
+      "path": "src/exec.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d5fad1c0ebbe15c535f5d29ffb6cb72ed1ce2ff9",
+      "size": 57212,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/d5fad1c0ebbe15c535f5d29ffb6cb72ed1ce2ff9"
+    },
+    {
+      "path": "src/expand.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "fd9c2d05d4939d38c1d08357a2b047f61f0d0eea",
+      "size": 7116,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/fd9c2d05d4939d38c1d08357a2b047f61f0d0eea"
+    },
+    {
+      "path": "src/find_byte.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "e95f72afb9412ed211786d7966ddf7afe01ca010",
+      "size": 634,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/e95f72afb9412ed211786d7966ddf7afe01ca010"
+    },
+    {
+      "path": "src/freqs.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "fcffa95fb55ba6c6aca1ca7db029b0def3302829",
+      "size": 4527,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/fcffa95fb55ba6c6aca1ca7db029b0def3302829"
+    },
+    {
+      "path": "src/input.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5d50ee34094d1a05161d1ff62173c1959e5b7a90",
+      "size": 12069,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/5d50ee34094d1a05161d1ff62173c1959e5b7a90"
+    },
+    {
+      "path": "src/lib.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7f2dec815d09cb08aeaa582f95afc6d226d59704",
+      "size": 28289,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/7f2dec815d09cb08aeaa582f95afc6d226d59704"
+    },
+    {
+      "path": "src/literal",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "d2a8f1dafe6a88608a0ef91f0b1f72af8c51f9e2",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/d2a8f1dafe6a88608a0ef91f0b1f72af8c51f9e2"
+    },
+    {
+      "path": "src/literal/imp.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "82f050a0da7fd4d41f280c8c92d4232339fff98f",
+      "size": 12776,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/82f050a0da7fd4d41f280c8c92d4232339fff98f"
+    },
+    {
+      "path": "src/literal/mod.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "980f52330927107053aac0bb16594aa40d8c991e",
+      "size": 1134,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/980f52330927107053aac0bb16594aa40d8c991e"
+    },
+    {
+      "path": "src/pattern.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b4ffd8e165fdfc3ad67ba496991b795efa1c2e94",
+      "size": 1843,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/b4ffd8e165fdfc3ad67ba496991b795efa1c2e94"
+    },
+    {
+      "path": "src/pikevm.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9a14240860c09037a96d69cd3bf553fffffea049",
+      "size": 12700,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/9a14240860c09037a96d69cd3bf553fffffea049"
+    },
+    {
+      "path": "src/pool.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6a6f15b1942e90ba2d2ee1cb0adc2ba95f790e94",
+      "size": 14633,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/6a6f15b1942e90ba2d2ee1cb0adc2ba95f790e94"
+    },
+    {
+      "path": "src/prog.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "475a8112aa9ee8cdc560cfd9175e3c37854c1716",
+      "size": 15742,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/475a8112aa9ee8cdc560cfd9175e3c37854c1716"
+    },
+    {
+      "path": "src/re_builder.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ee6383690d787e8f27904ee0421d84197d206def",
+      "size": 18944,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/ee6383690d787e8f27904ee0421d84197d206def"
+    },
+    {
+      "path": "src/re_bytes.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ae55d6d2569abc012b6b68c4bd6ca4c73959560d",
+      "size": 43517,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/ae55d6d2569abc012b6b68c4bd6ca4c73959560d"
+    },
+    {
+      "path": "src/re_set.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "73d59532ed0b3cdc6246766dfb20cd62a5d05b4d",
+      "size": 15769,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/73d59532ed0b3cdc6246766dfb20cd62a5d05b4d"
+    },
+    {
+      "path": "src/re_trait.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "680aa54594547f44a864ca5e4d0712a820a9ae82",
+      "size": 8467,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/680aa54594547f44a864ca5e4d0712a820a9ae82"
+    },
+    {
+      "path": "src/re_unicode.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "e4871a621733ddf9e5da78cf939071db73265426",
+      "size": 44703,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/e4871a621733ddf9e5da78cf939071db73265426"
+    },
+    {
+      "path": "src/sparse.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "98b726613d16c65c6ca3ce406a293be034ebf95e",
+      "size": 2245,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/98b726613d16c65c6ca3ce406a293be034ebf95e"
+    },
+    {
+      "path": "src/testdata",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "762411070b675e5d72178de77e57aaac34883dcd",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/762411070b675e5d72178de77e57aaac34883dcd"
+    },
+    {
+      "path": "src/testdata/LICENSE",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f47dbf4c449bcc067f3d535cce4b43b4cc52e21d",
+      "size": 1156,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/f47dbf4c449bcc067f3d535cce4b43b4cc52e21d"
+    },
+    {
+      "path": "src/testdata/README",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6efc2dad337745ccdcb2df172c5011e3b06e6543",
+      "size": 736,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/6efc2dad337745ccdcb2df172c5011e3b06e6543"
+    },
+    {
+      "path": "src/testdata/basic.dat",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "632e1bb4165dbb363c10808d45788325eb22bb91",
+      "size": 8737,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/632e1bb4165dbb363c10808d45788325eb22bb91"
+    },
+    {
+      "path": "src/testdata/nullsubexpr.dat",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "2e18fbb917070347df82ed24978b62884652a037",
+      "size": 2086,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/2e18fbb917070347df82ed24978b62884652a037"
+    },
+    {
+      "path": "src/testdata/repetition.dat",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3bb21211800058cef9beaad6cfdc54aa867926ad",
+      "size": 6768,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/3bb21211800058cef9beaad6cfdc54aa867926ad"
+    },
+    {
+      "path": "src/utf8.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6e0608fdbaf2e95720dd8406cdbd59d902d8f58e",
+      "size": 8776,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/6e0608fdbaf2e95720dd8406cdbd59d902d8f58e"
+    },
+    {
+      "path": "test",
+      "mode": "100755",
+      "type": "blob",
+      "sha": "b10564f12803bd79d214c946ef21a47c72bb6838",
+      "size": 839,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/b10564f12803bd79d214c946ef21a47c72bb6838"
+    },
+    {
+      "path": "tests",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "41a6a1854e2a325dfcd1250ff29259f3add72e75",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/trees/41a6a1854e2a325dfcd1250ff29259f3add72e75"
+    },
+    {
+      "path": "tests/api.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c7250a8a3a5d87353cbe218e2de69185390aa55b",
+      "size": 6999,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/c7250a8a3a5d87353cbe218e2de69185390aa55b"
+    },
+    {
+      "path": "tests/api_str.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "480116da739fe8000cd8faf0b43282c2b1e60399",
+      "size": 1100,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/480116da739fe8000cd8faf0b43282c2b1e60399"
+    },
+    {
+      "path": "tests/bytes.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d05f138edfa5e3ada262e070af3879bbc95118be",
+      "size": 3435,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/d05f138edfa5e3ada262e070af3879bbc95118be"
+    },
+    {
+      "path": "tests/consistent.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "722f2a51a0b6e8f2ae5a4d6731a23c49b404ed3f",
+      "size": 8508,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/722f2a51a0b6e8f2ae5a4d6731a23c49b404ed3f"
+    },
+    {
+      "path": "tests/crates_regex.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "200ec27b2d251d8b96324ed8261cf96f6f9214ef",
+      "size": 126143,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/200ec27b2d251d8b96324ed8261cf96f6f9214ef"
+    },
+    {
+      "path": "tests/crazy.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "293ac1ae7280d324684f92b09027be2d41b8e0e1",
+      "size": 11214,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/293ac1ae7280d324684f92b09027be2d41b8e0e1"
+    },
+    {
+      "path": "tests/flags.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c33b82d43472b5940ea4dfe14da473655625a350",
+      "size": 895,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/c33b82d43472b5940ea4dfe14da473655625a350"
+    },
+    {
+      "path": "tests/fowler.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7f56a758d3c6e5ab2a6dfbe55fdedeea5a4fe1b6",
+      "size": 34121,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/7f56a758d3c6e5ab2a6dfbe55fdedeea5a4fe1b6"
+    },
+    {
+      "path": "tests/macros.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "e70e9489fd01e4721bec6efef89e5b52b35111ff",
+      "size": 5212,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/e70e9489fd01e4721bec6efef89e5b52b35111ff"
+    },
+    {
+      "path": "tests/macros_bytes.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3d6c8c3ac88e5a7182210e908c217fe6917f4d38",
+      "size": 1165,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/3d6c8c3ac88e5a7182210e908c217fe6917f4d38"
+    },
+    {
+      "path": "tests/macros_str.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7b7eb110c26b41608986a0de4fb291601af9fd1d",
+      "size": 1344,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/7b7eb110c26b41608986a0de4fb291601af9fd1d"
+    },
+    {
+      "path": "tests/misc.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "314811e2528cc0398d7459818c611ffc6f947cd7",
+      "size": 206,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/314811e2528cc0398d7459818c611ffc6f947cd7"
+    },
+    {
+      "path": "tests/multiline.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "62ee47b62bab953ebfb2dc8d8b503b6c07f029d5",
+      "size": 2530,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/62ee47b62bab953ebfb2dc8d8b503b6c07f029d5"
+    },
+    {
+      "path": "tests/noparse.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "8ded1dce7b7fc11225f0e234e3c188022e36f3d9",
+      "size": 1582,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/8ded1dce7b7fc11225f0e234e3c188022e36f3d9"
+    },
+    {
+      "path": "tests/regression.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "44b90832b8fd4e14ebba7ab95fc443637e1c5901",
+      "size": 6694,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/44b90832b8fd4e14ebba7ab95fc443637e1c5901"
+    },
+    {
+      "path": "tests/regression_fuzz.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "4e76704d2a6654fb57eae524a976329fc891124f",
+      "size": 1103,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/4e76704d2a6654fb57eae524a976329fc891124f"
+    },
+    {
+      "path": "tests/replace.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "1dc61063572c242600898e541418d8117fa52b42",
+      "size": 4353,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/1dc61063572c242600898e541418d8117fa52b42"
+    },
+    {
+      "path": "tests/searcher.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3779f54c3143284fc91b1c6fd3841660dff80bfe",
+      "size": 2459,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/3779f54c3143284fc91b1c6fd3841660dff80bfe"
+    },
+    {
+      "path": "tests/set.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "37fcf8700cd717db8c21f0be87dd9c78cb406dbd",
+      "size": 2099,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/37fcf8700cd717db8c21f0be87dd9c78cb406dbd"
+    },
+    {
+      "path": "tests/shortest_match.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f8b4fed15691d24943fb0e542f29ee80cf3aa4c3",
+      "size": 438,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/f8b4fed15691d24943fb0e542f29ee80cf3aa4c3"
+    },
+    {
+      "path": "tests/suffix_reverse.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "774c9e85f0548dfdc4da89e2f512b46d9d929d92",
+      "size": 322,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/774c9e85f0548dfdc4da89e2f512b46d9d929d92"
+    },
+    {
+      "path": "tests/test_backtrack.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "fb934e2d8f2660a9fef833d893c327e207bb2b55",
+      "size": 1096,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/fb934e2d8f2660a9fef833d893c327e207bb2b55"
+    },
+    {
+      "path": "tests/test_backtrack_bytes.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a59426c949c49f1a501970223c629e88cd9049f6",
+      "size": 1097,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/a59426c949c49f1a501970223c629e88cd9049f6"
+    },
+    {
+      "path": "tests/test_backtrack_utf8bytes.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6d308e9e1c2508708585cb6c127612107c025d90",
+      "size": 1146,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/6d308e9e1c2508708585cb6c127612107c025d90"
+    },
+    {
+      "path": "tests/test_crates_regex.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a68160472762cedde0bc33cdc243d199554bed4f",
+      "size": 1377,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/a68160472762cedde0bc33cdc243d199554bed4f"
+    },
+    {
+      "path": "tests/test_default.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "be627f7a68f160cf8c373bf2bdd184f7143df628",
+      "size": 6800,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/be627f7a68f160cf8c373bf2bdd184f7143df628"
+    },
+    {
+      "path": "tests/test_default_bytes.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f200596ba1872cf434a5d3698a2a60a1480eef64",
+      "size": 1514,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/f200596ba1872cf434a5d3698a2a60a1480eef64"
+    },
+    {
+      "path": "tests/test_nfa.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "e5a67d180aa312f4df26316df0c78f0703d03aec",
+      "size": 984,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/e5a67d180aa312f4df26316df0c78f0703d03aec"
+    },
+    {
+      "path": "tests/test_nfa_bytes.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "0a10e032a25441c3ffed19d9542889f8279b194e",
+      "size": 1065,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/0a10e032a25441c3ffed19d9542889f8279b194e"
+    },
+    {
+      "path": "tests/test_nfa_utf8bytes.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "36a572b5fce0352507356526a17b72fc7b3ecb56",
+      "size": 1060,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/36a572b5fce0352507356526a17b72fc7b3ecb56"
+    },
+    {
+      "path": "tests/unicode.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9f1cd0c01fc3f067a33bfee2e435a2cbee92b53f",
+      "size": 6952,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/9f1cd0c01fc3f067a33bfee2e435a2cbee92b53f"
+    },
+    {
+      "path": "tests/word_boundary.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7fe97a297488372104ba00aa85c955fa8a7238d8",
+      "size": 3781,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/7fe97a297488372104ba00aa85c955fa8a7238d8"
+    },
+    {
+      "path": "tests/word_boundary_ascii.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5a3cf1166cf543557423882bd8d1139118ea979c",
+      "size": 477,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/5a3cf1166cf543557423882bd8d1139118ea979c"
+    },
+    {
+      "path": "tests/word_boundary_unicode.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c41355ffc4b88c63721cc9a4a442fc7d7c853a9b",
+      "size": 266,
+      "url": "https://api.github.com/repos/rust-lang/regex/git/blobs/c41355ffc4b88c63721cc9a4a442fc7d7c853a9b"
+    }
+  ],
+  "truncated": false
+}

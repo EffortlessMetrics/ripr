@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "kind": "blind_journey_contract_decision_receipt",
+  "decision": "RIPR-SPEC-0200",
+  "status": "ratified_fixture_scope",
+  "governing_issues": ["#4603", "#4600", "#3797", "#4510", "#4508", "#4604"],
+  "contract_schema_versions": {
+    "prompt": "blind_journey_prompt.v1",
+    "answer_key": "blind_journey_answer_key.v1",
+    "receipt": "blind_journey_receipt.v1"
+  },
+  "corpus_scenario_count": 35,
+  "claim_boundary": "Static blind-journey transcript contract: validator success defines auditability of one committed operator-visible transcript only; it claims no installed usefulness, no candidate qualification, no blind acceptance and no release verdict.",
+  "limitations": [
+    "synthetic fixture packets cannot qualify a candidate; the #4604 execution lane must supply a real immutable-candidate run",
+    "semantic answer-leak review requires a named human reviewer verdict over the exact prompt and separately stored answer key; the mechanical scan alone cannot establish semantic blindness",
+    "event input/output digests are optional in this contract version: when present they must be well-formed SHA-256 hex, but per-kind presence requirements are deferred to the #4604 execution slice",
+    "public docs/help inputs in the corpus are synthetic; #4508 owns the real deterministic journey input corpus",
+    "candidate/process/artifact admission is referenced, not owned; #4510 stays the admission authority"
+  ],
+  "combinations_not_exercised": [
+    "a real installed candidate execution (#4604)",
+    "a real operator/model session against public docs and help (#4508)",
+    "the #4510 candidate/process harness consuming this contract in hosted CI",
+    "a terminal result of instrument_failure, which requires a broken or absent packet rather than a parseable one"
+  ]
+}

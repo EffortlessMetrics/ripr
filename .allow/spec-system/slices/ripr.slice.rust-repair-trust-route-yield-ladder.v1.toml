@@ -1,0 +1,46 @@
+schema_version = "2.0"
+id = "ripr.slice.rust-repair-trust-route-yield-ladder.v1"
+generation = 1
+
+source_issue = "issue:4570"
+design_reference = "RIPR-SPEC-0178"
+change_class = "behavior_change"
+
+claim_boundary = """
+Extends the existing rust-repair-trust corpus validator/report with a
+row-derived route-yield ladder. Three observations with no complete route
+report 0/3 route yield and not_measurable repair success. Does not collect
+#3074 observations, execute attempts, or promote support.
+"""
+
+non_goals = [
+  "new corpus, attempt lifecycle, dashboard, or analysis engine",
+  "issue 3074 observation collection or issue 3075 first attempt",
+  "support-tier or 0.11 release-scope promotion",
+]
+
+return_conditions = [
+  "Return to root if a parallel reporter starts owning route-yield counts.",
+]
+
+owned_seams = [
+  "seam:ripr:xtask:rust-repair-trust-report",
+]
+
+shared_seams = []
+forbidden_seams = []
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0178"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+commands = [
+  "cargo test -p xtask rust_repair_trust",
+]
+
+[support_claim]
+state = "unchanged"

@@ -1,0 +1,67 @@
+{
+  "schema_version": "agentic_lsp_bench.v1",
+  "protocol": {
+    "supported_major": 0,
+    "protocol_version": "0.1",
+    "schema_version": "0.2",
+    "live_request": "ripr/listActionableItems",
+    "reserved_request": "ripr/getRepairPacket"
+  },
+  "expected_codes": {
+    "server_not_initialized": -32002,
+    "invalid_request": -32600,
+    "method_not_found": -32601,
+    "invalid_params": -32602,
+    "parse_error": -32700
+  },
+  "initialize": {
+    "processId": null,
+    "rootUri": null,
+    "capabilities": {
+      "experimental": {
+        "riprAgent": { "protocol": "0.1", "profiles": ["actionable"] }
+      }
+    }
+  },
+  "major_probe_protocol": "1.0",
+  "collect_commands": [
+    "ripr.collectContext",
+    "ripr.collectEvidenceContext",
+    "ripr.collectRepairPacket",
+    "ripr.refresh"
+  ],
+  "bad_argument_cases": [
+    {
+      "label": "collectContext omitted arguments",
+      "params": { "command": "ripr.collectContext" },
+      "fragments": ["finding_id", "seam_id", "gap_id"]
+    },
+    {
+      "label": "collectContext string first argument",
+      "params": { "command": "ripr.collectContext", "arguments": ["not-an-object"] },
+      "fragments": ["finding_id", "seam_id", "gap_id"]
+    },
+    {
+      "label": "collectEvidenceContext empty arguments",
+      "params": { "command": "ripr.collectEvidenceContext", "arguments": [] },
+      "fragments": ["seam_id", "evidence_identity"]
+    },
+    {
+      "label": "collectRepairPacket mistyped gap_id",
+      "params": { "command": "ripr.collectRepairPacket", "arguments": [{ "gap_id": 7 }] },
+      "fragments": ["gap_id"]
+    }
+  ],
+  "journey_arguments": {
+    "collectContext": [{ "gap_id": "bench-gap-missing" }],
+    "collectEvidenceContext": [{ "seam_id": "bench-seam-missing", "evidence_identity": {} }],
+    "collectRepairPacket": [],
+    "refresh": []
+  },
+  "malformed_frames": ["Content-Length: nope\r\n\r\n"],
+  "bounds": {
+    "max_response_bytes": 262144,
+    "max_total_bytes": 1048576,
+    "max_receipt_bytes": 65536
+  }
+}

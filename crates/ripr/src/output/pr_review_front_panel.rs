@@ -1,13 +1,31 @@
 use serde::Serialize;
 use serde_json::Value;
 
-use super::first_pr::STATIC_EVIDENCE_BOUNDARY;
+use super::first_pr::{
+    ProofPathLabels, REPAIR_AFTER_PHASE_LABEL, REPAIR_AFTER_PHASE_STEP, STATIC_EVIDENCE_BOUNDARY,
+};
 use super::receipt_lifecycle::{
     RECEIPT_MISSING, RECEIPT_NOT_APPLICABLE, receipt_lifecycle_state,
     receipt_lifecycle_state_from_movement, receipt_lifecycle_state_from_receipt_value,
 };
 
 const SCHEMA_VERSION: &str = "0.1";
+
+/// Verify and receipt labels for the panel's top issue (#3906).
+///
+/// A carried repair start makes verify and receipt the manual alternative to
+/// the repair's after phase; without one they run after the test edit.
+fn proof_path_labels(issue: &PanelTopIssue) -> (&'static str, &'static str) {
+    let labels = ProofPathLabels::for_repair_start(issue.repair_command.is_some());
+    (labels.verify, labels.receipt)
+}
+
+fn push_repair_start(out: &mut String, command: &str) {
+    out.push_str(&format!("- Repair start: `{command}`\n"));
+    out.push_str(&format!(
+        "- {REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n"
+    ));
+}
 const REPORT_KIND: &str = "pr_review_front_panel";
 
 pub(crate) const DEFAULT_PR_REVIEW_FRONT_PANEL_OUT: &str =
@@ -136,7 +154,18 @@ struct PanelTopIssue {
     focused_proof_intent: Option<String>,
     related_test: Option<String>,
     suggested_test: Option<String>,
+    /// The repair transaction's start (#3906), carried verbatim from the
+    /// first-action `commands.repair`, a review card's
+    /// `llm_guidance.repair_command`, or a gate route's `repair_command`.
+    /// Upstream names it only past the fail-closed repair-packet flip; the
+    /// panel never builds one from a bare seam id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    repair_command: Option<String>,
     verify_command: Option<String>,
+    /// Carried from first-action `commands.analysis_outcome` (#4304): it
+    /// writes the file the receipt reads beside the verify output.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    analysis_outcome_command: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     receipt_command: Option<String>,
     static_evidence_boundary: &'static str,
@@ -459,12 +488,21 @@ pub(crate) fn render_pr_review_front_panel_markdown(report: &PrReviewFrontPanelR
         if let Some(related) = &issue.related_test {
             out.push_str(&format!("- Related test: {related}\n"));
         }
+        let (verify_label, receipt_label) = proof_path_labels(issue);
+        if let Some(command) = &issue.repair_command {
+            push_repair_start(&mut out, command);
+        }
+        if let Some(command) = &issue.analysis_outcome_command {
+            out.push_str(&format!(
+                "- Analysis outcome for the receipt: `{command}`\n"
+            ));
+        }
         out.push_str(&format!(
-            "- Verify command: {}\n",
+            "- {verify_label}: {}\n",
             markdown_command_or(issue.verify_command.as_deref(), "not_available")
         ));
         if let Some(command) = &issue.receipt_command {
-            out.push_str(&format!("- Receipt command: `{command}`\n"));
+            out.push_str(&format!("- {receipt_label}: `{command}`\n"));
         }
         out.push_str(&format!("- Receipt: {}\n", issue_receipt_summary(issue)));
         out.push_str(&format!("- Boundary: {}\n", issue.static_evidence_boundary));
@@ -576,7 +614,8 @@ pub(crate) fn render_pr_review_front_panel_markdown(report: &PrReviewFrontPanelR
     }
 
     if let Some(issue) = &report.top_issue
-        && (issue.agent_command.is_some()
+        && (issue.repair_command.is_some()
+            || issue.agent_command.is_some()
             || issue.verify_command.is_some()
             || issue.receipt.status != RECEIPT_NOT_APPLICABLE)
         && report.summary.policy_state != "waived"
@@ -585,11 +624,14 @@ pub(crate) fn render_pr_review_front_panel_markdown(report: &PrReviewFrontPanelR
     {
         out.push_str("Repair:\n");
         if report.summary.top_issue_state != "already_improved" {
-            if let Some(command) = &issue.agent_command {
+            let (verify_label, _) = proof_path_labels(issue);
+            if let Some(command) = &issue.repair_command {
+                push_repair_start(&mut out, command);
+            } else if let Some(command) = &issue.agent_command {
                 out.push_str(&format!("- Agent handoff: `{command}`\n"));
             }
             if let Some(command) = &issue.verify_command {
-                out.push_str(&format!("- Verify: `{command}`\n"));
+                out.push_str(&format!("- {verify_label}: `{command}`\n"));
             }
         }
         out.push_str(&format!(
@@ -928,6 +970,7 @@ fn already_improved_top_issue(mut issue: PanelTopIssue, movement: &PanelMovement
     issue.focused_proof_intent = None;
     issue.related_test = None;
     issue.suggested_test = None;
+    issue.repair_command = None;
     issue.agent_command = None;
     issue
 }
@@ -1532,10 +1575,11 @@ fn top_issue_from_first_action(
     let target = action.get("target");
     let seam_id = string_path(selected, &["seam_id"]);
     let classification = string_path(selected, &["classification"]);
+    let repair_command = non_empty_string_path(action, &["commands", "repair"]);
     Some(PanelTopIssue {
         source: "first_useful_action".to_string(),
         source_artifact: input.first_action_path.clone()?,
-        seam_id: seam_id.clone(),
+        seam_id,
         canonical_gap_id: string_path(selected, &["canonical_gap_id"]),
         path: string_path(selected, &["path"]),
         line: u64_path(selected, &["line"]),
@@ -1556,15 +1600,15 @@ fn top_issue_from_first_action(
             action,
             parsed.assistant_proof.as_ref(),
         ),
+        repair_command: repair_command.clone(),
         verify_command: string_path(action, &["commands", "verify"]),
         receipt_command: string_path(action, &["commands", "receipt"]),
+        analysis_outcome_command: string_path(action, &["commands", "analysis_outcome"]),
         static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
-        agent_command: seam_id.as_deref().map(|seam_id| {
-            format!(
-                "ripr agent start --root {} --seam-id {} --out target/ripr/workflow",
-                input.root, seam_id
-            )
-        }),
+        // Carried only: the repair start when first-action names one, else
+        // its read-only context-packet command. Never a synthesized start.
+        agent_command: repair_command
+            .or_else(|| non_empty_string_path(action, &["commands", "context_packet"])),
         receipt: receipt_from_input(
             input.receipt_path.as_deref(),
             parsed.receipt.as_ref(),
@@ -1584,6 +1628,7 @@ fn top_issue_from_guidance(
         .and_then(Value::as_array)
         .and_then(|items| items.first())?;
     let seam_id = string_path(item, &["seam_id"]);
+    let repair_command = non_empty_string_path(item, &["llm_guidance", "repair_command"]);
     Some(PanelTopIssue {
         source: "pr_guidance".to_string(),
         source_artifact: input.pr_guidance_path.clone()?,
@@ -1602,15 +1647,16 @@ fn top_issue_from_guidance(
             (Some(item), &["changed_expression"]),
             (Some(item), &["evidence", "changed_behavior"]),
         ]),
-        current_evidence_strength: current_evidence_strength_from_sources(&[Some(item)])
-            .or_else(|| {
+        current_evidence_strength: current_evidence_strength_from_sources(&[Some(item)]).or_else(
+            || {
                 string_from_sources(&[
                     (Some(item), &["classification"]),
                     (Some(item), &["class"]),
                     (Some(item), &["static_class"]),
                 ])
                 .map(normalize_class)
-            }),
+            },
+        ),
         missing_discriminator: string_path(item, &["missing_discriminator"]),
         no_action_reason: None,
         focused_proof_intent: string_from_sources(&[
@@ -1620,20 +1666,25 @@ fn top_issue_from_guidance(
         ]),
         related_test: string_path(item, &["suggested_test", "near_test"]),
         suggested_test: string_path(item, &["suggested_test", "assertion_shape"]),
+        repair_command: repair_command.clone(),
         verify_command: seam_id.as_ref().map(|_| {
-            format!(
-                "ripr agent verify --root {} --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
-                input.root
+            // Shared builder, no per-surface verify text (ADR-0019). The
+            // redirect writes the artifact the card's receipt reads via
+            // `--verify-json` (#4307), matching the review-card surface.
+            crate::agent::loop_commands::agent_verify_command(
+                &input.root,
+                crate::agent::loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+                crate::agent::loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+                Some(crate::agent::loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT),
             )
         }),
         receipt_command: None,
+        analysis_outcome_command: None,
         static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
-        agent_command: seam_id.as_deref().map(|seam_id| {
-            format!(
-                "ripr agent start --root {} --seam-id {} --out target/ripr/workflow",
-                input.root, seam_id
-            )
-        }),
+        // Carried only: the card's repair start, else its read-only
+        // inspection command. Never a start synthesized from the seam id.
+        agent_command: repair_command
+            .or_else(|| non_empty_string_path(item, &["llm_guidance", "command"])),
         receipt: PanelReceipt {
             artifact: None,
             status: RECEIPT_MISSING.to_string(),
@@ -1653,10 +1704,18 @@ fn top_issue_from_gate_decision(
         .iter()
         .find(|item| string_path(item, &["decision"]).as_deref() == Some(decision))?;
     let seam_id = string_path(item, &["seam_id"]);
+    // Only an acknowledged decision keeps a repair handoff; suppressed and
+    // other decisions name none. The command is carried from the gate route.
+    let repair_command = (decision == "acknowledged")
+        .then(|| non_empty_string_path(item, &["repair_route", "repair_command"]))
+        .flatten();
+    let inspection_command = (decision == "acknowledged")
+        .then(|| non_empty_string_path(item, &["repair_route", "inspection_command"]))
+        .flatten();
     Some(PanelTopIssue {
         source: "gate_decision".to_string(),
         source_artifact: input.gate_decision_path.clone()?,
-        seam_id: seam_id.clone(),
+        seam_id,
         canonical_gap_id: string_path(item, &["canonical_gap_id"]),
         path: string_from_sources(&[
             (Some(item), &["placement", "path"]),
@@ -1678,19 +1737,12 @@ fn top_issue_from_gate_decision(
         ]),
         related_test: string_path(item, &["evidence", "recommended_test"]),
         suggested_test: string_path(item, &["evidence", "assertion_shape"]),
+        repair_command: repair_command.clone(),
         verify_command: None,
         receipt_command: None,
+        analysis_outcome_command: None,
         static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
-        agent_command: seam_id.as_deref().and_then(|seam_id| {
-            if decision == "acknowledged" {
-                Some(format!(
-                    "ripr agent start --root {} --seam-id {} --out target/ripr/workflow",
-                    input.root, seam_id
-                ))
-            } else {
-                None
-            }
-        }),
+        agent_command: repair_command.or(inspection_command),
         receipt: PanelReceipt {
             artifact: None,
             status: if decision == "suppressed" {
@@ -1728,8 +1780,10 @@ fn top_issue_from_baseline_delta(
         ]),
         related_test: string_path(item, &["suggested_test", "recommended_test"]),
         suggested_test: string_path(item, &["suggested_test", "assertion_shape"]),
+        repair_command: None,
         verify_command: string_path(item, &["repair", "verify_command"]),
         receipt_command: string_path(item, &["repair", "receipt_command"]),
+        analysis_outcome_command: None,
         static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         agent_command: None,
         receipt: PanelReceipt {
@@ -1778,8 +1832,10 @@ fn top_issue_from_assistant_health(
         }),
         related_test: recommendation.and_then(|value| string_path(value, &["related_test"])),
         suggested_test: recommendation.and_then(|value| string_path(value, &["suggested_test"])),
+        repair_command: None,
         verify_command: recommendation.and_then(|value| string_path(value, &["verify_command"])),
         receipt_command: receipt.and_then(|value| string_path(value, &["command"])),
+        analysis_outcome_command: None,
         static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         agent_command: handoff.and_then(|value| string_path(value, &["agent_command"])),
         receipt: PanelReceipt {
@@ -1981,8 +2037,10 @@ fn top_issue_from_python_no_action_ledger(
         focused_proof_intent: None,
         related_test: string_path(record, &["repair_route", "related_test"]),
         suggested_test: None,
+        repair_command: None,
         verify_command: None,
         receipt_command: None,
+        analysis_outcome_command: None,
         static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         agent_command: None,
         receipt: PanelReceipt {
@@ -2187,24 +2245,15 @@ fn receipt_from_input(
 }
 
 fn normalize_class(value: String) -> String {
-    match value.as_str() {
-        "weakly_gripped" => "weakly_exposed".to_string(),
-        "strongly_gripped" => "exposed".to_string(),
-        _ => value,
-    }
+    // #4381: the presentation mapping lives only in
+    // `output::gap_vocabulary`; this wrapper keeps the call sites local but
+    // carries no translation table of its own.
+    crate::output::gap_vocabulary::present_exposure_class(&value)
 }
 
 fn normalized_receipt_class(value: &str) -> Option<&'static str> {
-    match value {
-        "weakly_gripped" | "weakly_exposed" => Some("weakly_exposed"),
-        "strongly_gripped" | "exposed" => Some("exposed"),
-        "reachable_unrevealed" => Some("reachable_unrevealed"),
-        "ungripped" | "no_static_path" => Some("no_static_path"),
-        "infection_unknown" => Some("infection_unknown"),
-        "propagation_unknown" => Some("propagation_unknown"),
-        "static_unknown" => Some("static_unknown"),
-        _ => None,
-    }
+    // #4381: single shared authority; no per-surface fork.
+    crate::output::gap_vocabulary::exposure_class_of(value)
 }
 
 fn string_from_sources(sources: &[(Option<&Value>, &[&str])]) -> Option<String> {
@@ -2236,6 +2285,11 @@ fn i64_from_sources(sources: &[(Option<&Value>, &[&str])]) -> Option<i64> {
     sources
         .iter()
         .find_map(|(value, path)| value.and_then(|value| i64_path(value, path)))
+}
+
+/// A carried command string, or `None` when the field is absent or blank.
+fn non_empty_string_path(value: &Value, path: &[&str]) -> Option<String> {
+    string_path(value, path).filter(|text| !text.trim().is_empty())
 }
 
 fn string_path(value: &Value, path: &[&str]) -> Option<String> {
@@ -2400,6 +2454,9 @@ fn str_or<'a>(value: Option<&'a str>, fallback: &'a str) -> &'a str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::output::first_pr::{
+        MANUAL_VERIFY_LABEL, RECEIPT_AFTER_VERIFY_LABEL, VERIFY_AFTER_EDIT_LABEL,
+    };
     use crate::output::test_support::{read_file, repo_root};
     use std::path::Path;
 
@@ -2459,13 +2516,31 @@ mod tests {
                 );
             }
 
+            // #3872/#4307: the guidance-route verify command anchors its
+            // redirect at the resolved --root, so the machine prefix projects
+            // to `<cwd>/` before comparing AND before re-blessing — a pinned
+            // fixture must never carry a real machine directory (placeholder
+            // rule: loop_commands).
+            let rendered_json = crate::testing::cwd_placeholder::project_cwd_text(
+                &render_pr_review_front_panel_json(&report)?,
+            );
             assert_eq!(
-                render_pr_review_front_panel_json(&report)?,
+                rendered_json.trim_end(),
                 read_file(&expected_json_path)?.trim_end(),
                 "{case_id} JSON fixture drifted"
             );
+            let markdown = crate::testing::cwd_placeholder::project_cwd_text(
+                &render_pr_review_front_panel_markdown(&report),
+            );
+            // #3742 class (e): only the explicit RIPR_UPDATE_FIXTURES=1
+            // opt-in rewrites the Markdown pin; JSON stays asserted.
+            if crate::testing::rebless::fixture_rebless_enabled() {
+                std::fs::write(&expected_md_path, &markdown)
+                    .map_err(|err| format!("write {case_id} Markdown: {err}"))?;
+                continue;
+            }
             assert_eq!(
-                render_pr_review_front_panel_markdown(&report),
+                markdown,
                 read_file(&expected_md_path)?,
                 "{case_id} Markdown fixture drifted"
             );
@@ -2854,6 +2929,9 @@ mod tests {
         Ok(())
     }
 
+    const CARRIED_HEALTH_HANDOFF: &str =
+        "ripr agent repair --root . --seam-id 67fc764ba37d77bd --phase before";
+
     #[test]
     fn invalid_improved_after_class_preserves_repair_packet() -> Result<(), String> {
         let repo_root = repo_root()?;
@@ -2882,6 +2960,10 @@ mod tests {
             )
             .map_err(|err| format!("parse assistant health fixture failed: {err}"))?;
             health["proofs"][0]["movement"]["after_class"] = invalid_after;
+            // The proof carries its handoff; the panel must keep that exact
+            // command rather than clearing it or deriving another (#3906).
+            health["proofs"][0]["handoff"]["agent_command"] =
+                Value::String(CARRIED_HEALTH_HANDOFF.to_string());
             input.assistant_health_json = Some(Ok(health.to_string()));
 
             let report = build_pr_review_front_panel_report(input);
@@ -2898,7 +2980,7 @@ mod tests {
             assert!(issue.focused_proof_intent.is_some());
             assert!(issue.related_test.is_some());
             assert!(issue.suggested_test.is_some());
-            assert!(issue.agent_command.is_some());
+            assert_eq!(issue.agent_command.as_deref(), Some(CARRIED_HEALTH_HANDOFF));
             assert!(issue.no_action_reason.is_none());
         }
         Ok(())
@@ -3151,6 +3233,216 @@ mod tests {
             coverage_frontier_path: coverage_frontier,
             receipt_path: receipt,
         })
+    }
+
+    // ── #3906: carried repair start, never a synthesized one ─────────────
+
+    const PANEL_CARRIED_REPAIR: &str = "ripr agent repair --root . --seam-id seam-a --phase before";
+
+    fn blank_panel_input() -> PrReviewFrontPanelInput {
+        PrReviewFrontPanelInput {
+            root: ".".to_string(),
+            generated_at: "2026-05-09T12:00:00Z".to_string(),
+            out_md_path: "target/ripr/reports/pr-review-front-panel.md".to_string(),
+            pr_guidance_path: None,
+            first_action_path: None,
+            assistant_proof_path: None,
+            assistant_health_path: None,
+            ledger_path: None,
+            baseline_delta_path: None,
+            zero_status_path: None,
+            gate_decision_path: None,
+            recommendation_calibration_path: None,
+            mutation_calibration_path: None,
+            coverage_frontier_path: None,
+            receipt_path: None,
+            pr_guidance_json: None,
+            first_action_json: None,
+            assistant_proof_json: None,
+            assistant_health_json: None,
+            ledger_json: None,
+            baseline_delta_json: None,
+            zero_status_json: None,
+            gate_decision_json: None,
+            recommendation_calibration_json: None,
+            mutation_calibration_json: None,
+            coverage_frontier_json: None,
+            receipt_json: None,
+        }
+    }
+
+    fn rendered_panel(
+        input: PrReviewFrontPanelInput,
+    ) -> Result<(PanelTopIssue, String, String), String> {
+        let report = build_pr_review_front_panel_report(input);
+        let json = render_pr_review_front_panel_json(&report)?;
+        let markdown = render_pr_review_front_panel_markdown(&report);
+        let issue = report
+            .top_issue
+            .ok_or_else(|| format!("expected a top issue: {json}"))?;
+        Ok((issue, json, markdown))
+    }
+
+    fn assert_no_repair_loop_command(json: &str, markdown: &str) {
+        for text in [json, markdown] {
+            assert!(
+                !text.contains("agent start"),
+                "synthesized agent start: {text}"
+            );
+            assert!(
+                !text.contains("agent repair"),
+                "uncarried agent repair: {text}"
+            );
+        }
+    }
+
+    fn assert_repair_start_leads(issue: &PanelTopIssue, markdown: &str) {
+        assert_eq!(issue.repair_command.as_deref(), Some(PANEL_CARRIED_REPAIR));
+        assert_eq!(issue.agent_command.as_deref(), Some(PANEL_CARRIED_REPAIR));
+        let line = format!("- Repair start: `{PANEL_CARRIED_REPAIR}`\n");
+        assert_eq!(
+            markdown.matches(&line).count(),
+            2,
+            "the repair start leads the top issue and the Repair block: {markdown}"
+        );
+        // #3906 (F60-14): each start is followed by its after phase, and
+        // verify and receipt are the manual alternative.
+        let transaction =
+            format!("{line}- {REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n");
+        assert_eq!(markdown.matches(&transaction).count(), 2, "{markdown}");
+        assert!(
+            !markdown.contains(&format!("- {VERIFY_AFTER_EDIT_LABEL}:")),
+            "{markdown}"
+        );
+        assert!(
+            !markdown.contains(&format!("- {RECEIPT_AFTER_VERIFY_LABEL}:")),
+            "{markdown}"
+        );
+        assert!(
+            markdown.contains(&format!("- {MANUAL_VERIFY_LABEL}:")),
+            "{markdown}"
+        );
+        assert!(!markdown.contains("- Agent handoff:"), "{markdown}");
+    }
+
+    fn first_action_json(repair: Option<&str>) -> String {
+        let mut commands = serde_json::json!({
+            "verify": "ripr agent verify --root . --json",
+            "receipt": "ripr agent receipt --root . --json"
+        });
+        if let Some(repair) = repair {
+            commands["repair"] = Value::from(repair);
+        }
+        serde_json::json!({
+            "status": "actionable",
+            "selected": {
+                "seam_id": "seam-a",
+                "path": "src/lib.rs",
+                "line": 3,
+                "classification": "weakly_exposed"
+            },
+            "commands": commands
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn first_action_top_issue_carries_repair_start_and_never_synthesizes_one() -> Result<(), String>
+    {
+        let mut without = blank_panel_input();
+        without.first_action_path = Some("first-action.json".to_string());
+        without.first_action_json = Some(Ok(first_action_json(None)));
+        let (issue, json, markdown) = rendered_panel(without)?;
+        assert_eq!(issue.seam_id.as_deref(), Some("seam-a"));
+        assert_eq!(issue.repair_command, None);
+        assert_eq!(issue.agent_command, None);
+        assert_no_repair_loop_command(&json, &markdown);
+
+        let mut with = blank_panel_input();
+        with.first_action_path = Some("first-action.json".to_string());
+        with.first_action_json = Some(Ok(first_action_json(Some(PANEL_CARRIED_REPAIR))));
+        let (issue, json, markdown) = rendered_panel(with)?;
+        assert_repair_start_leads(&issue, &markdown);
+        assert!(json.contains(&format!("\"repair_command\": \"{PANEL_CARRIED_REPAIR}\"")));
+        assert!(!json.contains("agent start"));
+        Ok(())
+    }
+
+    #[test]
+    fn guidance_top_issue_carries_repair_start_else_the_inspection_command() -> Result<(), String> {
+        let inspection = "ripr agent brief --root . --seam-id seam-a --json";
+        let guidance = |repair: Option<&str>| {
+            let mut llm_guidance = serde_json::json!({ "command": inspection });
+            if let Some(repair) = repair {
+                llm_guidance["repair_command"] = Value::from(repair);
+            }
+            serde_json::json!({
+                "summary_only": [{
+                    "seam_id": "seam-a",
+                    "missing_discriminator": "x == 1",
+                    "llm_guidance": llm_guidance
+                }]
+            })
+            .to_string()
+        };
+        let input = |repair: Option<&str>| {
+            let mut input = blank_panel_input();
+            input.first_action_path = Some("first-action.json".to_string());
+            input.first_action_json = Some(Ok(first_action_json(None)));
+            input.pr_guidance_path = Some("comments.json".to_string());
+            input.pr_guidance_json = Some(Ok(guidance(repair)));
+            input
+        };
+
+        let (issue, json, markdown) = rendered_panel(input(None))?;
+        assert_eq!(issue.source, "pr_guidance");
+        assert_eq!(issue.repair_command, None);
+        assert_eq!(issue.agent_command.as_deref(), Some(inspection));
+        assert_no_repair_loop_command(&json, &markdown);
+
+        let (issue, _json, _markdown) = rendered_panel(input(Some(PANEL_CARRIED_REPAIR)))?;
+        assert_eq!(issue.source, "pr_guidance");
+        assert_eq!(issue.repair_command.as_deref(), Some(PANEL_CARRIED_REPAIR));
+        assert_eq!(issue.agent_command.as_deref(), Some(PANEL_CARRIED_REPAIR));
+        Ok(())
+    }
+
+    #[test]
+    fn acknowledged_gate_top_issue_carries_only_the_gate_route_repair_start() -> Result<(), String>
+    {
+        let repo_root = repo_root()?;
+        let inputs = serde_json::json!({
+            "gate_decision": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json"
+        });
+        let expected_md_path = repo_root.join(
+            "fixtures/boundary_gap/expected/pr-review-front-panel/acknowledged/pr-review-front-panel.md",
+        );
+        let without = fixture_input(&repo_root, &inputs, &expected_md_path)?;
+        let (issue, json, markdown) = rendered_panel(without)?;
+        assert_eq!(issue.source, "gate_decision");
+        assert_eq!(issue.seam_id.as_deref(), Some("ack"));
+        assert_eq!(issue.agent_command, None);
+        assert_no_repair_loop_command(&json, &markdown);
+
+        let mut with = fixture_input(&repo_root, &inputs, &expected_md_path)?;
+        let mut gate: Value = serde_json::from_str(
+            with.gate_decision_json
+                .as_ref()
+                .and_then(|result| result.as_ref().ok())
+                .ok_or_else(|| "gate fixture missing".to_string())?,
+        )
+        .map_err(|err| format!("parse gate fixture: {err}"))?;
+        gate["decisions"][0]["repair_route"] =
+            serde_json::json!({ "repair_command": PANEL_CARRIED_REPAIR });
+        with.gate_decision_json = Some(Ok(gate.to_string()));
+        let (issue, _json, markdown) = rendered_panel(with)?;
+        assert_eq!(issue.source, "gate_decision");
+        assert_eq!(issue.repair_command.as_deref(), Some(PANEL_CARRIED_REPAIR));
+        assert_eq!(issue.agent_command.as_deref(), Some(PANEL_CARRIED_REPAIR));
+        // A waived finding shows no Repair block, so the start leads only the
+        // top issue.
+        assert!(markdown.contains(&format!("- Repair start: `{PANEL_CARRIED_REPAIR}`\n")));
+        Ok(())
     }
 
     fn path_from_inputs(inputs: &Value, key: &str) -> Option<String> {

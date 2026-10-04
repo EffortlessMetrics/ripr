@@ -15,7 +15,7 @@ Planned operations:
   - changed behavior: `amount == discount_threshold`
   - repair route: add boundary assertion
   - repair: Add one focused boundary assertion for `amount == discount_threshold`.
-  - verify: `ripr agent verify`
+  - start the repair: `ripr agent repair --root . --seam-id 8f7fa8644fd12280 --phase before`
 
 Limits:
 - Advisory inline-comment publish plan only.

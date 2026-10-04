@@ -74,7 +74,46 @@ Role is derived from authoritative context in priority order:
 Both diff probe seeding and the repo seam-inventory production set route
 through `classify_with`; `benches/**`/`examples/**` harness plumbing no
 longer seeds production obligations, closing the diff gap while the repo
-exclusion stays consistent. Evidence-role files remain fully indexed:
+exclusion stays consistent. One diff-only exemption applies: a changed
+file under the root `xtask/` directory whose resolved role is the `xtask`
+catch-all, and whose path inside `xtask/` the layout would treat as
+production, still seeds diff probes. Repository automation changes are
+reviewed behavior, and without the exemption a 329-line `xtask/` diff
+(the 0.11 Rust challenge case p1745) counted as changed Rust files yet
+yielded zero candidate lines and no disclosure. `xtask/tests/**`,
+`tests.rs` stems, benches, examples, non-`src` files, and `xtask`
+segments nested under other directories keep their evidence role, and
+repo-mode seam inventory still excludes `xtask/`. A changed Cargo build
+script seeds too, outside any non-source directory (`xtask/build.rs`
+included): Cargo compiles it, and skipping it produced the same silent
+zero. The build script comes from the owning package manifest, not the
+file name: `build.rs` by default, the path `package.build` names, nothing
+under `build = false`, and nothing for a virtual workspace or a directory
+with no manifest. Diff seeding and the LSP out-of-scope partition share one
+changed-file rule, `seeds_diff_probes`, so the editor keeps every finding
+the CLI reports. Other loose non-`src` files (panel subjects under
+`metrics/`) are data Cargo never compiles and stay evidence.
+
+`seeds_diff_probes` also consults module-tree evidence (#4435). A changed
+file seeds only when a Cargo target's module tree reaches it through
+`mod`, `#[path]` or literal `include!` edges, walked from every target
+root (a declared `[lib] path` replaces `src/lib.rs`). The modules of an
+external root (`[lib] path = "../shared/lib.rs"`) seed, and every member
+package that compiles that root keeps its tests in Draft scope. A changed
+file no target reaches seeds nothing; when the layout rule would have
+seeded it, the run records one `language_scope_unsupported` limitation
+naming it, but only when every
+Rust file in the workspace scans completely: a macro call other than a
+std macro that cannot emit items (at item level, inside a body, or nested
+in a std macro's arguments), a declaration inside a macro token tree, a
+dynamic or `cfg_attr` `#[path]`, a non-literal `include!`, or a parse
+error anywhere keeps the layout rule, since such a file could reach the
+changed one. A changed file no resolved edge reaches, but that an
+out-of-line `mod` with an unresolved `#[path]` names (a target spelled in
+its `cfg_attr`, a child of one, or its default resolution when every path
+is inside `cfg_attr`), still seeds; when it produces a finding, the run
+records one `language_scope_unsupported` limitation naming the file and
+that declaration, since ripr composes no module context for it. The production-like opt-in still wins. Evidence-role files remain fully indexed:
 functions stay available for owner relations, activation input,
 sink/oracle evidence, and selectors. `TestFact` semantics are untouched
 — source role never registers a helper as an executable test selector.
@@ -160,6 +199,34 @@ hashes the `ripr.toml` text, so no generation bump is required for it.
 The #3532 harness registry joined the same identity as FindingAffecting
 (2 → 3, canonical length-prefixed encoding pinned byte-for-byte).
 
+### Index normalization ownership
+
+Whole-index source-role normalization borrows its exact identity keys
+(file, start/end lines, name and full body) and per-file test references.
+It does not allocate another owned body for every lookup key. Generation-owned
+fact arenas retain payloads once for shared occurrences; per-file and flat
+views keep independent ordered memberships. Per-file function memberships use
+fresh handle-sized storage rather than retaining the consumed function-fact
+vector allocation. Rebuilding a flat view clears its
+membership, while unreachable payloads are reclaimed during finalization, not
+necessarily during normalization. Full body equality remains part of the
+normalization key; explicit occurrence identity, rather than a name/span/body
+match, governs storage sharing.
+
+The per-file and global test/function order and role semantics remain identical
+to the previous owning-map implementation. When those existing role laws require
+different local and flat roles, the occurrences split rather than overwrite each
+other. Repeated membership is preserved. Readers borrow the owning generation;
+a view cannot retain it after the index is released. Wire serialization remains
+the expanded legacy representation, and per-file cache DTOs remain owned. Whole
+index deserialization preserves independent expanded occurrences; it does not
+promise to reconstruct shared ownership from equal content.
+
+Cancellation in these walks refuses the partially normalized index. Finalization
+validates memberships before compaction and observes cancellation before return.
+Complete corpus/source facts still scale with input size; this ownership contract
+is not a measured throughput, peak-RSS, constant-memory, or reduced-coverage claim.
+
 ## Required Evidence
 
 - A changed Cargo bench seeds no production probes but stays in
@@ -171,6 +238,11 @@ The #3532 harness registry joined the same identity as FindingAffecting
   undeclared `src/unconfirmed_test.rs` stays a production subject;
   disabling the declared-target branch makes the fixture fail
   (discriminating-power proof).
+- A changed root `xtask/src/**` file seeds diff probes while a changed
+  unannotated helper under `xtask/tests/` in the same diff seeds none;
+  removing the exemption drops the automation file to zero candidate
+  lines, and widening it to any `xtask` path component makes the
+  `xtask/tests/` helper produce findings (both verified failing).
 - The opt-in restores production analysis for the selected target only;
   sibling test targets stay evidence-only.
 - Layout pins: nested `examples/<dir>/src/**` and
@@ -184,6 +256,20 @@ The #3532 harness registry joined the same identity as FindingAffecting
   canonically, and absolute paths fail closed with a named error.
 - `#3273`'s inline `#[cfg(test)]` controls and `#3286`'s helper-evidence
   regression tests remain green.
+- Module-tree seeding (#4435): an undeclared `src` file and an undeclared
+  file beside a non-`src` library root seed nothing while their declared
+  siblings seed, and only such files, never an unreached fixture or
+  `tests/data` source, record the limitation; a module only a replaced
+  default `src/lib.rs` declares seeds nothing; an external root's module seeds and relates the tests of
+  every declaring package; `#[path]`, `include!`, nested inline and
+  raw-identifier edges seed; an unknown tree (`cfg_if!`) keeps seeding;
+  the LSP partition drops the same anchors. Each walk regression pairs a
+  reached file with a true orphan so neither direction goes unpinned.
+- Unresolved `#[path]` routes (#4435): a file reached only through a
+  `cfg_attr` path target, its child, or the `cfg_attr`-only default
+  resolution records the limitation naming the declaration, while a
+  resolved sibling, a comment-only change, a file a plain `#[path]`
+  never loads, and a `cfg` predicate's own `path = ".."` do not.
 
 - The repo production contract carries over exactly: `xtask/`, files
   without a `src` component, and `tests.rs` stems stay non-production;
@@ -212,6 +298,10 @@ The #3532 harness registry joined the same identity as FindingAffecting
 
 - Accept: `benches/exposure.rs` changed → indexed, counted as a changed
   file, zero production findings.
+- Accept: a manifest-built `build.rs` or `xtask/src/main.rs` changed →
+  probes seeded and the editor pins them; a `build.rs` under
+  `build = false` or outside any package seeds nothing; `fixtures/**/build.rs`,
+  `metrics/**/source.after.rs`, and `benches/common/mod.rs` stay evidence.
 - Accept: `[[test]] path="src/contract_test.rs"` → helper in it is
   evidence; `src/unconfirmed_test.rs` without a declaration → production.
 - Accept: `production_like_targets = ["tests/api_contract.rs"]` → that
@@ -240,7 +330,7 @@ recursive member globs), the fail-closed probe boundary, and the
 manifest-sourced `harness` flag.
 `analysis/facts/harness_registry` pins the conflict limitations and the
 degraded per-function behavior for misdeclared targets, and
-`analysis/language/rust.rs` pins the diff-path seeding flip alongside
+`analysis/language/rust/mod.rs` pins the diff-path seeding flip alongside
 diff seeding
 (bench gap regression, declared-target confirmation with a probeable
 helper, opt-in restore). `config/tests.rs` pins parsing, identity
@@ -249,6 +339,11 @@ classification, and absolute-path rejection.
 (`crates/ripr/tests/data/source-role-corpus/cases/`) and pins
 executable-test membership, layout classification, naming-lookalike
 rejection, and cfg-variant equivalence against `facts::build_index`.
+`analysis/syntax/module_tree.rs` pins the per-file edge scan and every
+construct that makes it incomplete; `analysis/workspace/module_graph.rs`
+pins the package walk and each false-orphan path the #4556 reviews
+found; `analysis/language/rust/mod.rs` pins the diff-level module-tree
+seeding and `lsp/diagnostics.rs` the matching editor partition.
 `cargo xtask check-rust-source-role-authority` structurally rejects
 consumer-side role re-derivation and inventories the approved
 `rust_index::is_test_file` consumers. Its production regions come from
@@ -282,7 +377,10 @@ verbatim scan instead of a second lexical authority.
 - `analysis/harness_projection.rs` — the typed harness projection.
 - `analysis/workspace/cargo_targets.rs` — manifest enumeration,
   workspace-root-anchored.
-- `analysis/language/rust.rs` — diff seeding and repo production set.
+- `analysis/syntax/module_tree.rs` and
+  `analysis/workspace/module_graph.rs` — module-tree edges and the
+  target-root walk behind the orphan and external-root evidence (#4435).
+- `analysis/language/rust/mod.rs` — diff seeding and repo production set.
 - `analysis/seam_inventory.rs` — inventory and count production sets.
 - `config.rs` + `config/model.rs` — the opt-in, its identity role, and
   the consumed-config list.

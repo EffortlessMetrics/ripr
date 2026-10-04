@@ -149,6 +149,7 @@ mod tests {
                     .collect(),
             },
             stop_reasons: Vec::new(),
+            related_tests_matched_total: None,
             related_tests,
             recommended_next_step: None,
             language: None,

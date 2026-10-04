@@ -1,0 +1,104 @@
+{
+  "schema_version": "ripr-agentic-mcp-journey-v1",
+  "transport": {
+    "lifecycle": "legacy_stdio",
+    "protocol_version": "2025-11-25",
+    "framing": "newline_delimited_json_rpc",
+    "bounds": {
+      "max_message_bytes": 262144,
+      "max_response_bytes": 131072
+    }
+  },
+  "fixture": {
+    "base_branch": "main",
+    "journey_branch": "journey",
+    "base_commit": "input/base over empty root",
+    "journey_commit": "input/journey/src/lib.rs over base",
+    "worktree": "clean"
+  },
+  "benchmarks": {
+    "B2_mcp_happy_path_journey": {
+      "sequence": [
+        "ripr_workspace_status",
+        "ripr_refresh",
+        "ripr_list_gaps",
+        "ripr_get_gap",
+        "ripr_prepare_repair",
+        "ripr_prepare_repair",
+        "ripr_get_repair_attempt",
+        "ripr_get_receipt_status"
+      ],
+      "assertions": [
+        "refresh_attempt_state_is_completed_with_nonempty_snapshot_id",
+        "status_after_refresh_binds_the_same_snapshot_id",
+        "list_gaps_binds_refresh_snapshot_and_counts_are_consistent",
+        "at_least_one_gap_selected",
+        "get_gap_binds_snapshot_item_and_changed_behavior",
+        "prepare_repair_replay_is_identical",
+        "repair_chain_binds_attempt_receipt_and_gap_link_when_ready",
+        "typed_attempt_not_found_for_unknown_ids_when_not_ready"
+      ]
+    },
+    "B3_mcp_negative_authority": {
+      "probes": [
+        {
+          "name": "pre_refresh",
+          "expect": {
+            "ripr_list_gaps": "no_snapshot",
+            "ripr_get_gap": "no_snapshot",
+            "ripr_prepare_repair": "no_snapshot",
+            "ripr_get_repair_attempt": "attempt_not_found",
+            "ripr_get_receipt_status": "attempt_not_found"
+          }
+        },
+        {
+          "name": "stale_snapshot",
+          "expect": {
+            "ripr_list_gaps": "stale_snapshot",
+            "ripr_get_gap": "stale_snapshot",
+            "ripr_prepare_repair": "stale_snapshot"
+          }
+        },
+        {
+          "name": "unknown_item",
+          "expect": {
+            "ripr_get_gap": "item_not_found",
+            "ripr_prepare_repair": "item_not_found"
+          }
+        },
+        {
+          "name": "unknown_attempt",
+          "expect": {
+            "ripr_get_repair_attempt": "attempt_not_found",
+            "ripr_get_receipt_status": "attempt_not_found"
+          }
+        },
+        {
+          "name": "pipelined_coherence",
+          "expect": {
+            "ripr_refresh": "completed",
+            "ripr_list_gaps": "success_bound_to_refresh_snapshot",
+            "ripr_get_repair_attempt": "attempt_not_found",
+            "ripr_get_receipt_status": "attempt_not_found"
+          }
+        }
+      ],
+      "invariants": [
+        "every_typed_failure_carries_code_detail_recovery",
+        "never_a_silent_null_result",
+        "every_stdout_frame_within_advertised_response_bound",
+        "no_fixture_tree_mutation_outside_refresh_cache",
+        "no_repair_attempt_or_receipt_artifact_created",
+        "stderr_empty_and_exit_success"
+      ]
+    }
+  },
+  "anti_gaming_twins": [
+    "replay_twin: a second prepare with a different item or a stale snapshot must NOT equal the first prepare document",
+    "oversize_twin: a large-but-under-input-cap argument must fail closed with a typed code and a bounded reply, and the session must keep serving"
+  ],
+  "excitation_limits": [
+    "analysis_in_flight is unreachable over one stdio connection by transport design: the Admission gate holds one typed request until its reply frame flushes, so followers always observe the completed snapshot. Guarded by the pipelined-coherence probe plus the existing session unit tests that set in_flight directly.",
+    "result_too_large is unreachable below the 131072-byte single-document bound on this small fixture (the shared budget caps list_gaps at 65536 bytes); it is guarded by the advertised-bound pin plus the every-frame audit plus the oversize twin, not by direct excitation"
+  ]
+}

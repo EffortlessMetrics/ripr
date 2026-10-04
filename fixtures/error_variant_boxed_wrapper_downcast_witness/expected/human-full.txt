@@ -2,12 +2,13 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/error_variant_boxed_wrapper_downcast_witness/input
 
-Summary: 16 probe(s), 4 exposed, 12 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 16 probe(s), 4 exposed, 12 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 16 of 16 finding(s) unsuppressed
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 16 changed line(s), 8 candidate line(s), 16 probe(s), 16 finding(s).
 
-WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:45
+INFO fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:45
+  id: probe:src_lib.rs:error_path:5c979117
 
 Changed
   before: return Err(ParseSummaryError::ParserInit);
@@ -19,7 +20,7 @@ Probe
   owner:  src/lib.rs::try_parse_summary
 
 Static exposure
-  exposed (warning, confidence 1.00)
+  exposed (info, confidence 1.00)
 
 Evidence
   - reach yes: Related tests appear to reach try_parse_summary: parse_summary_fails_closed_on_malformed_source
@@ -32,11 +33,15 @@ Evidence
 return Err("malformed source should produce ParseSummaryError::MalformedSource".into());
 }
   - related test tests/errors.rs:8 parse_summary_fails_closed_on_malformed_source uses strong exact error variant oracle: matches!(result, Err(ParseSummaryError::MalformedSource))
-  - observed function argument value raw = "@bad;" at line 10
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
+  - source function argument value raw = "@bad;" at line 10
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:5c979117
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:5c979117
 
-WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:45
+INFO fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:45
+  id: probe:src_lib.rs:return_value:f573bd5d
 
 Changed
   before: return Err(ParseSummaryError::ParserInit);
@@ -48,7 +53,7 @@ Probe
   owner:  src/lib.rs::try_parse_summary
 
 Static exposure
-  exposed (warning, confidence 1.00)
+  exposed (info, confidence 1.00)
 
 Evidence
   - reach yes: Related tests appear to reach try_parse_summary: parse_summary_fails_closed_on_malformed_source
@@ -61,11 +66,15 @@ Evidence
 return Err("malformed source should produce ParseSummaryError::MalformedSource".into());
 }
   - related test tests/errors.rs:8 parse_summary_fails_closed_on_malformed_source uses strong exact error variant oracle: matches!(result, Err(ParseSummaryError::MalformedSource))
-  - observed function argument value raw = "@bad;" at line 10
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
+  - source function argument value raw = "@bad;" at line 10
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:f573bd5d
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:f573bd5d
 
-WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:48
+INFO fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:48
+  id: probe:src_lib.rs:error_path:5c979117.2
 
 Changed
   before: return Err(ParseSummaryError::ParserInit);
@@ -77,7 +86,7 @@ Probe
   owner:  src/lib.rs::try_parse_summary
 
 Static exposure
-  exposed (warning, confidence 1.00)
+  exposed (info, confidence 1.00)
 
 Evidence
   - reach yes: Related tests appear to reach try_parse_summary: parse_summary_fails_closed_on_malformed_source
@@ -90,11 +99,15 @@ Evidence
 return Err("malformed source should produce ParseSummaryError::MalformedSource".into());
 }
   - related test tests/errors.rs:8 parse_summary_fails_closed_on_malformed_source uses strong exact error variant oracle: matches!(result, Err(ParseSummaryError::MalformedSource))
-  - observed function argument value raw = "@bad;" at line 10
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
+  - source function argument value raw = "@bad;" at line 10
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:5c979117.2
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:5c979117.2
 
-WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:48
+INFO fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:48
+  id: probe:src_lib.rs:return_value:f573bd5d.2
 
 Changed
   before: return Err(ParseSummaryError::ParserInit);
@@ -106,7 +119,7 @@ Probe
   owner:  src/lib.rs::try_parse_summary
 
 Static exposure
-  exposed (warning, confidence 1.00)
+  exposed (info, confidence 1.00)
 
 Evidence
   - reach yes: Related tests appear to reach try_parse_summary: parse_summary_fails_closed_on_malformed_source
@@ -119,11 +132,15 @@ Evidence
 return Err("malformed source should produce ParseSummaryError::MalformedSource".into());
 }
   - related test tests/errors.rs:8 parse_summary_fails_closed_on_malformed_source uses strong exact error variant oracle: matches!(result, Err(ParseSummaryError::MalformedSource))
-  - observed function argument value raw = "@bad;" at line 10
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
+  - source function argument value raw = "@bad;" at line 10
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:f573bd5d.2
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:f573bd5d.2
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:56
+  id: probe:src_lib.rs:error_path:edac60ec
 
 Changed
   before: try_parse_summary(raw).map_err(|error| error.to_string().into())
@@ -158,17 +175,17 @@ return Err("boxed variant must preserve ParseSummaryError::MalformedSource".into
 return Err("malformed source should produce ParseSummaryError::MalformedSource".into());
 }
   - related test tests/errors.rs:8 parse_summary_fails_closed_on_malformed_source uses strong exact error variant oracle: matches!(result, Err(ParseSummaryError::MalformedSource))
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
-  - observed function argument value raw = "@bad;" at line 20
-  - observed enum variant value ParseSummaryError::MalformedSource at line 23
-  - observed enum variant value ParseSummaryError::MalformedSource at line 23
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+  - source function argument value raw = "@bad;" at line 20
+  - source enum variant value ParseSummaryError::MalformedSource at line 23
+  - source enum variant value ParseSummaryError::MalformedSource at line 23
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
 
 Static limitation
-  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper (`map_err(Into::into)`), so whether the wrapper faithfully carries the callee's error variant is not statically established; ripr cannot credit a downcast witness to this conversion.
 
 Limitation detail
   last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
@@ -178,8 +195,12 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:edac60ec
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:edac60ec
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:56
+  id: probe:src_lib.rs:return_value:b87fa5c0
 
 Changed
   before: try_parse_summary(raw).map_err(|error| error.to_string().into())
@@ -213,17 +234,17 @@ return Err("boxed variant must preserve ParseSummaryError::MalformedSource".into
   - related test tests/errors.rs:8 parse_summary_fails_closed_on_malformed_source uses strong exact error variant oracle: if !matches!(result, Err(ParseSummaryError::MalformedSource)) {
 return Err("malformed source should produce ParseSummaryError::MalformedSource".into());
 }
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
-  - observed function argument value raw = "@bad;" at line 20
-  - observed enum variant value ParseSummaryError::MalformedSource at line 23
-  - observed enum variant value ParseSummaryError::MalformedSource at line 23
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+  - source function argument value raw = "@bad;" at line 20
+  - source enum variant value ParseSummaryError::MalformedSource at line 23
+  - source enum variant value ParseSummaryError::MalformedSource at line 23
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
 
 Static limitation
-  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper (`map_err(Into::into)`), so whether the wrapper faithfully carries the callee's error variant is not statically established; ripr cannot credit a downcast witness to this conversion.
 
 Limitation detail
   last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
@@ -233,8 +254,12 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:b87fa5c0
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:b87fa5c0
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:67
+  id: probe:src_lib.rs:error_path:51fc5156
 
 Changed
   before: try_checksum_summary(payload).map_err(|error| error.to_string().into())
@@ -265,15 +290,15 @@ return Err("checksum witness pinned the malformed-payload sibling".into());
         error.downcast_ref::<ChecksumError>(),
         Some(ChecksumError::MalformedPayload)
     )
-  - observed function argument value payload = "payload?" at line 34
-  - observed enum variant value ChecksumError::MalformedPayload at line 37
-  - observed enum variant value ChecksumError::MalformedPayload at line 37
+  - source function argument value payload = "payload?" at line 34
+  - source enum variant value ChecksumError::MalformedPayload at line 37
+  - source enum variant value ChecksumError::MalformedPayload at line 37
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
 
 Static limitation
-  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper (`map_err(Into::into)`), so whether the wrapper faithfully carries the callee's error variant is not statically established; ripr cannot credit a downcast witness to this conversion.
 
 Limitation detail
   last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
@@ -283,8 +308,12 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:51fc5156
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:51fc5156
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:67
+  id: probe:src_lib.rs:return_value:588b0f56
 
 Changed
   before: try_checksum_summary(payload).map_err(|error| error.to_string().into())
@@ -315,15 +344,15 @@ return Err("checksum witness pinned the malformed-payload sibling".into());
         error.downcast_ref::<ChecksumError>(),
         Some(ChecksumError::MalformedPayload)
     )
-  - observed function argument value payload = "payload?" at line 34
-  - observed enum variant value ChecksumError::MalformedPayload at line 37
-  - observed enum variant value ChecksumError::MalformedPayload at line 37
+  - source function argument value payload = "payload?" at line 34
+  - source enum variant value ChecksumError::MalformedPayload at line 37
+  - source enum variant value ChecksumError::MalformedPayload at line 37
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
 
 Static limitation
-  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper (`map_err(Into::into)`), so whether the wrapper faithfully carries the callee's error variant is not statically established; ripr cannot credit a downcast witness to this conversion.
 
 Limitation detail
   last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
@@ -333,8 +362,12 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:588b0f56
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:588b0f56
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:81
+  id: probe:src_lib.rs:error_path:ad27ed37
 
 Changed
   before: try_render_summary(raw).map_err(|error| error.to_string().into())
@@ -365,15 +398,15 @@ return Err("render witness pinned the parse-summary variant instead".into());
         error.downcast_ref::<ParseSummaryError>(),
         Some(ParseSummaryError::MalformedSource)
     )
-  - observed function argument value raw = "zhex" at line 48
-  - observed enum variant value ParseSummaryError::MalformedSource at line 51
-  - observed enum variant value ParseSummaryError::MalformedSource at line 51
+  - source function argument value raw = "zhex" at line 48
+  - source enum variant value ParseSummaryError::MalformedSource at line 51
+  - source enum variant value ParseSummaryError::MalformedSource at line 51
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
 
 Static limitation
-  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper (`map_err(Into::into)`), so whether the wrapper faithfully carries the callee's error variant is not statically established; ripr cannot credit a downcast witness to this conversion.
 
 Limitation detail
   last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
@@ -383,8 +416,12 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:ad27ed37
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:ad27ed37
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:81
+  id: probe:src_lib.rs:return_value:1224f837
 
 Changed
   before: try_render_summary(raw).map_err(|error| error.to_string().into())
@@ -415,15 +452,15 @@ return Err("render witness pinned the parse-summary variant instead".into());
         error.downcast_ref::<ParseSummaryError>(),
         Some(ParseSummaryError::MalformedSource)
     )
-  - observed function argument value raw = "zhex" at line 48
-  - observed enum variant value ParseSummaryError::MalformedSource at line 51
-  - observed enum variant value ParseSummaryError::MalformedSource at line 51
+  - source function argument value raw = "zhex" at line 48
+  - source enum variant value ParseSummaryError::MalformedSource at line 51
+  - source enum variant value ParseSummaryError::MalformedSource at line 51
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
 
 Static limitation
-  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper (`map_err(Into::into)`), so whether the wrapper faithfully carries the callee's error variant is not statically established; ripr cannot credit a downcast witness to this conversion.
 
 Limitation detail
   last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
@@ -433,8 +470,12 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:1224f837
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:1224f837
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:95
+  id: probe:src_lib.rs:error_path:e47d26a4
 
 Changed
   before: try_length_summary(raw).map_err(|error| error.to_string().into())
@@ -456,13 +497,13 @@ Evidence
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches error variant: try_length_summary(raw).map_err(Into::into) (line 95)
   - related test tests/errors.rs:61 length_summary_only_checks_is_err uses weak broad error oracle: assert!(result.is_err());
-  - observed function argument value raw = "way-too-long-input-that-exceeds-the-forty-char-limit!!" at line 62
+  - source function argument value raw = "way-too-long-input-that-exceeds-the-forty-char-limit!!" at line 62
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
 
 Static limitation
-  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper (`map_err(Into::into)`), so whether the wrapper faithfully carries the callee's error variant is not statically established; ripr cannot credit a downcast witness to this conversion.
 
 Limitation detail
   last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
@@ -472,8 +513,12 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:e47d26a4
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:e47d26a4
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:95
+  id: probe:src_lib.rs:return_value:b7c26672
 
 Changed
   before: try_length_summary(raw).map_err(|error| error.to_string().into())
@@ -495,13 +540,13 @@ Evidence
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches returned value: try_length_summary(raw).map_err(Into::into) (line 95)
   - related test tests/errors.rs:61 length_summary_only_checks_is_err uses weak broad error oracle: assert!(result.is_err());
-  - observed function argument value raw = "way-too-long-input-that-exceeds-the-forty-char-limit!!" at line 62
+  - source function argument value raw = "way-too-long-input-that-exceeds-the-forty-char-limit!!" at line 62
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
 
 Static limitation
-  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper (`map_err(Into::into)`), so whether the wrapper faithfully carries the callee's error variant is not statically established; ripr cannot credit a downcast witness to this conversion.
 
 Limitation detail
   last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
@@ -511,8 +556,12 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:b7c26672
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:b7c26672
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:109
+  id: probe:src_lib.rs:error_path:53c169fe
 
 Changed
   before: try_glyph_summary(raw).map_err(Into::into)
@@ -543,15 +592,15 @@ return Err("glyph variant witness requires the typed conversion".into());
         error.downcast_ref::<GlyphError>(),
         Some(GlyphError::MalformedGlyph)
     )
-  - observed function argument value raw = "#glyph" at line 69
-  - observed enum variant value GlyphError::MalformedGlyph at line 72
-  - observed enum variant value GlyphError::MalformedGlyph at line 72
+  - source function argument value raw = "#glyph" at line 69
+  - source enum variant value GlyphError::MalformedGlyph at line 72
+  - source enum variant value GlyphError::MalformedGlyph at line 72
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
 
 Static limitation
-  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper (`map_err(Into::into)`), so whether the wrapper faithfully carries the callee's error variant is not statically established; ripr cannot credit a downcast witness to this conversion.
 
 Limitation detail
   last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
@@ -561,8 +610,12 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:53c169fe
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:53c169fe
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:109
+  id: probe:src_lib.rs:return_value:262ac815
 
 Changed
   before: try_glyph_summary(raw).map_err(Into::into)
@@ -593,15 +646,15 @@ return Err("glyph variant witness requires the typed conversion".into());
         error.downcast_ref::<GlyphError>(),
         Some(GlyphError::MalformedGlyph)
     )
-  - observed function argument value raw = "#glyph" at line 69
-  - observed enum variant value GlyphError::MalformedGlyph at line 72
-  - observed enum variant value GlyphError::MalformedGlyph at line 72
+  - source function argument value raw = "#glyph" at line 69
+  - source enum variant value GlyphError::MalformedGlyph at line 72
+  - source enum variant value GlyphError::MalformedGlyph at line 72
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
 
 Static limitation
-  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper (`map_err(Into::into)`), so whether the wrapper faithfully carries the callee's error variant is not statically established; ripr cannot credit a downcast witness to this conversion.
 
 Limitation detail
   last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
@@ -611,8 +664,12 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:262ac815
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:262ac815
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:123
+  id: probe:src_lib.rs:error_path:c82815a4
 
 Changed
   before: try_theme_summary(raw).map_err(|error| error.to_string().into())
@@ -637,14 +694,14 @@ Evidence
         error.downcast_ref::<ThemeError>(),
         Some(ThemeError::DuplicateTheme)
     );
-  - observed function argument value raw = "&theme" at line 83
-  - observed enum variant value ThemeError::DuplicateTheme at line 86
+  - source function argument value raw = "&theme" at line 83
+  - source enum variant value ThemeError::DuplicateTheme at line 86
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
 
 Static limitation
-  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper (`map_err(Into::into)`), so whether the wrapper faithfully carries the callee's error variant is not statically established; ripr cannot credit a downcast witness to this conversion.
 
 Limitation detail
   last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
@@ -654,8 +711,12 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:c82815a4
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:c82815a4
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:123
+  id: probe:src_lib.rs:return_value:4ccb1836
 
 Changed
   before: try_theme_summary(raw).map_err(|error| error.to_string().into())
@@ -680,14 +741,14 @@ Evidence
         error.downcast_ref::<ThemeError>(),
         Some(ThemeError::DuplicateTheme)
     );
-  - observed function argument value raw = "&theme" at line 83
-  - observed enum variant value ThemeError::DuplicateTheme at line 86
+  - source function argument value raw = "&theme" at line 83
+  - source enum variant value ThemeError::DuplicateTheme at line 86
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
 
 Static limitation
-  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper (`map_err(Into::into)`), so whether the wrapper faithfully carries the callee's error variant is not statically established; ripr cannot credit a downcast witness to this conversion.
 
 Limitation detail
   last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
@@ -697,3 +758,6 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:4ccb1836
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:4ccb1836

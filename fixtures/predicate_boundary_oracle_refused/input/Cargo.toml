@@ -1,0 +1,4 @@
+[package]
+name = "predicate_boundary_oracle_refused_fixture"
+version = "0.0.0"
+edition = "2024"

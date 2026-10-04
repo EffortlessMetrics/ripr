@@ -1,7 +1,8 @@
 use super::related_tests::{
-    PythonRelatedCandidate, body_calls_owner, is_python_identifier_char,
-    line_prefix_looks_like_comment_or_string,
+    PythonRelatedCandidate, body_calls_owner, dunder_method_class, is_python_identifier_char,
+    line_prefix_looks_like_comment_or_string, test_may_reach_owner_class,
 };
+use super::source_utils::SourceText;
 use super::{PythonImport, PythonOracleShape, PythonOwner, PythonTest, split_python_assignment};
 use crate::domain::{OracleStrength, StaticLimitKind};
 
@@ -121,6 +122,39 @@ pub(super) fn static_limit_for_change(
         });
     }
     None
+}
+
+/// A dunder method owner (`Cache.__setitem__`) with no related test, in a
+/// workspace whose tests import the owner class or module. Python calls these
+/// methods through syntax (`cache[key] = value`, `Cache(...)`) on instances the
+/// adapter cannot always bind to the class — a unittest mixin's `self.Cache`
+/// attribute or a test-local subclass — so "no static test path" is not a safe
+/// claim. Returns `None` when a test relates, or when no test imports the
+/// owner's class or module and none names the class (such a class keeps
+/// `no_static_path`).
+pub(super) fn implicit_dunder_dispatch_limit(
+    owner: &PythonOwner,
+    all_tests: &[PythonTest],
+    related_candidates: &[PythonRelatedCandidate<'_>],
+) -> Option<PythonStaticLimit> {
+    if !related_candidates.is_empty() {
+        return None;
+    }
+    let class = dunder_method_class(owner)?;
+    all_tests
+        .iter()
+        .any(|test| test_may_reach_owner_class(test, owner, class))
+        .then(|| PythonStaticLimit {
+            kind: StaticLimitKind::DynamicDispatch,
+            evidence: format!(
+                "static_limit dynamic_dispatch: dunder method `{}` is invoked implicitly by Python syntax",
+                owner.qualified_name
+            ),
+            missing: format!(
+                "Static limit `dynamic_dispatch`: `{}` is a dunder method Python invokes through syntax on an instance of `{class}`; tests import `{class}`, its module or its package, or name `{class}`, but the preview adapter cannot bind the instance a test builds to the class, so it does not claim that no test reaches the owner.",
+                owner.qualified_name
+            ),
+        })
 }
 
 pub(super) fn contains_dynamic_dispatch(text: &str) -> bool {
@@ -292,12 +326,17 @@ fn has_typer_import(import: &PythonImport) -> bool {
 }
 
 pub(super) fn collect_static_cli_receiver_names(
-    source: &str,
+    source: &SourceText<'_>,
     imports: &[PythonImport],
 ) -> Vec<String> {
     if !imports.iter().any(has_typer_import) {
         return Vec::new();
     }
+    // One scan per file, not per owner: every owner of a Typer module asks.
+    source.cli_receiver_names(scan_cli_receiver_names).to_vec()
+}
+
+fn scan_cli_receiver_names(source: &str) -> Vec<String> {
     let mut receivers: Vec<String> = source
         .lines()
         .filter_map(|line| {
@@ -324,15 +363,36 @@ pub(super) fn is_simple_python_identifier(value: &str) -> bool {
         && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 
+/// `patch.object` and `patch.multiple` substitute attributes the same way as
+/// `patch` and `monkeypatch.setattr`, so they are the same runtime
+/// substitution limit (#4565).
 pub(super) fn test_has_mocked_module(test: &PythonTest) -> bool {
-    test.decorators
-        .iter()
-        .any(|decorator| decorator == "patch" || decorator.ends_with(".patch"))
-        || test.body_text.contains("patch(")
-        || test.body_text.contains(".patch(")
-        || test.body_text.contains("monkeypatch.setattr(")
-        || test.body_text.contains("monkeypatch.setitem(")
-        || test.body_text.contains("monkeypatch.delattr(")
+    test.decorators.iter().any(|decorator| {
+        ["patch", "patch.object", "patch.multiple"]
+            .iter()
+            .any(|form| decorator == form || decorator.ends_with(&format!(".{form}")))
+    }) || [
+        "patch(",
+        "patch.object(",
+        "patch.multiple(",
+        "monkeypatch.setattr(",
+        "monkeypatch.setitem(",
+        "monkeypatch.delattr(",
+    ]
+    .iter()
+    .any(|call| body_calls_at_name_boundary(&test.body_text, call))
+}
+
+/// Whether `body` contains `call` where the name starts at an identifier
+/// boundary: `mock.patch(` and `patch.object(`, not `dispatch(` or
+/// `dispatch.object(`.
+fn body_calls_at_name_boundary(body: &str, call: &str) -> bool {
+    body.match_indices(call).any(|(idx, _)| {
+        !body[..idx]
+            .chars()
+            .next_back()
+            .is_some_and(is_python_identifier_char)
+    })
 }
 
 fn related_candidates_have_property_based_test_limit(

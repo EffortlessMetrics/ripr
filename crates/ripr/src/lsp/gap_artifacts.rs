@@ -1,6 +1,7 @@
 use crate::domain::{CommandSpec, LanguageId, LanguageStatus, StaticLimitKind};
 use crate::output::first_useful_action::DEFAULT_FIRST_USEFUL_ACTION_OUT;
 use crate::output::gap_decision_ledger::DEFAULT_GAP_DECISION_LEDGER_OUT;
+use crate::output::gap_source_subject::{self, SourceSubjectCheck};
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::io::ErrorKind;
@@ -61,6 +62,12 @@ pub(super) enum GapArtifactRejection {
     MissingIdentity,
     OutOfWorkspacePath(String),
     StaleArtifact,
+    /// A file the artifact's records name no longer has the content the
+    /// artifact was computed from (#4544). Carries the repo-relative path.
+    StaleSubject(String),
+    /// The artifact carries no usable `source_subject` stamp, so it cannot be
+    /// matched to the current workspace (#4544). Carries the reason code.
+    UnverifiableSubject(&'static str),
     UnavailableLanguage(String),
     UnsupportedSchema(String),
     UnsupportedStaticLimitKind(String),
@@ -164,6 +171,8 @@ impl GapArtifactRejection {
             Self::MissingIdentity => "missing_identity",
             Self::OutOfWorkspacePath(_) => "out_of_workspace_path",
             Self::StaleArtifact => "stale_artifact",
+            Self::StaleSubject(_) => "stale_subject",
+            Self::UnverifiableSubject(_) => "unverifiable_subject",
             Self::UnavailableLanguage(_) => "unavailable_language",
             Self::UnsupportedSchema(_) => "unsupported_schema",
             Self::UnsupportedStaticLimitKind(_) => "unsupported_static_limit_kind",
@@ -265,7 +274,65 @@ pub(super) fn validate_gap_artifact(
     {
         return Err(GapArtifactRejection::MissingIdentity);
     }
+    validate_source_subject(artifact, kind, context.root)?;
     Ok(validation)
+}
+
+/// Extracts the files one record or packet makes claims about.
+type SubjectPathsFn = fn(&Path, &Value) -> BTreeSet<String>;
+
+/// #4544: an editor-consumed gap artifact names files and lines, so it is
+/// only current while those files keep the content it was computed from.
+/// Recompute the stamped digests from the workspace; a changed, deleted, or
+/// newly created file is `stale_subject`, and a missing, malformed, or
+/// incomplete stamp is `unverifiable_subject`. Either rejects the whole
+/// artifact so no record from it is projected at its old lines.
+pub(super) fn validate_source_subject(
+    artifact: &Value,
+    kind: GapArtifactKind,
+    root: &Path,
+) -> Result<(), GapArtifactRejection> {
+    let (items, subject_paths): (&[Value], SubjectPathsFn) = match kind {
+        GapArtifactKind::GapDecisionLedger => (
+            artifact
+                .get("records")
+                .or_else(|| artifact.get("gap_records"))
+                .and_then(Value::as_array)
+                .map_or(&[], Vec::as_slice),
+            gap_source_subject::gap_record_subject_paths,
+        ),
+        GapArtifactKind::ActionableGaps => (
+            artifact
+                .get("packets")
+                .and_then(Value::as_array)
+                .map_or(&[], Vec::as_slice),
+            gap_source_subject::actionable_packet_subject_paths,
+        ),
+        GapArtifactKind::EvidenceRecord
+        | GapArtifactKind::FirstUsefulAction
+        | GapArtifactKind::AgentReceipt => return Ok(()),
+    };
+    let required = items
+        .iter()
+        .flat_map(|item| subject_paths(root, item))
+        .collect::<BTreeSet<_>>();
+    source_subject_result(gap_source_subject::check_source_subject(
+        root,
+        artifact.get("source_subject"),
+        &required,
+    ))
+}
+
+/// Map a stamp comparison onto the shared typed rejection vocabulary so the
+/// command-time packet readers disclose the same reason codes.
+pub(super) fn source_subject_result(check: SourceSubjectCheck) -> Result<(), GapArtifactRejection> {
+    match check {
+        SourceSubjectCheck::Current => Ok(()),
+        SourceSubjectCheck::Stale(path) => Err(GapArtifactRejection::StaleSubject(path)),
+        SourceSubjectCheck::Unverifiable(reason) => {
+            Err(GapArtifactRejection::UnverifiableSubject(reason))
+        }
+    }
 }
 
 fn validate_first_useful_action(
@@ -891,20 +958,11 @@ fn actionable_packet_guidance_is_missing(value: &str) -> bool {
     )
 }
 
+/// The files a packet names are defined once, in the shared source-subject
+/// contract, so path safety, the stamp check, and the xtask stamp writer all
+/// read the same shapes (#4544).
 fn actionable_packet_related_paths(packet: &Value) -> Vec<String> {
-    let observer = packet.get("related_test_or_observer");
-    let primary_anchor = packet.get("primary_anchor");
-    string_values(&[
-        path_value(Some(packet), &["source_file"]),
-        path_value(Some(packet), &["target_test"]),
-        path_value(Some(packet), &["target_file"]),
-        path_value(primary_anchor, &["file"]),
-        path_value(observer, &["file"]),
-        path_value(observer, &["path"]),
-        path_value(observer, &["related_test"]),
-        path_value(observer, &["test"]),
-        path_value(observer, &["target_file"]),
-    ])
+    gap_source_subject::actionable_packet_named_paths(packet)
 }
 
 fn actionable_packet_related_target_file(value: &Value) -> Option<String> {
@@ -1374,10 +1432,16 @@ pub(super) fn command_payload_is_safe(root: &Path, command: &str) -> bool {
     if trimmed.is_empty() || trimmed.contains('\n') || trimmed.contains('\r') {
         return false;
     }
+    let Some(trimmed) = strip_workspace_redirect(root, trimmed) else {
+        return false;
+    };
     if trimmed
         .chars()
-        .any(|character| matches!(character, ';' | '&' | '|' | '<' | '>' | '`'))
+        .any(|character| matches!(character, ';' | '&' | '|' | '<' | '>' | '`' | '\0'))
     {
+        return false;
+    }
+    if !substitution_is_quoted(trimmed) {
         return false;
     }
     if trimmed.contains("../") || trimmed.contains("..\\") {
@@ -1403,14 +1467,145 @@ pub(super) fn command_payload_is_safe(root: &Path, command: &str) -> bool {
     true
 }
 
-fn command_program_is_allowed(tokens: &[String]) -> bool {
-    match tokens.first().map(String::as_str) {
-        Some("cargo" | "ripr" | "pytest") => true,
-        Some("python") => {
-            tokens.get(1).map(String::as_str) == Some("-m")
-                && tokens.get(2).map(String::as_str) == Some("unittest")
+/// Split off the one stdout redirect the producers append (#4306 persists
+/// `agent verify` output where the receipt reads it; #3938 anchors that
+/// target at the resolved `--root`). Returns the command body, which the
+/// caller still validates in full, or `None` when a redirect is present but
+/// is not exactly one trailing `> <target>` whose target is a single
+/// `shell_arg`-rendered token naming a file under `<root>/target/ripr/`.
+/// A command without `>` passes through unchanged.
+fn strip_workspace_redirect<'a>(root: &Path, command: &'a str) -> Option<&'a str> {
+    if !command.contains('>') {
+        return Some(command);
+    }
+    let (body, tail) = command.rsplit_once(" > ")?;
+    if body.contains('>') {
+        return None;
+    }
+    let target = shell_arg_token(tail)?;
+    redirect_target_is_ripr_artifact(root, target).then_some(body)
+}
+
+/// Undo `loop_commands::shell_arg` for one token: bare when every character is
+/// in `[A-Za-z0-9._/:-]`, otherwise one single-quoted span with no embedded
+/// quote (the `'\''` escape is refused rather than decoded).
+fn shell_arg_token(token: &str) -> Option<&str> {
+    let bare = |value: &str| {
+        !value.is_empty()
+            && value
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '/' | '_' | '-' | ':'))
+    };
+    if bare(token) {
+        return Some(token);
+    }
+    let inner = token.strip_prefix('\'')?.strip_suffix('\'')?;
+    // PowerShell also closes a `'` span on a typographic quote (U+2018-U+201F),
+    // which would expose the rest of the target as commands; mirrors
+    // `substitution_is_quoted` and the VS Code client's `redirectTailPath`.
+    if inner.is_empty()
+        || inner.contains(['\'', '\0', '\n', '\r'])
+        || inner.contains(|ch: char| ('\u{2018}'..='\u{201f}').contains(&ch))
+    {
+        return None;
+    }
+    Some(inner)
+}
+
+fn redirect_target_is_ripr_artifact(root: &Path, target: &str) -> bool {
+    let path = Path::new(target);
+    if path
+        .components()
+        .any(|component| matches!(component, Component::ParentDir | Component::CurDir))
+        || !is_inside_workspace(root, path)
+    {
+        return false;
+    }
+    let relative = if path.is_absolute() {
+        let canonical_root = std::fs::canonicalize(root).ok();
+        match path.strip_prefix(root).ok().or_else(|| {
+            canonical_root
+                .as_deref()
+                .and_then(|canonical| path.strip_prefix(canonical).ok())
+        }) {
+            Some(relative) => relative.to_path_buf(),
+            None => return false,
         }
-        _ => false,
+    } else {
+        path.to_path_buf()
+    };
+    let mut components = relative.components();
+    matches!(components.next(), Some(Component::Normal(first)) if first == "target")
+        && matches!(components.next(), Some(Component::Normal(second)) if second == "ripr")
+        && components.next().is_some()
+}
+
+/// `$`, `(` and `)` open command or process substitution (`$(cmd)`, `<(cmd)`,
+/// PowerShell `$(...)`/`@(...)`), so they may appear only inside a
+/// single-quoted span, where `shell_arg` puts them (a gap id such as
+/// `'...:len(x)'`). That span is inert in bash, zsh, fish and PowerShell only
+/// when the command has no `"`, `\` or typographic quote, so those refuse the
+/// allowance, as does an unterminated span. Mirrors the VS Code client's
+/// `hasUnsafeShellMetacharacter` (#4225, #4239).
+fn substitution_is_quoted(command: &str) -> bool {
+    let is_substitution = |character: char| matches!(character, '$' | '(' | ')');
+    if !command.contains(is_substitution) {
+        return true;
+    }
+    if command.contains(|character| matches!(character, '"' | '\\' | '\u{2018}'..='\u{201f}')) {
+        return false;
+    }
+    let spans: Vec<&str> = command.split('\'').collect();
+    spans.len() % 2 == 1
+        && spans
+            .iter()
+            .step_by(2)
+            .all(|span| !span.contains(is_substitution))
+}
+
+fn command_program_is_allowed(tokens: &[String]) -> bool {
+    let words = tokens.iter().map(String::as_str).collect::<Vec<_>>();
+    if matches!(words.as_slice(), ["cargo" | "ripr", ..]) {
+        return true;
+    }
+    // A producer's test-runner command names package-relative test paths and
+    // node ids only; an option token could load a config, plugin or module,
+    // and an absolute or parent path could run tests outside the package.
+    test_runner_arguments(&words).is_some_and(|arguments| {
+        arguments
+            .iter()
+            .all(|word| test_argument_is_package_local(word))
+    })
+}
+
+fn test_argument_is_package_local(word: &str) -> bool {
+    let drive_path = matches!(word.as_bytes(), [letter, b':', ..] if letter.is_ascii_alphabetic());
+    // `../` inside an argument is already refused for the whole command.
+    !(word.starts_with(['-', '/', '\\', '~']) || drive_path || word == "..")
+}
+
+/// The arguments after a test-runner verify command's program, or `None` when
+/// the command is not one of the runners the preview-language producers emit.
+fn test_runner_arguments<'a>(words: &'a [&'a str]) -> Option<&'a [&'a str]> {
+    match words {
+        ["pytest", arguments @ ..] | ["python", "-m", "unittest" | "pytest", arguments @ ..] => {
+            Some(arguments)
+        }
+        // TypeScript verify commands (RIPR-SPEC-0085). Package scripts first,
+        // so `yarn test` is not read as a `yarn <bin>` launch.
+        ["bun" | "yarn", "test", arguments @ ..]
+        | ["npm" | "pnpm", "test", "--", arguments @ ..]
+        | ["node", "--test", arguments @ ..] => Some(arguments),
+        // Only launchers that run the package's installed binary: `npx`
+        // without `--no-install` and `bunx` fetch a missing package.
+        ["npx", "--no-install", binary @ ..]
+        | ["pnpm", "exec", binary @ ..]
+        | ["bun", "run", binary @ ..]
+        | ["yarn", binary @ ..] => match binary {
+            ["jest" | "ava", arguments @ ..] | ["vitest", "run", arguments @ ..] => Some(arguments),
+            _ => None,
+        },
+        _ => None,
     }
 }
 
@@ -1420,6 +1615,7 @@ fn looks_like_command_payload(value: &str) -> bool {
         || trimmed.starts_with("ripr ")
         || trimmed.starts_with("pytest ")
         || trimmed.starts_with("python -m unittest ")
+        || trimmed.starts_with("python -m pytest ")
 }
 
 fn command_tokens(command: &str) -> Vec<String> {
@@ -1515,6 +1711,8 @@ fn known_static_limit_kind(kind: &str) -> bool {
         StaticLimitKind::RustMacroWrappedAssertionUnresolved,
         StaticLimitKind::RustValuePropagationUnresolved,
         StaticLimitKind::RustSubprocessBinaryReachUnresolved,
+        StaticLimitKind::WrapperErrorBindingUnresolved,
+        StaticLimitKind::PythonTransitiveReachUnresolved,
     ]
     .iter()
     .any(|known| known.as_str() == kind)
@@ -1615,6 +1813,10 @@ mod tests {
     }
 
     fn actionable_gaps_report() -> Value {
+        stamped(unstamped_actionable_gaps_report())
+    }
+
+    fn unstamped_actionable_gaps_report() -> Value {
         let raw_finding = json!({
             "file": "src/pricing.rs",
             "line": 42,
@@ -1690,6 +1892,16 @@ mod tests {
         })
     }
 
+    /// Attach the producer's `source_subject` stamp (#4544). Fixture files are
+    /// absent under the fixture roots, so the stamp records `null` digests
+    /// and stays current until a test creates, edits, or deletes one.
+    fn stamped(artifact: Value) -> Value {
+        crate::output::gap_source_subject::with_source_subject_for_test(
+            Path::new("/workspace"),
+            artifact,
+        )
+    }
+
     fn temp_root(label: &str) -> Result<PathBuf, String> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1702,6 +1914,10 @@ mod tests {
     }
 
     fn preview_gap_ledger() -> Value {
+        stamped(unstamped_preview_gap_ledger())
+    }
+
+    fn unstamped_preview_gap_ledger() -> Value {
         json!({
             "schema_version": "0.1",
             "tool": "ripr",
@@ -1822,6 +2038,14 @@ mod tests {
             ),
             (GapArtifactRejection::StaleArtifact, "stale_artifact"),
             (
+                GapArtifactRejection::StaleSubject("src/lib.rs".to_string()),
+                "stale_subject",
+            ),
+            (
+                GapArtifactRejection::UnverifiableSubject("source_subject_missing"),
+                "unverifiable_subject",
+            ),
+            (
                 GapArtifactRejection::UnavailableLanguage("python".to_string()),
                 "unavailable_language",
             ),
@@ -1863,6 +2087,42 @@ mod tests {
         assert_eq!(validated.receipt_commands.len(), 1);
         assert_eq!(validated.verify_command_specs.len(), 1);
         assert_eq!(validated.receipt_command_specs.len(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn first_useful_action_with_the_producers_verify_redirect_validates() -> Result<(), String> {
+        // The first-useful-action producer (#4306) writes this exact verify
+        // string; before #4758 the whole artifact was rejected as
+        // `malformed_command_payload`. The root comes from `temp_root`
+        // (#4921): a real absolute root on every host, where the previous
+        // `/workspace` literal is drive-relative (not absolute) on Windows
+        // and the producer's anchored redirect was refused.
+        let workspace = temp_root("first-useful-redirect")?;
+        let workspace_text = crate::agent::loop_commands::display_path(&workspace);
+        let mut artifact = first_action();
+        artifact["root"] = json!(workspace_text.as_str());
+        artifact["commands"]["verify"] = json!(crate::agent::loop_commands::agent_verify_command(
+            &workspace_text,
+            crate::agent::loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+            crate::agent::loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+            Some(crate::agent::loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT),
+        ));
+        let context = GapArtifactValidationContext {
+            root: &workspace,
+            enabled_languages: &[LanguageId::Rust],
+        };
+        let validated =
+            validate_gap_artifact(&artifact, &context).map_err(|err| format!("{err:?}"))?;
+        assert_eq!(validated.kind, GapArtifactKind::FirstUsefulAction);
+        assert!(validated.verify_commands[0].contains(" > "));
+
+        artifact["commands"]["verify"] =
+            json!("ripr agent verify --root . --json > /elsewhere/target/ripr/v.json");
+        assert!(matches!(
+            validate_gap_artifact(&artifact, &context),
+            Err(GapArtifactRejection::MalformedCommandPayload(_))
+        ));
         Ok(())
     }
 
@@ -2054,7 +2314,7 @@ mod tests {
 
     #[test]
     fn actionable_gaps_report_allows_empty_no_action_queue() -> Result<(), String> {
-        let artifact = json!({
+        let artifact = stamped(json!({
             "schema_version": "0.1",
             "tool": "ripr",
             "report": "actionable-gaps",
@@ -2068,7 +2328,7 @@ mod tests {
             },
             "run_limitations": [],
             "packets": []
-        });
+        }));
 
         let validated = validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
             .map_err(|err| format!("{err:?}"))?;
@@ -2605,7 +2865,7 @@ mod tests {
     #[test]
     fn gap_ledger_summary_reports_no_action_only_when_all_records_are_no_action()
     -> Result<(), String> {
-        let artifact = json!({
+        let artifact = stamped(json!({
             "schema_version": "0.1",
             "tool": "ripr",
             "kind": "gap_decision_ledger",
@@ -2632,7 +2892,7 @@ mod tests {
                     }
                 }
             ]
-        });
+        }));
 
         let validated = validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
             .map_err(|err| format!("{err:?}"))?;
@@ -2810,6 +3070,29 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "lang-python")]
+    fn validation_accepts_python_transitive_reach_static_limit_kind() -> Result<(), String> {
+        let mut artifact = preview_gap_ledger();
+        artifact["records"][0]["static_limit_kind"] = json!("python_transitive_reach_unresolved");
+
+        validate_gap_artifact(&artifact, &context(&[LanguageId::Rust, LanguageId::Python]))
+            .map_err(|err| format!("{err:?}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn validation_accepts_wrapper_error_binding_static_limit_kind() -> Result<(), String> {
+        let mut artifact = preview_gap_ledger();
+        artifact["records"][0]["language"] = json!("rust");
+        artifact["records"][0]["language_status"] = json!("stable");
+        artifact["records"][0]["static_limit_kind"] = json!("wrapper_error_binding_unresolved");
+
+        validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
+            .map_err(|err| format!("{err:?}"))?;
+        Ok(())
+    }
+
+    #[test]
     fn evidence_record_validates_text_static_limits_without_parsing_action_semantics()
     -> Result<(), String> {
         let artifact = json!({
@@ -2847,6 +3130,121 @@ mod tests {
     }
 
     #[test]
+    fn command_payload_refuses_substitution_metacharacters() {
+        let workspace = root();
+
+        for command in [
+            "cargo test $(id)",
+            "cargo test $HOME",
+            "pytest tests/test_pricing.py (id",
+            "cargo test foo)",
+            "cargo test foo\0bar",
+            // Unterminated span: the `(` is not quoted.
+            "cargo test 'foo (id",
+            // A `"` or `\\` elsewhere can end or escape the span in some shell.
+            "ripr receipt write --gap 'gap:len(x)' --out \"target/r.json\"",
+            "ripr receipt write --gap 'gap:len(x)' --out target\\r.json",
+            // PowerShell closes a `'` span on U+2019, exposing `$(id)`.
+            "ripr receipt write --gap 'gap:len(x)\u{2019} $(id) \u{2018}'",
+        ] {
+            assert!(
+                !command_payload_is_safe(&workspace, command),
+                "accepted {command:?}"
+            );
+        }
+        for command in [
+            "cargo test -p ripr 'name with spaces' -- --exact",
+            // `shell_arg` quotes a gap id built from an expression; this is the
+            // real receipt renderer's output, not hand-written text.
+            &crate::output::receipt_write::receipt_write_command(
+                "gap:rust:src/lib.rs:total:predicate_boundary:items.len()",
+                "cargo test -p pricing total_boundary",
+                Some("target/ripr/receipts/gap.json"),
+            ),
+        ] {
+            assert!(
+                command_payload_is_safe(&workspace, command),
+                "refused {command:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn command_payload_accepts_the_producers_anchored_verify_redirect() -> Result<(), String> {
+        // #4306 persists `agent verify` output where the receipt reads it and
+        // #3938 anchors the target at `--root`; the first-useful-action
+        // artifact carries exactly this string, so refusing it dropped the
+        // whole artifact as `malformed_command_payload`. The root comes from
+        // `temp_root` (#4921): a real absolute root on every host, where the
+        // previous `/workspace` literal is drive-relative (not absolute) on
+        // Windows and the anchored redirect was refused.
+        let workspace = temp_root("command-payload-redirect")?;
+        let workspace_text = crate::agent::loop_commands::display_path(&workspace);
+        for command_root in [".", workspace_text.as_str()] {
+            let command = if command_root == "." {
+                // `--root .` anchors at the process cwd; render it against
+                // the workspace so the test does not depend on the cwd.
+                format!(
+                    "{} > {}/target/ripr/workflow/agent-verify.json",
+                    crate::agent::loop_commands::agent_verify_command(
+                        ".",
+                        "target/ripr/workflow/before.repo-exposure.json",
+                        "target/ripr/workflow/after.repo-exposure.json",
+                        None,
+                    ),
+                    workspace_text
+                )
+            } else {
+                crate::agent::loop_commands::agent_verify_command(
+                    command_root,
+                    "target/ripr/workflow/before.repo-exposure.json",
+                    "target/ripr/workflow/after.repo-exposure.json",
+                    Some("target/ripr/workflow/agent-verify.json"),
+                )
+            };
+            assert!(command.contains(" > "), "{command}");
+            assert!(
+                command_payload_is_safe(&workspace, &command),
+                "refused {command:?}"
+            );
+        }
+        let body = "ripr agent verify --root . --before a.json --after b.json --json";
+        assert!(command_payload_is_safe(
+            &workspace,
+            &format!("{body} > target/ripr/workflow/agent-verify.json")
+        ));
+        assert!(command_payload_is_safe(
+            &workspace,
+            &format!("{body} > '{workspace_text}/target/ripr/dir with space/v.json'")
+        ));
+        for command in [
+            format!("{body} > /elsewhere/target/ripr/workflow/agent-verify.json"),
+            format!("{body} > {workspace_text}/src/lib.rs"),
+            format!("{body} > target/other.json"),
+            format!("{body} > target/ripr"),
+            format!("{body} > target/ripr/../../outside.json"),
+            format!("{body} > ./target/ripr/v.json"),
+            format!("{body} >> target/ripr/workflow/agent-verify.json"),
+            format!("{body} > other.json > target/ripr/workflow/agent-verify.json"),
+            format!("{body} > target/ripr/v.json extra"),
+            format!("{body} > target/ripr/v.json; id"),
+            format!("{body} > 'target/ripr/it'\\''s.json'"),
+            format!("{body} > 'target/ripr/a\u{2019} ; Write-Output injected #.json'"),
+            format!("{body} > 'target/ripr/a\u{201c}b.json'"),
+            format!("{body} > $(id)/target/ripr/v.json"),
+            format!("{body} 2> target/ripr/v.json"),
+            format!("{body} >target/ripr/v.json"),
+            "cargo test > target/ripr/v.json | tee x".to_string(),
+        ] {
+            assert!(
+                !command_payload_is_safe(&workspace, &command),
+                "accepted {command:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
     fn command_payload_accepts_python_test_verify_commands() {
         let workspace = root();
 
@@ -2857,6 +3255,21 @@ mod tests {
         assert!(command_payload_is_safe(
             &workspace,
             "python -m unittest tests.test_pricing.TestDiscount.test_boundary"
+        ));
+        assert!(command_payload_is_safe(
+            &workspace,
+            "python -m pytest tests/test_pricing.py::test_discount_boundary"
+        ));
+        assert!(looks_like_command_payload(
+            "python -m pytest tests/test_pricing.py::test_discount_boundary"
+        ));
+        assert!(!command_payload_is_safe(
+            &workspace,
+            "python -m pip install anything"
+        ));
+        assert!(!command_payload_is_safe(
+            &workspace,
+            "python -m pytest ../outside/test_pricing.py"
         ));
         assert!(!command_payload_is_safe(
             &workspace,
@@ -2873,6 +3286,234 @@ mod tests {
         assert!(looks_like_command_payload(
             "python -m unittest tests.test_pricing.TestDiscount.test_boundary"
         ));
+    }
+
+    #[test]
+    fn command_payload_accepts_typescript_local_runner_verify_commands() {
+        let workspace = root();
+
+        // Every form `verify_command_for_discovery` emits (RIPR-SPEC-0085).
+        for command in [
+            "npx --no-install jest tests/discount.test.ts",
+            "npx --no-install vitest run src/util.test.ts",
+            "npx --no-install ava tests/math.test.ts",
+            "pnpm exec jest tests/token.test.ts",
+            "pnpm exec vitest run src/util.test.ts",
+            "yarn jest tests/math.test.ts",
+            "yarn ava tests/math.test.ts",
+            "bun run vitest run src/foo.test.ts",
+            "bun test tests/math.test.ts",
+            "node --test tests/math.test.ts",
+            "npm test -- tests/math.test.ts",
+            "pnpm test -- tests/math.test.ts",
+            "yarn test tests/math.test.ts",
+            "npx --no-install jest 'tests/my file.test.ts'",
+        ] {
+            assert!(command_payload_is_safe(&workspace, command), "{command}");
+        }
+        // Launchers that can fetch a registry package, other binaries, and
+        // the shared path and metacharacter refusals.
+        for command in [
+            "npx jest tests/discount.test.ts",
+            "npx --yes jest tests/discount.test.ts",
+            "npx --no-install some-tool tests/discount.test.ts",
+            "bunx vitest run src/foo.test.ts",
+            "pnpm dlx jest tests/discount.test.ts",
+            "yarn dlx jest tests/discount.test.ts",
+            "pnpm exec rimraf .",
+            "yarn add jest",
+            "bun run build",
+            "npm exec jest tests/discount.test.ts",
+            "npm install",
+            "node -e process.exit()",
+            "vitest tests/discount.test.ts",
+            "npx --no-install jest ../outside/discount.test.ts",
+            "npx --no-install jest tests/a.test.ts; rm -rf target",
+            // Runner options can load a config, plugin or module beyond the
+            // one test the packet names.
+            "npx --no-install jest --config other.config.js tests/a.test.ts",
+            "node --test --import ./setup.mjs tests/math.test.ts",
+            "npm test -- --watch tests/math.test.ts",
+            "python -m pytest -p plugin tests/test_pricing.py",
+            // Absolute and parent paths run tests outside the package.
+            "node --test /tmp/outside.test.js",
+            "python -m pytest ..",
+            "npx --no-install jest ~/outside.test.ts",
+        ] {
+            assert!(!command_payload_is_safe(&workspace, command), "{command}");
+        }
+        // Built at runtime so the local-context policy does not read the
+        // fixture as a machine path.
+        let drive_command = format!("pytest {}:/outside/test_pricing.py", 'C');
+        assert!(!command_payload_is_safe(&workspace, &drive_command));
+    }
+
+    /// #4544: the shared validator recomputes the `source_subject` digests.
+    /// Unchanged files validate; an edited anchor, a deleted file, and a
+    /// missing stamp are typed rejections for both editor-consumed kinds.
+    #[test]
+    fn source_subject_gates_ledger_and_actionable_gaps_validation() -> Result<(), String> {
+        let root = temp_root("source-subject")?;
+        let result = (|| {
+            fs::create_dir_all(root.join("src")).map_err(|err| err.to_string())?;
+            fs::create_dir_all(root.join("tests")).map_err(|err| err.to_string())?;
+            fs::write(root.join("src/pricing.rs"), "pub fn price() {}\n")
+                .map_err(|err| err.to_string())?;
+            fs::write(root.join("tests/pricing.rs"), "#[test]\nfn t() {}\n")
+                .map_err(|err| err.to_string())?;
+            // Rust-only so the test holds in the `--no-default-features
+            // --features lang-rust` lane as well as the default build.
+            let context = GapArtifactValidationContext {
+                root: &root,
+                enabled_languages: &[LanguageId::Rust],
+            };
+            let stamp = |artifact: Value| {
+                crate::output::gap_source_subject::with_source_subject_for_test(&root, artifact)
+            };
+            let ledger = stamp(unstamped_rust_gap_ledger());
+            let actionable = stamp(unstamped_actionable_gaps_report());
+            for artifact in [&ledger, &actionable] {
+                validate_gap_artifact(artifact, &context)
+                    .map_err(|err| format!("current artifact rejected: {err:?}"))?;
+            }
+
+            fs::write(root.join("src/pricing.rs"), "pub fn price() -> u8 { 1 }\n")
+                .map_err(|err| err.to_string())?;
+            for artifact in [&ledger, &actionable] {
+                assert_eq!(
+                    validate_gap_artifact(artifact, &context),
+                    Err(GapArtifactRejection::StaleSubject(
+                        "src/pricing.rs".to_string()
+                    ))
+                );
+            }
+            fs::write(root.join("src/pricing.rs"), "pub fn price() {}\n")
+                .map_err(|err| err.to_string())?;
+
+            fs::remove_file(root.join("tests/pricing.rs")).map_err(|err| err.to_string())?;
+            for artifact in [&ledger, &actionable] {
+                assert_eq!(
+                    validate_gap_artifact(artifact, &context),
+                    Err(GapArtifactRejection::StaleSubject(
+                        "tests/pricing.rs".to_string()
+                    ))
+                );
+            }
+
+            for artifact in [
+                unstamped_rust_gap_ledger(),
+                unstamped_actionable_gaps_report(),
+            ] {
+                assert_eq!(
+                    validate_gap_artifact(&artifact, &context),
+                    Err(GapArtifactRejection::UnverifiableSubject(
+                        "source_subject_missing"
+                    ))
+                );
+            }
+
+            // A stamp that omits a file the records name vouches for only part
+            // of the claim, so it cannot make the artifact current.
+            let mut partial = ledger.clone();
+            partial["source_subject"]["files"] = json!([]);
+            assert_eq!(
+                validate_gap_artifact(&partial, &context),
+                Err(GapArtifactRejection::UnverifiableSubject(
+                    "source_subject_incomplete"
+                ))
+            );
+            Ok(())
+        })();
+        fs::remove_dir_all(&root).map_err(|err| format!("remove {}: {err}", root.display()))?;
+        result
+    }
+
+    /// A Rust gap ledger whose record names `src/pricing.rs` and
+    /// `tests/pricing.rs`, valid without any preview-language adapter.
+    fn unstamped_rust_gap_ledger() -> Value {
+        let mut ledger = unstamped_preview_gap_ledger();
+        let record = &mut ledger["records"][0];
+        record["gap_id"] = json!("gap:rust:pricing");
+        record["canonical_gap_id"] = json!("gap:rust:pricing");
+        record["language"] = json!("rust");
+        record["language_status"] = json!("stable");
+        if let Some(object) = record.as_object_mut() {
+            object.remove("static_limit_kind");
+        }
+        record["anchor"] = json!({"file": "src/pricing.rs", "line": 1});
+        record["repair_route"]["target_file"] = json!("tests/pricing.rs");
+        record["repair_route"]["related_test"] = json!("tests/pricing.rs::t");
+        ledger
+    }
+
+    /// #4544: every file an actionable packet names is part of its subject,
+    /// whatever shape `related_test_or_observer` takes, and `target_test` /
+    /// `target_file` count too. Editing any of them makes the report stale.
+    #[test]
+    fn source_subject_covers_every_packet_related_test_shape() -> Result<(), String> {
+        let root = temp_root("source-subject-packet-shapes")?;
+        let result = (|| {
+            fs::create_dir_all(root.join("tests")).map_err(|err| err.to_string())?;
+            for file in [
+                "tests/observer.rs",
+                "tests/target_test.rs",
+                "tests/target_file.rs",
+            ] {
+                fs::write(root.join(file), "#[test]\nfn t() {}\n")
+                    .map_err(|err| err.to_string())?;
+            }
+            let context = GapArtifactValidationContext {
+                root: &root,
+                enabled_languages: &[LanguageId::Rust],
+            };
+            for (shape, observer) in [
+                ("string", json!("tests/observer.rs::t")),
+                ("object", json!({"file": "tests/observer.rs", "name": "t"})),
+                (
+                    "array",
+                    json!(["observer name", {"file": "tests/observer.rs", "name": "t"}]),
+                ),
+            ] {
+                let mut report = unstamped_actionable_gaps_report();
+                report["packets"][0]["related_test_or_observer"] = observer;
+                report["packets"][0]["target_test"] = json!("tests/target_test.rs::t");
+                report["packets"][0]["target_file"] = json!("tests/target_file.rs");
+                let report =
+                    crate::output::gap_source_subject::with_source_subject_for_test(&root, report);
+                validate_gap_artifact(&report, &context)
+                    .map_err(|err| format!("{shape}: current report rejected: {err:?}"))?;
+                for file in [
+                    "tests/observer.rs",
+                    "tests/target_test.rs",
+                    "tests/target_file.rs",
+                ] {
+                    fs::write(root.join(file), "#[test]\nfn t() { assert!(true) }\n")
+                        .map_err(|err| err.to_string())?;
+                    assert_eq!(
+                        validate_gap_artifact(&report, &context),
+                        Err(GapArtifactRejection::StaleSubject(file.to_string())),
+                        "{shape}: {file}"
+                    );
+                    fs::write(root.join(file), "#[test]\nfn t() {}\n")
+                        .map_err(|err| err.to_string())?;
+                }
+                // A stamp that drops the observer file cannot vouch for it.
+                let mut partial = report.clone();
+                if let Some(files) = partial["source_subject"]["files"].as_array_mut() {
+                    files.retain(|file| file["path"] != json!("tests/observer.rs"));
+                }
+                assert_eq!(
+                    validate_gap_artifact(&partial, &context),
+                    Err(GapArtifactRejection::UnverifiableSubject(
+                        "source_subject_incomplete"
+                    )),
+                    "{shape}"
+                );
+            }
+            Ok(())
+        })();
+        fs::remove_dir_all(&root).map_err(|err| format!("remove {}: {err}", root.display()))?;
+        result
     }
 
     #[test]

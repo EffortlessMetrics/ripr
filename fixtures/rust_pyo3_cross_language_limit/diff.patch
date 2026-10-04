@@ -1,0 +1,21 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -2,7 +2,7 @@ use pyo3::prelude::*;
+ 
+ #[pyfunction]
+ pub fn fee(amount: u64) -> u64 {
+-    if amount > 100 {
++    if amount >= 100 {
+         return 5;
+     }
+     0
+@@ -17,7 +17,7 @@ pub struct Ledger {
+ #[pymethods]
+ impl Ledger {
+     pub fn charge(&mut self, amount: u64) -> u64 {
+-        if amount > 100 {
++        if amount >= 100 {
+             self.total += 5;
+         }
+         self.total

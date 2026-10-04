@@ -5,6 +5,9 @@ use super::model::{
 };
 use super::{LIMITS_NOTE, SCHEMA_VERSION};
 use crate::app::causal_projection::insert_canonical_delta_fields;
+use crate::output::first_pr::{ProofPathLabels, REPAIR_AFTER_PHASE_LABEL, REPAIR_AFTER_PHASE_STEP};
+use crate::output::markdown::{code_span, inline_prose};
+use crate::output::review_comments::LLM_PROMPT_VERIFY_SENTENCE;
 use serde_json::{Value, json};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -94,8 +97,8 @@ pub(crate) fn render_gate_decision_markdown(report: &GateDecisionReport) -> Stri
         out.push_str("## Exception Policy\n\n");
         out.push_str(&format!(
             "Ledger: {} (status: {}, due_review: {})\n",
-            md_escape(&exception_policy.path),
-            md_escape(&exception_policy.ledger_status),
+            inline_prose(&exception_policy.path),
+            inline_prose(&exception_policy.ledger_status),
             exception_policy.due_review.as_str()
         ));
         out.push_str(&format!(
@@ -104,11 +107,11 @@ pub(crate) fn render_gate_decision_markdown(report: &GateDecisionReport) -> Stri
         ));
         for entry in &exception_policy.active {
             out.push_str(&format!(
-                "- active `{}` ({}) review_after {} expires {}\n",
-                md_escape(&entry.id),
-                md_escape(&entry.kind),
-                md_escape(&entry.review_after),
-                md_escape(&entry.expires)
+                "- active {} ({}) review_after {} expires {}\n",
+                code_span(&entry.id),
+                inline_prose(&entry.kind),
+                inline_prose(&entry.review_after),
+                inline_prose(&entry.expires)
             ));
         }
         for violation in &exception_policy.violations {
@@ -119,8 +122,8 @@ pub(crate) fn render_gate_decision_markdown(report: &GateDecisionReport) -> Stri
             };
             out.push_str(&format!(
                 "- {severity} {}: {}\n",
-                md_escape(&violation.kind),
-                md_escape(&violation.detail)
+                inline_prose(&violation.kind),
+                inline_prose(&violation.detail)
             ));
         }
         out.push('\n');
@@ -128,14 +131,14 @@ pub(crate) fn render_gate_decision_markdown(report: &GateDecisionReport) -> Stri
     if !report.config_errors.is_empty() {
         out.push_str("## Config Errors\n\n");
         for error in &report.config_errors {
-            out.push_str(&format!("- {}\n", md_escape(error)));
+            out.push_str(&format!("- {}\n", inline_prose(error)));
         }
         out.push('\n');
     }
     if !report.warnings.is_empty() {
         out.push_str("## Warnings\n\n");
         for warning in &report.warnings {
-            out.push_str(&format!("- {}\n", md_escape(warning)));
+            out.push_str(&format!("- {}\n", inline_prose(warning)));
         }
         out.push('\n');
     }
@@ -219,7 +222,12 @@ pub(crate) fn gate_decision_inline_detail(report: &GateDecisionReport) -> String
                 }
                 (_, None) => {}
             }
-            if let Some(command) = first.repair_route.inspection_command.as_deref() {
+            // An eligible seam's route starts the repair transaction, which
+            // prints its own after-phase command (#3906); the inspection
+            // brief stays the route for everything else.
+            if let Some(command) = first.repair_route.repair_command.as_deref() {
+                let _ = write!(detail, "; start the repair with `{command}`");
+            } else if let Some(command) = first.repair_route.inspection_command.as_deref() {
                 let _ = write!(detail, "; inspect with `{command}`");
             }
             return detail;
@@ -403,7 +411,7 @@ pub(super) fn repair_route_json(route: &GateRepairRoute) -> Value {
             "detail": limitation.detail,
         })
     });
-    json!({
+    let mut value = json!({
         "canonical_gap_id": route.canonical_gap_id,
         "seam_id": route.seam_id,
         "classification": route.classification,
@@ -412,12 +420,17 @@ pub(super) fn repair_route_json(route: &GateRepairRoute) -> Value {
         "missing_discriminator": route.missing_discriminator,
         "repair_target": repair_target,
         "test_intent": route.test_intent,
+        "repair_command": route.repair_command,
         "verify_command": route.verify_command,
         "receipt_command": route.receipt_command,
         "inspection_command": route.inspection_command,
         "authority_boundary": route.authority_boundary,
         "limitation": limitation,
-    })
+    });
+    if let Some(command) = &route.analysis_outcome_command {
+        value["analysis_outcome_command"] = Value::String(command.clone());
+    }
+    value
 }
 
 fn calibration_json(evidence: &CalibrationEvidence) -> Value {
@@ -454,8 +467,8 @@ fn push_decision_section(
         out.push_str(&format!(
             "- {} {} — {}\n",
             decision_location(&decision.placement),
-            md_escape(decision.static_class.as_deref().unwrap_or("unknown")),
-            md_escape(&decision.gate_reason)
+            inline_prose(decision.static_class.as_deref().unwrap_or("unknown")),
+            inline_prose(&decision.gate_reason)
         ));
         if matches!(
             decision.decision.as_str(),
@@ -469,44 +482,68 @@ fn push_decision_section(
                     .delta_attribution
                     .map(|attribution| attribution.as_str()),
             );
-            push_repair_route(out, &decision.repair_route);
+            push_repair_route(out, &decision.repair_route, decision.changed_line_anchored);
         }
     }
     out.push('\n');
 }
 
-fn push_repair_route(out: &mut String, route: &GateRepairRoute) {
+fn push_repair_route(out: &mut String, route: &GateRepairRoute, changed_line_anchored: bool) {
+    // A seam outside the PR's changed lines keeps its owner and behavior
+    // visible but is not labeled changed (RIPR-SPEC-0012 placement).
+    let (owner_label, behavior_label) = if changed_line_anchored {
+        ("Changed owner", "Changed behavior")
+    } else {
+        ("Owner", "Behavior")
+    };
     push_optional_code(out, "Gap", route.canonical_gap_id.as_deref());
     push_optional_code(out, "Seam", route.seam_id.as_deref());
     push_optional_code(out, "Classification", route.classification.as_deref());
-    push_optional_code(out, "Changed owner", route.changed_owner.as_deref());
-    push_optional_text(out, "Changed behavior", route.changed_behavior.as_deref());
+    push_optional_code(out, owner_label, route.changed_owner.as_deref());
+    push_optional_text(out, behavior_label, route.changed_behavior.as_deref());
     push_optional_text(
         out,
         "Why it remains open",
         route.missing_discriminator.as_deref(),
     );
     push_repair_target(out, route.repair_target.as_ref());
-    push_optional_text(out, "Add", route.test_intent.as_deref());
-    push_optional_code(out, "Verify", route.verify_command.as_deref());
-    push_optional_code(out, "Receipt", route.receipt_command.as_deref());
+    // #3906 (F60-14): a carried repair start leads the route as one
+    // transaction: start, the test to add, then the after phase, which runs
+    // verify and writes the receipt. The low-level pair follows as the
+    // manual alternative, labelled by the shared selector; without a start
+    // it is labelled as running after the test edit. JSON is unchanged.
+    let labels = ProofPathLabels::for_repair_start(route.repair_command.is_some());
+    push_optional_code(out, "Start repair", route.repair_command.as_deref());
+    push_optional_text(out, "Add", route_test_intent(route).as_deref());
+    if route.repair_command.is_some() {
+        out.push_str(&format!(
+            "  - {REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n"
+        ));
+    }
+    push_optional_code(
+        out,
+        "Analysis outcome for the receipt",
+        route.analysis_outcome_command.as_deref(),
+    );
+    push_optional_code(out, labels.verify, route.verify_command.as_deref());
+    push_optional_code(out, labels.receipt, route.receipt_command.as_deref());
     push_optional_code(out, "Inspect", route.inspection_command.as_deref());
     out.push_str(&format!(
-        "  - Boundary: `{}`\n",
-        md_inline_code(&route.authority_boundary)
+        "  - Boundary: {}\n",
+        code_span(&route.authority_boundary)
     ));
     if let Some(limitation) = &route.limitation {
         out.push_str(&format!(
-            "  - Repair route limitation: `{}`\n",
-            md_inline_code(limitation.kind)
+            "  - Repair route limitation: {}\n",
+            code_span(limitation.kind)
         ));
         out.push_str(&format!(
-            "  - Missing route fields: `{}`\n",
-            md_inline_code(&limitation.missing_fields.join(", "))
+            "  - Missing route fields: {}\n",
+            code_span(&limitation.missing_fields.join(", "))
         ));
         out.push_str(&format!(
             "  - Limitation detail: {}\n",
-            md_escape(limitation.detail)
+            inline_prose(limitation.detail)
         ));
     }
 }
@@ -515,22 +552,19 @@ fn push_repair_target(out: &mut String, target: Option<&GateRepairTarget>) {
     match target {
         Some(GateRepairTarget::RelatedTest { name, file, line }) => {
             out.push_str(&format!(
-                "  - Near test: `{}` at `{}:{line}`\n",
-                md_inline_code(name),
-                md_inline_code(file)
+                "  - Near test: {} at {}\n",
+                code_span(name),
+                code_span(&format!("{file}:{line}"))
             ));
         }
         Some(GateRepairTarget::ProductionCaller { owner, file, line }) => {
-            out.push_str(&format!(
-                "  - Production caller: `{}`",
-                md_inline_code(owner)
-            ));
+            out.push_str(&format!("  - Production caller: {}", code_span(owner)));
             match (file.as_deref(), line) {
                 (Some(file), Some(line)) => {
-                    out.push_str(&format!(" at `{}:{line}`", md_inline_code(file)));
+                    out.push_str(&format!(" at {}", code_span(&format!("{file}:{line}"))));
                 }
                 (Some(file), None) => {
-                    out.push_str(&format!(" at `{}`", md_inline_code(file)));
+                    out.push_str(&format!(" at {}", code_span(file)));
                 }
                 (None, Some(line)) => out.push_str(&format!(" at line `{line}`")),
                 (None, None) => {}
@@ -541,20 +575,30 @@ fn push_repair_target(out: &mut String, target: Option<&GateRepairTarget>) {
     }
 }
 
+/// The route's test intent for the Markdown `Add` line. With a carried
+/// repair start the after phase runs verify, so the review card prompt's
+/// closing low-level verify sentence would be a peer step; it is dropped
+/// there. Any other intent renders unchanged.
+fn route_test_intent(route: &GateRepairRoute) -> Option<String> {
+    let intent = route.test_intent.as_deref()?;
+    if route.repair_command.is_some()
+        && let Some(stripped) = intent.strip_suffix(LLM_PROMPT_VERIFY_SENTENCE)
+    {
+        return Some(stripped.trim_end().to_string());
+    }
+    Some(intent.to_string())
+}
+
 fn push_optional_code(out: &mut String, label: &str, value: Option<&str>) {
     if let Some(value) = value {
-        out.push_str(&format!("  - {label}: `{}`\n", md_inline_code(value)));
+        out.push_str(&format!("  - {label}: {}\n", code_span(value)));
     }
 }
 
 fn push_optional_text(out: &mut String, label: &str, value: Option<&str>) {
     if let Some(value) = value {
-        out.push_str(&format!("  - {label}: {}\n", md_escape(value)));
+        out.push_str(&format!("  - {label}: {}\n", inline_prose(value)));
     }
-}
-
-fn md_inline_code(value: &str) -> String {
-    md_escape(value).replace('`', "\\`")
 }
 
 /// Render the decision's source location for the Markdown report.
@@ -571,20 +615,136 @@ fn md_inline_code(value: &str) -> String {
 /// guesswork. The per-decision `gate_reason` already carries that explanation.
 fn decision_location(placement: &GatePlacement) -> String {
     match (placement.path.as_deref(), placement.line) {
-        (Some(path), Some(line)) => format!("{}:{}", md_escape(path), line),
-        (Some(path), None) => format!("{} (no line anchor)", md_escape(path)),
+        (Some(path), Some(line)) => format!("{}:{}", inline_prose(path), line),
+        (Some(path), None) => format!("{} (no line anchor)", inline_prose(path)),
         (None, Some(line)) => format!("(no file anchor):{line}"),
         (None, None) => "(no changed-line anchor)".to_string(),
     }
 }
 
-fn md_escape(value: &str) -> String {
-    value.replace('|', "\\|").replace('\n', " ")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::output::first_pr::{
+        MANUAL_RECEIPT_LABEL, MANUAL_VERIFY_LABEL, RECEIPT_AFTER_VERIFY_LABEL,
+        VERIFY_AFTER_EDIT_LABEL,
+    };
+
+    /// gate-decision.md: a backslash does not escape a backtick inside a
+    /// code span, so the span delimiter must outgrow the text's backticks,
+    /// and `|` stays literal outside a table cell.
+    #[test]
+    fn repair_target_code_spans_contain_backtick_text() {
+        let mut out = String::new();
+        push_repair_target(
+            &mut out,
+            Some(&GateRepairTarget::RelatedTest {
+                name: "t` @octocat <img src=x onerror=alert(1)>".to_string(),
+                file: "tests/a|b.rs".to_string(),
+                line: 7,
+            }),
+        );
+        assert_eq!(
+            out,
+            "  - Near test: ``t` @octocat <img src=x onerror=alert(1)>`` at `tests/a|b.rs:7`\n"
+        );
+    }
+
+    fn route_with_repair(repair_command: Option<&str>) -> GateRepairRoute {
+        GateRepairRoute {
+            canonical_gap_id: Some("gap:shared".to_string()),
+            seam_id: Some("seam-a".to_string()),
+            classification: Some("weakly_gripped".to_string()),
+            changed_owner: Some("pricing::discounted_total".to_string()),
+            changed_behavior: Some("amount >= discount_threshold".to_string()),
+            missing_discriminator: Some("amount == discount_threshold".to_string()),
+            repair_target: None,
+            test_intent: Some("Assert the equality boundary.".to_string()),
+            repair_command: repair_command.map(ToString::to_string),
+            analysis_outcome_command: None,
+            verify_command: Some("ripr agent verify --root . --json".to_string()),
+            receipt_command: None,
+            inspection_command: Some(
+                "ripr agent brief --root . --seam-id seam-a --json".to_string(),
+            ),
+            authority_boundary: "static_ripr_evidence_only".to_string(),
+            limitation: None,
+        }
+    }
+
+    /// #3906: the gate Markdown leads a route that carries the repair start
+    /// with it, and JSON keeps the field (null when absent).
+    ///
+    /// F60-14: the start, the test to add and the after phase read as one
+    /// transaction, and verify and receipt follow as the manual alternative
+    /// under the shared labels. Without a start, both are labelled as steps
+    /// after the test edit and the prompt's verify sentence stays.
+    #[test]
+    fn repair_route_leads_with_the_repair_start_when_carried() -> Result<(), String> {
+        let command = "ripr agent repair --root . --seam-id seam-a --phase before";
+        let prompt = format!("Write one focused Rust test. {LLM_PROMPT_VERIFY_SENTENCE}");
+        let mut carried = route_with_repair(Some(command));
+        carried.test_intent = Some(prompt.clone());
+        carried.receipt_command = Some("ripr agent receipt --root . --json".to_string());
+        let mut with = String::new();
+        push_repair_route(&mut with, &carried, true);
+        let at = |needle: &str| {
+            with.find(needle)
+                .ok_or_else(|| format!("missing `{needle}`:\n{with}"))
+        };
+        let start = at(&format!("  - Start repair: `{command}`\n"))?;
+        let add = at("  - Add: Write one focused Rust test.\n")?;
+        let after = at(&format!(
+            "  - {REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n"
+        ))?;
+        let verify = at(&format!("  - {MANUAL_VERIFY_LABEL}: `"))?;
+        let receipt = at(&format!("  - {MANUAL_RECEIPT_LABEL}: `"))?;
+        if !(start < add && add < after && after < verify && verify < receipt) {
+            return Err(format!("the transaction must read in order:\n{with}"));
+        }
+        for peer in [
+            "  - Verify:",
+            "  - Receipt:",
+            LLM_PROMPT_VERIFY_SENTENCE,
+            VERIFY_AFTER_EDIT_LABEL,
+        ] {
+            if with.contains(peer) {
+                return Err(format!(
+                    "`{peer}` must not render beside the start:\n{with}"
+                ));
+            }
+        }
+
+        let mut bare = route_with_repair(None);
+        bare.test_intent = Some(prompt.clone());
+        bare.receipt_command = carried.receipt_command.clone();
+        let mut without = String::new();
+        push_repair_route(&mut without, &bare, true);
+        if without.contains("Start repair")
+            || without.contains(&format!("  - {REPAIR_AFTER_PHASE_LABEL}: "))
+        {
+            return Err(format!("no repair start without the field:\n{without}"));
+        }
+        for expected in [
+            format!("  - Add: {prompt}\n"),
+            format!("  - {VERIFY_AFTER_EDIT_LABEL}: `"),
+            format!("  - {RECEIPT_AFTER_VERIFY_LABEL}: `"),
+        ] {
+            if !without.contains(&expected) {
+                return Err(format!("missing `{expected}`:\n{without}"));
+            }
+        }
+        if without.contains("without a repair attempt") {
+            return Err(format!("no manual label without a start:\n{without}"));
+        }
+        if repair_route_json(&route_with_repair(None)).get("repair_command") != Some(&Value::Null) {
+            return Err("JSON must carry repair_command as null when absent".to_string());
+        }
+        if repair_route_json(&carried).get("test_intent") != Some(&Value::String(prompt)) {
+            return Err("JSON must keep the prompt's verify sentence".to_string());
+        }
+        Ok(())
+    }
 
     #[test]
     fn production_caller_target_markdown_preserves_explicit_location() -> Result<(), String> {

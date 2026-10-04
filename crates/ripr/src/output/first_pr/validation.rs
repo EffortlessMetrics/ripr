@@ -6,6 +6,74 @@ use serde_json::Value;
 use std::fs;
 use std::path::Path;
 
+/// Carried display commands may name a physical root that no longer belongs
+/// to this packet after relocation. Validate it before exposing those forms;
+/// do not rewrite raw commands or promote the context to execution authority.
+pub(super) fn validate_selected_command_root(packet: &Value, root: &Path) -> Result<(), String> {
+    let Some(context) = packet.pointer("/selected/command_context") else {
+        // Explicit compatibility for historical packets without context.
+        return Ok(());
+    };
+    if context.get("authority").and_then(Value::as_str) != Some("advisory_display_only") {
+        return Err(
+            "selected command context has missing or invalid display authority".to_string(),
+        );
+    }
+    for step in ["verify", "receipt"] {
+        let forms = context
+            .get(step)
+            .filter(|forms| forms.is_object())
+            .ok_or_else(|| {
+                format!("selected command context {step} forms are missing or not an object")
+            })?;
+        for field in ["bash", "powershell", "recovery"] {
+            if !forms
+                .get(field)
+                .is_some_and(|value| value.is_null() || value.is_string())
+            {
+                return Err(format!(
+                    "selected command context {step}.{field} is missing or not a string/null"
+                ));
+            }
+        }
+    }
+    let cwd = context.get("cwd").and_then(Value::as_str).ok_or_else(|| {
+        "selected command context has no available repository directory".to_string()
+    })?;
+    let carried_root = Path::new(cwd);
+    if !carried_root.is_absolute() {
+        return Err(
+            "selected command context directory is not a bounded absolute path".to_string(),
+        );
+    }
+    // A multiline physical root is valid data, but its producer withholds
+    // shell forms. Accept that roundtrip without admitting displayed commands.
+    if cwd.contains(['\r', '\n'])
+        && ["verify", "receipt"].iter().any(|step| {
+            ["bash", "powershell"]
+                .iter()
+                .any(|field| !context[*step][*field].is_null())
+        })
+    {
+        return Err(
+            "selected command context multiline directory requires withheld shell forms"
+                .to_string(),
+        );
+    }
+    let current = root
+        .canonicalize()
+        .map_err(|error| format!("selected repository directory is unavailable: {error}"))?;
+    let carried = carried_root
+        .canonicalize()
+        .map_err(|error| format!("selected command context directory is unavailable: {error}"))?;
+    if !carried.is_dir() || carried != current {
+        return Err(
+            "selected command context targets a different repository directory".to_string(),
+        );
+    }
+    Ok(())
+}
+
 pub(super) fn validate_start_here_packet(
     json_path: &Path,
     markdown_path: &Path,

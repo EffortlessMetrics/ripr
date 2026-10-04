@@ -27,7 +27,7 @@ the loop safe to automate.
 - **RIPR does not edit code.** The agent makes every edit. RIPR hands over a
   bounded packet; the edit is the agent's responsibility, not RIPR's.
 - **A receipt records the verify evidence that was run; it is not absolute
-  semantic proof of correctness.** A receipt with `outcome: improved` means the
+  semantic proof of correctness.** A receipt whose movement is `improved` means the
   static exposure evidence moved in the expected direction in the bounded region.
   It does not mean the behavior is semantically equivalent or runtime-correct.
 - **Limitations are not repair packets.** When RIPR reports a top limitation
@@ -108,11 +108,24 @@ carries:
 | `verify_command` | The command to run after the edit to capture static exposure evidence. |
 | `receipt_command` | The canonical command to record the verify evidence as a receipt. |
 | `must_not_change` | Fields the edit must leave unchanged to satisfy the packet contract. |
-| `repair_kind` | The category of repair (e.g. `add_assertion`, `narrow_coverage`, `split_case`). Used by route-quality reporting. |
-| `exposure_class` | The static exposure classification for this gap (`exposed`, `weakly_exposed`, etc.). |
+| `repair_kind` | The category of repair (e.g. `add_boundary_assertion`, `add_exact_error_variant`, or ledger route kinds such as `AddBoundaryAssertion`). Used by route-quality reporting. |
+| `source_location` | File and line of the primary anchor, or `source_location_unresolved`. |
+| `confidence` | The packet's `confidence_basis`, such as `static_only` or `fixture_backed`; `static_only` when the packet names none. Either way it is static evidence, not a runtime result. |
 
 If the packet field is absent or the status reported `not_available`, the packet
 is not ready. Do not fabricate a packet or attempt an edit without one.
+
+The command takes no arguments for the top packet, or one object
+`{"gap_id": "..."}` for a specific gap; any other first argument is a `-32602`
+InvalidParams error. A `gap_id` that is present but not a string (for
+example `42`, `true` or an array) is also an InvalidParams error naming
+`gap_id`; it never falls back to the top packet. An absent, `null`, empty or
+blank `gap_id` asks for the top packet. When neither `target/ripr/reports/actionable-gaps.json` nor
+`target/ripr/reports/gap-decision-ledger.json` holds a packet, the result is a
+`not_actionable_or_incomplete` packet whose `reason` names both files and the
+CLI route (`ripr pilot --root .`). The result is `null` only when the server
+cannot read its own workspace-root state after an internal failure; restart
+the language server if that happens.
 
 ---
 
@@ -158,9 +171,13 @@ invocation. It writes a structured receipt artifact that records:
 
 - which seam was targeted
 - the before/after exposure evidence
-- the `outcome` field: `improved`, `unchanged`, `regressed`, or `unknown`
+- the static movement: `ripr agent receipt` records `provenance.movement`
+  (`improved`, `changed`, `regressed`, `unchanged`, `new`, or `resolved`);
+  `ripr receipt write` records `verify_status` (`passed`, `failed`, `not_run`,
+  or `unknown`)
 
-A receipt outcome of `improved` means the static exposure evidence moved in the
+In the editor, `ripr: Show Receipt Status` projects the top gap's receipt
+movement as `receipt_status`. A receipt movement of `improved` means the static exposure evidence moved in the
 expected direction. It does not mean the behavior is semantically verified or
 runtime-correct.
 
@@ -259,11 +276,12 @@ explanation.
 | `ripr: Show Status` | `ripr.collectWorkspaceStatus` | Start of every loop iteration |
 | `ripr: Copy Top Repair Packet` | `ripr.collectRepairPacket` | When an actionable packet is available |
 | `ripr: Copy Verify Command` | `ripr.copyTopVerifyCommand` | Copy the verify command to the clipboard |
-| `ripr: Copy Receipt Command` | `ripr.copyTopReceiptCommand` | Copy the receipt command to the clipboard |
-| `RIPR: Show Receipt Status` | `ripr.collectReceiptStatus` | After the receipt command completes |
-| `RIPR: Show Route Quality` | `ripr.showRouteQuality` | When outcome is unchanged, regressed, or unknown |
+| `ripr: Copy Receipt Command (Top Repair Packet)` | `ripr.copyTopReceiptCommand` | Copy the top packet's receipt command to the clipboard |
+| `ripr: Copy Receipt Command` | `ripr.copyReceiptCommand` | Copy the current gap's receipt command to the clipboard |
+| `ripr: Show Receipt Status` | `ripr.collectReceiptStatus` | After the receipt command completes |
+| `ripr: Show Route Quality` | `ripr.showRouteQuality` | When outcome is unchanged, regressed, or unknown |
 | `ripr: Show Top Limitation` | `ripr.collectTopLimitation` | When no actionable packet is available |
-| `RIPR: Open Attempt Ledger` | `ripr.openAttemptLedger` | Inspect the full attempt history for this gap |
+| `ripr: Open Attempt Ledger` | `ripr.openAttemptLedger` | Inspect the full attempt history for this gap |
 | `ripr: Open Report` | `ripr.openReport` | Open the full RIPR report for this workspace |
 
 ---
@@ -280,7 +298,7 @@ Stop iterating when one of the following is true:
 | Status reports stale or incomplete evidence | Refresh evidence first (`ripr check --base origin/main`), then re-evaluate. |
 | Limitation at top with no actionable packet | Follow the [Limitation Path](#limitation-path); do not attempt a bounded edit. |
 
-A receipt with outcome `improved` states that evidence moved; it does not close
+A receipt with movement `improved` states that evidence moved; it does not close
 the gap forever. Future diffs can re-expose the same behavior. The receipt is a
 point-in-time record, not a permanent guarantee.
 

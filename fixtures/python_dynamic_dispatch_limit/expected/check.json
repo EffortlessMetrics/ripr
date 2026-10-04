@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_dynamic_dispatch_limit/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:cebeb0a40f2294cc9db574e49a4157ca206d570cd84ab0bb56d2c75a3fe4f67a","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:cebeb0a40f2294cc9db574e49a4157ca206d570cd84ab0bb56d2c75a3fe4f67a","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -34,7 +33,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `call_named`", "infection unknown: Static limit `dynamic_dispatch` prevents a safe Python infection claim.", "propagation unknown: Static limit `dynamic_dispatch` prevents a safe Python propagation claim.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator unknown: Static limit `dynamic_dispatch` prevents a safe Python discriminator claim.", "related test tests/test_dispatch.py:4 test_call_named_dispatches_total uses strong exact value oracle: assert call_named(client, \"total\") == 10"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: call_named", "owner_kind: function", "static_limit dynamic_dispatch: changed line uses dynamic call dispatch", "test_framework: pytest (test_call_named_dispatches_total)", "test_fixtures: client (test_call_named_dispatches_total)", "test_verify_command: pytest tests/test_dispatch.py::test_call_named_dispatches_total (test_call_named_dispatches_total)", "related_test_relation: syntactic_call (test_call_named_dispatches_total)", "test_oracle: exact_value strong (test_call_named_dispatches_total)"],
+      "evidence": ["owner: call_named", "owner_kind: function", "static_limit dynamic_dispatch: changed line uses dynamic call dispatch", "test_framework: pytest (test_call_named_dispatches_total)", "test_fixtures: client (test_call_named_dispatches_total)", "test_verify_command: python -m pytest tests/test_dispatch.py::test_call_named_dispatches_total (test_call_named_dispatches_total)", "related_test_relation: syntactic_call (test_call_named_dispatches_total)", "test_oracle: exact_value strong (test_call_named_dispatches_total)"],
       "missing": ["Static limit `dynamic_dispatch`: the Python preview adapter saw a dynamic call shape such as `getattr(...)` or `registry[key](...)`; syntax alone cannot resolve the called behavior."],
       "assertion_texts": {
       },
@@ -84,5 +83,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/dispatch.py","digest":"sha256:41f04e5237059de94d5c978c2e2d4dec120da2dccb1fe533673d9bde82f1efe4"}]}
 }

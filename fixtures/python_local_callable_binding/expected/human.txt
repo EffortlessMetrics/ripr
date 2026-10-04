@@ -2,33 +2,33 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/python_local_callable_binding/input
 
-Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 1 probe(s), 0 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 1 of 1 finding(s) unsuppressed
 
-Changed file(s) by language: python: 1, rust: 0.
+Changed file(s) by language: python: 1.
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
 Start here:
-  State: preview_limited
-  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  State: preview language, advisory only (preview_limited)
+  Safe next action: preview-language evidence is advisory; apply the next step below to the suggested test and run its verify command before relying on it.
   File: src/stop.py:6
   Language: python
   Language status: preview
-  Static exposure: weakly_exposed (warning, confidence 0.40)
-  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
-  Canonical gap: gap:python:src/stop.py:stop_after_attempt.__call__:return_value:return_value:attempt_number>=self.max_attempt_number
+  Static exposure: weak (weakly_exposed, warning, confidence 0.40)
+  Why weak: a related test reaches this change but does not observe the exact changed value
+  Canonical gap: gap:python:src/stop.py:stop_after_attempt.__call__:predicate_boundary:predicate:attempt_number>=self.max_attempt_number
   Changed behavior: return attempt_number >= self.max_attempt_number
-  Missing discriminator: Related Python test reaches `__call__` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the returned value.
+  Missing discriminator (1 of 2): Related Python test reaches `__call__` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary.
   Related test: tests/test_stop.py:7 test_stop_after_attempt
   Suggested test file: tests/test_stop.py
   Suggested test: test_stop_after_attempt
   Verify command: python -m unittest tests.test_stop.StopTest.test_stop_after_attempt (high)
-  Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == attempt_number >= self.max_attempt_number`.
-  Evidence:
+  Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `attempt_number == self.max_attempt_number`.
+  Evidence: reach yes · infection yes · propagation weak · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `__call__`
-    - infection yes: Changed Python return expression can alter the owner return value: `return attempt_number >= self.max_attempt_number`
-    - 5 more evidence line(s) hidden
+    - infection yes: Changed Python expression can alter preview-classified predicate behavior: `return attempt_number >= self.max_attempt_number`
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_local_callable_binding/input --diff fixtures/python_local_callable_binding/diff.patch --mode fast probe:src_stop.py:python_preview:87705a2c
@@ -39,4 +39,4 @@ More:
   Machine data: rerun with --format json
 
 
-Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

@@ -130,3 +130,97 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — assertion_shaped_control_production_caller (2)
+
+Reason:
+RIPR-SPEC-0084: CheckInput default base is now None (was origin/main); --diff fixture envelopes honestly omit the inapplicable top-level base and record base_revision null. Only base/base_revision changed; findings, counts, and input_identity byte-identical.
+
+Command:
+`cargo xtask goldens bless assertion_shaped_control_production_caller --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — assertion_shaped_control_production_caller (3)
+
+Reason:
+RIPR-SPEC-0001: reach is weak when every related test is linked only by file or name-token proximity (weak_token_substring); class unchanged, reach stage yes->weak
+
+Command:
+`cargo xtask goldens bless assertion_shaped_control_production_caller --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — assertion_shaped_control_production_caller (4)
+
+Reason:
+RIPR-SPEC-0133: test-name token relations now need whole words and a specific token, so the helper-chain relation (reach yes) is no longer shadowed by a weak name match; class unchanged
+
+Command:
+`cargo xtask goldens bless assertion_shaped_control_production_caller --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — assertion_shaped_control_production_caller (5)
+
+Reason:
+RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
+
+Command:
+`cargo xtask goldens bless assertion_shaped_control_production_caller --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — assertion_shaped_control_production_caller (6)
+
+Reason:
+RIPR-SPEC-0122: the analysis outcome and state lines lead with plain words; the id stays in parentheses
+
+Command:
+`cargo xtask goldens bless assertion_shaped_control_production_caller --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — assertion_shaped_control_production_caller (7)
+
+Reason:
+#4324 / RIPR-SPEC-0122: the bounded digest names all five stage states on one compact Evidence line (reach, infection, propagation, observation, discriminator) instead of letting the positional 2-line detail window hide the decisive stages behind a bare count; the detail window keeps its two lines and the remainder line now reads `N more detail line(s) in --format human-full`. JSON output is unchanged.
+
+Command:
+`cargo xtask goldens bless assertion_shaped_control_production_caller --reason "..."`
+
+Updated:
+- `expected/human.txt`
+
+## Pending — assertion_shaped_control_production_caller (8)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless assertion_shaped_control_production_caller --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+## Pending — assertion_shaped_control_production_caller (9)
+
+Reason:
+RIPR-SPEC-0122: check names the one-step ripr agent stub route for Rust value gaps (#5355)
+
+Command:
+`cargo xtask goldens bless assertion_shaped_control_production_caller --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

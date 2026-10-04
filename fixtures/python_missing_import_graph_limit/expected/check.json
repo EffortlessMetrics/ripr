@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_missing_import_graph_limit/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:e9fedae2a457709453b9e97e610a10675350450ce0d702938213654993eabc9f","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:e9fedae2a457709453b9e97e610a10675350450ce0d702938213654993eabc9f","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -34,7 +33,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `total`", "infection unknown: Static limit `missing_import_graph` prevents a safe Python infection claim.", "propagation unknown: Static limit `missing_import_graph` prevents a safe Python propagation claim.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator unknown: Static limit `missing_import_graph` prevents a safe Python discriminator claim.", "related test tests/test_totals.py:4 test_total_includes_tax uses strong exact value oracle: assert total(client) == 12"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: total", "owner_kind: function", "static_limit missing_import_graph: changed line calls an imported symbol", "test_framework: pytest (test_total_includes_tax)", "test_fixtures: client (test_total_includes_tax)", "test_verify_command: pytest tests/test_totals.py::test_total_includes_tax (test_total_includes_tax)", "related_test_relation: syntactic_call (test_total_includes_tax)", "test_oracle: exact_value strong (test_total_includes_tax)"],
+      "evidence": ["owner: total", "owner_kind: function", "static_limit missing_import_graph: changed line calls an imported symbol", "test_framework: pytest (test_total_includes_tax)", "test_fixtures: client (test_total_includes_tax)", "test_verify_command: python -m pytest tests/test_totals.py::test_total_includes_tax (test_total_includes_tax)", "related_test_relation: syntactic_call (test_total_includes_tax)", "test_oracle: exact_value strong (test_total_includes_tax)"],
       "missing": ["Static limit `missing_import_graph`: the changed line calls an imported symbol; the Python preview adapter does not build an import graph or resolve imported implementation semantics."],
       "assertion_texts": {
       },
@@ -84,5 +83,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/totals.py","digest":"sha256:778308f8593ca7f69c909f83a1daac7fcda2dbaffabef4b4b8aac96c716a2872"}]}
 }

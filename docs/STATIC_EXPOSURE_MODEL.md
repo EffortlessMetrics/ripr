@@ -81,6 +81,27 @@ static analysis should stop or escalate.
 | `propagation_unknown` | The changed behavior crosses an opaque propagation boundary. |
 | `static_unknown` | Syntax-first analysis cannot make a credible judgment. |
 
+## Cross-Surface Vocabulary Authority (#4381)
+
+One gap state — "related tests reach the change, but no discriminator
+would notice" — is named by two published schema tokens: `weakly_exposed`
+(exposure/probe class, `ripr check`) and `weakly_gripped` (seam grip class,
+`ripr pilot`, seam packets, evidence records). Both tokens are external
+contract: JSON packets, evidence records, SARIF, config `[severity]` keys,
+and LSP diagnostic codes consume them, so **neither token changes** (the
+wording decision of PR #4520 stands; this records the presentation
+decision of issue #4381, option B).
+
+The exposure and grip domains remain two contracts; they are not merged
+into one taxonomy. `crates/ripr/src/output/gap_vocabulary.rs` is the only
+presentation mapping between them — the grip-to-exposure counterpart table,
+the mixed-input resolver, and the shared discriminator phrasing constants
+(`MISSING_DISCRIMINATOR_SENTENCE`, `MISSING_DISCRIMINATOR_LABEL`). A
+per-surface translation fork such as a local `"weakly_gripped" =>
+"weakly_exposed"` table is forbidden; the module's
+`no_per_surface_translation_forks` test is the drift guard, and ranking
+tables in the grip domain are not translations and stay in their domain.
+
 ## Public Badge Projection
 
 Public `ripr` badges are not raw exposure-class totals, seam-native inventory,
@@ -99,8 +120,8 @@ the exposure classes.
 
 | Mode | Scope in the current alpha | Intended use |
 | --- | --- | --- |
-| `instant` | Changed Rust files only. | Editor-safe, cheapest feedback. |
-| `draft` | Rust files in packages touched by the diff. | Default local scan. |
+| `instant` | Changed Rust files plus their module-parent context files. | Editor-safe, cheapest feedback. |
+| `draft` | Rust files in packages touched by the diff, plus packages that depend on them through path dependencies. | Default local scan. |
 | `fast` | Same package-local scope as `draft` for now. | Draft PR scan; future bounded graph work lands here. |
 | `deep` | All Rust files in the workspace. | Manual or CI scan when wider static evidence is acceptable. |
 | `ready` | All Rust files in the workspace. | Static preflight before real mutation confirmation. |
@@ -143,7 +164,10 @@ the change moves.
 A test can execute every branch of a function and assert almost nothing
 (`assert result is not None`, a smoke check, or a mock that never inspects the
 changed value). Execution alone does not establish a discriminator. A strong,
-aligned discriminator asks more of the test than line coverage does.
+aligned discriminator asks more of the test than line coverage does. For a
+predicate probe, reach plus a strong oracle is not `exposed` unless one test
+both feeds a boundary input to the owner and holds that discriminating oracle
+on that call's result (#4828).
 
 That distinction between evidence types is not a guarantee about analyzer
 output. Under the [badge projection](#public-badge-projection), `ripr 0` means
@@ -181,6 +205,34 @@ changed behavior's output — its assertion references the changed owner (by nam
 or import alias) or the changed sink (the attribute, field, or value the change
 touches). A strong-but-orthogonal oracle downgrades to `weakly_exposed` with a
 typed reason and routes a repair, rather than being silently called covered.
+
+For Rust diff findings, `return_value`, `error_path` and `predicate` evidence from a bare
+`assert_eq!`, execution and macro binding must be statically established before
+matching, observation or oracle strength can credit that assertion
+(RIPR-SPEC-0197). Family-specific error/boundary meaning and owner-return pins
+remain separate decisions; a valid operand cannot establish its own execution. Refused deferred,
+conditional, uncollected or ambiguous assertion contexts are not weak protection: if no
+other oracle remains, Observe and Discriminate are `no` and the class is
+`reachable_unrevealed`. That means no statically established oracle, not proof
+of runtime unreachability. Related-test provenance remains visible without an
+oracle strength. The headline confidence is the existing advisory stage score,
+not a calibrated probability or measured protection percentage.
+Test-build availability uses the shared cfg predicate authority and existing
+module provenance; unknown feature/target gates and raw attribute spellings remain
+non-confirming. Raw heads are refused in this private query; cached source-role
+classification is unchanged. Filtering
+an assertion cannot make a surviving unrelated oracle the test's sole assertion
+for a singleton heuristic. Predicate boundary pairing consumes the same admitted
+assertion decision, so an ignored boundary equality cannot borrow an admitted
+far-input oracle to restore exposure. Repository test-grip has its own authority;
+this bounded diff-classifier change does not claim execution parity there.
+
+For Rust error paths, error observation and changed-reader/variant matching use
+the known assertion macros' operands, not diagnostic formatting arguments (#4748). Neither an
+error word in a message nor an error-valued formatting expression establishes an
+error discriminator. Canonical oracle extraction applies the same boundary so a
+diagnostic cannot manufacture a trusted error kind before reveal analysis.
+The complete assertion remains visible in the report for inspection.
 
 ### Identity beats token overlap
 

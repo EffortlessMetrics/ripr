@@ -28,7 +28,7 @@ blocking by default.
 
 ## Start In GitHub
 
-In generated CI, start with the `PR review front panel` section in the RIPR
+In generated CI, start with the `PR review summary` section in the RIPR
 advisory job summary when it exists. It is the first-screen reviewer surface.
 
 The section should answer:
@@ -259,7 +259,7 @@ the decision and route the repair.
   baseline delta and repair routes become progress toward RIPR 0.
 - [Calibrated gate policy](CALIBRATED_GATE_POLICY.md) explains configured gate
   modes and why generated CI remains advisory by default.
-- [CI strategy](CI.md#generated-github-workflow) describes generated workflow
+- [CI strategy](CI.md#copyable-ripr-advisory-workflow) describes generated workflow
   projection into GitHub summaries and artifacts.
 - [Output schema](OUTPUT_SCHEMA.md#pr-review-front-panel-report) defines the
   JSON and Markdown contract.

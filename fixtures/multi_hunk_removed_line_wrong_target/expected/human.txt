@@ -2,31 +2,39 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/multi_hunk_removed_line_wrong_target/input
 
-Summary: 6 probe(s), 0 exposed, 0 weak, 0 unrevealed, 3 no path, 3 unknown
+Summary: 6 probe(s), 0 exposed, 0 weakly_exposed, 0 reachable_unrevealed, 6 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 6 of 6 finding(s) unsuppressed
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 6 changed line(s), 4 candidate line(s), 6 probe(s), 6 finding(s).
 
 Start here:
-  State: static_limited
-  Safe next action: inspect the named static limitation before treating this as repair-ready.
-  File: fixtures/multi_hunk_removed_line_wrong_target/input/src/lib.rs:4
-  Static exposure: no_static_path (warning, confidence 0.35)
-  Why no_static_path: the changed behavior could not be traced to an observable output
-  Changed behavior: z
-  Missing discriminator: No relevant oracle was detected
-  Next step: ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr…
-  Evidence:
+  State: limited by static analysis (static_limited)
+  Safe next action: review the unresolved static path and existing tests before treating this as repair-ready.
+  File: fixtures/multi_hunk_removed_line_wrong_target/input/src/lib.rs:2
+  Static exposure: no path (no_static_path, warning, confidence 0.35)
+  Why no path: no related test was found that reaches this change
+  Changed behavior: let y = x + 1;
+  Missing discriminator (1 of 3): No relevant oracle was detected
+  Next step: ripr found no static test path to this change — this is not a coverage assessment. A
+    test may already exercise it through macros, helper-call chains, or integration tests that
+    ripr's static model does not yet trace. If none does, add a co-located test that reaches and
+    observes the changed behavior so a discriminator exists.
+  Evidence: reach no · infection unknown · propagation unknown · observation no · discriminator no
     - reach no: No static test path found for the changed owner
-    - infection unknown: No reachable tests were found, so infection cannot be established
-    - 4 more evidence line(s) hidden
+    - infection unknown: Changed syntax is not mapped to a high-confidence probe family
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
-  ripr explain --root fixtures/multi_hunk_removed_line_wrong_target/input --diff fixtures/multi_hunk_removed_line_wrong_target/diff.patch --mode fast probe:src_lib.rs:return_value:93054610
-  ripr context --root fixtures/multi_hunk_removed_line_wrong_target/input --diff fixtures/multi_hunk_removed_line_wrong_target/diff.patch --mode fast --at probe:src_lib.rs:return_value:93054610
+  ripr explain --root fixtures/multi_hunk_removed_line_wrong_target/input --diff fixtures/multi_hunk_removed_line_wrong_target/diff.patch --mode fast probe:src_lib.rs:static_unknown:17e03c34
+  ripr context --root fixtures/multi_hunk_removed_line_wrong_target/input --diff fixtures/multi_hunk_removed_line_wrong_target/diff.patch --mode fast --at probe:src_lib.rs:static_unknown:17e03c34
 
 Hidden:
-  5 lower-priority finding(s) omitted from default human output.
+  3 lower-priority finding(s) omitted; 2 base-side evidence, not candidate edit targets.
+    - fixtures/multi_hunk_removed_line_wrong_target/input/src/lib.rs:2 (no_static_path)
+    - fixtures/multi_hunk_removed_line_wrong_target/input/src/lib.rs:3 (no_static_path)
+    - fixtures/multi_hunk_removed_line_wrong_target/input/src/lib.rs:4 (no_static_path)
+    - fixtures/multi_hunk_removed_line_wrong_target/input/src/lib.rs:8 (no_static_path)
+    - fixtures/multi_hunk_removed_line_wrong_target/input/src/lib.rs:8 (no_static_path)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

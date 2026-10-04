@@ -212,6 +212,37 @@ suite('Managed Server Installation', () => {
     assert.strictEqual(await readManagedServerInstallation(request), undefined);
   });
 
+  test('prerelease requests admit the generation-keyed manifest version through staging and cache read-back', async () => {
+    const manifestSha256 = 'a'.repeat(64);
+    const request = { ...installRequest(root, '2.1.0-rc.1'),
+      distributionIdentity: 'fixture-generation-catalog', expectedManifestSha256: manifestSha256 };
+    const admitted = operations('rc-generation-binary', '2.1.0');
+    const installed = await installManagedServer(request, {
+      ...admitted,
+      resolveArchive: async () => ({ ...(await admitted.resolveArchive()), admittedManifestSha256: manifestSha256 })
+    });
+
+    assert.strictEqual(installed.receipt.requestedVersion, '2.1.0-rc.1');
+    assert.strictEqual(installed.receipt.manifestVersion, '2.1.0');
+
+    const reread = await readManagedServerInstallation(request);
+    assert.ok(reread, 'a completed generation-keyed RC install must remain cache-eligible');
+    assert.strictEqual(reread.receipt.manifestVersion, '2.1.0');
+    assert.strictEqual(reread.receipt.requestedVersion, '2.1.0-rc.1');
+  });
+
+  test('unadmitted legacy prerelease request rejects a core-version manifest before extraction', async () => {
+    const request = installRequest(root, '2.2.0-rc.1');
+    let extractionCalls = 0;
+    const legacy = operations('unadmitted-generation-binary', '2.2.0');
+    await assert.rejects(installManagedServer(request, {
+      ...legacy,
+      extractArchive: async () => { extractionCalls += 1; }
+    }), /does not match requested version/);
+    assert.strictEqual(extractionCalls, 0);
+    assert.strictEqual(await readManagedServerInstallation(request), undefined);
+  });
+
   test('active probe version remains authoritative over receipt-time identity', async () => {
     const installation = await installManagedServer(
       installRequest(root, '6.0.0'),

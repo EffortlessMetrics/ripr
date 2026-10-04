@@ -254,19 +254,14 @@ pub(super) fn repository_state(root: &Path) -> Result<RepositoryState, String> {
 }
 
 pub(super) fn executed_diff_identity(root: &Path, base: &str) -> Result<String, String> {
-    let range = format!("{base}...HEAD");
-    let args = vec![
-        "-C".to_string(),
-        root.display().to_string(),
-        "diff".to_string(),
-        "--no-ext-diff".to_string(),
-        "--submodule=short".to_string(),
-        "--unified=0".to_string(),
-        range,
-    ];
-    let bytes = crate::run::capture_process_output("git", &args, &[])
-        .map_err(|error| format!("derive executed diff identity: {}", error.message))?;
-    Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
+    // This identity is required to equal RIPR's analyzer_input_identity, so it
+    // must describe the same governed source-coordinate patch rather than a
+    // second ambient-config-sensitive Git rendering (#4086). Reuse the shared
+    // loader authority: quotePath, helper/color/context, side-prefix, and
+    // submodule presentation then stay byte-identical to `ripr check --base`.
+    let diff = ripr::analysis::load_diff_range(root, base, "HEAD")
+        .map_err(|error| format!("derive executed diff identity: {error}"))?;
+    Ok(format!("sha256:{:x}", Sha256::digest(diff.as_bytes())))
 }
 
 #[cfg(test)]
@@ -820,6 +815,32 @@ mod tests {
                     case.case_id
                 ));
             }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn executed_diff_identity_uses_the_analyzers_pinned_diff_bytes() -> Result<(), String> {
+        let canonical = repository_root()?;
+        let scratch = scratch(&canonical, "executed-diff-prefixes")?;
+        let root = scratch.0.join("repo");
+        let (base, _head, _tree, baseline_identity) = super::materialize_diff_fixture(&root)?;
+
+        super::git(&root, &["config", "diff.noprefix", "true"], &[])?;
+        let range = format!("{base}...HEAD");
+        let raw = super::git(&root, &["diff", &range], &[])?;
+        if raw.contains("diff --git a/input.txt b/input.txt") {
+            return Err(
+                "diff.noprefix control retained canonical side prefixes; fixture does not discriminate"
+                    .to_string(),
+            );
+        }
+
+        let governed_identity = super::executed_diff_identity(&root, &base)?;
+        if governed_identity != baseline_identity {
+            return Err(format!(
+                "ambient diff.noprefix changed judged-panel analyzer identity: baseline={baseline_identity} governed={governed_identity}"
+            ));
         }
         Ok(())
     }

@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_unittest_assertions/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:60bc9d6742731cca66f3b1aafa8693f366ad589b2f5c3bcdc03f14da1c4321e3","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:62d0e26fdf525aaa1aa4b8ef906f13af535d32c1c56373855b88842dee1dd894","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -25,7 +24,7 @@
 
       },
       "classification": "exposed",
-      "severity": "warning",
+      "severity": "info",
       "confidence": 0.60,
       "probe": {
         "id": "probe:src_risk.py:python_preview:6835190f",
@@ -43,21 +42,44 @@
         "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
         "discriminate": {"state":"yes","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `risk_score`", "infection yes: Changed Python predicate can alter branch selection: `if amount >= 100:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches unknown sink: if amount >= 100: (line 2)", "related test tests/test_risk.py:7 test_high_risk_score uses strong exact value oracle: self.assertEqual(risk_score(100), \"high\")"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `risk_score`", "infection yes: Changed Python predicate can alter branch selection: `if amount >= 100:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches unknown sink: if amount >= 100: (line 2)", "related test tests/test_risk.py:7 test_high_risk_score uses strong exact value oracle: self.assertEqual(risk_score(100), \"high\")", "source function argument value amount = 100 at line 8", "source function argument value amount == 100 at line 8"],
       "flow_sinks": [
         {"kind":"unknown","text":"if amount >= 100:","line":2}
       ],
       "evidence": ["owner: risk_score", "owner_kind: function", "test_framework: unittest (test_high_risk_score)", "test_verify_command: python -m unittest tests.test_risk.RiskScoreTests.test_high_risk_score (test_high_risk_score)", "related_test_relation: syntactic_call (test_high_risk_score)", "test_oracle: exact_value strong (test_high_risk_score)"],
       "missing": ["Related Python test reaches `risk_score` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
       "assertion_texts": {
+        "8": "self.assertEqual(risk_score(100), \"high\")"
       },
       "activation": {
         "observed_values": [
+          {
+            "line": 8,
+            "value": "amount = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 8,
+            "value": "amount == 100",
+            "context": "function_argument",
+            "provenance": "self.assertEqual(risk_score(100), \"high\") | amount = 100; literal operand 100"
+          }
         ],
         "missing_discriminators": [
         ]
       },
       "observed_values": [
+        {
+          "line": 8,
+          "value": "amount = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 8,
+          "value": "amount == 100",
+          "context": "function_argument",
+          "provenance": "self.assertEqual(risk_score(100), \"high\") | amount = 100; literal operand 100"
+        }
       ],
       "missing_discriminators": [
       ],
@@ -97,5 +119,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/risk.py","digest":"sha256:c44e756d005c2d0a3d0562db00b8931a005e3283d8df560b414179942ac2863c"}]}
 }

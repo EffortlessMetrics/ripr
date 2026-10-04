@@ -1,0 +1,164 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/predicate_boundary_oracle_admitted/input",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:5d4572db105b9569851eb9f3a73b99059a4626019d7d43b7053c8b29c660f668","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:c80557eb",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:c80557eb",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/predicate_boundary_oracle_admitted/input/src/lib.rs",
+        "line": 2,
+        "expression": "amount >= discount_threshold"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach discounted_total: boundary, far"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Detected related test input at the changed boundary"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: amount - 10"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach discounted_total: boundary, far", "infection yes: Detected related test input at the changed boundary", "propagation yes: Changed behavior appears to influence returned value: amount - 10", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: amount - 10 (line 3)", "related test src/lib.rs:13 boundary uses strong exact value oracle: assert_eq!(discounted_total(100, 100), 90);", "related test src/lib.rs:15 far uses strong exact value oracle: assert_eq!(discounted_total(101, 100), 91);", "source assertion argument value 90 at line 13", "source function argument value amount = 100 at line 13", "source function argument value amount == discount_threshold at line 13", "source function argument value discount_threshold = 100 at line 13", "source assertion argument value 91 at line 15", "source function argument value amount = 101 at line 15", "source function argument value discount_threshold = 100 at line 15"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"amount - 10","line":3}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: amount - 10", "Detected related test input at the changed boundary", "Related tests appear to reach discounted_total: boundary, far", "Strong oracle found: exact value or pattern assertion"],
+      "missing": [],
+      "assertion_texts": {
+        "13": "assert_eq!(discounted_total(100, 100), 90);",
+        "15": "assert_eq!(discounted_total(101, 100), 91);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 13,
+            "value": "90",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 13,
+            "value": "amount = 100",
+            "context": "function_argument",
+            "provenance": "fn boundary() { assert_eq!(discounted_total(100, 100), 90); }"
+          },
+          {
+            "line": 13,
+            "value": "amount == discount_threshold",
+            "context": "function_argument",
+            "provenance": "fn boundary() { assert_eq!(discounted_total(100, 100), 90); } | exact input amount = 100; exact input discount_threshold = 100"
+          },
+          {
+            "line": 13,
+            "value": "discount_threshold = 100",
+            "context": "function_argument",
+            "provenance": "fn boundary() { assert_eq!(discounted_total(100, 100), 90); }"
+          },
+          {
+            "line": 15,
+            "value": "91",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 15,
+            "value": "amount = 101",
+            "context": "function_argument",
+            "provenance": "fn far() { assert_eq!(discounted_total(101, 100), 91); }"
+          },
+          {
+            "line": 15,
+            "value": "discount_threshold = 100",
+            "context": "function_argument",
+            "provenance": "fn far() { assert_eq!(discounted_total(101, 100), 91); }"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 13,
+          "value": "90",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 13,
+          "value": "amount = 100",
+          "context": "function_argument",
+          "provenance": "fn boundary() { assert_eq!(discounted_total(100, 100), 90); }"
+        },
+        {
+          "line": 13,
+          "value": "amount == discount_threshold",
+          "context": "function_argument",
+          "provenance": "fn boundary() { assert_eq!(discounted_total(100, 100), 90); } | exact input amount = 100; exact input discount_threshold = 100"
+        },
+        {
+          "line": 13,
+          "value": "discount_threshold = 100",
+          "context": "function_argument",
+          "provenance": "fn boundary() { assert_eq!(discounted_total(100, 100), 90); }"
+        },
+        {
+          "line": 15,
+          "value": "91",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 15,
+          "value": "amount = 101",
+          "context": "function_argument",
+          "provenance": "fn far() { assert_eq!(discounted_total(101, 100), 91); }"
+        },
+        {
+          "line": 15,
+          "value": "discount_threshold = 100",
+          "context": "function_argument",
+          "provenance": "fn far() { assert_eq!(discounted_total(101, 100), 91); }"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "boundary",
+          "file": "src/lib.rs",
+          "line": 13,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(discounted_total(100, 100), 90);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "far",
+          "file": "src/lib.rs",
+          "line": 15,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(discounted_total(101, 100), 91);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

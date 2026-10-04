@@ -1,0 +1,235 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/proximity_name_oracle_not_credited/input",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:8ff37019b1d3f72f214d2a8437c480a0099250875c30ef6d564d43d6f99681b0","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:error_path:e01f0ca9",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:error_path:e01f0ca9",
+        "family": "error_path",
+        "delta": "value",
+        "file": "fixtures/proximity_name_oracle_not_credited/input/src/lib.rs",
+        "line": 9,
+        "expression": "return Err(ParseError::MalformedSource)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach try_parse: rejects_at_sign, try_parse_variant_is_distinct, malformedsource_variant_is_distinct"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches error variant: Result::Err(ParseError::MalformedSource)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach try_parse: rejects_at_sign, try_parse_variant_is_distinct, malformedsource_variant_is_distinct", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches error variant: Result::Err(ParseError::MalformedSource)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches error variant: Result::Err(ParseError::MalformedSource) (line 9)", "related test tests/parse.rs:4 rejects_at_sign uses weak broad error oracle: assert!(try_parse(\"@bad\").is_err());", "related test tests/owner_named.rs:4 try_parse_variant_is_distinct uses strong exact value oracle: assert_eq!(variant, ParseError::MalformedSource);", "related test tests/variants.rs:4 malformedsource_variant_is_distinct uses strong exact value oracle: assert_eq!(variant, ParseError::MalformedSource);", "source function argument value raw = \"@bad\" at line 5", "source enum variant value ParseError::MalformedSource at line 6", "missing discriminator ParseError::MalformedSource: No exact error variant assertion for ParseError::MalformedSource"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Result::Err(ParseError::MalformedSource)","line":9}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches error variant: Result::Err(ParseError::MalformedSource)", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach try_parse: rejects_at_sign, try_parse_variant_is_distinct, malformedsource_variant_is_distinct"],
+      "missing": ["Missing discriminator value: ParseError::MalformedSource", "No exact error variant discriminator was detected"],
+      "assertion_texts": {
+        "5": "assert!(try_parse(\"@bad\").is_err());",
+        "6": "assert_eq!(variant, ParseError::MalformedSource);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "raw = \"@bad\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 6,
+            "value": "ParseError::MalformedSource",
+            "context": "enum_variant"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "ParseError::MalformedSource",
+            "reason": "No exact error variant assertion for ParseError::MalformedSource",
+            "flow_sink": {"kind":"error_variant","text":"Result::Err(ParseError::MalformedSource)","line":9}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "raw = \"@bad\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 6,
+          "value": "ParseError::MalformedSource",
+          "context": "enum_variant"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "ParseError::MalformedSource",
+          "reason": "No exact error variant assertion for ParseError::MalformedSource",
+          "flow_sink": {"kind":"error_variant","text":"Result::Err(ParseError::MalformedSource)","line":9}
+        }
+      ],
+      "related_tests_total": 3,
+      "related_tests": [
+        {
+          "name": "rejects_at_sign",
+          "file": "tests/parse.rs",
+          "line": 4,
+          "oracle_strength": "weak",
+          "oracle_kind": "broad_error",
+          "oracle": "assert!(try_parse(\"@bad\").is_err());",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "try_parse_variant_is_distinct",
+          "file": "tests/owner_named.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(variant, ParseError::MalformedSource);",
+          "relation_reason": "owner_named_test",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "malformedsource_variant_is_distinct",
+          "file": "tests/variants.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(variant, ParseError::MalformedSource);",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Assert the exact error variant or payload instead of only is_err().",
+      "suggested_next_action": "Assert the exact error variant or payload instead of only is_err().",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:return_value:9a7c99af",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:9a7c99af",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/proximity_name_oracle_not_credited/input/src/lib.rs",
+        "line": 9,
+        "expression": "return Err(ParseError::MalformedSource)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach try_parse: rejects_at_sign, try_parse_variant_is_distinct, malformedsource_variant_is_distinct"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches error variant: Result::Err(ParseError::MalformedSource)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach try_parse: rejects_at_sign, try_parse_variant_is_distinct, malformedsource_variant_is_distinct", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches error variant: Result::Err(ParseError::MalformedSource)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches error variant: Result::Err(ParseError::MalformedSource) (line 9)", "related test tests/parse.rs:4 rejects_at_sign uses weak broad error oracle: assert!(try_parse(\"@bad\").is_err());", "related test tests/owner_named.rs:4 try_parse_variant_is_distinct uses strong exact value oracle: assert_eq!(variant, ParseError::MalformedSource);", "related test tests/variants.rs:4 malformedsource_variant_is_distinct uses strong exact value oracle: assert_eq!(variant, ParseError::MalformedSource);", "source function argument value raw = \"@bad\" at line 5", "source enum variant value ParseError::MalformedSource at line 6", "missing discriminator ParseError::MalformedSource: No exact error variant assertion for ParseError::MalformedSource"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Result::Err(ParseError::MalformedSource)","line":9}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches error variant: Result::Err(ParseError::MalformedSource)", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach try_parse: rejects_at_sign, try_parse_variant_is_distinct, malformedsource_variant_is_distinct"],
+      "missing": ["Missing discriminator value: ParseError::MalformedSource", "No strong discriminator was detected"],
+      "assertion_texts": {
+        "5": "assert!(try_parse(\"@bad\").is_err());",
+        "6": "assert_eq!(variant, ParseError::MalformedSource);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "raw = \"@bad\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 6,
+            "value": "ParseError::MalformedSource",
+            "context": "enum_variant"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "ParseError::MalformedSource",
+            "reason": "No exact error variant assertion for ParseError::MalformedSource",
+            "flow_sink": {"kind":"error_variant","text":"Result::Err(ParseError::MalformedSource)","line":9}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "raw = \"@bad\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 6,
+          "value": "ParseError::MalformedSource",
+          "context": "enum_variant"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "ParseError::MalformedSource",
+          "reason": "No exact error variant assertion for ParseError::MalformedSource",
+          "flow_sink": {"kind":"error_variant","text":"Result::Err(ParseError::MalformedSource)","line":9}
+        }
+      ],
+      "related_tests_total": 3,
+      "related_tests": [
+        {
+          "name": "rejects_at_sign",
+          "file": "tests/parse.rs",
+          "line": 4,
+          "oracle_strength": "weak",
+          "oracle_kind": "broad_error",
+          "oracle": "assert!(try_parse(\"@bad\").is_err());",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "try_parse_variant_is_distinct",
+          "file": "tests/owner_named.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(variant, ParseError::MalformedSource);",
+          "relation_reason": "owner_named_test",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "malformedsource_variant_is_distinct",
+          "file": "tests/variants.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(variant, ParseError::MalformedSource);",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Add a test input that reaches the changed error path and assert the exact error variant it returns.",
+      "suggested_next_action": "Add a test input that reaches the changed error path and assert the exact error variant it returns.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

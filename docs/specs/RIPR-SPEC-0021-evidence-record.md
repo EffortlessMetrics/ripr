@@ -380,8 +380,8 @@ RIPR-SPEC-0045:
         "source_id": "f3c9e4d21a0b7c88"
       }
     ],
-    "why": "extend the nearest related test with the missing discriminator",
-    "recommended_repair": "extend the nearest related test with the missing discriminator",
+    "why": "add a focused test with the missing discriminator next to the nearest related test",
+    "recommended_repair": "add a focused test with the missing discriminator next to the nearest related test",
     "repair_route": {
       "repair_kind": "add_boundary_assertion",
       "target_test_type": "boundary_discriminator",

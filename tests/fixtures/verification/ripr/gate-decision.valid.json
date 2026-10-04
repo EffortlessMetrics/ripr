@@ -72,6 +72,7 @@
           "line": 42
         },
         "test_intent": "Exercise foo::dispatch and assert Event::Ready",
+        "repair_command": "ripr agent repair --root . --seam-id seam-a --phase before",
         "verify_command": "cargo test -p foo dispatches_ready_event",
         "receipt_command": "ripr receipt write --gap gap:shared",
         "inspection_command": "ripr agent brief --root . --seam-id seam-a --json",

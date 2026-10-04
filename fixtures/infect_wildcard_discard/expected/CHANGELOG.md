@@ -159,8 +159,6 @@ Updated:
 ## Pending
 
 Reason:
-RIPR-SPEC-0096: add non-canonical whitespace wildcard-discard production fixture coverage for #1568
-
 RIPR-SPEC-0151: rebless check JSON for the additive source_currentness field; classifications, stages, confidence, counts, and recorded coordinates remain unchanged.
 
 Command:
@@ -192,3 +190,100 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — infect_wildcard_discard (2)
+
+Reason:
+RIPR-SPEC-0084: CheckInput default base is now None (was origin/main); --diff fixture envelopes honestly omit the inapplicable top-level base and record base_revision null. Only base/base_revision changed; findings, counts, and input_identity byte-identical.
+
+Command:
+`cargo xtask goldens bless infect_wildcard_discard --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — infect_wildcard_discard (3)
+
+Reason:
+RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
+RIPR-SPEC-0197 (#4478): the test's assert_eq pins the free owner's whole return value on its unconditional tail, so the return_value discriminator is confirmed
+
+Command:
+`cargo xtask goldens bless infect_wildcard_discard --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — infect_wildcard_discard (4)
+
+Reason:
+RIPR-SPEC-0122: the analysis outcome and state lines lead with plain words; the id stays in parentheses
+
+Command:
+`cargo xtask goldens bless infect_wildcard_discard --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — infect_wildcard_discard (5)
+
+Reason:
+#4324 / RIPR-SPEC-0122: the bounded digest names all five stage states on one compact Evidence line (reach, infection, propagation, observation, discriminator) instead of letting the positional 2-line detail window hide the decisive stages behind a bare count; the detail window keeps its two lines and the remainder line now reads `N more detail line(s) in --format human-full`. JSON output is unchanged.
+
+Command:
+`cargo xtask goldens bless infect_wildcard_discard --reason "..."`
+
+Updated:
+- `expected/human.txt`
+
+## Pending — infect_wildcard_discard (6)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless infect_wildcard_discard --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+## Pending — infect_wildcard_discard (7)
+
+Reason:
+RIPR-SPEC-0197 (#4478): assert_eq!(process(42), 42) pins the owner's whole return, so the amount finding's discriminate oracle credit moves weak to yes; the class stays propagation_unknown and the Evidence line renders the honest not-established token under main's compact format
+
+Command:
+`cargo xtask goldens bless infect_wildcard_discard --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — infect_wildcard_discard (8)
+
+Reason:
+RIPR-SPEC-0122: check names the one-step ripr agent stub route for Rust value gaps (#5355)
+
+Command:
+`cargo xtask goldens bless infect_wildcard_discard --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0096: add non-canonical whitespace wildcard-discard production fixture coverage for #1568
+
+RIPR-SPEC-0151: rebless check JSON for the additive source_currentness field; classifications, stages, confidence, counts, and recorded coordinates remain unchanged.
+
+Command:
+`cargo xtask goldens bless infect_wildcard_discard --reason "..."`
+
+Updated:
+- `expected/check.json`
+

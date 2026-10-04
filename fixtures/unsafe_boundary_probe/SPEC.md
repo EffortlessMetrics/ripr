@@ -30,7 +30,8 @@ would flip the recorded expression and fail the golden.
 ## Must Not
 
 - Promote reach plus an oracle to `exposed` for the boundary probe; the
-  `static_unknown` family short-circuits before any reach or oracle logic.
+  `static_unknown` family is never credited from oracle logic. With no test
+  reaching the owner, each finding is `no_static_path`.
 - Attach an `unsafe block` boundary projection to lines outside a boundary or
   to a boundary edge line shared with outside code.
 - Suppress the ordinary probes beside the boundary context: the golden pins

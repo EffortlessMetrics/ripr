@@ -97,9 +97,9 @@
         }
       },
       "verification_commands": [
-        "jest tests/discount.test.ts"
+        "npx --no-install jest tests/discount.test.ts"
       ],
-      "receipt_command": "ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command \"jest tests/discount.test.ts\" --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json",
+      "receipt_command": "ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command \"npx --no-install jest tests/discount.test.ts\" --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json",
       "regeneration_commands": [
         "ripr check --root fixtures/first_successful_pr/typescript-preview-gap --json > target/ripr/reports/after-check.json"
       ],

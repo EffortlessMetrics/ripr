@@ -12,45 +12,116 @@ use crate::cli::suggest::unknown_argument;
 use crate::config::{CONFIG_FILE_NAME, DEFAULT_LSP_SEAM_DIAGNOSTICS, RiprConfig, load_for_root};
 use crate::domain::{LanguageId, LanguageStatus};
 use crate::output;
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 pub(in crate::cli) fn doctor(args: &[String]) -> Result<(), String> {
     let mut json_output = false;
-    let mut root_args: Vec<&str> = Vec::new();
-    for arg in args {
+    let mut profile = output::doctor::DoctorProfile::Analysis;
+    let mut root: Option<String> = None;
+    let mut arguments = args.iter();
+    while let Some(arg) = arguments.next() {
         match arg.as_str() {
             "--help" | "-h" => {
                 help::print_doctor_help();
                 return Ok(());
             }
             "--json" => json_output = true,
-            _ => root_args.push(arg.as_str()),
+            "--profile" => {
+                profile = match arguments.next().map(String::as_str) {
+                    Some("analysis") => output::doctor::DoctorProfile::Analysis,
+                    Some("source-build") => output::doctor::DoctorProfile::SourceBuild,
+                    Some(other) => {
+                        return Err(format!(
+                            "unknown doctor profile `{other}`; expected `analysis` or `source-build`"
+                        ));
+                    }
+                    None => return Err("missing value for --profile".to_string()),
+                };
+            }
+            "--root" => {
+                let value = match arguments.next().map(String::as_str) {
+                    // A known doctor flag in the value position means the
+                    // root was omitted; consuming it ran the report against a
+                    // directory named after the flag (#4318 review). The
+                    // pre-#4318 parser answered `missing value for --root`
+                    // here. Other dash-prefixed paths stay legitimate values.
+                    Some("--help" | "-h" | "--json" | "--profile" | "--root") => {
+                        return Err("missing value for --root".to_string());
+                    }
+                    Some(value) => value,
+                    None => return Err("missing value for --root".to_string()),
+                };
+                // #4318: a repeated documented flag is a usage mistake with a
+                // name of its own; accusing `--root` of being unknown sends
+                // the user to help for a flag they already used.
+                if let Some(existing) = &root {
+                    return Err(format!(
+                        "doctor accepts at most one --root; found both {existing:?} and {value:?}. Run `ripr doctor --help`."
+                    ));
+                }
+                root = Some(value.to_string());
+            }
+            other if other.starts_with('-') => {
+                return Err(unknown_argument("doctor", other));
+            }
+            other => {
+                return Err(format!(
+                    "doctor does not accept positional arguments; got {other:?}; pass the workspace root with `--root <path>`. Run `ripr doctor --help`."
+                ));
+            }
         }
     }
-    let root = match root_args.as_slice() {
-        [] => PathBuf::from("."),
-        ["--root"] => return Err("missing value for --root".to_string()),
-        ["--root", value] => PathBuf::from(value),
-        [other, ..] => return Err(unknown_argument("doctor", other)),
-    };
+    let root = root.map_or_else(|| PathBuf::from("."), PathBuf::from);
 
     if json_output {
-        return doctor_json(&root);
+        return doctor_json(&root, profile);
     }
 
-    // Human-readable path (unchanged behavior).
-    let core_evaluation = output::doctor::evaluate_doctor_core_with_config(&root);
+    // Human-readable path.
+    let core_evaluation = output::doctor::evaluate_doctor_core_with_config_for_profile(
+        &root,
+        &detect_languages(&root),
+        profile,
+    );
     let mut report = core_evaluation.report;
     let core_report = &report;
     let mut ok = matches!(core_report.status, output::doctor::DoctorStatus::Pass);
     let enabled_languages = enabled_languages(&core_evaluation.config);
     println!("ripr doctor");
-    println!("- root: {}", root.display());
+    println!("- root: {}", output::path::human_path(&root));
+    for line in output::doctor_binary::probe_binary_identity().human_lines() {
+        println!("{line}");
+    }
+    println!(
+        "- RIPR {} (source build requires Rust {})",
+        report.ripr_version, report.ripr_build_msrv
+    );
+    let profile_name = match profile {
+        output::doctor::DoctorProfile::Analysis => "analysis",
+        output::doctor::DoctorProfile::SourceBuild => "source-build",
+    };
+    println!("- profile: {profile_name}");
 
     ok &= report_doctor_core_check(core_report, "root_directory");
     ok &= report_doctor_core_check(core_report, "cargo_toml");
+    ok &= report_doctor_core_check(core_report, "git_repository");
+    // #5259: advisory (never fails the run) — the work tree is real, but a
+    // repository with no commits cannot produce the diff base the default
+    // first command needs, so the state must be visible on this screen.
+    // Printed only when the evaluation recorded it: the check exists exactly
+    // when HEAD is unborn, and its absence in a normal repository is the
+    // healthy case, not a missing core check.
+    if core_report
+        .checks
+        .iter()
+        .any(|check| check.name == "git_head")
+    {
+        ok &= report_doctor_core_check(core_report, "git_head");
+    }
     report_config_status(&root, core_evaluation.config, &mut ok);
     report_cache_status(&root);
+    report_generated_workflow_status(&root);
     report_detected_languages(&root);
     ok &= add_language_runtime_probes(&root, &enabled_languages, &mut report, true, probe_runtime);
     suggest_preview_language_enablement(&root);
@@ -62,13 +133,13 @@ pub(in crate::cli) fn doctor(args: &[String]) -> Result<(), String> {
         ok &= report_doctor_core_check(&report, &format!("tool_{tool}"));
     }
 
-    print_doctor_start_here_guidance(&root);
+    print_doctor_start_here_guidance(&root, &report);
 
     if ok && report.status == output::doctor::DoctorStatus::Pass {
         println!("✓ doctor checks passed");
         Ok(())
     } else {
-        println!("! doctor checks failed; run `ripr doctor --help` for usage");
+        print!("{}", output::doctor::DOCTOR_FAILED_LINE);
         Err("doctor found issues".to_string())
     }
 }
@@ -77,12 +148,20 @@ pub(in crate::cli) fn doctor(args: &[String]) -> Result<(), String> {
 /// probes as structured values. Deeper sub-checks (cache, Perl, and test
 /// surfaces) remain on the human-oriented path for a follow-up PR to type
 /// individually. See #1771 / #1614.
-fn doctor_json(root: &Path) -> Result<(), String> {
-    let evaluation = output::doctor::evaluate_doctor_core_with_config(root);
+fn doctor_json(root: &Path, profile: output::doctor::DoctorProfile) -> Result<(), String> {
+    let evaluation = output::doctor::evaluate_doctor_core_with_config_for_profile(
+        root,
+        &detect_languages(root),
+        profile,
+    );
     let mut report = evaluation.report;
+    report.binary = Some(output::doctor_binary::probe_binary_identity());
     let enabled_languages = enabled_languages(&evaluation.config);
     let _ =
         add_language_runtime_probes(root, &enabled_languages, &mut report, false, probe_runtime);
+    if let Some(advisory) = generated_workflow_advisory(root) {
+        report.add_advisory_check("generated_workflow", advisory);
+    }
     println!("{}", report.render_json()?);
     output::doctor::doctor_report_result(&report)
 }
@@ -99,23 +178,108 @@ fn report_doctor_core_check(report: &output::doctor::DoctorReport, name: &str) -
         println!("! missing doctor core check: {name}");
         return false;
     };
+    // A skipped check (not applicable to this root) prints as an
+    // informational `-` line carrying its reason and never fails doctor.
     let marker = match check.status {
-        output::doctor::DoctorStatus::Pass => "✓",
-        output::doctor::DoctorStatus::Fail => "!",
+        output::doctor::DoctorCheckStatus::Pass => "✓",
+        output::doctor::DoctorCheckStatus::Fail => "!",
+        output::doctor::DoctorCheckStatus::Advisory => "~",
+        output::doctor::DoctorCheckStatus::Skipped => "-",
     };
     println!(
         "{marker} {}",
         check.evidence.as_deref().unwrap_or(check.name.as_str())
     );
-    check.status == output::doctor::DoctorStatus::Pass
+    check.status != output::doctor::DoctorCheckStatus::Fail
 }
 
-fn print_doctor_start_here_guidance(root: &Path) {
-    println!("- Start-here packet: target/ripr/reports/start-here.md");
-    println!(
-        "- Safe next action: run `ripr first-pr --root {} --base origin/main --head HEAD` after setup passes",
-        root.display()
-    );
+fn print_doctor_start_here_guidance(root: &Path, report: &output::doctor::DoctorReport) {
+    // Both the first action and the recommendation consume this one fallible
+    // route. No-packet guidance must not point at a command below when its
+    // selected root cannot be rendered losslessly. The report states decide
+    // before any probe: a missing root (#4531) is not probed for work-tree
+    // changes, and a git binary that cannot run still wins over the
+    // repository state (#4735).
+    let first = output::doctor::DoctorFirstCommand::resolve_for_report(report, || {
+        analysis::working_tree_has_tracked_changes(root)
+    });
+    let recommendation = first.command_line_for_root(root);
+    // First-run honesty: name the packet as present only when it exists and
+    // was written by this ripr. An unconditional path reads as an existing
+    // artifact on a fresh workspace where `ripr first-pr` has never run
+    // (RIPR-SPEC-0051 names the path, not its existence). A packet without
+    // this ripr's `ripr_version` is stale_evidence after an upgrade: 0.10
+    // packets have no version field, so existence alone cannot be trusted
+    // (#4757). `is_file` (not `exists`) so a directory squatting the packet
+    // path cannot read as openable evidence.
+    // The safe next action follows the packet's freshness, because `first-pr`
+    // composes the packet out of artifacts `ripr check` produces -- it runs no
+    // analysis of its own (the boundary `help --all` states). Recommending it
+    // on a fresh workspace dead-ends: measured, it returns `missing_artifacts`
+    // and answers with `Regeneration command: ripr check ...`, which is the
+    // command this same screen already prints three lines below. Two different
+    // first commands on one screen, one of which bounces straight back to the
+    // other, is not a route.
+    let md = root.join("target/ripr/reports/start-here.md");
+    if md.is_file() {
+        use crate::agent::loop_commands::shell_arg;
+        let json = root.join("target/ripr/reports/start-here.json");
+        let freshness = crate::output::first_pr::start_here_json_version_freshness(&json);
+        let stale_detail = crate::output::first_pr::start_here_version_stale_detail(&freshness);
+        if let Some(detail) = &stale_detail {
+            println!("- Start-here packet: target/ripr/reports/start-here.md ({detail})");
+        } else {
+            println!(
+                "- Start-here packet: target/ripr/reports/start-here.md (present; open it first)"
+            );
+        }
+        // Packet reads above follow filesystem path resolution. Resolve the
+        // existing selected directory the same way: lexical cleanup of a
+        // symlink followed by `..` can name a different repository. Keep the
+        // shared lexical helper unchanged for not-yet-created output paths.
+        let refresh_root = root
+            .canonicalize()
+            .map_err(|error| error.to_string())
+            .and_then(|resolved| output::doctor::doctor_command_root_display(root, &resolved));
+        match refresh_root {
+            Ok(resolved_root) => {
+                let refresh = format!(
+                    "ripr first-pr --root {} --head HEAD",
+                    shell_arg(&resolved_root)
+                );
+                if stale_detail.is_some() {
+                    println!("- Safe next action: `{refresh}` refreshes it");
+                } else {
+                    println!("- Safe next action: open that packet; `{refresh}` refreshes it");
+                }
+                if let output::markdown::PowershellForm::Translated(powershell) =
+                    output::markdown::powershell_form(&refresh)
+                {
+                    println!("- Refresh command (PowerShell): {powershell}");
+                }
+                // First-pr owns default-base resolution; an old packet is
+                // not authority for a custom comparison.
+                println!(
+                    "- Refresh scope: the repository's default base and HEAD; add --base REF and --head REF for a custom comparison."
+                );
+            }
+            Err(error) => println!(
+                "- Safe next action: refresh unavailable because the selected root could not be bound: {error}; restore access to that directory or use a lossless alias and rerun doctor."
+            ),
+        }
+    } else {
+        println!(
+            "- Start-here packet: target/ripr/reports/start-here.md (not yet generated; `ripr first-pr` composes it once analysis evidence exists)"
+        );
+        match &recommendation {
+            Ok(_) => println!(
+                "- Safe next action: run the recommended first command below; it produces the evidence the packet is composed from"
+            ),
+            Err(error) => println!(
+                "- Safe next action: {error}; restore access or select a lossless root alias, then rerun doctor."
+            ),
+        }
+    }
     println!(
         "- Recovery states: missing artifact, stale evidence, wrong root, malformed artifact, no actionable gap, preview-limited evidence"
     );
@@ -123,19 +287,58 @@ fn print_doctor_start_here_guidance(root: &Path) {
         "- Proof rail: verify command, receipt command, and receipt path are advisory static movement evidence"
     );
     // First-run honesty: when the working tree has uncommitted changes,
-    // `ripr check --base origin/main` analyzes committed history only and would
+    // a committed-history `ripr check` analyzes committed history only and would
     // silently exclude the user's draft (the RIPR-SPEC-0112 dirty-worktree case).
     // Route them to the command that actually covers their edits instead of the
     // one that looks clean while ignoring them. Reuses the same helper as the
-    // check-time disclosure (reuse, don't fork).
-    if analysis::working_tree_has_tracked_changes(root) {
-        println!("- Recommended first command: ripr check --base HEAD --worktree");
-        println!(
-            "- Scope note: `--worktree` analyzes staged and unstaged tracked edits; untracked files remain out of scope until staged or supplied through `--diff`."
-        );
-    } else {
-        println!("- Recommended first command: ripr check --base origin/main");
+    // check-time disclosure (reuse, don't fork). When git cannot run, both
+    // `ripr check` and `--worktree` fail the same way; name the `--diff` route
+    // instead and do not probe the worktree (#4735). A missing root or a root
+    // Git will not read (#4531) cannot run the diff-scoped first command, and
+    // probing its working tree only prints a raw git failure for a problem the
+    // checks above already name.
+    for line in first.recommendation_lines_for(root) {
+        println!("{line}");
     }
+    match first {
+        output::doctor::DoctorFirstCommand::Worktree => {
+            println!(
+                "- Scope note: `--worktree` analyzes staged and unstaged tracked edits; untracked files remain out of scope until staged or supplied through `--diff`."
+            );
+        }
+        output::doctor::DoctorFirstCommand::DefaultCheck => {
+            // No `--base origin/main`: this screen is read in whatever repository
+            // the user has, and that ref does not exist in one whose default
+            // branch is not `main`. Without a base, the loader resolves the
+            // repository's own default (`analysis::diff::load::resolve_default_base`).
+        }
+        output::doctor::DoctorFirstCommand::SavedDiff => {}
+        output::doctor::DoctorFirstCommand::MissingRoot
+        | output::doctor::DoctorFirstCommand::OutsideGit => {}
+        // #5259: the recommended line above already names the commit-first
+        // repair; the advisory `git_head` check line carries the same state.
+        output::doctor::DoctorFirstCommand::UnbornHead => {}
+    }
+    // A detected preview language that is not enabled is skipped by `ripr
+    // check`, so in a TypeScript-only repository the recommended command is a
+    // guaranteed no-op. Name the enable step next to the command.
+    if let Some(line) = enable_before_first_command_line(root) {
+        println!("{line}");
+    }
+}
+
+fn enable_before_first_command_line(root: &Path) -> Option<String> {
+    // Name the config entries here: this line says what to write in
+    // ripr.toml, while the Tip names the detected source.
+    let names = preview_languages_to_enable(root)?
+        .missing
+        .iter()
+        .map(|id| id.as_str())
+        .collect::<Vec<_>>()
+        .join(" and ");
+    Some(format!(
+        "- Before that: enable {names} in ripr.toml (see the Tip above); until then `ripr check` skips those files"
+    ))
 }
 
 /// Language-to-status mapping used by the doctor first-run diagnosis.
@@ -203,18 +406,24 @@ fn detect_languages(root: &Path) -> Vec<LanguageId> {
         found.push(LanguageId::Rust);
     }
 
-    // TypeScript: package.json, tsconfig.json, .ts or .tsx files
+    // TypeScript: package.json, tsconfig.json, or a TypeScript-source
+    // extension (.ts/.tsx/.mts/.cts) at a shallow depth. #4116: both
+    // extension families consume the shared TS/JS extension authority.
     if shallow_has_file(root, "package.json")
         || shallow_has_file(root, "tsconfig.json")
-        || shallow_has_extension(root, "ts")
-        || shallow_has_extension(root, "tsx")
+        || analysis::TYPESCRIPT_SOURCE_EXTENSIONS
+            .iter()
+            .any(|extension| shallow_has_extension(root, extension))
     {
         found.push(LanguageId::TypeScript);
     }
 
-    // JavaScript: .js or .jsx files (only when no TS markers already found)
+    // JavaScript: JavaScript-source extensions (.js/.jsx/.mjs/.cjs), only
+    // when no TypeScript markers were found.
     if !found.contains(&LanguageId::TypeScript)
-        && (shallow_has_extension(root, "js") || shallow_has_extension(root, "jsx"))
+        && analysis::JAVASCRIPT_SOURCE_EXTENSIONS
+            .iter()
+            .any(|extension| shallow_has_extension(root, extension))
     {
         found.push(LanguageId::JavaScript);
     }
@@ -229,8 +438,10 @@ fn detect_languages(root: &Path) -> Vec<LanguageId> {
         found.push(LanguageId::Python);
     }
 
-    // Perl: .pl or .pm files
-    if shallow_has_extension(root, "pl") || shallow_has_extension(root, "pm") {
+    // Perl: the same predicate that gates the Perl preview section, so a
+    // CPAN layout with modules below `lib/Name/` is detected and a `.t` under
+    // `target/` is not.
+    if perl_project_detected(root) {
         found.push(LanguageId::Perl);
     }
 
@@ -249,12 +460,16 @@ fn add_language_runtime_probes<F>(
     mut probe: F,
 ) -> bool
 where
-    F: FnMut(&str, bool) -> (output::doctor::DoctorStatus, String),
+    F: FnMut(&str) -> (output::doctor::DoctorStatus, String),
 {
     let mut ok = true;
     for (language, tool, hint) in language_runtime_probes_for(root, enabled) {
-        let (status, evidence) = probe(tool, tool == "yarn");
-        let required = runtime_probe_is_required(language, tool, enabled);
+        let (status, evidence) = probe(tool);
+        // A language runtime is an analysis capability, not a prerequisite
+        // for building RIPR from source: the source-build profile keeps the
+        // probe visible but never lets it decide that profile's status.
+        let required = report.profile == output::doctor::DoctorProfile::Analysis
+            && runtime_probe_is_required(language, tool, enabled);
         report.add_runtime_probe(language, tool, status, &evidence, required, hint);
         if required && status == output::doctor::DoctorStatus::Fail {
             ok = false;
@@ -266,14 +481,12 @@ where
     ok
 }
 
-fn probe_runtime(tool: &str, isolated: bool) -> (output::doctor::DoctorStatus, String) {
-    // yarn loads project config on --version; probe it isolated so a
-    // hostile checkout cannot execute code via doctor (#2183 review).
-    if isolated {
-        output::doctor::doctor_tool_check_isolated(tool)
-    } else {
-        output::doctor::doctor_tool_check(tool)
-    }
+fn probe_runtime(tool: &str) -> (output::doctor::DoctorStatus, String) {
+    // Probe every runtime outside the checkout. yarn loads project config on
+    // --version (#2183 review), and pnpm fetches and runs the release a
+    // project `packageManager` names; version managers read project files too.
+    // A hostile checkout must not choose what doctor executes.
+    output::doctor::doctor_tool_check_isolated(tool)
 }
 
 fn runtime_probe_is_required(language: &str, tool: &str, enabled: &[LanguageId]) -> bool {
@@ -284,21 +497,41 @@ fn runtime_probe_is_required(language: &str, tool: &str, enabled: &[LanguageId])
         && enabled.iter().any(|id| id.as_str() == language)
 }
 
-const PRIMARY_RUNTIME_PROBES: &[(&str, &str, &str)] = &[
-    ("typescript", "node", "install Node.js"),
-    ("javascript", "node", "install Node.js"),
-    (
-        "python",
-        "python3",
-        "install python3 (e.g. apt install python3)",
-    ),
-];
+/// The primary runtime probe per language. Python's command name and install
+/// hint depend on the host ([`python_runtime_for_os`]).
+fn primary_runtime_probes() -> [(&'static str, &'static str, &'static str); 3] {
+    let (python_tool, python_hint) = python_runtime_for_os(std::env::consts::OS);
+    [
+        ("typescript", "node", "install Node.js"),
+        ("javascript", "node", "install Node.js"),
+        ("python", python_tool, python_hint),
+    ]
+}
+
+/// The Python command doctor probes and the install hint it prints, for a
+/// host OS name as `std::env::consts::OS` spells it (#4378). Pure so every
+/// host's answer is testable from any host.
+///
+/// The python.org and winget installers put `python` (not `python3`) on a
+/// Windows PATH, and `apt` does not exist there, so Windows probes `python`
+/// with a Windows install route. RIPR never runs the interpreter itself; the
+/// probe only tells a user whether their Python verify route can start.
+fn python_runtime_for_os(os: &str) -> (&'static str, &'static str) {
+    match os {
+        "windows" => (
+            "python",
+            "install Python and put `python` on PATH (e.g. winget install Python.Python.3.13)",
+        ),
+        "macos" => ("python3", "install python3 (e.g. brew install python)"),
+        _ => ("python3", "install python3 (e.g. apt install python3)"),
+    }
+}
 
 fn primary_runtime(language: &str) -> Option<(&'static str, &'static str)> {
-    PRIMARY_RUNTIME_PROBES
-        .iter()
+    primary_runtime_probes()
+        .into_iter()
         .find(|(candidate, _, _)| *candidate == language)
-        .map(|(_, tool, hint)| (*tool, *hint))
+        .map(|(_, tool, hint)| (tool, hint))
 }
 
 fn language_runtime_probes_for(
@@ -314,12 +547,12 @@ fn append_missing_primary_runtime_probes(
     probes: &mut Vec<(&'static str, &'static str, &'static str)>,
     enabled: &[LanguageId],
 ) {
-    for (language, tool, hint) in PRIMARY_RUNTIME_PROBES {
-        let enabled_language = enabled.iter().any(|id| id.as_str() == *language);
+    for (language, tool, hint) in primary_runtime_probes() {
+        let enabled_language = enabled.iter().any(|id| id.as_str() == language);
         if enabled_language
             && !probes
                 .iter()
-                .any(|(found, detected_tool, _)| *found == *language && *detected_tool == *tool)
+                .any(|(found, detected_tool, _)| *found == language && *detected_tool == tool)
         {
             probes.push((language, tool, hint));
         }
@@ -362,11 +595,8 @@ fn language_runtime_probes(root: &Path) -> Vec<(&'static str, &'static str, &'st
     let detected = detect_languages(root);
     let mut probes: Vec<(&str, &str, &str)> = Vec::new();
     if detected.contains(&LanguageId::Python) {
-        probes.push((
-            "python",
-            "python3",
-            "install python3 (e.g. apt install python3)",
-        ));
+        let (python_tool, python_hint) = python_runtime_for_os(std::env::consts::OS);
+        probes.push(("python", python_tool, python_hint));
         // Reuse the shared framework detector (#2183 review) — no parallel
         // marker list. Gated behind lang-python: the detector lives in the
         // Python adapter which is not compiled under --no-default-features
@@ -410,24 +640,59 @@ fn language_runtime_probes(root: &Path) -> Vec<(&'static str, &'static str, &'st
 /// false for the detected language. If no markers are found, prints
 /// `none detected` rather than claiming any language.
 fn report_detected_languages(root: &Path) {
-    let detected = detect_languages(root);
-    if detected.is_empty() {
-        println!("- Detected languages: none detected");
-        return;
+    for line in detected_languages_lines(
+        &detect_languages(root),
+        &crate::analysis::workspace_unanalyzed_source_languages(root),
+    ) {
+        println!("{line}");
     }
-    let entries: Vec<String> = detected
+}
+
+/// The detected-languages line, followed by the unanalyzed-languages line
+/// whenever such source exists: a mixed Rust and Go workspace needs the Go
+/// half named as much as a Go-only one does.
+fn detected_languages_lines(
+    detected: &[LanguageId],
+    unanalyzed: &[(&'static str, usize)],
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    if detected.is_empty() {
+        lines.push("- Detected languages: none detected".to_string());
+    } else {
+        let entries: Vec<String> = detected
+            .iter()
+            .map(|id| {
+                let tier = language_status(*id).as_str().to_string();
+                let available = id.is_available();
+                if available {
+                    format!("{} ({})", id.as_str(), tier)
+                } else {
+                    format!("{} ({}) [adapter not compiled]", id.as_str(), tier)
+                }
+            })
+            .collect();
+        lines.push(format!("- Detected languages: {}", entries.join(", ")));
+    }
+    lines.extend(unanalyzed_languages_line(unanalyzed));
+    lines
+}
+
+/// Names source ripr cannot analyze, so a Go or Java repository is told why
+/// `ripr check` will find nothing instead of being sent there as the
+/// recommended first command, and a mixed workspace learns which half is
+/// reported as not analyzed.
+fn unanalyzed_languages_line(unanalyzed: &[(&'static str, usize)]) -> Option<String> {
+    if unanalyzed.is_empty() {
+        return None;
+    }
+    let found = unanalyzed
         .iter()
-        .map(|id| {
-            let tier = language_status(*id).as_str().to_string();
-            let available = id.is_available();
-            if available {
-                format!("{} ({})", id.as_str(), tier)
-            } else {
-                format!("{} ({}) [adapter not compiled]", id.as_str(), tier)
-            }
-        })
-        .collect();
-    println!("- Detected languages: {}", entries.join(", "));
+        .map(|(language, count)| format!("{language} ({count} file(s))"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(format!(
+        "~ Unanalyzed languages: {found}; ripr analyzes Rust, plus TypeScript/JavaScript and Python as previews, so changes to this source are reported as not analyzed, never as clean"
+    ))
 }
 
 /// When a preview language is detected in `root` but is not yet enabled in
@@ -455,46 +720,122 @@ fn suggest_preview_language_enablement(root: &Path) {
 /// Returns an empty vec when there is nothing to suggest. Separated from the
 /// printing logic so it can be covered by unit tests without stdout capture.
 fn preview_language_enable_suggestions(root: &Path) -> Vec<String> {
-    let detected = detect_languages(root);
-    let preview_detected: Vec<LanguageId> = detected
-        .into_iter()
-        .filter(|id| matches!(language_status(*id), LanguageStatus::Preview))
-        .collect();
-    if preview_detected.is_empty() {
+    let Some(PreviewEnablement {
+        enabled,
+        missing,
+        labels,
+    }) = preview_languages_to_enable(root)
+    else {
         return Vec::new();
-    }
-    let config = match load_for_root(root) {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
     };
-    let enabled = config.languages().enabled();
-    let mut suggestions = Vec::new();
-    for id in &preview_detected {
-        if id.is_available() && !enabled.contains(id) {
-            // Perl detects as a preview language (see language_status). In a
-            // default build, `LanguageId::Perl.is_available()` is
-            // `cfg!(feature="lang-perl")` == false, so the Tip never fires for
-            // Perl anyway. This guard is defense-in-depth for the
-            // `--features lang-perl` build: even when the Cargo feature is ON,
-            // the adapter is still scaffold-only (#[cfg(test)] mod perl; not
-            // production-routable, pipeline fail-closed stub). Suggesting
-            // `enabled = ["rust", "perl"]` in that build would mislead: the
-            // user would enable it and get zero analysis plus an explicit
-            // error. Detection at detect_languages() stays honest; only the
-            // enablement Tip is suppressed for Perl until Campaign 31 (#1379)
-            // lands the production bridge. TypeScript/Python are real preview
-            // adapters and remain Tip-eligible.
-            if matches!(id, LanguageId::Perl) {
-                continue;
-            }
-            suggestions.push(format!(
-                "- Tip: {} files detected but the adapter is not enabled. To analyze them, add to ripr.toml:\n\n  [languages]\n  enabled = [\"rust\", \"{}\"]",
-                id.as_str(),
-                id.as_str(),
-            ));
+    // One snippet for every missing language, built on the languages already
+    // enabled: a per-language `["rust", "<lang>"]` snippet would disable the
+    // other preview language in a mixed repository, so following one tip
+    // would produce the other.
+    let mut target: Vec<&str> = enabled.iter().map(|id| id.as_str()).collect();
+    for id in &missing {
+        if !target.contains(&id.as_str()) {
+            target.push(id.as_str());
         }
     }
-    suggestions
+    let names = labels.join(" and ");
+    let quoted = target
+        .iter()
+        .map(|name| format!("\"{name}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let javascript_note = if labels.iter().any(|label| label == "javascript") {
+        " (the `typescript` entry also analyzes JavaScript)"
+    } else {
+        ""
+    };
+    vec![format!(
+        "- Tip: {names} files detected but not enabled, so `ripr check` does not analyze them. To analyze them, set in ripr.toml{javascript_note}:\n\n  [languages]\n  enabled = [{quoted}]"
+    )]
+}
+
+/// The enabled languages and the detected, compiled-in preview languages that
+/// are not enabled. `None` when there is nothing to suggest or the config
+/// cannot be loaded (fail closed: no tip).
+fn preview_languages_to_enable(root: &Path) -> Option<PreviewEnablement> {
+    let detected = detect_languages(root);
+    // JavaScript is analyzed by the TypeScript adapter and has no config
+    // entry of its own (`parse_languages_enabled` accepts only `typescript`),
+    // so a detected JavaScript source maps to the `typescript` entry. Using
+    // the scanner id would print `"javascript"`, which config loading rejects.
+    let mut preview_detected: Vec<LanguageId> = Vec::new();
+    for id in detected
+        .iter()
+        .copied()
+        .filter(|id| matches!(language_status(*id), LanguageStatus::Preview))
+    {
+        let entry = config_entry(id);
+        if !preview_detected.contains(&entry) {
+            preview_detected.push(entry);
+        }
+    }
+    if preview_detected.is_empty() {
+        return None;
+    }
+    let config = load_for_root(root).ok()?;
+    let enabled = config.languages().enabled().to_vec();
+    let missing: Vec<LanguageId> = preview_detected
+        .into_iter()
+        // Perl detects as a preview language (see language_status). In a
+        // default build, `LanguageId::Perl.is_available()` is
+        // `cfg!(feature="lang-perl")` == false, so the Tip never fires for
+        // Perl anyway. This guard is defense-in-depth for the
+        // `--features lang-perl` build: even when the Cargo feature is ON,
+        // the adapter is still scaffold-only (#[cfg(test)] mod perl; not
+        // production-routable, pipeline fail-closed stub). Suggesting
+        // `perl` in that build would mislead: the user would enable it and
+        // get zero analysis plus an explicit error. Detection at
+        // detect_languages() stays honest; only the enablement Tip is
+        // suppressed for Perl until Campaign 31 (#1379) lands the production
+        // bridge. TypeScript/Python are real preview adapters and remain
+        // Tip-eligible.
+        .filter(|id| id.is_available() && !enabled.contains(id) && !matches!(id, LanguageId::Perl))
+        .collect();
+    if missing.is_empty() {
+        return None;
+    }
+    let labels = missing
+        .iter()
+        .map(|id| {
+            let javascript_only = *id == LanguageId::TypeScript
+                && !detected.contains(&LanguageId::TypeScript)
+                && detected.contains(&LanguageId::JavaScript);
+            if javascript_only {
+                "javascript".to_string()
+            } else {
+                id.as_str().to_string()
+            }
+        })
+        .collect();
+    Some(PreviewEnablement {
+        enabled,
+        missing,
+        labels,
+    })
+}
+
+/// The `[languages].enabled` entries a doctor tip may add, and how to name
+/// them to the user.
+struct PreviewEnablement {
+    /// Languages already enabled in `ripr.toml` (or the default).
+    enabled: Vec<LanguageId>,
+    /// Config entries to add, each a value `parse_languages_enabled` accepts.
+    missing: Vec<LanguageId>,
+    /// One user-facing name per `missing` entry, naming the detected source.
+    labels: Vec<String>,
+}
+
+/// The `[languages].enabled` entry that turns on analysis of `id`.
+fn config_entry(id: LanguageId) -> LanguageId {
+    match id {
+        LanguageId::JavaScript => LanguageId::TypeScript,
+        other => other,
+    }
 }
 
 /// Detect test-framework markers per detected language.
@@ -589,17 +930,13 @@ fn detected_test_surface_lines(root: &Path) -> Vec<String> {
                     if id.is_available() {
                         lines.push("perl: adapter compiled (lang-perl feature ON)".to_string());
                     } else {
-                        lines.push(
-                            "perl: adapter NOT compiled (build with --features lang-perl)"
-                                .to_string(),
-                        );
+                        lines.push(format!(
+                            "perl: adapter NOT compiled; {}",
+                            id.unavailable_adapter_recovery()
+                        ));
                     }
-                    // Report runner availability.
-                    if which("prove") {
-                        lines.push("perl: prove available on PATH".to_string());
-                    } else {
-                        lines.push("perl: prove NOT found on PATH".to_string());
-                    }
+                    // Report runner availability from PATH, never the checkout cwd.
+                    lines.push(perl_prove_path_line());
                     // Report exact first command.
                     if id.is_available() {
                         lines.push("perl: first command: ripr check --perl-facts <packet.json> --diff <diff.patch> --json".to_string());
@@ -616,6 +953,47 @@ fn detected_test_surface_lines(root: &Path) -> Vec<String> {
 /// Count files with a given extension under the root (recursive). Used by the
 /// Perl preview to report real .pm/.pl/.t counts. Campaign 31 item 5: the
 /// prior `shallow_has_extension as usize` returned only 0/1, not a real count.
+/// Hidden and build/dependency directories that the Perl file walks skip,
+/// so vendored or generated files neither inflate counts nor detect Perl.
+fn is_skipped_walk_dir(path: &Path) -> bool {
+    let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+    name.starts_with('.') || matches!(name, "target" | "node_modules" | "blib")
+}
+
+/// True for a real directory entry. `DirEntry::file_type` does not follow
+/// symlinks, so a `src/loop -> .` link cannot send doctor's walks into an
+/// unbounded descent (the other workspace walkers already skip links). An
+/// entry whose type cannot be read is not descended. Non-directory entries
+/// are counted only when `Path::is_file` holds, so a directory link named
+/// `x.pm` is neither descended nor counted as a Perl file.
+fn is_walkable_dir(entry: &std::fs::DirEntry) -> bool {
+    entry.file_type().is_ok_and(|kind| kind.is_dir())
+}
+
+/// True when the workspace has a CPAN build marker or any `.pm`, `.pl` or
+/// `.t` file outside skipped directories. One walk that stops at the first
+/// hit; `detect_languages` and the Perl preview share this definition.
+fn perl_project_detected(root: &Path) -> bool {
+    fn any_perl_file(dir: &Path) -> bool {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return false;
+        };
+        entries.flatten().any(|entry| {
+            let path = entry.path();
+            if is_walkable_dir(&entry) {
+                !is_skipped_walk_dir(&path) && any_perl_file(&path)
+            } else {
+                path.is_file()
+                    && matches!(
+                        path.extension().and_then(|e| e.to_str()),
+                        Some("pm" | "pl" | "t")
+                    )
+            }
+        })
+    }
+    has_perl_project_markers(root) || any_perl_file(root)
+}
+
 fn count_files(root: &Path, ext: &str) -> usize {
     fn count_recursive(dir: &Path, ext: &str) -> usize {
         let Ok(entries) = std::fs::read_dir(dir) else {
@@ -624,14 +1002,12 @@ fn count_files(root: &Path, ext: &str) -> usize {
         let mut n = 0;
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_dir() {
-                // Skip hidden + build/dependency dirs that inflate counts.
-                let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                if name.starts_with('.') || matches!(name, "target" | "node_modules" | "blib") {
+            if is_walkable_dir(&entry) {
+                if is_skipped_walk_dir(&path) {
                     continue;
                 }
                 n += count_recursive(&path, ext);
-            } else if path.extension().and_then(|e| e.to_str()) == Some(ext) {
+            } else if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some(ext) {
                 n += 1;
             }
         }
@@ -668,26 +1044,142 @@ fn detect_perl_framework(root: &Path) -> &'static str {
     "not detected"
 }
 
-/// Check if a binary is available on PATH.
-fn which(bin: &str) -> bool {
+/// Perl test runners doctor may name. Availability is PATH-only (#5103).
+const PERL_PATH_RUNNERS: [&str; 4] = ["prove", "yath", "carton", "dzil"];
+
+fn perl_prove_path_line() -> String {
+    if path_command("prove").is_some() {
+        "perl: prove available on PATH".to_string()
+    } else {
+        "perl: prove NOT found on PATH".to_string()
+    }
+}
+
+fn perl_runners_line() -> String {
+    let runners: Vec<&str> = PERL_PATH_RUNNERS
+        .into_iter()
+        .filter(|name| path_command(name).is_some())
+        .collect();
+    if runners.is_empty() {
+        "none found on PATH".to_string()
+    } else {
+        runners.join(", ")
+    }
+}
+
+/// Resolve a doctor probe name to a program.
+///
+/// Bare names (`prove`, `perllsp`) come from PATH only. Windows `where`
+/// searches the process cwd first, so a repo-local `prove.cmd` must not
+/// count. Names that already contain a path separator are explicit paths
+/// (the opted-in `[perl].executable`).
+fn doctor_program(candidate: &str) -> Option<PathBuf> {
+    if program_name_is_explicit_path(candidate) {
+        Some(PathBuf::from(candidate))
+    } else {
+        path_command(candidate)
+    }
+}
+
+fn program_name_is_explicit_path(name: &str) -> bool {
+    !name.is_empty() && (name.contains('/') || name.contains('\\'))
+}
+
+/// True when `name` is a file on PATH. Does not search the process cwd.
+fn path_command(name: &str) -> Option<PathBuf> {
+    let pathext = std::env::var("PATHEXT").ok();
+    path_command_in(
+        name,
+        std::env::var_os("PATH").unwrap_or_default(),
+        pathext.as_deref(),
+        cfg!(windows),
+        &path_command_exists,
+    )
+}
+
+fn path_command_exists(path: &Path) -> bool {
+    let Ok(meta) = path.metadata() else {
+        return false;
+    };
+    if !meta.is_file() {
+        return false;
+    }
     #[cfg(unix)]
     {
-        std::process::Command::new("which")
-            .arg(bin)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .is_ok_and(|s| s.success())
+        use std::os::unix::fs::PermissionsExt;
+        meta.permissions().mode() & 0o111 != 0
     }
     #[cfg(not(unix))]
     {
-        std::process::Command::new("where")
-            .arg(bin)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .is_ok_and(|s| s.success())
+        true
     }
+}
+
+/// PATH-only lookup. Empty and `.` PATH entries are cwd aliases (`where` and
+/// Windows empty PATH components); they are skipped so a checkout `prove.cmd`
+/// cannot read as "available on PATH". Pure over its inputs so the Windows
+/// cwd-first branch is testable on any host (#5103).
+fn path_command_in(
+    name: &str,
+    path: impl AsRef<OsStr>,
+    pathext: Option<&str>,
+    windows: bool,
+    is_present: &dyn Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    if name.is_empty() || program_name_is_explicit_path(name) {
+        return None;
+    }
+    std::env::split_paths(path.as_ref()).find_map(|dir| {
+        if is_cwd_path_entry(&dir) {
+            return None;
+        }
+        path_command_candidates(&dir, name, pathext, windows)
+            .into_iter()
+            .find(|candidate| is_present(candidate))
+    })
+}
+
+fn is_cwd_path_entry(dir: &Path) -> bool {
+    // Empty and `.` are cwd aliases (`where` / Windows empty PATH components).
+    // `./` equals `.` via Path components on every host. `.\\` equals `.` on
+    // Windows, but Unix Path treats `.\\` as a Normal filename, so keep the
+    // token for host-independent Windows PATH strings (#5103).
+    dir.as_os_str().is_empty() || dir == Path::new(".") || dir == Path::new(".\\")
+}
+
+fn path_command_candidates(
+    dir: &Path,
+    name: &str,
+    pathext: Option<&str>,
+    windows: bool,
+) -> Vec<PathBuf> {
+    if !windows {
+        return vec![dir.join(name)];
+    }
+    // PATHEXT suffixes first, then the extensionless name as a fallback. An
+    // extensionless `perllsp` must not hide `perllsp.bat` from exporter spawn.
+    let mut candidates = Vec::new();
+    let exts = pathext.unwrap_or(".COM;.EXE;.BAT;.CMD");
+    for ext in exts.split(';') {
+        let ext = ext.trim();
+        if ext.is_empty() || ext == "." {
+            continue;
+        }
+        let ext = if ext.starts_with('.') {
+            ext.to_ascii_lowercase()
+        } else {
+            format!(".{}", ext.to_ascii_lowercase())
+        };
+        let candidate = dir.join(format!("{name}{ext}"));
+        if !candidates.contains(&candidate) {
+            candidates.push(candidate);
+        }
+    }
+    let bare = dir.join(name);
+    if !candidates.contains(&bare) {
+        candidates.push(bare);
+    }
+    candidates
 }
 
 /// Rich Perl preview for the doctor (Campaign 31 item 5). Reports everything a
@@ -700,13 +1192,12 @@ fn which(bin: &str) -> bool {
 /// determine. No claim is made that the producer works end-to-end (that is the
 /// two-binary proof, item 3). Prints only when Perl markers are detected.
 fn report_perl_preview(root: &Path) {
+    if !perl_project_detected(root) {
+        return;
+    }
     let pm_count = count_files(root, "pm");
     let pl_count = count_files(root, "pl");
     let t_count = count_files(root, "t");
-    let has_markers = pm_count > 0 || pl_count > 0 || t_count > 0 || has_perl_project_markers(root);
-    if !has_markers {
-        return;
-    }
 
     println!("- Perl preview:");
     println!("  project: {pm_count} .pm, {pl_count} .pl, {t_count} .t");
@@ -715,7 +1206,7 @@ fn report_perl_preview(root: &Path) {
     if cfg!(feature = "lang-perl") {
         println!("  adapter: compiled (lang-perl feature ON)");
     } else {
-        println!("  adapter: NOT compiled (build with --features lang-perl)");
+        println!("  adapter: NOT compiled in this ripr binary (see next)");
     }
 
     // [perl] producer configured? + Perl facts exporter found? + version?
@@ -732,26 +1223,23 @@ fn report_perl_preview(root: &Path) {
         None => println!("  producer: not configured (managed mode off)"),
     }
 
-    // Find the producer binary and its version. Try canonical first, then wrappers.
-    let (found_bin, version) = producer_binary_and_version(root);
-    match (found_bin.as_deref(), version.as_deref()) {
-        (Some(bin), Some(ver)) => {
-            println!("  exporter: found at {bin} (version {ver})");
-            // If only a wrapper was found (not the canonical exporter), explain.
-            if bin.contains("perllsp") || bin.contains("perl-lsp") {
-                if which("perl-ripr-facts") {
-                    // Canonical also present — no warning needed.
-                } else {
-                    println!(
-                        "  note: `{bin}` must delegate to the batch perl-ripr-facts exporter; RIPR does not use LSP protocol"
-                    );
-                }
-            }
-        }
-        (Some(bin), None) => println!("  exporter: found at {bin} (version unknown)"),
-        _ => println!(
-            "  exporter: NOT found on PATH (expected: perl-ripr-facts, perllsp, or perl-lsp)"
-        ),
+    // Find a compatible exporter: one that answers `--version` AND accepts
+    // the managed `ripr-facts` subcommand. A binary that only answers
+    // `--version` (for example the published perllsp LSP server) is reported
+    // as found-but-incompatible, never as a working exporter.
+    if let Some(refused) = crate::config::load_for_root(root)
+        .ok()
+        .and_then(|config| config.perl().refused_executable().map(Path::to_path_buf))
+    {
+        println!(
+            "  executable: ignoring [perl].executable `{}` from ripr.toml (not run); set {}=1 to trust it",
+            refused.display(),
+            crate::config::PERL_EXECUTABLE_OPT_IN_ENV
+        );
+    }
+    let exporter = probe_perl_exporter(root);
+    for line in perl_exporter_lines(&exporter) {
+        println!("  {line}");
     }
 
     // schema compatible? (always reports the schema this ripr build consumes.)
@@ -765,30 +1253,16 @@ fn report_perl_preview(root: &Path) {
     let frameworks = detect_perl_frameworks(root);
     println!("  frameworks: {frameworks}");
 
-    // Runner availability: prove/yath/carton/dzil.
-    let mut runners: Vec<&str> = Vec::new();
-    if which("prove") {
-        runners.push("prove");
-    }
-    if which("yath") {
-        runners.push("yath");
-    }
-    if which("carton") {
-        runners.push("carton");
-    }
-    if which("dzil") {
-        runners.push("dzil");
-    }
-    let runners_str = if runners.is_empty() {
-        "none found on PATH".to_string()
-    } else {
-        runners.join(", ")
-    };
-    println!("  runners: {runners_str}");
+    println!("  runners: {}", perl_runners_line());
 
-    // Exact next command: branch on whether managed mode is configured and
-    // whether the producer is present.
-    let next = perl_next_command(producer_configured.as_deref(), found_bin.as_deref());
+    // Exact next command: branch on whether the adapter is compiled in,
+    // whether managed mode is configured, and whether a COMPATIBLE exporter
+    // is present.
+    let next = perl_next_command(
+        LanguageId::Perl.is_available(),
+        producer_configured.as_deref(),
+        exporter.compatible_bin(),
+    );
     println!("  next: {next}");
 }
 
@@ -799,62 +1273,144 @@ fn perl_producer_configured(root: &Path) -> Option<String> {
     config.perl().producer().map(|s| s.to_string())
 }
 
-/// Resolve the producer binary path and version. Honors `[perl].executable`
+/// Result of probing for a Perl fact exporter.
+#[derive(Debug, PartialEq, Eq)]
+enum PerlExporterProbe {
+    /// Answers `--version` and accepts the managed `ripr-facts` subcommand.
+    Compatible { bin: String, version: String },
+    /// Answers `--version` but rejects `ripr-facts`, so managed mode would
+    /// fail against it. Not an exporter ripr can use.
+    Incompatible { bin: String, version: String },
+    /// No candidate answered `--version`.
+    NotFound,
+}
+
+impl PerlExporterProbe {
+    fn compatible_bin(&self) -> Option<&str> {
+        match self {
+            PerlExporterProbe::Compatible { bin, .. } => Some(bin),
+            _ => None,
+        }
+    }
+}
+
+/// Upper bound on bytes captured from each probe stream. Help and version
+/// text is small; an unknown binary must not flood the doctor.
+const PERL_EXPORTER_PROBE_OUTPUT_LIMIT: usize = 64 * 1024;
+
+/// Probe for a compatible Perl fact exporter. Honors `[perl].executable`
 /// when set; otherwise probes PATH for `perl-ripr-facts` (canonical, post
-/// perl-lsp-swarm #3294), then `perllsp`/`perl-lsp` (compatibility wrappers).
-/// Returns (resolved_path, version_string) where version comes from
-/// `--version` stdout.
-fn producer_binary_and_version(root: &Path) -> (Option<String>, Option<String>) {
-    // Honor explicit [perl].executable first.
-    let explicit = crate::config::load_for_root(root)
-        .ok()
+/// perl-lsp-swarm #3294), then `perllsp` (the compatibility name managed
+/// mode invokes for `producer = "perllsp"` or `"perl-lsp"`). A bare
+/// `perl-lsp` binary is not probed: managed mode never invokes that name,
+/// and unrelated crates install binaries called `perl-lsp`.
+///
+/// Compatibility is a capability probe, not an end-to-end proof: the
+/// candidate must exit successfully for `ripr-facts --help` and its help
+/// must mention `--schema`, the first flag of the managed argv. Both probes
+/// run under the configured `[perl].timeout_ms` deadline with bounded
+/// capture and a null stdin, so an LSP server that waits on stdin cannot
+/// hang the doctor. Packet validity is still only checked by `ripr check`.
+fn probe_perl_exporter(root: &Path) -> PerlExporterProbe {
+    let config = crate::config::load_for_root(root).ok();
+    let timeout =
+        std::time::Duration::from_millis(config.as_ref().map_or(30_000, |c| c.perl().timeout_ms()));
+    // `[perl].executable` from ripr.toml is only probed when the user opts
+    // in (see `PerlConfig::executable`); doctor is usually the first command
+    // run in a fresh clone and must not execute a repository-chosen program.
+    let explicit = config
+        .as_ref()
         .and_then(|c| c.perl().executable().map(|p| p.display().to_string()));
     let candidates: Vec<String> = match explicit {
         Some(path) => vec![path],
         None => vec![
-            "perl-ripr-facts".to_string(),
+            crate::domain::PERL_FACT_EXPORTER.to_string(),
             "perllsp".to_string(),
-            "perl-lsp".to_string(),
         ],
     };
+    let mut first_incompatible = None;
     for candidate in &candidates {
-        let probe = std::process::Command::new(candidate)
-            .arg("--version")
-            .output();
-        if let Ok(output) = probe
-            && output.status.success()
-        {
-            let version = String::from_utf8_lossy(&output.stdout)
-                .lines()
-                .next()
-                .unwrap_or("")
-                .trim()
-                .to_string();
-            let resolved = which(candidate)
-                .then(|| resolve_binary_path(candidate))
-                .flatten();
-            return (resolved.or_else(|| Some(candidate.clone())), Some(version));
+        let Some(program) = doctor_program(candidate) else {
+            continue;
+        };
+        let bin = program.display().to_string();
+        let Some(version) = run_exporter_probe(&program, &["--version"], timeout)
+            .filter(|output| output.status.success())
+            .map(|output| {
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .to_string()
+            })
+        else {
+            continue;
+        };
+        let version = if version.is_empty() {
+            "version unknown".to_string()
+        } else {
+            version
+        };
+        if exporter_accepts_ripr_facts(&program, timeout) {
+            return PerlExporterProbe::Compatible { bin, version };
         }
+        first_incompatible.get_or_insert(PerlExporterProbe::Incompatible { bin, version });
     }
-    (None, None)
+    first_incompatible.unwrap_or(PerlExporterProbe::NotFound)
 }
 
-/// Best-effort resolution of a PATH binary to an absolute path for display.
-/// Falls back to the name itself if resolution is unavailable.
-fn resolve_binary_path(bin: &str) -> Option<String> {
-    // `which`/`where` already proved existence; re-run capturing stdout.
-    let lookup = if cfg!(unix) { "which" } else { "where" };
-    std::process::Command::new(lookup)
-        .arg(bin)
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| {
-            String::from_utf8_lossy(&o.stdout)
-                .lines()
-                .next()
-                .map(|s| s.trim().to_string())
-        })
+/// Whether `candidate ripr-facts --help` succeeds and documents `--schema`.
+fn exporter_accepts_ripr_facts(candidate: &Path, timeout: std::time::Duration) -> bool {
+    run_exporter_probe(candidate, &["ripr-facts", "--help"], timeout).is_some_and(|output| {
+        output.status.success()
+            && (String::from_utf8_lossy(&output.stdout).contains("--schema")
+                || String::from_utf8_lossy(&output.stderr).contains("--schema"))
+    })
+}
+
+/// The single exporter spawn site for doctor: bounded, deadline-enforced,
+/// null stdin. `None` when the binary cannot be spawned, times out, or
+/// exceeds the capture limit.
+fn run_exporter_probe(
+    candidate: &Path,
+    args: &[&str],
+    timeout: std::time::Duration,
+) -> Option<std::process::Output> {
+    let mut command = std::process::Command::new(candidate);
+    command.args(args);
+    crate::git::collect_output_with_deadline_and_limit(
+        command,
+        timeout,
+        PERL_EXPORTER_PROBE_OUTPUT_LIMIT,
+        &format!("Perl fact exporter probe `{}`", candidate.display()),
+    )
+    .ok()
+}
+
+/// Doctor lines for an exporter probe result.
+fn perl_exporter_lines(exporter: &PerlExporterProbe) -> Vec<String> {
+    match exporter {
+        PerlExporterProbe::Compatible { bin, version } => vec![format!(
+            "exporter: compatible `{bin}` ({version}) accepts `ripr-facts` (capability probe only; packets are validated by `ripr check`)"
+        )],
+        PerlExporterProbe::Incompatible { bin, version } => vec![
+            format!(
+                "exporter: found `{bin}` ({version}) but it does not accept `ripr-facts`; not a compatible exporter"
+            ),
+            format!(
+                "note: managed mode runs `<exporter> ripr-facts --schema {} ...`; the compatible exporter is `{}`, which is not yet published",
+                crate::app::PERL_FACT_PACKET_SCHEMA,
+                crate::domain::PERL_FACT_EXPORTER
+            ),
+        ],
+        PerlExporterProbe::NotFound => vec![format!(
+            "exporter: NOT found (expected `{}` or a `perllsp` wrapper on PATH, or [perl].executable with {}=1); `{}` is not yet published",
+            crate::domain::PERL_FACT_EXPORTER,
+            crate::config::PERL_EXECUTABLE_OPT_IN_ENV,
+            crate::domain::PERL_FACT_EXPORTER
+        )],
+    }
 }
 
 /// Detect CPAN-style project markers beyond .pm/.pl/.t files: Makefile.PL,
@@ -925,22 +1481,35 @@ fn detect_perl_frameworks(root: &Path) -> String {
     }
 }
 
-/// Choose the exact next command based on producer configuration + presence.
-fn perl_next_command(producer_configured: Option<&str>, found_bin: Option<&str>) -> String {
-    let managed = matches!(
-        producer_configured,
-        Some("perl-ripr-facts") | Some("perllsp") | Some("perl-lsp")
-    );
-    if managed && found_bin.is_some() {
-        // Managed mode + producer present: ripr invokes the exporter
-        // itself. There is no --languages flag (#2105): perl is enabled
-        // through config, and check then runs the enabled set.
+/// Choose the exact next command based on adapter availability, producer
+/// configuration, and whether a COMPATIBLE exporter was found.
+///
+/// An uncompiled adapter comes first: every other recommendation (a
+/// `ripr.toml` edit, `--perl-facts`) fails against this binary, so the only
+/// honest next step is the shared prerequisite text.
+fn perl_next_command(
+    adapter_compiled: bool,
+    producer_configured: Option<&str>,
+    compatible_exporter: Option<&str>,
+) -> String {
+    if !adapter_compiled {
+        return LanguageId::Perl.unavailable_adapter_recovery();
+    }
+    let managed = producer_configured.is_some_and(crate::app::is_managed_perl_producer);
+    if managed && compatible_exporter.is_some() {
+        // Managed mode + compatible producer present: ripr invokes the
+        // exporter itself. There is no --languages flag (#2105): perl is
+        // enabled through config, and check then runs the enabled set.
         // Name the additive edit, not a replacement list, so a user with
         // TypeScript/Python already enabled keeps them (#2105 review).
-        "add \"perl\" to [languages] enabled in ripr.toml, then: ripr check --base origin/main --head HEAD".to_string()
+        "add \"perl\" to [languages] enabled in ripr.toml, then: ripr check".to_string()
     } else if managed {
-        // Managed mode configured but producer missing.
-        "install perllsp on PATH (or set [perl].executable) and add \"perl\" to [languages] enabled in ripr.toml, then: ripr check --base origin/main --head HEAD".to_string()
+        // Managed mode configured but no compatible producer.
+        format!(
+            "install a compatible Perl fact exporter (`{}`, not yet published) on PATH, or set [perl].executable and {}=1, and add \"perl\" to [languages] enabled in ripr.toml, then: ripr check",
+            crate::domain::PERL_FACT_EXPORTER,
+            crate::config::PERL_EXECUTABLE_OPT_IN_ENV
+        )
     } else {
         // Explicit packet mode (or producer absent): supply --perl-facts.
         "ripr check --perl-facts <packet.json> --diff <diff.patch> --json".to_string()
@@ -973,8 +1542,9 @@ fn report_known_limitations() {
         analysis::DEFAULT_REPO_EXPOSURE_SEAM_LIMIT
     );
     println!(
-        "  Preview-language evidence does not emit public repair packets and \
-        does not block by default"
+        "  Preview-language evidence is advisory and does not block by default; \
+        it yields repair cards or packets only for findings that satisfy the full \
+        actionability, edit, verify, and receipt contract"
     );
 }
 
@@ -987,12 +1557,72 @@ fn report_cache_status(root: &Path) {
     if relocated {
         println!(
             "- Cache location: {} (RIPR_CACHE_DIR active)",
-            cache_dir.display()
+            output::path::human_path(&cache_dir)
         );
     } else {
-        println!("- Cache location: {}", cache_dir.display());
+        println!("- Cache location: {}", output::path::human_path(&cache_dir));
     }
     println!("- Cache size: {size_display} (run `ripr cache status` for details)");
+}
+
+const GENERATED_WORKFLOW_PATH: &str = ".github/workflows/ripr.yml";
+
+/// Largest generated workflow doctor reads. The template is a few KiB; a
+/// bigger file is not one `ripr init` wrote.
+const GENERATED_WORKFLOW_MAX_BYTES: u64 = 1024 * 1024;
+
+/// Flags a `ripr init --ci github` workflow generated by another ripr
+/// version (#4738). The 0.10-and-earlier template installed ripr unpinned,
+/// so after a release CI ran the new binary against the old steps; later
+/// templates pin the generating version. Advisory only: a stale template is
+/// not a failed check. It recognizes the template's own `cargo install ripr`
+/// step, not every way a hand-written workflow could install ripr.
+fn generated_workflow_advisory(root: &Path) -> Option<String> {
+    let path = root.join(GENERATED_WORKFLOW_PATH);
+    // A repository can commit this path as a symlink (to `/dev/zero`, say);
+    // `ripr init` only ever writes a regular file, so read nothing else.
+    if !std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.is_file()) {
+        return None;
+    }
+    let workflow =
+        crate::bounded_input::read_to_string_with_limit(&path, GENERATED_WORKFLOW_MAX_BYTES)
+            .ok()?;
+    generated_workflow_line(&workflow, env!("CARGO_PKG_VERSION"))
+}
+
+fn report_generated_workflow_status(root: &Path) {
+    if let Some(advisory) = generated_workflow_advisory(root) {
+        println!("~ Generated workflow: {advisory}");
+    }
+}
+
+fn generated_workflow_line(workflow: &str, current_version: &str) -> Option<String> {
+    let install = workflow.lines().find_map(|line| {
+        let command = line.trim().trim_start_matches("run:").trim();
+        let rest = command.strip_prefix("cargo install ripr")?;
+        (rest.is_empty() || rest.starts_with(char::is_whitespace)).then_some(rest)
+    })?;
+    let words: Vec<&str> = install.split_whitespace().collect();
+    let pinned = words
+        .windows(2)
+        .find(|pair| pair[0] == "--version")
+        .map(|pair| pair[1])
+        .or_else(|| {
+            words
+                .iter()
+                .find_map(|word| word.strip_prefix("--version="))
+        });
+    let refresh =
+        "refresh it with `ripr init --ci github --force` and review the diff before committing";
+    match pinned {
+        None => Some(format!(
+            "{GENERATED_WORKFLOW_PATH} installs ripr without a version (the ripr 0.10-and-earlier template), so CI runs whatever release is newest against these steps; {refresh}"
+        )),
+        Some(version) if version.trim_start_matches('=') != current_version => Some(format!(
+            "{GENERATED_WORKFLOW_PATH} installs ripr {version}, but this is ripr {current_version}; {refresh}"
+        )),
+        Some(_) => None,
+    }
 }
 
 /// Recursively sum file sizes under `dir`. Returns 0 when the directory
@@ -1004,10 +1634,9 @@ fn dir_size_bytes(dir: &Path) -> u64 {
     };
     let mut total: u64 = 0;
     for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            total = total.saturating_add(dir_size_bytes(&path));
-        } else if let Ok(meta) = std::fs::metadata(&path) {
+        if is_walkable_dir(&entry) {
+            total = total.saturating_add(dir_size_bytes(&entry.path()));
+        } else if let Ok(meta) = entry.metadata() {
             total = total.saturating_add(meta.len());
         }
     }
@@ -1036,7 +1665,7 @@ fn report_config_status(root: &Path, config: Result<RiprConfig, String>, ok: &mu
             match config.source_path() {
                 Some(path) => {
                     println!("✓ Config: loaded {CONFIG_FILE_NAME}");
-                    println!("- Config path: {}", path.display());
+                    println!("- Config path: {}", output::path::human_path(path));
                 }
                 None => println!("✓ Config: not found; using built-in defaults"),
             }
@@ -1078,7 +1707,10 @@ fn report_config_status(root: &Path, config: Result<RiprConfig, String>, ok: &mu
         }
         Err(err) => {
             println!("! Config: invalid {CONFIG_FILE_NAME}");
-            println!("- Config path: {}", root.join(CONFIG_FILE_NAME).display());
+            println!(
+                "- Config path: {}",
+                output::path::human_path(&root.join(CONFIG_FILE_NAME))
+            );
             println!("  error: {err}");
             *ok = false;
         }
@@ -1089,6 +1721,72 @@ fn report_config_status(root: &Path, config: Result<RiprConfig, String>, ok: &mu
 mod tests {
     use super::super::tests::{args, unique_command_test_dir};
     use super::*;
+
+    #[test]
+    fn generated_workflow_line_flags_unpinned_and_other_version_installs() {
+        // The exact install step `ripr 0.10.0 init --ci github` wrote.
+        let v010 = "      - name: Install ripr\n        run: cargo install ripr --locked\n";
+        let pinned = "      - name: Install ripr\n        run: cargo install ripr --version 0.11.0 --locked\n";
+
+        let unpinned = generated_workflow_line(v010, "0.11.0");
+        assert!(
+            unpinned
+                .as_deref()
+                .is_some_and(|line| line.contains("without a version")
+                    && line.contains("ripr init --ci github --force")),
+            "{unpinned:?}"
+        );
+        let older = generated_workflow_line(pinned, "0.12.0");
+        assert!(
+            older
+                .as_deref()
+                .is_some_and(|line| line.contains("installs ripr 0.11.0, but this is ripr 0.12.0")),
+            "{older:?}"
+        );
+        assert_eq!(generated_workflow_line(pinned, "0.11.0"), None);
+        assert_eq!(generated_workflow_line("jobs: {}\n", "0.11.0"), None);
+        assert_eq!(
+            generated_workflow_line("        run: cargo install ripr-tools --locked\n", "0.11.0"),
+            None
+        );
+    }
+
+    #[test]
+    fn generated_workflow_advisory_reads_only_a_bounded_regular_file() -> Result<(), String> {
+        let root = unique_command_test_dir("workflow-advisory");
+        let workflows = root.join(".github/workflows");
+        std::fs::create_dir_all(&workflows).map_err(|err| format!("create dir: {err}"))?;
+        let path = root.join(GENERATED_WORKFLOW_PATH);
+        std::fs::write(&path, "        run: cargo install ripr --locked\n")
+            .map_err(|err| format!("write workflow: {err}"))?;
+        let unpinned = generated_workflow_advisory(&root);
+        let mut oversized = "        run: cargo install ripr --locked\n".to_string();
+        oversized.push_str(&"#".repeat(GENERATED_WORKFLOW_MAX_BYTES as usize));
+        std::fs::write(&path, oversized).map_err(|err| format!("write workflow: {err}"))?;
+        let too_big = generated_workflow_advisory(&root);
+        #[cfg(unix)]
+        let through_link = {
+            std::fs::remove_file(&path).map_err(|err| format!("remove workflow: {err}"))?;
+            // A link to a real workflow outside the checkout is still not a
+            // file `ripr init` wrote.
+            let outside = root.join("outside.yml");
+            std::fs::write(&outside, "        run: cargo install ripr --locked\n")
+                .map_err(|err| format!("write outside: {err}"))?;
+            std::os::unix::fs::symlink(&outside, &path).map_err(|err| format!("symlink: {err}"))?;
+            generated_workflow_advisory(&root)
+        };
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+
+        assert!(
+            unpinned.as_deref().is_some_and(|line| line
+                .starts_with(".github/workflows/ripr.yml installs ripr without a version")),
+            "{unpinned:?}"
+        );
+        assert_eq!(too_big, None);
+        #[cfg(unix)]
+        assert_eq!(through_link, None);
+        Ok(())
+    }
 
     #[test]
     #[cfg(all(feature = "lang-python", feature = "lang-typescript"))]
@@ -1111,7 +1809,8 @@ mod tests {
             .iter()
             .map(|(_, tool, _)| *tool)
             .collect();
-        assert_eq!(tools, vec!["python3", "pytest"]);
+        let host_python = python_runtime_for_os(std::env::consts::OS).0;
+        assert_eq!(tools, vec![host_python, "pytest"]);
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
 
         let root = unique_command_test_dir("probe-bun");
@@ -1139,7 +1838,7 @@ mod tests {
             .iter()
             .map(|(_, tool, _)| *tool)
             .collect();
-        assert_eq!(tools, vec!["python3"]);
+        assert_eq!(tools, vec![host_python]);
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
 
         // A JS-only workspace is labeled javascript, not typescript (#2183
@@ -1173,6 +1872,265 @@ mod tests {
     }
 
     #[test]
+    fn unanalyzed_languages_line_names_go_as_not_analyzed() {
+        assert_eq!(unanalyzed_languages_line(&[]), None);
+        let line = unanalyzed_languages_line(&[("Go", 2), ("Shell", 1)]).unwrap_or_default();
+        assert!(
+            line.starts_with("~ Unanalyzed languages: Go (2 file(s)), Shell (1 file(s));"),
+            "{line}"
+        );
+        assert!(line.contains("never as clean"), "{line}");
+
+        // Mixed workspace: the Go half is named beside the detected Rust.
+        let lines = detected_languages_lines(&[LanguageId::Rust], &[("Go", 2)]);
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(
+            lines[0].starts_with("- Detected languages: rust"),
+            "{lines:?}"
+        );
+        assert!(
+            lines[1].starts_with("~ Unanalyzed languages: Go (2 file(s))"),
+            "{lines:?}"
+        );
+        let lines = detected_languages_lines(&[], &[("Go", 2)]);
+        assert_eq!(lines[0], "- Detected languages: none detected", "{lines:?}");
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert_eq!(detected_languages_lines(&[LanguageId::Rust], &[]).len(), 1);
+    }
+
+    #[test]
+    fn detect_languages_finds_a_cpan_layout_perl_project() -> Result<(), String> {
+        // A module two levels under `lib/` is below the shallow scan, yet
+        // the Perl preview counts it; detection must agree, or doctor prints
+        // "none detected" beside a Perl section counting files. Files under a
+        // skipped directory (`target/`, `node_modules/`) detect nothing.
+        let cases: [(&str, &[&str]); 4] = [
+            ("deep", &["lib/Acme/Calc.pm", "README"]),
+            ("tests", &["t/calc.t"]),
+            ("marker", &["Makefile.PL"]),
+            ("none", &["target/example.t", "node_modules/pkg/lib/X.pm"]),
+        ];
+        for (name, files) in cases {
+            let root = unique_command_test_dir(&format!("detect-perl-{name}"));
+            for file in files {
+                let path = root.join(file);
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent).map_err(|err| format!("mkdir: {err}"))?;
+                }
+                std::fs::write(&path, "1;\n").map_err(|err| format!("write {file}: {err}"))?;
+            }
+            let expected = if name == "none" {
+                Vec::new()
+            } else {
+                vec![LanguageId::Perl]
+            };
+            assert_eq!(detect_languages(&root), expected, "{name}");
+            std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn perl_walks_do_not_follow_directory_symlink_loops() -> Result<(), String> {
+        // A `src/loop -> .` link made `ripr doctor` descend forever. The Perl
+        // and cache-size walks must terminate, and a `.pm` reachable only
+        // through a link does not count, matching the Rust/Python/TypeScript
+        // walkers.
+        let root = unique_command_test_dir("perl-symlink-loop");
+        let src = root.join("src");
+        std::fs::create_dir_all(&src).map_err(|err| format!("mkdir: {err}"))?;
+        std::os::unix::fs::symlink(".", src.join("loop"))
+            .map_err(|err| format!("symlink: {err}"))?;
+        std::os::unix::fs::symlink("../src", src.join("up"))
+            .map_err(|err| format!("symlink: {err}"))?;
+        assert!(!perl_project_detected(&root));
+        assert_eq!(count_files(&root, "pm"), 0);
+
+        // A directory link whose name ends in `.pm` is not a Perl file.
+        let other = root.join("other");
+        std::fs::create_dir_all(&other).map_err(|err| format!("mkdir: {err}"))?;
+        std::os::unix::fs::symlink("../other", src.join("linked.pm"))
+            .map_err(|err| format!("symlink: {err}"))?;
+        assert!(!perl_project_detected(&root));
+        assert_eq!(count_files(&root, "pm"), 0);
+        // The cache-size walk terminates on the same loops.
+        let size_before = dir_size_bytes(&root);
+
+        std::fs::write(src.join("Real.pm"), "1;\n").map_err(|err| format!("write: {err}"))?;
+        assert!(perl_project_detected(&root));
+        assert_eq!(count_files(&root, "pm"), 1);
+        assert_eq!(dir_size_bytes(&root), size_before + 3);
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    fn joined_path(dirs: &[&str]) -> Result<std::ffi::OsString, String> {
+        std::env::join_paths(dirs.iter().copied().map(Path::new))
+            .map_err(|err| format!("join PATH: {err}"))
+    }
+
+    fn windows_pathext() -> &'static str {
+        ".COM;.EXE;.BAT;.CMD"
+    }
+
+    #[test]
+    fn path_command_in_ignores_a_repo_local_prove_cmd() -> Result<(), String> {
+        // Windows `where prove` searches the process cwd first, so a checkout
+        // `prove.cmd` would otherwise read as "prove available on PATH" (#5103).
+        let cwd_cmd = PathBuf::from("").join("prove.cmd");
+        let path = joined_path(&["", "."])?;
+        let found = path_command_in(
+            "prove",
+            &path,
+            Some(windows_pathext()),
+            true,
+            &|candidate| candidate == cwd_cmd || candidate == Path::new(".").join("prove.cmd"),
+        );
+        assert_eq!(
+            found, None,
+            "cwd prove.cmd must not count as PATH: {found:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn path_command_in_prefers_path_prove_over_repo_local_prove_cmd() -> Result<(), String> {
+        let cwd_cmd = PathBuf::from("").join("prove.cmd");
+        let path_dir = PathBuf::from("strawberry-bin");
+        let path_cmd = path_dir.join("prove.cmd");
+        let path = joined_path(&["", path_dir.to_str().ok_or("path dir utf-8")?])?;
+        let found = path_command_in(
+            "prove",
+            &path,
+            Some(windows_pathext()),
+            true,
+            &|candidate| candidate == cwd_cmd || candidate == path_cmd.as_path(),
+        );
+        assert_eq!(found, Some(path_cmd), "PATH prove.cmd must win: {found:?}");
+        Ok(())
+    }
+
+    #[test]
+    fn path_command_in_windows_prefers_pathext_over_extensionless() -> Result<(), String> {
+        let path_dir = PathBuf::from("bin");
+        let bare = path_dir.join("prove");
+        let cmd = path_dir.join("prove.cmd");
+        let path = joined_path(&[path_dir.to_str().ok_or("path dir utf-8")?])?;
+        let found = path_command_in("prove", &path, Some(".CMD"), true, &|candidate| {
+            candidate == bare.as_path() || candidate == cmd.as_path()
+        });
+        assert_eq!(
+            found,
+            Some(cmd),
+            "Windows PATHEXT prove.cmd must beat extensionless prove: {found:?}"
+        );
+        let bare_only = path_command_in("prove", &path, Some(".CMD"), true, &|candidate| {
+            candidate == bare.as_path()
+        });
+        assert_eq!(
+            bare_only,
+            Some(bare),
+            "extensionless PATH prove remains a fallback: {bare_only:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn is_cwd_path_entry_treats_empty_dot_and_backslash_dot_as_cwd() {
+        assert!(is_cwd_path_entry(Path::new("")));
+        assert!(is_cwd_path_entry(Path::new(".")));
+        assert!(is_cwd_path_entry(Path::new("./")));
+        assert!(is_cwd_path_entry(Path::new(".\\")));
+        assert!(!is_cwd_path_entry(Path::new("bin")));
+        assert!(!is_cwd_path_entry(Path::new("strawberry-bin")));
+    }
+
+    #[test]
+    fn path_command_in_unix_prove_cmd_is_not_a_prove_binary() -> Result<(), String> {
+        let path_dir = PathBuf::from("bin");
+        let decoy = path_dir.join("prove.cmd");
+        let prove = path_dir.join("prove");
+        let path = joined_path(&[path_dir.to_str().ok_or("path dir utf-8")?])?;
+        let from_cmd = path_command_in("prove", &path, None, false, &|candidate| {
+            candidate == decoy.as_path()
+        });
+        assert_eq!(
+            from_cmd, None,
+            "Unix prove.cmd is not `prove`: {from_cmd:?}"
+        );
+        let from_prove = path_command_in("prove", &path, None, false, &|candidate| {
+            candidate == prove.as_path()
+        });
+        assert_eq!(
+            from_prove,
+            Some(prove),
+            "Unix PATH prove must resolve: {from_prove:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn doctor_program_keeps_explicit_paths_and_skips_bare_names_off_path() {
+        assert_eq!(
+            doctor_program("/opt/perl/bin/perllsp"),
+            Some(PathBuf::from("/opt/perl/bin/perllsp"))
+        );
+        assert_eq!(
+            doctor_program(r"fixture-bin\perllsp"),
+            Some(PathBuf::from(r"fixture-bin\perllsp"))
+        );
+        assert_eq!(doctor_program(""), None);
+        // A bare name is PATH-only; this process PATH is not under test here.
+        assert!(program_name_is_explicit_path("/usr/bin/prove"));
+        assert!(program_name_is_explicit_path(r"tools\prove.cmd"));
+        assert!(!program_name_is_explicit_path("prove"));
+        assert!(!program_name_is_explicit_path("prove.cmd"));
+    }
+
+    #[test]
+    fn detect_languages_treats_modern_ts_js_extensions_as_language_markers() -> Result<(), String> {
+        // #4116: .mts/.cts are TypeScript markers and .mjs/.cjs are
+        // JavaScript markers through the shared extension authority; a
+        // mixed root is labeled TypeScript only, and near-misses stay
+        // undetected.
+        for (extension, expected) in [
+            ("mts", LanguageId::TypeScript),
+            ("cts", LanguageId::TypeScript),
+            ("mjs", LanguageId::JavaScript),
+            ("cjs", LanguageId::JavaScript),
+        ] {
+            let root = unique_command_test_dir(&format!("detect-{extension}"));
+            std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+            std::fs::write(root.join(format!("index.{extension}")), "export {};\n")
+                .map_err(|err| format!("write source: {err}"))?;
+            assert_eq!(detect_languages(&root), vec![expected], ".{extension} root");
+            std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        }
+
+        let root = unique_command_test_dir("detect-mixed-ts-js");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        std::fs::write(root.join("index.ts"), "export {};\n")
+            .map_err(|err| format!("write source: {err}"))?;
+        std::fs::write(root.join("helper.mjs"), "export {};\n")
+            .map_err(|err| format!("write source: {err}"))?;
+        assert_eq!(detect_languages(&root), vec![LanguageId::TypeScript]);
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+
+        let root = unique_command_test_dir("detect-near-miss");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        std::fs::write(root.join("index.mjsx"), "export {};\n")
+            .map_err(|err| format!("write source: {err}"))?;
+        assert!(
+            !detect_languages(&root).contains(&LanguageId::TypeScript)
+                && !detect_languages(&root).contains(&LanguageId::JavaScript),
+            ".mjsx must not detect as a TS/JS marker"
+        );
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
     fn enabled_language_keeps_primary_runtime_required_when_other_tool_is_detected() {
         let mut probes = vec![("typescript", "yarn", "install Yarn")];
         append_missing_primary_runtime_probes(&mut probes, &[LanguageId::TypeScript]);
@@ -1193,6 +2151,31 @@ mod tests {
             "yarn",
             &[LanguageId::TypeScript]
         ));
+    }
+
+    /// #4378: `ripr doctor` on Windows suggested `apt install python3` and
+    /// failed a host whose installer put `python` (not `python3`) on PATH.
+    #[test]
+    fn python_runtime_probe_and_hint_follow_the_host() {
+        let (windows_tool, windows_hint) = python_runtime_for_os("windows");
+        assert_eq!(windows_tool, "python");
+        assert!(windows_hint.contains("winget install"), "{windows_hint}");
+        assert!(!windows_hint.contains("apt"), "{windows_hint}");
+
+        let (macos_tool, macos_hint) = python_runtime_for_os("macos");
+        assert_eq!(macos_tool, "python3");
+        assert!(macos_hint.contains("brew install"), "{macos_hint}");
+        assert!(!macos_hint.contains("apt"), "{macos_hint}");
+
+        assert_eq!(
+            python_runtime_for_os("linux"),
+            ("python3", "install python3 (e.g. apt install python3)")
+        );
+
+        // The configured-language probe and the detected-language probe use
+        // the same host answer, so a Windows root is never probed twice.
+        let host = python_runtime_for_os(std::env::consts::OS);
+        assert_eq!(primary_runtime("python"), Some(host));
     }
 
     #[test]
@@ -1233,7 +2216,7 @@ mod tests {
             &[LanguageId::TypeScript],
             &mut required_report,
             false,
-            |tool, _isolated| {
+            |tool| {
                 if tool == "node" {
                     (
                         output::doctor::DoctorStatus::Fail,
@@ -1266,7 +2249,7 @@ mod tests {
             &[LanguageId::Rust],
             &mut optional_report,
             false,
-            |tool, _isolated| {
+            |tool| {
                 if tool == "node" {
                     (
                         output::doctor::DoctorStatus::Fail,
@@ -1304,7 +2287,7 @@ mod tests {
             &[LanguageId::Python],
             &mut configured_only_report,
             false,
-            |tool, _isolated| {
+            |tool| {
                 (
                     output::doctor::DoctorStatus::Fail,
                     format!("{tool} not available"),
@@ -1316,10 +2299,88 @@ mod tests {
             configured_only_report
                 .runtime_probes
                 .iter()
-                .any(|probe| probe.language == "python" && probe.tool == "python3")
+                .any(|probe| probe.language == "python"
+                    && probe.tool == python_runtime_for_os(std::env::consts::OS).0)
         );
         std::fs::remove_dir_all(&configured_only_root)
             .map_err(|err| format!("remove configured-only root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn source_build_profile_keeps_enabled_language_runtime_failure_advisory() -> Result<(), String>
+    {
+        // PR #4196 review: an enabled TypeScript root with no node is an
+        // analysis failure, but not a RIPR source-build prerequisite. The
+        // same probe outcome must fail analysis and stay advisory for
+        // source-build, while still being reported.
+        let root = unique_command_test_dir("runtime-probe-source-build");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        std::fs::write(root.join("package.json"), "{}")
+            .map_err(|err| format!("write package marker: {err}"))?;
+        let missing_node = |tool: &str| {
+            if tool == "node" {
+                (
+                    output::doctor::DoctorStatus::Fail,
+                    "node not available".to_string(),
+                )
+            } else {
+                (
+                    output::doctor::DoctorStatus::Pass,
+                    format!("{tool} available"),
+                )
+            }
+        };
+        let mut outcomes = Vec::new();
+        for profile in [
+            output::doctor::DoctorProfile::Analysis,
+            output::doctor::DoctorProfile::SourceBuild,
+        ] {
+            let mut report = output::doctor::DoctorReport::new(&root.display().to_string());
+            report.profile = profile;
+            let ok = add_language_runtime_probes(
+                &root,
+                &[LanguageId::TypeScript],
+                &mut report,
+                false,
+                missing_node,
+            );
+            let node = report
+                .runtime_probes
+                .iter()
+                .find(|probe| probe.tool == "node")
+                .ok_or_else(|| format!("missing node probe for {profile:?}"))?;
+            outcomes.push((
+                profile,
+                ok,
+                report.status,
+                node.required,
+                node.status,
+                output::doctor::doctor_report_result(&report).is_ok(),
+            ));
+        }
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        assert_eq!(
+            outcomes,
+            vec![
+                (
+                    output::doctor::DoctorProfile::Analysis,
+                    false,
+                    output::doctor::DoctorStatus::Fail,
+                    true,
+                    output::doctor::DoctorStatus::Fail,
+                    false,
+                ),
+                (
+                    output::doctor::DoctorProfile::SourceBuild,
+                    true,
+                    output::doctor::DoctorStatus::Pass,
+                    false,
+                    output::doctor::DoctorStatus::Fail,
+                    true,
+                ),
+            ]
+        );
         Ok(())
     }
 
@@ -1367,25 +2428,108 @@ mod tests {
     fn perl_next_command_never_recommends_a_flag_check_rejects() {
         // #2105: `ripr check` has no --languages flag; every doctor
         // recommendation must stay within the check parser's contract.
+        for compiled in [true, false] {
+            for (producer, found) in [
+                (Some("perllsp"), Some("perllsp")),
+                (Some("perllsp"), None),
+                (Some("perl-ripr-facts"), None),
+                (None, None),
+            ] {
+                let command = perl_next_command(compiled, producer, found);
+                assert!(
+                    !command.contains("--languages"),
+                    "recommendation must not name --languages: {command}"
+                );
+            }
+        }
+        // The managed-present branch points at the config-driven route.
+        let managed = perl_next_command(true, Some("perllsp"), Some("perllsp"));
+        assert!(managed.contains("[languages]"));
+        // #3886: a bare `ripr check` resolves the default branch; `check`
+        // has no `--head`, and `origin/main` need not exist.
+        assert!(managed.ends_with("then: ripr check"));
+        let unpublished = perl_next_command(true, Some("perllsp"), None);
+        assert!(unpublished.ends_with("then: ripr check"));
+        // A repo `[perl].executable` is ignored without the user opt-in, so
+        // recommending it must name the opt-in.
+        assert!(
+            unpublished.contains("set [perl].executable and RIPR_ALLOW_REPO_PERL_EXECUTABLE=1"),
+            "{unpublished}"
+        );
+        // The packet-mode branch is unchanged.
+        let packet = perl_next_command(true, None, None);
+        assert!(packet.contains("--perl-facts"));
+    }
+
+    #[test]
+    fn perl_next_command_names_the_unpublished_exporter_not_perllsp() {
+        // Managed mode without a compatible exporter: the install hint must
+        // name the canonical exporter and say it is not published, not the
+        // argv-incompatible `perllsp` LSP server.
+        let missing = perl_next_command(true, Some("perllsp"), None);
+        assert!(
+            !missing.contains("install perllsp"),
+            "must not recommend installing perllsp: {missing}"
+        );
+        assert!(
+            missing.contains("`perl-ripr-facts`") && missing.contains("not yet published"),
+            "must name the unpublished canonical exporter: {missing}"
+        );
+    }
+
+    #[test]
+    fn perl_next_command_without_adapter_never_suggests_a_rejected_edit() {
+        // In a build without `lang-perl`, adding perl to [languages] makes
+        // `ripr check` exit 2, and --perl-facts cannot be analyzed either,
+        // so every branch must return the shared prerequisite text.
         for (producer, found) in [
             (Some("perllsp"), Some("perllsp")),
-            (Some("perllsp"), None),
             (Some("perl-ripr-facts"), None),
             (None, None),
         ] {
-            let command = perl_next_command(producer, found);
+            let command = perl_next_command(false, producer, found);
+            assert_eq!(command, LanguageId::Perl.unavailable_adapter_recovery());
             assert!(
-                !command.contains("--languages"),
-                "recommendation must not name --languages: {command}"
+                !command.contains("then: ripr check") && !command.contains("--perl-facts <"),
+                "uncompiled adapter must not get a runnable-looking next step: {command}"
             );
         }
-        // The managed-present branch points at the config-driven route.
-        let managed = perl_next_command(Some("perllsp"), Some("perllsp"));
-        assert!(managed.contains("[languages]"));
-        assert!(managed.contains("ripr check --base origin/main --head HEAD"));
-        // The packet-mode branch is unchanged.
-        let packet = perl_next_command(None, None);
-        assert!(packet.contains("--perl-facts"));
+    }
+
+    #[test]
+    fn perl_exporter_lines_never_call_an_incompatible_binary_found() {
+        let incompatible = perl_exporter_lines(&PerlExporterProbe::Incompatible {
+            bin: "/opt/bin/perllsp".to_string(),
+            version: "perllsp 0.17.0".to_string(),
+        });
+        let first = incompatible.first().map(String::as_str).unwrap_or("");
+        assert!(
+            first.contains("does not accept `ripr-facts`")
+                && first.contains("not a compatible exporter")
+                && !first.starts_with("exporter: found at"),
+            "incompatible exporter must not read as found/working: {incompatible:?}"
+        );
+        // The second line is the prerequisite pointer: the argv ripr sends and
+        // the exporter that would accept it.
+        assert_eq!(incompatible.len(), 2, "{incompatible:?}");
+        let note = incompatible.get(1).map(String::as_str).unwrap_or("");
+        assert!(
+            note.starts_with("note: ")
+                && note.contains(crate::app::PERL_FACT_PACKET_SCHEMA)
+                && note.contains(crate::domain::PERL_FACT_EXPORTER)
+                && note.contains("not yet published"),
+            "incompatible exporter must name the argv and the compatible exporter: {note:?}"
+        );
+        let compatible = perl_exporter_lines(&PerlExporterProbe::Compatible {
+            bin: "/opt/bin/perl-ripr-facts".to_string(),
+            version: "perl-ripr-facts 0.1.0".to_string(),
+        });
+        assert!(
+            compatible
+                .first()
+                .is_some_and(|line| line.starts_with("exporter: compatible")),
+            "compatible exporter line: {compatible:?}"
+        );
     }
 
     #[test]
@@ -1394,6 +2538,46 @@ mod tests {
             doctor(&args(&["--bogus"])),
             Err("unknown doctor argument \"--bogus\". Run `ripr doctor --help`.".to_string())
         );
+    }
+
+    /// #4318: a repeated documented flag is not an unknown argument. The
+    /// error names the real condition and echoes both values.
+    #[test]
+    fn doctor_rejects_a_second_root_by_naming_the_condition() {
+        assert_eq!(
+            doctor(&args(&["--root", "a", "--root", "b"])),
+            Err(
+                "doctor accepts at most one --root; found both \"a\" and \"b\". Run `ripr doctor --help`."
+                    .to_string()
+            )
+        );
+    }
+
+    /// #4318: a positional is not an unknown flag either; the error points at
+    /// the flag that carries a root instead of the help screen alone.
+    #[test]
+    fn doctor_rejects_positional_arguments_by_naming_the_condition() {
+        assert_eq!(
+            doctor(&args(&["some/path"])),
+            Err(
+                "doctor does not accept positional arguments; got \"some/path\"; pass the workspace root with `--root <path>`. Run `ripr doctor --help`."
+                    .to_string()
+            )
+        );
+    }
+
+    /// #4318 review: a known doctor flag in the `--root` value position means
+    /// the root was omitted, not that a directory named `--json` was chosen.
+    /// The report must not run against a path named after a flag.
+    #[test]
+    fn doctor_reports_a_missing_root_value_when_a_known_flag_follows() {
+        for flag in ["--json", "--profile", "--root", "--help", "-h"] {
+            assert_eq!(
+                doctor(&args(&["--root", flag])),
+                Err("missing value for --root".to_string()),
+                "a known flag cannot be the --root value: {flag}"
+            );
+        }
     }
 
     #[test]
@@ -1408,7 +2592,7 @@ mod tests {
         std::fs::write(dir.join(CONFIG_FILE_NAME), "[invalid\n")
             .map_err(|err| format!("write invalid config: {err}"))?;
 
-        let report = output::doctor::evaluate_doctor_core(&dir);
+        let report = output::doctor::evaluate_doctor_core(&dir, &detect_languages(&dir));
         if report.status != output::doctor::DoctorStatus::Fail {
             return Err(format!(
                 "invalid config should fail, got {:?}",
@@ -1420,7 +2604,7 @@ mod tests {
             .iter()
             .find(|check| check.name == "config")
             .ok_or_else(|| "missing config check".to_string())?;
-        if config_check.status != output::doctor::DoctorStatus::Fail {
+        if config_check.status != output::doctor::DoctorCheckStatus::Fail {
             return Err(format!(
                 "invalid config check should fail, got {:?}",
                 config_check.status
@@ -1440,9 +2624,14 @@ mod tests {
         let json = report.render_json()?;
         let value: serde_json::Value =
             serde_json::from_str(&json).map_err(|err| format!("parse report JSON: {err}"))?;
-        if value["status"] != "fail"
-            || value["checks"][2]["name"] != "config"
-            || value["checks"][2]["status"] != "fail"
+        // Found by name, not by position: the check list grows, and an index
+        // pins the order rather than the claim.
+        let config_in_json = value["checks"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|check| check["name"] == "config");
+        if value["status"] != "fail" || config_in_json.is_none_or(|check| check["status"] != "fail")
         {
             return Err(format!("unexpected invalid-config JSON report: {value}"));
         }
@@ -1458,7 +2647,7 @@ mod tests {
             return Err(format!("test root unexpectedly exists: {}", root.display()));
         }
 
-        let report = output::doctor::evaluate_doctor_core(&root);
+        let report = output::doctor::evaluate_doctor_core(&root, &detect_languages(&root));
         if report.status != output::doctor::DoctorStatus::Fail {
             return Err(format!("missing root should fail, got {:?}", report.status));
         }
@@ -1467,7 +2656,7 @@ mod tests {
             .iter()
             .find(|check| check.name == "root_directory")
             .ok_or_else(|| "missing root-directory check".to_string())?;
-        if root_check.status != output::doctor::DoctorStatus::Fail {
+        if root_check.status != output::doctor::DoctorCheckStatus::Fail {
             return Err(format!(
                 "missing root check should fail, got {:?}",
                 root_check.status
@@ -1486,6 +2675,46 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn doctor_core_report_fails_closed_for_file_root() -> Result<(), String> {
+        // #5101: an existing file passed as --root must fail as "not a
+        // directory", not as "does not exist".
+        let dir = unique_command_test_dir("doctor-file-root");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
+        let root = dir.join("Cargo.toml");
+        std::fs::write(&root, "[package]\nname = \"file-root\"\n")
+            .map_err(|err| format!("write file root: {err}"))?;
+        if !root.is_file() {
+            let _ = std::fs::remove_dir_all(&dir);
+            return Err(format!(
+                "file-root fixture is not a file: {}",
+                root.display()
+            ));
+        }
+
+        let report = output::doctor::evaluate_doctor_core(&root, &detect_languages(&root));
+        let root_check = report
+            .checks
+            .iter()
+            .find(|check| check.name == "root_directory")
+            .ok_or_else(|| "missing root-directory check".to_string())?;
+        let evidence = root_check.evidence.as_deref().unwrap_or_default();
+        let result = if report.status != output::doctor::DoctorStatus::Fail
+            || root_check.status != output::doctor::DoctorCheckStatus::Fail
+            || !evidence.contains("is not a directory")
+            || evidence.contains("does not exist")
+        {
+            Err(format!(
+                "file root should fail as not-a-directory, got status={:?} check={root_check:?}",
+                report.status
+            ))
+        } else {
+            Ok(())
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        result
+    }
+
     // Deterministic missing-tool and empty-report-passes assertions live with
     // the moved model in `output::doctor::tests` now
     // (`doctor_tool_check_fails_closed_for_guaranteed_missing_tool`,
@@ -1497,7 +2726,7 @@ mod tests {
         std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
         std::fs::write(dir.join(CONFIG_FILE_NAME), "[invalid\n")
             .map_err(|err| format!("write invalid config: {err}"))?;
-        if doctor_json(&dir).is_ok() {
+        if doctor_json(&dir, output::doctor::DoctorProfile::Analysis).is_ok() {
             let _ = std::fs::remove_dir_all(&dir);
             return Err("invalid JSON doctor report unexpectedly passed".to_string());
         }
@@ -1514,6 +2743,22 @@ mod tests {
         let root_arg = root.to_string_lossy().into_owned();
         if doctor(&args(&["--root", &root_arg])).is_ok() {
             return Err("human doctor unexpectedly passed for missing root".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn doctor_human_projection_fails_for_file_root() -> Result<(), String> {
+        let dir = unique_command_test_dir("doctor-human-file-root");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
+        let root = dir.join("afile.txt");
+        std::fs::write(&root, "not a workspace\n")
+            .map_err(|err| format!("write file root: {err}"))?;
+        let root_arg = root.to_string_lossy().into_owned();
+        let result = doctor(&args(&["--root", &root_arg]));
+        let _ = std::fs::remove_dir_all(&dir);
+        if result.is_ok() {
+            return Err("human doctor unexpectedly passed for a file root".to_string());
         }
         Ok(())
     }
@@ -1542,10 +2787,17 @@ mod tests {
             .map_err(|err| format!("write ts: {err}"))?;
         // No ripr.toml → defaults to enabled = ["rust"] only.
         let suggestions = preview_language_enable_suggestions(&dir);
+        let before = enable_before_first_command_line(&dir);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(
             !suggestions.is_empty(),
             "expected a suggestion when TS detected and not enabled"
+        );
+        assert!(
+            before
+                .as_deref()
+                .is_some_and(|line| line.contains("enable typescript in ripr.toml")),
+            "the first command must name the enable step; got {before:?}"
         );
         let joined = suggestions.join("\n");
         assert!(
@@ -1556,6 +2808,106 @@ mod tests {
             joined.contains(r#"enabled = ["rust", "typescript"]"#),
             "suggestion must contain copy-paste TOML block; got:\n{joined}"
         );
+        Ok(())
+    }
+
+    /// A mixed repository must get one snippet that keeps the languages
+    /// already enabled: a `["rust", "typescript"]` snippet would switch off
+    /// Python, and the next doctor run would then suggest `["rust",
+    /// "python"]`, undoing the first edit.
+    #[cfg(all(feature = "lang-typescript", feature = "lang-python"))]
+    #[test]
+    fn doctor_enable_tip_keeps_already_enabled_languages() -> Result<(), String> {
+        let dir = unique_command_test_dir("suggest-mixed-keeps-enabled");
+        std::fs::create_dir_all(dir.join("src")).map_err(|err| format!("create dir: {err}"))?;
+        std::fs::write(dir.join("src/index.ts"), "export const x = 1;\n")
+            .map_err(|err| format!("write ts: {err}"))?;
+        std::fs::write(dir.join("src/calc.py"), "def a():\n    return 1\n")
+            .map_err(|err| format!("write py: {err}"))?;
+        std::fs::write(
+            dir.join("ripr.toml"),
+            "[languages]\nenabled = [\"rust\", \"python\"]\n",
+        )
+        .map_err(|err| format!("write ripr.toml: {err}"))?;
+        let suggestions = preview_language_enable_suggestions(&dir);
+        let before = enable_before_first_command_line(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(suggestions.len(), 1, "one combined tip: {suggestions:?}");
+        assert!(
+            suggestions[0].contains(r#"enabled = ["rust", "python", "typescript"]"#),
+            "the snippet must keep python enabled; got:\n{}",
+            suggestions[0]
+        );
+        assert_eq!(
+            before.as_deref(),
+            Some(
+                "- Before that: enable typescript in ripr.toml (see the Tip above); until then `ripr check` skips those files"
+            )
+        );
+        Ok(())
+    }
+
+    /// JavaScript has no `[languages].enabled` entry of its own: the
+    /// TypeScript adapter analyzes it. A JavaScript-only root must get a
+    /// snippet that config loading accepts, and JavaScript with `typescript`
+    /// already enabled needs no tip at all.
+    #[cfg(feature = "lang-typescript")]
+    #[test]
+    fn doctor_enable_tip_maps_javascript_to_the_typescript_entry() -> Result<(), String> {
+        let dir = unique_command_test_dir("suggest-javascript-only");
+        std::fs::create_dir_all(dir.join("src")).map_err(|err| format!("create dir: {err}"))?;
+        std::fs::write(dir.join("src/index.js"), "export const x = 1;\n")
+            .map_err(|err| format!("write js: {err}"))?;
+        let suggestions = preview_language_enable_suggestions(&dir);
+        let before = enable_before_first_command_line(&dir);
+        assert_eq!(suggestions.len(), 1, "one tip: {suggestions:?}");
+        assert!(
+            suggestions[0].starts_with("- Tip: javascript files detected")
+                && suggestions[0].contains(r#"enabled = ["rust", "typescript"]"#)
+                && !suggestions[0].contains(r#""javascript""#),
+            "the snippet must name the typescript entry; got:\n{}",
+            suggestions[0]
+        );
+        assert_eq!(
+            before.as_deref(),
+            Some(
+                "- Before that: enable typescript in ripr.toml (see the Tip above); until then `ripr check` skips those files"
+            )
+        );
+        // The printed snippet must load, and after it the tip goes away.
+        std::fs::write(
+            dir.join("ripr.toml"),
+            "[languages]\nenabled = [\"rust\", \"typescript\"]\n",
+        )
+        .map_err(|err| format!("write ripr.toml: {err}"))?;
+        let loaded = load_for_root(&dir).map(|config| config.languages().enabled().to_vec());
+        let after = preview_language_enable_suggestions(&dir);
+        let after_before = enable_before_first_command_line(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            loaded,
+            Ok(vec![LanguageId::Rust, LanguageId::TypeScript]),
+            "the suggested snippet must load"
+        );
+        assert!(after.is_empty(), "typescript covers javascript: {after:?}");
+        assert_eq!(after_before, None);
+        Ok(())
+    }
+
+    /// Without a detected-but-disabled preview language there is no enable
+    /// step to name beside the first command.
+    #[test]
+    fn doctor_first_command_has_no_enable_step_for_rust_only() -> Result<(), String> {
+        let dir = unique_command_test_dir("first-command-rust-only");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .map_err(|err| format!("write Cargo.toml: {err}"))?;
+        let before = enable_before_first_command_line(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(before, None);
         Ok(())
     }
 

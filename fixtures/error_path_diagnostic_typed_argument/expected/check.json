@@ -1,0 +1,215 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/error_path_diagnostic_typed_argument/input",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:98dfaa07d45179f30655821378877efab4e0f654cd843c66e05203a85354e61f","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:error_path:fedbf836",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:error_path:fedbf836",
+        "family": "error_path",
+        "delta": "value",
+        "file": "fixtures/error_path_diagnostic_typed_argument/input/src/lib.rs",
+        "line": 5,
+        "expression": "let n = rdr.read(&mut buf)?;"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach read_all: reads_successfully"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches error variant: let n = rdr.read(&mut buf)?"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach read_all: reads_successfully", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches error variant: let n = rdr.read(&mut buf)?", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches error variant: let n = rdr.read(&mut buf)? (line 5)", "related test src/lib.rs:14 reads_successfully uses strong exact value oracle: assert_eq!(rdr.len(), 10, \"{:?}\", Err::<(), _>(std::io::ErrorKind::Other));", "source assertion argument value 10 at line 17", "source assertion argument value \"{:?}\" at line 18", "source assertion argument value 10 at line 18", "source enum variant value std::io::ErrorKind::Other at line 18"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"let n = rdr.read(&mut buf)?","line":5}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches error variant: let n = rdr.read(&mut buf)?", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach read_all: reads_successfully"],
+      "missing": ["No exact error variant discriminator was detected"],
+      "assertion_texts": {
+        "17": "assert_eq!(got.ok(), Some(10));",
+        "18": "assert_eq!(rdr.len(), 10, \"{:?}\", Err::<(), _>(std::io::ErrorKind::Other));"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 17,
+            "value": "10",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 18,
+            "value": "\"{:?}\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 18,
+            "value": "10",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 18,
+            "value": "std::io::ErrorKind::Other",
+            "context": "enum_variant"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 17,
+          "value": "10",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 18,
+          "value": "\"{:?}\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 18,
+          "value": "10",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 18,
+          "value": "std::io::ErrorKind::Other",
+          "context": "enum_variant"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "reads_successfully",
+          "file": "src/lib.rs",
+          "line": 14,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(rdr.len(), 10, \"{:?}\", Err::<(), _>(std::io::ErrorKind::Other));",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Assert the exact error variant or payload instead of only is_err().",
+      "suggested_next_action": "Assert the exact error variant or payload instead of only is_err().",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:static_unknown:afc04379",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.50,
+      "probe": {
+        "id": "probe:src_lib.rs:static_unknown:afc04379",
+        "family": "static_unknown",
+        "delta": "unknown",
+        "file": "fixtures/error_path_diagnostic_typed_argument/input/src/lib.rs",
+        "line": 5,
+        "expression": "let n = rdr.read(&mut buf).unwrap_or(0);"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach read_all: reads_successfully"},
+        "infect": {"state":"unknown","confidence":"unknown","summary":"Changed syntax is not mapped to a high-confidence probe family"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"No propagation model is available for this changed syntax"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Assertions exist, but oracle strength is unknown"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach read_all: reads_successfully", "infection unknown: Changed syntax is not mapped to a high-confidence probe family", "propagation unknown: No propagation model is available for this changed syntax", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator unknown: Assertions exist, but oracle strength is unknown", "local flow reaches unknown sink: unknown sink (line 5)", "related test src/lib.rs:14 reads_successfully uses unknown exact value oracle: assert_eq!(rdr.len(), 10, \"{:?}\", Err::<(), _>(std::io::ErrorKind::Other));", "source assertion argument value 10 at line 17", "source assertion argument value \"{:?}\" at line 18", "source assertion argument value 10 at line 18", "source enum variant value std::io::ErrorKind::Other at line 18"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"unknown sink","line":5}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Assertions exist, but oracle strength is unknown", "Changed syntax is not mapped to a high-confidence probe family", "No propagation model is available for this changed syntax", "Related tests appear to reach read_all: reads_successfully"],
+      "missing": ["No strong discriminator was detected", "Syntax-first analysis cannot classify this change; use deep mode or real mutation"],
+      "assertion_texts": {
+        "17": "assert_eq!(got.ok(), Some(10));",
+        "18": "assert_eq!(rdr.len(), 10, \"{:?}\", Err::<(), _>(std::io::ErrorKind::Other));"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 17,
+            "value": "10",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 18,
+            "value": "\"{:?}\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 18,
+            "value": "10",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 18,
+            "value": "std::io::ErrorKind::Other",
+            "context": "enum_variant"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 17,
+          "value": "10",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 18,
+          "value": "\"{:?}\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 18,
+          "value": "10",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 18,
+          "value": "std::io::ErrorKind::Other",
+          "context": "enum_variant"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "reads_successfully",
+          "file": "src/lib.rs",
+          "line": 14,
+          "oracle_strength": "unknown",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(rdr.len(), 10, \"{:?}\", Err::<(), _>(std::io::ErrorKind::Other));",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "base_deleted"
+    }
+  ]
+}

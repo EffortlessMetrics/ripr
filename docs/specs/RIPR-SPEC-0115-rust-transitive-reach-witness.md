@@ -189,7 +189,7 @@ requirements in this spec remain unchanged.
   `analysis/classify/transitive_reach.rs`; `TransitiveWitness` struct defined there.
 - Deterministic witness ordering by `(test_file, test_line, test_name, entry_symbol)`.
 - Concrete witness-pointer message builder (reuses "may" language; no coverage claim).
-- Wired in `analysis/language/rust.rs` `analyze_diff` and `analyze_repo` (the existing
+- Wired in `analysis/language/rust/mod.rs` `analyze_diff` and `analyze_repo` (the existing
   post-classify guards now consume the witness to build the evidence string).
 - Positive fixture re-blessed (message-only drift; class + static_limit_kind unchanged), recorded
   via `cargo xtask goldens bless rust_transitive_reach_positive --reason <reason>`.
@@ -224,9 +224,9 @@ requirements in this spec remain unchanged.
   — human renderer surfaces the witness under `Where to look`
 - `crates/ripr/src/output/human::tests::human_output_omits_where_to_look_without_witness`
   — no witness line -> no `Where to look` section (fail-closed)
-- `crates/ripr/src/analysis/language/rust.rs::tests::witnessed_no_path_limitation_does_not_claim_no_tests_found`
+- `crates/ripr/src/analysis/language/rust/mod.rs::tests::witnessed_no_path_limitation_does_not_claim_no_tests_found`
   — witnessed no-path limitations rewrite the generic no-tests infection summary
-- `crates/ripr/src/analysis/language/rust.rs::tests::witnessed_no_path_limitation_preserves_other_infection_summaries`
+- `crates/ripr/src/analysis/language/rust/mod.rs::tests::witnessed_no_path_limitation_preserves_other_infection_summaries`
   — non-generic infection summaries are not broadened or rewritten
 - `xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_no_tests_claim_with_witness`
   — the corpus assertion fails closed when a witnessed limitation still says no tests were found
@@ -248,8 +248,8 @@ requirements in this spec remain unchanged.
 | Witness-pointer message builder (`transitive_reach_witness_pointer`) | `crates/ripr/src/analysis/classify/transitive_reach.rs` |
 | Shared witness prefix constant (`TRANSITIVE_REACH_WITNESS_PREFIX`) | `crates/ripr/src/domain/classification.rs` |
 | Module exports | `crates/ripr/src/analysis/classify/mod.rs`, `crates/ripr/src/domain/mod.rs` |
-| Wiring (diff mode) | `crates/ripr/src/analysis/language/rust.rs::analyze_diff` |
-| Wiring (repo mode) | `crates/ripr/src/analysis/language/rust.rs::analyze_repo` |
+| Wiring (diff mode) | `crates/ripr/src/analysis/language/rust/mod.rs::analyze_diff` |
+| Wiring (repo mode) | `crates/ripr/src/analysis/language/rust/mod.rs::analyze_repo` |
 | JSON renderer | emits `static_limit_kind`, evidence, and additive `static_limitation` detail when the limitation detail is complete |
 | Human renderer (`Where to look` section) | `crates/ripr/src/output/human/sections.rs` |
 | Positive fixture (re-blessed) | `fixtures/rust_transitive_reach_positive/` |

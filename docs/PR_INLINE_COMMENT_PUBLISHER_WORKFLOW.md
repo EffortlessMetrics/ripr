@@ -37,24 +37,19 @@ stale cleanup operations review-only.
 
 ## Roll Out Safely
 
-Start with `plan`:
+The generated workflow reads the mode from the repository variable
+`RIPR_COMMENT_MODE` (Settings > Secrets and variables > Actions > Variables)
+and defaults to `off`, so you do not need to edit the workflow file.
 
-```yaml
-env:
-  RIPR_COMMENT_MODE: plan
-```
+Start with `plan`: set the repository variable `RIPR_COMMENT_MODE` to `plan`.
 
 Review several pull requests before enabling `inline`. Check that the plan is
 quiet, line placement is correct, summary-only guidance stays out of inline
 comments, and duplicate RIPR comments are planned as `keep` or `update` instead
 of new threads.
 
-Move to `inline` only after the plan output is boring:
-
-```yaml
-env:
-  RIPR_COMMENT_MODE: inline
-```
+Move to `inline` only after the plan output is boring: set
+`RIPR_COMMENT_MODE` to `inline`.
 
 Keep `RIPR_COMMENT_MODE=off` for repositories that already have enough
 visibility from job summaries, check annotations, SARIF, and uploaded artifacts.
@@ -178,12 +173,7 @@ when durable review-thread visibility is worth the noise budget.
 
 ## Roll Back
 
-Set the mode back to `off`:
-
-```yaml
-env:
-  RIPR_COMMENT_MODE: off
-```
+Set the repository variable `RIPR_COMMENT_MODE` back to `off`, or delete it.
 
 Existing comments remain in prior PR threads, but future workflow runs will not
 create or update RIPR inline comments. Gate decisions, summaries, annotations,

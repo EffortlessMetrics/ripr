@@ -101,6 +101,39 @@ The packet must answer these reviewer questions in stable, user-facing terms:
 The Markdown packet is the human first screen. The JSON packet is the stable
 machine-readable form consumed by generated CI, LSP orchestration, and agents.
 
+The JSON packet records `ripr_version` as the producing package version. That
+field is additive on schema `0.1`. `ripr first-pr --check` and `ripr doctor`
+treat a packet whose `ripr_version` is missing or different from the running
+binary as `stale_evidence` and name the `ripr first-pr` refresh command. They
+must not present that packet as current first-screen evidence. A packet without
+the field is a pre-0.11 artifact, not a contract-invalid document.
+
+Doctor's packet-refresh command binds the diagnosed repository to an absolute
+root, including when diagnosis used a relative root or `.`. Existing roots
+resolve through the filesystem before rendering, so a symlink followed by `..`
+still names the directory whose packet doctor read. If that resolution fails,
+doctor names the failure and omits the refresh command rather than guessing a
+lexical destination. It quotes the resolved root for Bash and prints a labeled
+PowerShell form when the spelling differs.
+When the physical spelling is not UTF-8, a lossless absolute spelling of the
+supplied alias is retained without collapsing `..`. If neither spelling can
+be represented losslessly, doctor explains the limitation and omits the rooted
+command; lossy replacement characters are never executable path authority.
+Without a packet, that same unavailable recommendation supplies the safe-action
+recovery; the screen must not point to a nonexistent command below.
+The rooted recommended first check also resolves existing directories through
+the filesystem. If the selected directory is unavailable, recovery retains a
+lossless absolute input spelling without collapsing `..`, so it cannot select
+an existing lexical decoy. Its existing `.` shorthand is unchanged; a missing-root
+diagnosis still fails without creating paths. The shared lexical helper for
+not-yet-created output targets is unchanged.
+The generic refresh recomposes against the repository's default base and
+`HEAD`, through first-pr's existing resolver; it does not recover a historical
+custom comparison from packet metadata. Doctor names that scope and explains
+that a custom comparison needs explicit `--base REF` and `--head REF`. If no
+default base resolves, first-pr reports its existing actionable error without
+rewriting the packet. Missing-packet diagnosis still recommends analysis first.
+
 ### Selection rules
 
 The packet should select at most one top item for the first screen:
@@ -139,6 +172,66 @@ A repairable top gap should include:
 The packet must not present raw exposure class, static limitation, or numeric
 confidence as the instruction. Raw evidence may appear under artifact links or
 supporting context.
+
+### Selected-root command presentation
+
+Rooted Bash eligibility is independent of PowerShell translation eligibility.
+Literal argument equals signs (for example `--test-threads=1`) are admitted
+after the program token. This bounded form withholds pre-program assignments,
+multiline commands, unbalanced quotes, expansions, compound commands and
+redirection. PowerShell selected-root unavailability remains explicit (#5119).
+
+Current ledger selections add `selected.command_context` with authority
+`advisory_display_only`, a lossless existing-directory `cwd` (or null), and
+`verify` / `receipt` objects containing `bash`, `powershell`, and `recovery`
+(string or null). Existing roots follow filesystem resolution, including a
+symlink before `..`; a missing root never falls back to the caller directory.
+
+First-pr and PR-summary human projections consume these forms. Bash uses a
+subshell with `cd -P -- <quoted root> && <raw command>`, preserving the caller's
+directory and exact native exit status. Physical `cd -P` also preserves a
+lossless UTF-8 alias containing symlink/`..` traversal when its canonical target
+has non-UTF-8 bytes. Unsupported compound, redirecting,
+expanding, or multiline forms are withheld with recovery guidance. The shared
+simple-command scanner bounds accepted syntax without introducing a parser.
+
+Rooted PowerShell forms are withheld with explicit recovery: the existing
+translator cannot establish native exit-status authority for generic shell
+strings, and a location wrapper alone cannot guarantee it. This repair makes
+no native PowerShell runtime claim. Legacy packets without context retain their
+historical raw lines, which do not carry a selected-root guarantee. Regenerate
+with `ripr first-pr --root <path>` to obtain current ledger presentation context;
+review-card fallback commands remain outside this repair.
+
+Before displaying a carried context, `first-pr --check` requires its absolute
+directory to resolve to the current selected physical root (#5117). A relocated
+packet, missing directory, invalid authority or unavailable context is refused
+with a root-bound packet refresh command. A symlink alias to the same physical
+root is accepted. Check mode does not rebind, rewrite or execute raw commands;
+the explicit absent-context legacy path remains readable without a selected-root
+guarantee. This directory comparison is not repository authentication.
+
+Refresh commands bind existing roots using that same physical resolution,
+including symlink-before-parent traversal, while retaining the lossless alias
+when the canonical target cannot be represented as UTF-8. An existing multiline
+directory remains valid context data when both verify and receipt shell forms
+are null; their recovery guidance remains visible. Displayed shell forms for
+such a directory are refused. The Unix public-consumer controls
+`first_pr_refresh_preserves_symlink_parent_selected_root` and
+`first_pr_check_accepts_existing_newline_root_with_withheld_forms` discriminate
+these producer/validator roundtrips; the refresh argument control does not
+claim shell-text replay.
+
+The context wrapper and check-mode validation are presentation only. They do
+not rewrite raw `selected.verify_command`,
+`selected.receipt_command`, `commands.verify`, `commands.receipt`, receipt
+source/path/state, or the receipt's nested `--verify-command`. Producer-generated
+root and artifact arguments intentionally follow the selected physical root;
+that generation change does not confer execution authority.
+No legacy display string becomes a `CommandSpec`, signature, digest, eligibility,
+execution permission, or authenticated receipt. Editor/LSP command allowlists
+continue to consume the raw route. Runtime execution and receipt authenticity
+remain separate authorities.
 
 ### No-action states
 
@@ -342,6 +435,13 @@ Stale or wrong-root artifact:
 - Given a stale or wrong-root gap ledger, the packet suppresses repair
   interruption and shows a refresh or rerun command.
 
+Version-mismatched start-here packet:
+
+- Given a start-here packet written without `ripr_version` or with a different
+  producing version, `ripr first-pr --check` and `ripr doctor` report
+  `stale_evidence` and the `ripr first-pr` refresh command rather than treating
+  the packet as current first-screen evidence.
+
 Static limitation only:
 
 - Given report-only static limitation evidence with no bounded repair route,
@@ -380,7 +480,10 @@ Follow-up implementation should add or update:
 - agent packet tests for pasteable task, context, repair, verification, stop
   conditions, and "do not do" sections;
 - dogfood receipt checks for detect gap, repair, verify, movement, and
-  no-action states.
+  no-action states;
+- a foreign-working-directory replay proving every generated artifact command
+  reads and writes the selected root when pasted elsewhere (#3948, #4287):
+  `crates/ripr/tests/generated_review_workflow.rs::generated_first_pr_artifact_commands_run_from_a_foreign_working_directory`.
 
 This spec PR does not add production code or output fields.
 
@@ -420,6 +523,15 @@ Likely implementation surfaces:
 - `README.md`;
 - `.ripr/traceability.toml`;
 - `metrics/capabilities.toml`.
+
+The #5119 Bash syntax boundary is exercised by
+`output::markdown::tests::rooted_bash_accepts_literal_argument_equals_without_powershell_translation`,
+`output::markdown::tests::rooted_bash_withholds_unbounded_or_malformed_commands`,
+`output::markdown::tests::rooted_bash_withholds_unquoted_tildes_in_equals_arguments`,
+and (Unix)
+`output::markdown::tests::rooted_bash_executes_from_selected_directory_preserving_arguments_and_status`.
+The runtime fixture uses a ten-second owned-process deadline and checks selected
+directory, literal argument bytes and nonzero status from a foreign directory.
 
 ## Metrics
 

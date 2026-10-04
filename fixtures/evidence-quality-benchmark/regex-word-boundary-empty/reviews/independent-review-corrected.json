@@ -1,0 +1,20 @@
+{
+  "disposition": "accepted",
+  "reviewer": "independent Codex review",
+  "rationale": "The corrected positive Unicode and ASCII word-boundary assertions remain valid: a successful match may have zero length in surrounding context even when the boundary does not match an entirely empty haystack. Independently compared the proposed typed answer key and pairing with the retained evidence. The reviewed production_source_path regex-syntax/src/hir/mod.rs matches the fixed and broken source descriptors in every native before/after inventory; the test and generated-lock rows also match. All six native observations retain equal 249-entry before/after inventories and the previously checked parent-workspace-plus-lock/source/test construction. The two source_document entries retain issue 859 and the upstream fix as the expected-behavior basis. The separate_matcher_semantic_witness entry selects native_test_variant=corrected: its fixed and broken inventories exactly equal the corresponding corrected native inventories. The matcher variant names its retained test-source inventory; it does not claim that the standalone matcher programs executed the HIR test. Both retained matcher compiler records select regex 1.5.5, root Cargo.toml, library target regex and src/lib.rs, distinct from the primary regex-syntax 0.6.25 test subject. The two matcher programs and their retained outputs support the empty-haystack versus zero-length-in-context distinction. Rechecked retained text identities and the exact metadata delta; pairing changes only the answer-key digest. Raw source, test, program, capture, inventory, output, archive and executable descriptors are unchanged. Historical outcomes remain corrected fixed-pass/broken-intended-fail, original fixed-intended-fail/broken-pass, and weak both-pass. Weak receives no validity or adequacy label. Failing whole-test runs stop at the first Unicode boundary assertion; later ASCII assertion execution is not claimed for those failures. This review performed no new native execution, archive extraction or current external executable/library byte rehash. Earlier executable measurements remain historical; current external custody is NOT_REVERIFIED. Acceptance binds only the exact semantic declaration and historical capture subject below. It does not qualify the proposed validator implementation or establish static-analysis, calibration, opportunity or release claims.",
+  "reviewed_subject": {
+    "case_id": "regex-word-boundary-empty",
+    "status": "valid",
+    "variant": "corrected",
+    "answer_key": {
+      "path": "regex-word-boundary-empty/answer-key.json",
+      "bytes": 3566,
+      "sha256": "7596cfac9cb66705d52767990973a17c572186f71f20fafc14fe850f7f4f1d49"
+    },
+    "native_pairing": {
+      "path": "regex-word-boundary-empty/native-pairing.json",
+      "bytes": 20853,
+      "sha256": "31f0a05ab1a5840f7e5ac69ca5ae1dd82d173beae07e0f4858402897d457eda3"
+    }
+  }
+}

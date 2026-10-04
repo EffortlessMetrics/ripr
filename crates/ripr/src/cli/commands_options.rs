@@ -22,6 +22,9 @@ pub(crate) struct PilotOptions {
     pub(crate) explicit: CheckInputExplicit,
     pub(crate) max_seams: usize,
     pub(crate) timeout_ms: u64,
+    /// `--timeout-ms` was given, so `timeout_ms` is a hard limit.
+    pub(crate) timeout_explicit: bool,
+    pub(crate) quiet: bool,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct OutcomeOptions {
@@ -74,6 +77,8 @@ pub(crate) struct BaselineUpdateOptions {
     pub(crate) current: PathBuf,
     pub(crate) out: Option<PathBuf>,
     pub(crate) remove_resolved: bool,
+    /// Deterministic legacy-to-canonical identity migration (issue #1964).
+    pub(crate) migrate_legacy_identities: bool,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct RiprZeroStatusOptions {
@@ -123,6 +128,7 @@ pub(crate) struct PolicyHistoryOptions {
     pub(crate) pr_number: Option<String>,
     pub(crate) out: PathBuf,
     pub(crate) out_md: PathBuf,
+    pub(crate) out_jsonl: Option<PathBuf>,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct PolicyPromotionOptions {
@@ -174,6 +180,7 @@ pub(crate) struct PrEvidenceLedgerOptions {
     pub(crate) history: Option<PathBuf>,
     pub(crate) out: PathBuf,
     pub(crate) out_md: PathBuf,
+    pub(crate) out_jsonl: Option<PathBuf>,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct PrCommentsPlanOptions {

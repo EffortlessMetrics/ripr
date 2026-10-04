@@ -30,16 +30,45 @@ use super::test_grip_evidence::TestGripEvidence;
 use crate::domain::StageState;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
+use std::cell::Cell;
+#[cfg(test)]
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 /// A seam paired with its evidence and the resulting grip class.
 /// Crate-private; the report PR consumes `Vec<ClassifiedSeam>` directly.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct ClassifiedSeam {
     pub(crate) seam: RepoSeam,
     pub(crate) evidence: TestGripEvidence,
     pub(crate) class: SeamGripClass,
+}
+
+#[cfg(test)]
+thread_local! {
+    static CLASSIFIED_SEAM_CLONES: Cell<usize> = const { Cell::new(0) };
+}
+
+impl Clone for ClassifiedSeam {
+    fn clone(&self) -> Self {
+        #[cfg(test)]
+        CLASSIFIED_SEAM_CLONES.with(|count| count.set(count.get().saturating_add(1)));
+        Self {
+            seam: self.seam.clone(),
+            evidence: self.evidence.clone(),
+            class: self.class,
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn classified_seam_clone_count() -> usize {
+    CLASSIFIED_SEAM_CLONES.with(Cell::get)
+}
+
+#[cfg(test)]
+pub(crate) fn reset_classified_seam_clone_count() {
+    CLASSIFIED_SEAM_CLONES.with(|count| count.set(0));
 }
 
 /// Compact per-class count summary for repo-scoped consumers that only
@@ -132,7 +161,6 @@ pub(crate) fn classify_seam(_seam: &RepoSeam, evidence: &TestGripEvidence) -> Se
 /// Seams without a matching evidence record are skipped. The inventory
 /// walker always builds evidence for every seam, so this only filters
 /// out genuinely orphaned input.
-#[cfg(test)]
 pub(crate) fn classify_seams(
     seams: &[RepoSeam],
     evidence: &[TestGripEvidence],
@@ -237,6 +265,7 @@ mod tests {
             discriminate: stage(discriminate),
             observed_values: Vec::<ValueFact>::new(),
             missing_discriminators: missing,
+            new_test_target: None,
         }
     }
 
@@ -515,6 +544,7 @@ mod tests {
             discriminate: stage(StageState::Yes),
             observed_values: Vec::<ValueFact>::new(),
             missing_discriminators: no_missing(),
+            new_test_target: None,
         };
         let ungripped_evidence = TestGripEvidence {
             seam_id: ungripped_seam.id().clone(),
@@ -526,6 +556,7 @@ mod tests {
             discriminate: stage(StageState::No),
             observed_values: Vec::<ValueFact>::new(),
             missing_discriminators: no_missing(),
+            new_test_target: None,
         };
 
         // Seams in one order, evidence in the OPPOSITE order. With
@@ -575,6 +606,7 @@ mod tests {
             discriminate: stage(StageState::Yes),
             observed_values: Vec::<ValueFact>::new(),
             missing_discriminators: no_missing(),
+            new_test_target: None,
         };
 
         let classified = classify_seams(std::slice::from_ref(&seam), &[evidence]);
@@ -607,6 +639,7 @@ mod tests {
             discriminate: stage(StageState::No),
             observed_values: Vec::<ValueFact>::new(),
             missing_discriminators: no_missing(),
+            new_test_target: None,
         };
         let matching_evidence = evidence_with(
             StageState::Yes,

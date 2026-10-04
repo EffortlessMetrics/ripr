@@ -11,15 +11,11 @@
     {
       "id": "complete_packet",
       "scenario": "all reviewer-first packet surfaces are present",
-      "inputs": {
-        "reports_dir": "fixtures/boundary_gap/expected/report-packet-index/complete-packet/reports",
-        "review_dir": "fixtures/boundary_gap/expected/report-packet-index/complete-packet/review",
-        "receipts_dir": "fixtures/boundary_gap/expected/report-packet-index/complete-packet/receipts"
-      },
+      "packet_root": "fixtures/boundary_gap/expected/report-packet-index/complete-packet/packet",
       "expected_report": "fixtures/boundary_gap/expected/report-packet-index/complete-packet/index.json",
       "expected_markdown": "fixtures/boundary_gap/expected/report-packet-index/complete-packet/index.md",
       "expected": {
-        "status": "pass",
+        "status": "warn",
         "missing_expected": 0,
         "failures": 0,
         "warnings": 0,
@@ -41,10 +37,7 @@
     {
       "id": "sparse_advisory",
       "scenario": "advisory packet with only PR guidance and local validation reports",
-      "inputs": {
-        "reports_dir": "fixtures/boundary_gap/expected/report-packet-index/sparse-advisory/reports",
-        "review_dir": "fixtures/boundary_gap/expected/report-packet-index/sparse-advisory/review"
-      },
+      "packet_root": "fixtures/boundary_gap/expected/report-packet-index/sparse-advisory/packet",
       "expected_report": "fixtures/boundary_gap/expected/report-packet-index/sparse-advisory/index.json",
       "expected_markdown": "fixtures/boundary_gap/expected/report-packet-index/sparse-advisory/index.md",
       "expected": {
@@ -67,10 +60,7 @@
     {
       "id": "missing_front_panel",
       "scenario": "packet has supporting artifacts but no first-screen front panel",
-      "inputs": {
-        "reports_dir": "fixtures/boundary_gap/expected/report-packet-index/missing-front-panel/reports",
-        "review_dir": "fixtures/boundary_gap/expected/report-packet-index/missing-front-panel/review"
-      },
+      "packet_root": "fixtures/boundary_gap/expected/report-packet-index/missing-front-panel/packet",
       "expected_report": "fixtures/boundary_gap/expected/report-packet-index/missing-front-panel/index.json",
       "expected_markdown": "fixtures/boundary_gap/expected/report-packet-index/missing-front-panel/index.md",
       "expected": {
@@ -91,10 +81,7 @@
     {
       "id": "blocked_gate",
       "scenario": "configured gate blocked while packet remains advisory",
-      "inputs": {
-        "reports_dir": "fixtures/boundary_gap/expected/report-packet-index/blocked-gate/reports",
-        "review_dir": "fixtures/boundary_gap/expected/report-packet-index/blocked-gate/review"
-      },
+      "packet_root": "fixtures/boundary_gap/expected/report-packet-index/blocked-gate/packet",
       "expected_report": "fixtures/boundary_gap/expected/report-packet-index/blocked-gate/index.json",
       "expected_markdown": "fixtures/boundary_gap/expected/report-packet-index/blocked-gate/index.md",
       "expected": {
@@ -116,10 +103,7 @@
     {
       "id": "missing_assistant_proof",
       "scenario": "PR guidance exists but assistant proof was not produced",
-      "inputs": {
-        "reports_dir": "fixtures/boundary_gap/expected/report-packet-index/missing-assistant-proof/reports",
-        "review_dir": "fixtures/boundary_gap/expected/report-packet-index/missing-assistant-proof/review"
-      },
+      "packet_root": "fixtures/boundary_gap/expected/report-packet-index/missing-assistant-proof/packet",
       "expected_report": "fixtures/boundary_gap/expected/report-packet-index/missing-assistant-proof/index.json",
       "expected_markdown": "fixtures/boundary_gap/expected/report-packet-index/missing-assistant-proof/index.md",
       "expected": {
@@ -140,10 +124,7 @@
     {
       "id": "missing_receipts",
       "scenario": "review story exists but validation receipts are absent",
-      "inputs": {
-        "reports_dir": "fixtures/boundary_gap/expected/report-packet-index/missing-receipts/reports",
-        "review_dir": "fixtures/boundary_gap/expected/report-packet-index/missing-receipts/review"
-      },
+      "packet_root": "fixtures/boundary_gap/expected/report-packet-index/missing-receipts/packet",
       "expected_report": "fixtures/boundary_gap/expected/report-packet-index/missing-receipts/index.json",
       "expected_markdown": "fixtures/boundary_gap/expected/report-packet-index/missing-receipts/index.md",
       "expected": {
@@ -164,14 +145,11 @@
     {
       "id": "coverage_grip_present",
       "scenario": "coverage/grip frontier is present and grouped as calibration context",
-      "inputs": {
-        "reports_dir": "fixtures/boundary_gap/expected/report-packet-index/coverage-grip-present/reports",
-        "review_dir": "fixtures/boundary_gap/expected/report-packet-index/coverage-grip-present/review"
-      },
+      "packet_root": "fixtures/boundary_gap/expected/report-packet-index/coverage-grip-present/packet",
       "expected_report": "fixtures/boundary_gap/expected/report-packet-index/coverage-grip-present/index.json",
       "expected_markdown": "fixtures/boundary_gap/expected/report-packet-index/coverage-grip-present/index.md",
       "expected": {
-        "status": "pass",
+        "status": "warn",
         "missing_expected": 0,
         "failures": 0,
         "warnings": 0,
@@ -185,5 +163,6 @@
       },
       "reason": "Coverage/grip context should be easy to find but must not be presented as runtime confirmation."
     }
-  ]
+  ],
+  "runner_note": "Each case renders through the production route: `canonical_command` is run with `packet_root` as the working directory, and its output is compared to `expected_report` and `expected_markdown`. The `expected` block below is checked against the rendered report, not against the committed golden."
 }

@@ -10,6 +10,7 @@
   "delta": {
     "acknowledged": 1,
     "invalid_baseline_entry": 1,
+    "legacy_fallback_match": 0,
     "missing_current_input": 0,
     "new_policy_eligible": 1,
     "resolved": 1,

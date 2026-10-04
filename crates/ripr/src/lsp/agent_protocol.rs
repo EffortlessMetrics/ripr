@@ -614,16 +614,22 @@ impl RiprAgentCapability {
     }
 
     /// Capability with at least one handler implemented (#1603).
-    /// `snapshot_id` is the existing refresh generation identity: an interim
-    /// compatibility state for this first slice, NOT #1602's immutable
-    /// snapshot-handle contract. It must not be represented as that contract
-    /// in responses or docs; the immutable handle binding lands with #1602.
+    /// `snapshot_id` is echoed in responses as the existing refresh
+    /// generation identity: an interim compatibility state for this first
+    /// slice, NOT #1602's immutable snapshot-handle contract. The
+    /// `snapshot_handles` capability therefore stays `false`; advertising
+    /// `true` would claim the immutable handle contract before #1602
+    /// implements it. It must not be represented as that contract in
+    /// responses or docs; the immutable handle binding lands with #1602.
     pub(crate) fn v0_1_implemented() -> Self {
         Self {
             implementation_state: RiprAgentImplementationState::Implemented,
             supported_requests: vec![RiprAgentRequest::ListActionableItems],
             supported_profiles: vec![RiprAgentProfile::Actionable],
-            snapshot_handles: true,
+            // The interim `snapshot_id` echo above is not the #1602
+            // immutable snapshot-handle contract, so the capability must not
+            // advertise one until #1602 lands it.
+            snapshot_handles: false,
             cancellation: true,
             claim_boundary: concat!(
                 "ripr/listActionableItems is implemented; ",
@@ -1513,16 +1519,18 @@ mod tests {
                 capability.supported_profiles
             ));
         }
-        // Lock the rest of the v0_1_implemented contract: the interim
-        // generation identity and cancellation are advertised, every other
+        // Lock the rest of the v0_1_implemented contract: cancellation is
+        // advertised, the #1602 immutable snapshot-handle contract is NOT
+        // (the interim `snapshot_id` echo is not that contract), every other
         // surface stays fail-closed, and the claim boundary names exactly
         // what is implemented.
         if capability.implementation_state != RiprAgentImplementationState::Implemented {
             return Err("implementation_state must be `implemented`".to_string());
         }
-        if !capability.snapshot_handles {
+        if capability.snapshot_handles {
             return Err(
-                "snapshot_handles must advertise the interim generation identity".to_string(),
+                "snapshot_handles must stay false until #1602 lands the immutable snapshot-handle contract; the interim snapshot_id echo is not that contract"
+                    .to_string(),
             );
         }
         if !capability.cancellation {

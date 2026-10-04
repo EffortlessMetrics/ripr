@@ -221,10 +221,11 @@
         },
         "evidence_ref": { "$ref": "#/$defs/non_empty_string" },
         "classification": {
-          "enum": ["new_exclusion", "duplicate_observation"]
+          "enum": ["new_exclusion", "duplicate_observation", "selected_opportunity"]
         },
         "duplicate_of": { "$ref": "#/$defs/non_empty_string" },
-        "claim_boundary": { "$ref": "#/$defs/non_empty_string" }
+        "claim_boundary": { "$ref": "#/$defs/non_empty_string" },
+        "route": { "$ref": "#/$defs/observation_route" }
       },
       "allOf": [
         {
@@ -232,6 +233,52 @@
           "then": { "required": ["duplicate_of"] }
         }
       ]
+    },
+    "observation_route": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "opportunity_id": { "$ref": "#/$defs/non_empty_string" },
+        "channel": { "enum": ["cli", "editor"] },
+        "cohort_id": { "$ref": "#/$defs/non_empty_string" },
+        "analyzer_generation": { "$ref": "#/$defs/non_empty_string" },
+        "unit": { "enum": ["opportunity", "repository_observation"] },
+        "analysis_completed": { "type": "boolean" },
+        "canonical_gap_identified": { "type": "boolean" },
+        "complete_route_admitted": { "type": "boolean" },
+        "packet_ready": { "type": "boolean" },
+        "canonical_eligibility": { "enum": ["admitted", "rejected", "not_observed"] },
+        "attempt_authorized": { "type": "boolean" },
+        "attempt_started": { "type": "boolean" },
+        "attempt_finished": { "type": "boolean" },
+        "earliest_stop": {
+          "enum": [
+            "unsupported_or_incomplete_input",
+            "analysis_timeout",
+            "no_canonical_gap",
+            "missing_discriminator",
+            "missing_related_test",
+            "ambiguous_or_unsafe_target",
+            "missing_fix_site",
+            "missing_verify_route",
+            "stale_or_wrong_identity",
+            "artifact_archaeology_required",
+            "client_or_install_failure",
+            "infrastructure_tempfail",
+            "not_proven",
+            "not_observed"
+          ]
+        },
+        "static_movement": {
+          "enum": ["closed", "improved", "unchanged", "regressed", "limited", "not_observed"]
+        },
+        "focused_test_result": {
+          "enum": ["passed", "failed", "not_run", "not_observed"]
+        },
+        "correct_route_reviewed": { "type": "boolean" },
+        "artifact_archaeology": { "type": "boolean" },
+        "repair_attempt_id": { "$ref": "#/$defs/non_empty_string" }
+      }
     }
   }
 }

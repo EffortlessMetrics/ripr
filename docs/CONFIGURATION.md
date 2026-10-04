@@ -50,8 +50,8 @@ need to run it.
 | Seam diagnostics | Saved-workspace LSP seam diagnostics are on, with explicit config or initialization options allowed to disable them. |
 | Report caps | Context packets and collect-context commands include up to `5` related tests by default. |
 | Suppressions | Badge renderers look for `.ripr/suppressions.toml`; a missing file is normal. |
-| Badges | Repo badges count configured-visible unresolved seam gaps and stay advisory unless an explicit failure policy is selected. |
-| Cache | Full repo seam cache stores up to `20000` seams by default, compact repo seam cache stores up to `100000` seams by default, and large repos can opt into higher process-local limits. |
+| Badges | Public repo badges count unresolved canonical actionable gaps, or explicit gap-decision-ledger projection targets when a ledger is supplied. Seam-native counts remain internal inventory. Badge rendering stays advisory unless an explicit failure policy is selected. |
+| Cache | Full and compact classified cache stores use an 8 MiB encoded-byte ceiling per entry or shard by default, with secondary record caps of `20000` (full) and `100000` (compact). Large repos can opt into higher process-local limits. |
 | CI | Generated GitHub workflows upload advisory pilot/report/agent artifacts, keep SARIF rendering/upload optional, and use `continue-on-error` by default. |
 | Calibration | Runtime data is imported only when explicitly supplied; `ripr` does not run mutation testing by default. |
 
@@ -83,7 +83,7 @@ and [`crates/ripr/src/app.rs`](../crates/ripr/src/app.rs).
 | Flag | Effect |
 | --- | --- |
 | `--help`, `-h` | Print top-level help. |
-| `--version`, `-V` | Print the `ripr` version. |
+| `--version`, `-V` | Print the `ripr` version and the commit it was built from. |
 
 ### `ripr init`
 
@@ -91,8 +91,8 @@ Optional. Writes a repo-local `ripr.toml` at the selected workspace root that
 materializes the built-in defaults as repo policy so a team can review, commit,
 and tune them. `ripr.toml` is not required — missing config uses the same
 defaults. With `--ci github`, `ripr init` also writes a non-blocking GitHub
-Actions workflow for pilot/report/agent artifacts, optional repo-local cockpit
-rendering, and optional SARIF rendering/upload. It does not run mutation
+Actions workflow for pilot/report/agent artifacts and optional SARIF
+rendering/upload. It does not run mutation
 testing, enable CI blocking policy, or unlock basic CLI usefulness.
 
 ```text
@@ -148,7 +148,7 @@ Missing `ripr.toml` is the normal first-run state; the command uses built-in
 defaults unless repo policy or explicit flags override them.
 
 ```text
-ripr pilot [--root PATH] [--out PATH] [--mode MODE] [--max-seams N]
+ripr pilot [--root PATH] [--out PATH] [--mode MODE] [--max-seams N] [--timeout-ms MS]
 ```
 
 | Flag | Default | Notes |
@@ -157,6 +157,7 @@ ripr pilot [--root PATH] [--out PATH] [--mode MODE] [--max-seams N]
 | `--out PATH` | `target/ripr/pilot` | Directory for `repo-exposure.{json,md}`, `agent-seam-packets.json`, and `pilot-summary.{json,md}`. |
 | `--mode MODE` | `ripr.toml` `analysis.mode`, otherwise `draft` | One of `instant`, `draft`, `fast`, `deep`, `ready`. |
 | `--max-seams N` | `5` | Maximum ranked seams shown in the pilot summary. Must be positive. |
+| `--timeout-ms MS` | `30000` | Maximum analysis budget in milliseconds before pilot writes a partial summary. |
 
 ### `ripr check`
 
@@ -164,13 +165,23 @@ Runs the static exposure analysis and renders findings.
 
 | Flag | Default | Notes |
 | --- | --- | --- |
-| `--root PATH` | current directory | Workspace root used for diff and source discovery. |
-| `--base REV` | `origin/main` | Git revision used as the diff base when `--diff` is not given. |
-| `--diff PATH` | _(unset)_ | Path to a unified diff file. Overrides `--base`. |
+| `--root PATH` | current directory | Workspace root used for diff and source discovery. Without `--root`, walks up to a `Cargo.toml` containing `[workspace]`; when there is none, to the nearest `Cargo.toml`, `pnpm-workspace.yaml`, `package.json` with a `workspaces` field, or `pyproject.toml` with `[tool.uv.workspace]`, else a verified git top level. An unverified `.git` entry bounds the walk without selecting that directory; absent a local manifest, the current directory stays selected. A moved root and its reason are printed on stderr. |
+| `--base REV` | resolved per repository | Git revision used as the diff base when `--diff` is not given. With no `--base`, ripr resolves the first of `origin/HEAD`, `origin/main`, `origin/master`, `main`, `master` that exists; when none does, it says so rather than analyzing nothing. An explicit `--base` is used as given and is never substituted. |
+| `--diff PATH` | _(unset)_ | Path to a unified diff file. Overrides `--base`. `--diff -` reads from stdin. |
+| `--candidate-tree TREE` | _(unset)_ | Analyze exactly this immutable Git tree object, deriving the diff from Git objects alone. Mutually exclusive with `--diff` and `--base`. |
+| `--candidate-base BASE` | repository's empty tree | Base treeish for `--candidate-tree` (a commit, tag, or tree OID). |
+| `--worktree` | _(off)_ | Diff the base against the live working tree instead of `HEAD`, including staged and unstaged tracked edits. Like the committed `<base>...HEAD` diff, it starts at the merge base of the base and `HEAD`, so commits the base gained after the branch forked are not reported as branch changes (the base tip when there is no merge base, as in a shallow clone). Cannot be combined with `--diff`. |
 | `--mode MODE` | `ripr.toml` `analysis.mode`, otherwise `draft` | One of `instant`, `draft`, `fast`, `deep`, `ready`. See the [mode reference](#analysis-modes). |
-| `--format FORMAT` | `human` | One of `human` (alias `text`), `json`, `github`. |
+| `--format FORMAT` | `human` | See [Output formats](#output-formats) for the full set. |
+| `--gap-ledger PATH` | _(unset)_ | For `repo-badge-*` formats only: render badge counts from explicit gap-decision-ledger projection targets. |
 | `--json` | _(off)_ | Shortcut for `--format json`. |
 | `--no-unchanged-tests` | `ripr.toml` `analysis.include_unchanged_tests`, otherwise tests included | Limits the source index to changed Rust files. By default unchanged tests are part of the index so `Reach` evidence can find them. |
+| `--suppression-policy PATH` | _(unset)_ | Apply a suppressions TOML (same schema as `.ripr/suppressions.toml`) to the findings-based formats. Relative paths resolve against `--root`; a missing or malformed policy fails the run. |
+| `--write-artifact PATH` | _(unset)_ | Write a full-fidelity check artifact (`ripr-check-artifact-v1`) for later `ripr explain --from PATH` / `ripr context --from PATH` reuse. Diff-scoped findings runs only. A local, disposable derivative: never a gate, badge, or proof input. |
+| `--perl-facts PATH` | _(unset)_ | Use this explicit Perl facts packet as the analysis input for Perl files. |
+| `--git-timeout SECS` | `300` | Cooperative deadline in seconds for each git invocation in the diff-load path. `0` disables it. Also settable via `RIPR_GIT_TIMEOUT`. |
+
+Cancelling a `ripr check` run (for example with Ctrl-C) is clean for the files ripr writes itself: outputs and cache entries are written atomically, so an interrupted run leaves no partial report file and no corrupt cache, and the next run simply recomputes and recovers. A file the shell redirects stdout into (for example `ripr check --format repo-exposure-json > report.json`) is owned by the shell, not ripr: an interruption can truncate it, and re-running rewrites it.
 
 ### Environment Variables
 
@@ -180,16 +191,32 @@ that needs the tuning.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `RIPR_CACHE_DIR` | (none) | Relocate the entire cache base directory. When set to a non-empty path, all cache reads and writes use that path instead of `{workspace_root}/target/ripr/cache`. Useful for read-only or immutable source checkouts and for redirecting the cache to a faster or larger volume. When unset or empty, default behaviour is unchanged. `ripr doctor` reports whether `RIPR_CACHE_DIR` is active and shows the resolved location and total size. |
+| `RIPR_CACHE_DIR` | (none) | Relocate the entire cache base directory (the cache is disposable; see below). When set to a non-empty path, all cache reads and writes use that path instead of `{workspace_root}/target/ripr/cache`. Useful for read-only or immutable source checkouts and for redirecting the cache to a faster or larger volume. When unset or empty, default behaviour is unchanged. `ripr doctor` reports whether `RIPR_CACHE_DIR` is active and shows the resolved location and total size. |
 | `RIPR_MAX_DIFF_CHANGED_RUST_LINES` | `2000` | Maximum added plus removed Rust diff lines that `ripr check` will expand into probes before failing closed with `diff_scope_oversized`. With `--json`, the command still exits non-zero but emits a limited artifact with `analysis_scope.run_status = "diff_scope_oversized"` and `downstream_consumable = false`. This protects constrained runners from large code-motion diffs that touch few files but produce thousands of probes. Raise only for a single command on a machine with enough memory, or split the extraction PR. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
-| `RIPR_MAX_DIFF_INDEX_FILES` | `800` | Maximum Rust files that diff-scoped analysis will load into the Rust index before failing closed with `diff_scope_oversized`. With `--json`, the command still exits non-zero but emits a limited artifact with `analysis_scope.run_status = "diff_scope_oversized"` and `downstream_consumable = false`. This protects runners from package-wide index expansion on large multi-crate diffs. Raise only for a single command on a machine with enough memory, or reduce the diff scope. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
-| `RIPR_PARTIAL_DIFF_FILE_BUDGET` | `200` | Changed-line files a diff-scoped analysis inspects before returning a bounded `limited_partial_scope` result (RIPR-PROP-0019): the run analyzes a deterministic whole-file partition (supported-language files first, then package path, then file path) and discloses the exact selected paths, lower-bound uninspected counts, a named stop reason, and `gate_eligibility = "ineligible"` under `analysis_scope` in the JSON output. A partial result is advisory only — never a gate, baseline, badge, or RIPR Zero input — and raising this variable is the only continuation route. Values above the effective `RIPR_MAX_DIFF_INDEX_FILES` limit (its env override when set, otherwise the `800` default) are clamped to that effective limit with a disclosure. Must be a positive integer; invalid values fail closed as `partial_budget_invalid`. |
+| `RIPR_MAX_DIFF_INDEX_FILES` | `1200` | Maximum Rust files that diff-scoped analysis will load into the Rust index before failing closed with `diff_scope_oversized`. Under the default `RIPR_DIFF_DEPENDENT_SCOPE=auto`, a Draft/Fast selection that exceeds it because of packages depending on the changed ones narrows to the files that can change a result instead (see that variable); the limit still bounds the narrowed index. With `--json`, the command still exits non-zero but emits a limited artifact with `analysis_scope.run_status = "diff_scope_oversized"` and `downstream_consumable = false`. This protects runners from package-wide index expansion on large multi-crate diffs. Raise only for a single command on a machine with enough memory, or reduce the diff scope. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
+| `RIPR_DIFF_DEPENDENT_SCOPE` | `auto` | How Draft/Fast diff analysis indexes packages that depend on the changed ones (#5320). `auto` indexes them whole while that fits under `RIPR_MAX_DIFF_INDEX_FILES` and switches to `named` instead of refusing when it would not. `named` keeps the changed packages whole and admits a dependent file only when it can change a result: it names a changed owner the changed packages leave undecided, declares a same-named function, type or trait impl, sits in a package nested under a changed one, is a registered harness target, composes modules with `include!` or `#[path]`, or runs a Cargo binary when a binary changed. The bounded transitive and macro reach witnesses widen on demand to the owner's caller levels; when that widening would exceed `RIPR_MAX_DIFF_INDEX_FILES` and the narrowed index names no witness itself, the finding names `rust_transitive_reach_unresolved` with the file count instead of refusing the whole run. `named` can be slower than `full` when the witness widening admits most dependent files. `full` always indexes the whole reverse dependency closure, which `RIPR_MAX_DIFF_INDEX_FILES` then bounds. Any other value fails every diff run, in any mode, with a diagnostic naming the variable. |
+| `RIPR_PARTIAL_DIFF_FILE_BUDGET` | `200` | Changed-line files a diff-scoped analysis inspects before returning a bounded `limited_partial_scope` result (RIPR-PROP-0019): the run analyzes a deterministic whole-file partition (supported-language files first, then package path, then file path) and discloses the exact selected paths, lower-bound uninspected counts, a named stop reason, and `gate_eligibility = "ineligible"` under `analysis_scope` in the JSON output. The human output names the budget that stopped the run with its effective size (for example `the file budget of 200 changed file(s) (RIPR_PARTIAL_DIFF_FILE_BUDGET=200)`), the number of findings produced before the stop, the lower-bound uninspected scope (or, when every changed file ripr's language adapters read was selected, that the result still stays partial), and the smallest budget values that admit the next file, stopping budget first (for example `raise RIPR_PARTIAL_DIFF_FILE_BUDGET to at least 201 and RIPR_PARTIAL_DIFF_LINE_BUDGET to at least 1040, then re-run`); a value only just above the current budget can select the same partition again. The JSON `analysis_scope.continuation` string, the LSP top limitation (`ripr: Show Top Limitation` in VS Code) and the `diff_scope_oversized` analysis-outcome recovery carry the same instruction. A partial result is advisory only — never a gate, baseline, badge, or RIPR Zero input — and raising this variable is the only continuation route. Values above the effective `RIPR_MAX_DIFF_INDEX_FILES` limit (its env override when set, otherwise the `1200` default) are clamped to that effective limit with a disclosure. Must be a positive integer; invalid values fail closed as `partial_budget_invalid`. |
 | `RIPR_PARTIAL_DIFF_LINE_BUDGET` | `1000` | Added plus removed changed lines a diff-scoped analysis inspects before returning `limited_partial_scope`. A later whole file that would exceed the remaining budget is excluded (never an overshoot); the first selected file is always analyzed even when it alone exceeds the budget (stop reason `line_budget_exceeded_on_first_file`). Values above the effective `RIPR_MAX_DIFF_CHANGED_RUST_LINES` limit (its env override when set, otherwise the `2000` default) are clamped to that effective limit with a disclosure — so a runner that raises the max limit accepts a line budget up to the same ceiling instead of silently truncating it back to the default. Must be a positive integer; invalid values fail closed as `partial_budget_invalid`. |
-| `RIPR_REPO_SEAM_CACHE_LIMIT` | `20000` | Maximum classified seam count per shard in the full repo seam cache for a completed repo-exposure run. Larger cache entries are written as bounded shard files under the cache base directory. Raise this to reduce shard count only when the machine has enough disk and time budget for larger shard writes. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
-| `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS` | `100000` | Maximum seam count per shard in the compact repo seam cache. Larger compact cache entries are written as bounded shard files under the cache base directory. Raise this for large repos when the machine has enough disk and time budget for larger shard writes. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
+| `RIPR_REPO_SEAM_CACHE_LIMIT` | `20000` | Secondary maximum classified seam *count* per single entry or shard in the full repo seam cache. Encoded bytes are the primary bound (`RIPR_CLASSIFIED_SEAM_CACHE_SHARD_BYTES`). Raise this to allow more records per shard only when those records still fit the byte ceiling and the machine has enough disk and time budget. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
+| `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS` | `100000` | Secondary seam *count* cap per single entry or shard in the compact repo seam cache. Encoded bytes remain the primary bound (`RIPR_CLASSIFIED_SEAM_CACHE_SHARD_BYTES`). Raise this for large repos only when shards still fit the byte ceiling and the machine has enough disk and time budget. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
+| `RIPR_CLASSIFIED_SEAM_CACHE_SHARD_BYTES` | `8388608` (8 MiB) | Primary encoded-byte ceiling for one classified-cache single entry or shard on both the full and compact store paths (RIPR-SPEC-0222). Record-count env vars are secondary. A single record that cannot fit is skipped with `skipped_oversized_record_index_*`; analysis output stays usable and the cache is not claimed populated. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. This is a store-path bound, not a process RSS guarantee or a load/decode bound. |
+| `RIPR_GIT_TIMEOUT` | `300` | Cooperative deadline in seconds for each git invocation in the diff-load path. A git command that exceeds the deadline is terminated and the error names `git_invocation_timeout`. `0` disables the deadline. Must be a non-negative integer; an invalid value fails closed (exit `2`) with an error naming the variable. An explicit `ripr check --git-timeout SECS` overrides the environment value. |
+| `RIPR_ALLOW_REPO_PERL_EXECUTABLE` | unset | Only the exact value `1` lets `[perl].executable` from `ripr.toml` run as the Perl facts exporter. Otherwise ripr ignores the key, says so, and runs the exporter from `PATH`, so a cloned repository cannot choose a program for ripr to run. |
+| `RIPR_MAX_REPO_INDEX_FILES` | `1200` | Maximum Rust files a repo-scoped analysis will load into the index before failing closed as `repo_scope_oversized`. The analysis is not run when the limit is exceeded, so the result is never a silently partial one. Scope the run with `ripr check --diff` or raise the limit. Must be a positive integer. |
+| `RIPR_REVIEW_GUIDANCE_MAX_INDEX_FILES` | `1200` | Maximum unique files admitted by one `ripr review-comments` guidance dispatch: the analyzable workspace corpus plus present changed owner-attribution inputs, including generated/excluded changed files that attribution reads. Counted before either owner indexing or corpus materialization. Aligns with the current diff/repo family default (#4972's measured self-repo growth beyond 800), remaining below #3768's 1,600–1,700-file failure shapes. Over-limit dispatches fail as `review_guidance_oversized`; the run receipt stays `failed`, names the limitation and repair route, and no guidance artifacts are published. The xtask wrapper preserves the classification so consumers can distinguish incomplete instrumentation from a real gap. No silent truncation. Raise only on a measured, sufficiently resourced runner, or reduce workspace inputs; narrowing only the diff does not reduce the workspace file count. This is an input limit, not an RSS bound or a guarantee that admitted guidance completes. Positive integer required; invalid values fail closed, while `--help`/`-h` remain available. |
+| `RIPR_REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES` | `268435456` (256 MiB) | Sum of changed diff bytes and the metadata source-byte total for the same unique input set. The shared generated-source classifier also inspects bounded headers/vendor markers, respecting handwritten-file declarations and stronger exclusions. The few-giant-files admission axis; a source-byte count is not the expanded index's memory usage. The same named failure and receipt contract applies before owner indexing or workspace loading. Raise only after runner measurement, or reduce corpus and/or diff bytes. Positive integer required; invalid values fail closed except for help. This preflight does not bound the earlier Git diff capture itself (#5000). |
+| `RIPR_REPO_EXPOSURE_SEAM_LIMIT` | `10000` | Maximum seams a full-repo `repo-exposure` analysis classifies before capping. When the cap fires, the run reports `run_status = "seam_limit_applied"` with a `limitations[]` entry naming the analyzed and total seam counts, this variable, and a repair route. Set to `0` to analyze all seams; any other value that is not a positive integer exits `2` and names the variable. `ripr doctor` reports this cap under its known limitations. |
+| `RIPR_PILOT_SEAM_BUDGET` | `2000` | Maximum seams written to `ripr pilot` artifacts (`repo-exposure.json`, `agent-seam-packets.json`). Set to `0` to disable the budget and write all seams, which may produce very large files; any other value that is not a positive integer exits `2` and names the variable. When the budget applies, both artifacts carry a `limitations[]` disclosure naming the variable and a repair route. |
+| `RIPR_TS_MAX_WORKSPACE_FILES` | `20000` | Maximum directory entries visited during TypeScript/JavaScript workspace discovery, including entries that are not accepted source files. Exceeding the bound stops discovery and discloses a truncated workspace; it does not establish a complete analysis. Invalid or zero values use the default bound. |
+| `RIPR_TS_MAX_FILE_READ_BYTES` | `16777216` (16 MiB) | Maximum bytes accepted from one TypeScript/JavaScript source file. An oversized file produces the named `file_read_capped` limitation. The per-run disclosure of refused files is bounded to a stable-sorted sample of 8 paths plus one summary entry carrying the true refused count (#5022); every oversized file is still refused. Invalid or zero values use the default bound. |
+| `RIPR_TS_MAX_WORKSPACE_READ_BYTES` | `67108864` (64 MiB) | Aggregate TypeScript/JavaScript source-read budget per analysis run. Exhaustion produces the named `workspace_read_budget_exhausted` limitation, folded into the same bounded sampled disclosure as `file_read_capped`. Invalid or zero values use the default bound. |
+| `RIPR_NO_IMPACT_FAST_PATH` | eligible when unset | Set exactly `0` to disable the warm no-impact fast path and force the conservative scoped path. Other values leave the fast path eligible; eligibility still depends on current input and cache identity. |
+| `RIPR_REPO_EXPOSURE_LATENCY_TRACE` | off when unset | When present, emits diagnostic phase/cache trace lines for repo-exposure analysis, plus one end-of-run `ripr_resource_cost_receipt` line carrying the process's own CPU time and peak resident memory. Presence enables tracing even if the value is empty or `0`; it does not change the analysis verdict. Everything goes to stderr, so stdout JSON is unchanged. Linux and Windows observe both figures; any other host, or a failed source read, names an explicit unavailable state and reports no number. |
+| `GITHUB_PR_LABELS`, `PR_LABELS` | empty | Labels for `ripr impacted-evidence` and its xtask counterpart. `GITHUB_PR_LABELS` takes precedence when readable (even if empty); `PR_LABELS` is the fallback. Comma, newline, and semicolon separators are accepted. CLI `--label`/`--labels` add to these labels; the combined set is trimmed, lowercased, deduplicated, and sorted. |
 
-Repo seam cache entries larger than the active limit are stored as a manifest
-plus shard files, with cache-store trace status such as
+Repo seam cache entries that exceed the encoded-byte ceiling, or the
+secondary record cap, are stored as a manifest plus shard files, with
+cache-store trace status such as
 `sharded_ok_seams_135812_shards_7_limit_20000`. Warm loads stitch the shards
 only when the manifest and every shard match the current cache key; missing or
 corrupt shards are ignored as cache corruption and the run recomputes instead
@@ -198,12 +225,45 @@ families, largest shard sets, and orphan or incomplete shard sets. The
 `cargo xtask cache gc --dry-run` command still sees sharded entries because
 every shard lives under the cache base directory.
 
+File-fact, full/compact classified, classified-shard and corpus-fingerprint
+entries carry a domain-separated SHA-256 digest of their typed semantic body.
+This binds stored identity and every served field, including source text,
+completeness limits, lexical-fallback provenance and shard descriptors. JSON
+whitespace/object-key ordering does not affect integrity. Derived
+`FileFacts.role_provenance` is skipped by serialization and recomputed.
+
+The integrity generations are file facts `1.11`, full classified `1.18`, compact
+classified `0.24`, shards `0.24` and corpus fingerprints `0.3`. Full and
+sharded generations move past main's #4597 `1.17` / `0.23` for producer-owned
+Integration proposals (#4576); compact stays at main's `0.24` because compact
+evidence does not carry that admission. The integrity transition follows the unsigned
+nesting-budget generations from #4475. Older unsigned
+generations cold-recompute; no source migration is needed. Decoded key/schema
+mismatches invalidate before digest checking. Matching current entries with
+missing, invalid or mismatching digests are corruption; invalid file facts do
+not contribute known-file inventory. Undecodable JSON, including a digest with
+the wrong JSON type, remains decode corruption before identity comparison.
+Corrupt monolithic entries cannot fall back to shards; absent entries may use
+a complete valid matching shard set. One invalid shard rejects the whole set.
+
+These unkeyed checksums do not authenticate a writer able to replace the body
+and recompute its digest. This contract does not cover every cache family or
+provide provenance signatures. Reuse performs one semantic-body serialization
+and SHA-256 operation per envelope; no cache-speed improvement is claimed.
+
 To relocate the cache to a different directory (e.g., for a read-only
 source checkout):
 
 ```bash
 RIPR_CACHE_DIR=/var/cache/ripr ripr check --root . --format repo-exposure-json
 ```
+
+The cache is disposable. Deleting it, or running `ripr cache clear --force`,
+only makes the next run slower; ripr rebuilds every entry it needs and never
+treats a missing entry as evidence. `ripr cache status` reports the resolved
+directory, and `ripr cache clear --dry-run` previews what `--force` would
+remove. Both honor `RIPR_CACHE_DIR`. In this repository, `cargo xtask cache
+report` and `cargo xtask cache gc` honor the same root.
 
 To run a deliberately large Rust extraction diff on a larger runner:
 
@@ -233,7 +293,9 @@ into full repo truth.
 Renders a single finding in human format.
 
 ```text
-ripr explain [--root PATH] [--base REV | --diff PATH] <finding-id | file:line>
+ripr explain [--root PATH] [--base REV] [--worktree | --diff PATH] [--from PATH]
+             [--mode MODE] [--no-unchanged-tests] [--perl-facts PATH]
+             [--suppression-policy PATH] <finding-id | file:line>
 ```
 
 The trailing positional argument selects the finding. Either form works:
@@ -242,29 +304,42 @@ The trailing positional argument selects the finding. Either form works:
 - A `file:line` location, where the file matches the finding's path by exact
   match or path-suffix match.
 
+`--worktree` analyzes staged and unstaged tracked edits, like
+`ripr check --worktree`, so a finding listed from uncommitted edits can be
+selected. `ripr check --worktree` prints drill-in commands that carry the
+flag. It cannot be combined with `--diff` or `--from`; `context` accepts it
+the same way. Without `--root`, a `--worktree` lookup resolves the project
+root from a subdirectory the way `ripr check` does, and a selector miss
+names a `ripr check ... --worktree --json` listing for the same root and base.
+
 ### `ripr context`
 
 Emits a compact JSON context packet for one finding.
 
 ```text
-ripr context [--root PATH] [--base REV | --diff PATH]
-             --at <finding-id | file:line>
+ripr context [--root PATH] [--base REV] [--worktree | --diff PATH] [--from PATH]
+             [--mode MODE] [--no-unchanged-tests] [--perl-facts PATH]
+             [--suppression-policy PATH]
+             (--at | --finding) <finding-id | file:line>
              [--max-related-tests N] [--json]
 ```
 
 | Flag | Default | Notes |
 | --- | --- | --- |
-| `--at SELECTOR` | _(required)_ | Same selector grammar as `explain`. |
+| `--at SELECTOR` | _(required)_ | Same selector grammar as `explain`. `--finding` is an alias. |
 | `--max-related-tests N` | `ripr.toml` `reports.max_related_tests`, otherwise `5` | Caps the number of related tests embedded in the packet. |
 | `--json` | _(off)_ | Forces JSON; `context` already returns JSON-shaped output, this flag is for parity with `check`. |
 
 ### `ripr doctor`
 
 ```text
-ripr doctor [--root PATH] [--json]
+ripr doctor [--root PATH] [--json] [--profile analysis|source-build]
 ```
 
 Reports local tooling and workspace shape. Takes no analysis-shaping flags.
+`--profile analysis` (the default) keeps a missing or old toolchain advisory;
+`--profile source-build` makes it a failure. See
+[Exit codes](EXIT_CODES.md#ripr-doctor-exit-codes).
 
 Use `--json` for the same core checks as the human report when onboarding an
 agent, editor, or CI wrapper:
@@ -313,7 +388,8 @@ ripr config validate --root .
 
 This uses the same ancestor-aware loader as analysis. A valid file prints
 `✓ ripr.toml valid`; a malformed or policy-invalid file returns its
-path-qualified validation error. A missing `ripr.toml` follows the normal
+path-qualified validation error. A missing `ripr.toml` prints
+`✓ no ripr.toml found; built-in defaults apply` and follows the normal
 built-in-defaults path, including any existing root-level language detection
 rules, because that remains the normal first-run configuration.
 
@@ -343,7 +419,7 @@ reads seven keys; everything else is ignored. The schema lives in
 
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `baseRef` | string | `"origin/main"` | Git base ref for editor-triggered diffs. Empty string disables base-ref diffing. |
+| `baseRef` | string | automatic loader base resolution | Git base ref for editor-triggered diffs. An omitted or empty value requests the loader's default-base resolution rather than a hardcoded branch. The VS Code extension separately defaults `ripr.baseRef` to `"origin/main"` and sends that configured value. |
 | `checkMode` | string | `ripr.toml` `analysis.mode`, otherwise `"draft"` | One of `instant`, `draft`, `fast`, `deep`, `ready`. Unknown values fall back to the repo config/default. |
 | `includeUnchangedTests` | boolean | `ripr.toml` `analysis.include_unchanged_tests`, otherwise `true` | Mirror of the CLI's `--no-unchanged-tests` (inverted). |
 | `seamDiagnostics` | boolean | `ripr.toml` `lsp.seam_diagnostics`, otherwise `true` | Enables repo seam evidence diagnostics in addition to diff-derived Finding diagnostics. |
@@ -352,8 +428,13 @@ reads seven keys; everything else is ignored. The schema lives in
 | `refreshDeadlineMs` | number | `600000` | Physical deadline in milliseconds for one whole refresh analysis attempt. An attempt that exceeds the deadline is cancelled cooperatively at analysis checkpoints and dropped fail-closed with the named `deadline_exceeded` outcome and an "analysis deadline exceeded" progress end — no limited snapshot is committed. A deadline cancel loses to an earlier supersede or client cancel (first-cancel-wins). Malformed initialization values are ignored (the default stays). No `ripr.toml` slot. |
 
 Initialization options are treated as explicit LSP settings and override
-`ripr.toml`. Defaults match `CheckInput::default()` when no repo config is
-present, except that LSP diagnostics render JSON-shaped data internally.
+`ripr.toml` when the value is successfully applied. A recognized key with
+the wrong JSON type or an unknown literal is ignored without aborting the
+session; `session_value_sources` discloses the effective `repo` or
+`default` fallback rather than `initialization`, and the server emits one
+`window/logMessage` warning naming the rejected key. Defaults match
+`CheckInput::default()` when no repo config is present, except that LSP
+diagnostics render JSON-shaped data internally.
 
 ## LSP configuration pull
 
@@ -429,8 +510,8 @@ download → `PATH`), see
 | `ripr.check.mode` | enum: `instant` \| `draft` \| `fast` \| `deep` \| `ready` | `draft` | Editor-side analysis mode. Forwarded as `initializationOptions.checkMode`. |
 | `ripr.baseRef` | string | `"origin/main"` | Git base ref used by editor diagnostics and the context commands. Forwarded as `initializationOptions.baseRef`. |
 | `ripr.includeUnchangedTests` | boolean | `true` | Include unchanged tests as static evidence. Forwarded as `initializationOptions.includeUnchangedTests` and the `workspace/configuration` pull. |
-| `ripr.seamDiagnostics` | boolean | `true` | Enable saved-workspace repository seam diagnostics in addition to diff-derived findings. Forwarded as `initializationOptions.seamDiagnostics`. |
-| `ripr.diagnosticProfile` | enum: `actionable` \| `full` | `actionable` | Select the bounded actionable or audit/debug diagnostic projection. Forwarded as `initializationOptions.diagnosticProfile`. |
+| `ripr.seamDiagnostics` | boolean | `true` | Enable saved-workspace repository seam diagnostics in addition to diff-derived findings. Forwarded as `initializationOptions.seamDiagnostics` only when set in a VS Code settings layer; otherwise `ripr.toml` `lsp.seam_diagnostics` applies. |
+| `ripr.diagnosticProfile` | enum: `actionable` \| `full` | `actionable` | Select the bounded actionable or audit/debug diagnostic projection. Forwarded as `initializationOptions.diagnosticProfile` only when set in a VS Code settings layer; otherwise `ripr.toml` `lsp.diagnostic_profile` applies. |
 | `ripr.gitTimeoutMs` | number | `30000` | Cooperative per-invocation git deadline for the server refresh path. Served to the server through the `workspace/configuration` pull; an exceeded deadline commits a limited snapshot naming `git_invocation_timeout`. |
 | `ripr.refreshDeadlineMs` | number | `600000` | Physical deadline for one whole server refresh analysis attempt. Served to the server through the `workspace/configuration` pull; an exceeded deadline drops the attempt fail-closed with the named `deadline_exceeded` outcome (no limited snapshot is committed). |
 
@@ -445,25 +526,52 @@ The editor default matches the CLI and direct LSP missing-config default:
 
 ### Commands
 
-The extension contributes:
+The extension contributes these command IDs and palette titles:
 
-- `ripr.restartServer`
-- `ripr.selectWorkspaceRoot`
-- `ripr.showOutput`
-- `ripr.copyContext`
-- `ripr.copySuggestedAssertion`
-- `ripr.copyTargetedTestBrief`
-- `ripr.copyAgentPacketCommand`
-- `ripr.copyAgentBriefCommand`
-- `ripr.copyAfterSnapshotCommand`
-- `ripr.copyAgentVerifyCommand`
-- `ripr.copyAgentReceiptCommand`
-- `ripr.openRelatedTest`
-- `ripr.openSettings`
+| Command ID | Palette title |
+| --- | --- |
+| `ripr.restartServer` | ripr: Restart Server |
+| `ripr.refreshDiagnostics` | ripr: Refresh Diagnostics |
+| `ripr.selectWorkspaceRoot` | ripr: Select Workspace Root |
+| `ripr.showOutput` | ripr: Show Output |
+| `ripr.showStatus` | ripr: Show Status |
+| `ripr.diagnoseSetup` | ripr: Diagnose Setup |
+| `ripr.startCurrentRepair` | ripr: Start Current Repair |
+| `ripr.copyCurrentRepairPacket` | ripr: Copy Current Repair Packet |
+| `ripr.copyRepoGapMap` | ripr: Copy Repo Gap Map |
+| `ripr.openFirstPrPacket` | ripr: First PR - Open Packet |
+| `ripr.copyFirstPrSummary` | ripr: First PR - Copy Summary |
+| `ripr.copyFirstPrRepairPacket` | ripr: First PR - Copy Repair Packet |
+| `ripr.copyRepairPacketAtCursor` | ripr: Copy Repair Packet at Cursor |
+| `ripr.copyFirstPrVerifyCommand` | ripr: First PR - Copy Verify Command |
+| `ripr.copyFirstPrReceiptCommand` | ripr: First PR - Copy Receipt Command |
+| `ripr.copyFirstPrRegenerationGuidance` | ripr: First PR - Copy Regeneration Guidance |
+| `ripr.copyContext` | ripr: Inspect Test Gap - Copy Context |
+| `ripr.copySuggestedAssertion` | ripr: Write Targeted Test - Copy Suggested Assertion |
+| `ripr.copyTargetedTestBrief` | ripr: Write Targeted Test - Copy Brief |
+| `ripr.copyAgentRepairCommand` | ripr: Start Repair - Copy Repair Command |
+| `ripr.copyAgentPacketCommand` | ripr: Agent Handoff - Copy Packet Command |
+| `ripr.copyAgentBriefCommand` | ripr: Agent Handoff - Copy Brief Command |
+| `ripr.copyAfterSnapshotCommand` | ripr: Verify After Test - Copy After Snapshot Command |
+| `ripr.copyAgentVerifyCommand` | ripr: Verify After Test - Copy Verify Command |
+| `ripr.copyAgentReceiptCommand` | ripr: Review Result - Copy Receipt Command |
+| `ripr.openRelatedTest` | ripr: Write Targeted Test - Open Best Related Test |
+| `ripr.openSettings` | ripr: Open Settings |
+| `ripr.copyTopRepairPacket` | ripr: Copy Top Repair Packet |
+| `ripr.copyTopVerifyCommand` | ripr: Copy Verify Command |
+| `ripr.copyTopReceiptCommand` | ripr: Copy Receipt Command (Top Repair Packet) |
+| `ripr.openReport` | ripr: Open Report |
+| `ripr.showTopLimitation` | ripr: Show Top Limitation |
+| `ripr.showReceiptStatus` | ripr: Show Receipt Status |
+| `ripr.copyReceiptCommand` | ripr: Copy Receipt Command |
+| `ripr.openAttemptLedger` | ripr: Open Attempt Ledger |
+| `ripr.showRouteQuality` | ripr: Show Route Quality |
 
 These are not configured directly. They are surfaced through the command
 palette and from LSP code actions when diagnostics carry the required
-finding or seam data.
+finding or seam data. Repair actions such as `ripr.copyAgentRepairCommand`
+require a repair-eligible seam; listing a command does not make an advisory
+finding repair eligible.
 
 ## Repo policy files
 
@@ -567,9 +675,9 @@ Validation rules (all enforced; violations fail `test-efficiency-report`):
 | Unmatched declarations rejected | A declared `test`/`path` selector that matches no test fails the report. |
 | Ambiguous name-only selectors rejected | If `test = "..."` matches multiple entries and no `path` is given, fail and list the candidates. |
 
-Future `ripr+` will use the `declared_intent` metadata to exclude
-declared intentional test-efficiency findings from its count. See
-[Badge policy](BADGE_POLICY.md).
+`ripr+` uses the `declared_intent` metadata to keep the analyzer's original
+class visible while excluding declared intentional test-efficiency findings
+from its actionable count. See [Badge policy](BADGE_POLICY.md).
 
 ### `.ripr/suppressions.toml`
 
@@ -606,19 +714,34 @@ reason = "The CLI help smoke test is intentionally broad and covered by CLI cont
 owner = "devtools"
 ```
 
+An exposure-gap suppression may instead select a bounded family by path glob:
+
+```toml
+[[suppressions]]
+kind = "exposure_gap"
+path = "src/generated/**"
+static_class = "no_static_path"
+reason = "Generated sources are checked by the generator contract."
+owner = "code-generation"
+```
+
+`static_class` is optional narrowing for a path-glob selector and must name a
+known exposure class. See [the complete example](suppressions.example.toml)
+for expiry and policy-health metadata.
+
 Supported `kind` values (closed set): `exposure_gap`, `test_efficiency`.
 
 | Rule | Behavior |
 | --- | --- |
 | `schema_version = 1` required | Missing or other values fail. |
 | `kind`, `owner`, `reason` required and non-blank | Missing or whitespace-only values fail. |
-| `kind = "exposure_gap"` requires `finding_id` | And rejects `test`. |
+| `kind = "exposure_gap"` requires `finding_id` or a `path` glob | Rejects `test`; a path-glob selector may narrow by a known `static_class`. |
 | `kind = "test_efficiency"` requires `test` | And rejects `finding_id`; `path` is optional for disambiguation. |
 | `path` repo-relative, slash-separated | Absolute paths and backslash paths fail at parse time. |
 | `expires` ISO `YYYY-MM-DD` if present | Other formats fail at parse time. |
 | `created_at`, `last_seen`, `review_by` ISO `YYYY-MM-DD` if present | Other formats fail at parse time. |
 | Unknown fields rejected | Catches typos. |
-| Duplicate selectors rejected | Same `finding_id` (or `(test, path)`) twice fails. |
+| Duplicate exact selectors rejected | Same `finding_id` (or `(test, path)`) twice fails. This check does not reject duplicate path-glob selectors. |
 | Unmatched selectors surface as warnings | Selector that matches no current finding is reported but does not fail the badge. |
 | Expired suppressions do **not** apply | They surface as warnings on the badge so silent green-forever debt is impossible. |
 
@@ -695,14 +818,38 @@ not treated as production seams.
 
 ## Output formats
 
+Analysis formats, diff-scoped:
+
 | Format | Selector | When to use |
 | --- | --- | --- |
-| `human` | default, or `--format human` / `--format text` | Local terminal review. |
+| `human` | default, or `--format human` / `--format text` | Local terminal review: one bounded `Start here:` route. |
+| `human-full` | `--format human-full` | Exhaustive evidence, including the findings `human` omits. |
 | `json` | `--json` or `--format json` | Tools, editors, CI, agents. Versioned via `schema_version`. See [Output schema](OUTPUT_SCHEMA.md). |
 | `github` | `--format github` | GitHub Actions annotations. |
+| `sarif` | `--format sarif` | SARIF consumers, including GitHub code scanning. |
 
-The `context` command always returns JSON-shaped output regardless of
-`--format`.
+Badge formats, diff-scoped, for PR and CI artifacts only: `badge-json`,
+`badge-shields`, `badge-plus-json`, `badge-plus-shields`. These are not public
+README, crate-page, or store headline authority.
+
+Badge formats, repo-scoped, for public baseline status: `repo-badge-json`,
+`repo-badge-shields`, `repo-badge-plus-json`, `repo-badge-plus-shields`. They
+use canonical actionable gaps by default, or explicit gap-decision-ledger
+projection targets when `--gap-ledger` is supplied.
+
+Repo-scope formats, rendered against the full repo baseline rather than a diff:
+`repo-seams-json`, `repo-seams-md`, `repo-exposure-json`,
+`repo-exposure-summary-json`, `repo-exposure-md`, `repo-sarif`.
+
+Agent format, machine-readable repair evidence: `agent-seam-packets-json`.
+
+The `badge-plus-*` and `repo-badge-plus-*` formats read
+`target/ripr/reports/test-efficiency.json` when present; missing input renders a
+neutral "needs test-efficiency" badge and warns on stderr. See
+[Badge adoption](BADGE_ADOPTION.md).
+
+The `context` command does not accept `--format`; its output is always
+JSON-shaped, and `--json` is accepted for parity with `check`.
 
 ## `ripr.toml`
 
@@ -727,6 +874,32 @@ them. It does not enable runtime mutation execution or CI blocking policy.
 | --- | --- | --- | --- |
 | `mode` | enum: `instant` \| `draft` \| `fast` \| `deep` \| `ready` | `draft` | Default analysis mode when not set by a CLI flag or LSP initialization option. |
 | `include_unchanged_tests` | boolean | `true` | Whether unchanged tests may be indexed as static evidence. |
+| `production_like_targets` | array of repository-relative paths | `[]` (empty — no opt-in) | Workspace-relative targets opted in as production-like test infrastructure (#3283, RIPR-SPEC-0153): analyzed as production behavior rather than test evidence. Paths must be repository-relative with `/` separators — backslashes, drive/scheme prefixes, leading `/`, and `..` escape fail closed at parse time. |
+| `test_harnesses` | array of `[[analysis.test_harnesses]]` tables | `[]` (empty — no registration recognized) | Repository-governed test-harness registrations (#3532, RIPR-SPEC-0153). Registration is explicit configuration only: without an entry, no custom harness or registered test producer is recognized. See `[analysis.test_harnesses]` entries below. |
+
+#### `[analysis.test_harnesses]` entries
+
+Each registration names one exact Cargo target and one exact harness family.
+Unknown kinds or adapters, a kind/adapter mismatch, duplicate
+`registration_id` or `target` values, or a non-exact `marker` are config
+errors that fail closed at parse time.
+
+| Field | Type | Allowed values | Effect |
+| --- | --- | --- | --- |
+| `registration_id` | string | unique across registrations | Stable identifier named in limitations and subject provenance. |
+| `target` | repository-relative path | one unique target file per registration | Exact workspace-relative Cargo target file the registration claims. |
+| `kind` | enum | `custom_harness` \| `registered_attribute` | `custom_harness`: a `[[test]]` target with `harness = false`, evidence role file-wide. `registered_attribute`: a test-producing attribute applied to functions inside one exact target file. |
+| `adapter` | enum | `libtest_mimic_v1` \| `exact_attribute_v1` | Adapter generation bound to the kind: `libtest_mimic_v1` supports `custom_harness`; `exact_attribute_v1` supports `registered_attribute`. |
+| `marker` | exact identifier path | e.g. `libtest_mimic`, `myco::contract_test` | Exact source marker: the harness crate path for `custom_harness` or the exact attribute path for `registered_attribute`. Prefix/suffix lookalikes never match. |
+
+A registration classifies source and describes a selector route; it cannot
+execute anything during passive analysis and grants no process, network,
+edit, GitHub, or publication capability.
+
+Both `production_like_targets` and `test_harnesses` are opt-in keys with
+empty defaults, so the generated `ripr.toml.example` profile (which
+materializes built-in defaults only, per the `ripr.toml` section above) does
+not list them.
 
 ### `[oracles]`
 
@@ -798,13 +971,32 @@ Seam severities affect LSP seam diagnostics. Valid values are `off`, `info`,
 
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `enabled` | array of strings | `["rust"]` | Language adapters the analysis pipeline will dispatch to. Valid values: `rust`, `typescript`, `python`, `perl`. Unknown values and duplicate entries are rejected. TypeScript covers `.ts`, `.tsx`, `.js`, and `.jsx`; Python covers `.py`. Perl consumes externally-produced `ripr-perl-facts-v1` packets and does not parse Perl source directly. Supply one with `--perl-facts <path>`, or configure a managed exporter under `[perl]`; without a packet or available exporter, Perl analysis is unavailable. Rust remains the reference adapter and the only adapter that may be `stable` per [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md); TypeScript, Python, and Perl remain preview adapters. See [Support Tiers](status/SUPPORT_TIERS.md) and Campaign 31, #1379. |
+| `enabled` | array of strings | `["rust"]` when a `ripr.toml` is found; with no `ripr.toml` (at the root or any ancestor up to the repository boundary), `["rust", "python"]` when Python project markers (`pyproject.toml`, `setup.py`, `setup.cfg`, `requirements.txt`, `pytest.ini`, `tox.ini`, `noxfile.py`) or detectable non-generated `.py` files under root `src/` or `tests/` are found. Create a `ripr.toml` with `enabled = ["rust"]` to keep Python preview off. | Language adapters the analysis pipeline will dispatch to. Valid values: `rust`, `typescript`, `python`, `perl`. Unknown values and duplicate entries are rejected. TypeScript covers `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, and `.cjs`; Python covers `.py`. Perl consumes externally-produced `ripr-perl-facts-v1` packets and does not parse Perl source directly. Supply one with `--perl-facts <path>`, or configure a managed exporter under `[perl]`; without a packet or available exporter, Perl analysis is unavailable. `perl` is accepted only by a ripr built with Cargo feature `lang-perl`; default builds reject it at config load. Rust remains the reference adapter and the only adapter that may be `stable` per [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md); TypeScript, Python, and Perl remain preview adapters. See [Support Tiers](status/SUPPORT_TIERS.md) and Campaign 31, #1379. |
 
 `[languages.rust]` configures the stable Rust adapter:
 
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `generated_file_patterns` | array of strings | `[]` | Additional Rust generated-source globs. Built-in generated names and `gen/`, `generated/`, and `out/` directories remain excluded. A pattern without `/` matches any filename; a pattern with `/` matches the repository-relative path. `*` matches within one path segment, `?` matches one character, and `**` matches zero or more path segments. Empty, duplicate, absolute, parent-traversing, drive-prefixed, and backslash-containing patterns are rejected. |
+| `generated_file_patterns` | array of strings | `[]` | Additional Rust generated-source globs. Built-in generated names and `gen/`, `generated/`, and `out/` directories remain excluded unless their exact path is in `handwritten_files`. Files whose first five lines carry an `@generated`, rust-bindgen, or `Code generated ... DO NOT EDIT` comment, and `cargo vendor` crates (directories holding `.cargo-checksum.json`) remain excluded. A pattern without `/` matches any filename; a pattern with `/` matches the repository-relative path. `*` matches within one path segment, `?` matches one character, and `**` matches zero or more path segments. Empty, duplicate, absolute, parent-traversing, drive-prefixed, and backslash-containing patterns are rejected. |
+| `handwritten_files` | array of exact paths | `[]` | Repository-relative `.rs` files to analyze despite a built-in generated filename or directory convention. Explicit `generated_file_patterns`, generator headers and vendor markers still exclude them. Leading `./`, internal `.` and repeated `/` are normalized; order is immaterial. Empty, duplicate after normalization, absolute, parent-traversing, drive-prefixed, backslash-containing, control-character, non-Rust and glob paths are rejected. |
+
+For example, a hand-written test of generated workflows can keep its filename:
+
+```toml
+[languages.rust]
+handwritten_files = ["tests/generated_workflow.rs"]
+```
+
+This declaration changes source discovery for diff checks and repository seam
+inventory; it does not grant edit-cage permission or certify an assertion's
+execution or strength. Unlisted convention-matching files remain excluded. Recovery suggests the opt-in
+only for naming-only exclusions; files with stronger markers receive a refusal
+to override those markers instead.
+If an explicit glob or a real generator/vendor marker also matches, remove only
+an inaccurate declaration or marker; `handwritten_files` does not override it.
+The selected source corpus participates in cache identity, and this setting is
+finding-affecting config for artifact/receipt comparison. Rerun analysis after
+changing it; do not reuse an old excluded-source receipt as complete evidence.
 
 For example:
 
@@ -834,12 +1026,21 @@ instead of publishing phantom preview diagnostics.
 
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `resolve_tsconfig_paths` | boolean | `false` | Resolve TypeScript path aliases from `tsconfig.json` or `jsconfig.json` during owner-to-test discovery. |
+| `resolve_tsconfig_paths` | boolean | `false` | Resolve TypeScript path aliases from `tsconfig.json` or `jsconfig.json` during owner-to-test discovery. Imports of an in-workspace package by its own name (`@scope/pkg/sub`) resolve through that package's `package.json` without this setting. |
 
 ### `[perl]`
 
 Perl is a fact-packet consumer. It does not parse `.pm`, `.pl`, `.t`, or `.psgi`
 source directly. Use either an explicit packet or a managed exporter:
+
+> **Availability:** no released ripr build plus exporter combination analyzes
+> Perl yet. Perl analysis needs both a ripr binary built with Cargo feature
+> `lang-perl` (`cargo install ripr --features lang-perl`; default builds reject
+> `perl` in `[languages] enabled`) and a compatible fact exporter. The canonical
+> exporter, `perl-ripr-facts`, is not yet published, and the published
+> `perllsp` binary does not accept the managed `ripr-facts` argv. `ripr doctor`
+> probes the exporter's `ripr-facts` capability and reports an incompatible
+> binary as such.
 
 ```bash
 ripr check --perl-facts target/ripr/reports/perl-facts.json
@@ -859,9 +1060,9 @@ languages continue. The accepted managed producer values are
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `producer` | string | none | Selects managed producer mode. Accepted values are `perl-ripr-facts`, `perllsp`, and `perl-lsp`. |
-| `executable` | path | none | Overrides the Perl facts exporter executable path. |
-| `timeout_ms` | integer | `30000` | Maximum time in milliseconds for the managed producer invocation. |
-| `cache_dir` | path | none | Directory for generated Perl fact packets. |
+| `executable` | path | `perl-ripr-facts` on PATH for the canonical producer; `perllsp` on PATH for `perllsp`/`perl-lsp` | Overrides the Perl facts exporter executable path in managed mode, but only when the user running ripr sets `RIPR_ALLOW_REPO_PERL_EXECUTABLE=1`; without it ripr ignores the key, says so, and uses the PATH default, so a cloned repository cannot choose a program for `ripr check`, `ripr doctor` or `ripr lsp` to run. No producer is invoked merely because a default executable exists. |
+| `timeout_ms` | integer | `30000` | Maximum time in milliseconds for the managed producer invocation. `0` also resolves to `30000`; it does not disable the timeout. |
+| `cache_dir` | path | `target/ripr/perl-facts` | Directory for generated Perl fact packets in managed mode. Must be a repository-relative path without `..`; an absolute or escaping path is a config error. |
 
 To evaluate preview languages, keep Rust enabled and add only the preview
 adapters the repo wants to inspect:
@@ -944,11 +1145,22 @@ enabled = ["rust"]
 
 ## Precedence
 
-For CLI commands:
+For CLI options that expose an environment fallback:
 
 ```
-CLI flag  >  ripr.toml  >  CheckInput::default()
+CLI flag  >  environment fallback  >  ripr.toml  >  command default
 ```
+
+Apply only the layers an option actually supports: most `ripr.toml` keys have
+no environment counterpart, and process-only tuning variables in the table
+above do not have a CLI/config equivalent. For example, an explicit
+`ripr check --git-timeout` overrides `RIPR_GIT_TIMEOUT`; there is no
+`ripr.toml` key for that deadline. Options without an environment fallback
+retain `CLI flag > ripr.toml > CheckInput::default()`.
+
+Labels are an additive exception: `impacted-evidence --label`/`--labels`
+union with labels read from `GITHUB_PR_LABELS` or its `PR_LABELS` fallback.
+An explicitly empty `GITHUB_PR_LABELS` does not fall through to `PR_LABELS`.
 
 For LSP, the negotiated configuration transport decides (see "LSP
 configuration pull" above):
@@ -968,7 +1180,8 @@ other modes:    LSP initializationOptions  >  ripr.toml  >  CheckInput::default(
   [Server provisioning](SERVER_PROVISIONING.md) — how VS Code launches and
   resolves the server.
 - [Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md) — how to
-  enable and interpret opt-in TypeScript, JavaScript, and Python evidence.
+  enable and interpret TypeScript/JavaScript (opt-in) and Python (marker-auto
+  when no `ripr.toml` exists; opt out with `enabled = ["rust"]`) evidence.
 - [Roadmap](ROADMAP.md) and
   [Implementation plan](IMPLEMENTATION_PLAN.md) — when the `ripr.toml`
   loader and the bounded-graph keys are expected to land.

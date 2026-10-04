@@ -21,7 +21,7 @@
       "suggested_test": "assert_eq!(new(), 4)",
       "related_test": "tests/new.rs::boundary",
       "verify_command": "ripr agent verify --json",
-      "agent_command": "ripr agent start --root . --seam-id new --out target/ripr/workflow"
+      "agent_command": null
     }
   ]
 }

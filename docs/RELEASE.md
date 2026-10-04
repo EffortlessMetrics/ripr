@@ -134,8 +134,10 @@ gh api repos/EffortlessMetrics/ripr-swarm/tags --paginate -q '.[].name'
   state, not a defect.
 - A swarm rehearsal without a public release is rehearsal, not a release.
 - A changelog version without a source release is an unpublished draft, and
-  is named that way (the 0.8.0/0.9.0/0.10.0 swarm drafts are working drafts,
-  not published releases).
+  is named that way. 0.8.0, 0.9.0 and 0.10.0 were published from
+  `EffortlessMetrics/ripr` (GitHub Releases on 2026-06-02, 2026-06-11 and
+  2026-06-15, with matching crates.io versions). The staged 0.10.1 was never
+  published.
 - The VS Code downloader and default install documentation resolve release
   assets from `EffortlessMetrics/ripr` only
   (`editors/vscode/src/downloader.ts` builds URLs against that repository).
@@ -183,6 +185,38 @@ cargo xtask release-negative-corpus --version 0.11.0   # readiness-chain authori
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 ```
+
+For the #1609-qualified path, the existing corpus also accepts the complete
+`--controller-root`, `--candidate-source-root`, `--candidate-artifact` group.
+Add `--candidate-manifest-sha256 <accepted-raw-sha256>` only for direct
+schema-1.1 live-head admission. Its digest comes from the trusted release
+operator's reviewed #1609 handoff, never from the candidate document or an
+auto-discovered adjacent file. Without that flag the group keeps historical
+registry mode; without the entire group the command is unqualified smoke.
+Refused or partial inputs do not fall back. See SPEC-0144 and the transaction
+runbook for accepted prerequisite packets and the no-predicted-SOURCE_PARENT
+boundary. An identity hash check alone does not establish owner acceptance.
+The direct adapter recomputes source-promotion-style ordered Git range digests,
+keeps record-set adjudication with #2768, and caps retained inputs at 64 proof
+references, 16 MiB per file and 64 MiB total. SPEC-0144 names its three supported
+origin spellings and the limits of unlocked file snapshots.
+Source custody separately caps 16,384 ordinary blobs, 16 MiB per blob and
+128 MiB retained blob bytes, with bounded Git metadata/batch output and exact
+checkout reads. SPEC-0134 defines these limits and the shared no-replacement
+Git-object contract.
+
+The version-only invocation above remains legacy smoke. In both explicit
+qualification modes canonical source/controller roots must not be equal or
+nested; separate worktrees may share the same repository.
+The package producer uses that source root and retains archive/executable byte
+custody for the installed doctor and authentic corpus chain. Ordinary archive
+entries must match raw committed source blobs; transformed/sparse checkouts and
+unsupported generated entries refuse. These unlocked checks do not authenticate
+provenance, select a release pin, or complete the full qualification matrix.
+Archive, extracted-input and executable rereads are bounded by their admitted
+byte lengths and require ordinary files. Initial archive/executable capture and
+archive decompression retain their separate, currently unbounded memory surface;
+the reread bound is not a total package/install memory or storage budget.
 
 For `0.11.0`, the Rust gap-repair support claim remains `usable alpha`.
 Fixture, installed-package, packaged-editor, bounded test-only transaction, and
@@ -244,8 +278,10 @@ cargo run -p ripr -- explain --diff crates/ripr/examples/sample/example.diff pro
 cargo run -p ripr -- context --diff crates/ripr/examples/sample/example.diff --at probe:crates_ripr_examples_sample_src_lib.rs:error_path:c1a03250 --json
 ```
 
-The version smoke must print exactly `ripr <CARGO_PKG_VERSION>` with one
-trailing newline, exit 0, and leave stderr empty. `--version`/`-V` is a
+The version smoke must print exactly `ripr <CARGO_PKG_VERSION> (<commit>)`
+with one trailing newline, exit 0, and leave stderr empty; `<commit>` is the
+full commit the candidate was built or packaged from (see
+[installation verification](INSTALLATION_VERIFICATION.md)). `--version`/`-V` is a
 side-effect-free identity query and takes precedence over help, JSON, and
 verbose-looking flags; it must not emit the help screen or write analysis
 artifacts. Command-local version routes such as `ripr lsp --version` retain
@@ -344,6 +380,15 @@ git tag v0.8.0
 git push origin v0.8.0
 ```
 
+Pushing the tag publishes nothing by itself. The release workflows run only by
+`workflow_dispatch`, one channel at a time, in the order and with the receipts
+that [RELEASE_TRANSACTION.md](RELEASE_TRANSACTION.md) gives: create the GitHub
+Release, then dispatch `release-server-binaries.yml`, then
+`publish-extension.yml` on the tag (`--ref v0.8.0`) with exactly one of
+`publish_vs_marketplace=true` or `publish_open_vsx=true`; the workflow refuses
+zero or two channels. The extension workflow attaches its VSIX to the existing
+`v<version>` Release without creating or replacing it.
+
 Update docs or release notes if the install command or package metadata changed.
 
 ## Public-Surface Copy
@@ -372,12 +417,16 @@ existing GitHub Release rather than replacing it.
    and fixes only the broken path. Merge it.
 2. Rerun the failed workflow via `workflow_dispatch` with the same
    `version` input as the tag, for example
-   `gh workflow run release-server-binaries.yml -f version=0.8.0`. The
+   `gh workflow run release-server-binaries.yml --repo EffortlessMetrics/ripr -f version=0.8.0`. The
    asset names continue to use the original version, so they overlay
    correctly on the existing Release.
 3. After server assets are present and verified, rerun any downstream
    workflow that was gated on them, for example
-   `gh workflow run publish-extension.yml -f version=0.8.0`.
+   `gh workflow run publish-extension.yml --repo EffortlessMetrics/ripr --ref v0.8.0 -f version=0.8.0 -f publish_vs_marketplace=true -f publish_open_vsx=false`,
+   or the reverse pair for Open VSX. Exactly one channel must be `true`; the
+   workflow refuses zero or two. If the fix-forward repaired this workflow
+   itself, dispatch with `--ref main` instead: the VSIX still attaches to the
+   `v<version>` Release named by `version`, not to the execution ref.
 4. Do not retag and do not delete the GitHub Release. Leave the tag at
    the release-prep commit; the fix-forward commit is on `main` and any
    subsequent point release will include it.

@@ -2,29 +2,32 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/unwrap_err_variant_single_line/input
 
-Summary: 2 probe(s), 0 exposed, 2 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 2 probe(s), 0 exposed, 2 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 2 of 2 finding(s) unsuppressed
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
 
 Start here:
-  State: top_gap
+  State: a test gap to inspect or repair (top_gap)
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/unwrap_err_variant_single_line/input/src/lib.rs:12
-  Static exposure: weakly_exposed (warning, confidence 0.66)
-  Why weakly_exposed: the evidence path is partially complete — see full form for details
+  Static exposure: weak (weakly_exposed, warning, confidence 0.66)
+  Why weak: a related test reaches this change, but the path from it to what the test checks is only partly traced
   Changed behavior: return Err(ParseError::TooLong(name.len()))
   Related test: tests/errors.rs:4 too_long_name_rejected_with_exact_variant
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation yes · discriminator not established
     - reach yes: Related tests appear to reach validate: too_long_name_rejected_with_exact_variant
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 10 more evidence line(s) hidden
+    - 10 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/unwrap_err_variant_single_line/input --diff fixtures/unwrap_err_variant_single_line/diff.patch --mode fast probe:src_lib.rs:error_path:e4b7f445
   ripr context --root fixtures/unwrap_err_variant_single_line/input --diff fixtures/unwrap_err_variant_single_line/diff.patch --mode fast --at probe:src_lib.rs:error_path:e4b7f445
+Write a test for it:
+  ripr agent stub --root fixtures/unwrap_err_variant_single_line/input --at src/lib.rs:12
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
+    - fixtures/unwrap_err_variant_single_line/input/src/lib.rs:12 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

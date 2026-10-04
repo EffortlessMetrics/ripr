@@ -18,7 +18,12 @@ impl std::fmt::Display for InputState {
         match self {
             Self::Present => f.write_str("present"),
             Self::Missing => f.write_str("missing"),
-            Self::Invalid(err) => write!(f, "invalid: {}", super::util::md_escape(err)),
+            // Rendered in a list item and in a table cell (#4468).
+            Self::Invalid(err) => write!(
+                f,
+                "invalid: {}",
+                crate::output::markdown::table_cell_text(err)
+            ),
         }
     }
 }
@@ -39,7 +44,7 @@ pub struct PrEvidenceSummaryJson {
     pub(super) analysis_outcome: Option<Value>,
     pub(super) changed_surfaces: U64OrNotAvailable,
     pub(super) gaps: GapCounts,
-    pub(super) limitations: Vec<LimitationEntry>,
+    pub(super) limitations: LimitationsOrNotAvailable,
     pub(super) missing_receipts: U64OrNotAvailable,
     pub(super) receipt_status: ReceiptStatusCounts,
     pub(super) top_repair: Option<TopRepair>,
@@ -117,6 +122,48 @@ pub(super) struct LimitationEntry {
     pub(super) repair_route: String,
 }
 
+/// Either the limitation entries read from repo-exposure, or the honest-absent
+/// state for a repo-exposure artifact that could not be read.
+///
+/// The two are different findings and the summary has to keep them apart.
+/// An empty `Entries` says repo-exposure was read and named no limitation;
+/// `NotAvailable` says nothing was read, so no limitation was established
+/// either way. Collapsing them rendered `- none` for a run that never opened
+/// the artifact, against this summary's documented fail-closed rule in
+/// `docs/OUTPUT_SCHEMA.md`.
+pub(super) enum LimitationsOrNotAvailable {
+    Entries(Vec<LimitationEntry>),
+    NotAvailable,
+}
+
+impl LimitationsOrNotAvailable {
+    /// The entries when repo-exposure was read, and an empty slice otherwise.
+    ///
+    /// Callers that only need the first entry use this; callers that render
+    /// the field match on the variant, because the empty slice here means
+    /// "read, none found" and "not read" alike.
+    pub(super) fn entries(&self) -> &[LimitationEntry] {
+        match self {
+            Self::Entries(entries) => entries,
+            Self::NotAvailable => &[],
+        }
+    }
+
+    /// The line the Markdown panel prints where it has no limitation to show.
+    ///
+    /// `## Limitations` and `## Top Limitation` both reach that state, and
+    /// both must answer it the same way, because they describe the same
+    /// evidence. Owning the answer here is what keeps them from drifting: two
+    /// copies of this decision in the renderer would be the parallel table
+    /// this module already paid for once.
+    pub(super) fn empty_state_line(&self) -> &'static str {
+        match self {
+            Self::Entries(_) => "- none\n",
+            Self::NotAvailable => "- not_available\n",
+        }
+    }
+}
+
 pub(super) struct TopRepair {
     pub(super) canonical_gap_id: String,
     pub(super) language: String,
@@ -124,8 +171,13 @@ pub(super) struct TopRepair {
     pub(super) repair_kind: String,
     /// repair.target_file from start-here selected.
     pub(super) target: String,
+    /// start-here `selected.repair_command`, carried unchanged (#3906).
+    /// Start-here emits it only for a review-card selection past the
+    /// fail-closed repair-packet flip; pr-summary never derives one.
+    pub(super) repair_command: Option<String>,
     pub(super) verify_command: String,
     pub(super) receipt_command: String,
+    pub(super) command_context: Option<serde_json::Value>,
     pub(super) receipt_state: String,
 }
 

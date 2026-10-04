@@ -116,7 +116,8 @@ ripr pr-ledger record \
   --coverage target/ripr/reports/coverage-summary.json \
   --history .ripr/pr-evidence-ledger.jsonl \
   --out target/ripr/reports/pr-evidence-ledger.json \
-  --out-md target/ripr/reports/pr-evidence-ledger.md
+  --out-md target/ripr/reports/pr-evidence-ledger.md \
+  --out-jsonl .ripr/pr-evidence-ledger.jsonl
 ```
 
 Required inputs:
@@ -170,8 +171,10 @@ Append-only means:
 - correcting a historical record requires an explicit future repair command or
   a reviewed manual edit.
 
-The first implementation may read history without appending. If appending is
-implemented, it must require an explicit flag and preserve prior records.
+The first implementation may read history without appending. Appending is
+implemented through the explicit `--out-jsonl` flag and preserves prior
+records. Generated CI reads `.ripr/pr-evidence-ledger.jsonl` when present and
+must not pass `--out-jsonl` or auto-commit ledger history.
 
 ## JSON Shape
 
@@ -278,7 +281,8 @@ The JSON report uses schema version `0.1`:
     "suggested_test": "Add an equality-boundary assertion.",
     "related_test": "tests/pricing.rs::applies_discount_above_threshold",
     "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json",
-    "agent_command": "ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow"
+    "repair_command": "ripr agent repair --root . --seam-id 67fc764ba37d77bd --phase before",
+    "agent_command": "ripr agent repair --root . --seam-id 67fc764ba37d77bd --phase before"
   },
   "history": {
     "source": ".ripr/pr-evidence-ledger.jsonl",
@@ -327,6 +331,12 @@ Field contract:
   artifacts. Missing fields are `null` plus warnings, not invented.
   `top_repair_route.gap_id` and `top_repair_route.canonical_gap_id` are copied
   from the selected source artifact when available.
+  `top_repair_route.repair_command` (#3906) is carried only from a review
+  card's `llm_guidance.repair_command`, a gate route's
+  `repair_route.repair_command`, or a RIPR Zero route's `repair_command`;
+  `top_repair_route.agent_command` is that command, else a carried read-only
+  inspection command, else `null`. The ledger never builds an `agent start` or
+  `agent repair` command from a bare seam id.
 - `history.*` is present only when a prior ledger history or previous ledger
   summary is supplied.
 
