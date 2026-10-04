@@ -20,6 +20,7 @@ use std::path::Path;
 
 use crate::agent::artifact::git_output;
 use crate::agent::command_specs::{AgentArtifactRoute, agent_inspection_command_spec};
+use crate::agent::loop_commands::{bound_root, shell_arg};
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::repair_route::{
     RepairRouteReadiness, RepairTargetSelection, repair_packet_eligibility,
@@ -163,18 +164,26 @@ pub(crate) fn repair_card_for_entry(
         })?
         .trim()
         .to_string();
-    // #5007: an unnameable portable identity is a deliberate named refusal
-    // (the remedy is the full packet route), not an operational failure.
-    let workspace_identity = workspace_identity_for(entry, &eligibility.readiness)
-        .map_err(AgentCardError::identity_unnameable)?;
     let seam_id = entry.seam.id().as_str().to_string();
+    // #5007: an unnameable portable identity is a deliberate named refusal
+    // (the remedy is the full packet route), not an operational failure. The
+    // CLI prints this refusal to a user who may paste it from any directory,
+    // so its packet route binds the selected root (#3999).
+    let workspace_identity = workspace_identity_naming_route(
+        entry,
+        &eligibility.readiness,
+        &bound_packet_command(root, &seam_id),
+    )
+    .map_err(AgentCardError::identity_unnameable)?;
     let attempt = latest_attempt_for_seam(root, &seam_id).map_err(AgentCardError::operational)?;
     let currentness =
         evidence_tree_currentness(root, entry).map_err(AgentCardError::operational)?;
     let packet_json = card_packet_json(entry);
+    // The typed args stay portable (`--root .`); only the display a CLI user
+    // pastes binds the selected root (#3999). Display never enters identity.
     let next_command = agent_inspection_command_spec(
         AgentArtifactRoute::Packet,
-        &root.to_string_lossy(),
+        &bound_root(&root.to_string_lossy()),
         &seam_id,
     );
 
@@ -383,7 +392,7 @@ pub(crate) fn assemble_repair_card(
     };
 
     let seam_id = entry.seam.id().as_str().to_string();
-    let packet_route = format!("ripr agent packet --seam-id {seam_id} --json");
+    let packet_route = format!("ripr agent packet --seam-id {} --json", shell_arg(&seam_id));
     let detail_sources = detail_sources_for(facts, &packet_route, &done_when)
         .map_err(AgentCardError::operational)?;
 
@@ -473,7 +482,9 @@ fn detail_sources_for(
     }
     match (facts.witness, facts.finding_id) {
         (Some(witness), Some(finding_id)) => {
-            let explain_route = format!("ripr explain {finding_id}");
+            // A finding id embeds the raw file path, so a path with a space,
+            // apostrophe or `;` must stay one argument when pasted.
+            let explain_route = format!("ripr explain {}", shell_arg(finding_id));
             sources.push(RepairCardDetailSource::current(
                 RepairCardDetailFamily::FixInstruction,
                 &explain_route,
@@ -626,6 +637,38 @@ pub(crate) fn workspace_identity_for(
     entry: &ClassifiedSeam,
     readiness: &RepairRouteReadiness,
 ) -> Result<String, String> {
+    workspace_identity_naming_route(
+        entry,
+        readiness,
+        &format!(
+            "ripr agent packet --seam-id {} --json",
+            shell_arg(entry.seam.id().as_str())
+        ),
+    )
+}
+
+/// The `ripr agent packet` command a CLI user can paste from any working
+/// directory: the root binds against the invocation's working directory
+/// (#3999), the way `first-pr` and the `agent card` refusal remedies bind it.
+/// Presentation only; the card's typed next action and its detail routes
+/// keep their portable spelling and never enter identity with a checkout path.
+pub(crate) fn bound_packet_command(root: &Path, seam_id: &str) -> String {
+    agent_inspection_command_spec(
+        AgentArtifactRoute::Packet,
+        &bound_root(&root.to_string_lossy()),
+        seam_id,
+    )
+    .display
+}
+
+/// [`workspace_identity_for`] with the caller's packet route in the refusal:
+/// the editor and MCP projections name the portable route, the CLI names the
+/// bound one.
+fn workspace_identity_naming_route(
+    entry: &ClassifiedSeam,
+    readiness: &RepairRouteReadiness,
+    packet_route: &str,
+) -> Result<String, String> {
     if let RepairTargetSelection::Existing(target) = &readiness.target_selection {
         return Ok(target.workspace_identity().to_string());
     }
@@ -635,8 +678,7 @@ pub(crate) fn workspace_identity_for(
         }
     }
     Err(format!(
-        "agent card cannot name the portable workspace identity for seam `{}`: no admitted test-target evidence names it; run `ripr agent packet --seam-id {} --json` for the full evidence packet",
-        entry.seam.id().as_str(),
+        "agent card cannot name the portable workspace identity for seam `{}`: no admitted test-target evidence names it; run `{packet_route}` for the full evidence packet",
         entry.seam.id().as_str()
     ))
 }
@@ -870,6 +912,32 @@ mod tests {
         }
         if gap_names_seam(&gap, "gap-1", "pricing::other_total") {
             return Err("a gap id shared with another owner must not name the seam".to_string());
+        }
+        Ok(())
+    }
+
+    /// Finding ids embed the raw file path. A path with a space, apostrophe
+    /// and `;` must reach the pasted `ripr explain` route as one argument,
+    /// never splitting or running its tail as a second command.
+    #[test]
+    fn fix_instruction_route_quotes_a_path_bearing_finding_id() -> Result<(), String> {
+        let entry = weakly_gripped_entry();
+        let packet = packet_for(&entry);
+        let witness = super::super::repair_card_usability::measurement_witness();
+        let finding_id = "probe:src/it's;x rm.rs:2:predicate";
+        let mut facts = facts_for(&entry, &packet);
+        facts.witness = Some(&witness);
+        facts.finding_id = Some(finding_id);
+        let card = assemble_repair_card(&facts)?;
+        let route = card
+            .detail_references
+            .iter()
+            .find(|reference| reference.family == RepairCardDetailFamily::FixInstruction)
+            .and_then(|reference| reference.route.as_deref())
+            .ok_or_else(|| "fix instruction route missing".to_string())?;
+        let expected = r"ripr explain 'probe:src/it'\''s;x rm.rs:2:predicate'";
+        if route != expected {
+            return Err(format!("expected `{expected}`, got `{route}`"));
         }
         Ok(())
     }

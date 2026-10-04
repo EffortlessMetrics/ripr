@@ -145,9 +145,11 @@ check), then assembles one `RepairCardV1`:
   human summary in card order: the renderer presents values verbatim, never
   re-derives, reorders, or enhances them, names the selected target
   (existing or proposed) when the card carries one, and ends with the
-  explicit full packet line — the typed next action's display, which binds
-  the portable root and is directly executable, when the route gate is open,
-  else the rootless packet route exactly as the detail references name it.
+  explicit full packet line: `ripr agent packet --root ROOT --seam-id ID
+  --json` with ROOT bound to the selected root against the invocation's
+  working directory, so it runs when pasted from any directory (#3999). The
+  next-action display binds the same way; the typed command args and the
+  detail-reference routes stay portable and never enter card identity.
 
 `ripr agent packet` is unchanged and remains the compatibility path: same
 envelope, same schema, same bytes. Shared field names keep one meaning
@@ -196,7 +198,8 @@ live caller (`git_output`, `task_for`, `TASK_WRITE_TARGETED_TEST`).
 1. `ripr agent card --root . --seam-id ID` on a visible, policy-admitted seam
    prints the compact card: typed fields in card order, an explicit
    non-actionable reason when no bounded route is exposed, and a final
-   `full packet:` line naming `ripr agent packet --seam-id ID --json`.
+   `full packet:` line naming `ripr agent packet --root ROOT --seam-id ID
+   --json`, with ROOT the bound selected root.
 2. The same call with `--json` prints one `repair_card.v1` document whose
    canonical-packet detail reference is `current` and names the packet
    route; no packet envelope content appears on the wire card.

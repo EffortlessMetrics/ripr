@@ -1623,3 +1623,116 @@ fn run_funnel_in_hostile_root(base: &Path, root: &Path, bash: &Path) -> Result<(
     }
     Ok(())
 }
+
+/// #3999: `agent card` and `agent repair` print follow-up commands to a CLI
+/// user who may paste them from any directory. Typed with a relative
+/// `--root`, each printed command must bind the selected root, so it runs
+/// from a foreign directory and writes nothing there. The root carries a
+/// space and an apostrophe, so the binding also has to survive quoting.
+#[test]
+fn agent_card_and_repair_follow_ups_bind_a_relative_root_for_foreign_paste() -> Result<(), String> {
+    let Some(bash) = shell_prerequisite()? else {
+        return Ok(());
+    };
+    let base = unique_temp_workspace("journey-relative-root");
+    let result = relative_root_follow_ups(&base, &bash);
+    cleanup(&base);
+    result
+}
+
+fn relative_root_follow_ups(base: &Path, bash: &Path) -> Result<(), String> {
+    let relative = "agent repo's root";
+    let root = base.join(relative);
+    std::fs::create_dir_all(&root).map_err(|error| format!("create root: {error}"))?;
+    init_producer_fixture_repo(&root)?;
+    // The repair before phase refuses a checkout whose build directory is not
+    // Git-ignored.
+    std::fs::write(root.join(".gitignore"), "/target/\n")
+        .map_err(|error| format!("write .gitignore: {error}"))?;
+    fixture_git_ok(&root, &["add", ".gitignore"])
+        .map_err(|error| format!("fixture git add: {error}"))?;
+    commit_fixture(&root, "ignore the build directory")?;
+    let snapshot = base.join("seams.repo-exposure.json");
+    produce_repo_exposure_snapshot(&root, &root_arg_of(&root), &snapshot)?;
+    let seam_id = first_snapshot_seam_id(&snapshot)?;
+    let journey = Journey {
+        root_arg: relative.to_string(),
+        launch_dir: foreign_launch_dir(base)?,
+        path_env: shell_path_env()?,
+        bash: bash.to_path_buf(),
+        seam_id,
+        root: root.clone(),
+    };
+    let bound = shell_display_path(
+        &root
+            .canonicalize()
+            .map_err(|error| format!("canonicalize root: {error}"))?,
+    );
+    let printed = |text: &str, prefix: &str| -> Result<String, String> {
+        text.lines()
+            .find_map(|line| line.trim_start().strip_prefix(prefix))
+            .map(|rest| rest.split('`').next().unwrap_or(rest).to_string())
+            .ok_or_else(|| format!("no `{prefix}` command printed:\n{text}"))
+    };
+
+    // The card is typed from the root's parent with the relative spelling.
+    let card = run_ripr(
+        base,
+        &[
+            "agent",
+            "card",
+            "--root",
+            &journey.root_arg,
+            "--seam-id",
+            &journey.seam_id,
+        ],
+    )?;
+    assert_success(&card, "ripr agent card")?;
+    let card_stdout = String::from_utf8_lossy(&card.stdout);
+    let packet = printed(&card_stdout, "full packet: ")?;
+
+    // The after phase with no attempt refuses and names the start command.
+    let after = run_ripr(
+        base,
+        &[
+            "agent",
+            "repair",
+            "--root",
+            &journey.root_arg,
+            "--seam-id",
+            &journey.seam_id,
+            "--phase",
+            "after",
+        ],
+    )?;
+    if after.status.success() {
+        return Err("an after phase with no attempt must refuse".to_string());
+    }
+    let after_stderr = String::from_utf8_lossy(&after.stderr);
+    let start = after_stderr
+        .split("start one with `")
+        .nth(1)
+        .and_then(|rest| rest.split('`').next())
+        .map(str::to_string)
+        .ok_or_else(|| format!("no start command in the refusal:\n{after_stderr}"))?;
+
+    for command in [&packet, &start] {
+        if !command.contains(&bound.replace('\'', "'\\''")) {
+            return Err(format!(
+                "printed command does not bind the selected root {bound}: {command}"
+            ));
+        }
+        let output = run_in_shell(&journey, command)?;
+        assert_success(
+            &output,
+            &format!("pasted `{command}` from a foreign directory"),
+        )?;
+    }
+    if !journey.root.join("target/ripr").is_dir() {
+        return Err("the pasted repair start did not write under the selected root".to_string());
+    }
+    if journey.launch_dir.join("target").exists() {
+        return Err("a pasted command wrote into the foreign directory".to_string());
+    }
+    Ok(())
+}

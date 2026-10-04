@@ -99,7 +99,7 @@ fn classified_entry() -> ClassifiedSeam {
 /// A witness-shaped instruction payload: fix site, suggested assertion, one
 /// limitation, one missing-discriminator fact. Field-for-field the same
 /// authority the check pipeline projects; only the values are synthetic.
-fn measurement_witness() -> DiagnosticWitness {
+pub(crate) fn measurement_witness() -> DiagnosticWitness {
     DiagnosticWitness {
         kind: "predicate_boundary".to_string(),
         probe_family: "predicate_boundary".to_string(),
@@ -220,6 +220,7 @@ fn measure_profile(profile: &SyntheticProfile) -> Result<Value, String> {
         .map(|head| measurement_attempt(&seam_id, head))
         .transpose()?;
     let next_command = agent_inspection_command_spec(AgentArtifactRoute::Packet, ".", &seam_id);
+    let next_command_display = next_command.display.clone();
     let finding_id = profile.witness.as_ref().map(|_| "finding-demo-1");
     let card = assemble_repair_card(&SeamCardFacts {
         entry: &profile.entry,
@@ -233,7 +234,9 @@ fn measure_profile(profile: &SyntheticProfile) -> Result<Value, String> {
         next_command: Some(next_command),
     })?;
     let card_wire = render_pretty_with_newline(&card, "repair card usability measurement")?;
-    let human_lines = agent_card_prose_lines(&card);
+    // The measurement has no checkout to bind, so the closing packet line
+    // carries the typed command's portable display.
+    let human_lines = agent_card_prose_lines(&card, &next_command_display);
     let human_rendered = format!("{}\n", human_lines.join("\n"));
     let packet_surfaces_seam = {
         let envelope: Value = serde_json::from_str(&packet_json)

@@ -208,10 +208,12 @@ pub(crate) fn receipt_binding_from(
     packet_path: &Path,
     attempt_id: Option<&str>,
 ) -> Result<serde_json::Value, String> {
-    // Refusals name the root the caller typed, not the canonicalized verbatim
-    // path the store resolver hands back below (#4332); the resolver owns the
-    // store identity and its canonicalization (#4797).
-    let root_display = display_path(root);
+    // Refusals name the root the caller typed, bound lexically against the
+    // working directory so a pasted command runs from anywhere (#3999), never
+    // the canonicalized verbatim path the store resolver hands back below
+    // (#4332); the resolver owns the store identity and its canonicalization
+    // (#4797).
+    let root_display = bound_root(&root.to_string_lossy());
     let store = resolve_store(root, store, RepairAttemptStoreAccess::Open)?;
     let root = store.canonical_root().to_path_buf();
     let packet = std::fs::read(packet_path).map_err(|error| {
@@ -635,7 +637,7 @@ fn complete_repair_attempt(
             let store_flag = store.quoted_store_flag();
             let next_command = format!(
                 "ripr agent repair --root {}{store_flag} --attempt {} --phase after{}",
-                shell_arg(&bound_root(&display_path(publication.root_argument))),
+                shell_arg(&bound_root(&publication.root_argument.to_string_lossy())),
                 shell_arg(publication.repair_attempt_id.as_str()),
                 publication.next_command_suffix.unwrap_or_default()
             );
@@ -1568,9 +1570,11 @@ pub(crate) fn resolve_awaiting_repair_attempt_from(
             let attempt_id = RepairAttemptId::parse(attempt_id.to_string())?;
             load_repair_attempt_by_id(&store, &attempt_id)?
         }
-        (None, Some(seam_id)) => {
-            select_awaiting_repair_attempt_by_seam(&store, &display_path(root_argument), seam_id)?
-        }
+        (None, Some(seam_id)) => select_awaiting_repair_attempt_by_seam(
+            &store,
+            &bound_root(&root_argument.to_string_lossy()),
+            seam_id,
+        )?,
         (Some(_), Some(_)) => {
             return Err(
                 "repair after selection accepts either attempt ID or seam ID, not both".to_string(),
@@ -1582,7 +1586,7 @@ pub(crate) fn resolve_awaiting_repair_attempt_from(
     };
     if manifest.state != RepairAttemptState::AwaitingEdit {
         return Err(after_phase_not_awaiting_error(
-            &display_path(root_argument),
+            &bound_root(&root_argument.to_string_lossy()),
             &manifest,
         ));
     }
@@ -1689,7 +1693,7 @@ pub(crate) fn finish_repair_attempt_from(
     let root = store.canonical_root().to_path_buf();
     if manifest.state != RepairAttemptState::AwaitingEdit {
         return Err(after_phase_not_awaiting_error(
-            &display_path(root_argument),
+            &bound_root(&root_argument.to_string_lossy()),
             &manifest,
         ));
     }

@@ -64,7 +64,9 @@ pub(super) fn run_agent_card(options: AgentCardOptions) -> Result<(), CommandErr
         print!("{rendered}");
         return Ok(());
     }
-    for line in agent_card_prose_lines(&card) {
+    let packet_command =
+        crate::app::repair_card_handoff::bound_packet_command(&options.root, &options.seam_id);
+    for line in agent_card_prose_lines(&card, &packet_command) {
         println!("{line}");
     }
     Ok(())
@@ -104,6 +106,7 @@ fn refusal_remedy_route(
     seam_id: &str,
     kind: AgentCardRefusalKind,
 ) -> String {
+    let root_path = root;
     let root = crate::agent::loop_commands::shell_arg(&crate::agent::loop_commands::bound_root(
         &root.to_string_lossy(),
     ));
@@ -121,10 +124,7 @@ fn refusal_remedy_route(
             format!("ripr check --root {root} --json")
         }
         AgentCardRefusalKind::IdentityUnnameable | AgentCardRefusalKind::BudgetOverflow => {
-            format!(
-                "ripr agent packet --root {root} --seam-id {} --json",
-                crate::agent::loop_commands::shell_arg(seam_id)
-            )
+            crate::app::repair_card_handoff::bound_packet_command(root_path, seam_id)
         }
     }
 }
@@ -188,7 +188,7 @@ fn wire_name<T: serde::Serialize>(value: &T) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-pub(crate) fn agent_card_prose_lines(card: &RepairCardV1) -> Vec<String> {
+pub(crate) fn agent_card_prose_lines(card: &RepairCardV1, packet_command: &str) -> Vec<String> {
     let mut lines = Vec::new();
     lines.push(format!("Repair card {}", card.repair_card_id));
     lines.push(format!("  schema: {}", card.schema_version));
@@ -298,18 +298,11 @@ pub(crate) fn agent_card_prose_lines(card: &RepairCardV1) -> Vec<String> {
             attempt.attempt_id, attempt.state
         ));
     }
-    // The packet command is presented the way the card actually exposes it:
-    // when the typed next action is open, its display already binds the
-    // portable root and is directly executable; without a next action the
-    // packet family is a route reference and stays rootless like every other
-    // detail route (#4666 portability contract).
-    match &card.next_action {
-        Some(action) => lines.push(format!("  full packet: {}", action.display)),
-        None => lines.push(format!(
-            "  full packet: ripr agent packet --seam-id {} --json",
-            card.subject.seam_id
-        )),
-    }
+    // The closing packet command is the caller's: the CLI passes one bound
+    // to the selected root so it runs when pasted from any directory (#3999).
+    // The card's own typed next action and detail routes stay portable (#4666
+    // portability contract) and are printed verbatim above.
+    lines.push(format!("  full packet: {packet_command}"));
     lines
 }
 

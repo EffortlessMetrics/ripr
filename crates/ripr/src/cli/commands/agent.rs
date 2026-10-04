@@ -987,7 +987,7 @@ fn run_agent_repair_phase(
                         current_head,
                     } => {
                         for line in crate::app::repair_attempt::diverged_head_recovery(
-                            &crate::agent::loop_commands::display_path(&root),
+                            &crate::agent::loop_commands::bound_root(&root.to_string_lossy()),
                             attempt.attempt_id.as_str(),
                             &attempt.seam_id,
                             &attempt.repository_head,
@@ -1458,7 +1458,7 @@ fn repair_after_cage_recovery_lines(
     before_head: &str,
     after: &crate::app::repair_attempt::RepairAttemptAfter,
 ) -> Vec<String> {
-    use crate::agent::loop_commands::{display_path, shell_arg};
+    use crate::agent::loop_commands::{bound_root, shell_arg};
     use crate::edit_cage::EditCageVerdictStatus;
 
     if after.current && after.verdict.status == EditCageVerdictStatus::Compliant {
@@ -1493,7 +1493,7 @@ fn repair_after_cage_recovery_lines(
         }
         lines.extend(untracked_output_hints(root, store, after));
     }
-    let root_arg = shell_arg(&display_path(root));
+    let root_arg = shell_arg(&bound_root(&root.to_string_lossy()));
     let seam_arg = shell_arg(seam_id);
     let store_flag = crate::app::repair_attempt::quoted_store_flag(store);
     lines.push(format!(
@@ -1576,9 +1576,9 @@ fn repair_after_input_drift_lines(
     store: Option<&Path>,
     attempt: &crate::app::repair_attempt::ResolvedRepairAttempt,
 ) -> Vec<String> {
-    use crate::agent::loop_commands::{display_path, shell_arg};
+    use crate::agent::loop_commands::{bound_root, shell_arg};
 
-    let root_arg = shell_arg(&display_path(root));
+    let root_arg = shell_arg(&bound_root(&root.to_string_lossy()));
     let attempt_arg = shell_arg(attempt.attempt_id.as_str());
     let seam_arg = shell_arg(&attempt.seam_id);
     let store_flag = crate::app::repair_attempt::quoted_store_flag(store);
