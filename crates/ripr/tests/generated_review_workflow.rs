@@ -1782,7 +1782,8 @@ fn far_above_threshold_discounts() {
             let Some(script) = &step.run else {
                 continue;
             };
-            if script.starts_with("cargo install ripr") {
+            // The replay runs the ripr under test, not a downloaded release.
+            if step.name == "Install ripr" {
                 continue;
             }
             if let Some(condition) = &step.condition
@@ -2758,20 +2759,6 @@ fn jq_program_between(workflow: &str, open: &str, close: &str) -> Result<String,
 #[cfg(unix)]
 #[test]
 fn generated_summary_prints_repository_relative_commands() -> Result<(), Box<dyn Error>> {
-    let tools = run_sh(
-        "command -v bash >/dev/null && command -v jq >/dev/null && command -v awk >/dev/null",
-        std::env::temp_dir().as_path(),
-    )?;
-    if !tools.status.success() {
-        if std::env::var_os("GITHUB_ACTIONS").is_some() {
-            return Err("bash, jq or awk is missing under GitHub Actions".into());
-        }
-        eprintln!(
-            "skipping generated_summary_prints_repository_relative_commands: bash, jq or awk missing"
-        );
-        return Ok(());
-    }
-
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let root = std::env::temp_dir()
         .join(format!(
@@ -2781,16 +2768,6 @@ fn generated_summary_prints_repository_relative_commands() -> Result<(), Box<dyn
         .join("my repo");
     fs::create_dir_all(root.join("target/ripr/reports"))?;
     let root = root.canonicalize()?;
-    let output = run_ripr_init(&root)?;
-    if !output.status.success() {
-        return Err(format!(
-            "ripr init failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        )
-        .into());
-    }
-    let workflow = fs::read_to_string(root.join(".github/workflows/ripr.yml"))?;
-    let script = summary_run_script(&workflow)?;
 
     let checkout = root.to_str().ok_or("non-utf8 temp path")?;
     let sibling = format!("{checkout}-other/notes.md");
@@ -2826,18 +2803,14 @@ fn generated_summary_prints_repository_relative_commands() -> Result<(), Box<dyn
         format!("- Verify after the test edit: `{verify}`\n- Receipt after verify: `{receipt}`\n"),
     )?;
 
-    let summary_path = root.join("step-summary.md");
-    let summary_text = summary_path.to_str().ok_or("non-utf8 temp path")?;
-    let run = run_sh(
-        &format!("export GITHUB_STEP_SUMMARY='{summary_text}'\n{script}"),
-        &root,
-    )?;
+    // The generated step runs this command from the checkout root.
+    let run = replay::ripr(&root, &["reports", "ci-summary", "--root", "."])?;
     assert!(
         run.status.success(),
-        "summary step failed: {}",
+        "summary command failed: {}",
         String::from_utf8_lossy(&run.stderr)
     );
-    let summary = fs::read_to_string(&summary_path)?;
+    let summary = String::from_utf8(run.stdout)?;
     let relative_verify = "ripr agent verify --root '.' --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > './target/ripr/workflow/agent-verify.json'";
     for heading in ["### PR review summary\n", "### Recommended next test\n"] {
         let block = summary
@@ -2874,29 +2847,6 @@ fn generated_summary_prints_repository_relative_commands() -> Result<(), Box<dyn
         fs::remove_dir_all(parent)?;
     }
     Ok(())
-}
-
-/// Unix-only like its callers (see `annotation_run_script`).
-#[cfg(unix)]
-fn summary_run_script(workflow: &str) -> Result<String, String> {
-    let marker = "- name: Add RIPR advisory summary";
-    let start = workflow.find(marker).ok_or("missing summary step")?;
-    let rest = &workflow[start..];
-    let run_marker = "\n        run: |\n";
-    let run_at = rest.find(run_marker).ok_or("missing summary run")?;
-    let body = &rest[run_at + run_marker.len()..];
-    let end = body
-        .find("\n      - name:")
-        .ok_or("summary step does not end")?;
-    let script = body[..end].trim_end();
-    if !script.contains("repo_relative()") {
-        return Err("summary script has no repo_relative rewrite".to_string());
-    }
-    Ok(script
-        .lines()
-        .map(|line| line.strip_prefix("          ").unwrap_or(line))
-        .collect::<Vec<_>>()
-        .join("\n"))
 }
 
 /// Unix-only like its callers: the shell-backed tests that use this

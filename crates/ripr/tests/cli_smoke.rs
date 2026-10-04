@@ -11246,11 +11246,7 @@ fn init_ci_github_dry_run_prints_config_and_workflow_without_writing() -> Result
     assert!(stdout.contains("ripr agent review-summary"));
     assert!(stdout.contains("target/ripr/workflow/agent-status.md"));
     assert!(stdout.contains("target/ripr/workflow/agent-review-summary.md"));
-    assert!(stdout.contains("#### First-run status"));
-    assert!(stdout.contains("Start-here artifact:"));
-    assert!(stdout.contains("missing_start_here"));
-    assert!(stdout.contains("cat target/ripr/reports/start-here.md"));
-    assert!(stdout.contains("### Language preview grouping"));
+    assert!(stdout.contains("ripr reports ci-summary --root ."));
     assert!(stdout.contains("github/codeql-action/upload-sarif@v4"));
     assert!(!workspace.join("ripr.toml").exists());
     assert!(!workspace.join(".github/workflows/ripr.yml").exists());
@@ -11301,7 +11297,11 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     // The steps use the generating version's CLI, so the install is pinned
     // to it rather than taking the newest crates.io release.
     assert!(workflow.contains(&format!(
-        "run: cargo install ripr --version {} --locked\n",
+        "          version={}\n",
+        env!("CARGO_PKG_VERSION")
+    )));
+    assert!(workflow.contains(&format!(
+        "            cargo install ripr --version {} --locked\n",
         env!("CARGO_PKG_VERSION")
     )));
     assert!(!workflow.contains("cargo install ripr --locked"));
@@ -11310,9 +11310,9 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     assert!(workflow.contains(
         "\nconcurrency:\n  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}\n  cancel-in-progress: true\n"
     ));
-    // Every third-party action is pinned to a commit SHA (#4452).
-    assert!(workflow.contains("dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87"));
-    assert!(!workflow.contains("dtolnay/rust-toolchain@stable"));
+    // The prebuilt install needs no third-party toolchain or cache action.
+    assert!(!workflow.contains("dtolnay/rust-toolchain"));
+    assert!(!workflow.contains("Swatinem/rust-cache"));
     assert!(workflow.contains("ripr pilot"));
     assert!(workflow.contains("--format sarif"));
     assert!(workflow.contains("--format repo-sarif"));
@@ -11351,16 +11351,7 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     assert!(workflow.contains("Run RIPR PR guidance report"));
     assert!(workflow.contains("Emit RIPR PR guidance annotations"));
     assert!(workflow.contains("Add RIPR advisory summary"));
-    assert!(workflow.contains("## RIPR advisory summary"));
-    assert!(workflow.contains("### Start here"));
-    assert!(workflow.contains("#### First-run status"));
-    assert!(workflow.contains("Start-here artifact:"));
-    assert!(workflow.contains("missing_start_here"));
-    assert!(workflow.contains("cat target/ripr/reports/start-here.md"));
-    assert!(workflow.contains("### Language preview grouping"));
-    assert!(workflow.contains("### SARIF and badge status"));
-    assert!(workflow.contains("### PR guidance annotations"));
-    assert!(workflow.contains("### Known limits"));
+    assert!(workflow.contains("ripr reports ci-summary --root ."));
     assert!(!workflow.contains("cargo xtask"));
     assert!(workflow.contains("continue-on-error: true"));
     assert!(workflow.contains("actions/upload-artifact@v7"));

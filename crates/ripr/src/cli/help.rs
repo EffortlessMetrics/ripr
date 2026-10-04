@@ -91,6 +91,7 @@ const REGISTERED_COMMAND_PATHS: &[&str] = &[
     "pr-summary",
     "receipt check",
     "receipt write",
+    "reports ci-summary",
     "reports gap-ledger",
     "reports index",
     "reports ts-false-actionable",
@@ -160,7 +161,8 @@ pub(super) fn help_text_for(command: &str) -> Option<&'static str> {
         "pr-summary" => PR_SUMMARY_HELP,
         "receipt check" => RECEIPT_CHECK_HELP,
         "receipt write" => RECEIPT_WRITE_HELP,
-        "reports gap-ledger"
+        "reports ci-summary"
+        | "reports gap-ledger"
         | "reports index"
         | "reports ts-false-actionable"
         | "reports ts-limitations" => REPORTS_HELP,
@@ -942,6 +944,7 @@ mod tests {
     const AGENT_PARSER_RS: &str = include_str!("agent.rs");
     const CLI_COMMANDS_RS: &str = include_str!("commands.rs");
     const CHECK_PARSER_RS: &str = include_str!("commands/check.rs");
+    const CI_SUMMARY_PARSER_RS: &str = include_str!("commands/ci_summary.rs");
     const REVIEW_COMMENTS_PARSER_RS: &str = include_str!("commands/review_comments.rs");
     const CONTEXT_PARSER_RS: &str = include_str!("commands/context.rs");
     const CONFIG_PARSER_RS: &str = include_str!("commands/config.rs");
@@ -1182,6 +1185,11 @@ mod tests {
             "receipt write",
             RECEIPT_PARSER_RS,
             &["parse_receipt_write_options"],
+        ),
+        (
+            "reports ci-summary",
+            CI_SUMMARY_PARSER_RS,
+            &["parse_ci_summary_options"],
         ),
         (
             "reports gap-ledger",

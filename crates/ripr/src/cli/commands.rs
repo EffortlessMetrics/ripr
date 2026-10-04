@@ -108,6 +108,9 @@ fn maybe_append_jsonl(path: Option<&Path>, record: &str) -> Result<(), String> {
 mod baseline;
 pub(super) use baseline::baseline;
 
+#[path = "commands/ci_summary.rs"]
+mod ci_summary;
+
 #[path = "commands/check.rs"]
 mod check;
 pub(super) use check::check;
@@ -486,17 +489,18 @@ pub(super) fn reports(args: &[String]) -> Result<(), String> {
     }
     let Some((subcommand, rest)) = args.split_first() else {
         return Err(
-            "reports requires subcommand `index`, `gap-ledger`, `ts-limitations`, or `ts-false-actionable`"
+            "reports requires subcommand `index`, `ci-summary`, `gap-ledger`, `ts-limitations`, or `ts-false-actionable`"
                 .to_string(),
         );
     };
     match subcommand.as_str() {
         "index" => report_packet_index(rest),
+        "ci-summary" => ci_summary::ci_summary(rest),
         "gap-ledger" => gap_decision_ledger(rest),
         "ts-limitations" => typescript_limitations(rest),
         "ts-false-actionable" => typescript_false_actionable(rest),
         _ => Err(format!(
-            "unknown reports subcommand {subcommand:?}; expected `index`, `gap-ledger`, `ts-limitations`, or `ts-false-actionable`"
+            "unknown reports subcommand {subcommand:?}; expected `index`, `ci-summary`, `gap-ledger`, `ts-limitations`, or `ts-false-actionable`"
         )),
     }
 }
@@ -3186,11 +3190,6 @@ pub(super) fn ripr_plus(args: &[String]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::agent_review_summary::NO_RECEIPT_BEFORE_REPAIR;
-    use crate::output::first_pr::{
-        MANUAL_RECEIPT_LABEL, MANUAL_VERIFY_LABEL, RECEIPT_AFTER_VERIFY_LABEL,
-        REPAIR_AFTER_PHASE_LABEL, REPAIR_AFTER_PHASE_STEP, VERIFY_AFTER_EDIT_LABEL,
-    };
 
     pub(super) fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
@@ -3262,7 +3261,6 @@ mod tests {
     struct GeneratedWorkflowSmokeFixture<'a> {
         commands: &'a [&'a str],
         artifact_paths: &'a [&'a str],
-        summary_sections: &'a [&'a str],
         non_blocking_steps: &'a [&'a str],
         gate_conditional_steps: &'a [&'a str],
         optional_sarif_steps: &'a [&'a str],
@@ -3337,13 +3335,9 @@ mod tests {
                 "target/ripr/reports/policy-operations.md",
                 "target/ripr/reports/policy-history.json",
                 "target/ripr/reports/policy-history.md",
-                "target/ripr/reports/policy-promotion-visible-only.json",
                 "target/ripr/reports/policy-promotion-visible-only.md",
-                "target/ripr/reports/policy-promotion-acknowledgeable.json",
                 "target/ripr/reports/policy-promotion-acknowledgeable.md",
-                "target/ripr/reports/policy-promotion-baseline-check.json",
                 "target/ripr/reports/policy-promotion-baseline-check.md",
-                "target/ripr/reports/policy-promotion-calibrated-gate.json",
                 "target/ripr/reports/policy-promotion-calibrated-gate.md",
                 "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.json",
                 "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.md",
@@ -3357,7 +3351,6 @@ mod tests {
                 "target/ripr/reports/first-useful-action.md",
                 "target/ripr/reports/pr-review-front-panel.json",
                 "target/ripr/reports/pr-review-front-panel.md",
-                "target/ripr/reports/start-here.json",
                 "target/ripr/reports/start-here.md",
                 "target/ripr/reports/index.json",
                 "target/ripr/reports/index.md",
@@ -3366,49 +3359,6 @@ mod tests {
                 "target/ripr/review/comment-publish-plan.json",
                 "target/ripr/review/comment-publish-plan.md",
                 "target/ci/labels.json",
-            ],
-            summary_sections: &[
-                "## RIPR advisory summary",
-                "### Start here",
-                "#### First-run status",
-                "### Language preview grouping",
-                "### PR review summary",
-                "#### PR review at a glance",
-                "### Recommended next test",
-                "#### Recommended next test at a glance",
-                "### Top recommendation",
-                "### Agent review packet",
-                "### Artifact packet",
-                "### Uploaded review artifacts",
-                "#### Uploaded artifacts at a glance",
-                "### Gate decision",
-                "#### Gate decision at a glance",
-                "### Baseline debt delta",
-                "#### Baseline debt movement",
-                "### RIPR Zero status",
-                "#### RIPR Zero at a glance",
-                "### PR evidence ledger",
-                "#### PR movement at a glance",
-                "### Policy readiness",
-                "#### Policy readiness at a glance",
-                "### Policy operations",
-                "#### Policy operations at a glance",
-                "### Policy history",
-                "#### Policy history at a glance",
-                "### Policy promotion packets",
-                "### Preview promotion packets",
-                "### Waiver aging",
-                "#### Waiver aging at a glance",
-                "### Suppression health",
-                "#### Suppression health at a glance",
-                "### Test-oracle assistant proof",
-                "#### Assistant proof at a glance",
-                "### Agent proof status",
-                "#### Agent proof status at a glance",
-                "### SARIF and badge status",
-                "### PR guidance annotations",
-                "### PR inline comments",
-                "### Known limits",
             ],
             non_blocking_steps: &[
                 "Generate RIPR pilot packet",
@@ -3569,7 +3519,7 @@ mod tests {
         assert_eq!(
             reports(&args(&["unknown"])),
             Err(
-                "unknown reports subcommand \"unknown\"; expected `index`, `gap-ledger`, `ts-limitations`, or `ts-false-actionable`"
+                "unknown reports subcommand \"unknown\"; expected `index`, `ci-summary`, `gap-ledger`, `ts-limitations`, or `ts-false-actionable`"
                     .to_string()
             )
         );
@@ -7195,13 +7145,9 @@ language = "rust"
         assert!(workflow.contains("target/ripr/reports/policy-operations.md"));
         assert!(workflow.contains("target/ripr/reports/policy-history.json"));
         assert!(workflow.contains("target/ripr/reports/policy-history.md"));
-        assert!(workflow.contains("target/ripr/reports/policy-promotion-visible-only.json"));
         assert!(workflow.contains("target/ripr/reports/policy-promotion-visible-only.md"));
-        assert!(workflow.contains("target/ripr/reports/policy-promotion-acknowledgeable.json"));
         assert!(workflow.contains("target/ripr/reports/policy-promotion-acknowledgeable.md"));
-        assert!(workflow.contains("target/ripr/reports/policy-promotion-baseline-check.json"));
         assert!(workflow.contains("target/ripr/reports/policy-promotion-baseline-check.md"));
-        assert!(workflow.contains("target/ripr/reports/policy-promotion-calibrated-gate.json"));
         assert!(workflow.contains("target/ripr/reports/policy-promotion-calibrated-gate.md"));
         assert!(workflow.contains(
             "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.json"
@@ -7225,7 +7171,6 @@ language = "rust"
         assert!(workflow.contains("target/ripr/reports/first-useful-action.md"));
         assert!(workflow.contains("target/ripr/reports/pr-review-front-panel.json"));
         assert!(workflow.contains("target/ripr/reports/pr-review-front-panel.md"));
-        assert!(workflow.contains("target/ripr/reports/start-here.json"));
         assert!(workflow.contains("target/ripr/reports/start-here.md"));
         assert!(workflow.contains("target/ripr/reports/index.json"));
         assert!(workflow.contains("target/ripr/reports/index.md"));
@@ -7268,71 +7213,6 @@ language = "rust"
         ));
         assert!(workflow.contains("title=RIPR targeted test guidance::"));
         assert!(workflow.contains("name: Add RIPR advisory summary"));
-        assert!(workflow.contains("## RIPR advisory summary"));
-        assert!(workflow.contains("### Start here"));
-        assert!(workflow.contains("#### First-run status"));
-        assert!(workflow.contains("Changed behavior"));
-        assert!(workflow.contains("Current evidence strength"));
-        assert!(workflow.contains("Missing discriminator"));
-        assert!(workflow.contains("Focused proof intent"));
-        assert!(workflow.contains("### Language preview grouping"));
-        assert!(workflow.contains("### PR review summary"));
-        assert!(workflow.contains("#### PR review at a glance"));
-        assert!(workflow.contains("### Recommended next test"));
-        assert!(workflow.contains("#### Recommended next test at a glance"));
-        assert!(workflow.contains("### Top recommendation"));
-        assert!(workflow.contains("### Artifact packet"));
-        assert!(workflow.contains("### Uploaded review artifacts"));
-        assert!(workflow.contains("#### Uploaded artifacts at a glance"));
-        assert!(workflow.contains("### Gate decision"));
-        assert!(workflow.contains("#### Gate decision at a glance"));
-        assert!(workflow.contains("### Baseline debt delta"));
-        assert!(workflow.contains("#### Baseline debt movement"));
-        assert!(workflow.contains("### RIPR Zero status"));
-        assert!(workflow.contains("#### RIPR Zero at a glance"));
-        assert!(workflow.contains("### PR evidence ledger"));
-        assert!(workflow.contains("#### PR movement at a glance"));
-        assert!(workflow.contains("### Policy readiness"));
-        assert!(workflow.contains("#### Policy readiness at a glance"));
-        assert!(workflow.contains("### Policy operations"));
-        assert!(workflow.contains("#### Policy operations at a glance"));
-        assert!(workflow.contains("### Policy history"));
-        assert!(workflow.contains("#### Policy history at a glance"));
-        assert!(workflow.contains("### Policy promotion packets"));
-        assert!(workflow.contains("### Preview promotion packets"));
-        assert!(workflow.contains("### Waiver aging"));
-        assert!(workflow.contains("#### Waiver aging at a glance"));
-        assert!(workflow.contains("### Suppression health"));
-        assert!(workflow.contains("#### Suppression health at a glance"));
-        assert!(workflow.contains("### Test-oracle assistant proof"));
-        assert!(workflow.contains("#### Assistant proof at a glance"));
-        assert!(workflow.contains("### Agent proof status"));
-        assert!(workflow.contains("#### Agent proof status at a glance"));
-        assert!(workflow.contains("markdown_inline()"));
-        assert!(workflow.contains("Active PR labels"));
-        assert!(workflow.contains("Applied waiver label"));
-        assert!(workflow.contains("Baseline artifact"));
-        assert!(workflow.contains("Recommendation calibration"));
-        assert!(workflow.contains("Mutation calibration"));
-        assert!(workflow.contains("Blocking reason"));
-        assert!(workflow.contains("Gate artifacts"));
-        assert!(workflow.contains("Baseline delta artifacts"));
-        assert!(workflow.contains("Policy readiness artifacts"));
-        assert!(workflow.contains("Policy operations artifacts"));
-        assert!(workflow.contains("Policy history artifacts"));
-        assert!(workflow.contains("Promotion packet artifacts"));
-        assert!(workflow.contains("Preview promotion artifacts"));
-        assert!(workflow.contains("Waiver-aging artifacts"));
-        assert!(workflow.contains("Suppression-health artifacts"));
-        assert!(workflow.contains("Proof artifacts"));
-        assert!(workflow.contains("Action artifacts"));
-        assert!(workflow.contains("Front-panel artifacts"));
-        assert!(workflow.contains("Index artifacts"));
-        assert!(workflow.contains("### SARIF and badge status"));
-        assert!(workflow.contains("### PR guidance annotations"));
-        assert!(workflow.contains("### PR inline comments"));
-        assert!(workflow.contains("### Known limits"));
-        assert!(workflow.contains("Inline comments are disabled by default"));
         assert!(!workflow.contains("fail-on-new-warning"));
         assert!(!workflow.contains("pull_request_target"));
         assert!(!workflow.contains("RIPR_GATE_MODE: \"acknowledgeable\""));
@@ -7368,59 +7248,10 @@ language = "rust"
         assert!(!workflow.contains(".top_seams[0].seam_id"));
         // An adopter repository has no xtask; the workflow must not call it.
         assert!(!workflow.contains("cargo xtask"));
-        assert!(workflow.contains("cat target/ripr/pilot/pilot-summary.md"));
-        assert!(workflow.contains("cat target/ripr/workflow/agent-review-summary.md"));
         assert!(workflow.contains("repo-ripr-badge.json"));
         assert!(workflow.contains("repo-ripr-badge-shields.json"));
-        assert!(workflow.contains(".summary.comments // 0"));
         assert!(workflow.contains(".summary.summary_only // 0"));
         assert!(workflow.contains(".summary.suppressed // 0"));
-        assert!(workflow.contains(".summary.unknown_confidence // 0"));
-        assert!(workflow.contains(".inputs.labels // []"));
-        assert!(workflow.contains(".policy.acknowledgement_labels // []"));
-        assert!(workflow.contains(".policy.acknowledgement_label"));
-        assert!(workflow.contains(".inputs.baseline // \"not supplied\""));
-        assert!(workflow.contains(".inputs.recommendation_calibration // \"not supplied\""));
-        assert!(workflow.contains(".inputs.mutation_calibration // \"not supplied\""));
-        assert!(workflow.contains(".evidence.recommendation_calibration.confidence_effect"));
-        assert!(workflow.contains(".evidence.mutation_calibration.confidence_effect"));
-        assert!(workflow.contains(".gate_reason"));
-        assert!(workflow.contains("blocking=\"$(markdown_inline \"$blocking\")\""));
-        assert!(workflow.contains("Counts: blocking=\\`$blocking\\`"));
-        assert!(workflow.contains(".delta.still_present // 0"));
-        assert!(workflow.contains(".delta.resolved // 0"));
-        assert!(workflow.contains(".delta.new_policy_eligible // 0"));
-        assert!(workflow.contains(".delta.acknowledged // 0"));
-        assert!(workflow.contains(".delta.suppressed // 0"));
-        assert!(workflow.contains(".delta.stale_baseline_entry // 0"));
-        assert!(workflow.contains(".delta.invalid_baseline_entry // 0"));
-        assert!(workflow.contains(".delta.missing_current_input // 0"));
-        assert!(workflow.contains(".delta.legacy_fallback_match // 0"));
-        assert!(workflow.contains("legacy_fallback=\\`$legacy_fallback_match\\`"));
-        assert!(workflow.contains("Counts: still_present=\\`$still_present\\`"));
-        assert!(workflow.contains(".movement.new_policy_eligible // 0"));
-        assert!(workflow.contains(".movement.baseline_still_present // 0"));
-        assert!(workflow.contains(".movement.baseline_resolved // 0"));
-        assert!(workflow.contains(".movement.acknowledged // 0"));
-        assert!(workflow.contains(".movement.suppressed // 0"));
-        assert!(workflow.contains(".movement.blocking_candidates // 0"));
-        assert!(workflow.contains(".movement.visible_unresolved // 0"));
-        assert!(workflow.contains(".coverage_grip_frontier.status // \"not_available\""));
-        assert!(workflow.contains(".history.trend // \"not_available\""));
-        assert!(workflow.contains("Counts: new_policy_eligible=\\`$ledger_new_policy_eligible\\`"));
-        // F60-4: counts with no baseline delta or RIPR Zero status behind them
-        // print as not measured, not as zeros.
-        assert!(workflow.contains(".movement.count_source // \"unknown\""));
-        assert!(
-            workflow
-                .contains("gap counts not measured (no baseline debt delta or RIPR Zero status)")
-        );
-        assert!(workflow.contains("sed 's/`/\\\\`/g'"));
-        assert!(workflow.contains("Blocking reason (\\`$blocking\\`): \\`$blocking_reason\\`"));
-        assert!(workflow.contains("Boundary: $limits_note"));
-        assert!(workflow.contains("Pass/fail authority remains \\`ripr gate evaluate\\`"));
-        assert!(workflow.contains("cat target/ripr/reports/pr-evidence-ledger.md"));
-        assert!(workflow.contains("Set `RIPR_GATE_BASELINE`"));
         assert!(workflow.contains("RIPR_GATE_MODE"));
         assert!(workflow.contains("RIPR_GATE_BASELINE"));
         assert!(workflow.contains("RIPR_COMMENT_MODE"));
@@ -7467,8 +7298,6 @@ language = "rust"
         assert!(workflow.contains("ripr \"${front_panel_args[@]}\""));
         assert!(workflow.contains("ripr reports index"));
         assert!(workflow.contains("index_has_input=true"));
-        assert!(workflow.contains("Set `RIPR_GATE_MODE`"));
-        assert!(workflow.contains("No runtime mutation execution is performed"));
         // The RIPR-source-tree-only cockpit step is gone from the adopter
         // workflow (F60-8).
         assert!(!workflow.contains("hashFiles('xtask/src/reports/operator.rs')"));
@@ -7501,222 +7330,62 @@ language = "rust"
         assert!(packet_index.contains(
             "Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`."
         ));
-
-        let summary = workflow_step(&workflow, "Add RIPR advisory summary");
-        assert!(summary.contains("### Start here"));
-        assert!(summary.contains("Open `target/ripr/reports/start-here.md` first when it exists."));
-        assert!(summary.contains(
-            "Then open `target/ripr/reports/index.md` to navigate deeper evidence artifacts."
-        ));
-        assert!(summary.contains(
-            "Safe next action: repair one named gap, regenerate missing or malformed artifacts"
-        ));
-        assert!(summary.contains(
-            "Recovery states: missing artifact, stale evidence, wrong root, malformed artifact, no actionable gap, and preview-limited evidence"
-        ));
-        assert!(summary.contains(
-            "Proof rail: the repair start, verify, receipt, and receipt path are static movement evidence only; verify and receipt run after the test edit."
-        ));
-        assert!(summary.contains(
-            "Preview boundary: preview-limited evidence stays syntax-first and advisory"
-        ));
-        assert!(summary.contains(
-            "Gate authority: `ripr gate evaluate` remains the pass/fail source only when `RIPR_GATE_MODE` is configured."
-        ));
-        assert!(summary.contains("Start-here artifact: `target/ripr/reports/start-here.md`"));
-        assert!(summary.contains(".summary.start_here // \"not_available\""));
-        assert!(summary.contains("Start-here artifact: \\`$start_here_path\\`"));
-        assert!(
-            summary.contains("Start-here artifact: `target/ripr/reports/pr-review-front-panel.md`")
-        );
-        assert!(summary.contains("Start-here artifact: `target/ripr/pilot/pilot-summary.md`"));
-        assert!(summary.contains("#### First-run status"));
-        assert!(summary.contains(".status // \"unknown\""));
-        assert!(summary.contains(".selected.state // \"unknown\""));
-        assert!(summary.contains(".selected.canonical_gap_id // .selected.gap_id"));
-        assert!(summary.contains(".selected.language + \" (\""));
-        assert!(summary.contains(".selected.changed_behavior // \"not_available\""));
-        assert!(summary.contains(".selected.static_evidence_boundary // \"static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.\""));
-        assert!(summary.contains(
-            ".selected.missing_discriminator // .selected.repair.suggested_assertion // \"not_available\""
-        ));
-        assert!(summary.contains(
-            ".selected.focused_proof_intent // .selected.repair.suggested_assertion // \"not_available\""
-        ));
-        assert!(summary.contains(".selected.repair.target_file // \"not_available\""));
-        assert!(summary.contains(".selected.repair.related_test // \"not_available\""));
-        assert!(summary.contains(".selected.static_limit_kind"));
-        assert!(summary.contains(".selected.receipt_path // \"not_available\""));
-        assert!(summary.contains(".selected.receipt_state // \"receipt_missing\""));
-        assert!(summary.contains("Canonical gap: \\`$start_gap\\`"));
-        assert!(summary.contains("Language: \\`$start_language\\`"));
-        assert!(summary.contains("Changed behavior: \\`$start_changed\\`"));
-        assert!(summary.contains("Missing discriminator: \\`$start_missing\\`"));
-        assert!(summary.contains("Focused proof intent: \\`$start_focused\\`"));
-        assert!(summary.contains("Boundary: \\`$start_boundary\\`"));
-        assert!(summary.contains("Repair target: \\`$start_target\\`"));
-        assert!(summary.contains("Related test: \\`$start_related\\`"));
-        assert!(summary.contains("Static limit: \\`$start_limit\\`"));
-        // #3906 (F60-3, F60-14): a carried repair start leads the block and
-        // the low-level pair becomes the manual alternative.
-        assert!(summary.contains(".selected.repair_command // empty"));
-        assert!(summary.contains("echo \"- Start repair: \\`$start_repair_command\\`\""));
-        // The labels are the shared first-pr constants, substituted into
-        // the workflow so one owner holds the text.
-        assert!(summary.contains(&format!(
-            "echo '- {REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}'"
-        )));
-        assert!(summary.contains(&format!("start_verify_label='{MANUAL_VERIFY_LABEL}'")));
-        assert!(summary.contains(&format!("start_verify_label='{VERIFY_AFTER_EDIT_LABEL}'")));
-        assert!(summary.contains(&format!(
-            "start_receipt_label='{RECEIPT_AFTER_VERIFY_LABEL}'"
-        )));
-        assert!(
-            !summary.contains("@RIPR_"),
-            "unsubstituted workflow placeholder"
-        );
-        assert!(summary.contains("- $start_verify_label: \\`$start_verify\\`"));
-        assert!(summary.contains("- $start_receipt_label: \\`$start_receipt\\`"));
-        let lead = summary
-            .find("echo \"- Start repair: \\`$start_repair_command\\`\"")
-            .unwrap_or(usize::MAX);
-        let status = summary
-            .find("echo \"- Status: \\`$start_status\\`\"")
-            .unwrap_or(0);
-        assert!(
-            lead < status,
-            "the repair start must lead the first-run block"
-        );
-        assert!(summary.contains("Receipt path: \\`$start_receipt_path\\`"));
-        assert!(summary.contains("Receipt state: \\`$start_receipt_state\\`"));
-        assert!(summary.contains("Safe next action command: \\`$start_next\\`"));
-        assert!(
-            summary
-                .contains(".selected.repair_command // .selected.next_command // .selected.regeneration_command // \"none\"")
-        );
-        assert!(summary.contains(".action_kind // \"unknown\""));
-        assert!(summary.contains(".commands.context_packet // \"not_available\""));
-        // #3906: the first-action summary surfaces the carried repair start.
-        assert!(summary.contains(".commands.repair // \"not_available\""));
-        assert!(summary.contains("Repair start: \\`$first_repair\\`"));
-        assert!(summary.contains("Repair start: \\`$action_repair\\`"));
-        // #3906 (F60-14): in both first-action blocks the carried repair
-        // start leads, followed by its after phase; verify and receipt are
-        // the manual alternative, else steps after the test edit.
-        for (prefix, status_line) in [
-            ("first", "echo \"- Status: \\`$first_status\\`\""),
-            ("action", "echo \"- Status: \\`$action_status\\`\""),
-        ] {
-            let guard = format!(
-                "if [ \"${prefix}_repair\" != not_available ] && [ \"${prefix}_repair\" != unknown ]; then"
-            );
-            let lead = format!("echo \"- Repair start: \\`${prefix}_repair\\`\"");
-            assert!(summary.contains(&guard), "{prefix} guard");
-            let lead_at = summary.find(&lead).unwrap_or(usize::MAX);
-            let status_at = summary.find(status_line).unwrap_or(0);
-            assert!(lead_at < status_at, "{prefix} repair start must lead");
-            assert!(summary.contains(&format!("{prefix}_verify_label='{MANUAL_VERIFY_LABEL}'")));
-            assert!(summary.contains(&format!("{prefix}_receipt_label='{MANUAL_RECEIPT_LABEL}'")));
-            assert!(summary.contains(&format!(
-                "{prefix}_verify_label='{VERIFY_AFTER_EDIT_LABEL}'"
-            )));
-            assert!(summary.contains(&format!(
-                "{prefix}_receipt_label='{RECEIPT_AFTER_VERIFY_LABEL}'"
-            )));
-            assert!(summary.contains(&format!(
-                "echo \"- ${prefix}_verify_label: \\`${prefix}_verify\\`\""
-            )));
-        }
-        for prefix in ["panel", "ledger"] {
-            assert!(summary.contains(&format!(
-                "if [ \"${prefix}_repair\" != not_available ] && [ \"${prefix}_repair\" != unknown ]; then\n"
-            )));
-            assert!(summary.contains(&format!("echo \"- Repair start: \\`${prefix}_repair\\`\"")));
-            assert!(summary.contains(&format!("{prefix}_verify_label='{MANUAL_VERIFY_LABEL}'")));
-            assert!(summary.contains(&format!(
-                "echo \"- ${prefix}_verify_label: \\`${prefix}_verify\\`\""
-            )));
-        }
-        assert!(!summary.contains("Verify command: \\`$first_verify\\`"));
-        assert!(!summary.contains("Verify command: \\`$action_verify\\`"));
-        assert!(summary.contains("missing_start_here"));
-        assert!(summary.contains("State: \\`missing_artifact\\`"));
-        assert!(summary.contains(
-            "Safe next action: run \\`ripr first-pr --root . --base origin/${{ github.base_ref || github.event.repository.default_branch }} --head HEAD --gap-ledger target/ripr/reports/gap-decision-ledger.json"
-        ));
-        assert!(summary.contains(
-            "start-here is advisory first-run guidance only; gate decision remains separate pass/fail authority"
-        ));
-        assert!(summary.contains(
-            "ripr first-pr --root . --base origin/${{ github.base_ref || github.event.repository.default_branch }} --head HEAD --gap-ledger target/ripr/reports/gap-decision-ledger.json"
-        ));
-        assert!(summary.contains(
-            "Fallback safe next action: run \\`ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md\\`"
-        ));
-        assert!(summary.contains(
-            "Safe next action: run `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md`"
-        ));
-        assert!(summary.contains(
-            "Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`."
-        ));
     }
 
     #[test]
     fn init_generated_github_workflow_groups_preview_languages_only_when_configured() {
         let workflow = generated_github_actions_workflow();
-        let summary = workflow_step(&workflow, "Add RIPR advisory summary");
 
-        // The generated workflow consumes the typed doctor JSON surface
-        // (#2072), not the human "Enabled languages:" line.
-        assert!(summary.contains("ripr doctor --root . --json"));
-        assert!(summary.contains("jq -r '.languages | join(\",\")'"));
-        assert!(summary.contains("sed -n '/^typescript$/p; /^python$/p'"));
-        assert!(!summary.contains("sed -n 's/^- Enabled languages: //p'"));
-        assert!(summary.contains("|| true"));
-
-        // The preview-promotion detection site uses the same typed surface
-        // and discloses a doctor failure instead of claiming "none
-        // configured" (#2182 review).
+        // The preview-promotion detection site consumes the typed doctor
+        // JSON surface (#2072), not the human "Enabled languages:" line, and
+        // discloses a doctor failure instead of claiming "none configured"
+        // (#2182 review). The summary's own grouping reads the same enabled
+        // set (`output::ci_summary` tests pin it).
         let packets = workflow_step(&workflow, "Render RIPR preview promotion packets");
         assert!(packets.contains("ripr doctor --root . --json"));
         assert!(packets.contains("jq -r '.languages[]?'"));
         assert!(!packets.contains("sed -n 's/^- Enabled languages: //p'"));
         assert!(packets.contains("Language detection via `ripr doctor --json` failed"));
         assert!(!packets.contains("No TypeScript or Python preview languages are configured; preview promotion packets were not generated.'\n            fi") || packets.contains("if ripr doctor --root . --json > /dev/null 2>&1"));
-        assert!(summary.contains("target/ripr/reports/repo-exposure.json"));
-        assert!(summary.contains("target/ripr/pilot/repo-exposure.json"));
-        assert!(summary.contains(".language_status? != \"preview\""));
-        assert!(summary.contains("configured preview/advisory"));
-        assert!(summary.contains("artifact_entries=\\`$artifact_entries\\`"));
-        assert!(summary.contains("grouped_preview_languages=\"$preview_languages\""));
-        assert!(
-            summary.contains("grouped_preview_languages=\"$grouped_preview_languages javascript\"")
-        );
-        assert!(summary.contains("Grouped preview evidence languages"));
-        assert!(summary.contains("for language in $grouped_preview_languages; do"));
-        assert!(summary.contains("actionability_states"));
-        assert!(summary.contains("actionability_categories"));
-        assert!(summary.contains("repair_packet_ready_entries"));
-        assert!(summary.contains("gate_impact=\\`none\\`"));
-        assert!(summary.contains(
-            "preview-language groups are advisory presentation only; \\`ripr gate evaluate\\` remains pass/fail authority"
-        ));
+    }
 
-        let guard = summary
-            .find("if [ -n \"$preview_languages\" ]; then")
-            .unwrap_or(usize::MAX);
-        let grouping = summary
-            .find("echo '### Language preview grouping'")
-            .unwrap_or(usize::MAX);
-        let pr_review = summary
-            .find("echo '### PR review summary'")
-            .unwrap_or(usize::MAX);
-        assert_ne!(guard, usize::MAX, "missing language grouping guard");
-        assert_ne!(grouping, usize::MAX, "missing language grouping heading");
-        assert_ne!(pr_review, usize::MAX, "missing PR review heading");
-        assert!(
-            guard < grouping && grouping < pr_review,
-            "language grouping must stay opt-in and before the PR review summary"
+    /// #4386 slice 2: the summary is one `ripr reports ci-summary` call that
+    /// passes the workflow settings the retired shell read, so the adopter's
+    /// workflow carries no renderer.
+    #[test]
+    fn init_generated_github_workflow_renders_the_summary_with_one_command() {
+        let workflow = generated_github_actions_workflow();
+        let summary = workflow_step(&workflow, "Add RIPR advisory summary");
+        assert!(summary.contains("        if: always()\n        continue-on-error: true\n"));
+        assert!(summary.contains(
+            "          RIPR_BASE_REF: ${{ github.base_ref || github.event.repository.default_branch }}\n"
+        ));
+        assert!(summary.contains(
+            "          ripr reports ci-summary --root . \\\n            --base-ref \"$RIPR_BASE_REF\" \\\n            --upload-sarif \"${RIPR_UPLOAD_SARIF:-}\" \\\n            --gate-baseline \"${RIPR_GATE_BASELINE:-}\" \\\n            --comment-mode \"${RIPR_COMMENT_MODE:-}\" \\\n            >> \"$GITHUB_STEP_SUMMARY\""
+        ), "{summary}");
+        for retired in ["markdown_inline", "repo_relative", "jq ", "echo "] {
+            assert!(
+                !summary.contains(retired),
+                "the summary step still carries `{retired}`"
+            );
+        }
+        assert!(!workflow.contains("markdown_inline()"));
+        // Every flag the step passes is one the command parses.
+        let options = super::ci_summary::parse_ci_summary_options(&[
+            "--root".to_string(),
+            ".".to_string(),
+            "--base-ref".to_string(),
+            "trunk".to_string(),
+            "--upload-sarif".to_string(),
+            String::new(),
+            "--gate-baseline".to_string(),
+            String::new(),
+            "--comment-mode".to_string(),
+            String::new(),
+        ]);
+        assert_eq!(
+            options.map(|options| options.base_ref),
+            Ok("trunk".to_string())
         );
     }
 
@@ -7726,36 +7395,58 @@ language = "rust"
         let fixture = generated_workflow_smoke_fixture();
 
         assert!(workflow.contains("RIPR_UPLOAD_SARIF: \"true\""));
-        // Install caching (#2008): the install names an exact version, so a
-        // cached binary is reused only when it is that version.
-        // Pinned to a SHA, not the mutable v2 tag (#2190 review).
-        assert!(workflow.contains("Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32"));
-        assert!(!workflow.contains("Swatinem/rust-cache@v2"));
-        assert!(workflow.contains("shared-key: ripr-install"));
+        // The install downloads the prebuilt release binary instead of
+        // compiling ripr, so the job sets up no Rust toolchain or cargo
+        // cache of its own.
+        assert!(!workflow.contains("Swatinem/rust-cache"));
+        assert!(!workflow.contains("dtolnay/rust-toolchain"));
         assert!(workflow.contains("RIPR_GATE_MODE: ${{ vars.RIPR_GATE_MODE || '' }}"));
         assert!(workflow.contains("actions/upload-artifact@v7"));
         assert!(workflow.contains("github/codeql-action/upload-sarif@v4"));
         assert_contains_all(&workflow, "command", fixture.commands);
         assert_contains_all(&workflow, "artifact path", fixture.artifact_paths);
-        assert_contains_all(&workflow, "summary section", fixture.summary_sections);
 
         // Workflow hardening: the job token is not persisted into the
         // checkout that PR-controlled code runs in.
         assert!(
             workflow.contains("          fetch-depth: 0\n          persist-credentials: false\n")
         );
-        // Checked-in or cache-restored files under target/ripr and target/ci
-        // are removed after the cache restore and before any RIPR step, so
-        // gate inputs read "when present" come only from this run.
+        // Checked-in files under target/ripr and target/ci are removed before
+        // any RIPR step, so gate inputs read "when present" come only from
+        // this run. The analysis cache is restored outside the checkout, so
+        // the cleanup cannot discard it and the restore cannot land a file
+        // the cleanup was meant to remove.
         let cleanup = workflow_step(&workflow, "Remove checked-in RIPR artifacts");
         assert!(cleanup.contains("run: rm -rf target/ripr target/ci"));
-        let cache_at = workflow.find("Swatinem/rust-cache@").unwrap_or(usize::MAX);
-        let cleanup_at = workflow
-            .find("      - name: Remove checked-in RIPR artifacts")
+        let install = workflow_step(&workflow, "Install ripr");
+        assert!(
+            install.contains(r#"echo "RIPR_CACHE_DIR=$RUNNER_TEMP/ripr-cache" >> "$GITHUB_ENV""#)
+        );
+        let cache = workflow
+            .split("\n\n")
+            .find(|block| {
+                block.contains(
+                    "      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9\n",
+                )
+            })
+            .unwrap_or_default();
+        assert!(cache.contains("          path: ${{ runner.temp }}/ripr-cache\n"));
+        // The job token has write scopes, so the action is pinned to a SHA.
+        assert!(!workflow.contains("actions/cache@v"));
+        assert!(cache.contains(&format!(
+            "          key: ripr-cache-{}-${{{{ runner.os }}}}-",
+            env!("CARGO_PKG_VERSION")
+        )));
+        let cache_at = workflow
+            .find("      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9")
+            .unwrap_or(usize::MAX);
+        let install_at = workflow.find("      - name: Install ripr").unwrap_or(0);
+        let pilot_at = workflow
+            .find("      - name: Generate RIPR pilot packet")
             .unwrap_or(0);
         assert!(
-            cache_at < cleanup_at,
-            "cleanup must follow the cache restore"
+            install_at < cache_at && cache_at < pilot_at,
+            "the cache restores after the install sets RIPR_CACHE_DIR and before the first analysis"
         );
         assert_step_before(
             &workflow,
@@ -8402,319 +8093,6 @@ language = "rust"
         assert!(!annotations.contains("@tsv"));
         assert!(!annotations.contains("escape_github_message()"));
         assert!(annotations.contains("::warning file="));
-
-        let summary = workflow_step(&workflow, "Add RIPR advisory summary");
-        assert!(summary.contains("### PR review summary"));
-        assert!(summary.contains("#### PR review at a glance"));
-        assert!(summary.contains("target/ripr/reports/pr-review-front-panel.json"));
-        assert!(summary.contains("target/ripr/reports/pr-review-front-panel.md"));
-        assert!(summary.contains(".summary.headline // \"not_available\""));
-        assert!(summary.contains(".summary.top_issue_state // \"unknown\""));
-        assert!(summary.contains(".summary.policy_state // \"none\""));
-        assert!(summary.contains(".summary.placement // \"not_available\""));
-        assert!(summary.contains(".summary.movement_state // \"unknown\""));
-        assert!(summary.contains(".summary.coverage_grip_state // \"not_available\""));
-        assert!(summary.contains(".summary.new_policy_eligible // 0"));
-        assert!(summary.contains(".summary.baseline_still_present // 0"));
-        assert!(summary.contains(".summary.baseline_resolved // 0"));
-        assert!(summary.contains(".summary.blocking_candidates // 0"));
-        assert!(summary.contains(".top_issue.missing_discriminator // \"not_available\""));
-        assert!(summary.contains(".top_issue.suggested_test // \"not_available\""));
-        assert!(summary.contains(".top_issue.verify_command // \"not_available\""));
-        assert!(summary.contains(".top_issue.agent_command // \"not_available\""));
-        assert!(summary.contains(".top_issue.receipt.artifact // \"not_available\""));
-        assert!(summary.contains(".policy.mode // \"not_available\""));
-        assert!(summary.contains(".policy.decision // \"not_available\""));
-        assert!(summary.contains("repo_relative < target/ripr/reports/pr-review-front-panel.md"));
-        assert!(summary.contains("PR review summary was not generated"));
-        assert!(summary.contains("### Recommended next test"));
-        assert!(summary.contains("#### Recommended next test at a glance"));
-        assert!(summary.contains("#### First-run status"));
-        assert!(summary.contains("Open `target/ripr/reports/start-here.md` first"));
-        assert!(summary.contains(
-            "Recovery states: missing artifact, stale evidence, wrong root, malformed artifact, no actionable gap, and preview-limited evidence"
-        ));
-        assert!(summary.contains(
-            "Proof rail: the repair start, verify, receipt, and receipt path are static movement evidence only; verify and receipt run after the test edit."
-        ));
-        assert!(summary.contains("Start-here artifact: `target/ripr/reports/start-here.md`"));
-        assert!(summary.contains("start_json=target/ripr/reports/start-here.json"));
-        assert!(summary.contains(".selected.state // \"unknown\""));
-        assert!(summary.contains(".selected.kind // \"none\""));
-        assert!(summary.contains(
-            ".selected.repair.route // .selected.repair.suggested_assertion // \"not_available\""
-        ));
-        assert!(summary.contains(".selected.changed_behavior // \"not_available\""));
-        assert!(summary.contains(".selected.static_evidence_boundary // \"static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.\""));
-        assert!(summary.contains(
-            ".selected.missing_discriminator // .selected.repair.suggested_assertion // \"not_available\""
-        ));
-        assert!(summary.contains(
-            ".selected.focused_proof_intent // .selected.repair.suggested_assertion // \"not_available\""
-        ));
-        assert!(summary.contains(".selected.verify_command // \"not_available\""));
-        assert!(summary.contains(".selected.receipt_command // \"not_available\""));
-        assert!(summary.contains(".selected.receipt_path // \"not_available\""));
-        assert!(
-            summary
-                .contains(".selected.repair_command // .selected.next_command // .selected.regeneration_command // \"none\"")
-        );
-        assert!(summary.contains("cat target/ripr/reports/start-here.md"));
-        assert!(summary.contains("Boundary: \\`$start_boundary\\`"));
-        assert!(summary.contains("missing_start_here"));
-        assert!(summary.contains(
-            "ripr first-pr --root . --base origin/${{ github.base_ref || github.event.repository.default_branch }} --head HEAD --gap-ledger target/ripr/reports/gap-decision-ledger.json"
-        ));
-        assert!(summary.contains(".summary.start_here // \"not_available\""));
-        assert!(
-            summary.contains("Start-here artifact: `target/ripr/reports/pr-review-front-panel.md`")
-        );
-        assert!(summary.contains("Start-here artifact: `target/ripr/pilot/pilot-summary.md`"));
-        assert!(summary.contains("target/ripr/workflow/agent-packet.json"));
-        assert!(summary.contains("target/ripr/reports/first-useful-action.json"));
-        assert!(summary.contains("target/ripr/reports/first-useful-action.md"));
-        assert!(summary.contains(".action_kind // \"unknown\""));
-        assert!(summary.contains("Safe next action: \\`$first_action_kind\\`"));
-        assert!(summary.contains(".commands.verify // \"not_available\""));
-        assert!(summary.contains(".commands.receipt // \"not_available\""));
-        assert!(summary.contains(".fallback.kind // \"none\""));
-        assert!(summary.contains("repo_relative < target/ripr/reports/first-useful-action.md"));
-        assert!(summary.contains("Recommended next test was not generated"));
-        assert!(summary.contains("cat target/ripr/pilot/pilot-summary.md"));
-        assert!(summary.contains("cat target/ripr/workflow/agent-review-summary.md"));
-        // #3906 (N5): before any test edit the review packet names the
-        // missing receipt as expected and leads with the carried repair
-        // start and its after phase, not the post-edit snapshot loop.
-        let packet = summary
-            .find("echo '### Agent review packet'")
-            .unwrap_or(usize::MAX);
-        let packet_block = summary.get(packet..).unwrap_or_default();
-        let packet_end = packet_block
-            .find("echo '### Artifact packet'")
-            .unwrap_or(packet_block.len());
-        let packet_block = packet_block.get(..packet_end).unwrap_or_default();
-        let receipt = packet_block
-            .find(&format!("echo '- Receipt: {NO_RECEIPT_BEFORE_REPAIR}'"))
-            .unwrap_or(usize::MAX);
-        let start = packet_block
-            .find("echo \"- Start repair: \\`$review_repair_command\\`\"")
-            .unwrap_or(usize::MAX);
-        let after = packet_block
-            .find(&format!(
-                "echo '- {REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}'"
-            ))
-            .unwrap_or(usize::MAX);
-        let full = packet_block
-            .find("cat target/ripr/workflow/agent-review-summary.md")
-            .unwrap_or(0);
-        assert!(
-            receipt < start && start < after && after < full,
-            "{packet_block}"
-        );
-        assert!(packet_block.contains(".static_movement.state // empty"));
-        assert!(packet_block.contains("[ \"$review_movement\" = missing_artifact ]"));
-        assert!(packet_block.contains(".selected.repair_command // empty"));
-        assert!(summary.contains("### Uploaded review artifacts"));
-        assert!(summary.contains("#### Uploaded artifacts at a glance"));
-        assert!(summary.contains("target/ripr/reports/index.json"));
-        assert!(summary.contains("target/ripr/reports/index.md"));
-        assert!(summary.contains(".summary.entries // 0"));
-        assert!(summary.contains(".summary.available // 0"));
-        assert!(summary.contains(".summary.missing_expected // 0"));
-        assert!(summary.contains(".summary.start_here // \"not_available\""));
-        assert!(summary.contains(".summary.gate_authority // \"not_available\""));
-        assert!(summary.contains(".missing_expected[]?.label"));
-        assert!(summary.contains(".warnings[]?.kind"));
-        assert!(summary.contains("cat target/ripr/reports/index.md"));
-        assert!(summary.contains("Uploaded review artifacts summary was not generated"));
-        assert!(summary.contains("#### Gate decision at a glance"));
-        assert!(summary.contains("markdown_inline()"));
-        assert!(summary.contains("gate_status=\"$(jq -r '.status // \"unknown\"'"));
-        assert!(summary.contains("gate_mode=\"$(jq -r '.mode // \"unknown\"'"));
-        assert!(summary.contains(".summary.blocking // 0"));
-        assert!(summary.contains(".summary.acknowledged // 0"));
-        assert!(summary.contains(".summary.advisory // 0"));
-        assert!(summary.contains(".summary.suppressed // 0"));
-        assert!(summary.contains(".summary.not_applicable // 0"));
-        assert!(summary.contains(".summary.unknown_confidence // 0"));
-        assert!(summary.contains("blocking=\"$(markdown_inline \"$blocking\")\""));
-        assert!(summary.contains("Counts: blocking=\\`$blocking\\`"));
-        assert!(summary.contains("Active PR labels"));
-        assert!(summary.contains("Acknowledgement labels"));
-        assert!(summary.contains("Applied waiver label"));
-        assert!(summary.contains("Baseline artifact"));
-        assert!(summary.contains("Recommendation calibration"));
-        assert!(summary.contains("Mutation calibration"));
-        assert!(summary.contains("Blocking reason (\\`$blocking\\`): \\`$blocking_reason\\`"));
-        assert!(summary.contains("target/ripr/reports/gate-decision.json"));
-        assert!(summary.contains("target/ci/labels.json"));
-        assert!(summary.contains("cat target/ripr/reports/gate-decision.md"));
-        assert!(summary.contains("Gate decision was not run"));
-        assert!(summary.contains("### Baseline debt delta"));
-        assert!(summary.contains("#### Baseline debt movement"));
-        assert!(summary.contains("target/ripr/reports/baseline-debt-delta.json"));
-        assert!(summary.contains("target/ripr/reports/baseline-debt-delta.md"));
-        assert!(summary.contains("cat target/ripr/reports/baseline-debt-delta.md"));
-        assert!(summary.contains(".baseline.path // .inputs.baseline // \"unknown\""));
-        assert!(summary.contains(".delta.still_present // 0"));
-        assert!(summary.contains(".delta.resolved // 0"));
-        assert!(summary.contains(".delta.new_policy_eligible // 0"));
-        assert!(summary.contains(".delta.acknowledged // 0"));
-        assert!(summary.contains(".delta.suppressed // 0"));
-        assert!(summary.contains(".delta.stale_baseline_entry // 0"));
-        assert!(summary.contains(".delta.invalid_baseline_entry // 0"));
-        assert!(summary.contains(".delta.missing_current_input // 0"));
-        assert!(summary.contains("Set `RIPR_GATE_BASELINE`"));
-        assert!(summary.contains("Baseline debt delta was not run"));
-        assert!(summary.contains("Baseline debt delta was not generated"));
-        assert!(summary.contains("### RIPR Zero status"));
-        assert!(summary.contains("#### RIPR Zero at a glance"));
-        assert!(summary.contains("target/ripr/reports/ripr-zero-status.json"));
-        assert!(summary.contains("target/ripr/reports/ripr-zero-status.md"));
-        assert!(summary.contains(".ripr_zero.state // \"unknown\""));
-        assert!(summary.contains(".ripr_zero.visible_unresolved // 0"));
-        assert!(summary.contains(".ripr_zero.new_policy_eligible // 0"));
-        assert!(summary.contains(".ripr_zero.blocking_candidates // 0"));
-        assert!(summary.contains(".baseline.metadata.stale // 0"));
-        assert!(summary.contains(".top_debt_areas[0].area // \"none\""));
-        assert!(summary.contains("cat target/ripr/reports/ripr-zero-status.md"));
-        assert!(summary.contains("RIPR Zero status was not run"));
-        assert!(summary.contains("RIPR Zero status was not generated"));
-        assert!(summary.contains("### PR evidence ledger"));
-        assert!(summary.contains("#### PR movement at a glance"));
-        assert!(summary.contains("target/ripr/reports/pr-evidence-ledger.json"));
-        assert!(summary.contains("target/ripr/reports/pr-evidence-ledger.md"));
-        assert!(summary.contains(".movement.new_policy_eligible // 0"));
-        assert!(summary.contains(".movement.baseline_still_present // 0"));
-        assert!(summary.contains(".movement.baseline_resolved // 0"));
-        assert!(summary.contains(".movement.acknowledged // 0"));
-        assert!(summary.contains(".movement.suppressed // 0"));
-        assert!(summary.contains(".movement.blocking_candidates // 0"));
-        assert!(summary.contains(".movement.visible_unresolved // 0"));
-        assert!(summary.contains(".coverage_grip_frontier.status // \"not_available\""));
-        assert!(summary.contains(".history.trend // \"not_available\""));
-        assert!(summary.contains(".top_repair_route.verify_command // \"not_available\""));
-        assert!(summary.contains(".top_repair_route.agent_command // \"not_available\""));
-        assert!(summary.contains("Pass/fail authority remains \\`ripr gate evaluate\\`"));
-        assert!(summary.contains("cat target/ripr/reports/pr-evidence-ledger.md"));
-        assert!(summary.contains("PR evidence ledger was not generated"));
-        assert!(summary.contains("PR evidence ledger was not run"));
-        assert!(summary.contains("### Policy readiness"));
-        assert!(summary.contains("#### Policy readiness at a glance"));
-        assert!(summary.contains("target/ripr/reports/policy-readiness.json"));
-        assert!(summary.contains("target/ripr/reports/policy-readiness.md"));
-        assert!(summary.contains(".recommended_mode // \"unknown\""));
-        assert!(summary.contains(".blocking_readiness.state // \"unknown\""));
-        assert!(summary.contains(".baseline_health.state // \"unknown\""));
-        assert!(summary.contains(".waiver_health.state // \"unknown\""));
-        assert!(summary.contains(".suppression_health.state // \"unknown\""));
-        assert!(summary.contains(".calibration_health.state // \"unknown\""));
-        assert!(summary.contains(".preview_evidence_boundary.state // \"unknown\""));
-        assert!(summary.contains("advisory readiness projection only"));
-        assert!(summary.contains("cat target/ripr/reports/policy-readiness.md"));
-        assert!(summary.contains("Policy readiness was not generated"));
-        assert!(summary.contains("### Policy operations"));
-        assert!(summary.contains("#### Policy operations at a glance"));
-        assert!(summary.contains("target/ripr/reports/policy-operations.json"));
-        assert!(summary.contains("target/ripr/reports/policy-operations.md"));
-        assert!(summary.contains(".current_policy_ceiling // \"unknown\""));
-        assert!(summary.contains(".recommended_next_action // \"not_available\""));
-        assert!(summary.contains(".safe_to_promote_to // [] | length"));
-        assert!(summary.contains(".not_safe_to_promote_to // [] | length"));
-        assert!(summary.contains(".promotion_blockers // [] | length"));
-        assert!(summary.contains("promotion requires manual review"));
-        assert!(summary.contains("cat target/ripr/reports/policy-operations.md"));
-        assert!(summary.contains("Policy operations was not generated"));
-        assert!(summary.contains("### Policy history"));
-        assert!(summary.contains("#### Policy history at a glance"));
-        assert!(summary.contains("target/ripr/reports/policy-history.json"));
-        assert!(summary.contains("target/ripr/reports/policy-history.md"));
-        assert!(summary.contains(".current.current_policy_ceiling // \"unknown\""));
-        assert!(summary.contains(".history_summary.entries // 0"));
-        assert!(summary.contains(".trend.ceiling.direction // \"unknown\""));
-        assert!(summary.contains(".trend.waiver_count.direction // \"unknown\""));
-        assert!(summary.contains(".trend.preview_boundary_state.direction // \"unknown\""));
-        assert!(
-            summary.contains("never appends to \\`.ripr/policy-history.jsonl\\` automatically")
-        );
-        assert!(summary.contains("cat target/ripr/reports/policy-history.md"));
-        assert!(summary.contains("Policy history was not generated"));
-        assert!(summary.contains("### Policy promotion packets"));
-        assert!(summary.contains("policy-promotion-visible-only.json"));
-        assert!(summary.contains("policy-promotion-acknowledgeable.json"));
-        assert!(summary.contains("policy-promotion-baseline-check.json"));
-        assert!(summary.contains("policy-promotion-calibrated-gate.json"));
-        assert!(summary.contains(".why_or_why_not // \"not_available\""));
-        assert!(summary.contains("packets do not edit \\`ripr.toml\\`"));
-        assert!(summary.contains("Policy promotion packets were not generated"));
-        assert!(summary.contains("cat \"$promotion_md\""));
-        assert!(summary.contains("### Preview promotion packets"));
-        assert!(summary.contains("preview-promotion-*-*.json"));
-        assert!(summary.contains(".candidate_class // \"unknown\""));
-        assert!(summary.contains(".missing_evidence // [] | length"));
-        assert!(summary.contains("preview evidence remains visible and non-gating"));
-        assert!(summary.contains("Preview promotion packets were not generated"));
-        assert!(summary.contains("cat \"$preview_md\""));
-        assert!(summary.contains("### Waiver aging"));
-        assert!(summary.contains("#### Waiver aging at a glance"));
-        assert!(summary.contains("target/ripr/reports/waiver-aging.json"));
-        assert!(summary.contains("target/ripr/reports/waiver-aging.md"));
-        assert!(summary.contains(".summary.waiver_count // 0"));
-        assert!(summary.contains(".summary.identity_count // 0"));
-        assert!(summary.contains(".summary.repeated_seam_count // 0"));
-        assert!(summary.contains(".summary.repeated_file_count // 0"));
-        assert!(summary.contains(".summary.focused_test_candidates // 0"));
-        assert!(summary.contains(".summary.durable_suppression_candidates // 0"));
-        assert!(summary.contains("repeated waiver is a visible signal"));
-        assert!(summary.contains("cat target/ripr/reports/waiver-aging.md"));
-        assert!(summary.contains("Waiver aging was not generated"));
-        assert!(summary.contains("### Suppression health"));
-        assert!(summary.contains("#### Suppression health at a glance"));
-        assert!(summary.contains("target/ripr/reports/suppression-health.json"));
-        assert!(summary.contains("target/ripr/reports/suppression-health.md"));
-        assert!(summary.contains(".summary.suppressions // 0"));
-        assert!(summary.contains(".summary.healthy // 0"));
-        assert!(summary.contains(".summary.missing_owner // 0"));
-        assert!(summary.contains(".summary.missing_reason // 0"));
-        assert!(summary.contains(".summary.stale // 0"));
-        assert!(summary.contains(".summary.overbroad_scope // 0"));
-        assert!(summary.contains(".summary.unknown_selector // 0"));
-        assert!(summary.contains(".summary.preview_without_preview_label // 0"));
-        assert!(summary.contains("suppressions remain visible durable exceptions"));
-        assert!(summary.contains("cat target/ripr/reports/suppression-health.md"));
-        assert!(summary.contains("Suppression health was not generated"));
-        assert!(summary.contains("### Test-oracle assistant proof"));
-        assert!(summary.contains("#### Assistant proof at a glance"));
-        assert!(summary.contains("target/ripr/reports/test-oracle-assistant-proof.json"));
-        assert!(summary.contains("target/ripr/reports/test-oracle-assistant-proof.md"));
-        assert!(summary.contains(".seam.missing_discriminator // \"not_available\""));
-        assert!(summary.contains(".recommendation.placement // \"not_available\""));
-        assert!(summary.contains(".evidence_movement.state // \"unknown\""));
-        assert!(summary.contains(".ci_projection.gate_decision // \"not_supplied\""));
-        assert!(summary.contains(".ci_projection.coverage_frontier // \"not_supplied\""));
-        assert!(summary.contains("cat target/ripr/reports/test-oracle-assistant-proof.md"));
-        assert!(summary.contains("### Agent proof status"));
-        assert!(summary.contains("#### Agent proof status at a glance"));
-        assert!(summary.contains("target/ripr/reports/assistant-loop-health.json"));
-        assert!(summary.contains("target/ripr/reports/assistant-loop-health.md"));
-        assert!(summary.contains(".summary.proofs // 0"));
-        assert!(summary.contains(".summary.complete // 0"));
-        assert!(summary.contains(".summary.partial // 0"));
-        assert!(summary.contains(".summary.missing_required_input // 0"));
-        assert!(summary.contains(".summary.missing_optional_input // 0"));
-        assert!(summary.contains(".summary.improved // 0"));
-        assert!(summary.contains(".summary.unchanged // 0"));
-        assert!(summary.contains(".summary.regressed // 0"));
-        assert!(summary.contains(".summary.unknown_movement // 0"));
-        assert!(summary.contains(".summary.repair_queue // 0"));
-        assert!(summary.contains(".warning_summary[]?"));
-        assert!(summary.contains(".repair_queue[]?.repair_kind"));
-        assert!(summary.contains("cat target/ripr/reports/assistant-loop-health.md"));
-        assert!(summary.contains("advisory static health over proof artifacts"));
-        assert!(summary.contains(".summary.comments // 0"));
-        assert!(summary.contains(".summary.summary_only // 0"));
-        assert!(summary.contains(".summary.suppressed // 0"));
-        assert!(summary.contains("No runtime mutation execution is performed"));
 
         for step in fixture.non_blocking_steps {
             let block = workflow_step(&workflow, step);

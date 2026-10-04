@@ -2,6 +2,7 @@ pub(super) const REPORTS_HELP: &str = r#"Write reviewer-first report projections
 
 Usage:
   ripr reports index [--root PATH] [--reports-dir PATH] [--review-dir PATH] [--receipts-dir PATH] [--workflow-dir PATH] [--agent-dir PATH] [--pilot-dir PATH] [--ci-dir PATH] [--out PATH] [--out-md PATH]
+  ripr reports ci-summary [--root PATH] [--base-ref REF] [--upload-sarif VALUE] [--gate-baseline VALUE] [--comment-mode MODE]
   ripr reports gap-ledger --records PATH [--root PATH] [--out PATH] [--out-md PATH]
   ripr reports gap-ledger --check-output PATH [--root PATH] [--out PATH] [--out-md PATH]
   ripr reports gap-ledger --repo-exposure PATH [--root PATH] [--out PATH] [--out-md PATH]
@@ -19,6 +20,13 @@ Index options:
   --ci-dir PATH         Directory containing CI context artifacts. Defaults to target/ci.
   --out PATH            JSON output path. Defaults to target/ripr/reports/index.json.
   --out-md PATH         Markdown output path. Defaults to target/ripr/reports/index.md.
+
+CI summary options:
+  --root PATH           Checkout whose target/ripr and target/ci artifacts to read. Defaults to current directory.
+  --base-ref REF        PR base branch named in the regeneration route. Defaults to main.
+  --upload-sarif VALUE  `true` reports SARIF generation; anything else reports the upload as disabled.
+  --gate-baseline VALUE Non-empty when a gate baseline is configured.
+  --comment-mode MODE   Inline comment mode to report. Empty means off.
 
 Gap ledger options:
   --records PATH        Explicit GapRecord JSON, gap_records JSON, or fixture corpus JSON.
@@ -46,6 +54,11 @@ artifact, preserves gate-decision as the configured pass/fail authority,
 lists missing expected surfaces with regeneration commands when known, and
 does not rerun analysis, edit source, generate tests, call providers, run
 mutation testing, publish inline comments, or make CI blocking by default.
+
+The CI summary prints the generated workflow's step summary as Markdown on
+stdout, from the artifacts earlier steps wrote. It reads only; it never runs
+analysis, edits source, or decides pass/fail, and a missing or malformed
+artifact prints its regeneration route instead of failing.
 
 The gap decision ledger command is a read-only advisory renderer for explicit
 GapRecord input, existing repo-exposure evidence records, or check-output

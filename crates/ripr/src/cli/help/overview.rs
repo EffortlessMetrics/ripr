@@ -150,6 +150,7 @@ Policy & Gate:
 
 Reports:
   ripr reports index [--reports-dir target/ripr/reports] [--review-dir target/ripr/review] [--out target/ripr/reports/index.json]
+  ripr reports ci-summary [--root .] [--base-ref main] >> "$GITHUB_STEP_SUMMARY"
   ripr reports gap-ledger (--records PATH | --repo-exposure PATH | --check-output PATH) [--out target/ripr/reports/gap-decision-ledger.json]
   ripr reports ts-limitations --check-output <path> [--out target/ripr/reports/typescript-limitations.json]
   ripr reports ts-false-actionable --corpus <path> [--out target/ripr/reports/typescript-false-actionable-audit.json]
