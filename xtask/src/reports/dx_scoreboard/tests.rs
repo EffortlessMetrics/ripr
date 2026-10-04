@@ -1,6 +1,8 @@
+#[cfg(unix)]
+use super::measure::linked_target;
 use super::measure::{
     PasteVerdict, Probe, builds_ripr_from_source, check_contradictions, classify_replay,
-    contradiction_outcome, extract_commands, linked_target, parse_test_result, probe_result,
+    contradiction_outcome, extract_commands, parse_test_result, probe_result,
     repo_exposure_contradictions, rss_sample,
 };
 use super::*;
