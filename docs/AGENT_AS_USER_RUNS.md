@@ -376,3 +376,46 @@ with an exact `assert_eq!` moves humantime's `FromStr` return_value probe from
 `weakly_exposed` to `reachable_unrevealed` (reproduced by the evaluator;
 recorded on #5353). The humantime agent again wrote a white-box `parse_unit`
 test to move the private arms to `exposed` (#5352).
+
+## Run 2026-10-04, third pass
+
+ripr `0.11.0 (f147c8ee5db98d4f038b0e16d157a7fc5c5ad9b8)`, current main with
+#5424 (named tests and miss reasons in `explain`) and #5569 (opaque instead
+of false gaps). Same targets, brief and shim; fresh agents and fresh copies of
+the gap commits. #5352, #5353 and #5358 were still open.
+
+| Target | ripr commands (pass 1 → 2 → 3) | Answer key after | `cargo mutants --in-diff` after | ripr after (`--worktree`) |
+|---|---|---|---|---|
+| bytesize | 17 → 22 → 20 | 3/3 | 10/10 caught | 1 exposed, 2 weakly_exposed |
+| humantime | 21 → 29 → 35 | 3/3 | 6/6 caught (1 unviable) | 2 exposed, 2 weakly_exposed, 1 static_unknown |
+| semver | 20 → 24 → 20 | 3/3 | 2/2 caught (1 unviable) | 5 exposed, 1 reachable_unrevealed |
+
+Outcomes again did not change, and the final verdict counts on all three
+targets match passes 1 and 2, so #5569 changed nothing measurable
+here. #5424 did: in its final report the humantime agent called the "Why this verdict"
+block the most useful output ripr gave.
+
+The stub route now produces stubs: four of five calls returned one, against
+none in pass 2. Three of those four do not help, and one call still fails:
+
+- bytesize (three calls): `--at src/lib.rs:258` stubbed the predicate on that
+  line. After the agent's first test, `check` suggested
+  `agent stub --at src/lib.rs:259` for the `return None` probe. That stub
+  also targets the line-258 predicate, and `--at 261` printed it again
+  (#6298).
+- humantime: the `parse_unit` arm's value leaves through `out: &mut Duration`,
+  but the stub asserts only the `Result`, which is `Ok(())` either way. Filled
+  in honestly, it passes on the arm mutant (#6300).
+- semver: `--at src/lib.rs:403`, as suggested by `check --worktree`, was
+  still refused with `no reported gap is in the function` (#5458).
+
+Humantime's 35 commands include 15 `explain` calls: one first drill-in,
+eleven while the agent worked out which test shape moved a verdict, and
+three right after one surprise.
+Rewriting the `matches!` assertions in `test_fortnight_unit_from_str`, which
+does not call `parse_unit`, moved both `parse_unit` arms from `exposed` to
+`weakly_exposed`. The evaluator reproduced this in a minimal crate. The
+token that confirms observation can come from any related test while the
+oracle's strength comes from another, so the `exposed` before the edit was
+credited by a test that cannot observe the arm (#6297). Each agent again lost one
+re-check to reading HEAD before switching to `--worktree` (#5358).
