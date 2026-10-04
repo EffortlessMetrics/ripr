@@ -149,7 +149,7 @@ pub(crate) fn include_resolution_disclosure(index: &RustIndex) -> Option<String>
         .collect::<Vec<_>>()
         .join(", ");
     Some(format!(
-        "ripr: {} Rust include boundary limitation(s): {details}; affected compilation-unit relations remain fail-closed.",
+        "ripr: {} Rust include boundary limitation(s): {details}; affected compilation-unit relations remain fail-closed. {ANALYSIS_LIMIT_ORIENTATION}",
         index.include_limitations.len()
     ))
 }
@@ -158,8 +158,9 @@ pub(crate) fn include_resolution_disclosure(index: &RustIndex) -> Option<String>
 /// module (`rust_module_ambiguous_parent`).
 const MODULE_AMBIGUOUS_PARENT_NEXT_STEP: &str = "To resolve rust_module_ambiguous_parent, give each listed file one owner: declare it from a single parent `mod` item (drop duplicate `#[path]` declarations and keep only one of `<name>.rs` or `<name>/mod.rs`); a shared `tests/<name>/mod.rs` helper needs the same `mod <name>;` declaration, with the same `#[cfg(test)]` gating, in every integration test.";
 
-/// Closing sentence of [`module_composition_disclosure`] (#4378).
-const MODULE_COMPOSITION_ORIENTATION: &str = "This is an analysis-limit note about indexed context, not a finding: no action is needed unless evidence you expected from a listed file is missing.";
+/// Closing sentence of [`module_composition_disclosure`] (#4378) and
+/// [`include_resolution_disclosure`].
+const ANALYSIS_LIMIT_ORIENTATION: &str = "This is an analysis-limit note about indexed context, not a finding: no action is needed unless evidence you expected from a listed file is missing.";
 
 /// Returns a stable disclosure when Rust module composition failed closed
 /// (#3533): a file whose composed context chain could not be resolved
@@ -207,7 +208,7 @@ pub(crate) fn module_composition_disclosure(index: &RustIndex) -> Option<String>
         String::new()
     };
     Some(format!(
-        "ripr: {count} Rust module composition limitation(s): {}; affected module contexts remain fail-closed. {MODULE_COMPOSITION_ORIENTATION}{next_step}",
+        "ripr: {count} Rust module composition limitation(s): {}; affected module contexts remain fail-closed. {ANALYSIS_LIMIT_ORIENTATION}{next_step}",
         details.into_iter().collect::<Vec<_>>().join(", ")
     ))
 }
@@ -1157,7 +1158,7 @@ fn feature_gated_test() {}
         assert_eq!(
             include_resolution_disclosure(&index).as_deref(),
             Some(
-                "ripr: 1 Rust include boundary limitation(s): src/lib.rs:7:rust_include_dynamic_expression; affected compilation-unit relations remain fail-closed."
+                "ripr: 1 Rust include boundary limitation(s): src/lib.rs:7:rust_include_dynamic_expression; affected compilation-unit relations remain fail-closed. This is an analysis-limit note about indexed context, not a finding: no action is needed unless evidence you expected from a listed file is missing."
             )
         );
     }
