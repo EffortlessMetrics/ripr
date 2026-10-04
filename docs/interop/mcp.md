@@ -173,6 +173,15 @@ HEAD. Historical or unknown applicability suppresses `next_command` and
 remain readable. `after.current` and receipt `currentness.after_current` are
 recorded finish-time admission, not live freshness or a test result. This HEAD
 check does not establish that dirty working-tree bytes still match the evidence.
+At a current HEAD, `next_command` consumes the same selected-attempt action
+as `ripr agent status --attempt`: an awaiting attempt offers its after phase,
+a finished current result offers none, and a failed or open-gap result offers
+the shared new before-attempt command. HEAD equality alone never resumes an
+already finished attempt. Retained typed packet routes are projected only for
+a current after continuation; they are suppressed for terminal results and
+restarts, and are never reconstructed by parsing the restart display string.
+Historical and unknown reads retain the existing null-command/empty-route
+boundary even when CLI recovery prose can describe starting new work.
 Session transactions and supersession resolve under the session lock; durable
 filesystem and Git fallback reads run on a blocking worker after releasing it.
 The supported stdio transport admits one request until its reply is flushed,
