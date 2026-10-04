@@ -150,8 +150,13 @@ pub(crate) fn render_full_with_config_and_navigation(
         out.push_str(&render_finding_with_config(finding, config));
         if let Some(FindingDrillIn::Commands(navigation)) = drill_in {
             out.push_str("Drill in:\n");
-            out.push_str(&format!("  {}\n", navigation.explain_command(&finding.id)));
-            out.push_str(&format!("  {}\n", navigation.context_command(&finding.id)));
+            for command in [
+                navigation.explain_command(&finding.id),
+                navigation.context_command(&finding.id),
+            ] {
+                out.push_str(&format!("  {command}\n"));
+                push_powershell_variant(&mut out, "  ", &command);
+            }
         }
         out.push('\n');
     }
@@ -729,7 +734,18 @@ pub(crate) fn render_finding_with_context_command(
 ) -> String {
     let mut out = render_finding_with_config(finding, config);
     out.push_str(&format!("\nNext: {context_command}\n"));
+    push_powershell_variant(&mut out, "", context_command);
     out
+}
+
+/// Follow a bash command line with its PowerShell form when PowerShell needs a
+/// different one, so a path or ref with an apostrophe still pastes as one
+/// argument. Commands that run unchanged print nothing extra, which keeps the
+/// ordinary output byte-identical.
+fn push_powershell_variant(out: &mut String, indent: &str, command: &str) {
+    if let Some(line) = crate::output::markdown::powershell_text_variant(command) {
+        out.push_str(&format!("{indent}(PowerShell) {line}\n"));
+    }
 }
 
 mod evidence_lines;
@@ -2664,6 +2680,42 @@ mod tests {
                 "human-full must carry the drill-in pair for {id}: {navigated}"
             );
         }
+    }
+
+    /// A root or ref with an apostrophe renders as bash `'\\''` escapes, which
+    /// PowerShell cannot parse; the plain-text follow-up carries the PowerShell
+    /// form, and an ordinary command prints no second line.
+    #[test]
+    fn context_follow_up_adds_powershell_form_only_when_it_differs() {
+        let config = crate::config::RiprConfig::default();
+        let finding = sample_finding();
+        let apostrophe = super::render_finding_with_context_command(
+            &finding,
+            &config,
+            "ripr context --root 'it'\\''s repo' --at probe:x",
+        );
+        assert!(
+            apostrophe.contains(
+                "Next: ripr context --root 'it'\\''s repo' --at probe:x\n(PowerShell) ripr context --root 'it''s repo' --at probe:x\n"
+            ),
+            "{apostrophe}"
+        );
+        let typographic = super::render_finding_with_context_command(
+            &finding,
+            &config,
+            "ripr context --root 'Steven’s repo' --at probe:x",
+        );
+        assert!(
+            typographic
+                .contains("(PowerShell) ripr context --root 'Steven’’s repo' --at probe:x\n"),
+            "{typographic}"
+        );
+        let plain = super::render_finding_with_context_command(
+            &finding,
+            &config,
+            "ripr context --root 'café repo' --at probe:x",
+        );
+        assert!(!plain.contains("(PowerShell)"), "{plain}");
     }
 
     /// #4321: the exhaustive surface prints each finding's id once, so the

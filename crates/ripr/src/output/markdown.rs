@@ -435,6 +435,7 @@ pub(crate) fn powershell_command(command: &str) -> Option<String> {
         return None;
     }
     let command = command.replace("'\\''", "''");
+    let command = powershell_safe_quotes(&command)?;
     if let Some(index) = powershell_redirect_offset(&command) {
         let invocation = invoke_quoted_program(command[..index].trim_end());
         let target = command[index + 1..].trim();
@@ -451,6 +452,66 @@ pub(crate) fn powershell_command(command: &str) -> Option<String> {
         ));
     }
     Some(invoke_quoted_program(&command))
+}
+
+/// PowerShell's tokenizer treats U+2018-U+201B as single-quote characters and
+/// U+201C-U+201E as double-quote characters, exactly like ASCII `'` and `"`.
+/// Bash treats all of them as ordinary data, and `shell_arg` leaves them
+/// unescaped inside its `'...'` span. Pasted into PowerShell, a lone `’` in a
+/// path or ref (`Steven’s repo`, macOS and Word-style names) therefore closes
+/// the literal early: the line fails to parse, and a crafted name such as
+/// `x’; calc; ‘y` runs `calc`.
+///
+/// Inside a single-quoted span the fix is PowerShell's own doubling idiom, which
+/// applies to every quote character in the set (a pair of quote characters is
+/// one literal character, so doubling `’` yields `’`). A typographic double
+/// quote inside a double-quoted span has no such rewrite that bash would read
+/// the same way, so the translation withholds there. Outside quotes these
+/// characters never reach this function: [`is_compound_bash_command`] already
+/// withholds any unlisted character.
+///
+/// Runs after the `'\''` rewrite, so `''` inside a span is an escaped
+/// apostrophe and stays as is.
+fn powershell_safe_quotes(command: &str) -> Option<String> {
+    let mut out = String::with_capacity(command.len());
+    let mut chars = command.chars().peekable();
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    while let Some(ch) = chars.next() {
+        if in_single_quote {
+            out.push(ch);
+            if ch == '\'' {
+                if chars.peek() == Some(&'\'') {
+                    out.extend(chars.next());
+                } else {
+                    in_single_quote = false;
+                }
+            } else if is_powershell_single_quote_lookalike(ch) {
+                out.push(ch);
+            }
+        } else if in_double_quote {
+            if is_powershell_double_quote_lookalike(ch) {
+                return None;
+            }
+            in_double_quote = ch != '"';
+            out.push(ch);
+        } else {
+            in_single_quote = ch == '\'';
+            in_double_quote = ch == '"';
+            out.push(ch);
+        }
+    }
+    Some(out)
+}
+
+/// A non-ASCII character PowerShell reads as a single quote (U+2018-U+201B).
+fn is_powershell_single_quote_lookalike(ch: char) -> bool {
+    matches!(ch, '\u{2018}'..='\u{201b}')
+}
+
+/// A non-ASCII character PowerShell reads as a double quote (U+201C-U+201E).
+fn is_powershell_double_quote_lookalike(ch: char) -> bool {
+    matches!(ch, '\u{201c}'..='\u{201e}')
 }
 
 /// A quoted program path in command position is a string expression in
@@ -657,7 +718,28 @@ fn powershell_literal(value: &str) -> String {
     if value.len() >= 2 && value.starts_with('\'') && value.ends_with('\'') {
         return value.to_string();
     }
-    format!("'{}'", value.replace('\'', "''"))
+    let mut literal = String::from("'");
+    for ch in value.chars() {
+        literal.push(ch);
+        if ch == '\'' || is_powershell_single_quote_lookalike(ch) {
+            literal.push(ch);
+        }
+    }
+    literal.push('\'');
+    literal
+}
+
+/// The PowerShell form of one generated command for plain-text surfaces, which
+/// print a bash command with no fenced PowerShell block. `Some` only when
+/// PowerShell needs a different line (an apostrophe or typographic quote in a
+/// path or ref, a `>` redirect); a command that runs unchanged, or has no
+/// honest translation, prints nothing extra. Same translation as the fenced
+/// surfaces ([`powershell_form`]); no second quoting implementation.
+pub(crate) fn powershell_text_variant(command: &str) -> Option<String> {
+    match powershell_form(command) {
+        PowershellForm::Translated(line) => Some(line),
+        PowershellForm::SameAsBash | PowershellForm::Unavailable => None,
+    }
 }
 
 #[cfg(test)]
@@ -1621,6 +1703,165 @@ fn main() -> ExitCode {
             !ghost.exists(),
             "withheld forms must take no subprocess/output action"
         );
+        Ok(())
+    }
+    /// PowerShell reads U+2018-U+201B as single quotes, so `shell_arg`'s
+    /// unescaped `’` inside `'...'` closes the literal early. The translation
+    /// doubles each one, which PowerShell reads back as the same character.
+    #[test]
+    fn powershell_command_doubles_typographic_single_quotes_inside_literals() {
+        assert_eq!(
+            powershell_command("ripr check --root 'Steven’s repo'").as_deref(),
+            Some("ripr check --root 'Steven’’s repo'")
+        );
+        assert_eq!(
+            powershell_command("ripr check --root '‘a’ ‚b‛ it'\\''s'").as_deref(),
+            Some("ripr check --root '‘‘a’’ ‚‚b‛‛ it''s'")
+        );
+        // A redirect target is a PowerShell literal too.
+        let line = powershell_command("ripr check --root . > 'out/it’s.json'").unwrap_or_default();
+        assert!(
+            line.contains("GetUnresolvedProviderPathFromPSPath('out/it’’s.json')"),
+            "redirect target must double the typographic quote:\n{line}"
+        );
+        // A plain non-ASCII path still needs no PowerShell form.
+        assert!(matches!(
+            powershell_form("ripr check --root 'café repo'"),
+            PowershellForm::SameAsBash
+        ));
+        assert!(matches!(
+            powershell_form("ripr check --root 'Steven’s repo'"),
+            PowershellForm::Translated(_)
+        ));
+    }
+
+    /// Typographic double quotes close a PowerShell double-quoted span, and
+    /// bash reads them as data, so no translation is honest there; they never
+    /// pass unquoted either.
+    #[test]
+    fn powershell_command_withholds_typographic_double_quotes() {
+        assert_eq!(powershell_command("echo \"a“b\""), None);
+        assert_eq!(powershell_command("echo \"a”b\""), None);
+        assert_eq!(powershell_command("echo “ab”"), None);
+        assert_eq!(powershell_command("echo ’ab"), None);
+    }
+
+    /// Plain-text surfaces print the PowerShell form only when it differs.
+    #[test]
+    fn powershell_text_variant_prints_only_a_different_form() {
+        assert_eq!(powershell_text_variant("ripr check --root 'a b'"), None);
+        assert_eq!(
+            powershell_text_variant("ripr check --root 'it'\\''s'").as_deref(),
+            Some("ripr check --root 'it''s'")
+        );
+        assert_eq!(powershell_text_variant("a && b"), None);
+    }
+
+    /// Run `line` in a real `pwsh` with a `ripr` function that records its
+    /// argv, so the oracle is what PowerShell actually bound, not a string.
+    /// Returns the recorded `(count, args)`. `Ok(None)` when no `pwsh` exists
+    /// on a non-Windows host; the Windows lane fails closed, like the native
+    /// proof above.
+    fn pwsh_recorded_argv(
+        line: &str,
+        cwd: &std::path::Path,
+    ) -> Result<Option<(usize, Vec<String>)>, String> {
+        if resolve_pwsh("pwsh").is_err() {
+            if cfg!(windows) {
+                return Err("pwsh is required on the Windows lane".to_string());
+            }
+            return Ok(None);
+        }
+        let record = cwd.join("argv.record");
+        let script = cwd.join("run.ps1");
+        let body = format!(
+            "$ErrorActionPreference = 'Stop'\nfunction ripr {{ [System.IO.File]::WriteAllText($env:RIPR_ARGV_RECORD, ($args.Count.ToString() + \"`n\" + ($args -join \"`n\")), [System.Text.UTF8Encoding]::new($false)) }}\n{line}\n"
+        );
+        std::fs::write(&script, body.as_bytes())
+            .map_err(|error| format!("failed to write script: {error}"))?;
+        let output = std::process::Command::new("pwsh")
+            .arg("-NoProfile")
+            .arg("-File")
+            .arg(&script)
+            .current_dir(cwd)
+            .env("RIPR_ARGV_RECORD", &record)
+            .output()
+            .map_err(|error| format!("failed to run pwsh: {error}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "pwsh rejected {line:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        let recorded = std::fs::read_to_string(&record)
+            .map_err(|error| format!("recorder did not run for {line:?}: {error}"))?;
+        let (count, rest) = recorded.split_once('\n').unwrap_or((&recorded, ""));
+        let count: usize = count
+            .parse()
+            .map_err(|error| format!("bad argv count {count:?}: {error}"))?;
+        Ok(Some((
+            count,
+            rest.split('\n').map(str::to_string).collect(),
+        )))
+    }
+
+    /// Native proof for the quoting contract: every value `shell_arg` renders
+    /// reaches PowerShell as exactly one argv entry with its original text,
+    /// through the same translation the surfaces print. Covers apostrophe,
+    /// space, non-ASCII, every typographic quote, and an injection payload that
+    /// runs a command when pasted untranslated.
+    #[test]
+    fn powershell_translation_binds_hostile_paths_as_one_argument() -> Result<(), String> {
+        use crate::agent::loop_commands::shell_arg;
+
+        let root = native_proof_root("quotes")?;
+        let _cleanup = RemoveOnDrop(root.clone());
+        let injection = "x’; New-Item -ItemType File injected-marker; ‘y";
+        let values = [
+            ("apostrophe", "it's"),
+            ("space", "a b"),
+            ("non-ASCII", "café résumé"),
+            ("right quote", "Steven’s repo"),
+            ("left quote", "‘draft’"),
+            ("low and reversed quotes", "a‚b‛c"),
+            ("mixed", "it's Steven’s café"),
+            ("injection", injection),
+        ];
+        for (label, value) in values {
+            let bash = format!("ripr --root {} --base HEAD", shell_arg(value));
+            let line = powershell_command(&bash)
+                .ok_or_else(|| format!("{label}: supported command must translate: {bash}"))?;
+            let Some((count, args)) = pwsh_recorded_argv(&line, &root)? else {
+                return Ok(());
+            };
+            let expected: Vec<String> = ["--root", value, "--base", "HEAD"]
+                .iter()
+                .map(|arg| arg.to_string())
+                .collect();
+            if count != 4 || args != expected {
+                return Err(format!(
+                    "{label}: PowerShell bound {count} arguments {args:?}, wanted the value \
+                     {value:?} as one (line {line:?})"
+                ));
+            }
+        }
+        if root.join("injected-marker").exists() {
+            return Err("the translated injection payload ran a command".to_string());
+        }
+
+        // Negative control: the untranslated bash form of the same payload does
+        // run the command, which proves this instrument can observe the break.
+        let raw = format!("ripr --root {}", shell_arg(injection));
+        let Some(_) = pwsh_recorded_argv(&raw, &root)? else {
+            return Ok(());
+        };
+        if !root.join("injected-marker").exists() {
+            return Err(
+                "control failed: the untranslated payload did not run, so this host \
+                 cannot observe the injection"
+                    .to_string(),
+            );
+        }
         Ok(())
     }
 }

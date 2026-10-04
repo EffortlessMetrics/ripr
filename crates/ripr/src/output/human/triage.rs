@@ -231,8 +231,13 @@ pub(crate) fn render_human_triage(
         out.push_str(&render_finding_digest_with_config(finding, config));
         if let Some(FindingDrillIn::Commands(navigation)) = drill_in {
             out.push_str("\nNext: drill into the top finding:\n");
-            out.push_str(&format!("  {}\n", navigation.explain_command(&finding.id)));
-            out.push_str(&format!("  {}\n", navigation.context_command(&finding.id)));
+            for command in [
+                navigation.explain_command(&finding.id),
+                navigation.context_command(&finding.id),
+            ] {
+                out.push_str(&format!("  {command}\n"));
+                super::push_powershell_variant(out, "  ", &command);
+            }
         }
     }
     // #2567: the default human render is the release-facing surface, so it must

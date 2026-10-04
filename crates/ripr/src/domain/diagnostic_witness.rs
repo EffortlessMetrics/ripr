@@ -140,7 +140,10 @@ impl DiagnosticWitness {
             missing_discriminators: finding.activation.missing_discriminators.clone(),
             fix_site,
             suggested_assertion: None,
-            explain_command: format!("ripr explain --root . {}", finding.id),
+            explain_command: format!(
+                "ripr explain --root . {}",
+                crate::agent::loop_commands::shell_arg(&finding.id)
+            ),
             confidence: DiagnosticConfidence {
                 value: finding.confidence.is_finite().then_some(finding.confidence),
                 basis: "static_only".to_string(),
@@ -387,6 +390,33 @@ mod tests {
     fn exposed_finding_without_missing_fact_does_not_become_a_gap_witness() {
         let finding = sample_finding();
         assert!(DiagnosticWitness::from_finding(&finding).is_none());
+    }
+
+    #[test]
+    fn explain_command_quotes_a_finding_id_that_embeds_a_hostile_path() -> Result<(), String> {
+        let mut finding = sample_finding();
+        finding.class = ExposureClass::WeaklyExposed;
+        finding.id = "probe:src_we ird_it's;x.rs:predicate:ec6d6f91".to_string();
+        let witness = DiagnosticWitness::from_finding(&finding)
+            .ok_or_else(|| "sample finding should produce a witness".to_string())?;
+        assert_eq!(
+            witness.explain_command,
+            "ripr explain --root . 'probe:src_we ird_it'\\''s;x.rs:predicate:ec6d6f91'"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn explain_command_leaves_a_plain_finding_id_bare() -> Result<(), String> {
+        let mut finding = sample_finding();
+        finding.class = ExposureClass::WeaklyExposed;
+        let witness = DiagnosticWitness::from_finding(&finding)
+            .ok_or_else(|| "sample finding should produce a witness".to_string())?;
+        assert_eq!(
+            witness.explain_command,
+            "ripr explain --root . probe:pricing:88:error_path"
+        );
+        Ok(())
     }
 
     fn sample_finding() -> Finding {
