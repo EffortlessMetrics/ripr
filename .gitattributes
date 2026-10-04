@@ -32,3 +32,14 @@ fixtures/evidence-quality-benchmark/regex-word-boundary-empty/patches/*.patch -t
 # Exact Git commit object used only by the custody boundary fixture. Its signed
 # header contains significant space-only continuation lines; never normalize it.
 xtask/src/reports/release/candidate_harness/live_head/fixtures/last-integrated.commit -text -whitespace
+
+# Append-only logs: entries are self-contained blocks added at the head of
+# their section, so concurrent additions union cleanly (evidence: 5 PRs in
+# 2026-09-29..10-01 hand-resolved the identical keep-both union). Rewrites
+# (release cuts, stale sweeps) are deliberate consolidation events. Union
+# never emits conflict markers: if two sides carry divergent wordings of the
+# same entry, BOTH survive — clean up in review or the periodic sweep.
+# `/CHANGELOG.md` is root-anchored so nested fixture and editor CHANGELOG.md
+# files keep the default merge driver.
+/CHANGELOG.md merge=union
+docs/LEARNINGS.md merge=union
