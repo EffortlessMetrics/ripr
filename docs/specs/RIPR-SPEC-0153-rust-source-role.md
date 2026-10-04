@@ -205,7 +205,9 @@ Whole-index source-role normalization borrows its exact identity keys
 (file, start/end lines, name and full body) and per-file test references.
 It does not allocate another owned body for every lookup key. Generation-owned
 fact arenas retain payloads once for shared occurrences; per-file and flat
-views keep independent ordered memberships. Rebuilding a flat view clears its
+views keep independent ordered memberships. Per-file function memberships use
+fresh handle-sized storage rather than retaining the consumed function-fact
+vector allocation. Rebuilding a flat view clears its
 membership, while unreachable payloads are reclaimed during finalization, not
 necessarily during normalization. Full body equality remains part of the
 normalization key; explicit occurrence identity, rather than a name/span/body

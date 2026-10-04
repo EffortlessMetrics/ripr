@@ -381,6 +381,177 @@ fn file_view_equality_compares_complete_metadata_and_local_membership() -> Resul
     Ok(())
 }
 
+fn membership_fixture(path: &Path) -> Result<FileFacts, String> {
+    let mut source = String::from("fn identity(n: usize) -> usize { n }\n");
+    for ordinal in 0..48 {
+        source.push_str(&format!(
+            "fn owner_{ordinal:02}(n: usize) -> usize {{ let marker = \"{}\"; let value = identity(n); if marker.len() > 7 {{ value + {ordinal} }} else {{ value }} }}\n",
+            "material_payload".repeat(8),
+        ));
+    }
+    source.push_str("#[test] fn checks_owner() { assert_eq!(owner_00(2), 2); }\n");
+    let facts = RaRustSyntaxAdapter.summarize_file(path, &source)?;
+    assert_eq!(facts.functions.len(), 50);
+    assert_eq!(facts.tests.len(), 1);
+    assert!(
+        facts
+            .functions
+            .iter()
+            .all(|function| !function.body.is_empty())
+    );
+    assert!(
+        facts
+            .functions
+            .iter()
+            .any(|function| !function.calls.is_empty())
+    );
+    Ok(facts)
+}
+
+#[test]
+fn file_function_membership_retains_only_handle_capacity() -> Result<(), String> {
+    let path = PathBuf::from("src/membership.rs");
+    let facts = membership_fixture(&path)?;
+    let count = facts.functions.len();
+    let source_pointer = facts.functions.as_ptr() as usize;
+    let source_capacity = facts.functions.capacity();
+    let source_record_size = std::mem::size_of::<FunctionFact>();
+    let handle_size = std::mem::size_of::<FactId<FunctionFact>>();
+    assert!(source_record_size > handle_size);
+    assert!(source_capacity >= count);
+    let payload_pointers = facts
+        .functions
+        .iter()
+        .map(|fact| (fact.body.as_ptr(), fact.calls.as_ptr()))
+        .collect::<Vec<_>>();
+    let expected = OwnedRustIndex {
+        functions: facts.functions.clone(),
+        tests: facts.tests.clone(),
+        files: BTreeMap::from([(path.clone(), facts.clone())]),
+        ..OwnedRustIndex::default()
+    };
+    let expected_wire = serde_json::to_value(&expected).map_err(|error| error.to_string())?;
+    let mut index = RustIndex::default();
+    index.insert_file(path.clone(), facts, true);
+    let local = index.files.get(&path).ok_or("missing membership file")?;
+    let destination_pointer = local.functions.as_ptr() as usize;
+    let destination_capacity = local.functions.capacity();
+    assert_eq!(
+        serde_json::to_value(&index).map_err(|error| error.to_string())?,
+        expected_wire
+    );
+    let file = index.files().get(&path).ok_or("missing borrowed file")?;
+    assert_eq!(file.functions.len(), count);
+    assert_eq!(index.functions().len(), count);
+    for ((flat, local), (body, calls)) in index
+        .functions()
+        .iter()
+        .zip(file.functions.iter())
+        .zip(payload_pointers)
+    {
+        assert!(std::ptr::eq(flat, local));
+        assert_eq!(flat.body.as_ptr(), body);
+        assert_eq!(flat.calls.as_ptr(), calls);
+    }
+    // The capacity bound is the regression oracle. Pointer inequality is
+    // diagnostic only: allocator address reuse must not decide correctness.
+    assert!(
+        destination_capacity <= count,
+        "function membership retained fact-sized backing: {destination_capacity} handles for {count} functions; source allocation reused: {}",
+        source_pointer == destination_pointer,
+    );
+    index.finalize()?;
+    let wire = serde_json::to_value(&index).map_err(|error| error.to_string())?;
+    assert_eq!(wire, expected_wire);
+    let decoded: RustIndex =
+        serde_json::from_value(wire.clone()).map_err(|error| error.to_string())?;
+    assert_eq!(
+        serde_json::to_value(&decoded).map_err(|error| error.to_string())?,
+        wire
+    );
+    Ok(())
+}
+
+#[test]
+fn compact_membership_preserves_occurrences_replacement_and_finalized_slots() -> Result<(), String>
+{
+    let a = PathBuf::from("src/a.rs");
+    let b = PathBuf::from("src/b.rs");
+    let discarded = PathBuf::from("src/discarded.rs");
+    let mut first = membership_fixture(&a)?;
+    // Equal complete facts remain distinct occurrences; equal keys do not alias.
+    first.functions.push(first.functions[2].clone());
+    let second = membership_fixture(&b)?;
+    let replacement = first.clone();
+    let mut expected_functions = first.functions.clone();
+    expected_functions.extend(second.functions.clone());
+    let mut expected_tests = first.tests.clone();
+    expected_tests.extend(second.tests.clone());
+    let expected = OwnedRustIndex {
+        files: BTreeMap::from([
+            (a.clone(), replacement.clone()),
+            (b.clone(), second.clone()),
+        ]),
+        functions: expected_functions,
+        tests: expected_tests,
+        ..OwnedRustIndex::default()
+    };
+    let expected_wire = serde_json::to_value(&expected).map_err(|error| error.to_string())?;
+
+    let mut index = RustIndex::default();
+    index.insert_file(a.clone(), first, true);
+    index.insert_file(b.clone(), second, true);
+    index.insert_file(discarded.clone(), membership_fixture(&discarded)?, false);
+    index.insert_file(a.clone(), replacement, false);
+    assert!(index.remove_file(&discarded));
+    index.finalize()?;
+    assert_eq!(
+        serde_json::to_value(&index).map_err(|error| error.to_string())?,
+        expected_wire
+    );
+    assert_eq!(index.function_facts.len(), 152);
+    assert_eq!(index.test_facts.len(), 3);
+    assert_eq!(index.functions().len(), 101);
+    let local_a = index.files().get(&a).ok_or("replacement a")?;
+    let local_b = index.files().get(&b).ok_or("retained b")?;
+    assert_eq!(local_a.functions.len(), 51);
+    assert_eq!(local_b.functions.len(), 50);
+    assert!(!std::ptr::eq(
+        index.functions().at(0),
+        local_a.functions.at(0)
+    ));
+    assert!(std::ptr::eq(
+        index.functions().at(51),
+        local_b.functions.at(0)
+    ));
+    assert_eq!(local_a.functions.at(2), local_a.functions.at(50));
+    assert!(!std::ptr::eq(
+        local_a.functions.at(2),
+        local_a.functions.at(50)
+    ));
+    for path in [&a, &b] {
+        let containing = index.files.get(path).ok_or("containing membership")?;
+        assert!(containing.functions.capacity() <= containing.functions.len());
+    }
+    for (position, function) in index.functions().iter().enumerate() {
+        assert_eq!(index.function_slot(function), Some(position));
+    }
+    for function in local_a.functions {
+        assert_eq!(index.function_slot(function), None);
+    }
+    assert_eq!(index.test_slot(local_a.tests.at(0)), None);
+    for (position, test) in index.tests().iter().enumerate() {
+        assert_eq!(index.test_slot(test), Some(position));
+    }
+    let decoded: RustIndex =
+        serde_json::from_value(expected_wire.clone()).map_err(|error| error.to_string())?;
+    assert_eq!(
+        serde_json::to_value(&decoded).map_err(|error| error.to_string())?,
+        expected_wire
+    );
+    Ok(())
+}
+
 #[test]
 fn unresolved_property_macros_survive_file_view_wire_and_owned_round_trip() -> Result<(), String> {
     let path = PathBuf::from("tests/property.rs");

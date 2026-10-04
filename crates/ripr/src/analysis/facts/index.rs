@@ -446,10 +446,13 @@ impl RustIndex {
             role_provenance,
             source,
         } = facts;
-        let functions = functions
-            .into_iter()
-            .map(|fact| self.function_facts.allocate(fact))
-            .collect::<Vec<_>>();
+        // Allocate handle storage explicitly: an in-place map collection can retain
+        // the much larger FunctionFact source allocation for these small IDs.
+        let mut function_ids = Vec::with_capacity(functions.len());
+        for fact in functions {
+            function_ids.push(self.function_facts.allocate(fact));
+        }
+        let functions = function_ids;
         let tests = tests
             .into_iter()
             .map(|fact| self.test_facts.allocate(fact))

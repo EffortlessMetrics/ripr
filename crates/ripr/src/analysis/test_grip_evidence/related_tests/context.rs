@@ -574,12 +574,12 @@ mod candidate_index_tests {
         let path = PathBuf::from("src/lib.rs");
         let facts = RaRustSyntaxAdapter
             .summarize_file(&path, "#[test] fn sample() { assert_eq!(1, 1); }")?;
-        let mut index = RustIndex {
-            tests: facts.tests.clone(),
-            functions: facts.functions.clone(),
-            ..RustIndex::default()
-        };
-        index.files.insert(path, facts);
+        // Flat facts are separate occurrences from the file copy, as before
+        // generation-owned arenas (#5109); only the flat test is rewritten.
+        let mut index = RustIndex::default();
+        index.extend_tests(facts.tests.clone());
+        index.extend_functions(facts.functions.clone());
+        index.insert_file_only(path, facts);
         let large_ordinary = "    let ordinary = 1;\n".repeat(4096);
         for body in [
             large_ordinary.as_str(),
@@ -592,10 +592,10 @@ mod candidate_index_tests {
             "use café;\r\nmodule::café();\r\nordinary();",
             "use unfinished\n\"unterminated::owner\nmodule::visible();",
         ] {
-            let Some(test) = index.tests.first_mut() else {
+            if index.tests().is_empty() {
                 return Err("fixture must contain a parsed test".to_string());
-            };
-            test.body = body.to_string();
+            }
+            index.test_at_mut(0).body = body.to_string();
             let full_lines = body
                 .lines()
                 .map(strip_comments_and_strings)

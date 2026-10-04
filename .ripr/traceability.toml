@@ -9228,6 +9228,8 @@ id = "RIPR-SPEC-0153"
 name = "Rust producer-owned source role"
 spec = "docs/specs/RIPR-SPEC-0153-rust-source-role.md"
 tests = [
+  "crates/ripr/src/analysis/facts/index_tests.rs::file_function_membership_retains_only_handle_capacity",
+  "crates/ripr/src/analysis/facts/index_tests.rs::compact_membership_preserves_occurrences_replacement_and_finalized_slots",
   "crates/ripr/src/analysis/facts/index_tests.rs::shared_harness_demotion_splits_only_disagreeing_containing_paths",
   "crates/ripr/src/analysis/facts/test_styles/tests.rs::equal_function_keys_keep_distinct_local_context_and_legacy_flat_roles",
   "crates/ripr/src/analysis/facts/test_styles/tests.rs::normalization_identity_keys_borrow_body_storage",
