@@ -61,7 +61,9 @@ make-work campaign.
 
 Every normal swarm slice should finish the same way:
 
-- open a same-repo PR with one clear purpose;
+- open a same-repo PR as Draft with one clear purpose, and mark it Ready once
+  the head is final (only Draft -> Ready starts `Ripr Rust Small Result`; a
+  push after Ready needs Draft -> Ready again, see `docs/CI.md`);
 - wait for `Ripr Rust Small Result` and any touched-surface checks;
 - merge only when clean and current;
 - remove generated residue, isolated targets, and stale local branches or

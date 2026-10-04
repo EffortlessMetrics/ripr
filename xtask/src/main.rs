@@ -5928,23 +5928,22 @@ fn routed_rust_workflow_contract_violations(
 /// How Routed Rust Small treats one GitHub event after reading the workflow YAML.
 ///
 /// The workflow file is the authority. This classifier inspects `on.pull_request.types`
-/// and the route-job `if:` so a missing filter cannot be hidden behind a hardcoded
-/// desired policy (#4380).
+/// so a re-added Draft or label event cannot be hidden behind a hardcoded
+/// desired policy (#4380, #4986).
 #[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RoutedRustEventRoute {
     LaunchFullGate,
-    IgnoreWithoutRequiredResult,
     WorkflowNotTriggered,
 }
 
-const ROUTED_RUST_PROOF_ACTIONS_SNIPPET: &str =
-    r#"contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action)"#;
-const ROUTED_RUST_FULL_CI_LABELED_SNIPPET: &str =
-    "github.event.action == 'labeled' && github.event.label.name == 'full-ci'";
-const ROUTED_RUST_IGNORED_LABEL_RESULT_NAME: &str = "Ripr Rust Small Ignored Label Event";
 const ROUTED_RUST_REQUIRED_RESULT_NAME: &str = "Ripr Rust Small Result";
-const ROUTED_RUST_SYNCHRONIZE_CANCEL_SNIPPET: &str = "cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}";
+const ROUTED_RUST_READY_EVENT: &str = "ready_for_review";
+const ROUTED_RUST_CONCURRENCY_GROUP_SNIPPET: &str = "group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}";
+const ROUTED_RUST_READY_CANCEL_SNIPPET: &str =
+    "cancel-in-progress: ${{ github.event_name == 'pull_request' }}";
+const ROUTED_RUST_IGNORED_LABEL_RESULT_NAME: &str = "Ripr Rust Small Ignored Label Event";
+const ROUTED_RUST_DRAFT_GUARD_SNIPPET: &str = "github.event.pull_request.draft";
 
 fn routed_rust_pull_request_types(workflow: &str) -> Option<Vec<String>> {
     workflow.lines().map(str::trim).find_map(|line| {
@@ -5963,78 +5962,12 @@ fn routed_rust_pull_request_types(workflow: &str) -> Option<Vec<String>> {
     })
 }
 
-fn routed_rust_job_if_text(workflow: &str, job: &str) -> String {
-    let job_header = format!("{job}:");
-    let mut in_block = false;
-    let mut in_if = false;
-    let mut text = String::new();
-    for line in workflow.lines() {
-        let job_level_key = line.starts_with("  ")
-            && !line.starts_with("   ")
-            && line.trim_end().ends_with(':')
-            && !line.trim_start().starts_with('-');
-        if job_level_key {
-            if in_block {
-                break;
-            }
-            in_block = line.trim() == job_header;
-            in_if = false;
-            continue;
-        }
-        if in_block && !line.is_empty() && !line.starts_with(' ') {
-            break;
-        }
-        if !in_block {
-            continue;
-        }
-        if in_if {
-            let indent = line.len() - line.trim_start().len();
-            if !line.trim().is_empty() && indent <= 4 {
-                in_if = false;
-            } else {
-                if !line.trim().is_empty() && !line.trim_start().starts_with('#') {
-                    text.push(' ');
-                    text.push_str(line.trim());
-                }
-                continue;
-            }
-        }
-        if line.starts_with("    if:") && !line.starts_with("     ") {
-            let rest = line.trim().trim_start_matches("if:").trim();
-            if rest == "|" || rest == ">" || rest == "|-" || rest == ">-" {
-                in_if = true;
-            } else {
-                text.push_str(rest);
-            }
-        }
-    }
-    text
-}
-
-fn routed_rust_job_has_proof_event_if(workflow: &str, job: &str) -> bool {
-    let if_text = routed_rust_job_if_text(workflow, job);
-    if_text.contains(ROUTED_RUST_PROOF_ACTIONS_SNIPPET)
-        && if_text.contains(ROUTED_RUST_FULL_CI_LABELED_SNIPPET)
-}
-
-#[cfg(test)]
-fn routed_rust_proof_event(event_name: &str, action: Option<&str>, label: Option<&str>) -> bool {
-    if event_name != "pull_request" {
-        return true;
-    }
-    match action {
-        Some("opened" | "synchronize" | "reopened") => true,
-        Some("labeled") if label == Some("full-ci") => true,
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 fn routed_rust_event_route(
     workflow: &str,
     event_name: &str,
     action: Option<&str>,
-    label: Option<&str>,
+    _label: Option<&str>,
 ) -> RoutedRustEventRoute {
     if event_name == "pull_request" {
         let action = action.unwrap_or("");
@@ -6043,17 +5976,21 @@ fn routed_rust_event_route(
         {
             return RoutedRustEventRoute::WorkflowNotTriggered;
         }
-        if !routed_rust_proof_event(event_name, Some(action), label) {
-            if routed_rust_job_has_proof_event_if(workflow, "route") {
-                return RoutedRustEventRoute::IgnoreWithoutRequiredResult;
-            }
-            return RoutedRustEventRoute::LaunchFullGate;
-        }
     }
     RoutedRustEventRoute::LaunchFullGate
 }
 
-fn routed_rust_label_event_contract_violations(workflow: &str) -> Vec<String> {
+/// Enforce the Ready-only pull-request admission law declared by
+/// `.github/workflows/routed-rust.yml` (#4986).
+///
+/// The native Draft -> Ready transition is the sole pull-request qualification
+/// request. A skipped required job reports success, so this validator fails
+/// closed on every path that could resurrect Draft or label participation in
+/// the protected required context. The old label-event law (opened /
+/// synchronize / reopened / labeled admission, the ignored-label pseudo-result,
+/// and the synchronize-only cancellation) is rejected here as the actual
+/// failure mode instead of being mandated.
+fn routed_rust_ready_event_contract_violations(workflow: &str) -> Vec<String> {
     let has_pull_request_trigger = workflow
         .lines()
         .map(str::trim)
@@ -6063,58 +6000,48 @@ fn routed_rust_label_event_contract_violations(workflow: &str) -> Vec<String> {
     }
     let Some(types) = routed_rust_pull_request_types(workflow) else {
         return vec![
-            ".github/workflows/routed-rust.yml must declare an inline pull_request types array so opened/synchronize/reopened and full-ci labeled events still launch".to_string(),
+            ".github/workflows/routed-rust.yml must declare an inline pull_request types array so the Ready-only admission contract is auditable (#4986)".to_string(),
         ];
     };
     let mut violations = Vec::new();
-    for required in ["opened", "synchronize", "reopened", "labeled"] {
-        if !types.iter().any(|value| value == required) {
-            violations.push(format!(
-                ".github/workflows/routed-rust.yml pull_request types must keep `{required}` so ordinary proof events still launch the required Rust or docs gate"
-            ));
-        }
+    let ready_only = [ROUTED_RUST_READY_EVENT];
+    let unexpected: Vec<&str> = types
+        .iter()
+        .map(String::as_str)
+        .filter(|value| !ready_only.contains(value))
+        .collect();
+    if !unexpected.is_empty() || types.len() != ready_only.len() {
+        violations.push(format!(
+            ".github/workflows/routed-rust.yml pull_request types must be exactly `[{ROUTED_RUST_READY_EVENT}]`; unexpected activity types: {unexpected:?}. The Draft -> Ready transition is the sole pull-request qualification request and every other pull_request activity type must stay withheld (#4986)"
+        ));
     }
-    if types.iter().any(|value| value == "unlabeled") {
+    if !workflow.contains(ROUTED_RUST_CONCURRENCY_GROUP_SNIPPET) {
         violations.push(
-            ".github/workflows/routed-rust.yml must not subscribe to unlabeled pull_request events; an unrelated label removal must not launch a full Rust gate (#4380)".to_string(),
+            ".github/workflows/routed-rust.yml must keep the event-qualified concurrency group `${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}` so push and manual work cannot replace each other (#4986)".to_string(),
         );
     }
-    if !workflow.contains(ROUTED_RUST_SYNCHRONIZE_CANCEL_SNIPPET) {
+    if !workflow.contains(ROUTED_RUST_READY_CANCEL_SNIPPET) {
         violations.push(
-            ".github/workflows/routed-rust.yml must keep synchronize-only cancel-in-progress; do not flip cancellation globally for label events (#4380)".to_string(),
+            ".github/workflows/routed-rust.yml must keep `cancel-in-progress: ${{ github.event_name == 'pull_request' }}` so a second Ready transition replaces the prior admission attempt without cancelling push or manual runs (#4986)".to_string(),
         );
     }
-    if !workflow.contains("-label-ignore")
-        || !workflow.contains(
-            "github.event.action == 'labeled' && github.event.label.name != 'full-ci' && '-label-ignore'",
-        )
-    {
+    if workflow.contains(ROUTED_RUST_DRAFT_GUARD_SNIPPET) {
         violations.push(
-            ".github/workflows/routed-rust.yml must put unrelated labeled events in a distinct `-label-ignore` concurrency group so they cannot replace a pending synchronize proof".to_string(),
+            ".github/workflows/routed-rust.yml must not gate jobs on `github.event.pull_request.draft`; a skipped required job reports success, so job guards cannot distinguish withheld context from proof (#4986)".to_string(),
         );
     }
-    for job in ["route", "detect-docs-only"] {
-        if !routed_rust_job_has_proof_event_if(workflow, job) {
-            violations.push(format!(
-                ".github/workflows/routed-rust.yml job `{job}` must launch only on opened/synchronize/reopened or full-ci labeled events"
-            ));
-        }
+    if workflow.contains(ROUTED_RUST_IGNORED_LABEL_RESULT_NAME) {
+        violations.push(
+            ".github/workflows/routed-rust.yml must not post the retired `Ripr Rust Small Ignored Label Event` pseudo-result; the required context is either earned by an exact Ready-head run or absent (#4986)".to_string(),
+        );
     }
+    let required_name_line = format!("name: {ROUTED_RUST_REQUIRED_RESULT_NAME}");
     if !routed_rust_job_block_any(workflow, "result", |line| {
-        line.contains(ROUTED_RUST_IGNORED_LABEL_RESULT_NAME)
-            && line.contains(ROUTED_RUST_REQUIRED_RESULT_NAME)
+        line.trim() == required_name_line.as_str()
     }) {
-        violations.push(
-            ".github/workflows/routed-rust.yml result job must post `Ripr Rust Small Ignored Label Event` instead of the required result on unrelated labeled events".to_string(),
-        );
-    }
-    if !routed_rust_job_block_any(workflow, "result", |line| {
-        line.contains(r#"[ "$EVENT_ACTION" = "unlabeled" ]"#)
-            && line.contains(r#"[ "$LABEL_NAME" != "full-ci" ]"#)
-    }) {
-        violations.push(
-            ".github/workflows/routed-rust.yml result job must short-circuit unlabeled and non-full-ci labeled events without manufacturing a required green result".to_string(),
-        );
+        violations.push(format!(
+            ".github/workflows/routed-rust.yml result job must post the static `{ROUTED_RUST_REQUIRED_RESULT_NAME}` context on every run; a conditional or renamed result can hide Draft or label activity from branch protection (#4986)"
+        ));
     }
     violations
 }
@@ -6469,7 +6396,7 @@ fn routed_rust_workflow_contract_violations_with_reusable(
         }
     }
 
-    violations.extend(routed_rust_label_event_contract_violations(workflow));
+    violations.extend(routed_rust_ready_event_contract_violations(workflow));
 
     violations.sort();
     violations.dedup();

@@ -2,11 +2,10 @@ name: Routed Rust Small
 
 on:
   pull_request:
-    # `unlabeled` is omitted on purpose (#4380): a windows-ci (or other
-    # unrelated) label removal must not start this required workflow, occupy
-    # the per-PR concurrency group, or replace Ripr Rust Small Result.
-    # `labeled` stays so `full-ci` can still refresh advisory reports.
-    types: [opened, synchronize, reopened, labeled]
+    # The protected PR qualification is requested exactly once by the native
+    # Draft -> Ready transition. Draft opened/synchronize/reopened activity and
+    # ordinary labels must not create Ripr Rust Small Result.
+    types: [ready_for_review]
   push:
     branches: [main, master]
   workflow_dispatch:
@@ -16,13 +15,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}${{ github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name != 'full-ci' && '-label-ignore' || '' }}
-  # Product decision: cancel only on new commits. Do not flip this globally
-  # for label events (#4380). Unrelated labeled runs use the `-label-ignore`
-  # suffix so they cannot replace a pending synchronize proof in the
-  # per-PR group. Unrelated label events must not launch the gate instead of
-  # changing cancellation.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
+  # A second Ready transition means the prior admission transaction was
+  # revoked. Preserve independent main/manual work.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -30,12 +26,6 @@ env:
 jobs:
   route:
     name: Route Ripr Rust Small
-    # Launch the required gate on opened/synchronize/reopened, main pushes,
-    # workflow_dispatch, and `full-ci` labeled. Other labeled events (including
-    # windows-ci) stay in this workflow only long enough for the result job to
-    # post a non-required ignore check and leave the previous exact-head
-    # Ripr Rust Small Result untouched.
-    if: github.event_name != 'pull_request' || contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action) || (github.event.action == 'labeled' && github.event.label.name == 'full-ci')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -91,7 +81,6 @@ jobs:
 
   detect-docs-only:
     name: Detect Docs-Only Surface
-    if: github.event_name != 'pull_request' || contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action) || (github.event.action == 'labeled' && github.event.label.name == 'full-ci')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -225,7 +214,7 @@ jobs:
           retention-days: 5
 
   result:
-    name: ${{ github.event_name == 'pull_request' && (github.event.action == 'unlabeled' || (github.event.action == 'labeled' && github.event.label.name != 'full-ci')) && 'Ripr Rust Small Ignored Label Event' || 'Ripr Rust Small Result' }}
+    name: Ripr Rust Small Result
     needs: [route, detect-docs-only, rust-cx43, rust-cpx42, rust-cx53, rust-github, docs-gate]
     if: always()
     runs-on: ubuntu-latest
@@ -255,16 +244,10 @@ jobs:
           CX53_ONLINE: ${{ needs.route.outputs.cx53_online }}
           CX53_IDLE_READY: ${{ needs.route.outputs.cx53_idle_ready }}
           EVENT_NAME: ${{ github.event_name }}
-          EVENT_ACTION: ${{ github.event.action }}
-          LABEL_NAME: ${{ github.event.label.name }}
           DOCS_DETECT_RESULT: ${{ needs.detect-docs-only.result }}
           DOCS_ONLY: ${{ needs.detect-docs-only.outputs.docs_only }}
           DOCS_GATE_RESULT: ${{ needs.docs-gate.result }}
         run: |
-          if [ "$EVENT_NAME" = "pull_request" ] && { [ "$EVENT_ACTION" = "unlabeled" ] || { [ "$EVENT_ACTION" = "labeled" ] && [ "$LABEL_NAME" != "full-ci" ]; }; }; then
-            { echo "### Ripr Rust Small Ignored Label Event"; echo ""; echo "- action: \`$EVENT_ACTION\`"; echo "- label: \`${LABEL_NAME:-none}\`"; echo "- full gate: \`false\`"; echo "- required result: \`not posted\`"; } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
           status=pass
           message="selected implementation job succeeded"
           if [ "$DOCS_DETECT_RESULT" != "success" ]; then
