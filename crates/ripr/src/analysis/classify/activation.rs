@@ -3388,13 +3388,15 @@ assert_eq!(input.amount, 100);"#
 
     // #4228: a reversed literal (`100 < amount`) and a local boundary
     // (`let limit = 100;`) close at the boundary input and stay open one
-    // step off it; a local no row can evaluate names no repair at all.
+    // step off it. An invisible local names no repair; an unsupported
+    // computed local retains the public typed limitation fact without credit.
     #[test]
     fn reversed_and_local_boundaries_close_only_at_the_boundary_value() {
         enum Expect {
             Closed,
             Missing(&'static str),
             NoRepair,
+            Unresolved(&'static str),
         }
         let cases = [
             (
@@ -3541,7 +3543,7 @@ assert_eq!(input.amount, 100);"#
                 "amount > limit",
                 3,
                 "score(100);",
-                Expect::NoRepair,
+                Expect::Unresolved("amount == limit"),
             ),
         ];
         for (body, predicate, line, call, expect) in cases {
@@ -3579,6 +3581,14 @@ assert_eq!(input.amount, 100);"#
                 Expect::Missing(value) => assert!(
                     !has_observed_boundary_equality(&activation) && missing == [value],
                     "`{predicate}` with {call} must name {value}; missing {missing:?}"
+                ),
+                Expect::Unresolved(value) => assert!(
+                    !has_observed_boundary_equality(&activation)
+                        && missing == [value]
+                        && activation.missing_discriminators.iter().all(|fact| {
+                            fact.reason.contains(BOUNDARY_OPERAND_UNRESOLVED_MARKER)
+                        }),
+                    "`{predicate}` ({body}) with {call} must retain only its unresolved limitation; missing {missing:?}"
                 ),
                 Expect::NoRepair => assert!(
                     !has_observed_boundary_equality(&activation) && missing.is_empty(),

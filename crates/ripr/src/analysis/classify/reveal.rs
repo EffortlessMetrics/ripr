@@ -2907,8 +2907,9 @@ mod tests {
                 }
             }
         }
-        // A same-file or same-module test commonly reaches a private helper
-        // through the module's entry point, so it keeps crediting.
+        // Public sink identity cannot be borrowed from file or module
+        // proximity. The strong proximity oracle remains listed, but withholds
+        // discriminator credit even beside an independently reaching test.
         for proximity in [RelationReason::SameTestFile, RelationReason::SameModule] {
             let (_, discriminate, _) = reveal_evidence(
                 &probe,
@@ -2917,32 +2918,42 @@ mod tests {
                     (&owner_test, RelationReason::DirectOwnerCall),
                 ],
             );
-            if discriminate.state != StageState::Yes {
+            if discriminate.state != StageState::Weak
+                || !discriminate.summary.contains("identity_unresolved")
+            {
                 return Err(format!(
-                    "{proximity:?} test lost its oracle credit: {discriminate:?}"
+                    "{proximity:?} oracle borrowed sink identity: {discriminate:?}"
                 ));
             }
         }
-        // With no reach-bearing relation, reach itself stays weak or absent
-        // (reach.rs), so the proximity oracle keeps its old reading here.
-        // An assertionless same-file or same-module neighbour supplies no
-        // reach either, so it must not switch the rule on.
+        // Assertionless neighbours supply neither reach nor sink identity.
+        // Token-only proximity still withholds; the independently retained
+        // owner-named test relation carries entity identity and keeps credit.
         let bystander = test_with_assertions("same_file_bystander", Vec::new());
-        for related in [
-            vec![(&proximity_test, RelationReason::WeakTokenSubstring)],
-            vec![
-                (&bystander, RelationReason::SameTestFile),
-                (&proximity_test, RelationReason::WeakTokenSubstring),
-            ],
-            vec![
-                (&bystander, RelationReason::SameModule),
-                (&proximity_test, RelationReason::OwnerNamedTest),
-            ],
+        for (related, expected) in [
+            (
+                vec![(&proximity_test, RelationReason::WeakTokenSubstring)],
+                StageState::Weak,
+            ),
+            (
+                vec![
+                    (&bystander, RelationReason::SameTestFile),
+                    (&proximity_test, RelationReason::WeakTokenSubstring),
+                ],
+                StageState::Weak,
+            ),
+            (
+                vec![
+                    (&bystander, RelationReason::SameModule),
+                    (&proximity_test, RelationReason::OwnerNamedTest),
+                ],
+                StageState::Yes,
+            ),
         ] {
             let (_, discriminate, _) = reveal_evidence(&probe, &related);
-            if discriminate.state != StageState::Yes {
+            if discriminate.state != expected {
                 return Err(format!(
-                    "relation with no reach-bearing test lost its oracle reading: {discriminate:?}"
+                    "assertionless neighbour changed the oracle's own identity: expected {expected:?}, got {discriminate:?}"
                 ));
             }
         }

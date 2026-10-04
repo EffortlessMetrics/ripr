@@ -1104,7 +1104,10 @@ fn equality_execution_uses_statement_prefix_and_closure_invocation() -> Result<(
         let direct = format!("{binding} {assertion}");
         // Keep this execution control independent of the narrower owner-pin
         // binding gate, which conservatively refuses any nested function.
-        // The existing token-direct ReturnValue fixture uses this same shape.
+        // The retained public delta guard also refuses invariant `input`
+        // overlap for this numeric-only return change. The nested-function
+        // cases therefore establish runtime execution while disclosing that
+        // static return binding remains unverified; neither gate is relaxed.
         let helper_direct = if family == "return_value" {
             "let input = 4;\nassert_eq!(weight(input), 12);".to_string()
         } else {
@@ -1215,15 +1218,42 @@ fn equality_execution_uses_statement_prefix_and_closure_invocation() -> Result<(
                 .filter(|finding| finding["probe"]["family"] == family)
                 .collect::<Vec<_>>();
             assert_eq!(findings.len(), 1, "{family}/{case}");
+            let binding_unverified = family == "return_value"
+                && matches!(
+                    case,
+                    "nested_helper_return"
+                        | "disabled_nested_helper_return"
+                        | "invoked_after_nested_helper_return"
+                        | "invoked_after_disabled_nested_helper_return"
+                );
             assert_eq!(
                 findings[0]["classification"],
-                if exposed {
+                if binding_unverified {
+                    "weakly_exposed"
+                } else if exposed {
                     "exposed"
                 } else {
                     "reachable_unrevealed"
                 },
                 "{family}/{case}"
             );
+            if binding_unverified {
+                assert!(exposed, "the fixture must still execute its oracle");
+                assert_eq!(
+                    findings[0]["ripr"]["observe"]["state"], "yes",
+                    "{family}/{case}: the strong runtime oracle remains observed"
+                );
+                assert_eq!(
+                    findings[0]["ripr"]["discriminate"]["state"], "weak",
+                    "{family}/{case}: static change binding must stay withheld"
+                );
+                assert!(
+                    findings[0]["ripr"]["discriminate"]["summary"]
+                        .as_str()
+                        .is_some_and(|summary| summary.contains("observation_unverified")),
+                    "{family}/{case}: disclose the actual conservative binding limitation"
+                );
+            }
             assert_eq!(
                 findings[0]["oracle_strength"],
                 if exposed { "strong" } else { "none" },

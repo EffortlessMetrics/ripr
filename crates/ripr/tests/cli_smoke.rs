@@ -22692,8 +22692,22 @@ fn review_guidance_windows_preserve_output_and_bound_retained_payloads()
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
+        let mut document: serde_json::Value = serde_json::from_slice(&std::fs::read(&out)?)?;
+        let phases = document
+            .pointer_mut("/run_receipt/phase_evidence")
+            .and_then(serde_json::Value::as_array_mut)
+            .ok_or("review window output must retain phase evidence")?;
+        for phase in phases {
+            assert!(
+                phase["duration_ms"].is_u64(),
+                "each phase must retain a measured nonnegative duration"
+            );
+            // Wall-clock milliseconds vary across independent window runs.
+            // Preserve the field and all phase identities, status and counts.
+            phase["duration_ms"] = serde_json::json!(0);
+        }
         let bytes = (
-            std::fs::read(&out)?,
+            serde_json::to_vec(&document)?,
             std::fs::read(out.with_extension("md"))?,
         );
         if let Some(ref expected) = expected {

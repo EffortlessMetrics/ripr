@@ -2625,7 +2625,7 @@ marker = "libtest_mimic::Trial"
                 &root,
                 &RiprConfig::default(),
                 &[PathBuf::from("src/lib.rs")],
-                &["eligible".into()],
+                &["src/lib.rs::eligible".into()],
                 &mut sink,
             )?;
             let counts = counts
@@ -5170,7 +5170,7 @@ marker = "libtest_mimic::Trial"
             &root,
             &config,
             &[PathBuf::from("src/lib.rs")],
-            &[],
+            &["src/lib.rs::discount".to_owned()],
         )?;
         if inventory.classified.is_empty() {
             return Err("production edit must keep full seam computation active".to_owned());
