@@ -346,3 +346,33 @@ loop includes an `outcome` call that failed because of the shim, not ripr.
    - Constants are labelled `source enum variant value crate::KIB`.
    - Pilot's suggested assertion calls a method as a free function:
      `assert_eq!(as_whole_units(/* boundary input where unit == 0 */), …)`.
+
+## Run 2026-10-04, second pass
+
+ripr `0.11.0 (d19bc3caa6ffe1d4bb9cd6bc64f013f77069f31d)`, the merge of #5423,
+which adds `ripr agent stub` and a `Write a test for it:` line under the top
+`check` finding. Same targets, brief and shim as the first pass; fresh agents
+and fresh copies of the gap commits. #5352, #5353, #5356 and #5358 were still
+open.
+
+| Target | ripr commands (pass 1 → 2) | Answer key after | `cargo mutants --in-diff` after | ripr after (`--worktree`) |
+|---|---|---|---|---|
+| bytesize | 17 → 22 | 3/3 | 10/10 caught | 1 exposed, 2 weakly_exposed |
+| humantime | 21 → 29 | 3/3 | 6/6 caught (1 unviable) | 2 exposed, 2 weakly_exposed, 1 static_unknown |
+| semver | 20 → 24 | 3/3 | 2/2 caught (1 unviable) | 5 exposed, 1 reachable_unrevealed |
+
+Outcomes did not change: every agent closed the gap, and ripr again reported
+no `exposed` probe whose mutants survived. Commands per fix went up. The new
+stub route accounts for part of it: agents ran `ripr agent stub` five times,
+four of them as suggested by `check`, and got no stub (#5471). The refusals
+were `ambiguous_test_module`, `owner_unsupported`, `observer_required`,
+`field_type_unresolved`, and, after `check --worktree`, `no reported gap is in
+the function`. Humantime's count also includes eight
+scripted `--json` re-checks while the agent bisected which test shape moved a
+verdict.
+
+New in this pass: replacing a smoke `assert!(parse_duration("2fortnights").is_ok())`
+with an exact `assert_eq!` moves humantime's `FromStr` return_value probe from
+`weakly_exposed` to `reachable_unrevealed` (reproduced by the evaluator;
+recorded on #5353). The humantime agent again wrote a white-box `parse_unit`
+test to move the private arms to `exposed` (#5352).
