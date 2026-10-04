@@ -1,0 +1,13 @@
+diff --git a/src/eval.rs b/src/eval.rs
+index e6e3894..c035385 100644
+--- a/src/eval.rs
++++ b/src/eval.rs
+@@ -79,7 +79,7 @@ fn matches_greater(cmp: &Comparator, ver: &Version) -> bool {
+         None => return false,
+         Some(patch) => {
+             if ver.patch != patch {
+-                return ver.patch > patch;
++                return patch < ver.patch;
+             }
+         }
+     }

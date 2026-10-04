@@ -11894,6 +11894,53 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0219"
+name = "Labeled Rust verdict corpus"
+spec = "docs/specs/RIPR-SPEC-0219-labeled-rust-verdict-corpus.md"
+tests = [
+  "xtask/src/reports/verdict_corpus_tests.rs::score_follows_the_truth_table_in_both_error_directions",
+  "xtask/src/reports/verdict_corpus_tests.rs::finding_verdict_mirrors_triage_classes_and_named_limits",
+  "xtask/src/reports/verdict_corpus_tests.rs::anchored_findings_keep_only_candidate_current_findings_on_the_anchor",
+  "xtask/src/reports/verdict_corpus_tests.rs::case_verdict_ranks_gap_over_credit_over_limit",
+  "xtask/src/reports/verdict_corpus_tests.rs::contradictions_flag_each_internal_inconsistency_and_pass_a_clean_finding",
+  "xtask/src/reports/verdict_corpus_tests.rs::summary_contradictions_compare_counts_with_the_findings_list",
+  "xtask/src/reports/verdict_corpus_tests.rs::summary_contradictions_account_for_suppressed_findings",
+  "xtask/src/reports/verdict_corpus_tests.rs::ratio_text_is_fixed_precision_and_names_an_empty_denominator",
+  "xtask/src/reports/verdict_corpus_tests.rs::apply_patch_rewrites_the_anchored_line_and_reports_it_as_added",
+  "xtask/src/reports/verdict_corpus_tests.rs::apply_patch_refuses_drifted_context",
+  "xtask/src/reports/verdict_corpus_tests.rs::parse_patch_refuses_renames_and_empty_input",
+  "xtask/src/reports/verdict_corpus_tests.rs::parse_patch_holds_hunks_to_their_declared_counts_and_starts",
+  "xtask/src/reports/verdict_corpus_tests.rs::relativize_probe_files_strips_only_the_run_root",
+  "xtask/src/reports/verdict_corpus_tests.rs::committed_corpus_is_valid_and_measures_both_error_directions",
+  "xtask/src/reports/verdict_corpus_tests.rs::validator_rejects_a_label_that_contradicts_its_mutant_outcomes",
+  "xtask/src/reports/verdict_corpus_tests.rs::validator_rejects_an_expected_verdict_outside_the_truth_table",
+  "xtask/src/reports/verdict_corpus_tests.rs::validator_rejects_a_retained_file_whose_digest_moved",
+  "xtask/src/reports/verdict_corpus_tests.rs::validator_rejects_an_anchor_the_diff_does_not_add",
+  "xtask/src/reports/verdict_corpus_tests.rs::validator_rejects_ids_that_are_not_one_safe_path_segment",
+  "xtask/src/reports/verdict_corpus_tests.rs::validator_rejects_a_diff_that_patches_an_unretained_path",
+  "xtask/src/reports/verdict_corpus_tests.rs::validator_requires_both_truth_directions",
+  "xtask/src/reports/verdict_corpus_tests.rs::expected_report_rows_agree_with_corpus_labels",
+  "xtask/src/reports/verdict_corpus_tests.rs::build_report_counts_rates_over_the_right_denominators",
+  "xtask/src/reports/verdict_corpus_tests.rs::contradiction_counts_use_one_per_finding_unit",
+  "xtask/src/reports/verdict_corpus_tests.rs::stored_paths_keep_vendored_rust_out_of_the_workspace",
+]
+fixtures = [
+  "fixtures/rust-verdict-corpus",
+]
+code = [
+  "xtask/src/reports/verdict_corpus.rs",
+]
+outputs = [
+  "fixtures/rust-verdict-corpus/expected/report.json",
+  "fixtures/rust-verdict-corpus/expected/report.md",
+]
+metrics = [
+  "verdict_corpus_false_verdict_rate",
+  "verdict_corpus_false_actionable_rate",
+  "verdict_corpus_contradiction_rate",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0217"
 name = "Repair-attempt discovery selection and fresh-process resume"
 spec = "docs/specs/RIPR-SPEC-0217-agent-attempt-status-selection.md"

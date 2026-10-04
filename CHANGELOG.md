@@ -195,6 +195,14 @@ are scoped or reviewed.
   auto-retry, so the primary first-run command no longer sits silent for
   minutes. Stdout and every pilot packet byte stay unchanged; `--quiet`
   suppresses the stream (RIPR-SPEC-0185, #5019).
+- Labeled Rust verdict corpus (`cargo xtask verdict-corpus`, RIPR-SPEC-0219):
+  23 one-line edits in pinned serde, regex-syntax, semver, hex, itoa and
+  bytesize excerpts, each labeled by running mutants against the crate's own
+  tests. The harness scores ripr's anchored verdict as ideal, abstained, false
+  actionable, false exposed or false silent and counts contradictions inside
+  ripr's output. First report: 7 of 15 discriminated cases get a gap verdict
+  (false actionable), no case is credited, and 2 of 29 findings contradict
+  themselves. It runs no mutation testing or network access.
 - Matched RIPR intervention-study preregistration (`ripr_intervention_study.v1`):
   a frozen protocol names study identity, assignment, equal budgets, the named
   RIPR evidence surface, leakage controls, retries, stopping, non-compensating

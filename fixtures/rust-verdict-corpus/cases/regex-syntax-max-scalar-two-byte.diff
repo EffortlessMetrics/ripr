@@ -1,0 +1,13 @@
+diff --git a/regex-syntax/src/utf8.rs b/regex-syntax/src/utf8.rs
+index 537035e..6e9034f 100644
+--- a/regex-syntax/src/utf8.rs
++++ b/regex-syntax/src/utf8.rs
+@@ -445,7 +445,7 @@ impl ScalarRange {
+ fn max_scalar_value(nbytes: usize) -> u32 {
+     match nbytes {
+         1 => 0x007F,
+-        2 => 0x07FF,
++        2 => 0x7FF,
+         3 => 0xFFFF,
+         4 => 0x0010_FFFF,
+         _ => unreachable!("invalid UTF-8 byte sequence size"),

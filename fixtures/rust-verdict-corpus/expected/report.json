@@ -1,0 +1,462 @@
+{
+  "schema_version": "ripr_verdict_corpus_report.v1",
+  "spec": "RIPR-SPEC-0219",
+  "corpus_version": "2026-10-04.1",
+  "cases_total": 23,
+  "by_truth": {
+    "discriminated": 15,
+    "not_discriminated": 2,
+    "partially_discriminated": 6
+  },
+  "by_outcome": {
+    "abstained": 13,
+    "false_actionable": 7,
+    "ideal": 3
+  },
+  "by_observed_verdict": {
+    "gap": 10,
+    "limited": 13
+  },
+  "false_verdict_rate": {
+    "numerator": 7,
+    "denominator": 23,
+    "rate": "0.3043"
+  },
+  "false_actionable_rate": {
+    "numerator": 7,
+    "denominator": 15,
+    "rate": "0.4667"
+  },
+  "false_exposed_rate": {
+    "numerator": 0,
+    "denominator": 8,
+    "rate": "0.0000"
+  },
+  "false_silent_rate": {
+    "numerator": 0,
+    "denominator": 8,
+    "rate": "0.0000"
+  },
+  "ideal_rate": {
+    "numerator": 3,
+    "denominator": 23,
+    "rate": "0.1304"
+  },
+  "abstention_rate": {
+    "numerator": 13,
+    "denominator": 23,
+    "rate": "0.5652"
+  },
+  "contradiction_rate": {
+    "numerator": 2,
+    "denominator": 29,
+    "rate": "0.0690"
+  },
+  "contradictions_by_code": {
+    "reach_yes_without_related_tests": 2
+  },
+  "rows": [
+    {
+      "case_id": "serde-format-u8-hundreds",
+      "subject_id": "serde",
+      "anchor": "serde_core/src/ser/impls.rs:770",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "loop_assert_eq_exhaustive",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "reachable_unrevealed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "serde-format-u8-tens",
+      "subject_id": "serde",
+      "anchor": "serde_core/src/ser/impls.rs:777",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "loop_assert_eq_exhaustive",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "propagation_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "semver-caret-minor-ge",
+      "subject_id": "semver",
+      "anchor": "src/eval.rs:149",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "integration_test_public_api",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "no_static_path"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "semver-tilde-pre-ge",
+      "subject_id": "semver",
+      "anchor": "src/eval.rs:133",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "integration_test_custom_assert_helper",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "infection_unknown",
+        "propagation_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "semver-less-pre",
+      "subject_id": "semver",
+      "anchor": "src/eval.rs:113",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "integration_test_custom_assert_helper",
+      "hard_case": false,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "infection_unknown",
+        "propagation_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "semver-greater-patch",
+      "subject_id": "semver",
+      "anchor": "src/eval.rs:82",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "integration_test_custom_assert_helper",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "no_static_path"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "semver-digit-upper",
+      "subject_id": "semver",
+      "anchor": "src/parse.rs:166",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "integration_test_public_api",
+      "hard_case": true,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "infection_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "semver-max-comparators",
+      "subject_id": "semver",
+      "anchor": "src/parse.rs:399",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "integration_test_public_api",
+      "hard_case": false,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "no_static_path"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "semver-caret-zero-minor",
+      "subject_id": "semver",
+      "anchor": "src/eval.rs:163",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "integration_test_public_api",
+      "hard_case": false,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "no_static_path"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "hex-from-hex-odd-variant",
+      "subject_id": "rust-hex",
+      "anchor": "src/lib.rs:226",
+      "behavior_family": "error_variant",
+      "test_shape": "unit_test_assert_eq_error",
+      "hard_case": false,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "reachable_unrevealed",
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "hex-decode-slice-odd",
+      "subject_id": "rust-hex",
+      "anchor": "src/lib.rs:324",
+      "behavior_family": "predicate",
+      "test_shape": "unit_test_assert_eq_error",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "reachable_unrevealed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "hex-decode-slice-length",
+      "subject_id": "rust-hex",
+      "anchor": "src/lib.rs:327",
+      "behavior_family": "predicate",
+      "test_shape": "unit_test_assert_eq_error",
+      "hard_case": false,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "reachable_unrevealed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "hex-encode-slice-length",
+      "subject_id": "rust-hex",
+      "anchor": "src/lib.rs:378",
+      "behavior_family": "predicate",
+      "test_shape": "unit_test_assert_eq_error",
+      "hard_case": false,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "reachable_unrevealed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "itoa-two-digit-tail",
+      "subject_id": "itoa",
+      "anchor": "src/lib.rs:299",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "macro_generated_tests",
+      "hard_case": true,
+      "truth": "not_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "no_static_path"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "regex-syntax-word-byte",
+      "subject_id": "regex",
+      "anchor": "regex-syntax/src/lib.rs:380",
+      "behavior_family": "match_arm",
+      "test_shape": "unit_test_assert_bool",
+      "hard_case": true,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "regex-syntax-max-scalar-two-byte",
+      "subject_id": "regex",
+      "anchor": "regex-syntax/src/utf8.rs:448",
+      "behavior_family": "match_arm",
+      "test_shape": "unit_test_assert_eq",
+      "hard_case": false,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "serde-derive-rename-variant-lower",
+      "subject_id": "serde",
+      "anchor": "serde_derive/src/internals/case.rs:60",
+      "behavior_family": "match_arm",
+      "test_shape": "loop_assert_eq_table",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "serde-derive-rename-field-upper",
+      "subject_id": "serde",
+      "anchor": "serde_derive/src/internals/case.rs:85",
+      "behavior_family": "match_arm",
+      "test_shape": "loop_assert_eq_table",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "semver-leading-zero",
+      "subject_id": "semver",
+      "anchor": "src/parse.rs:169",
+      "behavior_family": "predicate",
+      "test_shape": "integration_test_error_message",
+      "hard_case": false,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "no_static_path"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "semver-op-greater-eq",
+      "subject_id": "semver",
+      "anchor": "src/parse.rs:272",
+      "behavior_family": "predicate",
+      "test_shape": "integration_test_public_api",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "reachable_unrevealed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": [
+        "reach_yes_without_related_tests"
+      ]
+    },
+    {
+      "case_id": "itoa-four-digit-loop",
+      "subject_id": "itoa",
+      "anchor": "src/lib.rs:365",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "macro_generated_tests",
+      "hard_case": false,
+      "truth": "not_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "no_static_path"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "semver-digit-upper-first-run",
+      "subject_id": "semver",
+      "anchor": "src/parse.rs:166",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "integration_test_public_api",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "infection_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "bytesize-format-unit-first-run",
+      "subject_id": "bytesize",
+      "anchor": "src/lib.rs:192",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "unit_test_assert_eq",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "limited",
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "infection_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    }
+  ],
+  "non_claims": [
+    "Rates describe this corpus only; they are not a population estimate for Rust code or for ripr in general.",
+    "Truth comes from the listed mutants, not from exhaustive mutation; a discriminated label means every listed mutant made the test command fail.",
+    "The harness runs ripr on retained upstream excerpts; excerpt findings matched the full pinned checkout at labeling time and must be re-checked when a verdict changes.",
+    "The harness does not run mutation testing, cargo test, or any network access."
+  ]
+}

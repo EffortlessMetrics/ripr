@@ -1,0 +1,13 @@
+diff --git a/src/parse.rs b/src/parse.rs
+index e92d87a..0e4be3b 100644
+--- a/src/parse.rs
++++ b/src/parse.rs
+@@ -166,7 +166,7 @@ fn numeric_identifier(input: &str, pos: Position) -> Result<(u64, &str), Error>
+         if digit < b'0' || digit > b'9' {
+             break;
+         }
+-        if value == 0 && len > 0 {
++        if len > 0 && value == 0 {
+             return Err(Error::new(ErrorKind::LeadingZero(pos)));
+         }
+         match value

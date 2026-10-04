@@ -427,6 +427,7 @@ pub(crate) fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "python-judged-pr-panel"
                     | "python-real-repo-evals"
                     | "real-repair-attempts"
+                    | "rust-verdict-corpus"
                     | "release_control"
                     | "release_denominator"
                     | "release_scope"

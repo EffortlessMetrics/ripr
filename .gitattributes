@@ -33,6 +33,12 @@ fixtures/evidence-quality-benchmark/regex-word-boundary-empty/patches/*.patch -t
 # header contains significant space-only continuation lines; never normalize it.
 xtask/src/reports/release/candidate_harness/live_head/fixtures/last-integrated.commit -text -whitespace
 
+# Labeled verdict corpus (RIPR-SPEC-0219): case diffs carry patch-syntax
+# context spaces, and retained subjects are byte-identical upstream files
+# pinned by sha256, so whitespace rules cannot rewrite either.
+fixtures/rust-verdict-corpus/cases/*.diff whitespace=-blank-at-eol,-blank-at-eof
+fixtures/rust-verdict-corpus/subjects/** -whitespace
+
 # Append-only logs: entries are self-contained blocks added at the head of
 # their section, so concurrent additions union cleanly (evidence: 5 PRs in
 # 2026-09-29..10-01 hand-resolved the identical keep-both union). Rewrites

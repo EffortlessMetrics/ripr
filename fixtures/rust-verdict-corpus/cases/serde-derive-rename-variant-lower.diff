@@ -1,0 +1,13 @@
+diff --git a/serde_derive/src/internals/case.rs b/serde_derive/src/internals/case.rs
+index 8c8c02e..6e56284 100644
+--- a/serde_derive/src/internals/case.rs
++++ b/serde_derive/src/internals/case.rs
+@@ -57,7 +57,7 @@ impl RenameRule {
+     pub fn apply_to_variant(self, variant: &str) -> String {
+         match self {
+             None | PascalCase => variant.to_owned(),
+-            LowerCase => variant.to_ascii_lowercase(),
++            LowerCase => str::to_ascii_lowercase(variant),
+             UpperCase => variant.to_ascii_uppercase(),
+             CamelCase => variant[..1].to_ascii_lowercase() + &variant[1..],
+             SnakeCase => {

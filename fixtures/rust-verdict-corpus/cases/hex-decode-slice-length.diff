@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 7bf251d..5a00562 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -324,7 +324,7 @@ pub fn decode_to_slice<T: AsRef<[u8]>>(data: T, out: &mut [u8]) -> Result<(), Fr
+     if data.len() % 2 != 0 {
+         return Err(FromHexError::OddLength);
+     }
+-    if data.len() / 2 != out.len() {
++    if out.len() != data.len() / 2 {
+         return Err(FromHexError::InvalidStringLength);
+     }
+ 

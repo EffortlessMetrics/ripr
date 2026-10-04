@@ -1,0 +1,13 @@
+diff --git a/regex-syntax/src/lib.rs b/regex-syntax/src/lib.rs
+index a4512e2..259b29b 100644
+--- a/regex-syntax/src/lib.rs
++++ b/regex-syntax/src/lib.rs
+@@ -377,7 +377,7 @@ pub fn try_is_word_character(
+ /// `[_0-9a-zA-Z]`.
+ pub fn is_word_byte(c: u8) -> bool {
+     match c {
+-        b'_' | b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' => true,
++        b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_' => true,
+         _ => false,
+     }
+ }
