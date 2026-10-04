@@ -96,7 +96,7 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     let options = parse_pilot_options(args)?;
     if !options.root.is_dir() {
         return Err(format!(
-            "pilot root {} is not a directory",
+            "pilot root {} is not a directory; pass the directory that contains the workspace (for a Cargo.toml path, its parent directory)",
             options.root.display()
         ));
     }

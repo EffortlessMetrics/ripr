@@ -431,7 +431,7 @@ fn review_comments_with_admission(
     let options = parse_review_comments_options(args)?;
     if !options.root.is_dir() {
         return Err(format!(
-            "review-comments root {} is not a directory",
+            "review-comments root {} is not a directory; pass the directory that contains the workspace (for a Cargo.toml path, its parent directory)",
             options.root.display()
         ));
     }

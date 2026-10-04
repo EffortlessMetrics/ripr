@@ -93,7 +93,7 @@ struct InitTarget {
 fn init_plan(options: &InitOptions) -> Result<Vec<InitTarget>, String> {
     if !options.root.is_dir() {
         return Err(format!(
-            "init root {} is not a directory",
+            "init root {} is not a directory; pass the directory that contains the workspace (for a Cargo.toml path, its parent directory)",
             options.root.display()
         ));
     }

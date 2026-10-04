@@ -217,7 +217,13 @@ fn unknown_command_error(command: &str) -> String {
 }
 
 fn closest_command(command: &str) -> Option<&'static str> {
-    let typo_budget = if command.len() <= 4 { 1 } else { 3 };
+    // Scale the budget with length so short unrelated names (`bogus`) do not
+    // match a command three edits away.
+    let typo_budget = match command.chars().count() {
+        0..=4 => 1,
+        5..=7 => 2,
+        _ => 3,
+    };
     known_commands()
         .into_iter()
         .map(|known| (known, edit_distance(command, known)))
@@ -437,6 +443,12 @@ mod tests {
             Some("impacted-evidence")
         );
         assert_eq!(closest_command("pls"), Some("plus"));
+    }
+
+    #[test]
+    fn closest_command_ignores_unrelated_short_names() {
+        assert_eq!(closest_command("bogus"), None);
+        assert_eq!(closest_command("chekc"), Some("check"));
     }
 
     #[test]

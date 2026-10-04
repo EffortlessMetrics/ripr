@@ -143,7 +143,12 @@ pub(crate) fn load_diff_with_effective_base_core(
         // #4480: bounded, so `--diff /dev/zero` or a multi-GB log fails with
         // the input limit instead of reading until memory is exhausted.
         let bytes = crate::bounded_input::read(diff_file)
-            .map_err(|err| format!("failed to read diff file {}: {err}", diff_file.display()))?;
+            .map_err(|err| {
+                format!(
+                    "failed to read diff file {}: {err}; pass the path of an existing unified diff file, or `-` to read the diff from stdin",
+                    diff_file.display()
+                )
+            })?;
         return Ok(LoadedDiff {
             text: decode_diff_text(&format!("diff file {}", diff_file.display()), bytes)?,
             effective_base: None,
@@ -1325,6 +1330,10 @@ mod tests {
         };
         assert!(
             message.starts_with("failed to read diff file "),
+            "{message}"
+        );
+        assert!(
+            message.contains("or `-` to read the diff from stdin"),
             "{message}"
         );
         assert!(message.contains("os error"), "{message}");

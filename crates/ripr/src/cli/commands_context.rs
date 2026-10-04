@@ -73,7 +73,7 @@ pub(super) fn ensure_command_root(root: &Path, command_name: &str) -> Result<(),
             }
         }
         Ok(_) | Err(_) => Err(format!(
-            "{command_name} root {} is not a directory",
+            "{command_name} root {} is not a directory; pass the directory that contains the workspace (for a Cargo.toml path, its parent directory)",
             root.display()
         )),
     }
@@ -216,6 +216,10 @@ mod tests {
             .err()
             .unwrap_or_default();
         assert!(error.contains("is not a directory"), "{error}");
+        assert!(
+            error.contains("pass the directory that contains"),
+            "{error}"
+        );
         assert!(!error.contains("Windows"), "{error}");
         Ok(())
     }

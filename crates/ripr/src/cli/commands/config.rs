@@ -39,7 +39,7 @@ fn parse_validate_root(args: &[String]) -> Result<PathBuf, String> {
 fn validate_config(root: &Path) -> Result<&'static str, String> {
     if !root.is_dir() {
         return Err(format!(
-            "config validate root {} is not a directory",
+            "config validate root {} is not a directory; pass the directory that contains the workspace (for a Cargo.toml path, its parent directory)",
             root.display()
         ));
     }
