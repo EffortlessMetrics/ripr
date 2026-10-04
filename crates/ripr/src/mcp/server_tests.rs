@@ -1,5 +1,58 @@
 use super::*;
 
+#[tokio::test(flavor = "current_thread")]
+async fn delayed_durable_read_leaves_the_async_executor_and_status_available() -> Result<(), String>
+{
+    let server = Arc::new(
+        McpServer::new(
+            WorkspaceStatus::resolve_with_root(None).0,
+            Some(std::env::temp_dir()),
+        )
+        .map_err(|error| error.to_string())?,
+    );
+    let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    // Inject only the durable reader, through the production dispatcher and
+    // its session-lock selection. Status uses this same server. This does not
+    // claim a stock stdio cancellation journey.
+    let reader_server = server.clone();
+    let worker = tokio::spawn(async move {
+        reader_server
+            .repair_read_document_with("repair-attempt:delayed", false, move || {
+                let _ = started_tx.send(());
+                release_rx
+                    .recv_timeout(std::time::Duration::from_secs(2))
+                    .map_err(|error| {
+                        workspace::AttemptFailure::new(
+                            workspace::CODE_ANALYSIS_FAILED,
+                            format!("delayed reader was not released: {error}"),
+                            "test reader release",
+                        )
+                    })?;
+                Ok(serde_json::json!({ "read": "completed" }))
+            })
+            .await
+    });
+    let started = tokio::time::timeout(std::time::Duration::from_secs(1), started_rx).await;
+    let live =
+        tokio::time::timeout(std::time::Duration::from_millis(250), server.status_tool()).await;
+    let completed_early = worker.is_finished();
+    let _ = release_tx.send(());
+    let observed = worker.await.map_err(|error| error.to_string())?;
+    assert!(
+        !completed_early,
+        "the delayed reader ran synchronously or timed out before release"
+    );
+    started
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())?;
+    live.map_err(|error| format!("async status blocked behind durable read: {error}"))?
+        .map_err(|error| error.to_string())?;
+    let observed = observed.map_err(|failure| failure.detail)?;
+    assert_eq!(observed["read"], "completed");
+    Ok(())
+}
+
 #[test]
 fn sdk_server_metadata_preserves_bounded_status_instructions() -> Result<(), String> {
     let server = McpServer::new(WorkspaceStatus::resolve_with_root(None).0, None)

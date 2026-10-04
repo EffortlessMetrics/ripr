@@ -184,12 +184,7 @@ impl McpServer {
     ) -> Result<CallToolResponse, ErrorData> {
         reject_unknown_arguments(&arguments, &["attempt_id"])?;
         let attempt_id = required_string_argument(&arguments, "attempt_id")?;
-        let session = self.session.lock().await;
-        match session.repair_attempt_document(
-            &attempt_id,
-            self.analysis_root.as_deref(),
-            self.root_identity.as_deref(),
-        ) {
+        match self.repair_read_document(&attempt_id, false).await {
             Ok(document) => self.bounded_tool_result(
                 document,
                 repair::REPAIR_ATTEMPT_SCHEMA_VERSION,
@@ -205,12 +200,7 @@ impl McpServer {
     ) -> Result<CallToolResponse, ErrorData> {
         reject_unknown_arguments(&arguments, &["receipt_id"])?;
         let receipt_id = required_string_argument(&arguments, "receipt_id")?;
-        let session = self.session.lock().await;
-        match session.receipt_status_document(
-            &receipt_id,
-            self.analysis_root.as_deref(),
-            self.root_identity.as_deref(),
-        ) {
+        match self.repair_read_document(&receipt_id, true).await {
             Ok(document) => self.bounded_tool_result(
                 document,
                 repair::RECEIPT_STATUS_SCHEMA_VERSION,
@@ -218,6 +208,57 @@ impl McpServer {
             ),
             Err(failure) => self.typed_failure(failure, repair::RECEIPT_STATUS_SCHEMA_VERSION),
         }
+    }
+
+    /// Resolve session identities under the lock; only the independent durable
+    /// fallback can perform Git/filesystem reads on the blocking worker. A
+    /// session clone evaluated later could mistake a superseded snapshot for
+    /// the current one, so session transactions never take that path.
+    /// Public requests use BoundedTransport's admission gate through reply
+    /// flush; a queued refresh cannot enter while this read is outstanding.
+    async fn repair_read_document(
+        &self,
+        id: &str,
+        receipt: bool,
+    ) -> Result<Value, workspace::AttemptFailure> {
+        let root = self.analysis_root.clone();
+        let root_identity = self.root_identity.clone();
+        let durable_id = id.to_string();
+        self.repair_read_document_with(id, receipt, move || {
+            repair_document_from_session(
+                &workspace::WorkspaceSession::default(),
+                &durable_id,
+                receipt,
+                root.as_deref(),
+                root_identity.as_deref(),
+            )
+        })
+        .await
+    }
+
+    async fn repair_read_document_with(
+        &self,
+        id: &str,
+        receipt: bool,
+        durable_read: impl FnOnce() -> Result<Value, workspace::AttemptFailure> + Send + 'static,
+    ) -> Result<Value, workspace::AttemptFailure> {
+        {
+            let session = self.session.lock().await;
+            if session.in_flight
+                || session.repairs.contains_key(id)
+                || session.superseded_attempts.contains_key(id)
+                || self.analysis_root.is_none()
+            {
+                return repair_document_from_session(
+                    &session,
+                    id,
+                    receipt,
+                    self.analysis_root.as_deref(),
+                    self.root_identity.as_deref(),
+                );
+            }
+        }
+        blocking_repair_read(durable_read).await
     }
 
     async fn get_repair_card_tool(
@@ -340,6 +381,32 @@ fn required_string_argument(
 fn typed<T: DeserializeOwned>(value: serde_json::Value) -> Result<T, ErrorData> {
     serde_json::from_value(value)
         .map_err(|_error| ErrorData::internal_error("invalid status projection", None))
+}
+
+fn repair_document_from_session(
+    session: &workspace::WorkspaceSession,
+    id: &str,
+    receipt: bool,
+    root: Option<&std::path::Path>,
+    root_identity: Option<&str>,
+) -> Result<Value, workspace::AttemptFailure> {
+    if receipt {
+        session.receipt_status_document(id, root, root_identity)
+    } else {
+        session.repair_attempt_document(id, root, root_identity)
+    }
+}
+
+async fn blocking_repair_read(
+    read: impl FnOnce() -> Result<Value, workspace::AttemptFailure> + Send + 'static,
+) -> Result<Value, workspace::AttemptFailure> {
+    tokio::task::spawn_blocking(read).await.map_err(|error| {
+        workspace::AttemptFailure::new(
+            workspace::CODE_ANALYSIS_FAILED,
+            format!("durable repair read worker failed: {error}"),
+            "retry the exact attempt or receipt read",
+        )
+    })?
 }
 
 impl ServerHandler for McpServer {
@@ -486,23 +553,13 @@ impl ServerHandler for McpServer {
             };
         }
         if let Some(attempt_id) = repair::repair_attempt_resource_id(&request.uri) {
-            let session = self.session.lock().await;
-            return match session.repair_attempt_document(
-                attempt_id,
-                self.analysis_root.as_deref(),
-                self.root_identity.as_deref(),
-            ) {
+            return match self.repair_read_document(attempt_id, false).await {
                 Ok(document) => self.resource_result(document, &request.uri),
                 Err(failure) => Err(resource_failure("repair-attempt", &failure, None)),
             };
         }
         if let Some(receipt_id) = repair::receipt_resource_id(&request.uri) {
-            let session = self.session.lock().await;
-            return match session.receipt_status_document(
-                receipt_id,
-                self.analysis_root.as_deref(),
-                self.root_identity.as_deref(),
-            ) {
+            return match self.repair_read_document(receipt_id, true).await {
                 Ok(document) => self.resource_result(document, &request.uri),
                 Err(failure) => Err(resource_failure("receipt", &failure, None)),
             };

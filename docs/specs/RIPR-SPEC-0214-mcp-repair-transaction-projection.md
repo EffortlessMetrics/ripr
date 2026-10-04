@@ -20,6 +20,8 @@ Linked issues:
   repair boundary and repair-attempt link)
 - #4668 (RepairCard MCP projection consumer; the seam list this slice
   exposes lets that work proceed)
+- #5399 (durable read-time HEAD applicability and continuation parity;
+  producer completeness remains separately owned by #5199)
 - ADR 0022 (bounded read-only MCP adapter; this slice adds no execution
   authority)
 
@@ -121,7 +123,11 @@ read-only and without execution authority (ADR 0022):
   `ripr_prepare_repair` fails with `no_snapshot`; the two reads route
   through the durable store and fail with `attempt_not_found`. During an
   attempt the tools report `analysis_in_flight`. An unknown item fails with
-  `item_not_found`; an unknown attempt or receipt identity fails with
+  `item_not_found`. The supported stdio transport admits one request through
+  its reply flush, so a refresh queued behind a durable read cannot begin
+  during that read. The session guard is evaluated at read admission; this
+  slice adds no concurrent public transport or response-time lease. An
+  unknown attempt or receipt identity fails with
   `attempt_not_found`; a durable manifest that fails canonical validation
   fails with `attempt_invalid`; a session transaction bound to a snapshot
   that is no longer current fails with the reserved `superseded` state and
@@ -210,6 +216,21 @@ read-only and without execution authority (ADR 0022):
    `no_snapshot` and the two reads fail closed with `attempt_not_found`; a
    refresh that changes the evidence fails an old transaction with the
    reserved `superseded` state and the current snapshot identity.
+6. Durable reads share CLI's read-time HEAD applicability, independently of
+   retained byte authentication and recorded after admission. An ordinary
+   awaiting attempt remains current on a descendant; a diverged or unreadable
+   HEAD suppresses stored continuation and typed routes. A finished attempt
+   uses its exact after HEAD, so a later descendant is historical. Both
+   documents expose `currentness.state`, `head_current` and `evidence_head`;
+   recorded `after_current` remains separate. Historical/unknown applicability
+   weakens otherwise actionable receipt status to `stale`/`limited` while
+   retaining its document; invalid/limited producer results stay non-success.
+   This checks HEAD applicability, not dirty-byte identity. Reads never alter
+   the manifest or reconstruct evidence from a compatibility receipt.
+   Session transactions and tombstones resolve immediately under the lock;
+   only independent durable fallback runs on a blocking worker outside it.
+   Timers/teardown must not run synchronous Git on the async executor. This
+   adds no new stdio concurrency or early Git cancellation guarantee.
 
 ## Test Mapping
 

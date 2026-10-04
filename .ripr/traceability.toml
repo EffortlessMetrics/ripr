@@ -11828,6 +11828,13 @@ tests = [
   "crates/ripr/src/mcp/repair.rs::tests::evicted_transactions_keep_the_superseded_typed_code",
   "crates/ripr/src/mcp/repair.rs::tests::command_spec_modes_round_trip_without_display_authority",
   "crates/ripr/src/mcp/repair.rs::tests::argv_never_reconstructs_from_the_display_string",
+  "crates/ripr/src/mcp/repair_freshness_tests.rs::durable_currentness_keeps_ordinary_descendant_continuation",
+  "crates/ripr/src/mcp/repair_freshness_tests.rs::durable_currentness_refuses_diverged_continuation_without_rewriting_attempt",
+  "crates/ripr/src/mcp/repair_freshness_tests.rs::durable_currentness_does_not_reuse_recorded_after_admission",
+  "crates/ripr/src/mcp/repair_freshness_tests.rs::durable_currentness_unknown_head_never_offers_continuation",
+  "crates/ripr/src/mcp/repair_freshness_tests.rs::durable_currentness_issued_receipt_at_unknown_head_is_limited",
+  "crates/ripr/src/mcp/repair_freshness_tests.rs::durable_currentness_keeps_tampered_terminal_evidence_invalid_at_historical_head",
+  "crates/ripr/src/mcp/server_tests.rs::delayed_durable_read_leaves_the_async_executor_and_status_available",
   "crates/ripr/src/mcp/gaps.rs::tests::evidence_document_reports_producer_repair_readiness",
   "crates/ripr/src/mcp/gaps.rs::tests::readiness_stays_fail_closed_on_missing_producer_facts",
   "crates/ripr/src/mcp/protocol.rs::tests",
@@ -11840,6 +11847,7 @@ tests = [
 ]
 code = [
   "crates/ripr/src/mcp/repair.rs",
+  "crates/ripr/src/app/repair_attempt/mod.rs::repair_attempt_head_reading",
   "crates/ripr/src/mcp/gaps.rs",
   "crates/ripr/src/mcp/workspace.rs",
   "crates/ripr/src/mcp/protocol.rs",

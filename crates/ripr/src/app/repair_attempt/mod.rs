@@ -1957,6 +1957,55 @@ pub(crate) fn after_phase_head_admission(
     )
 }
 
+/// Read-time HEAD applicability, separate from the admission recorded at finish.
+/// CLI and MCP use this same reading: an awaiting ordinary attempt admits a
+/// descendant, while terminal evidence applies only at its exact after HEAD.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RepairAttemptHeadReading {
+    pub(crate) evidence_head: String,
+    pub(crate) head_current: Option<bool>,
+    pub(crate) after_admission: Option<AfterPhaseHeadAdmission>,
+}
+
+impl RepairAttemptHeadReading {
+    pub(crate) fn currentness(&self) -> &'static str {
+        match self.head_current {
+            Some(true) => "current",
+            Some(false) => "historical",
+            None => "unknown",
+        }
+    }
+}
+
+pub(crate) fn repair_attempt_head_reading(
+    root: &Path,
+    manifest: &RepairAttemptManifest,
+    current_head: Option<&str>,
+) -> RepairAttemptHeadReading {
+    let evidence_head = manifest.after.as_ref().map_or_else(
+        || manifest.repository_head.clone(),
+        |after| after.repository_head.clone(),
+    );
+    let after_admission =
+        if manifest.state == RepairAttemptState::AwaitingEdit && current_head.is_some() {
+            after_phase_head_admission(root, manifest).ok()
+        } else {
+            None
+        };
+    let head_current = if manifest.state == RepairAttemptState::AwaitingEdit {
+        after_admission
+            .as_ref()
+            .map(|admission| matches!(admission, AfterPhaseHeadAdmission::Current { .. }))
+    } else {
+        current_head.map(|head| head == evidence_head)
+    };
+    RepairAttemptHeadReading {
+        evidence_head,
+        head_current,
+        after_admission,
+    }
+}
+
 /// [`after_phase_head_admission`] for an attempt selected by identity.
 pub(crate) fn after_phase_head_admission_by_id_from(
     root: &Path,

@@ -14,10 +14,9 @@ use crate::app::repair_attempt::{
     AfterPhaseHeadAdmission, AttemptTerminalReceipt, DivergedHeadRecovery,
     REPAIR_ATTEMPT_DIRECTORY, RepairAttemptId, RepairAttemptInventoryEntry, RepairAttemptManifest,
     RepairAttemptState, RepairAttemptStoreAccess, RepairAttemptStoreCurrentness,
-    RepairAttemptStoreLocationClass, after_phase_head_admission, diverged_head_recovery,
-    inventory_repair_attempts_from, load_attempt_terminal_receipt,
-    load_repair_attempt_manifest_from, quoted_store_flag, repair_attempt_state_label,
-    resolve_store,
+    RepairAttemptStoreLocationClass, diverged_head_recovery, inventory_repair_attempts_from,
+    load_attempt_terminal_receipt, load_repair_attempt_manifest_from, quoted_store_flag,
+    repair_attempt_head_reading, repair_attempt_state_label, resolve_store,
 };
 use crate::output::agent_receipt::AgentReceiptReading;
 use crate::output::markdown::{COMMAND_SHELL_DISCLOSURE, PowershellForm, powershell_form};
@@ -536,15 +535,13 @@ fn status_repair_attempt(
         store_flag,
     ));
     let receipt = attempt_receipt(root, manifest, receipt);
-    let evidence_head = manifest.after.as_ref().map_or_else(
-        || manifest.repository_head.clone(),
-        |after| after.repository_head.clone(),
-    );
+    let head_reading = repair_attempt_head_reading(root, manifest, current_head);
+    let evidence_head = head_reading.evidence_head;
     let mut diverged_recovery = None;
     let (head_current, (state, disposition, command)) = match manifest.state {
         RepairAttemptState::AwaitingEdit => {
-            match current_head.map(|_| after_phase_head_admission(root, manifest)) {
-                Some(Ok(AfterPhaseHeadAdmission::Current { .. })) => (
+            match head_reading.after_admission {
+                Some(AfterPhaseHeadAdmission::Current { .. }) => (
                     Some(true),
                     (
                         "awaiting_edit",
@@ -552,11 +549,11 @@ fn status_repair_attempt(
                         Some(manifest.next_command.clone()),
                     ),
                 ),
-                Some(Ok(AfterPhaseHeadAdmission::FinishesStale { .. })) => (
+                Some(AfterPhaseHeadAdmission::FinishesStale { .. }) => (
                     Some(false),
                     ("awaiting_edit", "prepared_at_other_head", restart),
                 ),
-                Some(Ok(AfterPhaseHeadAdmission::RefusedDiverged { current_head })) => {
+                Some(AfterPhaseHeadAdmission::RefusedDiverged { current_head }) => {
                     diverged_recovery = Some(diverged_head_recovery(
                         root_display,
                         manifest.repair_attempt_id.as_str(),
@@ -572,11 +569,11 @@ fn status_repair_attempt(
                 }
                 // HEAD unreadable, or its lineage to the prepared head could not
                 // be established: status cannot tell what the after phase would do.
-                None | Some(Err(_)) => (None, ("awaiting_edit", "head_unknown", None)),
+                None => (None, ("awaiting_edit", "head_unknown", None)),
             }
         }
         _ => (
-            current_head.map(|head| head == evidence_head),
+            head_reading.head_current,
             status_after_disposition(manifest, &receipt, restart),
         ),
     };

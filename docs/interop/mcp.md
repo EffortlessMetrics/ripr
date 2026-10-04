@@ -164,6 +164,24 @@ routes when the retained packet carries valid ones — each projected exactly,
 with the human display string marked as never execution authority. The
 host-local root path is intentionally not projected.
 
+Durable attempt and receipt reads report live HEAD applicability in
+`currentness.state` (`current`, `historical`, or `unknown`), `head_current`
+and `evidence_head`. This is the shared CLI attempt reading: awaiting ordinary
+attempts admit descendant commits; finished evidence requires its exact after
+HEAD. Historical or unknown applicability suppresses `next_command` and
+`command_routes`. The operational manifest state and retained receipt bytes
+remain readable. `after.current` and receipt `currentness.after_current` are
+recorded finish-time admission, not live freshness or a test result. This HEAD
+check does not establish that dirty working-tree bytes still match the evidence.
+Session transactions and supersession resolve under the session lock; durable
+filesystem and Git fallback reads run on a blocking worker after releasing it.
+The supported stdio transport admits one request until its reply is flushed,
+so a refresh queued behind a durable read starts after that reply. The session
+`analysis_in_flight` guard is evaluated at read admission. Offloading preserves
+the async executor for timers and teardown; it does not establish a concurrent
+public transport or cancellation of an already running Git read before its
+existing deadline.
+
 `ripr_get_receipt_status` (and `ripr://receipt/{receipt_id}`) projects the
 current receipt state for one attempt identity (receipt ids are
 attempt-bound) onto the vocabulary `awaiting_edit`, `after_pending`,
@@ -184,9 +202,11 @@ improved. Advisory regression retains the trimmed, case-insensitive legacy
 `seam.change`; regression cannot bypass the completeness gate.
 Receipt presence alone never reports `closed`; the
 existing wire vocabulary remains unchanged. The nested producer document
-preserves completeness and movement independently. RIPR performs no
-verification and issues no receipt: the external client owns the edit, the
-verification execution, and the receipt under its own authority.
+preserves completeness and movement independently. A historical HEAD weakens
+an otherwise actionable status to `stale`; unknown HEAD weakens it to `limited`.
+Existing invalid, stale or limited producer states retain their refusal.
+RIPR performs no verification and issues no receipt: the external client owns
+the edit, the verification execution, and the receipt under its own authority.
 
 The `ripr://snapshot/{snapshot_id}` resource returns bounded snapshot
 evidence: the snapshot identity, the typed `AnalysisOutcome`, the full

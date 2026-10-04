@@ -20,13 +20,17 @@ use super::workspace::{AttemptFailure, CODE_ITEM_NOT_FOUND, WorkspaceSession, bo
 use crate::app::repair_attempt::{
     AttemptTerminalReceipt, RepairAttemptInventoryEntry, RepairAttemptState,
     find_manifest_artifact_by_role, find_terminal_artifact_by_role, inventory_repair_attempts_from,
-    load_attempt_terminal_receipt, repair_attempt_state_label,
+    load_attempt_terminal_receipt, repair_attempt_head_reading, repair_attempt_state_label,
 };
 use crate::output::agent_receipt::AgentReceiptReading;
 use crate::output::receipt_lifecycle::receipt_lifecycle_state_from_receipt_value;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::path::Path;
+
+#[cfg(test)]
+#[path = "repair_freshness_tests.rs"]
+mod freshness_tests;
 
 pub(crate) const REPAIR_PACKET_SCHEMA_VERSION: &str = "ripr-mcp-repair-packet-v1";
 pub(crate) const REPAIR_ATTEMPT_SCHEMA_VERSION: &str = "ripr-mcp-repair-attempt-v1";
@@ -302,7 +306,15 @@ fn durable_attempt_document(
     root: &Path,
     root_identity: Option<&str>,
 ) -> Value {
-    let (command_routes, route_limitations) = durable_command_routes(root, manifest);
+    let current_head = crate::agent::artifact::current_git_head(root).ok();
+    let head_reading = repair_attempt_head_reading(root, manifest, current_head.as_deref());
+    let (command_routes, route_limitations) = if head_reading.head_current == Some(true) {
+        durable_command_routes(root, manifest)
+    } else {
+        (Vec::new(), vec![
+            "live HEAD applicability is historical or unknown; retained commands are not offered as current continuation".to_string(),
+        ])
+    };
     let terminal_receipt = match &manifest.state {
         RepairAttemptState::ReadyToFinish => match load_attempt_terminal_receipt(root, manifest) {
             AttemptTerminalReceipt::Issued { .. } => "issued",
@@ -339,8 +351,14 @@ fn durable_attempt_document(
             "sha256": artifact.sha256,
             "bytes": artifact.bytes,
         })).collect::<Vec<_>>(),
-        "next_command": manifest.next_command,
+        "next_command": (head_reading.head_current == Some(true)).then_some(&manifest.next_command),
         "after": after,
+        "currentness": {
+            "state": head_reading.currentness(),
+            "head_current": head_reading.head_current,
+            "evidence_head": head_reading.evidence_head,
+            "basis": "shared read-time HEAD applicability; awaiting attempts use after-phase lineage admission and terminal evidence requires its exact after HEAD",
+        },
         "terminal_receipt": terminal_receipt,
         "command_routes": command_routes,
         "limitations": limitations,
@@ -447,6 +465,8 @@ fn durable_receipt_document(
 ) -> Value {
     let state_label = repair_attempt_state_label(&manifest.state);
     let attempt_id = manifest.repair_attempt_id.as_str().to_string();
+    let current_head = crate::agent::artifact::current_git_head(root).ok();
+    let head_reading = repair_attempt_head_reading(root, manifest, current_head.as_deref());
     let (status, receipt) = match &manifest.state {
         RepairAttemptState::Prepared | RepairAttemptState::AwaitingEdit => {
             let receipt = json!({
@@ -520,6 +540,30 @@ fn durable_receipt_document(
             }
         },
     };
+    // Retained movement remains in the receipt; a historical or unknown HEAD
+    // cannot make an actionable/current result out of recorded admission.
+    // Invalid, stale and limited producer states retain their own refusal.
+    let status = match (status, head_reading.head_current) {
+        (
+            "awaiting_edit"
+            | "verification_pending"
+            | "improved"
+            | "closed"
+            | "unchanged"
+            | "regressed",
+            Some(false),
+        ) => "stale",
+        (
+            "awaiting_edit"
+            | "verification_pending"
+            | "improved"
+            | "closed"
+            | "unchanged"
+            | "regressed",
+            None,
+        ) => "limited",
+        _ => status,
+    };
     json!({
         "schema_version": RECEIPT_STATUS_SCHEMA_VERSION,
         "receipt_id": attempt_id,
@@ -533,9 +577,12 @@ fn durable_receipt_document(
         },
         "receipt": receipt,
         "currentness": {
+            "state": head_reading.currentness(),
+            "head_current": head_reading.head_current,
+            "evidence_head": head_reading.evidence_head,
             "attempt_state": state_label,
             "after_current": manifest.after.as_ref().map(|after| after.current),
-            "basis": "durable manifest and digest-bound terminal artifacts, re-validated by the shared repair-attempt authority on every read",
+            "basis": "shared read-time HEAD applicability; after_current records finish-time admission only and is not live freshness",
         },
         "limitations": [
             "static movement and focused runtime test execution remain separate evidence axes; this document reports static receipt state only",

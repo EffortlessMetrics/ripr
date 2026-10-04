@@ -117,6 +117,13 @@ are scoped or reviewed.
   client palette alias, which the server dispatcher rejects. Palette advice in
   human-readable recovery prose is unchanged (#5274).
 
+- MCP durable attempt and receipt reads use the CLI's live Git HEAD
+  applicability. Admitted ordinary descendants keep continuation; historical
+  or unreadable HEADs suppress continuation and report stale or limited
+  actionable receipt status. Retained evidence and recorded finish admission
+  remain unchanged. Durable reads run off the async executor; supported stdio
+  request admission remains serialized through reply flush (#5399).
+
 ### Changed
 
 - Performance: cold `ripr pilot` parses each production file once for

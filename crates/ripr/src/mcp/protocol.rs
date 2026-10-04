@@ -1073,6 +1073,7 @@ fn repair_attempt_output_schema() -> Value {
                     "next_command": { "type": ["string", "object", "null"] },
                     "after": { "type": ["object", "null"] },
                     "terminal_receipt": { "type": ["string", "null"] },
+                    "currentness": { "type": "object" },
                     "command_routes": { "type": "array" },
                     "limitations": { "type": "array", "items": { "type": "string" } },
                     "non_claims": { "type": "array", "items": { "type": "string" } },
