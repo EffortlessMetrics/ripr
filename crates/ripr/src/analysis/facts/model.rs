@@ -755,6 +755,19 @@ pub struct TestFact {
     pub let_bindings: Vec<LetBindingFact>,
 }
 
+impl TestFact {
+    /// Calls written in the test's own body. A credited same-file helper's
+    /// calls (`facts::test_helpers`) sit on the helper's lines: their
+    /// arguments name the helper's parameters, which the test's `let`
+    /// bindings and case rows do not bind, so value resolution reads only
+    /// these.
+    pub(crate) fn body_calls(&self) -> impl Iterator<Item = &CallFact> {
+        self.calls
+            .iter()
+            .filter(|call| (self.start_line..=self.end_line).contains(&call.line))
+    }
+}
+
 /// Whether a selector route is known for one harness subject (#3532).
 /// A registration can describe a selector adapter; passive analysis
 /// never runs it, so every capability stays explicitly unexecuted.

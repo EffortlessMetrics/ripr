@@ -1390,6 +1390,12 @@ fn is_assignment_operator(text: &str) -> bool {
 /// Read attrs from `TestFact.attrs` (populated by the parser-backed
 /// index path); no filesystem reads.
 fn extract_rstest_cases(test: &TestSummary) -> (Vec<Vec<String>>, Vec<String>) {
+    let (cases, params) = extract_rstest_case_params(test);
+    (cases, params.into_iter().map(|param| param.name).collect())
+}
+
+/// [`extract_rstest_cases`] with each case parameter's full header fact.
+fn extract_rstest_case_params(test: &TestSummary) -> (Vec<Vec<String>>, Vec<FnParam>) {
     let mut cases: Vec<Vec<String>> = Vec::new();
     let mut is_rstest = false;
     for attr in &test.attrs {
@@ -1409,8 +1415,63 @@ fn extract_rstest_cases(test: &TestSummary) -> (Vec<Vec<String>>, Vec<String>) {
     if !is_rstest && cases.is_empty() {
         return (Vec::new(), Vec::new());
     }
-    let params = extract_fn_param_names(&test.body);
+    // rstest binds case values positionally to the `#[case]` parameters
+    // only; the others are fixtures. Without any `#[case]` marker every
+    // parameter counts, as before #4601. (Rows written inside the legacy
+    // `#[rstest(a, case(..))]` attribute and named `#[case::name(..)]`
+    // rows are not parsed, so they bind nothing.)
+    let params = extract_fn_params(&test.body);
+    let params = if params.iter().any(|param| param.is_case) {
+        params.into_iter().filter(|param| param.is_case).collect()
+    } else {
+        params
+    };
     (cases, params)
+}
+
+/// The values rstest `#[case(..)]` rows bind to the test parameter
+/// `ident`, one per row, for the check-path activation stage (which can
+/// promote a finding to `exposed`). Fails closed to no values when the
+/// parameter is `mut` or anything in the body may rebind the name before
+/// the owner call: a `let` (simple or pattern), a `for`, `if let` or
+/// `while let` binding, a closure parameter or a match arm. A nested
+/// `fn` item also binds nothing: an owner call inside it reads that fn's
+/// own parameters, which the case rows do not bind.
+pub(crate) fn test_case_bound_literals(test: &TestSummary, ident: &str) -> Vec<String> {
+    if !test.nested_fn_names.is_empty() {
+        return Vec::new();
+    }
+    // Parser authority first: the case parameter must be the only binding
+    // of `ident` anywhere in the test (a char or raw-string literal cannot
+    // hide a later `let` from the parser), and an unparsable body binds
+    // nothing. The lexical scan below still covers bindings written inside
+    // macro token trees, which the parser does not expand.
+    if crate::analysis::syntax::fn_name_binding_count(&test.body, ident) != Some(1) {
+        return Vec::new();
+    }
+    let cleaned = strip_comments_and_strings(&test.body);
+    let rebound = find_all(&cleaned, "let ").into_iter().any(|start| {
+        let after_let = &cleaned[start + 4..];
+        let stmt = &after_let[..top_level_semicolon(after_let).unwrap_or(after_let.len())];
+        let lhs = &stmt[..first_single_eq(stmt).unwrap_or(stmt.len())];
+        let_binding_ident(lhs).is_some_and(|(name, _)| name == ident)
+    }) || !non_simple_let_shadowing_lines(&cleaned, ident, test.start_line)
+        .is_empty()
+        || !non_let_shadowing_lines(&cleaned, ident, test.start_line).is_empty();
+    if rebound {
+        return Vec::new();
+    }
+    let (cases, params) = extract_rstest_case_params(test);
+    let Some(position) = params.iter().position(|param| param.name == ident) else {
+        return Vec::new();
+    };
+    if params[position].is_mut {
+        return Vec::new();
+    }
+    cases
+        .iter()
+        .filter_map(|case| case.get(position).map(|value| value.trim().to_string()))
+        .collect()
 }
 
 fn attr_matches_name_or_call(attr: &str, name: &str) -> bool {
@@ -1440,27 +1501,93 @@ fn attr_inner(attr: &str) -> Option<&str> {
 /// always present on the first non-attr line. Best-effort: skip
 /// `&self` / `self` and reject anything not identifier-shaped.
 fn extract_fn_param_names(body: &str) -> Vec<String> {
+    extract_fn_params(body)
+        .into_iter()
+        .filter(|param| !param.name.is_empty())
+        .map(|param| param.name)
+        .collect()
+}
+
+/// One parameter of a test fn header: its name and whether it carries
+/// rstest's `#[case]` attribute.
+struct FnParam {
+    name: String,
+    is_case: bool,
+    is_mut: bool,
+}
+
+/// Parameters of the `fn` header in `body`. Parameter attributes
+/// (`#[case] x: u32`, `#[values(1, 2)] y: u8`) are stripped before the
+/// name is read, and the list ends at the parenthesis that balances the
+/// opening one, so an attribute's own arguments never cut it short.
+fn extract_fn_params(body: &str) -> Vec<FnParam> {
     let Some(open) = body.find('(') else {
         return Vec::new();
     };
     let after = &body[open + 1..];
-    let Some(close) = after.find(')') else {
+    let mut depth = 0usize;
+    let mut close = None;
+    for (at, character) in after.char_indices() {
+        match character {
+            '(' | '[' => depth += 1,
+            ')' if depth == 0 => {
+                close = Some(at);
+                break;
+            }
+            ')' | ']' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    let Some(close) = close else {
         return Vec::new();
     };
     let raw = &after[..close];
     let mut out = Vec::new();
     for part in split_top_level(raw) {
-        let part = part.trim();
-        if part.is_empty() || part == "self" || part.starts_with('&') {
+        let mut part = part.trim();
+        let mut is_case = false;
+        while let Some(rest) = part.strip_prefix("#[") {
+            let Some(end) = balanced_attribute_end(rest) else {
+                break;
+            };
+            let attribute = rest[..end].trim();
+            is_case |= attribute == "case" || attribute == "rstest::case";
+            part = rest[end + 1..].trim_start();
+        }
+        if part.is_empty() || part == "self" || part.starts_with("&self") {
             continue;
         }
         let ident = part.split(':').next().unwrap_or(part).trim();
+        let is_mut = ident.starts_with("mut ");
         let ident = ident.strip_prefix("mut ").unwrap_or(ident).trim();
-        if is_simple_identifier(ident) {
-            out.push(ident.to_string());
-        }
+        // A pattern parameter (`ref x`, `(a, b)`) keeps its position with an
+        // empty name, so later case columns stay aligned; nothing binds it.
+        out.push(FnParam {
+            name: if is_simple_identifier(ident) {
+                ident.to_string()
+            } else {
+                String::new()
+            },
+            is_case,
+            is_mut,
+        });
     }
     out
+}
+
+/// Offset of the `]` closing an attribute whose `#[` was already
+/// consumed, skipping brackets nested in its arguments (`vec![1]`).
+fn balanced_attribute_end(rest: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    for (at, character) in rest.char_indices() {
+        match character {
+            '[' => depth += 1,
+            ']' if depth == 0 => return Some(at),
+            ']' => depth -= 1,
+            _ => {}
+        }
+    }
+    None
 }
 
 /// `for (a, b) in [(L, L), ...] { ... }` and
@@ -1872,18 +1999,17 @@ fn builder_method_matches_allowed(
 
 /// Drop `//` line-comment tails and replace string-literal contents
 /// with empty text, so binding scans don't pick up `// let x = 1;`
-/// or string-embedded names. Mirrors the helper added in
-/// `analysis/related-test-precision-v1` for `import_path_affinity`.
+/// or string-embedded names. Only a `//` outside a string literal starts
+/// a comment: a URL such as `"http://example"` must not truncate the
+/// line, or a binding after it would vanish from the scan. Mirrors the
+/// helper added in `analysis/related-test-precision-v1` for
+/// `import_path_affinity`.
 fn strip_comments_and_strings(source: &str) -> String {
     let mut out = String::with_capacity(source.len());
     for raw_line in source.lines() {
-        let without_comment = match raw_line.find("//") {
-            Some(idx) => &raw_line[..idx],
-            None => raw_line,
-        };
         let mut in_string = false;
         let mut escaped = false;
-        for ch in without_comment.chars() {
+        for (idx, ch) in raw_line.char_indices() {
             if in_string {
                 if escaped {
                     escaped = false;
@@ -1903,6 +2029,9 @@ fn strip_comments_and_strings(source: &str) -> String {
                 in_string = true;
                 out.push('"');
                 continue;
+            }
+            if ch == '/' && raw_line[idx..].starts_with("//") {
+                break;
             }
             out.push(ch);
         }

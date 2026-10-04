@@ -1964,6 +1964,30 @@ fn far_above_threshold_discounts() {
         assert_eq!(finding.ripr.reveal.discriminate.state, StageState::No);
     }
 
+    // A changed line inside a `macro_rules!` template has no resolved owner,
+    // so no name scan can show that nothing calls it. time-rs `num_digits`
+    // (generated per integer type) read `no_static_path` while 27 rstest
+    // cases failed under its mutant.
+    #[test]
+    fn given_proximity_only_probe_without_resolved_owner_when_classified_then_not_no_static_path() {
+        let index = uncalled_owner_index("");
+        let mut probe = fragile_fee_probe(ProbeFamily::Predicate, "fragile_fee");
+        probe.owner = None;
+
+        let finding = classify_probe(&probe, &index, true, None);
+
+        assert!(
+            finding
+                .related_tests
+                .iter()
+                .any(|test| test.name == "eu_tax"),
+            "premise: the same-file test is listed: {:?}",
+            finding.related_tests
+        );
+        assert_eq!(finding.ripr.reach.state, StageState::Weak);
+        assert_ne!(finding.class, ExposureClass::NoStaticPath);
+    }
+
     // A production caller may carry a test's reach through a chain the
     // relation stage did not resolve, so proximity stays weak reach there.
     // Review of #4428: tests reach a function through callers, function

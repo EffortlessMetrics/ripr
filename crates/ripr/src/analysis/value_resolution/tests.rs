@@ -888,3 +888,168 @@ fn a_test_file_declaring_the_same_constant_name_may_shadow_the_owner() {
         "DISCOUNT_THRESHOLD"
     ));
 }
+
+#[test]
+fn extract_rstest_cases_maps_case_rows_to_case_marked_parameters_only() {
+    // Real rstest marks case parameters `#[case]`; unmarked parameters are
+    // fixtures and take no case column.
+    let test = TestSummary {
+        name: "t".to_string(),
+        file: std::path::PathBuf::from("src/lib.rs"),
+        start_line: 1,
+        end_line: 1,
+        body: "fn t(fixture: Db, #[case] x: u32, #[values(vec![1])] v: Vec<u8>, #[case] mut expected: bool) { assert_eq!(gate(x), expected); }".to_string(),
+        calls: Vec::new(),
+        assertions: Vec::new(),
+        literals: Vec::new(),
+        attrs: vec![
+            "#[rstest]".to_string(),
+            "#[case(10, false)]".to_string(),
+            "#[case(11, true)]".to_string(),
+        ],
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
+    };
+
+    let (cases, params) = extract_rstest_cases(&test);
+
+    assert_eq!(params, vec!["x", "expected"]);
+    assert_eq!(
+        cases,
+        vec![
+            vec!["10".to_string(), "false".to_string()],
+            vec!["11".to_string(), "true".to_string()],
+        ]
+    );
+    assert_eq!(
+        extract_fn_param_names(&test.body),
+        vec!["fixture", "x", "v", "expected"],
+        "every parameter still counts for shadow invalidation"
+    );
+}
+
+#[test]
+fn case_columns_stay_aligned_past_a_pattern_parameter() {
+    // Review of #4715: a `ref` case parameter was dropped from the list, so
+    // `amount` took the first column (10, 9) instead of its own (100, 200).
+    let test = TestSummary {
+        name: "far_above".to_string(),
+        file: std::path::PathBuf::from("src/lib.rs"),
+        start_line: 1,
+        end_line: 1,
+        body:
+            "fn far_above(#[case] ref _label: u32, #[case] amount: u32) { assert!(gate(amount)); }"
+                .to_string(),
+        calls: Vec::new(),
+        assertions: Vec::new(),
+        literals: Vec::new(),
+        attrs: vec![
+            "#[rstest]".to_string(),
+            "#[case(10, 100)]".to_string(),
+            "#[case(9, 200)]".to_string(),
+        ],
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
+    };
+
+    assert_eq!(
+        test_case_bound_literals(&test, "amount"),
+        vec!["100", "200"]
+    );
+}
+
+#[test]
+fn case_value_not_credited_past_a_shadowing_let_after_a_url_string() {
+    // Review of #4715: `strip_comments_and_strings` cut the line at the
+    // `//` inside `"http://example"`, so the shadowing `let amount` after
+    // the string vanished from the rebound scan and `gate(amount)` was
+    // credited with the original case value. A string-internal `//` is not
+    // a comment; the binding after it must fail the case credit closed.
+    let test = TestSummary {
+        name: "rebound_after_url".to_string(),
+        file: std::path::PathBuf::from("src/lib.rs"),
+        start_line: 1,
+        end_line: 1,
+        body: "fn rebound_after_url(#[case] amount: u32) { let _url = \"http://example\"; let amount = amount + 1; gate(amount); }".to_string(),
+        calls: Vec::new(),
+        assertions: Vec::new(),
+        literals: Vec::new(),
+        attrs: vec![
+            "#[rstest]".to_string(),
+            "#[case(100)]".to_string(),
+            "#[case(200)]".to_string(),
+        ],
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
+    };
+
+    assert_eq!(
+        test_case_bound_literals(&test, "amount"),
+        Vec::<String>::new()
+    );
+}
+
+fn rstest_case_test(name: &str, body: &str) -> TestSummary {
+    TestSummary {
+        name: name.to_string(),
+        file: std::path::PathBuf::from("src/lib.rs"),
+        start_line: 1,
+        end_line: 1,
+        body: body.to_string(),
+        calls: Vec::new(),
+        assertions: Vec::new(),
+        literals: Vec::new(),
+        attrs: vec![
+            "#[rstest]".to_string(),
+            "#[case(100)]".to_string(),
+            "#[case(200)]".to_string(),
+        ],
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
+    }
+}
+
+#[test]
+fn case_value_not_credited_past_a_shadowing_let_after_a_char_or_raw_string_literal() {
+    // Review of #4715: the lexical scanner tracks only `"` strings, so a
+    // `'"'` char literal or a raw string with an embedded quote left it
+    // "inside a string" and hid the shadowing `let amount` that follows.
+    // The parser-backed binding count fails the case credit closed.
+    for body in [
+        "fn rebound(#[case] amount: u32) { let _c = '\"'; let amount = amount + 1; gate(amount); }",
+        "fn rebound(#[case] amount: u32) { let _r = r#\"a\"b\"#; let amount = amount + 1; gate(amount); }",
+    ] {
+        let test = rstest_case_test("rebound", body);
+        assert_eq!(
+            test_case_bound_literals(&test, "amount"),
+            Vec::<String>::new(),
+            "`{body}` must not credit the original case values"
+        );
+    }
+}
+
+#[test]
+fn case_value_credited_past_a_char_or_raw_string_literal_without_rebinding() {
+    // Positive control for the test above: the same literals with no
+    // shadowing binding still credit every case row.
+    for body in [
+        "fn kept(#[case] amount: u32) { let _c = '\"'; gate(amount); }",
+        "fn kept(#[case] amount: u32) { let _r = r#\"a\"b\"#; gate(amount); }",
+    ] {
+        let test = rstest_case_test("kept", body);
+        assert_eq!(
+            test_case_bound_literals(&test, "amount"),
+            vec!["100".to_string(), "200".to_string()],
+            "`{body}` should credit the case values"
+        );
+    }
+}
+
+#[test]
+fn case_value_not_credited_when_the_test_body_does_not_parse() {
+    let test = rstest_case_test("broken", "fn broken(#[case] amount: u32) { gate(amount ");
+    assert_eq!(
+        test_case_bound_literals(&test, "amount"),
+        Vec::<String>::new()
+    );
+}

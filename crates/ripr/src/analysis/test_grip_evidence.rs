@@ -671,7 +671,7 @@ fn observed_value_facts_for_test(
     // all owner calls in this test. Per `analysis/value-extraction-v2`.
     let value_facts = indexed.value_facts(index);
     let env = super::value_resolution::ValueEnv::new(seam, value_facts);
-    for call in &indexed.test.calls {
+    for call in indexed.test.body_calls() {
         if call.name != owner_name {
             continue;
         }
@@ -1193,7 +1193,7 @@ fn boundary_equality_overlap_score(
     };
 
     let mut score = 0;
-    for call in &indexed.test.calls {
+    for call in indexed.test.body_calls() {
         if call.name != owner_fn.name {
             continue;
         }

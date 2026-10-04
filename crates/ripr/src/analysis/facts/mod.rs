@@ -7,6 +7,7 @@ mod index;
 mod model;
 mod parameterized_tests;
 mod role_composition;
+mod test_helpers;
 mod test_styles;
 
 use std::path::{Path, PathBuf};
@@ -52,6 +53,12 @@ pub fn build_index_with_test_harnesses(
         harness_registry::apply_registrations(&mut index, root, registrations);
         Ok(())
     })?;
+    // Helper crediting reads final roles, so it runs after every role
+    // authority.
+    index_phase("index_test_helper_credit", || {
+        test_helpers::credit_same_file_assertion_helpers(&mut index);
+        Ok(())
+    })?;
     index.finalize()?;
     Ok(index)
 }
@@ -84,6 +91,12 @@ pub(crate) fn build_index_from_loaded_files_with_cache_and_test_harnesses(
     // immediately.
     index_phase("index_harness_registry", || {
         harness_registry::apply_registrations(&mut cached.index, root, registrations);
+        Ok(())
+    })?;
+    // Helper crediting reads final roles, so it runs after every role
+    // authority.
+    index_phase("index_test_helper_credit", || {
+        test_helpers::credit_same_file_assertion_helpers(&mut cached.index);
         Ok(())
     })?;
     cached.index.finalize()?;

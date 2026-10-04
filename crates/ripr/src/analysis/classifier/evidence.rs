@@ -39,10 +39,13 @@ pub(in crate::analysis) struct ClassifiedProbeEvidence {
 impl ClassifiedProbeEvidence {
     pub(in crate::analysis) fn gather(context: &ProbeContext<'_>, reveal_expression: &str) -> Self {
         let test_summaries = context.related_test_summaries();
+        // Without a resolved owner (a line in a `macro_rules!` template, an
+        // impl the index did not attribute) there is no name to search for,
+        // so nothing rules reach out.
         let reach = reach_evidence(&context.related_tests, context.owner_fn, || {
             context
                 .owner_fn
-                .is_some_and(|owner| owner_may_be_reached_unseen(owner, context.index))
+                .is_none_or(|owner| owner_may_be_reached_unseen(owner, context.index))
         });
         let flow_sinks = local_flow_sinks(context.probe, context.owner_fn);
         let propagation_witness = current_path_witness(context.probe, &flow_sinks)
