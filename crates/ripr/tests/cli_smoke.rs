@@ -12193,6 +12193,54 @@ fn pilot_snapshot_truncated_by_the_seam_budget_is_not_a_verify_baseline()
     Ok(())
 }
 
+/// A seam whose only test is an inline `#[cfg(test)]` module gets a focused-test
+/// suggestion but no repair target. The README sends readers to the
+/// `ripr agent repair` command pilot prints, so the terminal must say none is
+/// coming instead of going silent and offering the snapshot choreography as if
+/// it were the repair route.
+#[test]
+fn pilot_says_so_when_the_top_seam_has_no_repair_command() -> Result<(), String> {
+    let root = unique_temp_workspace("pilot-no-repair-command");
+    let src = root.join("src");
+    std::fs::create_dir_all(&src).map_err(|e| format!("create src: {e}"))?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .map_err(|e| format!("write manifest: {e}"))?;
+    std::fs::write(
+        src.join("lib.rs"),
+        "pub fn price(amount: u32, threshold: u32) -> u32 {\n    if amount >= threshold { amount - 10 } else { amount }\n}\n\n#[cfg(test)]\nmod t {\n    use super::*;\n    #[test]\n    fn below() {\n        assert_eq!(price(1, 100), 1);\n    }\n}\n",
+    )
+    .map_err(|e| format!("write lib: {e}"))?;
+    let out_dir = unique_temp_workspace("pilot-no-repair-command-out");
+    let output = run_ripr(&[
+        "pilot",
+        "--root",
+        &root.display().to_string(),
+        "--out",
+        &out_dir.display().to_string(),
+    ]);
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&out_dir);
+    assert!(stdout.contains("focused test: add "), "{stdout}");
+    assert!(
+        stdout.contains("repair this seam: not available for this seam"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("Next, by hand: add the focused test named above"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("agent repair --root"),
+        "no repair command may be printed for an ineligible seam:\n{stdout}"
+    );
+    Ok(())
+}
+
 #[test]
 fn pilot_writes_default_packet_outputs_for_boundary_gap_fixture() -> Result<(), String> {
     let root = workspace_root().join("fixtures/boundary_gap/input");

@@ -348,7 +348,9 @@ pub(super) fn parse_init_options(args: &[String]) -> Result<InitOptions, String>
 fn parse_init_ci(value: &str) -> Result<InitCi, String> {
     match value {
         "github" => Ok(InitCi::Github),
-        _ => Err(format!("unknown init --ci provider {value:?}")),
+        _ => Err(format!(
+            "unknown init --ci provider {value:?}. Accepted: github."
+        )),
     }
 }
 
