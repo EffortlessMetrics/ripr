@@ -49,6 +49,7 @@ mod reverse_authorization;
 mod review_comments;
 mod rust_repair_trust;
 mod sarif;
+mod seam_inventory_scaling;
 mod source_promotion;
 mod spec_maintenance;
 mod spec_receipts;
@@ -159,6 +160,7 @@ pub(crate) use sarif::{
     build_sarif_policy_report, parse_sarif_policy_args, parse_sarif_policy_results,
     sarif_policy_report_json, sarif_policy_report_markdown,
 };
+pub(crate) use seam_inventory_scaling::seam_inventory_scaling_benchmark;
 pub(crate) use source_promotion::source_promotion;
 pub(crate) use spec_maintenance::spec_digest;
 pub(crate) use spec_maintenance::spec_maintenance;
