@@ -42,8 +42,8 @@
       "owner": "applyDiscount",
       "dedupe_fingerprint": "gap:typescript:typescript_preview:2396aec1"
     },
-    "verify_command": "jest tests/discount.test.ts",
-    "receipt_command": "ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command \"jest tests/discount.test.ts\" --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json",
+    "verify_command": "npx --no-install jest tests/discount.test.ts",
+    "receipt_command": "ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command \"npx --no-install jest tests/discount.test.ts\" --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json",
     "receipt_path": "target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json",
     "receipt_command_source": "gap_ledger.receipt_command",
     "receipt_state": null,
@@ -55,12 +55,12 @@
       "authority": "advisory_display_only",
       "cwd": "<root>",
       "receipt": {
-        "bash": "(cd -P -- <root> && ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command \"jest tests/discount.test.ts\" --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json)",
+        "bash": "(cd -P -- <root> && ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command \"npx --no-install jest tests/discount.test.ts\" --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json)",
         "powershell": null,
         "recovery": "PowerShell selected-root form is unavailable because generic shell text does not establish native exit-status semantics. Use the Bash form, or inspect the raw command in JSON and run it from the selected repository in PowerShell, checking its result before recording a receipt."
       },
       "verify": {
-        "bash": "(cd -P -- <root> && jest tests/discount.test.ts)",
+        "bash": "(cd -P -- <root> && npx --no-install jest tests/discount.test.ts)",
         "powershell": null,
         "recovery": "PowerShell selected-root form is unavailable because generic shell text does not establish native exit-status semantics. Use the Bash form, or inspect the raw command in JSON and run it from the selected repository in PowerShell, checking its result before recording a receipt."
       }
@@ -69,8 +69,8 @@
   "commands": {
     "regenerate_gap_ledger": "ripr check --root <cwd>/fixtures/first_successful_pr/typescript-preview-gap --base origin/main --json > <cwd>/fixtures/first_successful_pr/typescript-preview-gap/target/ripr/reports/check.json && ripr reports gap-ledger --check-output <cwd>/fixtures/first_successful_pr/typescript-preview-gap/target/ripr/reports/check.json --root <cwd>/fixtures/first_successful_pr/typescript-preview-gap --out <cwd>/fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/gap-decision-ledger.json --out-md <cwd>/fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/gap-decision-ledger.md",
     "agent_packet": "ripr agent packet --root <cwd>/fixtures/first_successful_pr/typescript-preview-gap --gap-ledger <cwd>/fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/gap-decision-ledger.json --gap-id gap:pr:gap:typescript:typescript_preview:2396aec1 --json > <cwd>/fixtures/first_successful_pr/typescript-preview-gap/target/ripr/workflow/agent-packet.json",
-    "verify": "jest tests/discount.test.ts",
-    "receipt": "ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command \"jest tests/discount.test.ts\" --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json"
+    "verify": "npx --no-install jest tests/discount.test.ts",
+    "receipt": "ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command \"npx --no-install jest tests/discount.test.ts\" --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json"
   },
   "artifacts": [
     {

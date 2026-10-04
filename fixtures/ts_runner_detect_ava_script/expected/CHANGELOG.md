@@ -333,3 +333,14 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+## Pending — ts_runner_detect_ava_script (10)
+
+Reason:
+RIPR-SPEC-0085: TypeScript verify commands launch the framework through the package runner (npx --no-install, pnpm exec, yarn, bun run) because node_modules/.bin is not on PATH
+
+Command:
+`cargo xtask goldens bless ts_runner_detect_ava_script --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

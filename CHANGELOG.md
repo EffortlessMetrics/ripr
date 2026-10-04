@@ -1346,6 +1346,17 @@ are scoped or reviewed.
   non-blocking and the status is unchanged
   ([#3903](https://github.com/EffortlessMetrics/ripr-swarm/issues/3903)).
 
+- TypeScript verify commands now run from a shell:
+  `npx --no-install vitest run <file>` (or `pnpm exec`, `yarn`, `bun run` by
+  the package's runner) instead of bare
+  `vitest run <file>`, which failed with command not found because
+  `node_modules/.bin` is not on PATH. The same applies to `jest` and `ava`;
+  `bun test`, `node --test` and the `npm test --` style runner scripts are
+  unchanged. The command still needs the package's dependencies installed;
+  ripr does not check for `node_modules`, and every launcher runs only the
+  installed binary, so a missing one fails instead of being fetched from the
+  registry.
+
 - A TypeScript change that only edits type syntax on a signature or
   declaration line (a return type, a parameter or variable annotation, an
   optional marker, a generic parameter list) no longer produces a `predicate`

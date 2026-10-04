@@ -60,7 +60,7 @@ TypeScript preview card (advisory)
   oracle: exact_value (strong)
   missing discriminator: DISCOUNT_THRESHOLD == amount
   suggested assertion shape: Exact-value evidence is present; verify it targets the changed discriminator.
-  verify: jest tests/pricing.test.ts
+  verify: npx --no-install jest tests/pricing.test.ts
   repair packet ready: true
   why actionable: complete repair packet — package root, runner, owner, oracle target, verify, receipt, and edit cage all resolved; delegatable (advisory)
   repair action: add a focused assertion for the missing discriminator `DISCOUNT_THRESHOLD == amount` in the related test, shaped like `expect(discountedTotal(10000)).toBe(expected)`
@@ -75,8 +75,8 @@ TypeScript repair packet (advisory)
   related test: tests/pricing.test.ts::discounts far above threshold
   oracle: expect(discountedTotal(10000)).toBe(expected)
   edit surface: tests/pricing.test.ts
-  verify: jest tests/pricing.test.ts
-  receipt: ripr receipt write --gap gap:typescript:typescript_preview:f12d3569 --verify-command 'jest tests/pricing.test.ts' --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-f12d3569.json
+  verify: npx --no-install jest tests/pricing.test.ts
+  receipt: ripr receipt write --gap gap:typescript:typescript_preview:f12d3569 --verify-command 'npx --no-install jest tests/pricing.test.ts' --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-f12d3569.json
   must not change:
     - Do not edit production code unless the focused proof exposes a real product defect.
     - Do not broaden the change beyond this GapRecord and its repair route.

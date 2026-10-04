@@ -1678,8 +1678,8 @@
           "assertion_shape": "expect(result).toBe(expected)",
           "authority_boundary": "preview_advisory_only",
           "repair_kind": "AddBoundaryAssertion",
-          "verify_command": "jest tests/discount.test.ts",
-          "receipt_command": "ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command 'jest tests/discount.test.ts' --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json",
+          "verify_command": "npx --no-install jest tests/discount.test.ts",
+          "receipt_command": "ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command 'npx --no-install jest tests/discount.test.ts' --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json",
           "allowed_edit_surface": ["tests/discount.test.ts"],
           "forbidden_files": ["src/discount.ts"]
         },

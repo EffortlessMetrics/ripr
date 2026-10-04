@@ -33,7 +33,7 @@
       "evidence_path": ["reach yes: 2 related test(s) found for owner `discount`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `exact_value` (rank 5)", "discriminator weak: TypeScript preview adapter: strong oracle found but no strong assertion observes an owner call at the changed predicate boundary; missing proof: `amount == LIMIT`.", "related test tests/pricing.test.ts:3 no discount at or below limit uses strong exact value oracle: expect(...).toBe(...)", "related test tests/pricing.test.ts:7 discounts far above limit uses weak relational check oracle: expect(...).toBeGreaterThan(...)", "missing discriminator amount == LIMIT: changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: discount", "missing_discriminator: amount == LIMIT", "typescript_boundary_parameters: parameter=amount;index=0;operand=LIMIT;operand_index=1", "typescript_oracle_observed: discount(50, 100)", "typescript_oracle_expected: 0", "typescript_oracle_confidence: high", "typescript_oracle_evidence_ref: tests/pricing.test.ts:4", "gap_state: actionable", "actionability_category: complete_repair_packet", "why_actionable: complete repair packet — package root, runner, owner, oracle target, verify, receipt, and edit cage all resolved; delegatable (advisory)", "repair_action: add a focused assertion for the missing discriminator `amount == LIMIT` in the related test, shaped like `expect(discount(100, 100)).toBe(expected)`", "raw_evidence_ref: file=src/pricing.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_pricing.ts:typescript_preview:c303d373;owner=discount", "typescript_package_root: .", "typescript_workspace_root: .", "typescript_framework_hint: jest", "typescript_test_runner: jest", "typescript_runner_hint: npm", "typescript_package_confidence: high", "typescript_verify_command: jest tests/pricing.test.ts"],
+      "evidence": ["owner: discount", "missing_discriminator: amount == LIMIT", "typescript_boundary_parameters: parameter=amount;index=0;operand=LIMIT;operand_index=1", "typescript_oracle_observed: discount(50, 100)", "typescript_oracle_expected: 0", "typescript_oracle_confidence: high", "typescript_oracle_evidence_ref: tests/pricing.test.ts:4", "gap_state: actionable", "actionability_category: complete_repair_packet", "why_actionable: complete repair packet — package root, runner, owner, oracle target, verify, receipt, and edit cage all resolved; delegatable (advisory)", "repair_action: add a focused assertion for the missing discriminator `amount == LIMIT` in the related test, shaped like `expect(discount(100, 100)).toBe(expected)`", "raw_evidence_ref: file=src/pricing.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_pricing.ts:typescript_preview:c303d373;owner=discount", "typescript_package_root: .", "typescript_workspace_root: .", "typescript_framework_hint: jest", "typescript_test_runner: jest", "typescript_runner_hint: npm", "typescript_package_confidence: high", "typescript_verify_command: npx --no-install jest tests/pricing.test.ts"],
       "missing": ["Related tests reach `discount` with a strong oracle, but no strong assertion observes a `discount(...)` call at the changed predicate boundary `amount == LIMIT`; inputs on one side of the boundary do not discriminate the changed comparison."],
       "assertion_texts": {
       },
@@ -109,7 +109,7 @@
         "static_limits": [],
         "suggested_assertion_shape": "Exact-value evidence is present; verify it targets the changed discriminator.",
         "verify": {
-          "command": "jest tests/pricing.test.ts"
+          "command": "npx --no-install jest tests/pricing.test.ts"
         },
         "why_not_actionable": "complete repair packet — package root, runner, owner, oracle target, verify, receipt, and edit cage all resolved; delegatable (advisory)"
       },
@@ -137,12 +137,12 @@
           "Do not treat preview-language evidence as gate authority."
         ],
         "owner": "discount",
-        "receipt_command": "ripr receipt write --gap gap:typescript:typescript_preview:c303d373 --verify-command 'jest tests/pricing.test.ts' --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-c303d373.json",
+        "receipt_command": "ripr receipt write --gap gap:typescript:typescript_preview:c303d373 --verify-command 'npx --no-install jest tests/pricing.test.ts' --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-c303d373.json",
         "repair_kind": "AddBoundaryAssertion",
         "schema_version": "0.5",
         "source": "typescript_preview_projection",
         "target_test": "tests/pricing.test.ts::no discount at or below limit",
-        "verify_command": "jest tests/pricing.test.ts"
+        "verify_command": "npx --no-install jest tests/pricing.test.ts"
       },
       "preview_actionability": {
         "actionability_category": "complete_repair_packet",

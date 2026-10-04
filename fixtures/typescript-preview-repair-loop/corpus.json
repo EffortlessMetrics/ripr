@@ -434,7 +434,7 @@
       "must_not_emit_repair_packet": false,
       "authority_boundary": "preview_advisory_only",
       "expected_test_or_observer_shape": "test-only exact boundary assertion for amount == threshold using expect(result).toBe(50)",
-      "verify_command": "jest tests/discount.test.ts",
+      "verify_command": "npx --no-install jest tests/discount.test.ts",
       "verify_result": "pass",
       "receipt_command": "ripr outcome --before fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/before-check.json --after fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/after-check.json --format json",
       "receipt_state": "closed_advisory_outcome_receipt",

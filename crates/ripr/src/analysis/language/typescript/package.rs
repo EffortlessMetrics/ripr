@@ -648,14 +648,30 @@ fn json_has_workspaces_field(pkg_json: &str) -> bool {
 /// Command mapping (framework takes priority over runner):
 /// ```text
 /// framework Bun      -> bun test <file>
-/// framework Vitest   -> vitest run <file>
-/// framework Jest     -> jest <file>
+/// framework Vitest   -> <launch> vitest run <file>
+/// framework Jest     -> <launch> jest <file>
+/// framework Ava      -> <launch> ava <file>
 /// framework NodeTest -> node --test <file>
 /// (no framework) runner Bun  -> bun test <file>
 /// (no framework) runner Npm  -> npm test -- <file>
 /// (no framework) runner Pnpm -> pnpm test -- <file>
 /// (no framework) runner Yarn -> yarn test <file>
 /// ```
+///
+/// `<launch>` is the package runner's local-binary launcher, because a
+/// devDependency binary lives in `node_modules/.bin`, which is not on `PATH`
+/// (a bare `vitest run <file>` fails with "command not found"):
+/// ```text
+/// runner Npm or unresolved -> npx --no-install
+/// runner Pnpm              -> pnpm exec
+/// runner Yarn              -> yarn
+/// runner Bun               -> bun run
+/// ```
+///
+/// Every launcher resolves only the package's installed binary. A launcher that
+/// can fetch a missing package (`npx` without `--no-install`, `bunx`) would run
+/// a registry version instead of the locked one when dependencies are not
+/// installed, and a non-interactive shell skips npx's install prompt.
 ///
 /// `<file>` is the test file path normalized (`\` → `/`) and expressed
 /// relative to `package_root` so the command is runnable from there.
@@ -686,10 +702,19 @@ pub(crate) fn verify_command_for_discovery(
     // Framework takes priority over runner.
     let cmd = match discovery.framework_hint {
         Some(TsFramework::Bun) => format!("bun test {file_str}"),
-        Some(TsFramework::Vitest) => format!("vitest run {file_str}"),
-        Some(TsFramework::Jest) => format!("jest {file_str}"),
+        Some(TsFramework::Vitest) => {
+            let launch = local_binary_launcher(discovery.runner_hint);
+            format!("{launch} vitest run {file_str}")
+        }
+        Some(TsFramework::Jest) => {
+            let launch = local_binary_launcher(discovery.runner_hint);
+            format!("{launch} jest {file_str}")
+        }
         Some(TsFramework::NodeTest) => format!("node --test {file_str}"),
-        Some(TsFramework::Ava) => format!("ava {file_str}"),
+        Some(TsFramework::Ava) => {
+            let launch = local_binary_launcher(discovery.runner_hint);
+            format!("{launch} ava {file_str}")
+        }
         // Mocha does not have a simple file-target form in the spec table;
         // fall through to runner fallback.
         Some(TsFramework::Mocha) | None => {
@@ -705,6 +730,20 @@ pub(crate) fn verify_command_for_discovery(
         }
     };
     Some(cmd)
+}
+
+/// The package runner's launcher for a binary installed in the package's
+/// `node_modules/.bin`, never one that downloads a missing package. `npx` is
+/// npm's default and the fallback when no runner resolves; `--no-install`
+/// makes it fail instead of fetching (npm 7+ reads it as `--no`). `pnpm exec`,
+/// `yarn <bin>` (classic and Berry) and `bun run <bin>` only run local binaries.
+fn local_binary_launcher(runner: Option<TsRunner>) -> &'static str {
+    match runner {
+        Some(TsRunner::Npm) | None => "npx --no-install",
+        Some(TsRunner::Pnpm) => "pnpm exec",
+        Some(TsRunner::Yarn) => "yarn",
+        Some(TsRunner::Bun) => "bun run",
+    }
 }
 
 /// Shell-quote a test-file argument for the suggested verify command.
@@ -1423,14 +1462,20 @@ mod tests {
     fn verify_command_framework_jest_produces_jest_command() {
         let discovery = make_discovery(Some("."), Some(TsFramework::Jest), Some(TsRunner::Npm));
         let result = verify_command_for_discovery(&discovery, Path::new("tests/math.test.ts"));
-        assert_eq!(result, Some("jest tests/math.test.ts".to_string()));
+        assert_eq!(
+            result,
+            Some("npx --no-install jest tests/math.test.ts".to_string())
+        );
     }
 
     #[test]
     fn verify_command_framework_vitest_produces_vitest_run_command() {
         let discovery = make_discovery(Some("."), Some(TsFramework::Vitest), Some(TsRunner::Pnpm));
         let result = verify_command_for_discovery(&discovery, Path::new("src/util.test.ts"));
-        assert_eq!(result, Some("vitest run src/util.test.ts".to_string()));
+        assert_eq!(
+            result,
+            Some("pnpm exec vitest run src/util.test.ts".to_string())
+        );
     }
 
     #[test]
@@ -1451,7 +1496,10 @@ mod tests {
     fn verify_command_framework_ava_produces_ava_command() {
         let discovery = make_discovery(Some("."), Some(TsFramework::Ava), None);
         let result = verify_command_for_discovery(&discovery, Path::new("tests/math.test.ts"));
-        assert_eq!(result, Some("ava tests/math.test.ts".to_string()));
+        assert_eq!(
+            result,
+            Some("npx --no-install ava tests/math.test.ts".to_string())
+        );
     }
 
     #[test]
@@ -1515,15 +1563,21 @@ mod tests {
             &discovery,
             Path::new("packages/auth/tests/token.test.ts"),
         );
-        assert_eq!(result, Some("jest tests/token.test.ts".to_string()));
+        assert_eq!(
+            result,
+            Some("pnpm exec jest tests/token.test.ts".to_string())
+        );
     }
 
     #[test]
     fn verify_command_framework_takes_priority_over_runner() {
-        // Vitest framework with Bun runner → vitest run (not bun test)
+        // Vitest framework with Bun runner → bun run vitest run (not bun test)
         let discovery = make_discovery(Some("."), Some(TsFramework::Vitest), Some(TsRunner::Bun));
         let result = verify_command_for_discovery(&discovery, Path::new("src/foo.test.ts"));
-        assert_eq!(result, Some("vitest run src/foo.test.ts".to_string()));
+        assert_eq!(
+            result,
+            Some("bun run vitest run src/foo.test.ts".to_string())
+        );
     }
 
     #[test]
@@ -1551,7 +1605,7 @@ mod tests {
             verify_command_for_discovery(&discovery, Path::new("tests/x$(evil-cmd|sh).test.ts"));
         assert_eq!(
             result,
-            Some("jest 'tests/x$(evil-cmd|sh).test.ts'".to_string()),
+            Some("npx --no-install jest 'tests/x$(evil-cmd|sh).test.ts'".to_string()),
             "metacharacters must be neutralized by single-quoting"
         );
     }
@@ -1560,7 +1614,10 @@ mod tests {
     fn verify_command_filename_with_space_is_shell_quoted() {
         let discovery = make_discovery(Some("."), Some(TsFramework::Jest), None);
         let result = verify_command_for_discovery(&discovery, Path::new("tests/my file.test.ts"));
-        assert_eq!(result, Some("jest 'tests/my file.test.ts'".to_string()));
+        assert_eq!(
+            result,
+            Some("npx --no-install jest 'tests/my file.test.ts'".to_string())
+        );
     }
 
     #[test]
@@ -1569,7 +1626,7 @@ mod tests {
         let result = verify_command_for_discovery(&discovery, Path::new("tests/o'brien.test.ts"));
         assert_eq!(
             result,
-            Some("jest 'tests/o'\\''brien.test.ts'".to_string()),
+            Some("npx --no-install jest 'tests/o'\\''brien.test.ts'".to_string()),
             "embedded single quote must be escaped POSIX-style"
         );
     }
@@ -1579,7 +1636,53 @@ mod tests {
         // Readability: the common case must not acquire quotes.
         let discovery = make_discovery(Some("."), Some(TsFramework::Jest), None);
         let result = verify_command_for_discovery(&discovery, Path::new("tests/math.test.ts"));
-        assert_eq!(result, Some("jest tests/math.test.ts".to_string()));
+        assert_eq!(
+            result,
+            Some("npx --no-install jest tests/math.test.ts".to_string())
+        );
+    }
+
+    #[test]
+    fn verify_command_launches_local_framework_binary_through_the_package_runner() {
+        // A devDependency binary lives in node_modules/.bin, which is not on
+        // PATH, so every runner x framework pair must launch it through the
+        // runner's local-binary launcher; bun test and node --test do not.
+        let runners = [
+            (Some(TsRunner::Npm), "npx --no-install"),
+            (None, "npx --no-install"),
+            (Some(TsRunner::Pnpm), "pnpm exec"),
+            (Some(TsRunner::Yarn), "yarn"),
+            (Some(TsRunner::Bun), "bun run"),
+        ];
+        let frameworks = [
+            (TsFramework::Vitest, "vitest run"),
+            (TsFramework::Jest, "jest"),
+            (TsFramework::Ava, "ava"),
+        ];
+        for (runner, launch) in runners {
+            for (framework, bin) in frameworks {
+                let discovery = make_discovery(Some("."), Some(framework), runner);
+                let result =
+                    verify_command_for_discovery(&discovery, Path::new("tests/math.test.ts"));
+                assert_eq!(
+                    result,
+                    Some(format!("{launch} {bin} tests/math.test.ts")),
+                    "runner {runner:?} framework {framework:?}"
+                );
+            }
+            let bun = make_discovery(Some("."), Some(TsFramework::Bun), runner);
+            assert_eq!(
+                verify_command_for_discovery(&bun, Path::new("tests/math.test.ts")),
+                Some("bun test tests/math.test.ts".to_string()),
+                "bun test stays unprefixed for runner {runner:?}"
+            );
+            let node = make_discovery(Some("."), Some(TsFramework::NodeTest), runner);
+            assert_eq!(
+                verify_command_for_discovery(&node, Path::new("tests/math.test.ts")),
+                Some("node --test tests/math.test.ts".to_string()),
+                "node --test stays unprefixed for runner {runner:?}"
+            );
+        }
     }
 
     // ── Gap-3 honesty-clarity controls (RIPR-SPEC-0101) ──────────────────────
@@ -1589,7 +1692,7 @@ mod tests {
     /// Reproduces issue #1239: framework=Vitest, runner=None.
     /// `typescript_package_manager_unresolved` MUST be emitted (informational).
     /// `typescript_runner_hint_unresolved` MUST NOT be emitted (misleading).
-    /// A `vitest run` command MUST be available.
+    /// An `npx --no-install vitest run` command MUST be available.
     #[test]
     fn gap3_vitest_no_lockfile_emits_package_manager_unresolved_not_runner_unresolved() {
         let root = unique_test_dir("gap3-vitest-no-lockfile");
@@ -1632,8 +1735,8 @@ mod tests {
         );
         let cmd_str = cmd.unwrap_or_default();
         assert!(
-            cmd_str.starts_with("vitest run"),
-            "expected 'vitest run ...' command; got: {cmd_str}"
+            cmd_str.starts_with("npx --no-install vitest run"),
+            "expected 'npx --no-install vitest run ...' command; got: {cmd_str}"
         );
     }
 

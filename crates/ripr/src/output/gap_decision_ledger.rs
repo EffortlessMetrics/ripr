@@ -5147,7 +5147,7 @@ mod tests {
         assert!(!projection_eligible(record, "gate_candidate"));
         assert_eq!(
             record.verification_commands,
-            vec!["jest tests/discount.test.ts".to_string()]
+            vec!["npx --no-install jest tests/discount.test.ts".to_string()]
         );
         let route = record
             .repair_route

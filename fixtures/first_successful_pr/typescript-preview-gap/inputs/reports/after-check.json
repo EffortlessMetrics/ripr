@@ -58,7 +58,7 @@
         "owner": "applyDiscount",
         "repair_kind": "AddBoundaryAssertion",
         "target_test": "tests/discount.test.ts::applyDiscount applies discount at threshold",
-        "verify_command": "jest tests/discount.test.ts"
+        "verify_command": "npx --no-install jest tests/discount.test.ts"
       },
       "language": "typescript",
       "language_status": "preview"

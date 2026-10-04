@@ -61,7 +61,7 @@ TypeScript preview card (advisory)
   oracle: relational_check (weak)
   missing discriminator: user.length == 3
   suggested assertion shape: Add an exact boundary assertion for `user.length == 3`.
-  verify: jest tests/auth.test.ts
+  verify: npx --no-install jest tests/auth.test.ts
   repair packet ready: false
   why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract; validator: is not agent-packet eligible: observed call input `login('alice')` does not reach the missing discriminator `user.length == 3`; derive an input that hits the boundary before the packet is delegatable
   repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available

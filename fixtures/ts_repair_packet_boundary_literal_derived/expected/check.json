@@ -33,7 +33,7 @@
       "evidence_path": ["reach yes: 1 related test(s) found for owner `shipping`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `exact_value` (rank 5)", "discriminator weak: TypeScript preview adapter: strong oracle found but no strong assertion observes an owner call at the changed predicate boundary; missing proof: `amount == 5000`.", "related test tests/shipping.test.ts:3 small order pays shipping uses strong exact value oracle: expect(...).toBe(...)", "missing discriminator amount == 5000: changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: shipping", "missing_discriminator: amount == 5000", "typescript_boundary_input: parameter=amount;index=0;operand=5000;value=5000", "typescript_oracle_observed: shipping(1000)", "typescript_oracle_expected: 500", "typescript_oracle_confidence: high", "typescript_oracle_evidence_ref: tests/shipping.test.ts:4", "gap_state: actionable", "actionability_category: complete_repair_packet", "why_actionable: complete repair packet — package root, runner, owner, oracle target, verify, receipt, and edit cage all resolved; delegatable (advisory)", "repair_action: add a focused assertion for the missing discriminator `amount == 5000` in the related test, shaped like `expect(shipping(5000)).toBe(expected)`", "raw_evidence_ref: file=src/shipping.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_shipping.ts:typescript_preview:04ac84fc;owner=shipping", "typescript_package_root: .", "typescript_workspace_root: .", "typescript_framework_hint: jest", "typescript_test_runner: jest", "typescript_runner_hint: npm", "typescript_package_confidence: high", "typescript_verify_command: jest tests/shipping.test.ts"],
+      "evidence": ["owner: shipping", "missing_discriminator: amount == 5000", "typescript_boundary_input: parameter=amount;index=0;operand=5000;value=5000", "typescript_oracle_observed: shipping(1000)", "typescript_oracle_expected: 500", "typescript_oracle_confidence: high", "typescript_oracle_evidence_ref: tests/shipping.test.ts:4", "gap_state: actionable", "actionability_category: complete_repair_packet", "why_actionable: complete repair packet — package root, runner, owner, oracle target, verify, receipt, and edit cage all resolved; delegatable (advisory)", "repair_action: add a focused assertion for the missing discriminator `amount == 5000` in the related test, shaped like `expect(shipping(5000)).toBe(expected)`", "raw_evidence_ref: file=src/shipping.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_shipping.ts:typescript_preview:04ac84fc;owner=shipping", "typescript_package_root: .", "typescript_workspace_root: .", "typescript_framework_hint: jest", "typescript_test_runner: jest", "typescript_runner_hint: npm", "typescript_package_confidence: high", "typescript_verify_command: npx --no-install jest tests/shipping.test.ts"],
       "missing": ["Related tests reach `shipping` with a strong oracle, but no strong assertion observes a `shipping(...)` call at the changed predicate boundary `amount == 5000`; inputs on one side of the boundary do not discriminate the changed comparison."],
       "assertion_texts": {
       },
@@ -99,7 +99,7 @@
         "static_limits": [],
         "suggested_assertion_shape": "Exact-value evidence is present; verify it targets the changed discriminator.",
         "verify": {
-          "command": "jest tests/shipping.test.ts"
+          "command": "npx --no-install jest tests/shipping.test.ts"
         },
         "why_not_actionable": "complete repair packet — package root, runner, owner, oracle target, verify, receipt, and edit cage all resolved; delegatable (advisory)"
       },
@@ -127,12 +127,12 @@
           "Do not treat preview-language evidence as gate authority."
         ],
         "owner": "shipping",
-        "receipt_command": "ripr receipt write --gap gap:typescript:typescript_preview:04ac84fc --verify-command 'jest tests/shipping.test.ts' --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-04ac84fc.json",
+        "receipt_command": "ripr receipt write --gap gap:typescript:typescript_preview:04ac84fc --verify-command 'npx --no-install jest tests/shipping.test.ts' --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-04ac84fc.json",
         "repair_kind": "AddBoundaryAssertion",
         "schema_version": "0.5",
         "source": "typescript_preview_projection",
         "target_test": "tests/shipping.test.ts::small order pays shipping",
-        "verify_command": "jest tests/shipping.test.ts"
+        "verify_command": "npx --no-install jest tests/shipping.test.ts"
       },
       "preview_actionability": {
         "actionability_category": "complete_repair_packet",

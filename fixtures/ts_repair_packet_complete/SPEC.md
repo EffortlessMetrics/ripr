@@ -29,7 +29,7 @@ The TypeScript preview adapter:
 - Classifies the finding as `WeaklyExposed` (oracle strength is Weak, not Strong)
 - Sets `actionability_category: incomplete_repair_packet` (G-A passes)
 - Emits `typescript_oracle_expected: 50` (G-C: concrete literal, non-dynamic)
-- Resolves the verify command from package.json: `jest tests/discount.test.ts`
+- Resolves the verify command from package.json: `npx --no-install jest tests/discount.test.ts`
 - Projects a `GapRecord` that passes `validate_agent_gap_record_packet`
 - Flips `repair_packet_ready: true` (RIPR-SPEC-0087 §PR7 — the ONLY flip condition)
 - Sets `actionability_category: complete_repair_packet` (§1.3)
