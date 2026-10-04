@@ -1,0 +1,13 @@
+diff --git a/src/payment.rs b/src/payment.rs
+index 8482957..7292451 100644
+--- a/src/payment.rs
++++ b/src/payment.rs
+@@ -32,7 +32,7 @@ pub fn refund(amount: i64) -> Result<i64, PayError> {
+ 
+ pub fn deposit_cap(amount: i64) -> Result<i64, PayError> {
+     if amount > 50_000 {
+-        return Err(PayError::Limit);
++        return Err::<i64, PayError>(PayError::Limit);
+     }
+     Ok(amount)
+ }

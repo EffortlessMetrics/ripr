@@ -1,0 +1,13 @@
+diff --git a/src/reach.rs b/src/reach.rs
+index 0e86388..ae3e6ef 100644
+--- a/src/reach.rs
++++ b/src/reach.rs
+@@ -35,7 +35,7 @@ pub fn deep(x: i64) -> i64 {
+ }
+ 
+ fn inner_rate(x: i64) -> i64 {
+-    x * 3
++    3 * x
+ }
+ 
+ #[allow(dead_code)]

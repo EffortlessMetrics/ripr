@@ -1,0 +1,13 @@
+diff --git a/pricing/src/lib.rs b/pricing/src/lib.rs
+index 20a5b7f..0db612b 100644
+--- a/pricing/src/lib.rs
++++ b/pricing/src/lib.rs
+@@ -1,7 +1,7 @@
+ //! Prices, tiers and quotes. The orders crate depends on this one by path.
+ 
+ pub fn score(points: i64) -> i64 {
+-    points * 3
++    3 * points
+ }
+ 
+ pub fn rebate(total: i64) -> i64 {

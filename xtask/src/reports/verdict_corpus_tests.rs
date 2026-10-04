@@ -121,6 +121,56 @@ fn declared_binding_reads_only_a_let_declaration() {
 }
 
 #[test]
+fn retarget_relation_matches_an_initializer_containing_backticks() {
+    let relation = "binding_predicate_relation: changed binding `cut` initializer `input.find('`')` -> `input.rfind('`')` flows into predicate operand at line 13";
+    assert!(is_anchor_relation(
+        relation,
+        "    let cut = input.rfind('`');",
+        "cut"
+    ));
+    assert!(!is_anchor_relation(
+        relation,
+        "    let cut = input.find('`');",
+        "cut"
+    ));
+    assert!(!is_anchor_relation(
+        relation,
+        "    let cut = input.rfind('`');",
+        "end"
+    ));
+    // Only the declaration's own initializer counts, not text after a later
+    // `=` inside it.
+    let tail_eq = "binding_predicate_relation: changed binding `ok` initializer `b` flows into predicate operand at line 13";
+    assert!(!is_anchor_relation(tail_eq, "    let ok = a == b;", "ok"));
+    assert_eq!(let_initializer("let ok = a == b"), Some("a == b"));
+    assert_eq!(let_initializer("let x: Vec<u8> = g()"), Some("g()"));
+    assert_eq!(let_initializer("let x = |a| a >= 1"), Some("|a| a >= 1"));
+    assert_eq!(
+        let_initializer("let it: Box<dyn Iterator<Item = u32>> = b()"),
+        Some("b()")
+    );
+    assert_eq!(let_initializer("let f: fn(u8) -> u8 = g"), Some("g"));
+    assert_eq!(
+        let_initializer("let end: Option<usize>=Some(text.len())"),
+        Some("Some(text.len())")
+    );
+    assert_eq!(let_initializer("let x: Vec<Vec<u8>>= v"), Some("v"));
+    assert_eq!(let_initializer("let ok = a <= b"), Some("a <= b"));
+    // Without a distinct old initializer the relation names the new one alone.
+    let single = "binding_predicate_relation: changed binding `cut` initializer `input.rfind('`')` flows into predicate operand at line 13";
+    assert!(is_anchor_relation(
+        single,
+        "    let cut = input.rfind('`');",
+        "cut"
+    ));
+    assert!(!is_anchor_relation(
+        single,
+        "    let cut = input.find('`');",
+        "cut"
+    ));
+}
+
+#[test]
 fn anchored_findings_follow_a_retarget_only_for_the_anchor_binding() {
     let relation = "binding_predicate_relation: changed binding `end` initializer `a.find(d)` -> `a.rfind(d)` flows into predicate operand at line 13";
     let anchor_line = "    let end = a.rfind(d);";

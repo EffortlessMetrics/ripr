@@ -1,0 +1,86 @@
+//! Owners reached only through helper chains or macros.
+
+fn normalize(x: i64) -> i64 {
+    x.abs()
+}
+
+fn step(x: i64) -> i64 {
+    normalize(x) + 1
+}
+
+pub fn score(x: i64) -> i64 {
+    step(x) * 2
+}
+
+fn base(x: i64) -> i64 {
+    x * 7
+}
+fn hop1(x: i64) -> i64 {
+    base(x)
+}
+fn hop2(x: i64) -> i64 {
+    hop1(x)
+}
+fn hop3(x: i64) -> i64 {
+    hop2(x)
+}
+fn hop4(x: i64) -> i64 {
+    hop3(x)
+}
+fn hop5(x: i64) -> i64 {
+    hop4(x)
+}
+pub fn deep(x: i64) -> i64 {
+    hop5(x)
+}
+
+fn inner_rate(x: i64) -> i64 {
+    x * 3
+}
+
+#[allow(dead_code)]
+fn inner_bonus(x: i64) -> i64 {
+    x + 4
+}
+
+macro_rules! call_inner {
+    ($x:expr) => {
+        inner_rate($x)
+    };
+}
+
+#[allow(unused_macros)]
+macro_rules! call_bonus {
+    ($x:expr) => {
+        inner_bonus($x)
+    };
+}
+
+pub fn outer(x: i64) -> i64 {
+    call_inner!(x)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn score_doubles_the_stepped_magnitude() {
+        assert_eq!(score(-3), 8);
+    }
+
+    #[test]
+    fn deep_multiplies_by_seven() {
+        assert_eq!(deep(2), 14);
+    }
+
+    #[test]
+    fn outer_triples() {
+        assert_eq!(outer(4), 12);
+    }
+
+    #[test]
+    fn bonus_adds_four() {
+        assert_eq!(call_bonus!(1), 5);
+    }
+}

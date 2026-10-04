@@ -2,7 +2,7 @@
   "schema_version": "ripr_verdict_corpus.v1",
   "kind": "ripr_verdict_corpus",
   "spec": "RIPR-SPEC-0219",
-  "corpus_version": "2026-10-04.4",
+  "corpus_version": "2026-10-04.5",
   "description": "Hand-labeled Rust verdict corpus: one-line edits in pinned real crates, plus small authored crates that fill cells the real crates leave empty, each labeled with what the crate's own tests actually discriminate, so ripr's verdicts can be scored as false actionable, false exposed, false silent, abstained, or ideal.",
   "label_method": "For each case the edit was applied to the full pinned checkout (for an authored subject, the whole crate is retained), the crate's own test command was run to confirm the edit keeps tests green (behavior_preserving_rewrite) or to record whether it breaks them (behavior_change, where the edit is its own single mutant), and each listed mutant of the edited expression was applied on top and the same test command run. A mutant counts as detected (`tests_failed`) when the test command fails after compiling. Each mutant was reviewed by hand for equivalence before its outcome counted. Truth is derived from the count of mutants with tests_failed: all is discriminated, none is not_discriminated, otherwise partially_discriminated.",
   "verdict_projection": "Only candidate_current findings on the anchor file and line count, plus, when the anchor is a plain `let name = init;` or `let mut name = init;`, candidate_current findings in the anchor file whose binding_predicate_relation evidence names that binding with init as its new initializer (the RIPR-SPEC-0157 retarget). exposed is credited; a named static_limit_kind or a no_static_path, infection_unknown, propagation_unknown or static_unknown class is limited; any other class (weakly_exposed, reachable_unrevealed) is a gap. A gap on the line outranks credit, and credit outranks a limit. No anchored finding is silent. The per-finding reading mirrors crates/ripr/src/output/human/triage.rs; the line-level precedence is this corpus's own policy.",
@@ -500,6 +500,167 @@
         {
           "path": "tests/config.rs",
           "sha256": "b53f22ae50d8c644eb28d8d9f8f64044e84ed8e43de98a69a99f2f1872c21c6e"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-accounts",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for spec-defined cells",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "86da95405a5988e0427d13d21c3e51d0d91382c0271d440c4a2cc34c66bc5a59"
+        },
+        {
+          "path": "src/account.rs",
+          "sha256": "d66ae1d39b5c4859d963ed3481e94670e49f12dacae2d3037d69358aaa71397f"
+        },
+        {
+          "path": "src/bytes.rs",
+          "sha256": "f6cd8969580469a87e31fa348682f4ca7f6238a9151e413e6069364f8dd16323"
+        },
+        {
+          "path": "src/frame.rs",
+          "sha256": "18382a691c362df1a6f18a94ee348d4a208ec98180443d17f062a94fdb074633"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "1ba4d355f3fe1d379575ae40040ea359e43a58e7bbc22dab56cc006c697d5d85"
+        },
+        {
+          "path": "src/parse.rs",
+          "sha256": "b6e76981133121f1382b4327c0f0d6b6a858cdac4ab10fa6a9a0d81f68a56d4a"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-checkout",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for spec-defined cells",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "4d277a663cd5448ad43737b1dd76c8da5fee35cd8d8cfbe747178323a208fbfd"
+        },
+        {
+          "path": "src/fees.rs",
+          "sha256": "9f5fb7794970dc06f2ff820249f9e7fd63752eb2eeeec40155ef8e89b18ade3d"
+        },
+        {
+          "path": "src/invoice.rs",
+          "sha256": "2466bda1af24d84de6d1a0ccfb054310a1a1d4718c9d69de3a869e2db4bd8507"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "92e4d395fb8aa0f8f6fafa85782bf95d38e88e1a6768503cf75b3c1bcc856984"
+        },
+        {
+          "path": "src/limits.rs",
+          "sha256": "c53ae43612df5418628ed0dde97c0ad56aed26e18cced24cbbc3fd1398db5ac4"
+        },
+        {
+          "path": "src/payment.rs",
+          "sha256": "19733abfc9303bf4db2981a0836ff80160a9c2bf9bcf719d0edebf4176091ac0"
+        },
+        {
+          "path": "src/rates.rs",
+          "sha256": "b590d435a292f407f4f1cf235098be3db4ccf9049154709338a8f0e45c5bebf4"
+        },
+        {
+          "path": "src/store.rs",
+          "sha256": "5e4db7169be5f606270a0ef16502e3e8c01b40dae21fa82c63bbac6761dc2314"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-tokens",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for spec-defined cells",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "2e6f4d02c2cf82d6b4be7edb515ea9b1682098b21451021e41f367d16258104e"
+        },
+        {
+          "path": "src/flow.rs",
+          "sha256": "bf09250720639949b15abbd36b64ec1e59910aa8b5df74d377d75fb394807105"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "f4d4c1a4e69d94823f8524ab02d7ca59ff799df70a2e24feab8d3b9d0bd75f19"
+        },
+        {
+          "path": "src/raw.rs",
+          "sha256": "3b53a9349a7a5d0bb6de3287674b670c9c53a0d5916f9479051dd1ffe626a81a"
+        },
+        {
+          "path": "src/reach.rs",
+          "sha256": "95dd8738edc60d5909c3df4a8d86a238033e988cfed917f3f208aa58f3d6b819"
+        },
+        {
+          "path": "src/scan.rs",
+          "sha256": "71e23a3d163549ea302fb01aefe29b4a51d35f012d64d899e63cd9580c646545"
+        },
+        {
+          "path": "tests/public.rs",
+          "sha256": "e65e0945a7f296ed8dbde4c6858bf25add8d7edbb063158d2ff37c3f5ea96ec9"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-shop",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for spec-defined cells",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "91d5f96e536b694e40083c5b709034b5c31a3326c80099a1dc5bf034b3f6ef08"
+        },
+        {
+          "path": "orders/Cargo.toml",
+          "sha256": "7a5530fe8435d29cec9b4b2cd93822dc32f6cb7cb7adb25f68c36f797c3e0ebc"
+        },
+        {
+          "path": "orders/src/lib.rs",
+          "sha256": "92670c8e68b0df205dfc22c191890fd7e682da03aef4efb261745b4f109ce1d8"
+        },
+        {
+          "path": "orders/tests/orders.rs",
+          "sha256": "589df986bc4922b6bf7cc16cca9225d5fedb4c4f7997eaa1afa14fa7771a8594"
+        },
+        {
+          "path": "pricing/Cargo.toml",
+          "sha256": "5e9bf09105f8ce670c8cb550e396e287b566d6bc2c941385074982b8be3d4068"
+        },
+        {
+          "path": "pricing/src/lib.rs",
+          "sha256": "6271d8dba18d015fc4d9984ae95d2dc9d618903dad34ffd6ebe0f7283fe4f7d1"
+        }
+      ]
+    },
+    {
+      "subject_id": "authored-roles",
+      "origin": "authored",
+      "version_label": "authored 2026-10-04 for spec-defined cells",
+      "license": "MIT OR Apache-2.0",
+      "shared_corpus": null,
+      "retained_files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "bb0f7b318c587f025e675f04e394c3a0908d1428e51eee460e7b3d05e593d38a"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "53f26e973bc9ea2673d7956adb14fa67c5b6cf2e013edcb0ec2c1c566a50efd3"
         }
       ]
     }
@@ -3240,6 +3401,2346 @@
         "full_checkout_classifications": [
           "infection_unknown"
         ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "accounts-balance-add",
+      "subject_id": "authored-accounts",
+      "diff": "cases/accounts-balance-add.diff",
+      "anchor": {
+        "file": "src/account.rs",
+        "line": 11
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "side_effect_field_write",
+      "test_shape": "unit_test_assert_eq",
+      "hard_case": "A field write through `=` gets no side_effect probe; ripr reports a static_unknown finding instead.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "(delete the statement)",
+            "outcome": "tests_failed",
+            "failing_test": "account::tests::deposits_add_to_the_balance",
+            "equivalence_review": "not equivalent: the balance stays 0"
+          },
+          {
+            "replacement": "self.balance -= amount;",
+            "outcome": "tests_failed",
+            "failing_test": "account::tests::deposits_add_to_the_balance",
+            "equivalence_review": "not equivalent: the balance becomes -150"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "deposits_add_to_the_balance reads the balance back with assert_eq!, so both mutants of the field write fail it. Spec cells: RIPR-SPEC-0001 side effect family (field write).",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "static_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "accounts-trailer-crc",
+      "subject_id": "authored-accounts",
+      "diff": "cases/accounts-trailer-crc.diff",
+      "anchor": {
+        "file": "src/frame.rs",
+        "line": 29
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction",
+      "test_shape": "unit_test_other_field_only",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "crc: 0,",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: the crc of b\"abcd\" is not 0"
+          },
+          {
+            "replacement": "crc: crc(body) ^ 1,",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: every crc flips its low bit"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "trailer_repeats_the_length reads only trailer(..).len, so the crc field can hold any value. Spec cells: RIPR-SPEC-0001 field construction family; RIPR-SPEC-0094 other field only.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "accounts-parse-too-long-variant",
+      "subject_id": "authored-accounts",
+      "diff": "cases/accounts-parse-too-long-variant.diff",
+      "anchor": {
+        "file": "src/parse.rs",
+        "line": 15
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "error_path",
+      "test_shape": "unit_test_assert_is_err",
+      "hard_case": "ripr's error_path finding reads exposed, borrowing strong variant pins from sibling tests of the same function (Empty, BadDigit); the line still scores gap because a weakly_exposed return_value finding outranks it.",
+      "truth": {
+        "state": "partially_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "return Err(ParseError::Empty);",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: too-long text reports Empty"
+          },
+          {
+            "replacement": "return Err(ParseError::TooLong(0));",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: the reported length is 0"
+          },
+          {
+            "replacement": "return Ok(0);",
+            "outcome": "tests_failed",
+            "failing_test": "parse::tests::too_many_digits_are_refused",
+            "equivalence_review": "not equivalent: thirteen digits parse as 0"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "too_many_digits_are_refused asserts only is_err(), so it notices an Ok but not a wrong variant or payload. Spec cells: RIPR-SPEC-0001 error path family; RIPR-SPEC-0107.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "exposed",
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "accounts-last-byte-unchecked",
+      "subject_id": "authored-accounts",
+      "diff": "cases/accounts-last-byte-unchecked.diff",
+      "anchor": {
+        "file": "src/bytes.rs",
+        "line": 20
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "static_unknown_unsafe_block",
+      "test_shape": "smoke_call_discards_result",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "0",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: the last byte reads as 0"
+          },
+          {
+            "replacement": "*bytes.get_unchecked(0)",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: the first byte is returned"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "last_byte_accepts_any_slice discards the result with let _ =, so nothing observes the byte read inside the unsafe block. Spec cells: RIPR-SPEC-0168 unsafe block; smoke-only test.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "static_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-fee-closure-never-called",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-fee-closure-never-called.diff",
+      "anchor": {
+        "file": "src/fees.rs",
+        "line": 4
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "assert_in_uncalled_closure",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "amount * 100",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: card_fee(500) becomes 50000"
+          },
+          {
+            "replacement": "amount / 10",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: card_fee(500) becomes 50"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The only assert_eq! naming card_fee sits in a closure the test never calls, so no mutant can fail it. Spec cells: RIPR-SPEC-0108, RIPR-SPEC-0197.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-fee-assert-under-false-flag",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-fee-assert-under-false-flag.diff",
+      "anchor": {
+        "file": "src/fees.rs",
+        "line": 8
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "assert_under_false_condition",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "amount * 50",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: wire_fee(500) becomes 25000"
+          },
+          {
+            "replacement": "amount / 5",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: wire_fee(500) becomes 100"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The assert_eq! naming wire_fee sits under `if enabled` with enabled false, so it never runs. Spec cells: RIPR-SPEC-0108, RIPR-SPEC-0197.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-fee-unpolled-async-assert",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-fee-unpolled-async-assert.diff",
+      "anchor": {
+        "file": "src/fees.rs",
+        "line": 12
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "assert_in_unpolled_async_block",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "amount * 200",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: cash_fee(1000) becomes 200000"
+          },
+          {
+            "replacement": "amount / 2",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: cash_fee(1000) becomes 500"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The assert_eq! naming cash_fee sits in an async block that is dropped without being polled. Spec cells: RIPR-SPEC-0108, RIPR-SPEC-0197.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-fee-cfg-disabled-test",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-fee-cfg-disabled-test.diff",
+      "anchor": {
+        "file": "src/fees.rs",
+        "line": 16
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "test_in_cfg_false_module",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "amount * 20",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: crypto_fee(100) becomes 2000"
+          },
+          {
+            "replacement": "amount / 2",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: crypto_fee(100) becomes 50"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The only test of crypto_fee is in a #[cfg(any())] module, which is never compiled. Spec cells: RIPR-SPEC-0108.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-fee-err-return-guard",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-fee-err-return-guard.diff",
+      "anchor": {
+        "file": "src/fees.rs",
+        "line": 20
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "test_returns_err_on_mismatch",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "amount * 25",
+            "outcome": "tests_failed",
+            "failing_test": "fees::tests::check_fee_returns_an_err_on_mismatch",
+            "equivalence_review": "not equivalent: check_fee(500) becomes 12500"
+          },
+          {
+            "replacement": "amount / 5",
+            "outcome": "tests_failed",
+            "failing_test": "fees::tests::check_fee_returns_an_err_on_mismatch",
+            "equivalence_review": "not equivalent: check_fee(500) becomes 100"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "The test returns Err when check_fee(500) != 20, which fails the test for any change to the divisor. Spec cells: RIPR-SPEC-0154.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-withdraw-guarded-match-pin",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-withdraw-guarded-match-pin.diff",
+      "anchor": {
+        "file": "src/payment.rs",
+        "line": 20
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "error_path",
+      "test_shape": "guarded_result_match_pin",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "return Err(PayError::Limit);",
+            "outcome": "tests_failed",
+            "failing_test": "payment::tests::overdrawing_reports_insufficient",
+            "equivalence_review": "not equivalent: overdrawing reports Limit"
+          },
+          {
+            "replacement": "return Ok(0);",
+            "outcome": "tests_failed",
+            "failing_test": "payment::tests::overdrawing_reports_insufficient",
+            "equivalence_review": "not equivalent: overdrawing succeeds"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "The test matches withdraw's Result and panics on Ok or on any error other than Insufficient. Spec cells: RIPR-SPEC-0175.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-withdraw-sibling-variant",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-withdraw-sibling-variant.diff",
+      "anchor": {
+        "file": "src/payment.rs",
+        "line": 17
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "error_path",
+      "test_shape": "guarded_match_pins_sibling_variant",
+      "hard_case": "ripr's error_path finding reads exposed, borrowing the strong `matches!(refund(20_000), Err(PayError::Limit))` pin from a test of a different function in the same file; the line still scores gap because a weakly_exposed return_value finding outranks it.",
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "return Err(PayError::Insufficient);",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: a frozen wallet reports Insufficient"
+          },
+          {
+            "replacement": "return Ok(0);",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: a frozen wallet can withdraw"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "No test freezes a wallet; the guarded match pins Insufficient, a sibling variant, so the Frozen return is never observed. Spec cells: RIPR-SPEC-0175, RIPR-SPEC-0106.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "exposed",
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-refund-matches-variant",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-refund-matches-variant.diff",
+      "anchor": {
+        "file": "src/payment.rs",
+        "line": 28
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "error_path",
+      "test_shape": "unit_test_assert_matches_variant",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "return Err(PayError::Frozen);",
+            "outcome": "tests_failed",
+            "failing_test": "payment::tests::a_large_refund_hits_the_limit",
+            "equivalence_review": "not equivalent: a large refund reports Frozen"
+          },
+          {
+            "replacement": "return Ok(amount);",
+            "outcome": "tests_failed",
+            "failing_test": "payment::tests::a_large_refund_hits_the_limit",
+            "equivalence_review": "not equivalent: a large refund succeeds"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "assert!(matches!(refund(20_000), Err(PayError::Limit))) fails for a wrong variant or an Ok. Spec cells: RIPR-SPEC-0107, RIPR-SPEC-0002.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "exposed",
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-deposit-cap-happy-path-only",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-deposit-cap-happy-path-only.diff",
+      "anchor": {
+        "file": "src/payment.rs",
+        "line": 35
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "error_path",
+      "test_shape": "happy_path_only_assert_eq",
+      "hard_case": "ripr's error_path finding reads exposed, borrowing the strong `matches!(refund(20_000), Err(PayError::Limit))` pin from a test of a different function in the same file; the line still scores gap because a weakly_exposed return_value finding outranks it.",
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "return Err(PayError::Frozen);",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: a large deposit reports Frozen"
+          },
+          {
+            "replacement": "return Ok(amount);",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: a large deposit is accepted"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The only test passes a small deposit, so the Limit return is never reached. Spec cells: RIPR-SPEC-0107.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "exposed",
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-tax-self-computed-expected",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-tax-self-computed-expected.diff",
+      "anchor": {
+        "file": "src/invoice.rs",
+        "line": 8
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "self_computed_expected_value",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "subtotal * 9 / 100",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: tax on 300 becomes 27 instead of 24"
+          },
+          {
+            "replacement": "0",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: tax becomes 0"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The test's expected value is sub + tax(sub), computed through the changed function, so both sides move together and every mutant passes. Spec cells: RIPR-SPEC-0004, RIPR-SPEC-0035.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "credited",
+        "full_checkout_classifications": [
+          "exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-daily-limit-imported-const",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-daily-limit-imported-const.diff",
+      "anchor": {
+        "file": "src/limits.rs",
+        "line": 12
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "boundary_via_imported_const",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "count > DAILY_LIMIT",
+            "outcome": "tests_failed",
+            "failing_test": "limits::tests::the_daily_limit_is_inclusive",
+            "equivalence_review": "not equivalent: exactly DAILY_LIMIT is no longer over"
+          },
+          {
+            "replacement": "count >= DAILY_LIMIT - 1",
+            "outcome": "tests_failed",
+            "failing_test": "limits::tests::the_daily_limit_is_inclusive",
+            "equivalence_review": "not equivalent: DAILY_LIMIT - 1 becomes over the limit"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "The test asserts both sides of the boundary using the imported DAILY_LIMIT, so each boundary shift fails it. Spec cells: RIPR-SPEC-0001, RIPR-SPEC-0035, RIPR-SPEC-0040.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "propagation_unknown",
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-minimum-same-file-const",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-minimum-same-file-const.diff",
+      "anchor": {
+        "file": "src/limits.rs",
+        "line": 16
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "boundary_via_same_file_const",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "count <= MIN_ORDER",
+            "outcome": "tests_failed",
+            "failing_test": "limits::tests::the_minimum_is_exclusive",
+            "equivalence_review": "not equivalent: exactly MIN_ORDER counts as below"
+          },
+          {
+            "replacement": "count < MIN_ORDER - 1",
+            "outcome": "tests_failed",
+            "failing_test": "limits::tests::the_minimum_is_exclusive",
+            "equivalence_review": "not equivalent: MIN_ORDER - 1 is no longer below"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "The test asserts both sides of the boundary with MIN_ORDER - 1 and MIN_ORDER, so each boundary shift fails it. Spec cells: RIPR-SPEC-0001.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "propagation_unknown",
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-review-split-boundary-tests",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-review-split-boundary-tests.diff",
+      "anchor": {
+        "file": "src/limits.rs",
+        "line": 20
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "split_test_boundary_oracle",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "total > 1000",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: exactly 1000 no longer needs review"
+          },
+          {
+            "replacement": "total >= 999",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: 999 starts needing review"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "One test calls needs_review(1000) and discards the result; the asserting test uses 5000, far from the boundary. Spec cells: RIPR-SPEC-0186, RIPR-SPEC-0001.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-bulk-custom-assert-macro",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-bulk-custom-assert-macro.diff",
+      "anchor": {
+        "file": "src/limits.rs",
+        "line": 31
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "custom_assertion_macro",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "count > 100",
+            "outcome": "tests_failed",
+            "failing_test": "limits::tests::bulk_starts_at_one_hundred",
+            "equivalence_review": "not equivalent: exactly 100 is no longer bulk"
+          },
+          {
+            "replacement": "count >= 99",
+            "outcome": "tests_failed",
+            "failing_test": "limits::tests::bulk_starts_at_one_hundred",
+            "equivalence_review": "not equivalent: 99 becomes bulk"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "assert_flag! expands to assert_eq! and checks 100 and 99, so both boundary shifts fail the test. Spec cells: RIPR-SPEC-0120, RIPR-SPEC-0108.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-rate-same-method-other-type",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-rate-same-method-other-type.diff",
+      "anchor": {
+        "file": "src/rates.rs",
+        "line": 9
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value",
+      "test_shape": "same_method_name_other_impl_type",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "0",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: the standard rate becomes 0"
+          },
+          {
+            "replacement": "4",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: the standard rate becomes 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The only rate test calls Premium::rate; Standard::rate is never called. Spec cells: RIPR-SPEC-0108.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-region-literal-match-helper",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-region-literal-match-helper.diff",
+      "anchor": {
+        "file": "src/rates.rs",
+        "line": 21
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "match_arm",
+      "test_shape": "caller_pins_literal_match_helper",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "\"north\" => \"S\",",
+            "outcome": "tests_failed",
+            "failing_test": "rates::tests::north_is_labeled",
+            "equivalence_review": "not equivalent: north labels as zone-S"
+          },
+          {
+            "replacement": "\"north\" => \"\",",
+            "outcome": "tests_failed",
+            "failing_test": "rates::tests::north_is_labeled",
+            "equivalence_review": "not equivalent: north labels as zone-"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "label(\"north\") is compared with \"zone-N\", so any change to the north arm's value fails the test. Spec cells: RIPR-SPEC-0164.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-announce-stdout-sink",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-announce-stdout-sink.diff",
+      "anchor": {
+        "file": "src/rates.rs",
+        "line": 32
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "side_effect",
+      "test_shape": "stdout_macro_sink",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "println!(\"rate is now {}\", rate * 3);",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: the printed rate is tripled"
+          },
+          {
+            "replacement": "(delete the statement)",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: nothing is printed"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "Nothing captures stdout, so the printed value is unobservable to the tests. Spec cells: RIPR-SPEC-0096.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "propagation_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-record-discarded-result",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-record-discarded-result.diff",
+      "anchor": {
+        "file": "src/store.rs",
+        "line": 28
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "call_deletion",
+      "test_shape": "wildcard_discard_observed_store",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "let _ = store.put(units * 8);",
+            "outcome": "tests_failed",
+            "failing_test": "store::tests::record_stores_nine_per_unit",
+            "equivalence_review": "not equivalent: 3 units store 24"
+          },
+          {
+            "replacement": "(delete the statement)",
+            "outcome": "tests_failed",
+            "failing_test": "store::tests::record_stores_nine_per_unit",
+            "equivalence_review": "not equivalent: nothing is stored"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "The return value is discarded with let _ =, but the stored value is read back with assert_eq!, so both mutants fail. Spec cells: RIPR-SPEC-0096.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "static_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "checkout-persist-swallowed-ok",
+      "subject_id": "authored-checkout",
+      "diff": "cases/checkout-persist-swallowed-ok.diff",
+      "anchor": {
+        "file": "src/store.rs",
+        "line": 32
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "call_deletion",
+      "test_shape": "swallowed_ok_tail_observed_store",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "store.save(units * 2).ok();",
+            "outcome": "tests_failed",
+            "failing_test": "store::tests::persist_stores_three_per_unit",
+            "equivalence_review": "not equivalent: 2 units store 4"
+          },
+          {
+            "replacement": "(delete the statement)",
+            "outcome": "tests_failed",
+            "failing_test": "store::tests::persist_stores_three_per_unit",
+            "equivalence_review": "not equivalent: nothing is stored"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "The Result is swallowed with .ok(), but the stored value is read back with assert_eq!, so both mutants fail. Spec cells: RIPR-SPEC-0096.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "propagation_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "tokens-scanner-state-arm",
+      "subject_id": "authored-tokens",
+      "diff": "cases/tokens-scanner-state-arm.diff",
+      "anchor": {
+        "file": "src/scan.rs",
+        "line": 15
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "match_arm",
+      "test_shape": "scanner_final_state_assert_eq",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "(State::Space, _) => State::Space,",
+            "outcome": "tests_failed",
+            "failing_test": "scan::tests::scanner_ends_in_the_last_state",
+            "equivalence_review": "not equivalent: \"a b\" ends in Space"
+          },
+          {
+            "replacement": "(State::Space, _) => State::Start,",
+            "outcome": "tests_failed",
+            "failing_test": "scan::tests::scanner_ends_in_the_last_state",
+            "equivalence_review": "not equivalent: \"a b\" ends in Start"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "final_state(\"a b\") is pinned to Word, and only the (Space, _) arm can produce it after the space. Spec cells: RIPR-SPEC-0163.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "credited",
+        "full_checkout_classifications": [
+          "exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "tokens-recursive-label-arm",
+      "subject_id": "authored-tokens",
+      "diff": "cases/tokens-recursive-label-arm.diff",
+      "anchor": {
+        "file": "src/scan.rs",
+        "line": 25
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "match_arm",
+      "test_shape": "recursive_helper_arm_assert_eq",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "\"b\" => label_of(\"c\"),",
+            "outcome": "tests_failed",
+            "failing_test": "scan::tests::b_describes_as_alpha",
+            "equivalence_review": "not equivalent: b describes as <other>"
+          },
+          {
+            "replacement": "\"b\" => \"beta\",",
+            "outcome": "tests_failed",
+            "failing_test": "scan::tests::b_describes_as_alpha",
+            "equivalence_review": "not equivalent: b describes as <beta>"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "describe(\"b\") is pinned to <alpha>, which the b arm reaches only by recursing into the a arm. Spec cells: RIPR-SPEC-0165.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "tokens-word-start-helper",
+      "subject_id": "authored-tokens",
+      "diff": "cases/tokens-word-start-helper.diff",
+      "anchor": {
+        "file": "src/scan.rs",
+        "line": 38
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate",
+      "test_shape": "helper_reached_with_literal_args",
+      "hard_case": null,
+      "truth": {
+        "state": "partially_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": ".is_some_and(|b| !b.is_ascii_alphabetic())",
+            "outcome": "tests_failed",
+            "failing_test": "scan::tests::classify_spots_a_leading_letter",
+            "equivalence_review": "not equivalent: letters stop starting words"
+          },
+          {
+            "replacement": ".is_some_and(|b| b.is_ascii_alphanumeric())",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: a leading digit starts a word, but no test classifies a digit"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "classify(\" x\") and classify(\"x\") catch a negated check but not a widened one, since no input starts with a digit. Spec cells: RIPR-SPEC-0159.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "tokens-normalize-helper-chain",
+      "subject_id": "authored-tokens",
+      "diff": "cases/tokens-normalize-helper-chain.diff",
+      "anchor": {
+        "file": "src/reach.rs",
+        "line": 4
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value",
+      "test_shape": "helper_chain_two_hops",
+      "hard_case": null,
+      "truth": {
+        "state": "partially_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "x",
+            "outcome": "tests_failed",
+            "failing_test": "reach::tests::score_doubles_the_stepped_magnitude",
+            "equivalence_review": "not equivalent: score(-3) becomes -4"
+          },
+          {
+            "replacement": "-x",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: positive inputs are negated, but the only test passes -3"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "score(-3) catches dropping the abs but not negating it, since -(-3) equals |-3|. Spec cells: RIPR-SPEC-0114.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "propagation_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "tokens-base-six-hop-chain",
+      "subject_id": "authored-tokens",
+      "diff": "cases/tokens-base-six-hop-chain.diff",
+      "anchor": {
+        "file": "src/reach.rs",
+        "line": 16
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "helper_chain_six_hops",
+      "hard_case": "RIPR-SPEC-0114 bounds the transitive walk at five hops; this owner sits six hops from the test.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "x * 6",
+            "outcome": "tests_failed",
+            "failing_test": "reach::tests::deep_multiplies_by_seven",
+            "equivalence_review": "not equivalent: deep(2) becomes 12"
+          },
+          {
+            "replacement": "x + 7",
+            "outcome": "tests_failed",
+            "failing_test": "reach::tests::deep_multiplies_by_seven",
+            "equivalence_review": "not equivalent: deep(2) becomes 9"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "deep(2) is pinned to 14 through six helper hops, so both mutants fail it. Spec cells: RIPR-SPEC-0114.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "tokens-inner-rate-macro-reach",
+      "subject_id": "authored-tokens",
+      "diff": "cases/tokens-inner-rate-macro-reach.diff",
+      "anchor": {
+        "file": "src/reach.rs",
+        "line": 38
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "production_macro_routes_to_owner",
+      "hard_case": "The test-to-owner path runs through a same-crate macro_rules! that ripr does not expand.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "x * 4",
+            "outcome": "tests_failed",
+            "failing_test": "reach::tests::outer_triples",
+            "equivalence_review": "not equivalent: outer(4) becomes 16"
+          },
+          {
+            "replacement": "x + 3",
+            "outcome": "tests_failed",
+            "failing_test": "reach::tests::outer_triples",
+            "equivalence_review": "not equivalent: outer(4) becomes 7"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "outer reaches inner_rate only through call_inner!, and outer(4) is pinned to 12. Spec cells: RIPR-SPEC-0117.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "tokens-inner-bonus-test-macro-call",
+      "subject_id": "authored-tokens",
+      "diff": "cases/tokens-inner-bonus-test-macro-call.diff",
+      "anchor": {
+        "file": "src/reach.rs",
+        "line": 43
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "test_body_macro_call",
+      "hard_case": "The test body itself invokes the macro that mentions the owner.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "x + 5",
+            "outcome": "tests_failed",
+            "failing_test": "reach::tests::bonus_adds_four",
+            "equivalence_review": "not equivalent: call_bonus!(1) becomes 6"
+          },
+          {
+            "replacement": "x * 4",
+            "outcome": "tests_failed",
+            "failing_test": "reach::tests::bonus_adds_four",
+            "equivalence_review": "not equivalent: call_bonus!(1) becomes 4"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "The test calls call_bonus!(1) directly and pins it to 5; the macro is the only route to inner_bonus. Spec cells: RIPR-SPEC-0119.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "tokens-add-fee-integration-api",
+      "subject_id": "authored-tokens",
+      "diff": "cases/tokens-add-fee-integration-api.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 10
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "integration_test_public_api_to_private_owner",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "total + 16",
+            "outcome": "tests_failed",
+            "failing_test": "public_total_adds_the_fee",
+            "equivalence_review": "not equivalent: public_total(3) becomes 46"
+          },
+          {
+            "replacement": "total - 15",
+            "outcome": "tests_failed",
+            "failing_test": "public_total_adds_the_fee",
+            "equivalence_review": "not equivalent: public_total(3) becomes 15"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "tests/public.rs pins public_total(3) to 45, and public_total is the only caller of the private add_fee. Spec cells: RIPR-SPEC-0118.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "tokens-ext-start-map-or-binding",
+      "subject_id": "authored-tokens",
+      "diff": "cases/tokens-ext-start-map-or-binding.diff",
+      "anchor": {
+        "file": "src/flow.rs",
+        "line": 4
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "changed_binding_feeds_equality",
+      "hard_case": "ripr retargets a changed let binding's probe to the predicate that uses it (RIPR-SPEC-0157), so its finding lands on the next line, not on the anchor.",
+      "truth": {
+        "state": "partially_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "let start = path.rfind('.').map_or(0, |i| i + 2);",
+            "outcome": "tests_failed",
+            "failing_test": "flow::tests::extension_starts_after_the_dot",
+            "equivalence_review": "not equivalent: the extension starts one byte late"
+          },
+          {
+            "replacement": "let start = path.rfind('.').map_or(1, |i| i + 1);",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: a path without a dot starts at 1, but no test passes one"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "Both tests pass a path with a dot, so only the Some branch of map_or is discriminated. Spec cells: RIPR-SPEC-0150, RIPR-SPEC-0157.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "propagation_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "tokens-fits-binding-predicate",
+      "subject_id": "authored-tokens",
+      "diff": "cases/tokens-fits-binding-predicate.diff",
+      "anchor": {
+        "file": "src/flow.rs",
+        "line": 9
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "changed_binding_feeds_comparison",
+      "hard_case": "ripr retargets a changed let binding's probe to the predicate that uses it (RIPR-SPEC-0157), so its finding lands on the next line, not on the anchor.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "let end = text.len() + 1;",
+            "outcome": "tests_failed",
+            "failing_test": "flow::tests::fits_is_inclusive",
+            "equivalence_review": "not equivalent: abc no longer fits width 3"
+          },
+          {
+            "replacement": "let end = text.len() - 1;",
+            "outcome": "tests_failed",
+            "failing_test": "flow::tests::fits_is_inclusive",
+            "equivalence_review": "not equivalent: abcd fits width 3"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "fits(\"abc\", 3) and fits(\"abcd\", 3) straddle the boundary, so both shifts of end fail the test. Spec cells: RIPR-SPEC-0157.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "propagation_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "tokens-long-flag-strip-prefix",
+      "subject_id": "authored-tokens",
+      "diff": "cases/tokens-long-flag-strip-prefix.diff",
+      "anchor": {
+        "file": "src/flow.rs",
+        "line": 15
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "literal_through_strip_prefix_boundary",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "name.len() > 2",
+            "outcome": "tests_failed",
+            "failing_test": "flow::tests::long_flags_have_two_letters",
+            "equivalence_review": "not equivalent: --ab stops being long"
+          },
+          {
+            "replacement": "name.len() >= 1",
+            "outcome": "tests_failed",
+            "failing_test": "flow::tests::long_flags_have_two_letters",
+            "equivalence_review": "not equivalent: --a becomes long"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "--ab and --a straddle the two-letter boundary after strip_prefix, so both shifts fail the test. Spec cells: RIPR-SPEC-0158.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "tokens-byte-at-unsafe-fn",
+      "subject_id": "authored-tokens",
+      "diff": "cases/tokens-byte-at-unsafe-fn.diff",
+      "anchor": {
+        "file": "src/raw.rs",
+        "line": 9
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "static_unknown_unsafe_fn",
+      "test_shape": "unit_test_assert_eq",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "0",
+            "outcome": "tests_failed",
+            "failing_test": "raw::tests::byte_at_reads_the_index",
+            "equivalence_review": "not equivalent: every byte reads as 0"
+          },
+          {
+            "replacement": "*bytes.get_unchecked(0)",
+            "outcome": "tests_failed",
+            "failing_test": "raw::tests::byte_at_reads_the_index",
+            "equivalence_review": "not equivalent: index 1 reads index 0"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "byte_at(b\"xyz\", 1) is pinned to b'y', so both mutants inside the unsafe fn body fail it. Spec cells: RIPR-SPEC-0168.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "static_unknown",
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "shop-score-imported-across-crates",
+      "subject_id": "authored-shop",
+      "diff": "cases/shop-score-imported-across-crates.diff",
+      "anchor": {
+        "file": "pricing/src/lib.rs",
+        "line": 4
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "dependent_crate_test_imports_owner",
+      "hard_case": "The test lives in a different workspace crate that depends on pricing by path.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test --workspace",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "points * 4",
+            "outcome": "tests_failed",
+            "failing_test": "score_triples_points",
+            "equivalence_review": "not equivalent: score(7) becomes 28"
+          },
+          {
+            "replacement": "points + 3",
+            "outcome": "tests_failed",
+            "failing_test": "score_triples_points",
+            "equivalence_review": "not equivalent: score(7) becomes 10"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "orders/tests imports pricing::score and pins score(7) to 21. Spec cells: RIPR-SPEC-0172.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "shop-rebate-same-name-other-crate",
+      "subject_id": "authored-shop",
+      "diff": "cases/shop-rebate-same-name-other-crate.diff",
+      "anchor": {
+        "file": "pricing/src/lib.rs",
+        "line": 8
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "same_name_owner_in_dependent_crate_tested",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test --workspace",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "total / 20",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: pricing::rebate(200) becomes 10"
+          },
+          {
+            "replacement": "total * 10",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: pricing::rebate(200) becomes 2000"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The only rebate test calls orders::rebate, a different function with the same name; pricing::rebate is never called. Spec cells: RIPR-SPEC-0172.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "shop-discount-path-dependent-test",
+      "subject_id": "authored-shop",
+      "diff": "cases/shop-discount-path-dependent-test.diff",
+      "anchor": {
+        "file": "pricing/src/lib.rs",
+        "line": 12
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "path_dependent_crate_integration_test",
+      "hard_case": "The only test is in the dependent crate and reaches the owner through its public API.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test --workspace",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "total - 6",
+            "outcome": "tests_failed",
+            "failing_test": "order_total_takes_the_discount",
+            "equivalence_review": "not equivalent: order_total(50) becomes 44"
+          },
+          {
+            "replacement": "total + 5",
+            "outcome": "tests_failed",
+            "failing_test": "order_total_takes_the_discount",
+            "equivalence_review": "not equivalent: order_total(50) becomes 55"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "orders::order_total calls pricing::discount and orders/tests pins order_total(50) to 45. Spec cells: RIPR-SPEC-0171.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "shop-item-cents-trait-method",
+      "subject_id": "authored-shop",
+      "diff": "cases/shop-item-cents-trait-method.diff",
+      "anchor": {
+        "file": "pricing/src/lib.rs",
+        "line": 25
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "trait_method_owner_pin",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test --workspace",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.units * 100",
+            "outcome": "tests_failed",
+            "failing_test": "tests::item_cents_are_per_unit",
+            "equivalence_review": "not equivalent: two units cost 200"
+          },
+          {
+            "replacement": "self.units + 125",
+            "outcome": "tests_failed",
+            "failing_test": "tests::item_cents_are_per_unit",
+            "equivalence_review": "not equivalent: two units cost 127"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "item.cents() is pinned to 250 for two units, so both mutants of the trait impl fail it. Spec cells: RIPR-SPEC-0197.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "credited",
+        "full_checkout_classifications": [
+          "exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "shop-item-total-associated-vs-free",
+      "subject_id": "authored-shop",
+      "diff": "cases/shop-item-total-associated-vs-free.diff",
+      "anchor": {
+        "file": "pricing/src/lib.rs",
+        "line": 31
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "free_function_same_name_tested",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test --workspace",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "self.units * 90",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: Item::total for two units becomes 180"
+          },
+          {
+            "replacement": "self.units + 100",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: Item::total for two units becomes 102"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The only total test calls the free function total(2); the associated Item::total is never called. Spec cells: RIPR-SPEC-0197.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "shop-tier-gold-arm-unreached",
+      "subject_id": "authored-shop",
+      "diff": "cases/shop-tier-gold-arm-unreached.diff",
+      "anchor": {
+        "file": "pricing/src/lib.rs",
+        "line": 48
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "match_arm",
+      "test_shape": "sibling_arm_asserted_shared_enum_qualifier",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test --workspace",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "p if p > 100 => Tier::Gold,",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: exactly 100 points drops to Silver"
+          },
+          {
+            "replacement": "p if p >= 100 => Tier::Bronze,",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: 100+ points become Bronze"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The only tier test passes 60 points and pins Tier::Silver; the Gold guard is never true in any test. Spec cells: RIPR-SPEC-0094, RIPR-SPEC-0093.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "shop-cart-add-other-collection-observed",
+      "subject_id": "authored-shop",
+      "diff": "cases/shop-cart-add-other-collection-observed.diff",
+      "anchor": {
+        "file": "pricing/src/lib.rs",
+        "line": 62
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "side_effect",
+      "test_shape": "other_collection_asserted",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test --workspace",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "(delete the statement)",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: added items are never stored"
+          },
+          {
+            "replacement": "self.items.push(-cents);",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: added items are stored negated"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The cart test asserts only cart.removed; cart.items is never read. Spec cells: RIPR-SPEC-0094.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "shop-quote-total-result-field",
+      "subject_id": "authored-shop",
+      "diff": "cases/shop-quote-total-result-field.diff",
+      "anchor": {
+        "file": "pricing/src/lib.rs",
+        "line": 79
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "field_construction",
+      "test_shape": "owner_result_field_binding_assert_eq",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test --workspace",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "total: units * 11,",
+            "outcome": "tests_failed",
+            "failing_test": "tests::quote_total_is_ten_per_unit",
+            "equivalence_review": "not equivalent: three units total 33"
+          },
+          {
+            "replacement": "total: units,",
+            "outcome": "tests_failed",
+            "failing_test": "tests::quote_total_is_ten_per_unit",
+            "equivalence_review": "not equivalent: three units total 3"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "let quoted = quote(3); assert_eq!(quoted.total, 30) reads the changed field directly. Spec cells: RIPR-SPEC-0005.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "credited",
+        "full_checkout_classifications": [
+          "exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "shop-cap-literal-only-expected",
+      "subject_id": "authored-shop",
+      "diff": "cases/shop-cap-literal-only-expected.diff",
+      "anchor": {
+        "file": "pricing/src/lib.rs",
+        "line": 84
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "boundary_literal_only_as_expected_value",
+      "hard_case": null,
+      "truth": {
+        "state": "not_discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test --workspace",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "if value > 20 {",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: 15 is no longer capped"
+          },
+          {
+            "replacement": "if value > 11 {",
+            "outcome": "tests_passed",
+            "failing_test": null,
+            "equivalence_review": "not equivalent: 11 is no longer capped"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "gap",
+        "acceptable_verdicts": [
+          "gap",
+          "limited"
+        ]
+      },
+      "reasoning": "The only test passes 50, far above the boundary; 10 appears only as the expected value. (`value >= 10` and `value > 9` are equivalent here, since both branches return 10 at value 10, so they are not used.) Spec cells: RIPR-SPEC-0001.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "shop-gate-let-bound-input",
+      "subject_id": "authored-shop",
+      "diff": "cases/shop-gate-let-bound-input.diff",
+      "anchor": {
+        "file": "pricing/src/lib.rs",
+        "line": 92
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "let_bound_owner_input",
+      "hard_case": null,
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test --workspace",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "value > 10",
+            "outcome": "tests_failed",
+            "failing_test": "tests::ten_passes_the_gate",
+            "equivalence_review": "not equivalent: 10 no longer passes"
+          },
+          {
+            "replacement": "value >= 9",
+            "outcome": "tests_failed",
+            "failing_test": "tests::ten_passes_the_gate",
+            "equivalence_review": "not equivalent: 9 passes"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "The test binds n = 10 and m = 9 and asserts both sides of the boundary. Spec cells: RIPR-SPEC-0001.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "gap",
+        "full_checkout_classifications": [
+          "weakly_exposed"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "roles-limit-const-value",
+      "subject_id": "authored-roles",
+      "diff": "cases/roles-limit-const-value.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 4
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "behavior_selector_const",
+      "test_shape": "boundary_via_same_file_const",
+      "hard_case": "ripr lists doubling_the_sample, which never touches LIMIT, as the related test, and misses the_limit_is_ten.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "pub const LIMIT: u32 = 11;",
+            "outcome": "tests_failed",
+            "failing_test": "tests::the_limit_is_ten",
+            "equivalence_review": "not equivalent: 11 falls within the limit"
+          },
+          {
+            "replacement": "pub const LIMIT: u32 = 9;",
+            "outcome": "tests_failed",
+            "failing_test": "tests::the_limit_is_ten",
+            "equivalence_review": "not equivalent: 10 falls outside the limit"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "the_limit_is_ten asserts within(10) and !within(11), so moving LIMIT either way fails it. Spec cells: RIPR-SPEC-0048, RIPR-SPEC-0001.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "limited",
+        "full_checkout_classifications": [
+          "static_unknown"
+        ],
+        "excerpt_parity": "matched"
+      }
+    },
+    {
+      "case_id": "roles-cfg-test-helper-input",
+      "subject_id": "authored-roles",
+      "diff": "cases/roles-cfg-test-helper-input.diff",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 19
+      },
+      "edit_kind": "behavior_preserving_rewrite",
+      "behavior_family": "test_helper_value",
+      "test_shape": "cfg_test_helper_feeds_assert_eq",
+      "hard_case": "The edit is inside a #[cfg(test)] helper, which RIPR-SPEC-0153 gives an evidence role: ripr seeds no production probe, so silent is the expected reading.",
+      "truth": {
+        "state": "discriminated",
+        "method": "runtime_mutant_kill",
+        "test_command": "cargo test",
+        "toolchain": "rustc 1.95.0 (59807616e 2026-04-14), x86_64-unknown-linux-gnu",
+        "mutants": [
+          {
+            "replacement": "5",
+            "outcome": "tests_failed",
+            "failing_test": "tests::doubling_the_sample",
+            "equivalence_review": "not equivalent: the sample doubles to 10"
+          },
+          {
+            "replacement": "0",
+            "outcome": "tests_failed",
+            "failing_test": "tests::doubling_the_sample",
+            "equivalence_review": "not equivalent: the sample doubles to 0"
+          }
+        ]
+      },
+      "expected": {
+        "ideal_verdict": "credited",
+        "acceptable_verdicts": [
+          "credited",
+          "limited",
+          "silent"
+        ]
+      },
+      "reasoning": "sample() feeds doubled() in an assert_eq! against 8, so changing the helper's value fails the test. Spec cells: RIPR-SPEC-0153, RIPR-SPEC-0169.",
+      "labeling_observation": {
+        "ripr_commit": "b0c6ef6",
+        "full_checkout_verdict": "silent",
+        "full_checkout_classifications": [],
         "excerpt_parity": "matched"
       }
     }

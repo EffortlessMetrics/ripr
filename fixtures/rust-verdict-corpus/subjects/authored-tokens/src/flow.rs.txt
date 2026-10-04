@@ -1,0 +1,39 @@
+//! Values that flow through a local binding before a comparison.
+
+pub fn ext_starts_at(path: &str, at: usize) -> bool {
+    let start = path.rfind('.').map_or(0, |i| i + 1);
+    start == at
+}
+
+pub fn fits(text: &str, width: usize) -> bool {
+    let end = text.len();
+    end <= width
+}
+
+pub fn long_flag(arg: &str) -> bool {
+    let name = arg.strip_prefix("--").unwrap_or("");
+    name.len() >= 2
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extension_starts_after_the_dot() {
+        assert!(ext_starts_at("a.rs", 2));
+        assert!(!ext_starts_at("a.rs", 1));
+    }
+
+    #[test]
+    fn fits_is_inclusive() {
+        assert!(fits("abc", 3));
+        assert!(!fits("abcd", 3));
+    }
+
+    #[test]
+    fn long_flags_have_two_letters() {
+        assert!(long_flag("--ab"));
+        assert!(!long_flag("--a"));
+    }
+}

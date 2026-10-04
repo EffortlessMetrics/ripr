@@ -1,0 +1,48 @@
+/// Why an amount did not parse.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ParseError {
+    Empty,
+    TooLong(usize),
+    BadDigit(char),
+}
+
+/// Parses a non-negative whole amount of at most twelve digits.
+pub fn parse_amount(text: &str) -> Result<i64, ParseError> {
+    if text.is_empty() {
+        return Err(ParseError::Empty);
+    }
+    if text.len() > 12 {
+        return Err(ParseError::TooLong(text.len()));
+    }
+    let mut value = 0i64;
+    for c in text.chars() {
+        let digit = c.to_digit(10).ok_or(ParseError::BadDigit(c))?;
+        value = value * 10 + i64::from(digit);
+    }
+    Ok(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_digits() {
+        assert_eq!(parse_amount("120"), Ok(120));
+    }
+
+    #[test]
+    fn empty_text_is_its_own_error() {
+        assert_eq!(parse_amount(""), Err(ParseError::Empty));
+    }
+
+    #[test]
+    fn too_many_digits_are_refused() {
+        assert!(parse_amount("1234567890123").is_err());
+    }
+
+    #[test]
+    fn a_letter_is_a_bad_digit() {
+        assert_eq!(parse_amount("1x"), Err(ParseError::BadDigit('x')));
+    }
+}

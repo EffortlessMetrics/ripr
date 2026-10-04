@@ -1,0 +1,48 @@
+/// A running balance and how many deposits made it.
+#[derive(Debug, Default)]
+pub struct Account {
+    balance: i64,
+    deposits: u32,
+    history: Vec<i64>,
+}
+
+impl Account {
+    pub fn deposit(&mut self, amount: i64) {
+        self.balance += amount;
+        self.deposits += 1;
+        self.history.push(amount);
+    }
+
+    pub fn balance(&self) -> i64 {
+        self.balance
+    }
+
+    pub fn deposits(&self) -> u32 {
+        self.deposits
+    }
+
+    pub fn history(&self) -> &[i64] {
+        &self.history
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deposits_add_to_the_balance() {
+        let mut account = Account::default();
+        account.deposit(100);
+        account.deposit(50);
+        assert_eq!(account.balance(), 150);
+        assert_eq!(account.history(), &[100, 50]);
+    }
+
+    #[test]
+    fn a_deposit_is_counted() {
+        let mut account = Account::default();
+        account.deposit(10);
+        assert!(account.deposits() >= 1);
+    }
+}

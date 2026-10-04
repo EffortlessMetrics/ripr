@@ -1,0 +1,13 @@
+diff --git a/src/reach.rs b/src/reach.rs
+index 0e86388..ecd0778 100644
+--- a/src/reach.rs
++++ b/src/reach.rs
+@@ -1,7 +1,7 @@
+ //! Owners reached only through helper chains or macros.
+ 
+ fn normalize(x: i64) -> i64 {
+-    x.abs()
++    if x < 0 { -x } else { x }
+ }
+ 
+ fn step(x: i64) -> i64 {

@@ -1,0 +1,13 @@
+diff --git a/src/limits.rs b/src/limits.rs
+index 577ecb3..d7aa334 100644
+--- a/src/limits.rs
++++ b/src/limits.rs
+@@ -13,7 +13,7 @@ pub fn over_daily_limit(count: u32) -> bool {
+ }
+ 
+ pub fn below_minimum(count: u32) -> bool {
+-    count < MIN_ORDER
++    MIN_ORDER > count
+ }
+ 
+ pub fn needs_review(total: u32) -> bool {

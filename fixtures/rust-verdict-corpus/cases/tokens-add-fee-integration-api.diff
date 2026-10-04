@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 9261ee0..a702257 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -7,7 +7,7 @@ pub mod reach;
+ pub mod scan;
+ 
+ fn add_fee(total: i64) -> i64 {
+-    total + 15
++    15 + total
+ }
+ 
+ /// Public entry point that integration tests call; the fee is private.

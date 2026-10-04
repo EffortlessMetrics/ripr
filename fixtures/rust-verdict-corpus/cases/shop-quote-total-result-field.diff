@@ -1,0 +1,13 @@
+diff --git a/pricing/src/lib.rs b/pricing/src/lib.rs
+index 20a5b7f..1b18c65 100644
+--- a/pricing/src/lib.rs
++++ b/pricing/src/lib.rs
+@@ -76,7 +76,7 @@ pub struct Quote {
+ pub fn quote(units: i64) -> Quote {
+     Quote {
+         units,
+-        total: units * 10,
++        total: 10 * units,
+     }
+ }
+ 

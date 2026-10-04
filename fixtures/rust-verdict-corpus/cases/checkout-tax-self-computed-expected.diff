@@ -1,0 +1,13 @@
+diff --git a/src/invoice.rs b/src/invoice.rs
+index ca394af..fc40c98 100644
+--- a/src/invoice.rs
++++ b/src/invoice.rs
+@@ -5,7 +5,7 @@ pub fn subtotal(items: i64, price: i64) -> i64 {
+ }
+ 
+ pub fn tax(subtotal: i64) -> i64 {
+-    subtotal * 8 / 100
++    subtotal * 2 * 4 / 100
+ }
+ 
+ pub fn invoice(items: i64, price: i64) -> i64 {

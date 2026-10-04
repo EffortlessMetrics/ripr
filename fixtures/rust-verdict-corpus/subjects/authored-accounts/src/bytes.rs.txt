@@ -1,0 +1,40 @@
+/// The first byte, read without a second bounds check.
+pub fn first_byte(bytes: &[u8]) -> Option<u8> {
+    if bytes.is_empty() {
+        return None;
+    }
+    // SAFETY: `bytes` is not empty, so index 0 is in bounds.
+    let byte = unsafe {
+        *bytes.get_unchecked(0)
+    };
+    Some(byte)
+}
+
+/// The last byte, read without a second bounds check.
+pub fn last_byte(bytes: &[u8]) -> Option<u8> {
+    if bytes.is_empty() {
+        return None;
+    }
+    // SAFETY: `bytes` is not empty, so `len - 1` is in bounds.
+    let byte = unsafe {
+        *bytes.get_unchecked(bytes.len() - 1)
+    };
+    Some(byte)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn first_byte_reads_index_zero() {
+        assert_eq!(first_byte(b"xyz"), Some(b'x'));
+        assert_eq!(first_byte(b""), None);
+    }
+
+    #[test]
+    fn last_byte_accepts_any_slice() {
+        let _ = last_byte(b"xyz");
+        let _ = last_byte(b"");
+    }
+}

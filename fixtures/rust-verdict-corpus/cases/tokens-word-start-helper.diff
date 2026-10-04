@@ -1,0 +1,13 @@
+diff --git a/src/scan.rs b/src/scan.rs
+index 0421b61..ad07e69 100644
+--- a/src/scan.rs
++++ b/src/scan.rs
+@@ -35,7 +35,7 @@ fn is_word_start(input: &str, at: usize) -> bool {
+     input
+         .as_bytes()
+         .get(at)
+-        .is_some_and(|b| b.is_ascii_alphabetic())
++        .is_some_and(|byte| byte.is_ascii_alphabetic())
+ }
+ 
+ pub fn classify(input: &str) -> &'static str {

@@ -1,0 +1,66 @@
+//! Fees whose only assertions never execute.
+
+pub fn card_fee(amount: i64) -> i64 {
+    amount / 100
+}
+
+pub fn wire_fee(amount: i64) -> i64 {
+    amount / 50
+}
+
+pub fn cash_fee(amount: i64) -> i64 {
+    amount / 200
+}
+
+pub fn crypto_fee(amount: i64) -> i64 {
+    amount / 20
+}
+
+pub fn check_fee(amount: i64) -> i64 {
+    amount / 25
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn card_fee_check_is_built() {
+        let check = || assert_eq!(card_fee(500), 5);
+        let _ = &check;
+    }
+
+    #[test]
+    fn wire_fee_is_checked_when_enabled() {
+        let enabled = false;
+        if enabled {
+            assert_eq!(wire_fee(500), 10);
+        }
+    }
+
+    #[test]
+    fn cash_fee_future_is_built() {
+        let pending = async {
+            assert_eq!(cash_fee(1000), 5);
+        };
+        drop(pending);
+    }
+
+    #[test]
+    fn check_fee_returns_an_err_on_mismatch() -> Result<(), String> {
+        if check_fee(500) != 20 {
+            return Err(format!("check fee was {}", check_fee(500)));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(any())]
+mod disabled {
+    use super::*;
+
+    #[test]
+    fn crypto_fee_is_five_percent() {
+        assert_eq!(crypto_fee(100), 5);
+    }
+}

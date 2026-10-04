@@ -395,6 +395,16 @@ are scoped or reviewed.
   actionable and 0 of 14 false exposed. For a changed `let`, the projection can
   follow ripr's retarget to the predicate that uses it (RIPR-SPEC-0157); no
   current case exercises it (RIPR-SPEC-0219).
+- Verdict corpus: 47 more authored cases fill test shapes that other RIPR
+  specs define and no corpus case exercised: assertions that never run
+  (uncalled closure, `if false`, unpolled async, `cfg(any())`), guarded
+  Result matches, `matches!` and `return Err` oracles, self-computed
+  expected values, named-constant and split-test boundaries, macro and
+  helper-chain reach, scanner and recursive helpers, cross-crate tests,
+  same-name owners, fail-closed sinks, and a `#[cfg(test)]` helper (the
+  corpus's first silent verdict). Two changed-`let` cases exercise the
+  retarget projection. Authored rates now read 23 of 36 false actionable
+  and 4 of 34 false exposed; upstream rates are unchanged (RIPR-SPEC-0219).
 - `ripr agent stub --at FILE:LINE` (or `--seam-id ID`) turns a Rust gap
   into a test that compiles and fails at its own labelled `todo!()` until
   you write the expected value; `--write` places it in the existing inline

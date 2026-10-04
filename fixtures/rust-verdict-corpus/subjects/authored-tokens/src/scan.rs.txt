@@ -1,0 +1,69 @@
+//! A character scanner and helpers whose results tests pin exactly.
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum State {
+    Start,
+    Word,
+    Space,
+}
+
+pub fn final_state(input: &str) -> State {
+    let mut state = State::Start;
+    for sym in input.chars() {
+        state = match (state, sym) {
+            (_, ' ') => State::Space,
+            (State::Space, _) => State::Word,
+            (_, _) => State::Word,
+        };
+    }
+    state
+}
+
+fn label_of(text: &str) -> &'static str {
+    match text {
+        "a" => "alpha",
+        "b" => label_of("a"),
+        _ => "other",
+    }
+}
+
+pub fn describe(key: &str) -> String {
+    format!("<{}>", label_of(key))
+}
+
+fn is_word_start(input: &str, at: usize) -> bool {
+    input
+        .as_bytes()
+        .get(at)
+        .is_some_and(|b| b.is_ascii_alphabetic())
+}
+
+pub fn classify(input: &str) -> &'static str {
+    if is_word_start(input, 0) {
+        "word"
+    } else {
+        "other"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scanner_ends_in_the_last_state() {
+        assert_eq!(final_state("ab "), State::Space);
+        assert_eq!(final_state("a b"), State::Word);
+    }
+
+    #[test]
+    fn b_describes_as_alpha() {
+        assert_eq!(describe("b"), "<alpha>");
+    }
+
+    #[test]
+    fn classify_spots_a_leading_letter() {
+        assert_eq!(classify(" x"), "other");
+        assert_eq!(classify("x"), "word");
+    }
+}

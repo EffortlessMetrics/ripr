@@ -1,0 +1,13 @@
+diff --git a/src/flow.rs b/src/flow.rs
+index 18a0c6b..8a88609 100644
+--- a/src/flow.rs
++++ b/src/flow.rs
+@@ -6,7 +6,7 @@ pub fn ext_starts_at(path: &str, at: usize) -> bool {
+ }
+ 
+ pub fn fits(text: &str, width: usize) -> bool {
+-    let end = text.len();
++    let end = text.as_bytes().len();
+     end <= width
+ }
+ 

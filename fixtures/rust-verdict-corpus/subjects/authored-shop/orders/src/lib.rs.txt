@@ -1,0 +1,9 @@
+//! Orders, priced through the pricing crate.
+
+pub fn rebate(total: i64) -> i64 {
+    total / 20
+}
+
+pub fn order_total(total: i64) -> i64 {
+    pricing::discount(total)
+}

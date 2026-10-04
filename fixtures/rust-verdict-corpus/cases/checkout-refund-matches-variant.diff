@@ -1,0 +1,13 @@
+diff --git a/src/payment.rs b/src/payment.rs
+index 8482957..5ad9895 100644
+--- a/src/payment.rs
++++ b/src/payment.rs
+@@ -25,7 +25,7 @@ pub fn withdraw(wallet: &mut Wallet, amount: i64) -> Result<i64, PayError> {
+ 
+ pub fn refund(amount: i64) -> Result<i64, PayError> {
+     if amount > 10_000 {
+-        return Err(PayError::Limit);
++        return Err::<i64, PayError>(PayError::Limit);
+     }
+     Ok(amount)
+ }

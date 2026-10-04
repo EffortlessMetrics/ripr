@@ -1,0 +1,13 @@
+diff --git a/pricing/src/lib.rs b/pricing/src/lib.rs
+index 20a5b7f..c2d99a2 100644
+--- a/pricing/src/lib.rs
++++ b/pricing/src/lib.rs
+@@ -59,7 +59,7 @@ pub struct Cart {
+ 
+ impl Cart {
+     pub fn add(&mut self, cents: i64) {
+-        self.items.push(cents);
++        Vec::push(&mut self.items, cents);
+     }
+ 
+     pub fn remove(&mut self, cents: i64) {
