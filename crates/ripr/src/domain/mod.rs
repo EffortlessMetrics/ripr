@@ -13,6 +13,7 @@ mod finding_test_evidence;
 mod fix_instruction;
 mod git_candidate;
 mod identity;
+mod intervention_study;
 mod language;
 mod probe;
 mod repair_card;
@@ -67,6 +68,12 @@ pub use identity::{
     GOVERNED_IDENTITY_SURFACES, IDENTITY_REGISTRY_JSON_PATH, IDENTITY_REGISTRY_MARKDOWN_PATH,
     REQUIRED_TAXONOMY_KINDS, identity_field_disposition, identity_registry_canonical_json,
     identity_registry_markdown, identity_registry_violations,
+};
+#[cfg(test)]
+pub(crate) use intervention_study::example_preregistered_study;
+pub(crate) use intervention_study::{
+    InterventionStudyError, RIPR_INTERVENTION_STUDY_SCHEMA_VERSION, RiprInterventionStudyV1,
+    codes as intervention_study_codes,
 };
 pub(crate) use language::PERL_FACT_EXPORTER;
 #[cfg(feature = "lang-perl")]

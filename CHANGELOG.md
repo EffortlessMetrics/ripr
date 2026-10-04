@@ -150,6 +150,12 @@ are scoped or reviewed.
   auto-retry, so the primary first-run command no longer sits silent for
   minutes. Stdout and every pilot packet byte stay unchanged; `--quiet`
   suppresses the stream (RIPR-SPEC-0185, #5019).
+- Matched RIPR intervention-study preregistration (`ripr_intervention_study.v1`):
+  a frozen protocol names study identity, assignment, equal budgets, the named
+  RIPR evidence surface, leakage controls, retries, stopping, non-compensating
+  outcome axes, and claim ceiling before any attempt. JSON and Markdown project
+  one sealed object. This does not execute agents, grade repairs, or claim
+  intervention value (#4649).
 - Python same-class method owners that tests reach only through construction
   or another method on that class now keep `no_static_path` but name
   `static_limit_kind: python_transitive_reach_unresolved` (RIPR-SPEC-0201,

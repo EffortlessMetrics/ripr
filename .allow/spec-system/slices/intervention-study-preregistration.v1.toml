@@ -1,0 +1,67 @@
+schema_version = "2.0"
+id = "ripr.slice.intervention-study-preregistration.v1"
+generation = 1
+
+source_issue = "issue:4649"
+design_reference = "RIPR-SPEC-0216#behavior"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Preregisters the matched RIPR intervention-study schema: study identity,
+assignment, equal budgets, named intervention surface, leakage controls,
+retries, stopping, non-compensating outcome axes, invalid-attempt cells,
+and deterministic JSON/Markdown projections. Does not execute agents,
+adjudicate repairs, publish a pilot, or claim intervention value.
+"""
+
+non_goals = [
+  "agent execution",
+  "repair implementation",
+  "grader execution",
+  "pilot report",
+  "intervention-value conclusion",
+  "generic A/B platform",
+  "product telemetry",
+  "retrospective protocol fitting",
+  "support-tier promotion",
+]
+
+return_conditions = [
+  "Return to root if this slice executes an agent, grades a repair, or publishes a pilot result.",
+  "Return to root if assignment can change after an outcome or grader signal.",
+  "Return to root if control and ripr_assisted budgets differ except for the named intervention.",
+  "Return to root if JSON and Markdown are not projections of one semantic object.",
+  "Return to root if #4652, #4653, or #4654 work is absorbed.",
+]
+
+owned_seams = [
+  "seam:ripr:domain:intervention-study",
+  "seam:ripr:output:intervention-study",
+  "seam:ripr:contract:ripr-intervention-study-v1",
+  "seam:ripr:fixtures:intervention-study",
+]
+
+shared_seams = [
+  "seam:ripr:docs:output-schema",
+  "seam:ripr:policy:document-artifact-ledger",
+]
+
+forbidden_seams = [
+  "seam:ripr:agent:command-runner",
+  "seam:ripr:output:gate-authority",
+  "seam:ripr:cli:intervention-study-execute",
+  "seam:ripr:release:promotion",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0216#behavior"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

@@ -36,6 +36,7 @@ Machine-readable schemas live under `schemas/`:
 | [`schemas/ripr/check.schema.json`](../../schemas/ripr/check.schema.json) | `ripr check --json` primary findings and typed analysis-outcome output. |
 | [`schemas/ripr/repair-assurance.schema.json`](../../schemas/ripr/repair-assurance.schema.json) | Design-only `RepairAssuranceV1` envelope and the producer-owned command-spec and execution-result shapes. |
 | [`schemas/ripr/rust-repair-trust-corpus.schema.json`](../../schemas/ripr/rust-repair-trust-corpus.schema.json) | Authorized Rust repair attempt corpus of record. |
+| [`schemas/ripr/ripr-intervention-study.schema.json`](../../schemas/ripr/ripr-intervention-study.schema.json) | Preregistration-only matched RIPR intervention-study protocol. |
 | [`schemas/ripr/repair-attempt.schema.json`](../../schemas/ripr/repair-attempt.schema.json) | Durable `ripr agent repair` attempt manifest and its terminal edit-cage verdict. |
 | [`schemas/ripr/ripr-agent-capability.schema.json`](../../schemas/ripr/ripr-agent-capability.schema.json) | Reserved `riprAgent` capability advertisement; no live producer. |
 | [`schemas/ripr/ripr-agent-request.schema.json`](../../schemas/ripr/ripr-agent-request.schema.json) | Reserved `riprAgent` request envelope; no live producer. |

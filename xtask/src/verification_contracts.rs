@@ -151,6 +151,14 @@ const VERSION_AUTHORITIES: &[(&str, &[VersionProducer])] = &[
             1,
         )],
     ),
+    (
+        "ripr-intervention-study",
+        &[producer(
+            "crates/ripr/src/domain/intervention_study.rs",
+            "pub(crate) const RIPR_INTERVENTION_STUDY_SCHEMA_VERSION: &str = \"",
+            1,
+        )],
+    ),
 ];
 
 /// Which value inside `fixture_path` a contract validates.
@@ -480,6 +488,26 @@ const CONTRACTS: &[VerificationContract] = &[
             "verification",
             "receipt_state",
             "runtime_mutation",
+            "non_claims",
+        ],
+    },
+    VerificationContract {
+        schema_path: "schemas/ripr/ripr-intervention-study.schema.json",
+        schema_pointer: None,
+        fixture_path: "fixtures/intervention-study/valid.json",
+        subject: ContractSubject::Document,
+        doc_path: "docs/OUTPUT_SCHEMA.md",
+        doc_markers: &[
+            "schema_version",
+            "implementation_state",
+            "study_id",
+            "assignment",
+            "shared_budget",
+            "intervention_surface",
+            "leakage_controls",
+            "outcome_axes",
+            "stopping_rule",
+            "protocol_digest",
             "non_claims",
         ],
     },

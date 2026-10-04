@@ -89,6 +89,7 @@ records that distinction.
 | `schemas/ripr/ripr-agent-request.schema.json` | `0.2` | `crates/ripr/src/lsp/agent_protocol.rs`; route readiness fields |
 | `schemas/ripr/ripr-agent-success.schema.json` | `0.2` | `crates/ripr/src/lsp/agent_protocol.rs`; route readiness fields |
 | `schemas/ripr/rust-repair-trust-corpus.schema.json` | `0.1` | `xtask/src/reports/rust_repair_trust.rs`; trust corpus input, including optional observation `route` ladder facts |
+| `schemas/ripr/ripr-intervention-study.schema.json` | `ripr_intervention_study.v1` | `crates/ripr/src/domain/intervention_study.rs` plus `crates/ripr/src/output/intervention_study.rs`; preregistration-only matched intervention-study protocol |
 
 Bump rules below apply per contract: a breaking change to one family bumps
 that family's version only.
@@ -295,6 +296,18 @@ are `0`), `partial` (some directories or entries, including the cache
 directory itself, could not be read, so the counts are lower bounds), or
 `unavailable` (the path is not a directory, is a symlink, or its metadata
 could not be read; both counts are `0`).
+
+## Matched intervention-study preregistration
+
+`schemas/ripr/ripr-intervention-study.schema.json` describes one frozen
+`ripr_intervention_study.v1` protocol. `schema_version`, `kind`, and
+`implementation_state` (`preregistration_only`) are pinned. The semantic
+object in `crates/ripr/src/domain/intervention_study.rs` owns study identity
+(`study_id`), `assignment`, `shared_budget`, `intervention_surface`,
+`leakage_controls`, `outcome_axes`, `stopping_rule`, and `non_claims`.
+`crates/ripr/src/output/intervention_study.rs` seals `protocol_digest` and
+projects JSON and Markdown. The protocol does not execute agents, grade
+repairs, or claim intervention value.
 
 ## JSON object key ordering
 

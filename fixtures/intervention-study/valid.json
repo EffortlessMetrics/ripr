@@ -1,0 +1,258 @@
+{
+  "schema_version": "ripr_intervention_study.v1",
+  "kind": "ripr_intervention_study",
+  "implementation_state": "preregistration_only",
+  "study_id": "study:ripr-intervention:iv01:matched-rust-boundary",
+  "protocol_version": "1",
+  "protocol_digest": "sha256:40b1c536cf1984f27c1375443ccc54882dd684bc0fc4106cbb345fb6735e26dd",
+  "parent_issue": "#3751",
+  "sequence": "IV01",
+  "study_phase": "preregistered",
+  "repository": {
+    "repository_id": "EffortlessMetrics/ripr-swarm",
+    "clone_url": "https://github.com/EffortlessMetrics/ripr-swarm",
+    "analyzed_head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "task_series": {
+    "task_series_id": "series:rust-boundary-missing-discriminator",
+    "description": "Matched ordinary Rust missing-discriminator repair tasks"
+  },
+  "eligibility": {
+    "include": [
+      "producer-owned Rust route with retained exact identity",
+      "test-only repair contract"
+    ],
+    "exclude": [
+      "unsafe or unresolved target",
+      "production-code edit"
+    ]
+  },
+  "strata": [
+    {
+      "stratum_id": "stratum:rust-boundary-missing-discriminator",
+      "behavior_family": "predicate_boundary",
+      "existing_proof_state": "missing_discriminator",
+      "route_completeness": "complete_repair_route",
+      "difficulty_class": "ordinary"
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "task:boundary-oracle-a",
+      "stratum_id": "stratum:rust-boundary-missing-discriminator",
+      "canonical_behavior": "equality boundary on parse_limit",
+      "existing_proof_state": "missing_discriminator",
+      "fixture_id": "fixtures/boundary_gap"
+    },
+    {
+      "task_id": "task:boundary-oracle-b",
+      "stratum_id": "stratum:rust-boundary-missing-discriminator",
+      "canonical_behavior": "inclusive upper-bound on retry_budget",
+      "existing_proof_state": "missing_discriminator",
+      "fixture_id": "fixtures/strong_boundary_oracle"
+    }
+  ],
+  "conditions": [
+    {
+      "condition_id": "control",
+      "description": "repository change plus ordinary source, tests, and tooling"
+    },
+    {
+      "condition_id": "ripr_assisted",
+      "description": "same task context plus the named RIPR evidence surface"
+    }
+  ],
+  "assignment": {
+    "selected_before_outcomes": true,
+    "freeze_rule": "before_first_outcome_or_grader_signal",
+    "may_change_after_outcome_or_grader_signal": false,
+    "pairing": "matched_stratum_counterbalanced",
+    "pairs": [
+      {
+        "pair_id": "pair:boundary-oracle-a",
+        "task_id": "task:boundary-oracle-a",
+        "first_condition": "control",
+        "second_condition": "ripr_assisted"
+      },
+      {
+        "pair_id": "pair:boundary-oracle-b",
+        "task_id": "task:boundary-oracle-b",
+        "first_condition": "ripr_assisted",
+        "second_condition": "control"
+      }
+    ],
+    "assignment_seed": "preregistered:iv01:counterbalanced"
+  },
+  "shared_budget": {
+    "model_id": "model:study-operator-profile-v1",
+    "operator_profile": "operator:independent-study-agent",
+    "runtime_id": "runtime:isolated-worktree",
+    "tool_ids": [
+      "cargo",
+      "rustc",
+      "git"
+    ],
+    "wall_clock_ms": 1800000,
+    "token_budget": 50000,
+    "retry_limit": 0,
+    "command_authority": "test_only_repair"
+  },
+  "condition_budget_overlays": {
+    "control": {
+      "additional_wall_clock_ms": 0,
+      "additional_token_budget": 0,
+      "additional_retries": 0,
+      "additional_tools": []
+    },
+    "ripr_assisted": {
+      "additional_wall_clock_ms": 0,
+      "additional_token_budget": 0,
+      "additional_retries": 0,
+      "additional_tools": []
+    }
+  },
+  "intervention_surface": {
+    "control": {
+      "allowed_ripr_receipts": [],
+      "allowed_ripr_views": [],
+      "allowed_ripr_commands": [],
+      "may_read_ripr_outputs": false,
+      "undeclared_repository_context": []
+    },
+    "ripr_assisted": {
+      "allowed_ripr_receipts": [
+        "agent_receipt.v0.5"
+      ],
+      "allowed_ripr_views": [
+        "agent_seam_packet.v0.4"
+      ],
+      "allowed_ripr_commands": [
+        "ripr check --format json",
+        "ripr agent packet --json"
+      ],
+      "may_read_ripr_outputs": true,
+      "undeclared_repository_context": []
+    }
+  },
+  "leakage_controls": {
+    "prior_exposure": "disclose_and_exclude",
+    "branch_reuse": "forbidden",
+    "cross_condition_artifacts": "forbidden",
+    "shared_scratch_state": "forbidden",
+    "operator_leakage": "independent_operators"
+  },
+  "attempt_policy": {
+    "task_replacement_after_failure": "forbidden",
+    "retry_policy_equal_across_conditions": true
+  },
+  "outcome_axes": [
+    {
+      "axis_id": "behavior_alignment",
+      "description": "test targets the exact changed behavior, owner, and sink",
+      "compensating": false,
+      "independently_observable": true
+    },
+    {
+      "axis_id": "discriminating_proof_quality",
+      "description": "test would notice if the selected behavior were wrong",
+      "compensating": false,
+      "independently_observable": true
+    },
+    {
+      "axis_id": "change_scope_and_churn",
+      "description": "edit stays inside the allowed test surface",
+      "compensating": false,
+      "independently_observable": true
+    },
+    {
+      "axis_id": "review_findings_and_repair_burden",
+      "description": "independent review findings and follow-up repairs",
+      "compensating": false,
+      "independently_observable": true
+    },
+    {
+      "axis_id": "completion_terminal_state",
+      "description": "typed terminal completeness of the attempt",
+      "compensating": false,
+      "independently_observable": true
+    },
+    {
+      "axis_id": "time_and_bounded_resource_use",
+      "description": "elapsed effort and budget consumption",
+      "compensating": false,
+      "independently_observable": true
+    },
+    {
+      "axis_id": "maintainability_readability",
+      "description": "independent readability and maintenance quality",
+      "compensating": false,
+      "independently_observable": true
+    },
+    {
+      "axis_id": "false_confidence_or_unsupported_claim_events",
+      "description": "unsupported or false-success claims",
+      "compensating": false,
+      "independently_observable": true
+    }
+  ],
+  "non_authoritative_summary": null,
+  "adjudication": {
+    "grader_identities": [
+      "grader:independent-a"
+    ],
+    "rubric_id": "ripr-intervention-rubric.v1",
+    "rubric_version": "1",
+    "blinded_to_condition": true,
+    "min_independent_graders": 1,
+    "disagreement_policy": "retain_per_axis_do_not_average_correctness"
+  },
+  "invalid_attempt_rules": {
+    "outcome_cells": [
+      "pass",
+      "fail",
+      "partial",
+      "not_proven",
+      "invalid",
+      "instrument_failure"
+    ],
+    "retain_timeouts": true,
+    "retain_cancellations": true,
+    "retain_invalid_attempts": true,
+    "retain_missing_evidence": true,
+    "retain_instrument_failures": true,
+    "drop_timeouts": false,
+    "drop_invalid_attempts": false
+  },
+  "stopping_rule": {
+    "kind": "fixed_sample",
+    "planned_pair_count": 2,
+    "may_depend_on_interim_estimate": false,
+    "favorable_interim_stop": "forbidden"
+  },
+  "planned_analysis": {
+    "unit": "exact repository/head/canonical behavior task",
+    "compares": [
+      "control",
+      "ripr_assisted"
+    ],
+    "reports_exact_numerators_and_denominators": true
+  },
+  "claim_ceiling": {
+    "bounded_to_task_series": true,
+    "bounded_to_model_operator_profile": true,
+    "bounded_to_intervention_form": true,
+    "preregistration_proves_intervention_value": false
+  },
+  "protocol_lock": {
+    "immutable_after_first_attempt": true,
+    "first_attempt_recorded": false,
+    "mutation_without_new_study_id": "forbidden"
+  },
+  "non_claims": [
+    "no_agent_execution",
+    "no_repair_adjudication",
+    "no_pilot_result",
+    "no_intervention_value",
+    "no_generic_ab_platform"
+  ]
+}
