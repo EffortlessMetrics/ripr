@@ -238,6 +238,7 @@ pub use ripr::app::pr_summary::render_evidence_summary_md
 pub use ripr::app::pr_summary::render_pr_evidence_summary_json
 pub use ripr::app::reject_pr_evidence_error_packet
 pub use ripr::app::repo_seam_inventory_input
+pub use ripr::app::run_impacted_evidence_at
 pub use ripr::check_workspace
 pub use ripr::collect_context
 pub use ripr::config::CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION

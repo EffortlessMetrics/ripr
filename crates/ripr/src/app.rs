@@ -16,6 +16,7 @@ pub(crate) mod impacted_evidence;
 mod navigation;
 pub mod pr_evidence;
 mod progress;
+pub use impacted_evidence::run_impacted_evidence_at;
 pub use pr_evidence::reject_pr_evidence_error_packet;
 pub(crate) mod feedback;
 /// Shared PR-evidence summary projection used by the `ripr` binary and the

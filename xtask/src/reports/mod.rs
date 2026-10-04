@@ -13,7 +13,6 @@ mod eval_sweep_refresh;
 mod eval_sweep_report;
 mod first_pr;
 mod fixtures;
-mod impacted_evidence;
 mod index;
 mod issue_intake;
 mod lsp;
@@ -114,7 +113,6 @@ pub(crate) use fixtures::{
     json_string_values_for_key, next_pending_heading, normalize_golden_text, parse_reason,
     run_fixture, run_fixture_outputs, validate_bless_reason,
 };
-pub(crate) use impacted_evidence::impacted_evidence;
 pub(crate) use index::{reports, reports_index};
 pub(crate) use issue_intake::issue_intake;
 pub(crate) use lsp::lsp_cockpit_report;

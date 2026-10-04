@@ -36,22 +36,28 @@ impl Default for ImpactedEvidenceOptions {
 }
 
 pub(crate) fn run_impacted_evidence(args: &[String]) -> Result<(), String> {
+    run_impacted_evidence_at(&repo_root()?, args)
+}
+
+/// Shared entry point for `ripr impacted-evidence` (rooted at the working
+/// directory) and the compatibility `cargo xtask impacted-evidence` route
+/// (rooted at the xtask workspace), so refusal and routing logic has one owner.
+pub fn run_impacted_evidence_at(repo: &Path, args: &[String]) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         print_help();
         return Ok(());
     }
     let options = parse_options(args)?;
-    let repo = repo_root()?;
-    let input = require_pr_evidence(&repo, &options.pr_evidence)
-        .map_err(|err| refuse_with_stale_cleanup(&repo, err, options.check))?;
+    let input = require_pr_evidence(repo, &options.pr_evidence)
+        .map_err(|err| refuse_with_stale_cleanup(repo, err, options.check))?;
     let packet = packet_from_input(&options, &input);
     let json_text = serde_json::to_string_pretty(&packet)
         .map_err(|err| format!("serialize impacted evidence: {err}"))?;
     let markdown = render_impacted_evidence_markdown(&packet);
     if options.check {
-        check_outputs(&repo, &json_text, &markdown)
+        check_outputs(repo, &json_text, &markdown)
     } else {
-        write_outputs(&repo, &json_text, &markdown)
+        write_outputs(repo, &json_text, &markdown)
     }
 }
 
@@ -313,18 +319,18 @@ fn require_pr_evidence(repo: &Path, relative: &str) -> Result<PrEvidenceInput, S
                 Ok(input)
             } else {
                 Err(format!(
-                    "impacted-evidence: PR evidence {relative} lacks boolean summary.{}; a packet without routing fields would read as \"no mutation needed\". Regenerate it with `ripr pr-evidence`.",
+                    "impacted-evidence: PR evidence {relative} lacks boolean summary.{}; a packet without routing fields would read as \"no mutation needed\". Regenerate it with `ripr pr-evidence` (`cargo xtask ripr-pr` in the ripr repository).",
                     missing.join(" and summary.")
                 ))
             }
         }
         InputState::Missing => Err(format!(
             "impacted-evidence: PR evidence {relative} is missing or unreadable; refusing to route mutation from labels alone. \
-             Run `ripr pr-evidence` first or pass --pr-evidence <path>."
+             Run `ripr pr-evidence` (`cargo xtask ripr-pr` in the ripr repository) first or pass --pr-evidence <path>."
         )),
         InputState::Invalid(err) => Err(format!(
             "impacted-evidence: PR evidence {relative} is not valid JSON ({err}); \
-             regenerate it with `ripr pr-evidence` or pass --pr-evidence <path>."
+             regenerate it with `ripr pr-evidence` (`cargo xtask ripr-pr` in the ripr repository) or pass --pr-evidence <path>."
         )),
     }
 }
@@ -848,6 +854,32 @@ mod tests {
             "{message}"
         );
         assert!(message.contains(IMPACTED_JSON), "{message}");
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_root_owns_evidence_and_outputs() -> Result<(), String> {
+        let repo = env::temp_dir().join(format!(
+            "ripr-impacted-evidence-root-{}",
+            std::process::id()
+        ));
+        if repo.exists() {
+            fs::remove_dir_all(&repo).map_err(|err| format!("remove {}: {err}", repo.display()))?;
+        }
+        fs::create_dir_all(repo.join("target/ripr/pr"))
+            .map_err(|err| format!("create {}: {err}", repo.display()))?;
+        fs::write(
+            repo.join(DEFAULT_PR_EVIDENCE_JSON),
+            r#"{"summary":{"ripr_severe_gap":false,"requires_targeted_mutation":false}}"#,
+        )
+        .map_err(|err| err.to_string())?;
+        run_impacted_evidence_at(&repo, &[])?;
+        assert!(
+            repo.join(IMPACTED_JSON).exists(),
+            "outputs land under the given root"
+        );
+        assert!(repo.join(IMPACTED_MD).exists());
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
     }
