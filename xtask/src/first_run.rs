@@ -22,6 +22,8 @@ use crate::run::{CapturedOutput, capture_output_in_dir};
 
 const DEFAULT_OUT: &str = "target/ripr/first-run";
 const SCHEMA_VERSION: &str = "first_run.v1";
+const ROW_SCHEMA: &str = "first_run_row.v1";
+const ROWS_FILE: &str = "first-run-rows.jsonl";
 /// A developer is asked to review the generated workflow before committing it.
 const MAX_WORKFLOW_LINES: usize = 1500;
 const INSTALL_STDERR_LOG: &str = "install_published.stderr.log";
@@ -167,7 +169,7 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
         }
         root.join("bin").join("ripr").display().to_string()
     } else {
-        options.ripr.clone()
+        resolve_ripr(&options.ripr)?
     };
 
     let version = capture_output_in_dir(&ripr, &["--version".to_string()], &out, "ripr --version")
@@ -220,6 +222,26 @@ fn prepare_out_dir(out: &Path) -> Result<(), String> {
     fs::create_dir_all(out).map_err(|err| format!("failed to create {}: {err}", out.display()))?;
     fs::write(out.join(OUT_MARKER), "first-run output; safe to replace\n")
         .map_err(|err| format!("failed to mark {}: {err}", out.display()))
+}
+
+/// A bare name is a PATH lookup. A path is resolved against the invoking
+/// directory, because every step runs elsewhere and a relative path would
+/// otherwise fail as "No such file or directory" from the wrong directory.
+fn resolve_ripr(ripr: &str) -> Result<String, String> {
+    let path = Path::new(ripr);
+    // A Windows drive-relative name such as `C:ripr.exe` has no separator but
+    // is still not a bare command, so a path prefix also counts as a path.
+    let has_prefix = matches!(
+        path.components().next(),
+        Some(std::path::Component::Prefix(_))
+    );
+    if ripr.contains('/') || (cfg!(windows) && (ripr.contains('\\') || has_prefix)) {
+        std::path::absolute(path)
+            .map(|resolved| resolved.display().to_string())
+            .map_err(|err| format!("failed to resolve --ripr path {ripr}: {err}"))
+    } else {
+        Ok(ripr.to_string())
+    }
 }
 
 fn absolute(path: &Path) -> Result<PathBuf, String> {
@@ -620,12 +642,131 @@ fn finish(
         .map_err(|err| format!("failed to render first-run.json: {err}"))?;
     fs::write(out.join("first-run.json"), format!("{rendered}\n"))
         .map_err(|err| format!("failed to write first-run.json: {err}"))?;
+    let mut rows = String::new();
+    for row in scoreboard_rows(version, &setup, &cases) {
+        rows.push_str(&row.to_string());
+        rows.push('\n');
+    }
+    fs::write(out.join(ROWS_FILE), rows)
+        .map_err(|err| format!("failed to write {ROWS_FILE}: {err}"))?;
     let markdown = render_markdown(version, &setup, &cases);
     fs::write(out.join("first-run.md"), &markdown)
         .map_err(|err| format!("failed to write first-run.md: {err}"))?;
     print!("{markdown}");
     println!("\nWrote {}", out.join("first-run.json").display());
     Ok(())
+}
+
+/// One `first_run_row.v1` object per metric, keyed by ripr + case + step +
+/// metric, so a nightly scoreboard can gate on each without parsing the report.
+fn scoreboard_rows(version: &str, setup: &[StepResult], cases: &[CaseResult]) -> Vec<Value> {
+    let row = |case: &str,
+               step: &str,
+               metric: &str,
+               value: Value,
+               unit: &str,
+               budget: Value,
+               better: &str| {
+        json!({
+            "schema": ROW_SCHEMA,
+            "ripr": version,
+            "case": case,
+            "step": step,
+            "metric": metric,
+            "value": value,
+            "unit": unit,
+            "budget": budget,
+            "better": better,
+        })
+    };
+    let secs = |result: &StepResult| (result.secs * 100.0).round() / 100.0;
+    let mut rows = Vec::new();
+    for step in setup {
+        rows.push(row(
+            "_setup",
+            &step.name,
+            "secs",
+            json!(secs(step)),
+            "s",
+            Value::Null,
+            "lower",
+        ));
+        rows.push(row(
+            "_setup",
+            &step.name,
+            "exit",
+            json!(step.exit),
+            "code",
+            json!(0),
+            "equal",
+        ));
+    }
+    for case in cases {
+        for (step, flags) in &case.steps {
+            let name = step.name.as_str();
+            rows.push(row(
+                &case.name,
+                name,
+                "secs",
+                json!(secs(step)),
+                "s",
+                json!(budget_secs(name)),
+                "lower",
+            ));
+            rows.push(row(
+                &case.name,
+                name,
+                "exit",
+                json!(step.exit),
+                "code",
+                json!(0),
+                "equal",
+            ));
+            rows.push(row(
+                &case.name,
+                name,
+                "stdout_lines",
+                json!(step.stdout.lines().count()),
+                "lines",
+                json!(max_stdout_lines(name)),
+                "lower",
+            ));
+            rows.push(row(
+                &case.name,
+                name,
+                "friction_count",
+                json!(flags.len()),
+                "flags",
+                json!(0),
+                "lower",
+            ));
+            if name == "init_ci"
+                && let Some(lines) = case.workflow_lines
+            {
+                rows.push(row(
+                    &case.name,
+                    name,
+                    "workflow_lines",
+                    json!(lines),
+                    "lines",
+                    json!(MAX_WORKFLOW_LINES),
+                    "lower",
+                ));
+            }
+        }
+        if let Some(verdict) = case.verdict {
+            rows.push(row(
+                &case.name,
+                "check",
+                "verdict",
+                json!(verdict),
+                "class",
+                Value::Null,
+                "review_on_change",
+            ));
+        }
+    }
+    rows
 }
 
 /// Setup steps carry no time or size budget (an install legitimately takes
@@ -695,6 +836,79 @@ mod tests {
             stdout: stdout.to_string(),
             stderr: stderr.to_string(),
         }
+    }
+
+    #[test]
+    fn a_relative_ripr_path_is_resolved_and_a_bare_name_is_left_for_path_lookup()
+    -> Result<(), String> {
+        assert_eq!(resolve_ripr("ripr")?, "ripr");
+        // A backslash separates path parts only on Windows; elsewhere it is a
+        // legal file name character and the name stays a PATH lookup.
+        if cfg!(not(windows)) {
+            assert_eq!(resolve_ripr("weird\\name")?, "weird\\name");
+        }
+        let cwd = std::env::current_dir().map_err(|err| err.to_string())?;
+        assert_eq!(
+            resolve_ripr("target/debug/ripr")?,
+            cwd.join("target/debug/ripr").display().to_string()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn scoreboard_rows_carry_budgets_and_one_verdict() -> Result<(), String> {
+        let setup = vec![step("fetch_sources", 0, "", "", 1.234)];
+        let case = CaseResult {
+            name: "demo-1.0.0".to_string(),
+            steps: vec![
+                (step("check", 0, "a\nb\n", "", 0.5), vec![]),
+                (step("init_ci", 0, "", "", 0.1), vec!["x".to_string()]),
+            ],
+            verdict: Some("weakly_exposed"),
+            workflow_lines: Some(321),
+            workflow_installs_with_cargo: Some(false),
+        };
+        let rows = scoreboard_rows("ripr 0.0.0", &setup, &[case]);
+        let find = |case: &str, step: &str, metric: &str| {
+            rows.iter()
+                .find(|r| r["case"] == case && r["step"] == step && r["metric"] == metric)
+                .cloned()
+                .ok_or_else(|| format!("missing row {case}/{step}/{metric}"))
+        };
+        assert_eq!(
+            find("_setup", "fetch_sources", "secs")?["value"],
+            json!(1.23)
+        );
+        assert_eq!(
+            find("_setup", "fetch_sources", "secs")?["budget"],
+            Value::Null
+        );
+        assert_eq!(find("demo-1.0.0", "check", "secs")?["budget"], json!(10.0));
+        assert_eq!(
+            find("demo-1.0.0", "check", "stdout_lines")?["value"],
+            json!(2)
+        );
+        assert_eq!(
+            find("demo-1.0.0", "check", "stdout_lines")?["budget"],
+            json!(60)
+        );
+        assert_eq!(
+            find("demo-1.0.0", "init_ci", "friction_count")?["value"],
+            json!(1)
+        );
+        assert_eq!(
+            find("demo-1.0.0", "init_ci", "workflow_lines")?["budget"],
+            json!(1500)
+        );
+        assert_eq!(
+            find("demo-1.0.0", "check", "verdict")?["value"],
+            json!("weakly_exposed")
+        );
+        assert!(
+            rows.iter()
+                .all(|r| r["schema"] == json!("first_run_row.v1"))
+        );
+        Ok(())
     }
 
     #[test]

@@ -48,7 +48,7 @@ cargo xtask first-run --ripr path/to/ripr       # walk a built binary (a release
 Per crate it times `ripr doctor`, `ripr check`, `ripr check --format json`,
 `ripr pilot --root .`, the `ripr explain` command `check` printed (run as
 printed), `ripr init --ci github`, and a second `ripr doctor`. The report is
-written to `target/ripr/first-run/first-run.{json,md}`. A previous walk's directory is replaced; an `--out` the walk did not create is
+written to `target/ripr/first-run/first-run.{json,md}`, plus `first-run-rows.jsonl`: one `first_run_row.v1` object per metric (secs, exit, stdout_lines, friction_count, workflow_lines, verdict) for a scoreboard to gate on. A previous walk's directory is replaced; an `--out` the walk did not create is
 refused. `--ripr` defaults to the `ripr` on `PATH`.
 
 The walk observes and does not gate. It flags friction: a nonzero exit, stderr
