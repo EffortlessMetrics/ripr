@@ -492,10 +492,7 @@ fn real_package_install_custody_rejects_ignored_foreign_and_changed_bytes() -> R
     let mut changed = original.clone();
     changed.push(b' ');
     fs::write(&archive_path, changed).map_err(|error| error.to_string())?;
-    require_refusal(
-        archive.revalidate(),
-        "produced archive bytes changed after attribution",
-    )?;
+    require_refusal(archive.revalidate(), "byte budget")?;
     fs::write(&archive_path, original).map_err(|error| error.to_string())?;
     archive.revalidate()?;
     let installed = archive.install(&owned)?;
@@ -532,10 +529,7 @@ fn real_package_install_custody_rejects_ignored_foreign_and_changed_bytes() -> R
     let mut changed = executable.clone();
     changed.push(b' ');
     fs::write(installed.binary(), changed).map_err(|error| error.to_string())?;
-    require_refusal(
-        installed.revalidate(),
-        "installed executable bytes changed after custody capture",
-    )?;
+    require_refusal(installed.revalidate(), "byte budget")?;
     fs::write(installed.binary(), executable).map_err(|error| error.to_string())?;
     installed.revalidate()?;
     fs::write(

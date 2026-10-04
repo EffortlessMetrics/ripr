@@ -83,6 +83,31 @@ pub(super) fn read_snapshot(root: &Path, relative: &str, limit: u64) -> Result<V
     Ok(bytes)
 }
 
+/// Reuse the observed snapshot contract for artifacts already retained by the
+/// producer. A changed file cannot enlarge a custody reread beyond its admitted
+/// length plus one; this does not bound the initial producer capture.
+pub(super) fn revalidate_retained_file(
+    path: &Path,
+    expected: &[u8],
+    mismatch: &str,
+) -> Result<(), String> {
+    let root = path
+        .parent()
+        .ok_or_else(|| format!("{mismatch}: retained file has no parent"))?
+        .canonicalize()
+        .map_err(|error| format!("{mismatch}: resolve retained file parent: {error}"))?;
+    let relative = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| format!("{mismatch}: retained file name is not ordinary UTF-8"))?;
+    let bytes = read_snapshot(&root, relative, expected.len() as u64)
+        .map_err(|error| format!("{mismatch}: {error}"))?;
+    if bytes != expected {
+        return Err(mismatch.to_string());
+    }
+    Ok(())
+}
+
 // The limit applies to bytes actually read, even when a file grows after stat.
 // Snapshot metadata is observational: same-size/timestamp-preserving writes,
 // path swaps between checks and later mutation cannot be excluded without locks.
@@ -103,6 +128,114 @@ fn read_limited(reader: &mut impl Read, limit: u64) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+
+    struct OwnedFiles(PathBuf);
+
+    impl OwnedFiles {
+        fn new() -> Result<Self, String> {
+            let root = std::env::temp_dir().join(format!(
+                "ripr-retained-custody-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            if let Some(parent) = root.parent() {
+                std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+            }
+            std::fs::create_dir(&root).map_err(|error| error.to_string())?;
+            Ok(Self(root))
+        }
+        fn finish(self) -> Result<(), String> {
+            std::fs::remove_dir_all(&self.0)
+                .map_err(|error| format!("retained-file fixture cleanup: {error}"))
+        }
+    }
+
+    impl Drop for OwnedFiles {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn refusal(result: Result<(), String>, reason: &str) -> Result<(), String> {
+        match result {
+            Err(error) if error.contains(reason) => Ok(()),
+            result => Err(format!(
+                "expected retained-file refusal {reason}: {result:?}"
+            )),
+        }
+    }
+
+    #[test]
+    fn retained_custody_preserves_exact_empty_and_same_length_checks() -> Result<(), String> {
+        let fixture = OwnedFiles::new()?;
+        let path = fixture.0.join("ordinary bytes");
+        for bytes in [b"".as_slice(), b"1234".as_slice()] {
+            std::fs::write(&path, bytes).map_err(|error| error.to_string())?;
+            revalidate_retained_file(&path, bytes, "retained bytes changed")?;
+        }
+        for changed in [b"1235".as_slice(), b"123".as_slice()] {
+            std::fs::write(&path, changed).map_err(|error| error.to_string())?;
+            refusal(
+                revalidate_retained_file(&path, b"1234", "retained bytes changed"),
+                "retained bytes changed",
+            )?;
+        }
+        fixture.finish()
+    }
+
+    #[test]
+    fn retained_custody_refuses_growth_at_the_admitted_length() -> Result<(), String> {
+        let fixture = OwnedFiles::new()?;
+        let path = fixture.0.join("grown bytes");
+        std::fs::write(&path, b"12345").map_err(|error| error.to_string())?;
+        refusal(
+            revalidate_retained_file(&path, b"1234", "retained bytes changed"),
+            "retained bytes changed: custody input grown bytes exceeds its 4-byte budget",
+        )?;
+        // The zero-byte admitted case still refuses a one-byte replacement.
+        std::fs::write(&path, b"1").map_err(|error| error.to_string())?;
+        refusal(
+            revalidate_retained_file(&path, b"", "retained bytes changed"),
+            "exceeds its 0-byte budget",
+        )?;
+        fixture.finish()
+    }
+
+    #[test]
+    fn retained_custody_refuses_missing_and_directory_replacements() -> Result<(), String> {
+        let fixture = OwnedFiles::new()?;
+        let path = fixture.0.join("replacement");
+        refusal(
+            revalidate_retained_file(&path, b"", "retained bytes changed"),
+            "resolve custody input",
+        )?;
+        std::fs::create_dir(&path).map_err(|error| error.to_string())?;
+        refusal(
+            revalidate_retained_file(&path, b"", "retained bytes changed"),
+            "not a regular file",
+        )?;
+        fixture.finish()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn retained_custody_refuses_same_byte_symlink_replacements() -> Result<(), String> {
+        let fixture = OwnedFiles::new()?;
+        let path = fixture.0.join("replacement");
+        let target = fixture.0.join("same bytes");
+        std::fs::write(&target, b"1234").map_err(|error| error.to_string())?;
+        std::os::unix::fs::symlink(&target, &path).map_err(|error| error.to_string())?;
+        refusal(
+            revalidate_retained_file(&path, b"1234", "retained bytes changed"),
+            "not a regular file",
+        )?;
+        fixture.finish()
+    }
+
     #[test]
     fn actual_read_limit_rejects_growth_without_consuming_the_tail() -> Result<(), String> {
         let mut reader = std::io::Cursor::new(b"123456789".to_vec());

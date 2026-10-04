@@ -213,6 +213,10 @@ custody for the installed doctor and authentic corpus chain. Ordinary archive
 entries must match raw committed source blobs; transformed/sparse checkouts and
 unsupported generated entries refuse. These unlocked checks do not authenticate
 provenance, select a release pin, or complete the full qualification matrix.
+Archive, extracted-input and executable rereads are bounded by their admitted
+byte lengths and require ordinary files. Initial archive/executable capture and
+archive decompression retain their separate, currently unbounded memory surface;
+the reread bound is not a total package/install memory or storage budget.
 
 For `0.11.0`, the Rust gap-repair support claim remains `usable alpha`.
 Fixture, installed-package, packaged-editor, bounded test-only transaction, and

@@ -1,5 +1,5 @@
 //! Actual Cargo producer, archive inventory, install and executable custody.
-use super::{AdmittedSource, safe_artifact_path};
+use super::{AdmittedSource, input::revalidate_retained_file, safe_artifact_path};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::io::Read;
@@ -66,12 +66,11 @@ impl AttributedArchive {
 
     pub(crate) fn revalidate(&self) -> Result<(), String> {
         self.source.revalidate()?;
-        let fresh = std::fs::read(&self.path)
-            .map_err(|error| format!("revalidate package bytes: {error}"))?;
-        if fresh != self.bytes {
-            return Err("produced archive bytes changed after attribution".to_string());
-        }
-        Ok(())
+        revalidate_retained_file(
+            &self.path,
+            &self.bytes,
+            "produced archive bytes changed after attribution",
+        )
     }
 
     #[cfg(test)]
@@ -132,14 +131,7 @@ impl AttributedArchive {
             "qualified cargo install",
         )?;
         self.revalidate()?;
-        for (path, file) in &self.inventory {
-            if std::fs::read(extracted.join(path))
-                .map_err(|error| format!("revalidate install input: {error}"))?
-                != file.bytes
-            {
-                return Err("attributed extraction bytes changed during installation".to_string());
-            }
-        }
+        revalidate_extracted_files(&extracted, &self.inventory)?;
         let binary = install_root.join("bin").join(format!(
             "{}{}",
             self.source.package_name(),
@@ -157,6 +149,71 @@ impl AttributedArchive {
         };
         installed.revalidate()?;
         Ok(installed)
+    }
+}
+
+fn revalidate_extracted_files(
+    root: &Path,
+    inventory: &BTreeMap<String, ArchiveFile>,
+) -> Result<(), String> {
+    for (path, file) in inventory {
+        revalidate_retained_file(
+            &root.join(path),
+            &file.bytes,
+            "attributed extraction bytes changed during installation",
+        )?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct OwnedExtraction(PathBuf);
+
+    impl Drop for OwnedExtraction {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn extracted_install_inputs_refuse_growth_at_each_retained_length() -> Result<(), String> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "ripr-extraction-custody-{}-{stamp}",
+            std::process::id()
+        ));
+        if let Some(parent) = root.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        std::fs::create_dir(&root).map_err(|error| error.to_string())?;
+        let fixture = OwnedExtraction(root);
+        let mut inventory = BTreeMap::new();
+        for (path, bytes) in [("empty", b"".as_slice()), ("ordinary", b"1234".as_slice())] {
+            std::fs::write(fixture.0.join(path), bytes).map_err(|error| error.to_string())?;
+            inventory.insert(
+                path.to_string(),
+                ArchiveFile {
+                    bytes: bytes.to_vec(),
+                    mode: 0o644,
+                },
+            );
+        }
+        revalidate_extracted_files(&fixture.0, &inventory)?;
+        std::fs::write(fixture.0.join("ordinary"), b"12345").map_err(|error| error.to_string())?;
+        match revalidate_extracted_files(&fixture.0, &inventory) {
+            Err(error)
+                if error.contains("attributed extraction bytes changed during installation")
+                    && error.contains("exceeds its 4-byte budget") => {}
+            result => return Err(format!("wrong extracted-input growth refusal: {result:?}")),
+        }
+        std::fs::remove_dir_all(&fixture.0)
+            .map_err(|error| format!("extracted-input fixture cleanup: {error}"))
     }
 }
 
@@ -287,13 +344,11 @@ impl InstalledCandidate {
     }
     pub(crate) fn revalidate(&self) -> Result<(), String> {
         self.archive.revalidate()?;
-        if std::fs::read(&self.binary)
-            .map_err(|error| format!("revalidate installed executable: {error}"))?
-            != self.executable_bytes
-        {
-            return Err("installed executable bytes changed after custody capture".to_string());
-        }
-        Ok(())
+        revalidate_retained_file(
+            &self.binary,
+            &self.executable_bytes,
+            "installed executable bytes changed after custody capture",
+        )
     }
     pub(crate) fn binary(&self) -> &Path {
         &self.binary

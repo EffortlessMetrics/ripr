@@ -7804,6 +7804,12 @@ id = "RIPR-SPEC-0134"
 name = "repair artifact provenance"
 spec = "docs/specs/RIPR-SPEC-0134-repair-artifact-provenance.md"
 tests = [
+  "xtask/src/reports/release/candidate_harness/input.rs::tests::retained_custody_preserves_exact_empty_and_same_length_checks",
+  "xtask/src/reports/release/candidate_harness/input.rs::tests::retained_custody_refuses_growth_at_the_admitted_length",
+  "xtask/src/reports/release/candidate_harness/input.rs::tests::retained_custody_refuses_missing_and_directory_replacements",
+  "xtask/src/reports/release/candidate_harness/input.rs::tests::retained_custody_refuses_same_byte_symlink_replacements",
+  "xtask/src/reports/release/candidate_harness/archive.rs::tests::extracted_install_inputs_refuse_growth_at_each_retained_length",
+  "xtask/src/policy/release_targets/candidate_registry/tests/source_fixture.rs::real_package_install_custody_rejects_ignored_foreign_and_changed_bytes",
   "crates/ripr/src/agent/artifact.rs::tests::content_placeholder_is_fixed_width",
   "crates/ripr/src/agent/artifact.rs::tests::content_commitment_rejects_duplicate_fields",
   "crates/ripr/src/agent/artifact.rs::tests::content_commitment_rejects_non_hex_digest",
@@ -7869,6 +7875,8 @@ fixtures = [
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
 ]
 code = [
+  "xtask/src/reports/release/candidate_harness/archive.rs",
+  "xtask/src/reports/release/candidate_harness/input.rs",
   "crates/ripr/src/agent/artifact.rs",
   "crates/ripr/src/analysis/seam_cache.rs",
   "crates/ripr/src/config.rs",

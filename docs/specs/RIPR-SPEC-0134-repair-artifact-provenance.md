@@ -334,6 +334,17 @@ These are unlocked observations with the same stated race limits as manifest
 custody. The batch buffer and retained blob map can coexist transiently; the
 128 MiB limit names retained blob bytes, not total process resident memory.
 
+Archive, extracted install input and installed executable revalidation reuse
+that same regular-file snapshot reader. Each reread is capped at its already
+retained byte length plus one, including zero-length extracted files. Growth,
+truncation, same-length byte changes, missing files, directories and symlink
+replacements refuse; unchanged ordinary bytes remain accepted. Parent paths
+are resolved for each observation. This does not lock the parent hierarchy or
+authenticate the invoked executable, and the existing unlocked race limits
+remain. Initial archive/executable capture and archive decompression are not
+bounded by this reread contract; full package/install qualification remains
+separate from these controls.
+
 The 2026-10-02 review census had 5,411 ordinary blobs, 58,566,161 body bytes,
 1,949,776 bytes in the largest blob, and 647,658 metadata bytes. That observation
 motivates the limits and is not a promise about the final release candidate.
