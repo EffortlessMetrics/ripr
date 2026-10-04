@@ -48,6 +48,12 @@ cargo install --locked --git https://github.com/EffortlessMetrics/ripr-swarm rip
 
 From a `ripr-swarm` checkout, `cargo install --path crates/ripr` does the same.
 
+With [cargo-binstall](https://github.com/cargo-bins/cargo-binstall) installed,
+`cargo binstall ripr` uses the prebuilt 0.11.0 release archive when that asset is
+published, and compiles from source when it is not. Releases before 0.11.0 carry
+no binstall metadata. See [Install channels](INSTALL_CHANNELS.md) for what
+each channel serves today.
+
 For another installation method or a pinned server, see
 [Server provisioning](SERVER_PROVISIONING.md).
 
@@ -254,6 +260,8 @@ PR-facing packet. It does not run analysis or repair the code. See
 | The editor cannot start its server. | Check [Server provisioning](SERVER_PROVISIONING.md), especially the version and remote host. |
 | An attempt cannot continue. | Run `ripr agent status --root .` and follow [repair recovery](REPAIR_ATTEMPT.md). |
 | Analysis is partial or limited. | Read the limitation and suggested retry. Missing evidence is not a successful empty result. |
+
+Still stuck, or ripr gave a wrong or confusing answer? Open a [first run report](https://github.com/EffortlessMetrics/ripr/issues/new?template=first_run_report.yml) or a [wrong finding report](https://github.com/EffortlessMetrics/ripr/issues/new?template=wrong_verdict.yml) with your `ripr --version`.
 
 ## Known Limits
 

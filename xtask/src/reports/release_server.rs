@@ -62,7 +62,7 @@ pub(crate) fn release_server_archive(args: &[String]) -> Result<(), String> {
         ));
     }
     let version = normalize_release_version(&version);
-    let asset_name = format!("ripr-server-v{version}-{target}.{archive}");
+    let asset_name = server_asset_name(&version, &target, &archive);
     let dist_dir = Path::new("dist");
     fs::create_dir_all(dist_dir)
         .map_err(|err| format!("failed to create {}: {err}", dist_dir.display()))?;
@@ -474,3 +474,13 @@ pub(crate) fn read_trimmed(path: &Path) -> Result<String, String> {
         .map(|text| text.trim().to_string())
         .map_err(|err| format!("failed to read {}: {err}", path.display()))
 }
+
+/// Release asset name for one server archive. `[package.metadata.binstall]` in
+/// `crates/ripr/Cargo.toml` spells the same shape; `binstall_metadata` tests
+/// fail when the two drift.
+pub(crate) fn server_asset_name(version: &str, target: &str, archive: &str) -> String {
+    format!("ripr-server-v{version}-{target}.{archive}")
+}
+
+#[cfg(test)]
+mod binstall_metadata;
