@@ -19,7 +19,8 @@ use crate::analysis::syntax::parse_clean_source_file;
 use crate::analysis::syntax::ra::LineIndex;
 use crate::domain::{MissingDiscriminatorFact, OracleKind, OracleStrength, StageState};
 use ra_ap_syntax::ast::{self, HasName};
-use ra_ap_syntax::{AstNode, SourceFile, SyntaxNode};
+use ra_ap_syntax::{AstNode, AstPtr, Parse, SourceFile, SyntaxNode};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 pub(super) fn missing_field_value_facts(
@@ -104,14 +105,9 @@ fn owner_result_field_observation(
         &indexed.test.name,
         indexed.test.start_line,
     )?;
-    let parse = context.parsed_source(&indexed.test.file)?;
-    let lines = LineIndex::new(&facts.source);
-    let function = unique_test_fn(
-        &parse.tree(),
-        &indexed.test.name,
-        indexed.test.start_line,
-        &lines,
-    )?;
+    let parsed = context.parsed_test_file(&indexed.test.file)?;
+    let lines = &parsed.lines;
+    let function = parsed.unique_test_fn(&indexed.test.name, indexed.test.start_line)?;
     if owner_callee_is_ambiguous(
         &function,
         owner_name,
@@ -121,7 +117,7 @@ fn owner_result_field_observation(
     ) {
         return None;
     }
-    let bindings = direct_owner_result_bindings(&function, owner_name, &lines);
+    let bindings = direct_owner_result_bindings(&function, owner_name, lines);
     if bindings.is_empty() {
         return None;
     }
@@ -131,7 +127,7 @@ fn owner_result_field_observation(
             if oracle.line <= binding.line {
                 continue;
             }
-            if binding_invalidated_before(&function, binding, oracle.line, &lines) {
+            if binding_invalidated_before(&function, binding, oracle.line, lines) {
                 continue;
             }
             if !oracle_observes_binding_field(&oracle.text, &binding.name, field_name) {
@@ -155,26 +151,57 @@ struct OwnerResultBinding {
     range_end: ra_ap_syntax::TextSize,
 }
 
-fn unique_test_fn(
-    source: &SourceFile,
-    name: &str,
-    start_line: usize,
-    lines: &LineIndex,
-) -> Option<ast::Fn> {
-    let mut matches = source
-        .syntax()
-        .descendants()
-        .filter_map(ast::Fn::cast)
-        .filter(|function| {
-            function
-                .name()
-                .is_some_and(|fn_name| fn_name.text() == name)
-                && function
-                    .fn_token()
-                    .is_some_and(|token| lines.line(token.text_range().start()) == start_line)
-        });
-    let function = matches.next()?;
-    matches.next().is_none().then_some(function)
+/// One parsed test file: its tree, line index, and test-function lookup.
+/// Owner-result inspection runs once per seam and related test, so these
+/// are built once per file instead of re-walking the whole tree each time.
+pub(in crate::analysis::test_grip_evidence) struct ParsedTestFile {
+    parse: Parse<SourceFile>,
+    lines: LineIndex,
+    /// `fn` items by (name, line of the `fn` token): the first in source
+    /// order, or `None` when two or more share the key.
+    functions: BTreeMap<(String, usize), Option<AstPtr<ast::Fn>>>,
+}
+
+impl ParsedTestFile {
+    pub(in crate::analysis::test_grip_evidence) fn new(
+        parse: Parse<SourceFile>,
+        source: &str,
+    ) -> Self {
+        let lines = LineIndex::new(source);
+        let mut functions = BTreeMap::new();
+        for function in parse
+            .tree()
+            .syntax()
+            .descendants()
+            .filter_map(ast::Fn::cast)
+        {
+            let (Some(name), Some(token)) = (function.name(), function.fn_token()) else {
+                continue;
+            };
+            let key = (
+                name.text().to_string(),
+                lines.line(token.text_range().start()),
+            );
+            functions
+                .entry(key)
+                .and_modify(|slot| *slot = None)
+                .or_insert_with(|| Some(AstPtr::new(&function)));
+        }
+        Self {
+            parse,
+            lines,
+            functions,
+        }
+    }
+
+    /// The only `fn` named `name` whose `fn` token starts on `start_line`.
+    fn unique_test_fn(&self, name: &str, start_line: usize) -> Option<ast::Fn> {
+        let ptr = self
+            .functions
+            .get(&(name.to_string(), start_line))?
+            .as_ref()?;
+        Some(ptr.to_node(&self.parse.syntax_node()))
+    }
 }
 
 fn owner_callee_is_ambiguous(
@@ -721,5 +748,74 @@ fn observation_from_oracle(
             OracleStrength::Weak | OracleStrength::Smoke,
         ) => Some(OwnerResultObservation::Weak),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The memoized lookup must agree with a full walk that takes the first
+    /// matching `fn` in source order and refuses a second one.
+    fn walk_unique_test_fn(parsed: &ParsedTestFile, name: &str, line: usize) -> Option<ast::Fn> {
+        let mut matches = parsed
+            .parse
+            .tree()
+            .syntax()
+            .descendants()
+            .filter_map(ast::Fn::cast)
+            .filter(|function| {
+                function
+                    .name()
+                    .is_some_and(|fn_name| fn_name.text() == name)
+                    && function
+                        .fn_token()
+                        .is_some_and(|token| parsed.lines.line(token.text_range().start()) == line)
+            });
+        let function = matches.next()?;
+        matches.next().is_none().then_some(function)
+    }
+
+    #[test]
+    fn parsed_test_file_lookup_matches_a_full_tree_walk() -> Result<(), String> {
+        let source = "\
+#[test]
+fn alone() { assert!(true); }
+mod nested {
+    #[test]
+    fn alone() { assert!(true); }
+}
+fn twin() {} fn twin() {}
+fn outer() { fn inner() {} }
+";
+        let parse = parse_clean_source_file(source).ok_or("fixture must parse")?;
+        let parsed = ParsedTestFile::new(parse, source);
+        let probes = [
+            ("alone", 2),
+            ("alone", 5),
+            ("twin", 7),
+            ("outer", 8),
+            ("inner", 8),
+            ("alone", 3),
+            ("missing", 2),
+        ];
+        for (name, line) in probes {
+            let memo = parsed
+                .unique_test_fn(name, line)
+                .map(|f| f.syntax().text_range());
+            let walk = walk_unique_test_fn(&parsed, name, line).map(|f| f.syntax().text_range());
+            if memo != walk {
+                return Err(format!("{name}@{line}: memo {memo:?} != walk {walk:?}"));
+            }
+        }
+        // Discriminating cases: the nested twin resolves to its own line, and
+        // two `fn twin` on one line are ambiguous rather than first-wins.
+        if parsed.unique_test_fn("alone", 5).is_none() {
+            return Err("nested test fn must resolve".into());
+        }
+        if parsed.unique_test_fn("twin", 7).is_some() {
+            return Err("two fns on one line must stay ambiguous".into());
+        }
+        Ok(())
     }
 }

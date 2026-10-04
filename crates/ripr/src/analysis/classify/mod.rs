@@ -59,7 +59,6 @@ pub(in crate::analysis) use text::{
 // witnessing test (file:line) and the entry public-API symbol.
 pub(in crate::analysis) use transitive_reach::{
     MACRO_WITNESS_TEST_BODY_HOST, RUST_MACRO_REACH_MESSAGE, RUST_TRANSITIVE_REACH_MESSAGE,
-    find_macro_reach_witness, find_transitive_witness, macro_reach_limitation_detail_lines,
-    macro_reach_witness_pointer, transitive_reach_limitation_detail_lines,
-    transitive_reach_witness_pointer,
+    TransitiveReachIndex, macro_reach_limitation_detail_lines, macro_reach_witness_pointer,
+    transitive_reach_limitation_detail_lines, transitive_reach_witness_pointer,
 };

@@ -54,20 +54,28 @@
 
 use super::{FunctionFact, FunctionSourceRole, RustIndex, TestFact};
 use crate::analysis::syntax::{ModuleItemScopes, module_item_scopes, parser_oracles_for_function};
-use std::collections::BTreeMap;
+use rayon::prelude::*;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 pub(super) fn credit_same_file_assertion_helpers(index: &mut RustIndex) {
+    // Only files that hold a test can credit a helper, so only those are
+    // parsed, and the parses run on the rayon pool: every indexed file was
+    // parsed serially here before, which dominated warm diff-scoped checks.
+    let test_files: BTreeSet<&PathBuf> = index.tests().iter().map(|test| &test.file).collect();
+    let files = index
+        .files()
+        .iter()
+        .filter(|(file, facts)| !facts.used_lexical_fallback && test_files.contains(file))
+        .collect::<Vec<_>>();
+    let parsed = files
+        .par_iter()
+        .filter_map(|(file, facts)| Some((*file, *facts, module_item_scopes(&facts.source)?)))
+        .collect::<Vec<_>>();
     let mut helpers_by_file: BTreeMap<PathBuf, BTreeMap<String, Vec<&FunctionFact>>> =
         BTreeMap::new();
     let mut scopes_by_file: BTreeMap<PathBuf, ModuleItemScopes> = BTreeMap::new();
-    for (file, facts) in index.files().iter() {
-        if facts.used_lexical_fallback {
-            continue;
-        }
-        let Some(scopes) = module_item_scopes(&facts.source) else {
-            continue;
-        };
+    for (file, facts, scopes) in parsed {
         scopes_by_file.insert(file.clone(), scopes);
         let names = helpers_by_file.entry(file.clone()).or_default();
         for function in facts.functions.iter() {

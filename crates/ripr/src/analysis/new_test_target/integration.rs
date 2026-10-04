@@ -22,11 +22,22 @@ pub(super) fn integration_present_reason() -> &'static str {
 /// Admit one Integration proposal from indexed package, visibility, and
 /// Cargo discovery facts. Callers that already have a safe Existing target
 /// still invoke this so Missing reasons stay typed; ranking prefers Existing.
+#[cfg(test)]
 pub(crate) fn admit_new_integration_test(
     seam: &RepoSeam,
     index: &RustIndex,
 ) -> NewTestTargetAdmission {
-    match try_admit_new_integration_test(seam, index) {
+    let owner_fn = rust_index::find_owner_function(index, seam.file(), seam.display_line());
+    admit_new_integration_test_for_owner(seam, index, owner_fn)
+}
+
+/// [`admit_new_integration_test`] with the seam's owner already resolved.
+pub(super) fn admit_new_integration_test_for_owner(
+    seam: &RepoSeam,
+    index: &RustIndex,
+    owner_fn: Option<&FunctionSummary>,
+) -> NewTestTargetAdmission {
+    match try_admit_new_integration_test(seam, index, owner_fn) {
         Ok(proposal) => NewTestTargetAdmission {
             proposal: Some(proposal),
             region: None,
@@ -43,6 +54,7 @@ pub(crate) fn admit_new_integration_test(
 fn try_admit_new_integration_test(
     seam: &RepoSeam,
     index: &RustIndex,
+    owner_fn: Option<&FunctionSummary>,
 ) -> Result<NewTestTargetProposal, NewTestProposalBlocker> {
     if !matches!(
         seam.kind(),
@@ -55,8 +67,7 @@ fn try_admit_new_integration_test(
         return Err(NewTestProposalBlocker::InlineUnitOutOfScope);
     }
 
-    let owner_fn = rust_index::find_owner_function(index, seam.file(), seam.display_line())
-        .ok_or(NewTestProposalBlocker::OwnerUnresolved)?;
+    let owner_fn = owner_fn.ok_or(NewTestProposalBlocker::OwnerUnresolved)?;
     if owner_fn.source_role != FunctionSourceRole::Production {
         return Err(NewTestProposalBlocker::OwnerUnresolved);
     }

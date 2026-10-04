@@ -65,7 +65,10 @@ pub(crate) fn retain_finding_projection(finding: &Finding) {
 /// Keep the classified-seam adapter on the production inventory path without
 /// changing public class or cache bytes.
 pub(crate) fn retain_classified_seams(seams: &[ClassifiedSeam], input: AdapterInput) {
-    for seam in seams {
+    use rayon::prelude::*;
+    // Each projection is independent and its result is only asserted, so
+    // the check runs on the rayon pool instead of serially per seam.
+    seams.par_iter().for_each(|seam| {
         let witness = if input == AdapterInput::workspace_complete_current() {
             from_classified_seam(seam)
         } else {
@@ -77,7 +80,7 @@ pub(crate) fn retain_classified_seams(seams: &[ClassifiedSeam], input: AdapterIn
             "behavior evidence witness digest must match canonical bytes"
         );
         let _ = valid;
-    }
+    });
 }
 
 pub(crate) fn repo_adapter_input(partial: bool) -> AdapterInput {

@@ -188,6 +188,12 @@ pub(crate) fn with_overlay<T>(
     work()
 }
 
+/// Capture this thread's overlay before dispatching work to another thread,
+/// which then installs it with [`with_overlay`].
+pub(crate) fn current_overlay() -> Option<Arc<CommittedSourceOverlay>> {
+    CURRENT_OVERLAY.with(|slot| slot.borrow().clone())
+}
+
 /// Root-relative paths the installed overlay serves from `HEAD` although the
 /// working tree lacks them; empty without an overlay for `root`. A caller
 /// that lists the working tree adds these to see the committed file set.

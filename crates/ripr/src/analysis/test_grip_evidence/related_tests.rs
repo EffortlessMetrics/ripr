@@ -1,5 +1,6 @@
 use super::*;
 use crate::analysis::classify::{impl_self_type_name, method_call_resolves_to_impl_type};
+use std::sync::Arc;
 
 pub(super) mod context;
 
@@ -52,14 +53,14 @@ pub(super) struct OwnerContext {
     file_stem: String,
     module_path: Option<String>,
     prefix: Option<String>,
-    fixture_names: BTreeSet<String>,
+    fixture_names: Arc<BTreeSet<String>>,
     impl_type: Option<String>,
     same_name_count: usize,
 }
 
 impl OwnerContext {
     fn resolve(seam: &RepoSeam, context: &CompactGripContext<'_>) -> Self {
-        let owner_fn = find_owner_function(seam, context.index);
+        let owner_fn = context.owner_function(seam.file(), seam.display_line());
         let name = owner_fn.map(|f| f.name.as_str()).unwrap_or("").to_string();
         let name_lower = name.to_ascii_lowercase();
         let owner_file = owner_fn.map(|f| f.file.as_path());
@@ -67,8 +68,7 @@ impl OwnerContext {
         let module_path = owner_file.and_then(|file| module_path_for_index(context.index, file));
         let prefix = owner_fn.and_then(|f| package_prefix(&f.file));
         let fixture_names = owner_file
-            .and_then(|file| context.index.files().get(file))
-            .map(fixture_names_for_owner_file)
+            .map(|file| context.fixture_names_for_owner_file(file))
             .unwrap_or_default();
         let impl_type = owner_fn.and_then(|owner| impl_self_type_name(&owner.id.0));
         let same_name_count = context.function_name_count(&name);
@@ -463,7 +463,7 @@ pub(super) fn match_fixture_owner_affinity(
     prefix: Option<&str>,
     owner: &OwnerContext,
 ) {
-    for fixture_name in &owner.fixture_names {
+    for fixture_name in owner.fixture_names.iter() {
         if let Some(indices) = context.tests_by_call_name.get(fixture_name) {
             for test_index in indices {
                 insert_related_candidate(
@@ -552,9 +552,10 @@ pub(super) fn sort_related_tests_for_seam(
     context: &CompactGripContext<'_>,
     related: &mut [(&CompactTest<'_>, RelationReason)],
 ) {
+    let owner = seam_owner_activation(seam, context);
     related.sort_by_cached_key(|entry| {
         let (indexed, reason) = *entry;
-        related_test_rank_key(seam, context, indexed, reason)
+        related_test_rank_key(seam, context, indexed, reason, owner.as_ref())
     });
 }
 
@@ -563,13 +564,14 @@ pub(super) fn related_test_rank_key(
     context: &CompactGripContext<'_>,
     indexed: &CompactTest<'_>,
     reason: RelationReason,
+    owner: Option<&SeamOwnerActivation<'_>>,
 ) -> RelatedTestRankKey {
     let (_oracle_kind, oracle_strength) = best_oracle(indexed.test, seam);
     RelatedTestRankKey {
         relation_confidence: reason.confidence().rank(),
         relation_reason: reason.priority(),
         oracle_strength: Reverse(oracle_strength.rank()),
-        activation_overlap: Reverse(activation_overlap_score(seam, context, indexed)),
+        activation_overlap: Reverse(activation_overlap_score(seam, context, indexed, owner)),
         file: indexed.test.file.clone(),
         test_name: indexed.test.name.clone(),
         line: indexed.test.start_line,
@@ -870,13 +872,6 @@ pub(super) fn is_fixture_named(name: &str) -> bool {
     let prefixes = ["fixture_", "setup_", "make_", "build_", "new_", "mock_"];
     let suffixes = ["_fixture", "_factory"];
     prefixes.iter().any(|p| name.starts_with(p)) || suffixes.iter().any(|s| name.ends_with(s))
-}
-
-pub(super) fn find_owner_function<'a>(
-    seam: &RepoSeam,
-    index: &'a RustIndex,
-) -> Option<&'a FunctionSummary> {
-    rust_index::find_owner_function(index, seam.file(), seam.display_line())
 }
 
 pub(super) fn normalize_path(path: &Path) -> String {
