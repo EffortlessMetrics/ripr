@@ -11872,3 +11872,40 @@ metrics = [
   "intervention_study_valid_protocols",
   "intervention_study_falsifiers_rejected",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0217"
+name = "Repair-attempt discovery selection and fresh-process resume"
+spec = "docs/specs/RIPR-SPEC-0217-agent-attempt-status-selection.md"
+tests = [
+  "crates/ripr/src/app/agent_status.rs::tests::agent_attempt_status_selects_and_resumes_an_awaiting_attempt",
+  "crates/ripr/src/app/agent_status.rs::tests::agent_attempt_status_types_a_missing_attempt_instead_of_erroring",
+  "crates/ripr/src/app/agent_status.rs::tests::agent_attempt_status_uses_only_the_selected_store",
+  "crates/ripr/src/app/agent_status.rs::tests::agent_attempt_status_never_claims_resumable_past_a_moved_head",
+  "crates/ripr/src/app/agent_status.rs::tests::agent_attempt_status_renders_byte_stable_across_repeated_reads",
+  "crates/ripr/src/cli/agent.rs::tests::agent_status_parses_exact_attempt_selection_and_rejects_empty",
+  "crates/ripr/tests/cli_smoke.rs::agent_status_attempt_resumes_and_finishes_one_attempt_across_fresh_processes",
+  "crates/ripr/tests/cli_smoke.rs::agent_status_attempt_reports_historical_after_head_moves",
+  "crates/ripr/tests/cli_smoke.rs::agent_status_attempt_keeps_same_seam_attempts_distinct_by_id",
+  "crates/ripr/tests/cli_smoke.rs::agent_status_attempt_round_trips_an_explicit_store",
+  "crates/ripr/tests/cli_smoke.rs::agent_status_attempt_types_a_malformed_row_and_isolates_valid_rows",
+  "crates/ripr/tests/cli_smoke.rs::agent_status_attempt_never_reconstructs_a_tampered_result",
+  "crates/ripr/tests/cli_smoke.rs::agent_status_attempt_reports_legacy_manifest_at_compatibility_strength",
+  "crates/ripr/tests/cli_help_hierarchy.rs::agent_status_help_names_the_selected_store_and_exact_attempt_selection",
+]
+fixtures = [
+]
+code = [
+  "crates/ripr/src/app/agent_status.rs",
+  "crates/ripr/src/cli/agent.rs",
+  "crates/ripr/src/cli/commands/agent.rs",
+  "crates/ripr/src/cli/help/agent.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0217-agent-attempt-status-selection.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/REPAIR_ATTEMPT.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+]

@@ -446,12 +446,14 @@ fn agent_repair_help_names_the_primary_transaction_and_its_limits() -> Result<()
 }
 
 #[test]
-fn agent_status_help_names_the_selected_store() -> Result<(), String> {
+fn agent_status_help_names_the_selected_store_and_exact_attempt_selection() -> Result<(), String> {
     let stdout = normalized(&rendered_help(&["agent", "status", "--help"])?);
     for needle in [
-        "Usage: ripr agent status [--root PATH] [--store PATH] [--json] [--out PATH]",
+        "Usage: ripr agent status [--root PATH] [--store PATH] [--attempt ID] [--json] [--out PATH]",
         "--store PATH Explicit repair-attempt store, resolved against --root.",
         "Missing explicit stores do not fall back to the default.",
+        "--attempt ID Select exactly one repair attempt by ID and report its",
+        "corrupt_or_unavailable result, never as another attempt's state.",
     ] {
         assert_contains(
             "agent status help (`ripr agent status --help`)",

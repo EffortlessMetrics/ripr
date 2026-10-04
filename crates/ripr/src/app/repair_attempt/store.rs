@@ -104,13 +104,6 @@ impl RepairAttemptStoreRef {
         &self.resolved_path
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "location class is part of the typed store identity; tests pin default vs explicit"
-        )
-    )]
     pub(crate) fn location_class(&self) -> RepairAttemptStoreLocationClass {
         self.location_class
     }
@@ -134,13 +127,6 @@ impl RepairAttemptStoreRef {
         self.filesystem_identity.as_deref()
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "store limitations are retained on the runtime ref; tests pin the non-claim"
-        )
-    )]
     pub(crate) fn limitations(&self) -> &[String] {
         &self.limitations
     }

@@ -57,6 +57,7 @@ map is:
 | `ripr agent repair --phase after --json` success stdout | `schema_version` | `0.1` |
 | `ripr agent repair --phase after --json` refusal stdout (`repair_after_refusal`) | `schema_version` | `0.2` |
 | `ripr agent status` | `schema_version` | `0.1` |
+| `ripr agent status --attempt <id>` (`agent_attempt_status`; RIPR-SPEC-0217, #4798) | `schema_version` | `0.1` |
 | `ripr agent review-summary` | `schema_version` | `0.1` |
 | `ripr receipt write/check` | `schema_version` | `0.1` |
 | `ripr feedback record/export` | `schema_version` | `0.1` |
@@ -12849,6 +12850,107 @@ Markdown output contains the same status, recovered seam, artifact table, next
 command, warnings, and static-only limits. Generated CI writes it to
 `target/ripr/workflow/agent-status.md` next to
 `target/ripr/workflow/agent-status.json`.
+
+### Exact attempt selection (`agent_attempt_status`, RIPR-SPEC-0217, #4798)
+
+`ripr agent status --root <workspace> --attempt <repair-attempt-id>` selects
+exactly one attempt from the resolved attempt store (with `--store`, the
+explicit store from RIPR-SPEC-0195; the default store otherwise) and reports
+one typed attempt state instead of the inventory list. Both surfaces derive
+from one normalized DTO; reordered directory traversal cannot change the
+bytes. The command stays read-only: it never finishes, restarts, rewrites, or
+deletes the attempt it inspects.
+
+```text
+ripr agent status --root . --attempt repair-attempt-0123456789abcdef01234567
+ripr agent status --root . --attempt repair-attempt-0123456789abcdef01234567 --json
+```
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "agent_attempt_status",
+  "root": ".",
+  "store": {
+    "locator": "target/ripr/repair-attempts",
+    "location_class": "default_repository",
+    "currentness": "present"
+  },
+  "attempt": {
+    "attempt_id": "repair-attempt-0123456789abcdef01234567",
+    "seam_id": "…",
+    "manifest": "target/ripr/repair-attempts/repair-attempt-0123456789abcdef01234567/attempt.json",
+    "state": "awaiting_edit",
+    "status_class": "awaiting_edit",
+    "head_current": true,
+    "currentness": "current",
+    "evidence_head": "…",
+    "unreadable_reason": null,
+    "receipt": null,
+    "last_after_refusal": null,
+    "diverged_recovery": null
+  },
+  "next_action": {
+    "step": "repair_attempt_after",
+    "artifact": "…",
+    "reason": "…",
+    "command": "ripr agent repair --root . --attempt … --phase after"
+  },
+  "test_run": null,
+  "claim_boundary": ["status is read-only: …"],
+  "limitations": ["…"],
+  "non_claims": ["…"]
+}
+```
+
+Field contract:
+
+- `kind` is always `agent_attempt_status`; the envelope is distinct from the
+  inventory document so a caller can parse stdout once.
+- `store` is the typed #4797 store identity (locator, location class,
+  currentness), not a re-derived path. An attempt ID selected through the
+  wrong store is `corrupt_or_unavailable` there, never silently resolved.
+- `attempt.state` is the manifest's operational state; it is `null` only when
+  the manifest could not be validated at all.
+- `attempt.status_class` is the resume vocabulary: `awaiting_edit`,
+  `prepared`, `finished_current`, `finished_historical`, `stale`,
+  `incomparable`, `failed`, `limited`, `corrupt_or_unavailable`, and
+  `legacy_compatibility_only`. The class is never stronger than the receipt
+  the attempt retained: `finished_current`/`finished_historical` require a
+  digest-bound attempt-local receipt whose reading shows the gap closed,
+  split by whether `HEAD` is still the head the after phase recorded (a
+  moved `HEAD` downgrades to `finished_historical`; the retained result
+  stays readable and is explicitly not current proof). `limited` covers a
+  receipt that does not show the gap closed and states whose currentness
+  cannot be read. `corrupt_or_unavailable` covers missing, tampered, or
+  unbound attempt-local terminal evidence — status never falls back to
+  another attempt's one-slot compatibility receipt. `legacy_compatibility_only`
+  covers manifests without `terminal_artifacts`: any reading travels only
+  through the compatibility projection, which is exactly the strength it
+  earned. A missing, malformed, or unbound selected manifest is also
+  `corrupt_or_unavailable`, with `unreadable_reason` naming the refused
+  artifact; the store's other rows are not affected and do not lend it
+  state.
+- `attempt.currentness` is `current`, `historical`, or `unknown`, derived
+  from `HEAD` alone and reported separately from the class.
+- `attempt.receipt` is the same receipt object the inventory document
+  reports (`null` unless the attempt is `ready_to_finish`).
+- `next_action` is one exact next or recovery command: the after phase's
+  recorded command for `awaiting_edit`, a typed restart (or head-recovery)
+  command for `stale`, `incomparable`, `failed`, `prepared`, and the
+  recovery routes, and `null` for terminal classes and for states where no
+  honest action names itself. Commands bind the selected repository root
+  (an invocation spelling like `--root .` becomes the bound absolute root),
+  so a pasted command resumes the selected attempt from any working
+  directory; the report's own `root` field keeps the invocation spelling.
+- `claim_boundary`, `limitations`, and `non_claims` carry the read-only
+  non-claim, the retained-evidence non-claim (a finished result does not
+  establish the repair is correct or that any project test ran), the
+  manifest's own limitations and non-claims, and the store resolver's
+  non-claims. The Markdown rendering prints the same fields.
 
 ## Agent Review Summary
 

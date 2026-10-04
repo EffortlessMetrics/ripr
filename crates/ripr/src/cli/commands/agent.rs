@@ -595,6 +595,9 @@ fn run_agent_status(options: AgentStatusOptions) -> Result<(), String> {
             ));
         }
     }
+    if let Some(attempt) = options.attempt_id.as_deref() {
+        return run_agent_attempt_status(&options, attempt);
+    }
     let report = app::agent_status::build_agent_status_report_from(
         &options.root,
         &options.root,
@@ -605,6 +608,31 @@ fn run_agent_status(options: AgentStatusOptions) -> Result<(), String> {
         print!("{rendered}");
     } else {
         let rendered = app::agent_status::render_agent_status_markdown(&report);
+        print!("{rendered}");
+    }
+    Ok(())
+}
+
+/// The #4798 exact-attempt surface: `ripr agent status --attempt <id>`
+/// returns one typed attempt state, its currentness posture, and one exact
+/// next or recovery action, from repository artifacts alone. Read-only like
+/// the inventory status; it never finishes, restarts, rewrites, or deletes
+/// the attempt it inspects. The ID is validated up front so a malformed
+/// selector fails closed instead of reading anything.
+fn run_agent_attempt_status(options: &AgentStatusOptions, attempt: &str) -> Result<(), String> {
+    let attempt_id = crate::app::repair_attempt::RepairAttemptId::parse(attempt.to_string())
+        .map_err(|error| format!("agent status --attempt: {error}"))?;
+    let report = app::agent_status::build_agent_attempt_status(
+        &options.root,
+        &options.root,
+        options.store.as_deref(),
+        &attempt_id,
+    )?;
+    if options.json {
+        let rendered = app::agent_status::render_agent_attempt_status_json(&report)?;
+        print!("{rendered}");
+    } else {
+        let rendered = app::agent_status::render_agent_attempt_status_markdown(&report);
         print!("{rendered}");
     }
     Ok(())

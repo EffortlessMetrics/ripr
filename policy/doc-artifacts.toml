@@ -1173,3 +1173,10 @@ path = "docs/specs/RIPR-SPEC-0216-matched-ripr-intervention-study-preregistratio
 status = "proposed"
 owner = "product-eval"
 standalone_reason = "Issue #4649 records the matched RIPR intervention-study preregistration: a frozen protocol names study identity, assignment, equal budgets, the named RIPR evidence surface, leakage controls, retries, stopping, non-compensating outcome axes, and claim ceiling before outcomes exist, without executing agents, adjudicating repairs, or publishing a pilot. Renumbered from RIPR-SPEC-0185, RIPR-SPEC-0205 and RIPR-SPEC-0215 after main landed other specs under those numbers first."
+[[artifact]]
+id = "RIPR-SPEC-0217"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0217-agent-attempt-status-selection.md"
+status = "proposed"
+owner = "product-agent"
+standalone_reason = "Issue #4798 records the R2 repair-attempt discovery/resume slice: `ripr agent status --attempt <id>` selects exactly one attempt from the resolved RIPR-SPEC-0195 store and reports one typed state plus one exact next or recovery action from repository artifacts alone, staying fail-closed (a missing, malformed, or unbound attempt is the typed corrupt_or_unavailable result naming the refused artifact, never state borrowed from other rows or another attempt's compatibility receipt), never stronger than the retained receipt (finished_current/finished_historical split by HEAD currentness, legacy manifests visible only at legacy_compatibility_only strength, tampered terminal evidence never resurrected through the one-slot projection), read-only end to end, with human and JSON renderings derived from one normalized byte-stable DTO reusable by the #2928 editor shell."

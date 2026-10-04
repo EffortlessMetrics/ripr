@@ -44,7 +44,8 @@ const CARGO_WORKSPACE_LOCKFILE: &str = "Cargo.lock";
 
 pub(crate) use store::{
     RepairAttemptStoreAccess, RepairAttemptStoreCurrentness, RepairAttemptStoreIdentity,
-    RepairAttemptStoreRef, quoted_store_flag, quoted_store_flag_from_identity, resolve_store,
+    RepairAttemptStoreLocationClass, RepairAttemptStoreRef, quoted_store_flag,
+    quoted_store_flag_from_identity, resolve_store,
 };
 
 static ATTEMPT_NONCE: AtomicU64 = AtomicU64::new(0);
@@ -866,6 +867,26 @@ pub(crate) fn load_attempt_terminal_receipt(
             }
         };
     };
+    // The retained verify artifact is part of the bound terminal evidence,
+    // not decoration: a declared artifact that is missing or digest-mismatched
+    // makes the whole terminal record unavailable, so status never reads
+    // `finished_*` from a receipt whose verify half was deleted or replaced.
+    // Non-legacy retention requires both roles: the before commitment
+    // excludes `terminal_artifacts`, so a receipt without its verify
+    // descriptor is unavailable, not issued.
+    let Some(verify_artifact) = find_terminal_artifact_by_role(manifest, TERMINAL_VERIFY_ROLE)
+    else {
+        return AttemptTerminalReceipt::Unavailable {
+            path: None,
+            reason: "repair attempt declares terminal artifacts but no agent_verify".to_string(),
+        };
+    };
+    if let Err(reason) = read_terminal_artifact_bytes(root, manifest, verify_artifact) {
+        return AttemptTerminalReceipt::Unavailable {
+            path: Some(verify_artifact.path.clone()),
+            reason,
+        };
+    }
     match read_bound_terminal_receipt(root, manifest, receipt_artifact) {
         Ok((path, value)) => AttemptTerminalReceipt::Issued { path, value },
         Err(reason) => AttemptTerminalReceipt::Unavailable {
@@ -4207,30 +4228,106 @@ mod tests {
     fn terminal_receipt_path_escape_is_unavailable() -> Result<(), String> {
         let root = test_repo_root("retain-escape")?;
         let prepared = prepare_sample_attempt(&root, "seam:sample", "escape")?;
-        let mut finished = finish_sample_attempt(&root, &prepared)?;
-        let outside = root.join("target/ripr/reports/agent-receipt.json");
-        std::fs::create_dir_all(
-            outside
-                .parent()
-                .ok_or_else(|| "receipt parent".to_string())?,
-        )
-        .map_err(|error| format!("create reports failed: {error}"))?;
+        let finished = finish_sample_attempt(&root, &prepared)?;
+        // Retain a complete pair through the production path; the escape
+        // below is the only defect under test.
+        let reports = root.join("target/ripr/reports");
+        std::fs::create_dir_all(&reports)
+            .map_err(|error| format!("create {} failed: {error}", reports.display()))?;
+        let receipt_source = reports.join("agent-receipt.json");
+        let verify_source = root.join("target/ripr/workflow/agent-verify.json");
+        std::fs::write(&receipt_source, bound_receipt_bytes(&finished)?)
+            .map_err(|error| format!("write receipt failed: {error}"))?;
+        std::fs::write(&verify_source, b"{\"kind\":\"verify\"}\n")
+            .map_err(|error| format!("write verify failed: {error}"))?;
+        retain_terminal_evidence(
+            &root,
+            &finished.repair_attempt_id,
+            &[
+                BeforeArtifactSource {
+                    role: TERMINAL_RECEIPT_ROLE,
+                    path: &receipt_source,
+                },
+                BeforeArtifactSource {
+                    role: TERMINAL_VERIFY_ROLE,
+                    path: &verify_source,
+                },
+            ],
+        )?;
+        let mut retained = load_repair_attempt_manifest(&root, &finished.repair_attempt_id)?;
+        // Point the retained receipt at a same-bytes file outside the attempt.
+        let outside = reports.join("other-receipt.json");
         std::fs::write(&outside, bound_receipt_bytes(&finished)?)
             .map_err(|error| format!("write outside receipt failed: {error}"))?;
-        finished.terminal_artifacts = vec![RepairAttemptArtifact {
-            role: TERMINAL_RECEIPT_ROLE.to_string(),
-            path: "target/ripr/reports/agent-receipt.json".to_string(),
-            sha256: sha256_bytes(&std::fs::read(&outside).map_err(|error| error.to_string())?),
-            bytes: std::fs::metadata(&outside)
-                .map_err(|error| error.to_string())?
-                .len(),
-        }];
-        match load_attempt_terminal_receipt(&root, &finished) {
+        let receipt = retained
+            .terminal_artifacts
+            .iter_mut()
+            .find(|artifact| artifact.role == TERMINAL_RECEIPT_ROLE)
+            .ok_or("retained pair has no agent_receipt")?;
+        receipt.path = display_path(
+            outside
+                .strip_prefix(&root)
+                .map_err(|error| format!("outside receipt is not under root: {error}"))?,
+        );
+        match load_attempt_terminal_receipt(&root, &retained) {
             AttemptTerminalReceipt::Unavailable { reason, .. }
                 if reason.contains("escapes its attempt") => {}
             other => {
                 return Err(format!(
                     "a path outside the attempt must be unavailable, not {other:?}"
+                ));
+            }
+        }
+        std::fs::remove_dir_all(&root)
+            .map_err(|error| format!("remove {} failed: {error}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn terminal_receipt_without_verify_descriptor_is_unavailable() -> Result<(), String> {
+        let root = test_repo_root("retain-no-verify-role")?;
+        let prepared = prepare_sample_attempt(&root, "seam:sample", "no-verify-role")?;
+        let finished = finish_sample_attempt(&root, &prepared)?;
+        let reports = root.join("target/ripr/reports");
+        std::fs::create_dir_all(&reports)
+            .map_err(|error| format!("create {} failed: {error}", reports.display()))?;
+        let receipt_source = reports.join("agent-receipt.json");
+        let verify_source = root.join("target/ripr/workflow/agent-verify.json");
+        std::fs::write(&receipt_source, bound_receipt_bytes(&finished)?)
+            .map_err(|error| format!("write receipt failed: {error}"))?;
+        std::fs::write(&verify_source, b"{\"kind\":\"verify\"}\n")
+            .map_err(|error| format!("write verify failed: {error}"))?;
+        retain_terminal_evidence(
+            &root,
+            &finished.repair_attempt_id,
+            &[
+                BeforeArtifactSource {
+                    role: TERMINAL_RECEIPT_ROLE,
+                    path: &receipt_source,
+                },
+                BeforeArtifactSource {
+                    role: TERMINAL_VERIFY_ROLE,
+                    path: &verify_source,
+                },
+            ],
+        )?;
+        let mut retained = load_repair_attempt_manifest(&root, &finished.repair_attempt_id)?;
+        match load_attempt_terminal_receipt(&root, &retained) {
+            AttemptTerminalReceipt::Issued { .. } => {}
+            other => return Err(format!("the retained pair must read issued: {other:?}")),
+        }
+        // The before commitment excludes `terminal_artifacts`, so dropping the
+        // verify descriptor models a manifest that lost its verify role; the
+        // surviving receipt alone must not read `finished_*`.
+        retained
+            .terminal_artifacts
+            .retain(|artifact| artifact.role != TERMINAL_VERIFY_ROLE);
+        match load_attempt_terminal_receipt(&root, &retained) {
+            AttemptTerminalReceipt::Unavailable { reason, .. }
+                if reason.contains("no agent_verify") => {}
+            other => {
+                return Err(format!(
+                    "a receipt without its verify role must be unavailable, not {other:?}"
                 ));
             }
         }

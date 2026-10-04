@@ -208,13 +208,22 @@ change cache behavior, or touch LSP/MCP surfaces.
 "#;
 pub(super) const AGENT_STATUS_HELP: &str = r#"Report local agent-loop artifact state and the next command to run.
 
-Usage: ripr agent status [--root PATH] [--store PATH] [--json] [--out PATH]
+Usage: ripr agent status [--root PATH] [--store PATH] [--attempt ID] [--json] [--out PATH]
 
 Options:
   --root PATH      Workspace root. Defaults to current directory.
   --store PATH     Explicit repair-attempt store, resolved against --root.
                    Defaults to `target/ripr/repair-attempts`. Missing explicit
                    stores do not fall back to the default.
+  --attempt ID     Select exactly one repair attempt by ID and report its
+                   typed state, currentness posture, and one exact next or
+                   recovery action. Without it, status lists every attempt in
+                   the store and selects a next command only when that choice
+                   is unambiguous; several active attempts are never resolved
+                   by newest, first, same seam, or most recently modified. A
+                   malformed or unbound attempt is reported as the typed
+                   corrupt_or_unavailable result, never as another attempt's
+                   state.
   --json           Emit the machine-readable status report. Human Markdown is the default.
   --out PATH       Must resolve to the default workflow directory
                    (target/ripr/workflow); any other path fails closed
@@ -224,8 +233,9 @@ The status command reads existing agent-loop artifacts under target/ripr only
 and reports which before snapshot, after snapshot, brief, packet, verify, and
 receipt files are present or missing. It may recover a seam_id from those
 artifacts and emits the next command to run for missing inputs. It remains
-advisory and static; it does not run analysis, mutation testing, generate
-tests, edit files, change cache behavior, or touch LSP/MCP surfaces.
+advisory, static, and read-only; it does not run analysis, mutation testing,
+generate tests, edit files, finish or restart repair attempts, change cache
+behavior, or touch LSP/MCP surfaces.
 "#;
 pub(super) const AGENT_REVIEW_SUMMARY_HELP: &str = r#"Summarize agent-loop artifacts into a compact review packet.
 

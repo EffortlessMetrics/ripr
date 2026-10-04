@@ -19275,6 +19275,520 @@ fn agent_status_selects_nothing_past_an_unreadable_attempt()
     Ok(())
 }
 
+/// The #4798 fresh-process journey as one built-binary integration test:
+/// process A prepares the attempt, process B resumes it by exact ID, the
+/// external test-only edit lands, process C finishes it, and process D reads
+/// the retained terminal result — every step a fresh `ripr` process over
+/// repository artifacts alone, with no manual artifact paths.
+#[test]
+fn agent_status_attempt_resumes_and_finishes_one_attempt_across_fresh_processes()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = repair_route_workspace("status attempt journey")?;
+    let root_arg = root.to_string_lossy().into_owned();
+
+    // Process A: prepare the attempt and keep the after command it printed.
+    let before = repair_route_before(&root)?;
+    let attempt = repair_route_attempt_id(&before)?;
+
+    // Process B: a fresh process resumes exactly this attempt.
+    let resumed = repair_route_attempt_status(&root, &attempt)?;
+    assert_eq!(
+        resumed["attempt"]["status_class"], "awaiting_edit",
+        "{resumed:#}"
+    );
+    assert_eq!(resumed["attempt"]["state"], "awaiting_edit", "{resumed:#}");
+    assert_eq!(resumed["attempt"]["head_current"], true, "{resumed:#}");
+    assert_eq!(resumed["attempt"]["currentness"], "current", "{resumed:#}");
+    assert_eq!(
+        resumed["next_action"]["step"], "repair_attempt_after",
+        "{resumed:#}"
+    );
+    assert_eq!(
+        resumed["next_action"]["command"], before,
+        "status must name the exact command the before phase recorded"
+    );
+    assert!(
+        resumed["claim_boundary"]
+            .as_array()
+            .is_some_and(|claims| claims.iter().any(|claim| {
+                claim
+                    .as_str()
+                    .is_some_and(|claim| claim.contains("read-only"))
+            })),
+        "{resumed:#}"
+    );
+
+    // External test-only edit, outside RIPR.
+    let focused_test = format!(
+        "{REPAIR_ROUTE_WEAK_TEST}\n#[test]\nfn at_threshold_discounts() {{\n    assert_eq!(discounted_total(100, 100), 90);\n}}\n"
+    );
+    std::fs::write(root.join("tests/pricing.rs"), focused_test)?;
+
+    // Process C: finish the attempt.
+    assert_success(&repair_route_after(&root, &attempt));
+
+    // Process D: the retained terminal result is readable by exact ID.
+    let finished = repair_route_attempt_status(&root, &attempt)?;
+    assert_eq!(
+        finished["attempt"]["status_class"], "finished_current",
+        "{finished:#}"
+    );
+    assert_eq!(
+        finished["attempt"]["receipt"]["issued_for_attempt"], true,
+        "{finished:#}"
+    );
+    assert_eq!(
+        finished["next_action"],
+        serde_json::Value::Null,
+        "a terminal current attempt names no next action: {finished:#}"
+    );
+    assert_eq!(
+        finished["test_run"]["status"], "not_recorded",
+        "the receipt records no test run and status says so: {finished:#}"
+    );
+
+    // The same state in the human rendering, from the same DTO.
+    let human = run_ripr(&[
+        "agent",
+        "status",
+        "--root",
+        &root_arg,
+        "--attempt",
+        &attempt,
+    ]);
+    assert_success(&human);
+    let rendered = String::from_utf8_lossy(&human.stdout);
+    assert!(rendered.contains("finished_current"), "{rendered}");
+    assert!(rendered.contains("Claim Boundary"), "{rendered}");
+
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+/// A retained earlier result survives HEAD movement: it stays readable, but
+/// its currentness drops to historical and it is never presented as current
+/// proof.
+#[test]
+fn agent_status_attempt_reports_historical_after_head_moves()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = repair_route_workspace("status attempt historical")?;
+    let before = repair_route_before(&root)?;
+    let attempt = repair_route_attempt_id(&before)?;
+    let focused_test = format!(
+        "{REPAIR_ROUTE_WEAK_TEST}\n#[test]\nfn at_threshold_discounts() {{\n    assert_eq!(discounted_total(100, 100), 90);\n}}\n"
+    );
+    std::fs::write(root.join("tests/pricing.rs"), focused_test)?;
+    assert_success(&repair_route_after(&root, &attempt));
+
+    repair_route_commit(&root, "unrelated later work")?;
+    let historical = repair_route_attempt_status(&root, &attempt)?;
+    assert_eq!(
+        historical["attempt"]["status_class"], "finished_historical",
+        "{historical:#}"
+    );
+    assert_eq!(
+        historical["attempt"]["head_current"], false,
+        "{historical:#}"
+    );
+    assert_eq!(
+        historical["attempt"]["currentness"], "historical",
+        "{historical:#}"
+    );
+    assert_eq!(
+        historical["next_action"],
+        serde_json::Value::Null,
+        "{historical:#}"
+    );
+    assert!(
+        historical["claim_boundary"]
+            .as_array()
+            .is_some_and(|claims| claims.iter().any(|claim| {
+                claim
+                    .as_str()
+                    .is_some_and(|claim| claim.contains("not current proof"))
+            })),
+        "{historical:#}"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+/// Two same-seam attempts are distinct by attempt ID: exact selection
+/// resumes each one, and the unselected inventory surface refuses to guess.
+#[test]
+fn agent_status_attempt_keeps_same_seam_attempts_distinct_by_id()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = repair_route_workspace("status attempt same seam")?;
+    let first_command = repair_route_before(&root)?;
+    let first = repair_route_attempt_id(&first_command)?;
+    let second_command = repair_route_before(&root)?;
+    let second = repair_route_attempt_id(&second_command)?;
+    assert_ne!(first, second);
+
+    // Several active attempts never select newest/first/same-seam: the
+    // inventory surface names the ambiguity instead.
+    let report = repair_route_status(&root)?;
+    assert_eq!(
+        report["next_command"],
+        serde_json::Value::Null,
+        "{report:#}"
+    );
+    assert!(
+        repair_route_warning_kinds(&report).contains(&"ambiguous_repair_attempts".to_string()),
+        "{report:#}"
+    );
+
+    for (id, command) in [(&first, &first_command), (&second, &second_command)] {
+        let selected = repair_route_attempt_status(&root, id)?;
+        assert_eq!(
+            selected["attempt"]["status_class"], "awaiting_edit",
+            "{selected:#}"
+        );
+        assert_eq!(
+            selected["next_action"]["command"],
+            command.as_str(),
+            "each same-seam attempt resumes its own recorded command: {selected:#}"
+        );
+        assert_eq!(
+            selected["attempt"]["seam_id"], REPAIR_ROUTE_SEAM,
+            "{selected:#}"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+/// An explicit non-default store from #4797 works through status selection
+/// without manual artifact plumbing: the default store cannot see the
+/// attempt, the explicit store resumes it, and the next action repeats
+/// `--store`.
+#[test]
+fn agent_status_attempt_round_trips_an_explicit_store() -> Result<(), Box<dyn std::error::Error>> {
+    let root = repair_route_workspace("status attempt store")?;
+    let root_arg = root.to_string_lossy().into_owned();
+    let store = "target/ripr/alt-attempts";
+
+    let before = run_ripr(&[
+        "agent",
+        "repair",
+        "--json",
+        "--root",
+        &root_arg,
+        "--seam-id",
+        REPAIR_ROUTE_SEAM,
+        "--phase",
+        "before",
+        "--store",
+        store,
+    ]);
+    assert_success(&before);
+    let command = String::from_utf8_lossy(&before.stderr)
+        .lines()
+        .find_map(|line| line.strip_prefix("ripr: attempt next command: "))
+        .ok_or("explicit-store before phase printed no attempt command")?
+        .to_string();
+    assert!(command.contains("--store"), "{command}");
+    let attempt = repair_route_attempt_id(&command)?;
+
+    // The default store cannot resolve an explicit-store attempt.
+    let foreign = repair_route_attempt_status(&root, &attempt)?;
+    assert_eq!(
+        foreign["attempt"]["status_class"], "corrupt_or_unavailable",
+        "{foreign:#}"
+    );
+
+    let selected = run_ripr(&[
+        "agent",
+        "status",
+        "--root",
+        &root_arg,
+        "--attempt",
+        &attempt,
+        "--store",
+        store,
+        "--json",
+    ]);
+    assert_success(&selected);
+    let report: serde_json::Value = serde_json::from_slice(&selected.stdout)?;
+    assert_eq!(
+        report["attempt"]["status_class"], "awaiting_edit",
+        "{report:#}"
+    );
+    assert_eq!(
+        report["store"]["location_class"], "explicit_repository",
+        "{report:#}"
+    );
+    assert_eq!(report["store"]["locator"], store, "{report:#}");
+    let next = report["next_action"]["command"]
+        .as_str()
+        .ok_or("explicit-store attempt status named no next action")?;
+    assert!(next.contains("--store"), "{next}");
+    assert!(next.contains(attempt.as_str()), "{next}");
+
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+/// A malformed attempt row is typed `corrupt_or_unavailable` under exact
+/// selection while the store's valid rows stay discoverable and resumable —
+/// one bad row cannot hide or strengthen another.
+#[test]
+fn agent_status_attempt_types_a_malformed_row_and_isolates_valid_rows()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = repair_route_workspace("status attempt malformed")?;
+    let before = repair_route_before(&root)?;
+    let valid = repair_route_attempt_id(&before)?;
+    let broken_id = "repair-attempt-000000000000000000000000";
+    let broken = root.join("target/ripr/repair-attempts").join(broken_id);
+    std::fs::create_dir_all(&broken)?;
+    std::fs::write(broken.join("attempt.json"), "{ not json")?;
+
+    let corrupt = repair_route_attempt_status(&root, broken_id)?;
+    assert_eq!(
+        corrupt["attempt"]["status_class"], "corrupt_or_unavailable",
+        "{corrupt:#}"
+    );
+    assert!(
+        corrupt["attempt"]["unreadable_reason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("decode")),
+        "{corrupt:#}"
+    );
+
+    let valid_report = repair_route_attempt_status(&root, &valid)?;
+    assert_eq!(
+        valid_report["attempt"]["status_class"], "awaiting_edit",
+        "the malformed row must not weaken the valid row: {valid_report:#}"
+    );
+    assert_eq!(
+        valid_report["next_action"]["command"], before,
+        "{valid_report:#}"
+    );
+
+    // The discovery surface fails closed: a malformed row keeps the whole
+    // listing untrusted, so the inventory names the bad row and withholds
+    // every candidate instead of crediting a subset. Exact `--attempt`
+    // selection above already proved the valid row itself stays readable.
+    let inventory = repair_route_status(&root)?;
+    assert_eq!(
+        inventory["repair_attempts"]
+            .as_array()
+            .map(|attempts| attempts.len()),
+        Some(0),
+        "{inventory:#}"
+    );
+    assert!(
+        repair_route_warning_kinds(&inventory).contains(&"repair_attempt_unreadable".to_string()),
+        "{inventory:#}"
+    );
+
+    // A selector that is not a repair attempt ID fails closed at the CLI.
+    let root_arg = root.to_string_lossy().into_owned();
+    let rejected = run_ripr(&["agent", "status", "--root", &root_arg, "--attempt", "bogus"]);
+    assert!(
+        !rejected.status.success(),
+        "a malformed attempt ID must be refused: {rejected:?}"
+    );
+    let stderr = String::from_utf8_lossy(&rejected.stderr);
+    assert!(stderr.contains("repair-attempt-"), "{stderr}");
+
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+/// Missing or tampered attempt-local terminal evidence never falls back to
+/// another attempt's compatibility receipt: the selected attempt is typed
+/// `corrupt_or_unavailable` and names the unbound artifact.
+#[test]
+fn agent_status_attempt_never_reconstructs_a_tampered_result()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = repair_route_workspace("status attempt tampered")?;
+    let before = repair_route_before(&root)?;
+    let attempt = repair_route_attempt_id(&before)?;
+    let focused_test = format!(
+        "{REPAIR_ROUTE_WEAK_TEST}\n#[test]\nfn at_threshold_discounts() {{\n    assert_eq!(discounted_total(100, 100), 90);\n}}\n"
+    );
+    std::fs::write(root.join("tests/pricing.rs"), focused_test)?;
+    assert_success(&repair_route_after(&root, &attempt));
+
+    let manifest_path = root
+        .join("target/ripr/repair-attempts")
+        .join(&attempt)
+        .join("attempt.json");
+    let manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&manifest_path)?)?;
+    let receipt_path = manifest["terminal_artifacts"]
+        .as_array()
+        .and_then(|artifacts| {
+            artifacts
+                .iter()
+                .find(|artifact| artifact["role"] == "agent_receipt")
+        })
+        .and_then(|artifact| artifact["path"].as_str())
+        .ok_or("finished attempt retained no agent_receipt artifact")?;
+    let local_receipt = root.join(receipt_path);
+
+    // The one-slot compatibility projection still matches this attempt, so
+    // the only honest reading is the retained one: corrupting it must not
+    // resurrect the result through the projection.
+    std::fs::write(&local_receipt, b"tampered-not-the-retained-receipt")?;
+    let tampered = repair_route_attempt_status(&root, &attempt)?;
+    assert_eq!(
+        tampered["attempt"]["status_class"], "corrupt_or_unavailable",
+        "{tampered:#}"
+    );
+    assert_eq!(
+        tampered["attempt"]["receipt"]["issued_for_attempt"], false,
+        "{tampered:#}"
+    );
+    assert_eq!(
+        tampered["attempt"]["receipt"]["unavailable"], true,
+        "{tampered:#}"
+    );
+    assert!(
+        tampered["attempt"]["receipt"]["movement"].is_null(),
+        "another reading's movement must not be projected: {tampered:#}"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+/// Deleting a finished attempt's retained verify artifact makes the whole
+/// terminal record unavailable: the gap-closing receipt alone never reads
+/// `finished_*` while the verify half it was issued over is gone.
+#[test]
+fn agent_status_attempt_types_a_deleted_verify_artifact_as_corrupt()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = repair_route_workspace("status attempt verify deleted")?;
+    let before = repair_route_before(&root)?;
+    let attempt = repair_route_attempt_id(&before)?;
+    let focused_test = format!(
+        "{REPAIR_ROUTE_WEAK_TEST}\n#[test]\nfn at_threshold_discounts() {{\n    assert_eq!(discounted_total(100, 100), 90);\n}}\n"
+    );
+    std::fs::write(root.join("tests/pricing.rs"), focused_test)?;
+    assert_success(&repair_route_after(&root, &attempt));
+
+    let manifest_path = root
+        .join("target/ripr/repair-attempts")
+        .join(&attempt)
+        .join("attempt.json");
+    let manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&manifest_path)?)?;
+    let verify_path = manifest["terminal_artifacts"]
+        .as_array()
+        .and_then(|artifacts| {
+            artifacts
+                .iter()
+                .find(|artifact| artifact["role"] == "agent_verify")
+        })
+        .and_then(|artifact| artifact["path"].as_str())
+        .ok_or("finished attempt retained no agent_verify artifact")?;
+    let finished = repair_route_attempt_status(&root, &attempt)?;
+    assert_eq!(
+        finished["attempt"]["status_class"], "finished_current",
+        "the retained pair reads finished before the delete: {finished:#}"
+    );
+
+    std::fs::remove_file(root.join(verify_path))?;
+    let corrupt = repair_route_attempt_status(&root, &attempt)?;
+    assert_eq!(
+        corrupt["attempt"]["status_class"], "corrupt_or_unavailable",
+        "{corrupt:#}"
+    );
+    assert_eq!(
+        corrupt["attempt"]["receipt"]["unavailable"], true,
+        "{corrupt:#}"
+    );
+    assert!(
+        corrupt["attempt"]["receipt"]["movement"].is_null(),
+        "a missing verify half must not leave a movement reading: {corrupt:#}"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+/// A legacy manifest (finished before attempt-local terminal retention
+/// existed) is visible only at its earned compatibility strength: the class
+/// is `legacy_compatibility_only` even when the one-slot projection still
+/// matches it.
+#[test]
+fn agent_status_attempt_reports_legacy_manifest_at_compatibility_strength()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = repair_route_workspace("status attempt legacy")?;
+    let before = repair_route_before(&root)?;
+    let attempt = repair_route_attempt_id(&before)?;
+    let focused_test = format!(
+        "{REPAIR_ROUTE_WEAK_TEST}\n#[test]\nfn at_threshold_discounts() {{\n    assert_eq!(discounted_total(100, 100), 90);\n}}\n"
+    );
+    std::fs::write(root.join("tests/pricing.rs"), focused_test)?;
+    assert_success(&repair_route_after(&root, &attempt));
+
+    // Strip the terminal retention from the manifest. The before commitment
+    // excludes `terminal_artifacts`, so the manifest stays valid and the
+    // attempt becomes exactly what a pre-retention attempt looks like.
+    let manifest_path = root
+        .join("target/ripr/repair-attempts")
+        .join(&attempt)
+        .join("attempt.json");
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&manifest_path)?)?;
+    manifest
+        .as_object_mut()
+        .ok_or("attempt manifest is not an object")?
+        .remove("terminal_artifacts");
+    std::fs::write(&manifest_path, serde_json::to_vec_pretty(&manifest)?)?;
+
+    let legacy = repair_route_attempt_status(&root, &attempt)?;
+    assert_eq!(
+        legacy["attempt"]["status_class"], "legacy_compatibility_only",
+        "{legacy:#}"
+    );
+    assert_eq!(
+        legacy["attempt"]["state"], "ready_to_finish",
+        "the operational state stays readable: {legacy:#}"
+    );
+    assert_eq!(
+        legacy["attempt"]["receipt"]["issued_for_attempt"], true,
+        "the exact matching projection is still read at its strength: {legacy:#}"
+    );
+    assert!(
+        legacy["claim_boundary"]
+            .as_array()
+            .is_some_and(|claims| claims.iter().any(|claim| {
+                claim
+                    .as_str()
+                    .is_some_and(|claim| claim.contains("compatibility strength"))
+            })),
+        "{legacy:#}"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+/// `ripr agent status --attempt <id> --json` for one selected attempt.
+fn repair_route_attempt_status(
+    root: &Path,
+    attempt_id: &str,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let root_arg = root.to_string_lossy().into_owned();
+    let status = run_ripr(&[
+        "agent",
+        "status",
+        "--root",
+        &root_arg,
+        "--attempt",
+        attempt_id,
+        "--json",
+    ]);
+    assert_success(&status);
+    Ok(serde_json::from_slice(&status.stdout)?)
+}
+
 // ── ripr pr-summary (Campaign 31 item 8: binary-first downstream CI) ──
 
 struct PrSummaryScratch(PathBuf);

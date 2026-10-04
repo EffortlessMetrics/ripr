@@ -12,10 +12,12 @@ use crate::agent::loop_commands::{
 };
 use crate::app::repair_attempt::{
     AfterPhaseHeadAdmission, AttemptTerminalReceipt, DivergedHeadRecovery,
-    REPAIR_ATTEMPT_DIRECTORY, RepairAttemptInventoryEntry, RepairAttemptManifest,
-    RepairAttemptState, RepairAttemptStoreAccess, after_phase_head_admission,
-    diverged_head_recovery, inventory_repair_attempts_from, load_attempt_terminal_receipt,
-    quoted_store_flag, resolve_store,
+    REPAIR_ATTEMPT_DIRECTORY, RepairAttemptId, RepairAttemptInventoryEntry, RepairAttemptManifest,
+    RepairAttemptState, RepairAttemptStoreAccess, RepairAttemptStoreCurrentness,
+    RepairAttemptStoreLocationClass, after_phase_head_admission, diverged_head_recovery,
+    inventory_repair_attempts_from, load_attempt_terminal_receipt,
+    load_repair_attempt_manifest_from, quoted_store_flag, repair_attempt_state_label,
+    resolve_store,
 };
 use crate::output::agent_receipt::AgentReceiptReading;
 use crate::output::markdown::{COMMAND_SHELL_DISCLOSURE, PowershellForm, powershell_form};
@@ -1609,6 +1611,577 @@ fn agent_status_warning_json(warning: &AgentStatusWarning) -> Value {
     })
 }
 
+/// Schema version of the one-attempt status document (`ripr agent status
+/// --attempt <id> --json`). It is distinct from the inventory document's
+/// schema: selecting one exact attempt changes the result shape from a list
+/// to one typed attempt state (#4798).
+pub(crate) const AGENT_ATTEMPT_STATUS_SCHEMA_VERSION: &str = "0.1";
+
+/// The status-class vocabulary one selected attempt projects to (#4798).
+/// Operational state, static movement, focused execution, edit-cage verdict,
+/// receipt strength, and currentness remain separate facts on the DTO; this
+/// class is the resume surface's honest summary of them and is never
+/// stronger than the receipt the attempt actually retained.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the class list is the published vocabulary; tests pin it"
+    )
+)]
+pub(crate) const ATTEMPT_STATUS_CLASSES: &[&str] = &[
+    "awaiting_edit",
+    "prepared",
+    "finished_current",
+    "finished_historical",
+    "stale",
+    "incomparable",
+    "failed",
+    "limited",
+    "corrupt_or_unavailable",
+    "legacy_compatibility_only",
+];
+
+/// Read-only non-claim every one-attempt status carries: inspecting an
+/// attempt never mutates it.
+const ATTEMPT_STATUS_READ_ONLY_NON_CLAIM: &str =
+    "status is read-only: inspecting this attempt did not finish, restart, rewrite, or delete it";
+
+/// The store view of a one-attempt status report: the same typed identity
+/// the #4797 resolver produced, not a re-derived path.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AgentAttemptStatusStore {
+    pub(crate) locator: String,
+    pub(crate) location_class: &'static str,
+    pub(crate) currentness: &'static str,
+}
+
+/// One attempt's typed state as `ripr agent status --attempt <id>` reports
+/// it. `state` is the manifest's operational state; `status_class` is the
+/// #4798 projection; `None` fields mark the `corrupt_or_unavailable` result,
+/// where the manifest could not be validated at all.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AgentAttemptStatusAttempt {
+    pub(crate) attempt_id: String,
+    pub(crate) seam_id: Option<String>,
+    pub(crate) manifest: String,
+    pub(crate) state: Option<&'static str>,
+    pub(crate) status_class: &'static str,
+    pub(crate) head_current: Option<bool>,
+    pub(crate) currentness: &'static str,
+    pub(crate) evidence_head: Option<String>,
+    pub(crate) receipt: Option<AgentStatusAttemptReceipt>,
+    pub(crate) last_after_refusal: Option<AgentStatusAfterRefusal>,
+    pub(crate) diverged_recovery: Option<DivergedHeadRecovery>,
+    /// Why the selected attempt could not be validated, when it could not.
+    pub(crate) unreadable_reason: Option<String>,
+}
+
+/// The one-attempt status DTO behind `ripr agent status --attempt <id>`.
+/// Human and JSON renderings derive from this one normalized value, so the
+/// two surfaces cannot drift in state, ordering, or claim boundary.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AgentAttemptStatusReport {
+    pub(crate) root: String,
+    pub(crate) store: AgentAttemptStatusStore,
+    pub(crate) attempt: AgentAttemptStatusAttempt,
+    pub(crate) next_action: Option<AgentStatusCommand>,
+    pub(crate) test_run: Option<AgentReceiptReading>,
+    pub(crate) claim_boundary: Vec<String>,
+    pub(crate) limitations: Vec<String>,
+    pub(crate) non_claims: Vec<String>,
+}
+
+fn store_location_class_label(class: RepairAttemptStoreLocationClass) -> &'static str {
+    match class {
+        RepairAttemptStoreLocationClass::DefaultRepository => "default_repository",
+        RepairAttemptStoreLocationClass::ExplicitRepository => "explicit_repository",
+    }
+}
+
+fn store_currentness_label(currentness: RepairAttemptStoreCurrentness) -> &'static str {
+    match currentness {
+        RepairAttemptStoreCurrentness::Present => "present",
+        RepairAttemptStoreCurrentness::Missing => "missing",
+    }
+}
+
+fn attempt_currentness_label(head_current: Option<bool>) -> &'static str {
+    match head_current {
+        Some(true) => "current",
+        Some(false) => "historical",
+        None => "unknown",
+    }
+}
+
+/// Builds the one-attempt status DTO behind `ripr agent status --attempt
+/// <id>`. Read-only: nothing here finishes, restarts, rewrites, or deletes
+/// an attempt. A store-level failure (an escaping or missing explicit store)
+/// is an error: there is no attempt view to type. A missing, malformed, or
+/// unbound attempt record is not an error either — it is the typed
+/// `corrupt_or_unavailable` result, so a caller scripting a resume never has
+/// to parse prose to tell "no such attempt" apart from "attempt is fine",
+/// and one malformed row never weakens or strengthens another row.
+pub(crate) fn build_agent_attempt_status(
+    root: &Path,
+    root_argument: &Path,
+    store: Option<&Path>,
+    attempt_id: &RepairAttemptId,
+) -> Result<AgentAttemptStatusReport, String> {
+    let root_display = display_path(root_argument);
+    let resolved = resolve_store(root, store, RepairAttemptStoreAccess::Open)?;
+    let store_view = AgentAttemptStatusStore {
+        locator: resolved.locator().to_string(),
+        location_class: store_location_class_label(resolved.location_class()),
+        currentness: store_currentness_label(resolved.currentness()),
+    };
+    let manifest_label = format!(
+        "{}/{}/attempt.json",
+        resolved.locator(),
+        attempt_id.as_str()
+    );
+    let manifest = match load_repair_attempt_manifest_from(root, store, attempt_id) {
+        Ok(manifest) => manifest,
+        Err(reason) => {
+            return Ok(corrupt_attempt_status(
+                &root_display,
+                store_view,
+                attempt_id,
+                &manifest_label,
+                reason,
+                resolved.limitations(),
+            ));
+        }
+    };
+    let current_head = crate::agent::artifact::current_git_head(root).ok();
+    let workflow_receipt = read_workflow_receipt(root);
+    let store_flag = resolved.quoted_store_flag();
+    // #3999: restart and recovery commands bind the selected repository, not
+    // the invocation spelling, so a command pasted from any working directory
+    // resumes this attempt. The report's `root` field keeps the user's
+    // spelling.
+    let command_root = bound_root(&root_display);
+    let view = status_repair_attempt(
+        root,
+        &command_root,
+        resolved.locator(),
+        &store_flag,
+        &manifest,
+        current_head.as_deref(),
+        &workflow_receipt,
+    );
+    let status_class = attempt_status_class(&manifest, &view);
+    let next_action = attempt_next_action(
+        &manifest,
+        &view,
+        status_class,
+        &command_root,
+        &manifest_label,
+        &store_flag,
+    );
+    let test_run = match &view.receipt {
+        AgentStatusAttemptReceipt::Issued { reading, .. } if reading.test_not_run() => {
+            Some(reading.clone())
+        }
+        _ => None,
+    };
+    let mut claim_boundary = vec![
+        ATTEMPT_STATUS_READ_ONLY_NON_CLAIM.to_string(),
+        "a finished result is retained static evidence; it does not establish that the proposed repair is correct or that any project test ran".to_string(),
+    ];
+    match status_class {
+        "finished_historical" => claim_boundary.push(
+            "historical validity and current applicability are reported separately: this retained result is readable but is not current proof".to_string(),
+        ),
+        "legacy_compatibility_only" => claim_boundary.push(
+            "this legacy manifest is visible only at its earned compatibility strength: the one-slot compatibility receipt a later finish replaces cannot reconstruct its outcome".to_string(),
+        ),
+        "corrupt_or_unavailable" => claim_boundary.push(
+            "no state was inferred from another attempt's receipt or from the store's other rows; the failure names the unreadable or unbound artifact".to_string(),
+        ),
+        _ => {}
+    }
+    let mut limitations = manifest.limitations.clone();
+    limitations.extend(resolved.limitations().iter().cloned());
+    if view.head_current.is_none() {
+        limitations.push(
+            "the current Git HEAD could not be read; this attempt's currentness is unknown"
+                .to_string(),
+        );
+    }
+    Ok(AgentAttemptStatusReport {
+        root: root_display,
+        store: store_view,
+        attempt: AgentAttemptStatusAttempt {
+            attempt_id: manifest.repair_attempt_id.as_str().to_string(),
+            seam_id: Some(manifest.seam_id.clone()),
+            manifest: manifest_label,
+            state: Some(repair_attempt_state_label(&manifest.state)),
+            status_class,
+            head_current: view.head_current,
+            currentness: attempt_currentness_label(view.head_current),
+            evidence_head: Some(view.evidence_head.clone()),
+            receipt: Some(view.receipt.clone()),
+            last_after_refusal: view.last_after_refusal.clone(),
+            diverged_recovery: view.diverged_recovery.clone(),
+            unreadable_reason: None,
+        },
+        next_action,
+        test_run,
+        claim_boundary,
+        limitations,
+        non_claims: manifest.non_claims.clone(),
+    })
+}
+
+/// The typed result for a selected attempt whose manifest cannot be
+/// validated (missing store row, malformed JSON, broken before commitment,
+/// unbound artifact, or identity mismatch). The requested ID and store are
+/// still reported — the caller selected them — but no state, receipt, or
+/// next action is invented.
+fn corrupt_attempt_status(
+    root_display: &str,
+    store_view: AgentAttemptStatusStore,
+    attempt_id: &RepairAttemptId,
+    manifest_label: &str,
+    reason: String,
+    store_limitations: &[String],
+) -> AgentAttemptStatusReport {
+    let mut limitations = store_limitations.to_vec();
+    limitations.push(
+        "the selected attempt could not be validated; the reason names the refused manifest or artifact"
+            .to_string(),
+    );
+    AgentAttemptStatusReport {
+        root: root_display.to_string(),
+        store: store_view,
+        attempt: AgentAttemptStatusAttempt {
+            attempt_id: attempt_id.as_str().to_string(),
+            seam_id: None,
+            manifest: manifest_label.to_string(),
+            state: None,
+            status_class: "corrupt_or_unavailable",
+            head_current: None,
+            currentness: "unknown",
+            evidence_head: None,
+            receipt: None,
+            last_after_refusal: None,
+            diverged_recovery: None,
+            unreadable_reason: Some(reason),
+        },
+        next_action: None,
+        test_run: None,
+        claim_boundary: vec![
+            ATTEMPT_STATUS_READ_ONLY_NON_CLAIM.to_string(),
+            "no state was inferred from another attempt's receipt or from the store's other rows"
+                .to_string(),
+        ],
+        limitations,
+        non_claims: Vec::new(),
+    }
+}
+
+/// The #4798 status-class projection for one validated attempt. It composes
+/// the manifest's operational state, the receipt the attempt actually
+/// retained (never another attempt's compatibility projection), and
+/// currentness — and stays fail-closed: an unknown HEAD or an unreadable
+/// receipt can only downgrade the class, never upgrade it.
+fn attempt_status_class(
+    manifest: &RepairAttemptManifest,
+    view: &AgentStatusRepairAttempt,
+) -> &'static str {
+    match manifest.state {
+        RepairAttemptState::Prepared => "prepared",
+        RepairAttemptState::AwaitingEdit => match view.disposition {
+            "resumable" => "awaiting_edit",
+            "prepared_at_other_head" => "stale",
+            // HEAD unreadable or not relatable: status cannot tell what the
+            // after phase would do, so the class names the bound, not a
+            // resumable state.
+            _ => "limited",
+        },
+        RepairAttemptState::ReadyToFinish => {
+            if manifest.terminal_artifacts.is_empty() {
+                // Finished before attempt-local terminal retention existed:
+                // any reading travels through the one-slot compatibility
+                // projection, which is exactly the strength it has earned
+                // (#4798 control: legacy manifests stay compatibility-only).
+                "legacy_compatibility_only"
+            } else {
+                match &view.receipt {
+                    AgentStatusAttemptReceipt::Issued { reading, .. }
+                        if reading.shows_gap_closed() =>
+                    {
+                        match view.head_current {
+                            Some(true) => "finished_current",
+                            Some(false) => "finished_historical",
+                            None => "limited",
+                        }
+                    }
+                    // The receipt issued but does not show the gap closed, or
+                    // no receipt state can be read at all: the attempt
+                    // finished but this status cannot claim more than that.
+                    AgentStatusAttemptReceipt::Issued { .. } => "limited",
+                    AgentStatusAttemptReceipt::Unavailable { .. } => "corrupt_or_unavailable",
+                    _ => "limited",
+                }
+            }
+        }
+        RepairAttemptState::Stale => "stale",
+        RepairAttemptState::Incomparable => "incomparable",
+        RepairAttemptState::Failed => "failed",
+    }
+}
+
+/// The one exact next or recovery action for a selected attempt. `None`
+/// means the class is terminal (`finished_current`, `finished_historical`)
+/// or status cannot honestly name an action (`limited` with an unknown
+/// HEAD); the claim boundary and limitations say which.
+fn attempt_next_action(
+    manifest: &RepairAttemptManifest,
+    view: &AgentStatusRepairAttempt,
+    status_class: &str,
+    root_display: &str,
+    manifest_label: &str,
+    store_flag: &str,
+) -> Option<AgentStatusCommand> {
+    let id = manifest.repair_attempt_id.as_str();
+    let seam = manifest.seam_id.as_str();
+    let restart = |reason: String| {
+        Some(AgentStatusCommand {
+            step: "repair_attempt_before".to_string(),
+            artifact: manifest_label.to_string(),
+            reason,
+            command: new_repair_attempt_command(root_display, seam, store_flag),
+        })
+    };
+    match status_class {
+        "awaiting_edit" => {
+            let reason = match &view.last_after_refusal {
+                Some(refusal) => format!(
+                    "the last after phase of repair attempt `{id}` for seam `{seam}` was refused: {}. The attempt still awaits the focused test edit; the command below repeats that after phase and refuses again until the cause the refusal names is resolved",
+                    refusal.reason.trim_end_matches('.')
+                ),
+                None => format!(
+                    "repair attempt `{id}` for seam `{seam}` is awaiting the focused test edit; once the test is in place, run the after phase its before phase recorded"
+                ),
+            };
+            Some(AgentStatusCommand {
+                step: "repair_attempt_after".to_string(),
+                artifact: manifest_label.to_string(),
+                reason,
+                command: view.command.clone().unwrap_or_default(),
+            })
+        }
+        "prepared" => restart(format!(
+            "repair attempt `{id}` for seam `{seam}` was prepared but never published as awaiting its edit; start a new attempt while the gap is still open"
+        )),
+        "stale" => {
+            let reason = if manifest.state == RepairAttemptState::AwaitingEdit {
+                match &view.diverged_recovery {
+                    Some(recovery) => format!(
+                        "repair attempt `{id}` for seam `{seam}` was prepared at another HEAD; its after phase would refuse it. Restore the prepared head with `{}` or start a new attempt while the gap is still open",
+                        recovery.reset
+                    ),
+                    None => format!(
+                        "repair attempt `{id}` for seam `{seam}` was prepared at another HEAD and its after phase would finish stale; start a new attempt while the gap is still open"
+                    ),
+                }
+            } else {
+                format!(
+                    "repair attempt `{id}` for seam `{seam}` ended stale because its analysis inputs moved; start a new attempt while the gap is still open"
+                )
+            };
+            restart(reason)
+        }
+        "incomparable" => restart(format!(
+            "repair attempt `{id}` for seam `{seam}` ended incomparable; start a new attempt while the gap is still open"
+        )),
+        "failed" => restart(format!(
+            "repair attempt `{id}` for seam `{seam}` ended failed; start a new attempt while the gap is still open"
+        )),
+        "limited" => match &view.receipt {
+            AgentStatusAttemptReceipt::Issued { reading, .. } if reading.leaves_gap_open() => {
+                restart(format!(
+                    "the receipt for repair attempt `{id}` reports movement `{}`, which leaves the gap open; start a new attempt for seam `{seam}` and strengthen the focused test before its after phase",
+                    reading.movement.as_deref().unwrap_or("unknown")
+                ))
+            }
+            // HEAD unknown, or the receipt does not confirm the gap either
+            // way: no honest action names itself.
+            _ => None,
+        },
+        "corrupt_or_unavailable" => restart(format!(
+            "the retained terminal evidence of repair attempt `{id}` is missing, tampered, or unbound; status does not reconstruct the outcome from another attempt's compatibility receipt. Start a new attempt for seam `{seam}` while the gap is still open"
+        )),
+        "legacy_compatibility_only" => match &view.receipt {
+            AgentStatusAttemptReceipt::Issued { .. } => None,
+            _ => restart(format!(
+                "repair attempt `{id}` for seam `{seam}` finished before attempt-local terminal retention existed and its outcome cannot be reconstructed from the one-slot compatibility receipt; start a new attempt while the gap is still open"
+            )),
+        },
+        // `finished_current` and `finished_historical` are terminal: the
+        // retained result is the answer, and the claim boundary says what it
+        // does and does not prove.
+        _ => None,
+    }
+}
+
+pub(crate) fn render_agent_attempt_status_json(
+    report: &AgentAttemptStatusReport,
+) -> Result<String, String> {
+    let attempt = &report.attempt;
+    let receipt = attempt
+        .receipt
+        .as_ref()
+        .map(attempt_receipt_json)
+        .unwrap_or(Value::Null);
+    let diverged_recovery = attempt.diverged_recovery.as_ref().map(|recovery| {
+        serde_json::json!({
+            "cause": recovery.cause,
+            "reset": recovery.reset,
+            "restart": recovery.restart,
+        })
+    });
+    let value = serde_json::json!({
+        "schema_version": AGENT_ATTEMPT_STATUS_SCHEMA_VERSION,
+        "tool": "ripr",
+        "kind": "agent_attempt_status",
+        "root": report.root,
+        "store": {
+            "locator": report.store.locator,
+            "location_class": report.store.location_class,
+            "currentness": report.store.currentness,
+        },
+        "attempt": {
+            "attempt_id": attempt.attempt_id,
+            "seam_id": attempt.seam_id,
+            "manifest": attempt.manifest,
+            "state": attempt.state,
+            "status_class": attempt.status_class,
+            "head_current": attempt.head_current,
+            "currentness": attempt.currentness,
+            "evidence_head": attempt.evidence_head,
+            "unreadable_reason": attempt.unreadable_reason,
+            "receipt": receipt,
+            "last_after_refusal": attempt.last_after_refusal.as_ref().map(|refusal| serde_json::json!({
+                "reason": refusal.reason,
+                "recorded_unix_ms": refusal.recorded_unix_ms
+            })),
+            "diverged_recovery": diverged_recovery,
+        },
+        "next_action": report.next_action.as_ref().map(agent_status_command_json),
+        "test_run": report.test_run.as_ref().map(test_not_run_json),
+        "claim_boundary": report.claim_boundary,
+        "limitations": report.limitations,
+        "non_claims": report.non_claims,
+    });
+    serde_json::to_string_pretty(&value)
+        .map(|mut rendered| {
+            rendered.push('\n');
+            rendered
+        })
+        .map_err(|err| format!("failed to render agent attempt status JSON: {err}"))
+}
+
+pub(crate) fn render_agent_attempt_status_markdown(report: &AgentAttemptStatusReport) -> String {
+    let attempt = &report.attempt;
+    let mut rendered = String::new();
+    rendered.push_str("# RIPR Repair Attempt Status\n\n");
+    rendered.push_str(&format!("Attempt: `{}`\n", attempt.attempt_id));
+    rendered.push_str(&format!("Status: {}\n", attempt.status_class));
+    rendered.push_str(&format!("Root: {}\n", report.root));
+    rendered.push_str(&format!(
+        "Store: `{}` ({})\n",
+        report.store.locator, report.store.location_class
+    ));
+    if let Some(seam_id) = &attempt.seam_id {
+        rendered.push_str(&format!("Seam: `{seam_id}`\n"));
+    }
+    if let Some(state) = attempt.state {
+        rendered.push_str(&format!("Operational state: {state}\n"));
+    }
+    rendered.push_str(&format!("Currentness: {}\n", attempt.currentness));
+    if let Some(evidence_head) = &attempt.evidence_head {
+        rendered.push_str(&format!("Evidence HEAD: `{evidence_head}`\n"));
+    }
+    if let Some(reason) = &attempt.unreadable_reason {
+        rendered.push_str(&format!("Unreadable: {reason}\n"));
+    }
+    if let Some(receipt) = &attempt.receipt {
+        let summary = match receipt {
+            AgentStatusAttemptReceipt::Issued { path, reading } => format!(
+                "issued (`{}`, status `{}`, movement `{}`)",
+                path,
+                reading.status.as_deref().unwrap_or("unknown"),
+                reading.movement.as_deref().unwrap_or("unknown")
+            ),
+            AgentStatusAttemptReceipt::NotApplicable => "not applicable".to_string(),
+            AgentStatusAttemptReceipt::NotIssued => "not issued".to_string(),
+            AgentStatusAttemptReceipt::Superseded { by_attempt_id } => {
+                format!("superseded by `{by_attempt_id}`")
+            }
+            AgentStatusAttemptReceipt::Unreadable => "unreadable".to_string(),
+            AgentStatusAttemptReceipt::Unavailable { reason, .. } => {
+                format!("unavailable: {reason}")
+            }
+        };
+        rendered.push_str(&format!("Receipt: {summary}\n"));
+    }
+
+    if let Some(next) = &report.next_action {
+        rendered.push_str("\n## Next Action\n\n");
+        rendered.push_str(&format!("{}\n\n", next.reason));
+        if next.runs_after_test_edit() {
+            rendered.push_str(&format!("{AFTER_TEST_EDIT_NOTE}\n\n"));
+        }
+        rendered.push_str(COMMAND_SHELL_DISCLOSURE);
+        rendered.push_str("```bash\n");
+        rendered.push_str(&next.command);
+        rendered.push_str("\n```\n");
+        match powershell_form(&next.command) {
+            PowershellForm::Translated(line) => {
+                rendered.push_str("\n```powershell\n");
+                rendered.push_str(&line);
+                rendered.push_str("\n```\n");
+            }
+            PowershellForm::SameAsBash => {}
+            PowershellForm::Unavailable => rendered.push_str(&format!(
+                "{}: `{}`\n",
+                crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE,
+                next.command
+            )),
+        }
+    } else {
+        rendered.push_str("\nStatus names no next action; the claim boundary below says why.\n");
+    }
+
+    if let Some(reading) = &report.test_run {
+        rendered.push_str(&format!(
+            "\nTest run: none recorded. {}\n",
+            test_not_run_next_step(reading)
+        ));
+    }
+
+    rendered.push_str("\n## Claim Boundary\n\n");
+    for claim in &report.claim_boundary {
+        rendered.push_str(&format!("- {claim}\n"));
+    }
+    if !report.limitations.is_empty() {
+        rendered.push_str("\n## Limitations\n\n");
+        for limitation in &report.limitations {
+            rendered.push_str(&format!("- {limitation}\n"));
+        }
+    }
+    if !report.non_claims.is_empty() {
+        rendered.push_str("\n## Non-claims\n\n");
+        for non_claim in &report.non_claims {
+            rendered.push_str(&format!("- {non_claim}\n"));
+        }
+    }
+    rendered
+}
+
 fn inspect_artifact(root: &Path, artifact: &AgentStatusArtifactDef) -> AgentStatusArtifact {
     let path = root.join(artifact.path);
     match std::fs::metadata(&path) {
@@ -2113,6 +2686,330 @@ mod tests {
         Ok(())
     }
 
+    /// The #4798 exact-attempt surface: a fresh process selects one attempt
+    /// by ID and gets its typed state, currentness, and the exact after
+    /// command the before phase retained — never a newest/first guess and
+    /// never state inferred from prose.
+    #[test]
+    fn agent_attempt_status_selects_and_resumes_an_awaiting_attempt() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("attempt-status-resume");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let result = (|| {
+            run_git(&root, &["init"])?;
+            run_git(
+                &root,
+                &["config", "user.email", "ripr-test@example.invalid"],
+            )?;
+            run_git(&root, &["config", "user.name", "RIPR Test"])?;
+            write_file(&root.join("README.md"), "# test\n")?;
+            run_git(&root, &["add", "."])?;
+            run_git(&root, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+            prepare_attempt_fixture(&root, "seam:attempt-resume")?;
+            let attempt_id = only_attempt_id(&root, None)?;
+
+            let report = build_agent_attempt_status(&root, &root, None, &attempt_id)?;
+            if report.attempt.status_class != "awaiting_edit"
+                || report.attempt.state != Some("awaiting_edit")
+                || report.attempt.head_current != Some(true)
+                || report.attempt.currentness != "current"
+            {
+                return Err(format!("unexpected attempt status: {:?}", report.attempt));
+            }
+            let next = report.next_action.as_ref().ok_or_else(|| {
+                "an awaiting attempt must name its retained after command".to_string()
+            })?;
+            if next.step != "repair_attempt_after"
+                || !next.command.contains("--attempt")
+                || !next.command.contains(attempt_id.as_str())
+            {
+                return Err(format!(
+                    "next action was not the retained after command: {next:?}"
+                ));
+            }
+
+            let rendered = render_agent_attempt_status_json(&report)?;
+            let again = render_agent_attempt_status_json(&report)?;
+            if rendered != again {
+                return Err("attempt status JSON was not byte-stable across reads".to_string());
+            }
+            let value: Value = serde_json::from_str(&rendered)
+                .map_err(|err| format!("parse attempt status JSON: {err}"))?;
+            if value["schema_version"] != AGENT_ATTEMPT_STATUS_SCHEMA_VERSION
+                || value["kind"] != "agent_attempt_status"
+            {
+                return Err(format!("attempt status JSON lost its envelope: {value}"));
+            }
+            if value["attempt"]["status_class"] != "awaiting_edit"
+                || value["attempt"]["attempt_id"] != attempt_id.as_str()
+                || value["attempt"]["currentness"] != "current"
+            {
+                return Err(format!("attempt JSON disagreed with the DTO: {value}"));
+            }
+            if value["next_action"]["command"] != next.command {
+                return Err(format!("JSON next action diverged from the DTO: {value}"));
+            }
+            if !report
+                .claim_boundary
+                .iter()
+                .any(|claim| claim.contains("read-only"))
+            {
+                return Err(format!(
+                    "attempt status omitted its read-only claim boundary: {:?}",
+                    report.claim_boundary
+                ));
+            }
+            let markdown = render_agent_attempt_status_markdown(&report);
+            if !markdown.contains("awaiting_edit") || !markdown.contains(&next.command) {
+                return Err(format!(
+                    "markdown rendering dropped the typed state or command:\n{markdown}"
+                ));
+            }
+            Ok(())
+        })();
+        let _ = std::fs::remove_dir_all(&root);
+        result
+    }
+
+    /// An empty store is not a generic clean result and not an opaque error:
+    /// selecting an attempt that is not there is the typed
+    /// `corrupt_or_unavailable` result naming the missing manifest.
+    #[test]
+    fn agent_attempt_status_types_a_missing_attempt_instead_of_erroring() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("attempt-status-missing");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let result = (|| {
+            run_git(&root, &["init"])?;
+            run_git(
+                &root,
+                &["config", "user.email", "ripr-test@example.invalid"],
+            )?;
+            run_git(&root, &["config", "user.name", "RIPR Test"])?;
+            write_file(&root.join("README.md"), "# test\n")?;
+            run_git(&root, &["add", "."])?;
+            run_git(&root, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+            let attempt_id =
+                RepairAttemptId::parse("repair-attempt-0123456789abcdef01234567".to_string())?;
+
+            let report = build_agent_attempt_status(&root, &root, None, &attempt_id)?;
+            if report.attempt.status_class != "corrupt_or_unavailable" {
+                return Err(format!(
+                    "missing attempt was not typed corrupt_or_unavailable: {:?}",
+                    report.attempt
+                ));
+            }
+            let reason = report.attempt.unreadable_reason.as_deref().ok_or_else(|| {
+                "corrupt_or_unavailable must name why the attempt was refused".to_string()
+            })?;
+            if !reason.contains("not found") {
+                return Err(format!("missing-attempt reason was opaque: {reason}"));
+            }
+            if report.next_action.is_some() || report.attempt.receipt.is_some() {
+                return Err(format!(
+                    "a missing attempt invented action or receipt: {:?}",
+                    report.attempt
+                ));
+            }
+            let rendered = render_agent_attempt_status_json(&report)?;
+            let value: Value = serde_json::from_str(&rendered)
+                .map_err(|err| format!("parse attempt status JSON: {err}"))?;
+            if value["attempt"]["status_class"] != "corrupt_or_unavailable" {
+                return Err(format!("JSON dropped the corrupt class: {value}"));
+            }
+            Ok(())
+        })();
+        let _ = std::fs::remove_dir_all(&root);
+        result
+    }
+
+    /// Exact selection consumes the same typed store resolver as the
+    /// inventory: an attempt in an explicit store is `corrupt_or_unavailable`
+    /// through the default store (never silently resolved), and resumable
+    /// through its own store with the `--store` flag repeated on the next
+    /// command.
+    #[test]
+    fn agent_attempt_status_uses_only_the_selected_store() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("attempt-status-store");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let result = (|| {
+            run_git(&root, &["init"])?;
+            run_git(
+                &root,
+                &["config", "user.email", "ripr-test@example.invalid"],
+            )?;
+            run_git(&root, &["config", "user.name", "RIPR Test"])?;
+            write_file(&root.join("README.md"), "# test\n")?;
+            run_git(&root, &["add", "."])?;
+            run_git(&root, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+            let alt = Path::new("target/ripr/alt-attempts");
+            prepare_attempt_fixture_in(&root, "seam:attempt-explicit", Some(alt))?;
+            let attempt_id = only_attempt_id(&root, Some(alt))?;
+
+            let default_report = build_agent_attempt_status(&root, &root, None, &attempt_id)?;
+            if default_report.attempt.status_class != "corrupt_or_unavailable" {
+                return Err(format!(
+                    "default store resolved an explicit-store attempt: {:?}",
+                    default_report.attempt
+                ));
+            }
+
+            let explicit = build_agent_attempt_status(&root, &root, Some(alt), &attempt_id)?;
+            if explicit.attempt.status_class != "awaiting_edit"
+                || explicit.store.location_class != "explicit_repository"
+                || explicit.store.locator != "target/ripr/alt-attempts"
+            {
+                return Err(format!(
+                    "explicit selection lost the typed store identity: {:?}",
+                    explicit
+                ));
+            }
+            let next = explicit.next_action.as_ref().ok_or_else(|| {
+                "an awaiting explicit-store attempt must name its after command".to_string()
+            })?;
+            if !next.command.contains("--store") || !next.command.contains("alt-attempts") {
+                return Err(format!(
+                    "explicit-store resume lost the --store flag: {next:?}"
+                ));
+            }
+            Ok(())
+        })();
+        let _ = std::fs::remove_dir_all(&root);
+        result
+    }
+
+    /// A resumed attempt never receives stronger state than its evidence:
+    /// once HEAD moves off the attempt's prepared head, the class is `stale`
+    /// with a recovery action, not `awaiting_edit`.
+    #[test]
+    fn agent_attempt_status_never_claims_resumable_past_a_moved_head() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("attempt-status-stale");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let result = (|| {
+            run_git(&root, &["init"])?;
+            run_git(
+                &root,
+                &["config", "user.email", "ripr-test@example.invalid"],
+            )?;
+            run_git(&root, &["config", "user.name", "RIPR Test"])?;
+            write_file(&root.join("README.md"), "# test\n")?;
+            run_git(&root, &["add", "."])?;
+            run_git(&root, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+            prepare_attempt_fixture(&root, "seam:attempt-stale")?;
+            let attempt_id = only_attempt_id(&root, None)?;
+            run_git(
+                &root,
+                &[
+                    "commit",
+                    "--amend",
+                    "--allow-empty",
+                    "--no-gpg-sign",
+                    "-m",
+                    "rewritten history",
+                ],
+            )?;
+
+            let report = build_agent_attempt_status(&root, &root, None, &attempt_id)?;
+            if report.attempt.status_class != "stale"
+                || report.attempt.head_current != Some(false)
+                || report.attempt.currentness != "historical"
+            {
+                return Err(format!(
+                    "moved-head attempt kept too strong a state: {:?}",
+                    report.attempt
+                ));
+            }
+            let next = report
+                .next_action
+                .as_ref()
+                .ok_or_else(|| "a stale attempt must name its recovery action".to_string())?;
+            if next.step != "repair_attempt_before" || !next.command.contains("--phase before") {
+                return Err(format!("stale recovery was not a restart: {next:?}"));
+            }
+            Ok(())
+        })();
+        let _ = std::fs::remove_dir_all(&root);
+        result
+    }
+
+    /// Normalized JSON is byte-stable: rendering the same report twice, and
+    /// the inventory discovery document across repeated reads of the same
+    /// store, produces identical bytes (the inventory is ordered by attempt
+    /// identity, so directory traversal order cannot leak into output).
+    #[test]
+    fn agent_attempt_status_renders_byte_stable_across_repeated_reads() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("attempt-status-stable");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let result = (|| {
+            run_git(&root, &["init"])?;
+            run_git(
+                &root,
+                &["config", "user.email", "ripr-test@example.invalid"],
+            )?;
+            run_git(&root, &["config", "user.name", "RIPR Test"])?;
+            write_file(&root.join("README.md"), "# test\n")?;
+            run_git(&root, &["add", "."])?;
+            run_git(&root, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+            prepare_attempt_fixture(&root, "seam:stable-a")?;
+            prepare_attempt_fixture(&root, "seam:stable-b")?;
+
+            let inventory_first =
+                render_agent_status_json(&build_agent_status_report(&root, &root))?;
+            let inventory_second =
+                render_agent_status_json(&build_agent_status_report(&root, &root))?;
+            if inventory_first != inventory_second {
+                return Err("inventory status JSON was not byte-stable across reads".to_string());
+            }
+            for entry in inventory_repair_attempts_from(&root, None)? {
+                let RepairAttemptInventoryEntry::Valid(manifest) = entry else {
+                    return Err("a fixture attempt was refused".to_string());
+                };
+                let report =
+                    build_agent_attempt_status(&root, &root, None, &manifest.repair_attempt_id)?;
+                let first = render_agent_attempt_status_json(&report)?;
+                let second = render_agent_attempt_status_json(&report)?;
+                if first != second {
+                    return Err(format!(
+                        "attempt status JSON was not byte-stable for {}",
+                        manifest.repair_attempt_id.as_str()
+                    ));
+                }
+            }
+            Ok(())
+        })();
+        let _ = std::fs::remove_dir_all(&root);
+        result
+    }
+
+    /// The published status-class vocabulary stays distinct and matches the
+    /// spec document, so a refactor cannot silently merge two classes.
+    #[test]
+    fn agent_attempt_status_classes_are_distinct_and_documented() {
+        let mut sorted = ATTEMPT_STATUS_CLASSES.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(
+            sorted.len(),
+            ATTEMPT_STATUS_CLASSES.len(),
+            "status classes must not contain duplicates"
+        );
+        for required in [
+            "awaiting_edit",
+            "prepared",
+            "finished_current",
+            "finished_historical",
+            "stale",
+            "incomparable",
+            "failed",
+            "limited",
+            "corrupt_or_unavailable",
+            "legacy_compatibility_only",
+        ] {
+            assert!(
+                ATTEMPT_STATUS_CLASSES.contains(&required),
+                "status class `{required}` left the vocabulary"
+            );
+        }
+    }
+
     /// Every artifact status reports on must carry an explicit classification
     /// for the repair-attempt loop mode, so a newly added artifact cannot
     /// silently inherit an all-`true` or all-`false` claim.
@@ -2377,6 +3274,17 @@ mod tests {
             store,
         })?;
         Ok(())
+    }
+
+    /// The single prepared attempt's ID, for tests that select it exactly.
+    fn only_attempt_id(root: &Path, store: Option<&Path>) -> Result<RepairAttemptId, String> {
+        let entries = inventory_repair_attempts_from(root, store)?;
+        match entries.as_slice() {
+            [RepairAttemptInventoryEntry::Valid(manifest)] => {
+                Ok(manifest.repair_attempt_id.clone())
+            }
+            other => Err(format!("expected exactly one valid attempt, got {other:?}")),
+        }
     }
 
     #[test]
