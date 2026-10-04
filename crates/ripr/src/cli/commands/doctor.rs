@@ -1618,9 +1618,22 @@ fn generated_workflow_line(workflow: &str, current_version: &str) -> Option<Stri
         None => Some(format!(
             "{GENERATED_WORKFLOW_PATH} installs ripr without a version (the ripr 0.10-and-earlier template), so CI runs whatever release is newest against these steps; {refresh}"
         )),
-        Some(version) if version.trim_start_matches('=') != current_version => Some(format!(
-            "{GENERATED_WORKFLOW_PATH} installs ripr {version}, but this is ripr {current_version}; {refresh}"
-        )),
+        Some(version) if version.trim_start_matches('=') != current_version => {
+            let pinned = version.trim_start_matches('=');
+            // #5208: an unreleased ripr intentionally pins the latest
+            // release instead of itself. Refreshing would rewrite the
+            // identical pin, so name the fallback and its real repair
+            // (upgrade ripr first) instead of prescribing the loop.
+            if pinned == super::init_workflow::workflow_install_version(current_version) {
+                Some(format!(
+                    "{GENERATED_WORKFLOW_PATH} installs ripr {pinned}, the latest-release fallback pin for this unreleased ripr {current_version} (refreshing now would rewrite the same pin); upgrade ripr to a release, then {refresh}"
+                ))
+            } else {
+                Some(format!(
+                    "{GENERATED_WORKFLOW_PATH} installs ripr {version}, but this is ripr {current_version}; {refresh}"
+                ))
+            }
+        }
         Some(_) => None,
     }
 }
@@ -1736,11 +1749,28 @@ mod tests {
                     && line.contains("ripr init --ci github --force")),
             "{unpinned:?}"
         );
-        let older = generated_workflow_line(pinned, "0.12.0");
+        // #5208: keep this leg release-proof: the stale pin must differ
+        // from both the current version and its computed fallback, or the
+        // next release bump flips this case into the fallback arm.
+        let current = "99.0.0";
+        let fallback = crate::cli::commands::init_workflow::workflow_install_version(current);
+        assert_ne!(
+            fallback, current,
+            "test setup: {current} must stay unreleased"
+        );
+        let stale = "98.0.0";
+        assert_ne!(
+            stale, fallback,
+            "test setup: stale pin must not equal the fallback"
+        );
+        let stale_workflow = format!(
+            "      - name: Install ripr\n        run: cargo install ripr --version {stale} --locked\n"
+        );
+        let older = generated_workflow_line(&stale_workflow, current);
         assert!(
-            older
-                .as_deref()
-                .is_some_and(|line| line.contains("installs ripr 0.11.0, but this is ripr 0.12.0")),
+            older.as_deref().is_some_and(|line| line.contains(&format!(
+                "installs ripr {stale}, but this is ripr {current}"
+            ))),
             "{older:?}"
         );
         assert_eq!(generated_workflow_line(pinned, "0.11.0"), None);
@@ -1748,6 +1778,31 @@ mod tests {
         assert_eq!(
             generated_workflow_line("        run: cargo install ripr-tools --locked\n", "0.11.0"),
             None
+        );
+    }
+
+    #[test]
+    fn generated_workflow_line_names_the_fallback_pin_without_a_refresh_loop() {
+        // #5208 (Codex P2): an unreleased ripr intentionally pins the latest
+        // release. Doctor must recognize that pin and prescribe upgrading
+        // ripr first: a bare "refresh now" would rewrite the identical pin.
+        let current = "99.0.0";
+        let fallback = crate::cli::commands::init_workflow::workflow_install_version(current);
+        assert_ne!(
+            fallback, current,
+            "test setup: {current} must stay unreleased"
+        );
+        let workflow = format!(
+            "      - name: Install ripr\n        run: cargo install ripr --version {fallback} --locked\n"
+        );
+        let line = generated_workflow_line(&workflow, current);
+        assert!(
+            line.as_deref().is_some_and(|line| {
+                line.contains("latest-release fallback pin")
+                    && line.contains("upgrade ripr to a release")
+                    && line.contains("refreshing now would rewrite the same pin")
+            }),
+            "{line:?}"
         );
     }
 

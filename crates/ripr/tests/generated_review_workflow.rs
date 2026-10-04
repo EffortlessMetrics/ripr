@@ -3320,7 +3320,25 @@ fn generated_workflow_explains_a_failed_install() -> Result<(), Box<dyn Error>> 
             ("RIPR_INSTALL_OUTCOME".to_string(), "failure".to_string()),
         ]
     };
-    let version = env!("CARGO_PKG_VERSION");
+    // #5208: the install step pins the generator itself when released, the
+    // latest release when the generator is unreleased. Expect the pin the
+    // generated workflow actually carries (parsed from both install routes,
+    // which must agree), not unconditionally the package version.
+    let version = install
+        .split("version=")
+        .nth(1)
+        .and_then(|rest| rest.split_whitespace().next())
+        .ok_or("install step names no version pin")?
+        .to_string();
+    let cargo_pin = install
+        .split("cargo install ripr --version ")
+        .nth(1)
+        .and_then(|rest| rest.split_whitespace().next())
+        .ok_or("install step names no cargo fallback pin")?;
+    assert_eq!(
+        cargo_pin, version,
+        "prebuilt and cargo routes must pin the same version"
+    );
 
     // No prebuilt archive for this runner and no cargo: fail and say both.
     let windows = replay::bash(&root, &install, &runner("Windows", &bin))?;

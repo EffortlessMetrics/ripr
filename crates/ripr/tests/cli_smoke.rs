@@ -11478,16 +11478,65 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     assert!(workspace.join("ripr.toml").exists());
     assert!(workflow.contains("pull_request:"));
     assert!(workflow.contains("workflow_dispatch:"));
-    // The steps use the generating version's CLI, so the install is pinned
-    // to it rather than taking the newest crates.io release.
-    assert!(workflow.contains(&format!(
-        "          version={}\n",
-        env!("CARGO_PKG_VERSION")
-    )));
-    assert!(workflow.contains(&format!(
-        "            cargo install ripr --version {} --locked\n",
-        env!("CARGO_PKG_VERSION")
-    )));
+    // #5208: the pin/warning pair must stay consistent in both release
+    // states, on both install routes (the prebuilt `version=` and the
+    // cargo fallback). A released generator self-pins silently; an
+    // unreleased one pins an exact released version (its own would
+    // neither download nor install) and warns on stderr. Branching on the
+    // observed warning keeps this test valid when the package and release
+    // constant meet at parity (CodeRabbit Major): at that commit the
+    // released path is the correct expectation. Exact released/dev
+    // mappings are pinned by unit tests without rebuilding; this test
+    // pins the end-to-end wiring and consistency.
+    let generator = env!("CARGO_PKG_VERSION");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let warned = stderr.contains("is not released");
+    if warned {
+        // The warning names the fallback pin; both install routes must
+        // carry exactly it (#5244 review: positive exact pins, not just
+        // the absence of the generator version).
+        let pinned = stderr
+            .split("pins the latest release (")
+            .nth(1)
+            .and_then(|rest| rest.split(") instead").next())
+            .ok_or_else(|| format!("warning must name the fallback pin: {stderr}"))?;
+        assert!(
+            workflow.contains(&format!("          version={pinned}\n")),
+            "a warned run must pin the fallback {pinned} on the prebuilt route"
+        );
+        assert!(
+            workflow.contains(&format!(
+                "            cargo install ripr --version {pinned} --locked\n"
+            )),
+            "a warned run must pin the fallback {pinned} on the cargo route"
+        );
+        assert!(
+            !workflow.contains(&format!("          version={generator}\n")),
+            "a warned run must not self-pin the unreleased generator"
+        );
+        assert!(
+            !workflow.contains(&format!(
+                "            cargo install ripr --version {generator} --locked\n"
+            )),
+            "a warned run must not self-pin the fallback either"
+        );
+        assert!(
+            stderr.contains("pins the latest release")
+                && stderr.contains("ripr init --ci github --force"),
+            "missing unreleased-generator warning: {stderr}"
+        );
+    } else {
+        assert!(
+            workflow.contains(&format!("          version={generator}\n")),
+            "an unwarned run must self-pin the released generator"
+        );
+        assert!(
+            workflow.contains(&format!(
+                "            cargo install ripr --version {generator} --locked\n"
+            )),
+            "an unwarned run must self-pin the fallback too"
+        );
+    }
     assert!(!workflow.contains("cargo install ripr --locked"));
     // A newer push cancels the older run of the same PR, so two runs never
     // publish the same inline cards (#4448).
