@@ -2203,6 +2203,68 @@ fn initialize_with(
     collect_notifications(session, done, STARTUP_SETTLE)
 }
 
+/// Native `Path::display()` uses `\` on Windows. The LSP warning lists folders
+/// with `/` even when the stored path came from a Windows URI decode. Match
+/// the warning against the slash-normalized display form so both platforms
+/// can pin that each named folder appears (#5241).
+fn slash_normalized_display(path: &Path) -> String {
+    path.display().to_string().replace('\\', "/")
+}
+
+fn warning_names_both_workspace_folders(warning: &str, first: &Path, second: &Path) -> bool {
+    let first_name = slash_normalized_display(first);
+    let second_name = slash_normalized_display(second);
+    first_name != second_name && warning.contains(&first_name) && warning.contains(&second_name)
+}
+
+/// Models the native-Windows `display()` / forward-slash warning mismatch on
+/// any host: a `PathBuf` built from backslash text still `display()`s those
+/// backslashes, so a naive `contains(display())` misses the `/` warning.
+/// Drive-letter shapes are assembled from parts: `check-local-context`
+/// forbids drive-letter path literals in tracked files.
+#[test]
+fn workspace_folder_warning_match_is_separator_safe_and_requires_both_names() {
+    let drive = "H:";
+    let first = PathBuf::from(format!("{drive}{}tmp{}ripr-lsp-ambiguous-a-1", '\\', '\\'));
+    let second = PathBuf::from(format!("{drive}{}tmp{}ripr-lsp-ambiguous-b-2", '\\', '\\'));
+    let first_listed = format!("{drive}/tmp/ripr-lsp-ambiguous-a-1");
+    let second_listed = format!("{drive}/tmp/ripr-lsp-ambiguous-b-2");
+    let warning = format!("Folders: {first_listed}, {second_listed}");
+    assert!(
+        first.display().to_string().contains('\\'),
+        "this control models Windows Path::display() backslashes"
+    );
+    assert!(
+        !warning.contains(&first.display().to_string()),
+        "raw display() must not match the forward-slash warning"
+    );
+    assert!(
+        !warning.contains(&second.display().to_string()),
+        "raw display() must not match the forward-slash warning"
+    );
+    assert!(warning_names_both_workspace_folders(
+        &warning, &first, &second
+    ));
+    assert!(!warning_names_both_workspace_folders(
+        &format!("Folders: {first_listed}"),
+        &first,
+        &second
+    ));
+    assert!(!warning_names_both_workspace_folders(
+        &format!("Folders: {second_listed}"),
+        &first,
+        &second
+    ));
+    assert!(!warning_names_both_workspace_folders(
+        &format!("Folders: {drive}/tmp"),
+        &first,
+        &second
+    ));
+    assert!(!warning_names_both_workspace_folders(
+        &warning, &first, &first
+    ));
+}
+
 #[test]
 fn two_workspace_folders_warn_a_generic_client_at_startup() -> Result<(), String> {
     let first = unique_compat_fixture_root("ambiguous-a")?;
@@ -2227,8 +2289,7 @@ fn two_workspace_folders_warn_a_generic_client_at_startup() -> Result<(), String
             "expected one workspace_ambiguous window/showMessage, got: {notifications:?}"
         ));
     }
-    let second_name = second.path.display().to_string();
-    if !shown[0].contains(&second_name) {
+    if !warning_names_both_workspace_folders(shown[0], &first.path, &second.path) {
         return Err(format!("warning must name the folders, got: {}", shown[0]));
     }
     if !messages_of(&notifications, "window/logMessage")
