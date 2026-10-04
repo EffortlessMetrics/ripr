@@ -1,4 +1,6 @@
 #[cfg(test)]
+mod bounded_batch_tests;
+#[cfg(test)]
 mod incremental_edit_tests;
 
 use super::super::syntax::{LexicalRustSyntaxAdapter, RaRustSyntaxAdapter, RustSyntaxAdapter};
@@ -58,128 +60,26 @@ fn build_index_with_file_fact_cache(
     cache: &RepoFileFactCache,
     mut load_known_file_paths: impl FnMut() -> HashSet<PathBuf>,
 ) -> Result<CachedRustIndex, String> {
-    // Only genuine misses need historical paths for invalidation attribution.
-    // All-hit, corrupt-only, empty, and already-cancelled builds must not walk
-    // and decode the entire cache directory just to discard the inventory.
-    // Initialize once during lookup, before this build parses or stores facts.
-    let mut known_cached_file_paths: Option<HashSet<PathBuf>> = None;
-    let mut stats = FileFactCacheStats::default();
-    // One stderr line per build, not one per file: an unusable cache
-    // directory makes every lookup fail the same way, and a line per file
-    // buried the analysis output under hundreds of repeats (#4888).
-    let mut first_corrupt_reason: Option<String> = None;
-
-    // Phase 1 (sequential): cache lookups decide which files need a
-    // fresh parse. Hit/miss/invalidation stats and the corrupt-entry stderr
-    // ordering stay byte-identical to the sequential loop.
-    enum Pending {
-        Ready(super::FileFacts),
-        Parse { key: RepoFileFactCacheKey },
-    }
-    let mut pending: Vec<Pending> = Vec::with_capacity(files.len());
-    for (file, bytes) in files {
-        if let Err(err) = cancellation::checkpoint() {
-            // A cancelled lookup still reports the corrupt entries it found.
-            emit_corrupt_entries_warning(stats.corrupt_ignored, first_corrupt_reason.as_deref());
-            return Err(err);
-        }
-        let key = RepoFileFactCacheKey::new(file, bytes);
-        match cache.load_file_facts(&key) {
-            CacheLoad::Hit(facts) => {
-                stats.hits += 1;
-                pending.push(Pending::Ready(facts));
-            }
-            CacheLoad::Miss => {
-                stats.misses += 1;
-                if known_cached_file_paths
-                    .get_or_insert_with(&mut load_known_file_paths)
-                    .contains(file)
-                {
-                    stats.invalidated_files.insert(file.clone());
-                }
-                pending.push(Pending::Parse { key });
-            }
-            CacheLoad::CorruptIgnored { reason } => {
-                stats.corrupt_ignored += 1;
-                first_corrupt_reason.get_or_insert(reason);
-                pending.push(Pending::Parse { key });
-            }
-        }
-    }
+    let mut accounting = CacheAccounting::default();
+    let batched = insert_cached_file_batches(
+        root,
+        files,
+        adapter,
+        fallback,
+        cache,
+        &mut load_known_file_paths,
+        &mut accounting,
+    );
+    let CacheAccounting {
+        stats,
+        first_corrupt_reason,
+    } = accounting;
+    // Emitted once on every exit after lookup began, before finalization.
+    // A complete build reports the whole-corpus count. An aborted build
+    // reports the entries found in the batches it admitted: later batches
+    // are never looked up, so their entries are not claimed either way.
     emit_corrupt_entries_warning(stats.corrupt_ignored, first_corrupt_reason.as_deref());
-
-    // Phase 2 (parallel): parse cache misses on the rayon pool. Each parse
-    // is independent; collecting an indexed parallel iterator preserves
-    // input order, so results map back to their file positions.
-    let mut parsed: Vec<Option<Result<super::FileFacts, String>>> = Vec::new();
-    parsed.resize_with(files.len(), || None);
-    let parse_positions: Vec<usize> = pending
-        .iter()
-        .enumerate()
-        .filter_map(|(position, entry)| matches!(entry, Pending::Parse { .. }).then_some(position))
-        .collect();
-    let token = cancellation::current_token();
-    for batch in parse_positions.chunks(PARSE_BATCH_FILES) {
-        cancellation::checkpoint()?;
-        let results: Vec<(usize, Result<super::FileFacts, String>)> = batch
-            .par_iter()
-            .map(|&position| {
-                let result = cancellation::with_optional_token(token.as_ref(), || {
-                    cancellation::checkpoint()?;
-                    let (file, bytes) = &files[position];
-                    let facts = summarize_loaded_file(file, bytes, adapter, fallback)?;
-                    cancellation::checkpoint()?;
-                    Ok(facts)
-                });
-                (position, result)
-            })
-            .collect();
-        // An already-observed source/worker failure wins in input order.
-        // Do not replace it with a deadline noticed only after joining.
-        if let Some(error) = results.iter().find_map(|(_, result)| result.as_ref().err()) {
-            return Err(error.clone());
-        }
-        cancellation::checkpoint()?;
-        for (position, result) in results {
-            parsed[position] = Some(result);
-        }
-    }
-
-    // Phase 3 (sequential, input order): store fresh facts, then insert.
-    // Mirroring the sequential loop keeps cache stats identical, lets the
-    // first error in input order win, and keeps the per-iteration
-    // checkpoint ordering (error first, then checkpoint) unchanged.
-    let mut index = RustIndex::default();
-    for (position, entry) in pending.into_iter().enumerate() {
-        let (file, bytes) = &files[position];
-        // Recorded on cache hits too, so a warm run discloses the same file.
-        if rust_source_text(bytes).not_utf8 {
-            index.non_utf8_sources.insert(file.clone());
-        }
-        let summary = match entry {
-            Pending::Ready(facts) => facts,
-            Pending::Parse { key } => {
-                let facts = match parsed[position].take() {
-                    Some(result) => result?,
-                    None => {
-                        return Err(format!(
-                            "missing parse result for {}",
-                            root.join(file).display()
-                        ));
-                    }
-                };
-                cancellation::checkpoint()?;
-                match cache.store_file_facts(&key, &facts) {
-                    Ok(()) => stats.stores += 1,
-                    Err(error) => stats.record_store_failure(file.clone(), error),
-                }
-                facts
-            }
-        };
-        cancellation::checkpoint()?;
-        insert_file_summary(&mut index, file.clone(), summary);
-        cancellation::checkpoint()?;
-    }
+    let mut index = batched?;
     cancellation::checkpoint()?;
     super::includes::resolve_repository_local_includes(root, &mut index);
     cancellation::checkpoint()?;
@@ -197,6 +97,186 @@ fn build_index_with_file_fact_cache(
         index,
         file_fact_cache: stats,
     })
+}
+
+/// Cache statistics plus the first corrupt-entry reason, owned by the caller
+/// so they survive an `Err` from the batch loop.
+#[derive(Default)]
+struct CacheAccounting {
+    stats: FileFactCacheStats,
+    // One stderr line per build, not one per file: an unusable cache
+    // directory makes every lookup fail the same way, and a line per file
+    // buried the analysis output under hundreds of repeats (#4888).
+    first_corrupt_reason: Option<String>,
+}
+
+/// Admit, parse, store, and insert one `PARSE_BATCH_FILES` slice at a time
+/// (#5029). Cache-hit facts and parsed misses live outside the canonical
+/// index only for the current batch; every batch temporary is dropped before
+/// the next batch is looked up. The returned index is a prefix-free whole:
+/// any error or cancellation returns `Err`, never a partial index.
+///
+/// Earlier batches' fresh facts may already be stored when a later batch
+/// fails. That matches the per-file, non-transactional cache contract: each
+/// entry is keyed by its own content and remains a valid future hit.
+fn insert_cached_file_batches(
+    root: &Path,
+    files: &[(PathBuf, Vec<u8>)],
+    adapter: &(dyn RustSyntaxAdapter + Send + Sync),
+    fallback: &(dyn RustSyntaxAdapter + Send + Sync),
+    cache: &RepoFileFactCache,
+    load_known_file_paths: &mut impl FnMut() -> HashSet<PathBuf>,
+    accounting: &mut CacheAccounting,
+) -> Result<RustIndex, String> {
+    let CacheAccounting {
+        stats,
+        first_corrupt_reason,
+    } = accounting;
+    enum Pending {
+        Ready(super::FileFacts),
+        Parse { key: RepoFileFactCacheKey },
+    }
+    // Only genuine misses need historical paths for invalidation attribution.
+    // All-hit, corrupt-only, empty, and already-cancelled builds must not walk
+    // and decode the entire cache directory just to discard the inventory.
+    // Initialized once, at the first miss.
+    let mut known_cached_file_paths: Option<HashSet<PathBuf>> = None;
+    let mut index = RustIndex::default();
+    let token = cancellation::current_token();
+    for batch in files.chunks(PARSE_BATCH_FILES) {
+        // Phase 1 (sequential): this batch's cache lookups, in input order.
+        let mut pending: Vec<Pending> = Vec::with_capacity(batch.len());
+        for (file, bytes) in batch {
+            cancellation::checkpoint()?;
+            let key = RepoFileFactCacheKey::new(file, bytes);
+            match cache.load_file_facts(&key) {
+                CacheLoad::Hit(facts) => {
+                    stats.hits += 1;
+                    pending.push(Pending::Ready(facts));
+                }
+                CacheLoad::Miss => {
+                    stats.misses += 1;
+                    if known_cached_file_paths
+                        .get_or_insert_with(&mut *load_known_file_paths)
+                        .contains(file)
+                    {
+                        stats.invalidated_files.insert(file.clone());
+                    }
+                    pending.push(Pending::Parse { key });
+                }
+                CacheLoad::CorruptIgnored { reason } => {
+                    stats.corrupt_ignored += 1;
+                    first_corrupt_reason.get_or_insert(reason);
+                    pending.push(Pending::Parse { key });
+                }
+            }
+        }
+
+        // Phase 2 (parallel): parse only this batch's misses. Each worker
+        // installs the owning request's token. Indexed collection preserves
+        // input order, and an observed source/worker failure wins in input
+        // order before anything from this batch is stored or inserted.
+        let parse_positions: Vec<usize> = pending
+            .iter()
+            .enumerate()
+            .filter_map(|(position, entry)| {
+                matches!(entry, Pending::Parse { .. }).then_some(position)
+            })
+            .collect();
+        let mut parsed: Vec<Option<super::FileFacts>> = Vec::new();
+        parsed.resize_with(batch.len(), || None);
+        if !parse_positions.is_empty() {
+            cancellation::checkpoint()?;
+            let results: Vec<(usize, Result<super::FileFacts, String>)> = parse_positions
+                .par_iter()
+                .map(|&position| {
+                    let result = cancellation::with_optional_token(token.as_ref(), || {
+                        cancellation::checkpoint()?;
+                        let (file, bytes) = &batch[position];
+                        let facts = summarize_loaded_file(file, bytes, adapter, fallback)?;
+                        cancellation::checkpoint()?;
+                        Ok(facts)
+                    });
+                    (position, result)
+                })
+                .collect();
+            // Do not replace an observed failure with a deadline noticed
+            // only after joining.
+            if let Some(error) = results.iter().find_map(|(_, result)| result.as_ref().err()) {
+                return Err(error.clone());
+            }
+            cancellation::checkpoint()?;
+            for (position, result) in results {
+                parsed[position] = Some(result?);
+            }
+        }
+        #[cfg(test)]
+        uninserted_facts::record(
+            pending
+                .iter()
+                .filter(|entry| matches!(entry, Pending::Ready(_)))
+                .count()
+                + parsed.iter().filter(|facts| facts.is_some()).count(),
+        );
+
+        // Phase 3 (sequential, input order): store fresh facts, then insert.
+        // `pending` and `parsed` are consumed here and dropped at the end of
+        // this iteration, before the next batch is admitted.
+        for (position, entry) in pending.into_iter().enumerate() {
+            let (file, bytes) = &batch[position];
+            // Recorded on cache hits too, so a warm run discloses the same file.
+            if rust_source_text(bytes).not_utf8 {
+                index.non_utf8_sources.insert(file.clone());
+            }
+            let summary = match entry {
+                Pending::Ready(facts) => facts,
+                Pending::Parse { key } => {
+                    let Some(facts) = parsed[position].take() else {
+                        return Err(format!(
+                            "missing parse result for {}",
+                            root.join(file).display()
+                        ));
+                    };
+                    cancellation::checkpoint()?;
+                    match cache.store_file_facts(&key, &facts) {
+                        Ok(()) => stats.stores += 1,
+                        Err(error) => stats.record_store_failure(file.clone(), error),
+                    }
+                    facts
+                }
+            };
+            cancellation::checkpoint()?;
+            insert_file_summary(&mut index, file.clone(), summary);
+            cancellation::checkpoint()?;
+        }
+    }
+    Ok(index)
+}
+
+/// Test-only lifetime instrument for #5029: the most `FileFacts` held
+/// outside the canonical index (cache hits plus parsed misses) at the point
+/// just before insertion. A builder that stages the whole corpus before
+/// inserting reports the corpus size; the bounded builder reports at most
+/// one batch.
+#[cfg(test)]
+pub(super) mod uninserted_facts {
+    use std::cell::Cell;
+
+    thread_local! {
+        static HIGH_WATER: Cell<usize> = const { Cell::new(0) };
+    }
+
+    pub(in crate::analysis::facts) fn record(live: usize) {
+        HIGH_WATER.with(|high| high.set(high.get().max(live)));
+    }
+
+    /// Reset, run `work` on this thread, and return its result with the
+    /// observed high-water mark.
+    pub(in crate::analysis::facts) fn observe<T>(work: impl FnOnce() -> T) -> (T, usize) {
+        HIGH_WATER.with(|high| high.set(0));
+        let result = work();
+        (result, HIGH_WATER.with(Cell::get))
+    }
 }
 
 fn emit_corrupt_entries_warning(count: usize, first_reason: Option<&str>) {
