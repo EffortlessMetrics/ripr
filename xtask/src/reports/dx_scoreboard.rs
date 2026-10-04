@@ -559,19 +559,35 @@ pub(crate) fn parse_ingest(value: &Value, config: &Config) -> Result<Vec<Sample>
 /// - unknown verdicts: cases whose verdict is a `*_unknown` class.
 pub(crate) fn first_run_to_input(value: &Value) -> Result<Value, String> {
     let setup = value["setup"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+    // An empty array is the install-failed walk; a missing or non-array value
+    // is a malformed receipt and must not pass as one.
     let cases = value["cases"]
         .as_array()
-        .filter(|cases| !cases.is_empty())
-        .ok_or("first_run.v1 receipt needs a non-empty cases array")?;
-    let install_secs: Option<f64> = setup
+        .map(Vec::as_slice)
+        .ok_or("first_run.v1 receipt needs a cases array")?;
+    let install_steps: Vec<&Value> = setup
         .iter()
         .filter(|step| {
             step["step"]
                 .as_str()
                 .is_some_and(|name| name.contains("install"))
         })
+        .collect();
+    let install_secs: Option<f64> = install_steps
+        .iter()
         .filter_map(|step| step["secs"].as_f64())
         .reduce(|a, b| a + b);
+    // A walk whose install failed writes no cases but keeps the timed install
+    // step; that receipt still carries the install sample.
+    if cases.is_empty() && install_steps.is_empty() {
+        return Err("first_run.v1 receipt needs a non-empty cases array".to_string());
+    }
+    // A partial sum would let a slow install look fast, so one untimed
+    // install step leaves the row incomplete.
+    let install_timed = install_steps.iter().all(|step| step["secs"].is_number());
+    let install_failed = install_steps
+        .iter()
+        .find(|step| step["exit"].as_i64().is_some_and(|code| code != 0));
     let ripr = value["ripr"].as_str().unwrap_or("unknown ripr");
     let friction_in = |steps: &[Value]| -> usize {
         steps
@@ -611,6 +627,24 @@ pub(crate) fn first_run_to_input(value: &Value) -> Result<Value, String> {
             "completed": reached,
         }));
     }
+    // An install step with no duration at all is an incomplete sample, not an
+    // absent one, so a previously timed install cannot silently drop out.
+    if !install_steps.is_empty() {
+        rows.push(json!({
+            "id": "first_run.install_seconds",
+            "value": install_secs.unwrap_or(0.0),
+            "completed": install_timed && install_secs.is_some() && install_failed.is_none(),
+        }));
+    }
+    if cases.is_empty() {
+        // Install-only walk: case-dependent metrics stay absent.
+        return Ok(json!({
+            "schema_version": INPUT_SCHEMA_VERSION,
+            "source": "first-run",
+            "evidence": format!("first_run.v1 receipt for {ripr}, install only (no cases ran)"),
+            "metrics": rows,
+        }));
+    }
     rows.push(json!({"id": "first_run.friction_events", "value": friction}));
     rows.push(json!({"id": "first_run.unknown_verdicts", "value": unknown}));
     Ok(json!({
@@ -639,6 +673,8 @@ pub(crate) fn first_run_to_input(value: &Value) -> Result<Value, String> {
 /// - unknown verdicts: `verdict` rows of an `*_unknown` class. The verdict
 ///   list is the sample detail, so a change is listed for review and does not
 ///   fail the gate;
+/// - install seconds: the timed install steps in `_setup`, gated against the
+///   baseline so a slower compile or download is a regression on its own;
 /// - time to first useful result per case: install plus every step through
 ///   the first `check` that exited 0, only when the walk timed an install.
 ///
@@ -757,9 +793,6 @@ pub(crate) fn first_run_rows_to_input(value: &Value) -> Result<Value, String> {
                 }
                 cases
             });
-    if cases.is_empty() {
-        return Err("first_run_row.v1 input has no case rows outside _setup".to_string());
-    }
     let failed: Vec<String> = steps
         .iter()
         .filter_map(|s| match s.exit {
@@ -776,6 +809,15 @@ pub(crate) fn first_run_rows_to_input(value: &Value) -> Result<Value, String> {
         .iter()
         .filter(|s| s.case == "_setup" && s.step.contains("install"))
         .all(|s| s.secs.is_some());
+    let install_ok = steps
+        .iter()
+        .filter(|s| s.case == "_setup" && s.step.contains("install"))
+        .all(|s| s.exit == Some(0.0));
+    // A walk whose install failed writes no case rows; its install timing and
+    // failed step are still worth ingesting.
+    if cases.is_empty() && install.is_none() {
+        return Err("first_run_row.v1 input has no case rows outside _setup".to_string());
+    }
     let list = |items: &[String]| {
         if items.is_empty() {
             "none".to_string()
@@ -787,9 +829,22 @@ pub(crate) fn first_run_rows_to_input(value: &Value) -> Result<Value, String> {
     let mut out = vec![
         json!({"id": "first_run.failed_steps", "value": failed.len(), "evidence": list(&failed)}),
         json!({"id": "first_run.over_budget_steps", "value": over.len(), "evidence": list(&over)}),
-        json!({"id": "first_run.friction_events", "value": friction}),
-        json!({"id": "first_run.unknown_verdicts", "value": unknown, "evidence": format!("verdicts: {}", list(&verdicts))}),
     ];
+    // An install-only walk ran no cases, so a zero here would read as "no
+    // friction, no unknown verdicts" rather than "not measured".
+    if !cases.is_empty() {
+        out.push(json!({"id": "first_run.friction_events", "value": friction}));
+        out.push(json!({"id": "first_run.unknown_verdicts", "value": unknown, "evidence": format!("verdicts: {}", list(&verdicts))}));
+    }
+    if let Some(install) = install {
+        // The install alone, so a slower compile is visible even when the
+        // walk after it stays fast.
+        out.push(json!({
+            "id": "first_run.install_seconds",
+            "value": install,
+            "completed": install_timed && install_ok,
+        }));
+    }
     for case in &cases {
         let mine: Vec<&Step> = steps.iter().filter(|s| &s.case == case).collect();
         // A step without a `secs` row has no duration; summing it as zero

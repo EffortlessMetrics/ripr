@@ -257,6 +257,11 @@ are scoped or reviewed.
 
 ### Changed
 
+- The install route is now timed as its own scoreboard metric,
+  `first_run.install_seconds` with a rise rule that needs a committed baseline sample and a nightly first-run ingest before it can fail anything (#5311, #5983). The README, quickstart
+  and install-channel notes state the measured source-build time of a 0.11
+  development build (about 11 minutes against about 2 for 0.10.0) and that no
+  prebuilt 0.11 archive exists until 0.11.0 is published.
 - Performance: cold `ripr pilot` parses each production file once for
   new-test placement instead of twice per seam, and a run that passes the
   default 30s deadline keeps going instead of restarting. On a 4-core Linux

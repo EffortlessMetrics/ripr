@@ -352,6 +352,22 @@ runner_dependent = true
 source = "ingest:first-run"
 
 [[metric]]
+id = "first_run.install_seconds"
+board = "first_run"
+title = "Fresh machine: seconds to install ripr by the route the walk times (`cargo install ripr --locked`, a source build)"
+unit = "s"
+direction = "lower_is_better"
+# A proposed bar, not a measured limit: 0.10.0 took 128 s and a 0.11.0 dev
+# build about 640 s on one container (#5311). The prebuilt archive route is
+# not timed by the walk yet. The regression rule applies only once a baseline
+# sample is committed; the nightly run does not ingest first-run receipts yet.
+target = 120
+regression_pct = 25
+regression_floor = 30
+runner_dependent = true
+source = "ingest:first-run"
+
+[[metric]]
 id = "first_run.unknown_verdicts"
 board = "first_run"
 title = "Simple boundary edits on unfamiliar crates that get an `*_unknown` verdict"

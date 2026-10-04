@@ -482,7 +482,7 @@ fn first_run_receipt(with_install: bool) -> Value {
 fn first_run_receipt_counts_install_through_first_successful_check() -> Result<(), String> {
     let config = parse_config(&MINIMAL.replace(
         "[[metric]]\nid = \"first_run.friction_events\"",
-        "[[metric]]\nid = \"first_run.time_to_first_useful_result_s\"\nboard = \"first_run\"\ntitle = \"t\"\nunit = \"s\"\ndirection = \"lower_is_better\"\ntarget = 300\nregression_pct = 25\nregression_floor = 60\nrunner_dependent = true\nsource = \"ingest:first-run\"\n\n[[metric]]\nid = \"first_run.unknown_verdicts\"\nboard = \"first_run\"\ntitle = \"u\"\nunit = \"cases\"\ndirection = \"lower_is_better\"\ntarget = 0\nregression_pct = 0\nregression_floor = 0\nrunner_dependent = false\nsource = \"ingest:first-run\"\n\n[[metric]]\nid = \"first_run.friction_events\"",
+        "[[metric]]\nid = \"first_run.install_seconds\"\nboard = \"first_run\"\ntitle = \"i\"\nunit = \"s\"\ndirection = \"lower_is_better\"\ntarget = 120\nregression_pct = 25\nregression_floor = 30\nrunner_dependent = true\nsource = \"ingest:first-run\"\n\n[[metric]]\nid = \"first_run.time_to_first_useful_result_s\"\nboard = \"first_run\"\ntitle = \"t\"\nunit = \"s\"\ndirection = \"lower_is_better\"\ntarget = 300\nregression_pct = 25\nregression_floor = 60\nrunner_dependent = true\nsource = \"ingest:first-run\"\n\n[[metric]]\nid = \"first_run.unknown_verdicts\"\nboard = \"first_run\"\ntitle = \"u\"\nunit = \"cases\"\ndirection = \"lower_is_better\"\ntarget = 0\nregression_pct = 0\nregression_floor = 0\nrunner_dependent = false\nsource = \"ingest:first-run\"\n\n[[metric]]\nid = \"first_run.friction_events\"",
     ))?;
     let samples = parse_ingest(&first_run_receipt(true), &config)?;
     let find = |metric: &str, repo: Option<&str>| {
@@ -500,6 +500,10 @@ fn first_run_receipt_counts_install_through_first_successful_check() -> Result<(
         Some(SampleOutcome::Incomplete(130.0))
     );
     assert_eq!(
+        find("first_run.install_seconds", None),
+        Some(SampleOutcome::Value(128.0))
+    );
+    assert_eq!(
         find("first_run.friction_events", None),
         Some(SampleOutcome::Value(2.0))
     );
@@ -508,13 +512,75 @@ fn first_run_receipt_counts_install_through_first_successful_check() -> Result<(
         Some(SampleOutcome::Value(1.0))
     );
 
+    // An install step with no duration must not pass as a faster install.
+    let mut partial = first_run_receipt(true);
+    if let Some(setup) = partial["setup"].as_array_mut() {
+        setup.push(json!({"step": "install_extra", "exit": 0, "friction": []}));
+    }
+    let samples = parse_ingest(&partial, &config)?;
+    assert_eq!(
+        samples
+            .iter()
+            .find(|s| s.metric == "first_run.install_seconds")
+            .map(|s| s.outcome.clone()),
+        Some(SampleOutcome::Incomplete(128.0))
+    );
+
     // Without a timed install the journey metric stays unmeasured.
     let samples = parse_ingest(&first_run_receipt(false), &config)?;
     assert!(
         !samples
             .iter()
-            .any(|s| s.metric == "first_run.time_to_first_useful_result_s")
+            .any(|s| s.metric == "first_run.time_to_first_useful_result_s"
+                || s.metric == "first_run.install_seconds")
     );
+
+    // An install step with no duration at all is an incomplete sample, not a
+    // missing one, so a previously timed install cannot drop out unnoticed.
+    let mut untimed = first_run_receipt(false);
+    if let Some(setup) = untimed["setup"].as_array_mut() {
+        setup.push(json!({"step": "install_published", "exit": 0, "friction": []}));
+    }
+    let samples = parse_ingest(&untimed, &config)?;
+    assert_eq!(
+        samples
+            .iter()
+            .find(|s| s.metric == "first_run.install_seconds")
+            .map(|s| s.outcome.clone()),
+        Some(SampleOutcome::Incomplete(0.0))
+    );
+
+    // A failed install writes no cases; its timing still becomes an
+    // incomplete install sample and no case-dependent metric appears.
+    let failed = json!({
+        "schema_version": "first_run.v1",
+        "ripr": "ripr 0.11.0",
+        "setup": [{"step": "install_published", "secs": 20.0, "exit": 101, "friction": []}],
+        "cases": [],
+    });
+    let samples = parse_ingest(&failed, &config)?;
+    assert_eq!(samples.len(), 1);
+    assert_eq!(
+        samples
+            .first()
+            .map(|s| (s.metric.as_str(), s.outcome.clone())),
+        Some(("first_run.install_seconds", SampleOutcome::Incomplete(20.0)))
+    );
+
+    // A receipt with an install step but no `cases` array is malformed, not
+    // an install-failed walk.
+    let no_cases = json!({
+        "schema_version": "first_run.v1",
+        "ripr": "r",
+        "setup": [{"step": "install_published", "secs": 20.0, "exit": 0, "friction": []}],
+    });
+    let rejected = parse_ingest(&no_cases, &config).err();
+    assert!(rejected.is_some_and(|e| e.contains("cases array")));
+
+    // No install step and no cases is still rejected.
+    let empty = json!({"schema_version": "first_run.v1", "ripr": "r", "setup": [], "cases": []});
+    let rejected = parse_ingest(&empty, &config).err();
+    assert!(rejected.is_some_and(|e| e.contains("non-empty cases")));
     Ok(())
 }
 
@@ -710,6 +776,11 @@ fn first_run_rows_map_to_gates_and_list_verdicts() {
     let first = &get("first_run.time_to_first_useful_result_s")[0];
     assert_eq!(first["value"], json!(52.5));
     assert_eq!(first["completed"], json!(true));
+    // The install alone is its own row, so a slower compile regresses it even
+    // when the walk after it stays fast.
+    let install = &get("first_run.install_seconds")[0];
+    assert_eq!(install["value"], json!(40.0));
+    assert_eq!(install["completed"], json!(true));
     assert!(
         parse_ingest_text("{\"schema\":\"other\"}\nnot json")
             .is_err_and(|err| err.contains("line 1"))
@@ -929,6 +1000,40 @@ fn first_run_rows_fail_closed_on_malformed_or_cut_off_input() {
         ))
         .is_err_and(|e| e.contains("no case rows"))
     );
+    // A failed install writes only setup rows; its timing still lands as an
+    // incomplete install sample, and no per-case metric appears.
+    let failed_install_text = [
+        row(
+            r#""ripr":"r","case":"_setup","step":"install_published","metric":"secs","value":20.0"#,
+        ),
+        row(r#""ripr":"r","case":"_setup","step":"install_published","metric":"exit","value":101"#),
+    ]
+    .join("\n");
+    let install_rows = convert(failed_install_text.clone()).map(|input| {
+        input["metrics"]
+            .as_array()
+            .map(|rows| {
+                rows.iter()
+                    .filter(|r| r["id"].as_str() == Some("first_run.install_seconds"))
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    });
+    let measured_nothing = convert(failed_install_text.clone()).map(|input| {
+        input["metrics"].as_array().is_some_and(|rows| {
+            rows.iter().all(|r| {
+                !matches!(
+                    r["id"].as_str(),
+                    Some("first_run.friction_events" | "first_run.unknown_verdicts")
+                )
+            })
+        })
+    });
+    assert_eq!(measured_nothing, Ok(true));
+    assert!(install_rows.is_ok_and(|rows| rows.len() == 1
+        && rows[0]["value"] == json!(20.0)
+        && rows[0]["completed"] == json!(false)));
     // A step cut off before its exit row counts as failed.
     let cut = [
         row(r#""case":"a","step":"check","metric":"exit","value":0"#),

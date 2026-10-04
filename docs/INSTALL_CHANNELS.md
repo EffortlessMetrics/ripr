@@ -17,6 +17,24 @@ publishes, tags or submits anything; each outward step names who must act.
 | VS Code Marketplace / Open VSX | Marketplace lists 0.10.0 (read back in a browser 2026-10-04; Open VSX not checked) | `publish-extension.yml` is source-owned | The listing's two continuation links omit `/blob/main/` and render "Not Found" (`github.com/EffortlessMetrics/ripr/docs/EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md` and `.../EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md`); its description still says 0.8.x. A source docs merge does not change a published listing; the next authorized extension publication does. Installed-snippet and continuation work is owned by #4629. |
 | Homebrew | None | Formula draft below | Needs a tap repository and Steven's go-ahead. |
 
+## Install time by route
+
+Measured on one Linux container with a cold target directory (#5311):
+
+| route | seconds |
+| --- | --- |
+| prebuilt 0.10.0 archive (download, checksum, extract) | about 1 |
+| `cargo install ripr --locked` (0.10.0 from crates.io) | 128 |
+| `cargo install --locked --path crates/ripr` (0.11.0 development build) | 640 |
+
+The 0.11 figure ran beside light unrelated work, so read it as roughly five
+times 0.10, not an exact ratio. What dominates that compile (new parser
+dependencies or the crate's own size) is not isolated. `cargo xtask first-run
+--install-published` times the source route and the scoreboard records it as
+`first_run.install_seconds`. The metric has a regression rule but no committed
+baseline sample and no nightly ingest yet, so nothing fails on a slower install
+until both exist; the prebuilt route is not timed by the walk.
+
 ## What blocks a developer who is not us
 
 1. **Every fast path hangs on one event:** the 0.11.0 GitHub Release with its
