@@ -27,11 +27,11 @@ than one behavior contract or touches repo shape.
 | CLI Finding Navigation Discoverability (33) | Make the default human `check` output lead directly to executable, scope-preserving `explain` and `context` follow-up commands. | Complete: #2598/#2620 and #2659/#2681 landed the navigation route, governed golden updates, replay coverage, and [the closeout handoff](handoffs/2026-07-28-cli-finding-navigation-discoverability-closeout.md). Inherited all-target Clippy debt remains isolated in #2679. |
 | Analyzer Honesty and Policy Visibility (34) | Make analyzer and policy limitations visible instead of silently skipped or over-credited, while preserving conservative advisory semantics. | Complete: #2698/#2702 disclose parser-to-lexical fallback through repo and seam-inventory cache paths; #2699/#2703 make the static-language policy scan the editor's `.ts`, `.js`, `.tsx`, and `.jsx` sources; the [campaign closeout](handoffs/2026-07-29-analyzer-honesty-and-policy-visibility-closeout.md) records the proof and claim boundary. |
 | Operator Signal Integrity (35) | Ensure operator-facing disclosures, gate failures, and GitHub annotations preserve the actual limitation or severity instead of silently disappearing, being downgraded, or hiding the first actionable reason. | Complete: #2675/#2720 submodule-pointer disclosure, #2599/#2721 inline gate reasons, #2632/#2722 annotation mapping, and repair #2726 for the source-of-truth all-warning contract. #2718 merged independently and remains outside this campaign. See the [closeout handoff](handoffs/2026-07-29-operator-signal-integrity-closeout.md). |
-| Agentic DevEx Foundation | Make the repo safe for Codex Goals and human review. | `policy/architecture-guard`, `output/output-contract-check`, `docs/codex-goals-campaigns`, `fixtures/runner-comparison-v1`, `fixtures/first-two-goldens`, `testing/test-oracle-report`, `dogfood/static-self-check` |
-| Syntax-Backed Analyzer Foundation | Move the analyzer from lexical facts to syntax-backed facts. | `analysis/file-facts-model`, `analysis/syntax-adapter-mvp`, `design/rust-syntax-substrate`, `analysis/ast-test-oracle-extraction`, `analysis/ast-probe-ownership`, `analysis/ast-probe-generation` |
-| Evidence Quality | Improve oracle strength, local flow, activation values, output evidence, and stop reasons. | `output/unknown-stop-reason-invariant`, `analysis/oracle-strength-v2`, `analysis/local-delta-flow-v1`, `analysis/activation-value-modeling-v1`, `output/evidence-first-output`, `fixtures/negative-metamorphic-baseline` |
-| Test Efficiency and Vacuity Signals (4A) | Make low-discriminator, smoke-only, broad-oracle, opaque, circular, and duplicate test signals visible as advisory evidence; ship `ripr` and `ripr+` badge artifacts. | `test-efficiency/test-fact-ledger`, `test-efficiency/vacuous-signal-v1`, `test-efficiency/duplicate-discriminator-v1`, `test-efficiency/report-and-metrics`, `badge/ripr-count-v1`, `badge/ripr-plus-count-v1`, `badge/repo-scope-artifacts`, `badge/publish-main-endpoint` |
-| Repo Seam Inventory and Test Grip (4B) | Inventory behavior seams, classify test-grip per seam, and turn actionable gaps into editor diagnostics and agent-ready packets. | `spec/repo-seam-inventory`, `analysis/repo-seam-model-v1`, `analysis/repo-seam-inventory-v1`, `analysis/test-grip-evidence-v1`, `analysis/repo-ripr-classification-v1`, `output/repo-exposure-report-v1`, `lsp/repo-seam-diagnostics-v1`, `lsp/seam-evidence-hover-v1`, `context/agent-seam-packets-v1`, `docs/agent-dispatch-workflow-v1` |
+| Agentic DevEx Foundation | Make the repo safe for Codex Goals and human review. | Complete: `policy/architecture-guard`, `output/output-contract-check`, `docs/codex-goals-campaigns`, `fixtures/runner-comparison-v1`, `fixtures/first-two-goldens`, `testing/test-oracle-report`, `dogfood/static-self-check`, and `campaign/agentic-devex-closeout`. |
+| Syntax-Backed Analyzer Foundation | Move the analyzer from lexical facts to syntax-backed facts. | Complete: `analysis/file-facts-model`, `analysis/syntax-adapter-mvp`, `design/rust-syntax-substrate`, `analysis/ast-test-oracle-extraction`, `analysis/ast-probe-ownership`, and `analysis/ast-probe-generation`. |
+| Evidence Quality | Improve oracle strength, local flow, activation values, output evidence, and stop reasons. | Complete: `output/unknown-stop-reason-invariant`, `analysis/oracle-strength-v2`, `analysis/local-delta-flow-v1`, `analysis/activation-value-modeling-v1`, `output/evidence-first-output`, `fixtures/negative-metamorphic-baseline`, and `campaign/evidence-quality-closeout`. |
+| Test Efficiency and Vacuity Signals (4A) | Make low-discriminator, smoke-only, broad-oracle, opaque, circular, and duplicate test signals visible as advisory evidence; ship `ripr` and `ripr+` badge artifacts. | Complete: `test-efficiency/test-fact-ledger`, `test-efficiency/vacuous-signal-v1`, `test-efficiency/duplicate-discriminator-v1`, `test-efficiency/report-and-metrics`, `badge/ripr-count-v1`, `badge/ripr-plus-count-v1`, `badge/repo-scope-artifacts`, `badge/publish-main-endpoint`, and `campaign/test-efficiency-closeout`. |
+| Repo Seam Inventory and Test Grip (4B) | Inventory behavior seams, classify test-grip per seam, and turn actionable gaps into editor diagnostics and agent-ready packets. | Complete: `spec/repo-seam-inventory`, `analysis/repo-seam-model-v1`, `analysis/repo-seam-inventory-v1`, `analysis/test-grip-evidence-v1`, `analysis/repo-ripr-classification-v1`, `output/repo-exposure-report-v1`, `lsp/repo-seam-diagnostics-v1`, `lsp/seam-evidence-hover-v1`, `context/agent-seam-packets-v1`, `docs/agent-dispatch-workflow-v1`, and `campaign/seam-inventory-test-grip-closeout`. |
 | Seam Evidence Usability and Precision (5A) | Make repo seam evidence fast, precise, and directly actionable for developers and coding agents. | Complete: #255, #310, #313, #314, #315, #316, #327, and `campaign/seam-evidence-usability-closeout`. |
 | Operationalization (5B) | Govern analyzer behavior with repository config, integrate SARIF/CI policy modes, and remap badges onto seam-native counts. | Complete: `config/ripr-config-v1`, `ci/sarif-ci-policy`, `badge/seam-native-count-mapping`, and `campaign/operationalization-closeout`. |
 | Module SRP Refactoring (6) | Refactor internal modules under `crates/ripr/src/` so each module has one product responsibility, without splitting the package. | Complete: #347, the Campaign 6 refactor chain through #405, and `campaign/modularization-closeout`. |
@@ -69,17 +69,17 @@ than one behavior contract or touches repo shape.
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 | Editor First-Run and Repair Usability (Lane 3 tracker) | Make the existing editor cockpit self-orienting from setup diagnosis to one bounded repair packet, verify command, receipt visibility, and refresh. | Complete: [RIPR-PROP-0008](proposals/RIPR-PROP-0008-editor-first-run-usability.md), [RIPR-SPEC-0049](specs/RIPR-SPEC-0049-editor-setup-status.md), [RIPR-SPEC-0050](specs/RIPR-SPEC-0050-editor-first-repair-loop.md), [ADR-0013](adr/0013-editor-setup-diagnostics-are-read-only.md), and [the implementation plan](../plans/editor-first-run-usability/implementation-plan.md) define the closed Lane 3 stack. #1012 through #1040 added setup diagnosis, first-run/no-output smoke, receipt visibility, first-repair packets, first-run fixtures, user docs, dogfood receipts, and [closeout proof](handoffs/2026-05-16-editor-first-run-usability-closeout.md). |
 | Editor First-PR Bridge (Lane 3 tracker) | Connect the editor repair loop to the existing first-pr start-here packet without making Lane 3 a PR/CI producer. | Complete: [RIPR-PROP-0010](proposals/RIPR-PROP-0010-editor-first-pr-bridge.md), [RIPR-SPEC-0052](specs/RIPR-SPEC-0052-editor-first-pr-packet-projection.md), [ADR-0014](adr/0014-editor-first-pr-projection-is-read-only.md), and [the implementation plan](../plans/editor-first-pr-bridge/implementation-plan.md) define the closed Lane 3 stack. #1098 through #1116 added first-pr packet validation, status projection, bounded actions, fixtures, VS Code smoke, workflow docs, and dogfood receipts; the closeout proof is recorded in [the Editor First-PR Bridge closeout](handoffs/2026-05-17-editor-first-pr-bridge-closeout.md). |
-| Start-Here Surface Convergence | Make PR/CI, CLI, editor handoffs, receipts, no-output states, preview promotion criteria, and dogfood receipts lead with the same canonical gap-to-repair unit. | Complete: [RIPR-PROP-0011](proposals/RIPR-PROP-0011-start-here-surface-convergence.md), [RIPR-SPEC-0053](specs/RIPR-SPEC-0053-start-here-surface-convergence.md), [ADR-0015](adr/0015-start-here-surfaces-use-canonical-gap-records.md), [the implementation plan](../plans/start-here-surface-convergence/implementation-plan.md), dogfood receipts, and [the closeout audit](handoffs/2026-05-22-start-here-surface-convergence-closeout.md) are in place. The active manifest later selected and closed Finding Alignment Burn-Down and Value Resolution Audit Fixes; `.ripr/goals/active.toml` now records `no_current_goal = true` with no successor selected. |
+| Start-Here Surface Convergence | Make PR/CI, CLI, editor handoffs, receipts, no-output states, preview promotion criteria, and dogfood receipts lead with the same canonical gap-to-repair unit. | Complete: [RIPR-PROP-0011](proposals/RIPR-PROP-0011-start-here-surface-convergence.md), [RIPR-SPEC-0053](specs/RIPR-SPEC-0053-start-here-surface-convergence.md), [ADR-0015](adr/0015-start-here-surfaces-use-canonical-gap-records.md), [the implementation plan](../plans/start-here-surface-convergence/implementation-plan.md), dogfood receipts, and [the closeout audit](handoffs/2026-05-22-start-here-surface-convergence-closeout.md) are in place. The active manifest later selected and closed Finding Alignment Burn-Down and Value Resolution Audit Fixes; the historical goals manifest recorded `no_current_goal = true` with no successor selected before it was deleted in #1701. |
 | Editor Adoption Assurance (Lane 3 tracker) | Make first-use editor setup, compatibility, root selection, multi-root, receipt mismatch, and first-pr packet mismatch states safe and legible. | Complete: [RIPR-PROP-0012](proposals/RIPR-PROP-0012-editor-adoption-assurance.md), [RIPR-SPEC-0054](specs/RIPR-SPEC-0054-editor-adoption-assurance.md), [ADR-0016](adr/0016-editor-adoption-assurance-remains-read-only.md), and [the implementation plan](../plans/editor-adoption-assurance/implementation-plan.md) define the closed Lane 3 adoption-assurance stack. Setup/root diagnosis, fixtures, VS Code smoke, install-to-first-pr docs, external-style dogfood, and [closeout proof](handoffs/2026-05-19-editor-adoption-assurance-closeout.md) are in place. |
 | Editor Actionable Gap Queue (Lane 3 tracker) | Project existing actionable-gap artifacts into the editor as a bounded local repair queue. | Complete: [RIPR-PROP-0013](proposals/RIPR-PROP-0013-editor-actionable-gap-queue.md), [RIPR-SPEC-0055](specs/RIPR-SPEC-0055-editor-actionable-gap-queue.md), [ADR-0017](adr/0017-editor-gap-queue-is-read-only.md), and [the implementation plan](../plans/editor-actionable-gap-queue/implementation-plan.md) define the closed stack. Validation, Show Status queue projection, Copy Current Repair Packet, Copy Repo Gap Map, fixtures, VS Code smoke, [workflow docs](EDITOR_ACTIONABLE_GAP_QUEUE.md), dogfood receipts, and [closeout proof](handoffs/2026-05-20-editor-actionable-gap-queue-closeout.md) are in place. |
 | Actionable Surface Translation | Make badge, PR, editor, swarm dry-run, and outcome/trend first screens translate existing actionable canonical gap evidence into the same repair-first user questions. | Complete: [RIPR-PROP-0016](proposals/RIPR-PROP-0016-actionable-surface-translation.md), [RIPR-SPEC-0059](specs/RIPR-SPEC-0059-actionable-surface-translation.md), [RIPR-PLAN-0059](../plans/actionable-surface-translation/implementation-plan.md), and [the closeout handoff](handoffs/2026-05-23-actionable-surface-translation-closeout.md) record the accepted source-of-truth stack, badge/PR/editor/swarm/outcome first-screen proof, advisory claim boundary, and no selected successor. |
-| First Useful PR Loop Continuation | Make one changed Rust behavior become one clear repairable gap, one focused proof intent, one verification command, and one reviewer- and agent-readable receipt. | Complete: the goal-freshness guardrail, first-pr front door, one-screen recommendation contract, reviewer-native outcome, first-pr demo story, generated CI/VS Code/agent packet convergence, and [closeout handoff](handoffs/2026-05-23-first-useful-pr-loop-continuation-closeout.md) are in place. `.ripr/goals/active.toml` now records `no_current_goal = true` with no successor selected. |
+| First Useful PR Loop Continuation | Make one changed Rust behavior become one clear repairable gap, one focused proof intent, one verification command, and one reviewer- and agent-readable receipt. | Complete: the goal-freshness guardrail, first-pr front door, one-screen recommendation contract, reviewer-native outcome, first-pr demo story, generated CI/VS Code/agent packet convergence, and [closeout handoff](handoffs/2026-05-23-first-useful-pr-loop-continuation-closeout.md) are in place. The historical goals manifest recorded `no_current_goal = true` with no successor selected before it was deleted in #1701. |
 | Self-Hosted Routed Runner Proof | Prove the CX53/CX43 self-hosted routed Rust path for the active swarm trunk, or keep the runner image-readiness/visibility blocker explicit while hosted fallback remains healthy. | Complete: [Self-hosted routed runner proof closeout](handoffs/2026-06-03-self-hosted-routed-runner-proof-closeout.md) records CX53/CX43 routed proof, #24/#34 issue-ledger updates, unchanged branch-protection boundary, and remaining non-goal follow-ups. |
 | Lane 1 Real-Repo Trust Readiness | Make the evidence-to-repair foundation honest on large repositories, cross-language test suites, binding/FFI seams, and review-comment navigation. | Complete: [Lane 1 Real-Repo Trust Readiness closeout](handoffs/2026-06-03-lane1-real-repo-trust-readiness-closeout.md) records the post-0.8 issue-batch slices through #931, the no-0.8.0-tag claim boundary, and the remaining scalable-cache, cross-language oracle graph, and language-aware placement follow-ups. |
 | Lane 1 Large-Repo Runtime Completeness | Make large-repo repo-exposure warm paths usable without representing limited or sampled input as full truth. | Complete: [Lane 1 Large-Repo Runtime Completeness closeout](handoffs/2026-06-03-lane1-large-repo-runtime-completeness-closeout.md) records the #909 post-0.8 trust-debt PR chain through #935, including explicit large-cache skip state, sharded classified seam cache storage, cache-report shard summaries, and diff-scoped review-comments runtime. |
 | Lane 1 Language-Aware Placement Navigation | Make suggested-test placement safe and useful for binding, FFI, and externally tested seams without turning unresolved external targets into repair packets. | Complete: [Lane 1 Language-Aware Placement Navigation closeout](handoffs/2026-06-03-lane1-language-aware-placement-navigation-closeout.md) records the #911 campaign chain through #941, the issue-state boundary, remaining #908/#910 cross-language oracle graph work, and `no_current_goal = true`. |
 | Lane 1 Cross-Language Oracle Graph Readiness | Make cross-language oracle visibility explicit for Rust seams exercised by TypeScript, binding, or FFI surfaces without promoting preview evidence into public repair packets. | Folded into the active post-0.8 operating loop after #943 through #948 landed SPEC-0062, the graph corpus, TS discriminator witnesses, and binding-route witness behavior. The route-quality report adds readiness and evidence-quality scorecard summaries for complete advisory witnesses, missing discriminators, mention-only rows, bridge-unknown rows, and public packet exclusions; the Bun UB calibration report adds an operator-readable JSON/Markdown receipt for the calibrated TypeScript/Bun Blob corpus without public repair packets. A follow-up placement receipt correction makes configured missing shared/resizable discriminator rows name `test/js/web/fetch/blob.test.ts` as advisory TypeScript placement while keeping bridge-unknown, mention-only, and partial-oracle rows at `not_applicable`. #908/#910 remain open as broader cross-language follow-ups rather than completed generic oracle support. |
-| Lane 1 Post-0.8 Evidence-To-Repair Operating Loop | Make RIPR useful on real large and mixed-language repos by routing safe repair packets and fail-closed limitation backlog items through receipts, outcomes, route quality, and user surfaces. | Complete: [Lane 1 Post-0.8 Evidence-To-Repair Operating Loop closeout](handoffs/2026-06-04-lane1-post-08-operating-loop-closeout.md) records live queue hygiene, #913 and #909/#912 disposition, source `ripr` release authority, the Bun UB calibration report slice, `ripr/diff-first-changed-surface-mode`, cross-language oracle fail-closed routing, language-aware target placement navigation, the bounded SPEC-0062 cross-language oracle graph, repair-packet guidance quality, attempt-ledger outcome hardening, real repair/analyzer-attempt dogfood, route-quality metrics, and surface canonical-state alignment. `.ripr/goals/active.toml` now records `no_current_goal = true` with no successor selected. |
+| Lane 1 Post-0.8 Evidence-To-Repair Operating Loop | Make RIPR useful on real large and mixed-language repos by routing safe repair packets and fail-closed limitation backlog items through receipts, outcomes, route quality, and user surfaces. | Complete: [Lane 1 Post-0.8 Evidence-To-Repair Operating Loop closeout](handoffs/2026-06-04-lane1-post-08-operating-loop-closeout.md) records live queue hygiene, #913 and #909/#912 disposition, source `ripr` release authority, the Bun UB calibration report slice, `ripr/diff-first-changed-surface-mode`, cross-language oracle fail-closed routing, language-aware target placement navigation, the bounded SPEC-0062 cross-language oracle graph, repair-packet guidance quality, attempt-ledger outcome hardening, real repair/analyzer-attempt dogfood, route-quality metrics, and surface canonical-state alignment. The historical goals manifest recorded `no_current_goal = true` with no successor selected before it was deleted in #1701. |
 | Lane 1 Cross-Language Oracle Follow-Up | Extend #908/#910 cross-language oracle evidence through measured, profile-backed graph slices beyond the bounded Bun Blob route while preserving preview/advisory and fail-closed boundaries. | Complete: [Lane 1 Cross-Language Oracle Follow-Up closeout](handoffs/2026-06-04-lane1-cross-language-oracle-followup-closeout.md) records the measured Bun Blob, `copy_to_unshared`, #951 MarkdownObject, and #950 FFI panic-boundary slices, their advisory/limitation claim boundary, and `no_current_goal = true`. #908/#910 remain open as broader cross-language oracle follow-ups rather than completed generic oracle support. |
 | Lane 1 Cross-Language Guidance Safety | Pin the #908 MarkdownObject review-comments wrong-target sample so externally observed TypeScript evidence remains navigation-only when target placement is unresolved. | Complete: `output/markdownobject-review-comments-target-safety` adds a MarkdownObject-specific review-comments regression proving no guessed `vendor/lolhtml` Rust test target, no verify command, no public repair packet, and navigation-only `test/js/bun/md/md-edge-cases.test.ts` context routed to `analysis/cross-language-test-target-inference`; #908/#910 remain open for broader cross-language oracle work. |
 | Cross-Language Evidence Router UX | Turn the calibrated TypeScript/Bun graph path into a repeatable mixed TypeScript plus Rust operating loop for Bun operators, Claude Code, and other configured projects without promoting preview evidence. | Complete: [RIPR-SPEC-0063](specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md) and [RIPR-PLAN-0063](../plans/cross-language-evidence-router-ux/implementation-plan.md) defined PR-sized slices for 0.8.1 patch proof, compact Bun UB summary, advisory agent packet, proof-mode projection, node:fs and Bun.write manifest-only profiles, bridge inventory, live Bun dogfood, runbook polish, and the post-0.8.1 support decision. The [post-0.8.1 TypeScript/Bun support decision](handoffs/2026-06-05-post-081-typescript-bun-support-decision.md) keeps TypeScript/JavaScript preview/advisory, confirms calibrated Bun stable-byte evidence is useful for TS-discriminated, missing-discriminator, mention-only, bridge-unknown, and named-limitation states, and requires a separate accepted promotion contract for any stronger claim. |
@@ -459,18 +459,18 @@ rail.
 
 Deliverables:
 
-- [ ] Move static language and panic-family checks into CI.
-- [ ] Add markdown local link check.
-- [ ] Add doc index check for README, docs, specs, and ADRs.
-- [ ] Add traceability manifest validation.
-- [ ] Add capability matrix validation.
-- [ ] Add PR-scope check for production delta and evidence delta.
+- [x] Move static language and panic-family checks into CI.
+- [x] Add markdown local link check.
+- [x] Add doc index check for README, docs, specs, and ADRs.
+- [x] Add traceability manifest validation.
+- [x] Add capability matrix validation.
+- [x] Add PR-scope check for production delta and evidence delta.
 
 Acceptance:
 
-- [ ] `cargo xtask ci-fast` runs the core policy checks.
-- [ ] Existing debt is allowlisted with counts, and new debt fails the check.
-- [ ] Docs explain how to remove allowlist entries as debt is paid down.
+- [x] `cargo xtask ci-fast` runs the core policy checks.
+- [x] Existing debt is allowlisted with counts, and new debt fails the check.
+- [x] Docs explain how to remove allowlist entries as debt is paid down.
 
 ## PR 1B: `rust-first-file-policy`
 
@@ -480,24 +480,24 @@ workflow shell sprawl.
 
 Deliverables:
 
-- [ ] Add Rust-first file policy docs.
-- [ ] Add non-Rust allowlist with owner, kind, and reason.
-- [ ] Add workflow shell-budget allowlist.
-- [ ] Add `cargo xtask check-file-policy`.
-- [ ] Add `cargo xtask check-executable-files`.
-- [ ] Add `cargo xtask check-workflows`.
-- [ ] Wire checks into `cargo xtask ci-fast`.
-- [ ] Wire checks into CI.
+- [x] Add Rust-first file policy docs.
+- [x] Add non-Rust allowlist with owner, kind, and reason.
+- [x] Add workflow shell-budget allowlist.
+- [x] Add `cargo xtask check-file-policy`.
+- [x] Add `cargo xtask check-executable-files`.
+- [x] Add `cargo xtask check-workflows`.
+- [x] Wire checks into `cargo xtask ci-fast`.
+- [x] Wire checks into CI.
 
 Acceptance:
 
-- [ ] Rust is documented as the default implementation and automation language.
-- [ ] Existing VS Code, workflow, docs, fixture, asset, and config surfaces are
+- [x] Rust is documented as the default implementation and automation language.
+- [x] Existing VS Code, workflow, docs, fixture, asset, and config surfaces are
       explicitly allowlisted.
-- [ ] New shell, Python, JavaScript, TypeScript, or other programming files
+- [x] New shell, Python, JavaScript, TypeScript, or other programming files
       outside approved surfaces fail the file policy check.
-- [ ] Checked-in executable bits fail unless allowlisted.
-- [ ] Long workflow run blocks fail unless allowlisted.
+- [x] Checked-in executable bits fail unless allowlisted.
+- [x] Long workflow run blocks fail unless allowlisted.
 
 Future policy PRs:
 
@@ -505,9 +505,9 @@ Future policy PRs:
 - [x] dependency-surface policy
 - [x] process-spawn policy
 - [x] network policy
-- [ ] workspace-shape policy
-- [ ] architecture import guard
-- [ ] public API guard
+- [x] workspace-shape policy
+- [x] architecture import guard
+- [x] public API guard
 
 ## PR 1C: `spec-fixture-contracts`
 
@@ -516,23 +516,23 @@ before fixture and golden output work expands.
 
 Deliverables:
 
-- [ ] Add spec format reference.
-- [ ] Add test taxonomy reference.
-- [ ] Add fixture contract README.
-- [ ] Update existing specs to the checked format.
-- [ ] Add `cargo xtask check-spec-format`.
-- [ ] Add `cargo xtask check-fixture-contracts`.
-- [ ] Wire checks into `cargo xtask ci-fast`.
-- [ ] Wire checks into CI.
+- [x] Add spec format reference.
+- [x] Add test taxonomy reference.
+- [x] Add fixture contract README.
+- [x] Update existing specs to the checked format.
+- [x] Add `cargo xtask check-spec-format`.
+- [x] Add `cargo xtask check-fixture-contracts`.
+- [x] Wire checks into `cargo xtask ci-fast`.
+- [x] Wire checks into CI.
 
 Acceptance:
 
-- [ ] Every `docs/specs/RIPR-SPEC-*.md` has required sections and a valid
+- [x] Every `docs/specs/RIPR-SPEC-*.md` has required sections and a valid
       status.
-- [ ] Spec filename IDs match title IDs.
-- [ ] Future fixture directories must include `SPEC.md`, `diff.patch`, and
+- [x] Spec filename IDs match title IDs.
+- [x] Future fixture directories must include `SPEC.md`, `diff.patch`, and
       `expected/check.json`.
-- [ ] Fixture `SPEC.md` files must include Given/When/Then/Must Not sections.
+- [x] Fixture `SPEC.md` files must include Given/When/Then/Must Not sections.
 
 ## PR 1D: `automation-guardrails`
 
@@ -541,22 +541,22 @@ dependency surfaces, process spawning, and network behavior explicit.
 
 Deliverables:
 
-- [ ] Add generated-file allowlist and `cargo xtask check-generated`.
-- [ ] Add dependency-surface allowlist and `cargo xtask check-dependencies`.
-- [ ] Add process-spawn allowlist and `cargo xtask check-process-policy`.
-- [ ] Add network allowlist and `cargo xtask check-network-policy`.
-- [ ] Wire checks into `cargo xtask ci-fast`.
-- [ ] Wire checks into CI.
-- [ ] Update the file policy, CI docs, contributor docs, and PR template.
+- [x] Add generated-file allowlist and `cargo xtask check-generated`.
+- [x] Add dependency-surface allowlist and `cargo xtask check-dependencies`.
+- [x] Add process-spawn allowlist and `cargo xtask check-process-policy`.
+- [x] Add network allowlist and `cargo xtask check-network-policy`.
+- [x] Wire checks into `cargo xtask ci-fast`.
+- [x] Wire checks into CI.
+- [x] Update the file policy, CI docs, contributor docs, and PR template.
 
 Acceptance:
 
-- [ ] Tracked generated lockfiles and future fixture goldens require explicit
+- [x] Tracked generated lockfiles and future fixture goldens require explicit
       allowlist entries.
-- [ ] New dependency manager files fail unless they belong to approved Cargo,
+- [x] New dependency manager files fail unless they belong to approved Cargo,
       VS Code, or fixture surfaces.
-- [ ] New process spawning fails unless allowlisted with a reason.
-- [ ] New network behavior fails unless allowlisted with a reason.
+- [x] New process spawning fails unless allowlisted with a reason.
+- [x] New network behavior fails unless allowlisted with a reason.
 
 ## PR 1E: `shape-fix-pr`
 
@@ -843,13 +843,13 @@ Deliverables:
 - [ ] `fixtures/side_effect_unobserved`
 - [ ] `fixtures/smoke_assertion_only`
 - [ ] `fixtures/no_static_path`
-- [ ] `fixtures/opaque_fixture`
+- [x] `fixtures/opaque_fixture` (`fixtures/opaque_fixture_builder`)
 - [ ] `fixtures/workspace_cross_crate`
 - [ ] `fixtures/duplicate_symbols`
 - [ ] `fixtures/stacked_test_attrs`
 - [ ] `fixtures/nested_src_tests_layout`
 - [ ] `fixtures/macro_unknown`
-- [ ] `fixtures/snapshot_oracle`
+- [x] `fixtures/snapshot_oracle`
 - [ ] `fixtures/mock_effect`
 
 Each fixture should include:
@@ -1099,18 +1099,18 @@ Purpose: make editor diagnostics specific and actionable.
 
 Deliverables:
 
-- [ ] Diagnostic data with finding and probe IDs.
-- [ ] Stable diagnostic codes.
-- [ ] Hover evidence for exact finding.
-- [ ] Copy context packet code action.
-- [ ] Open related tests code action.
+- [x] Diagnostic data with finding and probe IDs.
+- [x] Stable diagnostic codes.
+- [x] Hover evidence for exact finding.
+- [x] Copy context packet code action.
+- [x] Open related tests code action.
 - [ ] Run deep check command.
-- [ ] Output-channel lifecycle logs.
+- [x] Output-channel lifecycle logs.
 
 Acceptance:
 
-- [ ] `didChange` refreshes diagnostics after debounce.
-- [ ] Code action copies the context for the selected finding.
+- [x] `didChange` refreshes diagnostics after debounce.
+- [x] Code action copies the context for the selected finding.
 
 ## PR 13: `agent-context-v2`
 
@@ -1137,16 +1137,16 @@ Purpose: let repositories teach `ripr` topology and oracle conventions.
 
 Deliverables:
 
-- [ ] Workspace-root config discovery.
-- [ ] Missing config accepted.
-- [ ] Useful invalid-config errors.
-- [ ] Test topology override.
-- [ ] Custom oracle macro config.
-- [ ] Snapshot, mock, and external-boundary config.
+- [x] Workspace-root config discovery.
+- [x] Missing config accepted.
+- [x] Useful invalid-config errors.
+- [x] Test topology override.
+- [x] Custom oracle macro config.
+- [x] Snapshot, mock, and external-boundary config.
 
 Acceptance:
 
-- [ ] Config changes oracle classification only through explicit rules.
+- [x] Config changes oracle classification only through explicit rules.
 
 ## PR 15: `suppression-v1`
 
@@ -1211,14 +1211,14 @@ Purpose: cache stable facts after the fact model is worth caching.
 
 Deliverables:
 
-- [ ] File-hash invalidation.
-- [ ] Warm `FileFacts` reuse.
-- [ ] LSP reuse of test and oracle facts.
-- [ ] Graceful stale-cache recovery.
+- [x] File-hash invalidation.
+- [x] Warm `FileFacts` reuse.
+- [x] LSP reuse of test and oracle facts.
+- [x] Graceful stale-cache recovery.
 
 Acceptance:
 
-- [ ] Warm run avoids reparsing unchanged files.
+- [x] Warm run avoids reparsing unchanged files.
 
 ## Required Gates
 
