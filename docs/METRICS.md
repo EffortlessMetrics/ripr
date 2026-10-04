@@ -63,6 +63,18 @@ A useful targeted test intent names:
 | Production delta size | Helps distinguish risky code churn from support evidence. | Small and scoped |
 | Evidence delta completeness | Shows whether specs, tests, docs, goldens, metrics, and ADRs support behavior. | Up |
 
+## Developer-Experience Scoreboards
+
+`cargo xtask dx-scoreboard` measures what a developer feels when reaching for
+ripr: time to the first useful result, warm check latency and memory, the size
+and install cost of the generated CI workflow, false-clean and
+self-contradicting output, and whether printed commands survive being pasted.
+It runs against a pinned real-repository corpus, keeps targets separate from
+the regression gate, and runs nightly. See
+[benchmarks/dx_scoreboard/README.md](../benchmarks/dx_scoreboard/README.md)
+for boards, instruments, and the ingest format, and
+`metrics/dx-scoreboard/baseline.json` for the committed baseline.
+
 ## Current Baseline
 
 The following baseline was observed during the planning-doc pass:

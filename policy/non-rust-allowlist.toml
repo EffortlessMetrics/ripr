@@ -641,6 +641,24 @@ reason = "Fixture workspaces may intentionally contain analyzed source files."
 covered_by = ["cargo xtask check-fixture-contracts", "cargo xtask fixtures"]
 
 [[allow]]
+glob = "benchmarks/dx_scoreboard/scoreboards.toml"
+kind = "benchmark_metadata"
+owner = "dx-scoreboard"
+surface = "repo"
+classification = "metadata"
+reason = "Developer-experience scoreboard definitions: pinned real-repository corpus, per-metric targets, and regression margins read by cargo xtask dx-scoreboard."
+covered_by = ["cargo xtask dx-scoreboard", "cargo test -p xtask --bin xtask dx_scoreboard", "cargo xtask check-file-policy"]
+
+[[allow]]
+glob = "metrics/dx-scoreboard/*.json"
+kind = "benchmark_receipt"
+owner = "dx-scoreboard"
+surface = "repo"
+classification = "metadata"
+reason = "Committed developer-experience scoreboard baseline the nightly regression gate compares against; runner-dependent metrics compare only within the recorded runner class."
+covered_by = ["cargo xtask dx-scoreboard --baseline metrics/dx-scoreboard/baseline.json --gate", "cargo xtask check-file-policy"]
+
+[[allow]]
 glob = "benchmarks/targeted_rerun_benchmark/**"
 kind = "benchmark_fixture"
 owner = "targeted-rerun"

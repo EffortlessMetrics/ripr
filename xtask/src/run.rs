@@ -156,6 +156,15 @@ struct WaitOutcome {
     status: ExitStatus,
     duration: Duration,
     timed_out: bool,
+    /// Highest `VmHWM` observed while polling, when sampling was requested
+    /// and the platform exposes it (Linux `/proc`).
+    peak_rss_bytes: Option<u64>,
+}
+
+/// A timed child run with its sampled peak resident memory.
+pub(crate) struct MeasuredOutput {
+    pub(crate) output: TimedOutput,
+    pub(crate) peak_rss_bytes: Option<u64>,
 }
 
 pub(crate) fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
@@ -482,6 +491,26 @@ pub(crate) fn capture_output_with_timeout(
     capture_output_with_deadline(program, args, envs, Some(timeout), error_context)
 }
 
+/// `capture_output_with_timeout` in an explicit working directory that also
+/// samples the child's peak resident memory (Linux `VmHWM`, polled with the
+/// deadline loop, so the value is a lower bound). Other platforms report
+/// `None`. Used by the developer-experience scoreboard.
+pub(crate) fn capture_output_measured(
+    program: &str,
+    args: &[String],
+    cwd: Option<&Path>,
+    envs: &[(&str, &str)],
+    timeout: Duration,
+    error_context: &str,
+) -> Result<MeasuredOutput, String> {
+    let (output, peak_rss_bytes) =
+        capture_output_sampled(program, args, cwd, envs, Some(timeout), true, error_context)?;
+    Ok(MeasuredOutput {
+        output,
+        peak_rss_bytes,
+    })
+}
+
 /// `capture_output_with_timeout` with no per-step wall-clock cap.
 ///
 /// For callers whose child may legitimately run longer than any fixed
@@ -509,9 +538,25 @@ fn capture_output_with_deadline(
     deadline: Option<Duration>,
     error_context: &str,
 ) -> Result<TimedOutput, String> {
+    capture_output_sampled(program, args, None, envs, deadline, false, error_context)
+        .map(|(output, _)| output)
+}
+
+fn capture_output_sampled(
+    program: &str,
+    args: &[String],
+    cwd: Option<&Path>,
+    envs: &[(&str, &str)],
+    deadline: Option<Duration>,
+    sample_rss: bool,
+    error_context: &str,
+) -> Result<(TimedOutput, Option<u64>), String> {
     let started = Instant::now();
     let mut command = Command::new(program);
     command.args(args);
+    if let Some(cwd) = cwd {
+        command.current_dir(cwd);
+    }
     configure_timed_child_command(&mut command);
     for (name, value) in envs {
         command.env(name, value);
@@ -545,7 +590,8 @@ fn capture_output_with_deadline(
         spawn_stream_reader_channel(stderr)
     };
 
-    let wait_outcome = wait_for_child_with_deadline(&mut child, started, deadline, error_context)?;
+    let wait_outcome =
+        wait_for_child_sampled(&mut child, started, deadline, sample_rss, error_context)?;
 
     // Always use the bounded drain.  On a normal process exit the pipe
     // write-ends are already closed, so the reader threads finish promptly and
@@ -570,13 +616,16 @@ fn capture_output_with_deadline(
         error_context,
     )?;
 
-    Ok(TimedOutput {
-        status: Some(wait_outcome.status),
-        stdout,
-        stderr,
-        duration: wait_outcome.duration,
-        timed_out: wait_outcome.timed_out,
-    })
+    Ok((
+        TimedOutput {
+            status: Some(wait_outcome.status),
+            stdout,
+            stderr,
+            duration: wait_outcome.duration,
+            timed_out: wait_outcome.timed_out,
+        },
+        wait_outcome.peak_rss_bytes,
+    ))
 }
 
 pub(crate) fn capture_bytes_in_dir_with_timeout(
@@ -882,7 +931,24 @@ fn wait_for_child_with_deadline(
     deadline: Option<Duration>,
     error_context: &str,
 ) -> Result<WaitOutcome, String> {
+    wait_for_child_sampled(child, started, deadline, false, error_context)
+}
+
+fn wait_for_child_sampled(
+    child: &mut OwnedProcess,
+    started: Instant,
+    deadline: Option<Duration>,
+    sample_rss: bool,
+    error_context: &str,
+) -> Result<WaitOutcome, String> {
+    let mut peak_rss_bytes = None;
     loop {
+        // Sample before polling exit: once the child is reaped its /proc
+        // entry is gone. VmHWM is the kernel's own high-water mark, so the
+        // last sample before exit already covers earlier peaks.
+        if sample_rss && let Some(bytes) = proc_peak_rss_bytes(child.id()) {
+            peak_rss_bytes = Some(peak_rss_bytes.map_or(bytes, |seen: u64| seen.max(bytes)));
+        }
         if let Some(status) = child
             .try_wait()
             .map_err(|err| format!("failed to poll {error_context}: {err}"))?
@@ -891,6 +957,7 @@ fn wait_for_child_with_deadline(
                 status,
                 duration: started.elapsed(),
                 timed_out: false,
+                peak_rss_bytes,
             });
         }
 
@@ -905,11 +972,35 @@ fn wait_for_child_with_deadline(
                 status,
                 duration: started.elapsed(),
                 timed_out: timeout_was_enforced(termination_requested, &status),
+                peak_rss_bytes,
             });
         }
 
-        thread::sleep(Duration::from_millis(100));
+        // Measured runs poll finer so a sub-second command's wall time is not
+        // rounded up to the next 100 ms tick.
+        thread::sleep(Duration::from_millis(if sample_rss { 10 } else { 100 }));
     }
+}
+
+/// Peak resident set size of a live process from `/proc/<pid>/status`
+/// (`VmHWM`, reported in kB). `None` off Linux or once the process is gone.
+fn proc_peak_rss_bytes(pid: u32) -> Option<u64> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    let status = fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+    parse_vm_hwm_bytes(&status)
+}
+
+pub(crate) fn parse_vm_hwm_bytes(status: &str) -> Option<u64> {
+    let line = status.lines().find(|line| line.starts_with("VmHWM:"))?;
+    let kb = line
+        .trim_start_matches("VmHWM:")
+        .split_whitespace()
+        .next()?
+        .parse::<u64>()
+        .ok()?;
+    kb.checked_mul(1024)
 }
 
 fn configure_timed_child_command(command: &mut Command) {

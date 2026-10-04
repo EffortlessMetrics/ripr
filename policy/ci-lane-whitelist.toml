@@ -26,6 +26,10 @@ id = "release-readiness"
 paths = ["target/package/", "editors/vscode/dist/*.vsix", "dist/ripr-server-*", "dist/ripr-server-manifest-*.json"]
 
 [[artifact_family]]
+id = "dx-scoreboard"
+paths = ["target/ripr/reports/dx-scoreboard.json", "target/ripr/reports/dx-scoreboard.md"]
+
+[[artifact_family]]
 id = "public-badge-endpoints"
 paths = ["badges/*.json", "target/ripr/reports/repo-ripr-badge*.json", "target/ripr/reports/repo-ripr-badges.md"]
 
@@ -128,6 +132,16 @@ commands = ["cargo xtask badges"]
 estimated_lem = 5
 artifact_families = ["public-badge-endpoints"]
 description = "Generated public badge endpoint refresh, bounded so stale badge generation does not occupy main CI indefinitely."
+
+[[lane]]
+id = "dx-scoreboard"
+posture = "advisory"
+workflow = ".github/workflows/dx-scoreboard.yml"
+jobs = ["scoreboard"]
+commands = ["cargo xtask dx-scoreboard --clone --include-heavy --baseline metrics/dx-scoreboard/baseline.json --gate"]
+estimated_lem = 40
+artifact_families = ["dx-scoreboard"]
+description = "Nightly developer-experience scoreboards on the pinned real-repository corpus; fails only when a metric regresses past its margin against the committed baseline or an instrument breaks."
 
 [[lane]]
 id = "vscode-compile"
