@@ -161,15 +161,23 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             message.push_str("` (preview advisory; no repair packet).");
         }
         *per_level.entry(annotation_level).or_default() += 1;
+        // GitHub workflow-command `line` is 1-indexed (documented default 1).
+        // A line-0 probe is unlocated — the same class SARIF already omits
+        // `region` for (#2407). Omit `,line=` so the command does not emit
+        // out-of-contract `line=0` (#5089). This does not claim GitHub UI
+        // file-level placement; omitted `line` may still default to 1.
+        let line_property = match finding.probe.location.line {
+            0 => String::new(),
+            line => format!(",line={line}"),
+        };
         annotations.push_str(&format!(
-            "::{annotation_level} file={},line={},title={}::{}\n",
+            "::{annotation_level} file={}{line_property},title={}::{}\n",
             // `file` arrives via `repository_display_path` (stable text, `%`
             // pre-encoded); `title` is raw text.
             escape_property_pre_encoded(&repository_display_path(
                 &output.root,
                 &finding.probe.location.file
             )),
-            finding.probe.location.line,
             escape_property(&title),
             escape_data(&message)
         ));
@@ -578,6 +586,108 @@ mod tests {
         // visible scars (#4065).
         assert!(rendered.contains("Add: case, with 100%25 coverage%0Athen verify%0Doutcome"));
         assert!(rendered.contains("Stop reason: static_probe_unknown"));
+    }
+
+    /// Property section of a workflow-command line (`file=...,title=...`),
+    /// excluding the message so a message containing `line=` cannot pass.
+    fn annotation_properties(command: &str) -> &str {
+        let rest = command.strip_prefix("::").unwrap_or(command);
+        let Some((level_and_props, _)) = rest.split_once("::") else {
+            return "";
+        };
+        level_and_props
+            .split_once(' ')
+            .map(|(_, props)| props)
+            .unwrap_or("")
+    }
+
+    fn finding_annotation_commands(rendered: &str) -> Vec<&str> {
+        rendered
+            .lines()
+            .filter(|line| {
+                line.starts_with("::notice file=")
+                    || line.starts_with("::warning file=")
+                    || line.starts_with("::error file=")
+            })
+            .collect()
+    }
+
+    #[test]
+    fn github_annotations_omit_line_property_for_line_zero_probe() {
+        let mut output = output_with_unknown_finding();
+        output.findings[0].probe.location.line = 0;
+
+        let rendered = render(&output);
+        let commands = finding_annotation_commands(&rendered);
+        assert_eq!(
+            commands.len(),
+            1,
+            "expected one finding annotation: {rendered}"
+        );
+        let properties = annotation_properties(commands[0]);
+        assert!(
+            commands[0].starts_with("::notice file=src/lib.rs,title=ripr static_unknown::"),
+            "line-0 probe must omit `,line=` from the command: {rendered}"
+        );
+        assert!(
+            !properties.contains("line="),
+            "line-0 command properties must not contain `line=` (neither `line=0` nor `,line=1`): {rendered}"
+        );
+        assert_eq!(
+            properties, "file=src/lib.rs,title=ripr static_unknown",
+            "file and title stay; line is absent: {rendered}"
+        );
+    }
+
+    #[test]
+    fn github_annotations_include_line_property_for_located_probe() {
+        let rendered = render(&output_with_unknown_finding());
+        let commands = finding_annotation_commands(&rendered);
+        assert_eq!(commands.len(), 1, "{rendered}");
+        assert!(
+            commands[0].starts_with("::notice file=src/lib.rs,line=13,title=ripr static_unknown::"),
+            "located probe must keep `,line=13`: {rendered}"
+        );
+        assert!(
+            annotation_properties(commands[0]).contains(",line=13,"),
+            "{rendered}"
+        );
+    }
+
+    #[test]
+    fn github_annotations_keep_line_one_as_located() {
+        let mut output = output_with_unknown_finding();
+        output.findings[0].probe.location.line = 1;
+
+        let rendered = render(&output);
+        let commands = finding_annotation_commands(&rendered);
+        assert_eq!(commands.len(), 1, "{rendered}");
+        assert!(
+            annotation_properties(commands[0]).contains(",line=1,"),
+            "line 1 is in-contract and must not be omitted as if it were 0: {rendered}"
+        );
+    }
+
+    #[test]
+    fn github_annotations_omit_line_only_for_the_zero_probe_in_a_mixed_stream() {
+        let mut output = output_with_unknown_finding();
+        let mut unlocated = output.findings[0].clone();
+        unlocated.id = "probe:src_lib_rs:0:static_unknown".to_string();
+        unlocated.probe.id = ProbeId(unlocated.id.clone());
+        unlocated.probe.location.line = 0;
+        output.findings.push(unlocated);
+
+        let rendered = render(&output);
+        let commands = finding_annotation_commands(&rendered);
+        assert_eq!(commands.len(), 2, "{rendered}");
+        assert!(
+            annotation_properties(commands[0]).contains(",line=13,"),
+            "located finding stays located: {rendered}"
+        );
+        assert!(
+            !annotation_properties(commands[1]).contains("line="),
+            "unlocated finding omits `line=` from the command: {rendered}"
+        );
     }
 
     #[test]
