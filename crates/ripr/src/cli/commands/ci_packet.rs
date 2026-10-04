@@ -1805,6 +1805,36 @@ fn full_packet_settings() -> CiSettings {
 /// [`recorded_full_packet`]'s inputs, recorded under `settings`.
 #[cfg(test)]
 fn recorded_packet_with(settings: CiSettings) -> Result<(String, Vec<String>), String> {
+    let languages = [
+        crate::domain::LanguageId::Rust,
+        crate::domain::LanguageId::TypeScript,
+        crate::domain::LanguageId::Python,
+    ]
+    .into_iter()
+    .filter(|language| language.is_available())
+    .map(|language| language.as_str())
+    .collect::<Vec<_>>();
+    recorded_packet_with_languages(settings, &languages, true)
+}
+
+/// Own the temporary root completely, including cleanup on an early error.
+#[cfg(test)]
+struct RecordedPacketFixture(PathBuf);
+
+#[cfg(test)]
+impl Drop for RecordedPacketFixture {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+/// Bind the recording to explicit local language policy and optional inputs.
+#[cfg(test)]
+fn recorded_packet_with_languages(
+    settings: CiSettings,
+    languages: &[&str],
+    preview_evidence: bool,
+) -> Result<(String, Vec<String>), String> {
     let root = std::env::temp_dir().join(format!(
         "ripr-ci-packet-recorded-{}-{}",
         std::process::id(),
@@ -1813,7 +1843,33 @@ fn recorded_packet_with(settings: CiSettings) -> Result<(String, Vec<String>), S
             .map_err(|err| err.to_string())?
             .as_nanos()
     ));
+    fs::create_dir(&root).map_err(|err| err.to_string())?;
+    let fixture = RecordedPacketFixture(root);
+    let root = &fixture.0;
+    // Cargo places temporary roots below this checkout's target. An owned
+    // config keeps this witness independent of an ancestor ripr.toml and
+    // limits preview languages to the adapters present in this test binary.
+    fs::write(
+        root.join("ripr.toml"),
+        format!("[languages]\nenabled = {languages:?}\n"),
+    )
+    .map_err(|err| err.to_string())?;
+    let config = crate::config::load_for_root(root)?;
+    let admitted_languages = config
+        .languages()
+        .enabled()
+        .iter()
+        .map(|language| language.as_str())
+        .collect::<Vec<_>>();
+    if admitted_languages.as_slice() != languages {
+        return Err(format!(
+            "recorded fixture language policy drift: expected {languages:?}, admitted {admitted_languages:?}"
+        ));
+    }
     for input in EVERY_OPTIONAL_INPUT {
+        if !preview_evidence && *input == "target/ripr/reports/preview-promotion-evidence.json" {
+            continue;
+        }
         let path = root.join(input);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|err| err.to_string())?;
@@ -1825,8 +1881,7 @@ fn recorded_packet_with(settings: CiSettings) -> Result<(String, Vec<String>), S
         r#"{"top_actionable_seams":[{"seam_id":"seam-1"}]}"#,
     )
     .map_err(|err| err.to_string())?;
-    let (commands, failed) = recorded_commands(&root, settings);
-    let _ = fs::remove_dir_all(&root);
+    let (commands, failed) = recorded_commands(root, settings);
     Ok((commands.join("\n"), failed))
 }
 
@@ -1977,6 +2032,10 @@ mod tests {
             "ripr policy promote --to acknowledgeable --operations target/ripr/reports/policy-operations.json --out target/ripr/reports/policy-promotion-acknowledgeable.json --out-md target/ripr/reports/policy-promotion-acknowledgeable.md --history target/ripr/reports/policy-history.json",
             "ripr policy promote --to baseline-check --operations target/ripr/reports/policy-operations.json --out target/ripr/reports/policy-promotion-baseline-check.json --out-md target/ripr/reports/policy-promotion-baseline-check.md --history target/ripr/reports/policy-history.json",
             "ripr policy promote --to calibrated-gate --operations target/ripr/reports/policy-operations.json --out target/ripr/reports/policy-promotion-calibrated-gate.json --out-md target/ripr/reports/policy-promotion-calibrated-gate.md --history target/ripr/reports/policy-history.json",
+            #[cfg(feature = "lang-python")]
+            "ripr policy preview-promote --language python --class boundary_gap --out target/ripr/reports/preview-promotion-python-boundary-gap.json --out-md target/ripr/reports/preview-promotion-python-boundary-gap.md --evidence target/ripr/reports/preview-promotion-evidence.json",
+            #[cfg(feature = "lang-typescript")]
+            "ripr policy preview-promote --language typescript --class boundary_gap --out target/ripr/reports/preview-promotion-typescript-boundary-gap.json --out-md target/ripr/reports/preview-promotion-typescript-boundary-gap.md --evidence target/ripr/reports/preview-promotion-evidence.json",
             "ripr assistant-loop proof --root . --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json --ledger target/ripr/reports/pr-evidence-ledger.json --out target/ripr/reports/test-oracle-assistant-proof.json --out-md target/ripr/reports/test-oracle-assistant-proof.md --coverage-frontier target/ripr/reports/coverage-grip-frontier.json --gate-decision target/ripr/reports/gate-decision.json",
             "ripr assistant-loop health --root . --proof target/ripr/reports/test-oracle-assistant-proof.json --out target/ripr/reports/assistant-loop-health.json --out-md target/ripr/reports/assistant-loop-health.md",
             "ripr first-action --root . --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md --pr-guidance target/ripr/review/comments.json --assistant-proof target/ripr/reports/test-oracle-assistant-proof.json --ledger target/ripr/reports/pr-evidence-ledger.json --baseline-delta target/ripr/reports/baseline-debt-delta.json --receipt target/ripr/reports/agent-receipt.json --gate-decision target/ripr/reports/gate-decision.json --coverage-frontier target/ripr/reports/coverage-grip-frontier.json --editor-context target/ripr/workflow/evidence-context.json",
@@ -1989,6 +2048,54 @@ mod tests {
             "ripr agent review-summary --root . > target/ripr/workflow/agent-review-summary.md",
         ];
         assert_eq!(packet.lines().collect::<Vec<_>>(), expected);
+        Ok(())
+    }
+
+    #[test]
+    fn preview_promotion_recording_binds_languages_and_optional_evidence() -> Result<(), String> {
+        let previews = |packet: &str| {
+            packet
+                .lines()
+                .filter(|line| line.starts_with("ripr policy preview-promote "))
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        };
+        // Evidence presence alone cannot enable an unconfigured preview language.
+        // The explicit empty set is typed-valid in every feature configuration.
+        let (packet, failed) = recorded_packet_with_languages(full_packet_settings(), &[], true)?;
+        assert!(failed.is_empty(), "{failed:?}");
+        assert!(previews(&packet).is_empty(), "{packet}");
+
+        #[cfg(feature = "lang-rust")]
+        {
+            let (packet, failed) =
+                recorded_packet_with_languages(full_packet_settings(), &["rust"], true)?;
+            assert!(failed.is_empty(), "{failed:?}");
+            assert!(previews(&packet).is_empty(), "{packet}");
+        }
+
+        #[cfg(feature = "lang-python")]
+        {
+            let (packet, failed) =
+                recorded_packet_with_languages(full_packet_settings(), &["python"], false)?;
+            assert!(failed.is_empty(), "{failed:?}");
+            assert_eq!(
+                previews(&packet),
+                vec!["ripr policy preview-promote --language python --class boundary_gap --out target/ripr/reports/preview-promotion-python-boundary-gap.json --out-md target/ripr/reports/preview-promotion-python-boundary-gap.md".to_string()],
+                "configured Python must emit its advisory packet without inventing evidence or TypeScript"
+            );
+        }
+        #[cfg(feature = "lang-typescript")]
+        {
+            let (packet, failed) =
+                recorded_packet_with_languages(full_packet_settings(), &["typescript"], false)?;
+            assert!(failed.is_empty(), "{failed:?}");
+            assert_eq!(
+                previews(&packet),
+                vec!["ripr policy preview-promote --language typescript --class boundary_gap --out target/ripr/reports/preview-promotion-typescript-boundary-gap.json --out-md target/ripr/reports/preview-promotion-typescript-boundary-gap.md".to_string()],
+                "configured TypeScript must emit its advisory packet without inventing evidence or Python"
+            );
+        }
         Ok(())
     }
 
