@@ -20,6 +20,12 @@ are scoped or reviewed.
   get `invalid params` (#5209).
 ### Added
 
+- Bounded repair states its inline-test boundary as permanent scope:
+  repositories whose only tests are inline `#[cfg(test)]` modules in
+  non-test-surface files are out of repair scope
+  (`docs/REPAIR_ATTEMPT.md` Boundary, `ripr agent repair --help`), and
+  the CLI, pilot, and MCP refusals name it so no surface promises what
+  another refuses (#5210).
 - `ripr check --help` now chooses one `--format` per task (eye review,
   drill-in listing, machine JSON, Actions annotations, code scanning,
   README badge, PR/CI badge, repo inventory, agent packets) above the

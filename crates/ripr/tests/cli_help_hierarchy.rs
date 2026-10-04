@@ -433,6 +433,7 @@ fn agent_repair_help_names_the_primary_transaction_and_its_limits() -> Result<()
         "ripr agent repair [--root PATH] [--store PATH] --attempt ID --phase verify",
         "--store PATH Explicit repair-attempt store, resolved against --root.",
         "The repair command does not generate or apply tests, execute mutation testing, or declare the repository safe to merge.",
+        "Inline `#[cfg(test)]` modules don't qualify their file: a repository whose only tests are inline in non-test-surface files is permanently out of repair scope",
     ] {
         assert_contains(
             "agent repair help (`ripr agent repair --help`)",

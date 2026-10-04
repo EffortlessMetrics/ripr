@@ -6775,6 +6775,23 @@ fn agent_repair_before_refuses_a_seam_without_a_test_file_before_writing_anythin
         stderr.contains("recommended_test.file: \"not_applicable\""),
         "the refusal must name the observable packet field:\n{stderr}"
     );
+    // #5210: the inline-only boundary is reachable from the refusal via
+    // the repair help carrying the scope statement.
+    assert!(
+        stderr.contains(
+            "Repair scope, including the inline-test boundary, is in `ripr agent repair --help`"
+        ),
+        "the refusal must point at the repair scope boundary:\n{stderr}"
+    );
+    // The packet-field claim covers both states: not_applicable when no
+    // target was proposed, the production file with an empty surface for
+    // an inline-module proposal.
+    assert!(
+        stderr.contains(
+            "when no target was proposed (an inline-module proposal instead names the production file with an empty edit surface)"
+        ),
+        "the refusal must state both packet states:\n{stderr}"
+    );
     assert!(
         !stderr.contains("before phase complete"),
         "a refused before phase must not claim completion:\n{stderr}"

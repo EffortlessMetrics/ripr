@@ -163,7 +163,7 @@ impl RepairReadiness {
                 "no strong, high-confidence directly-related test establishes an exact fix site"
             }
             Some("fix_site_not_test_surface") => {
-                "the strongest established fix site is not a test surface; a production file is never the authored edit target"
+                "the strongest established fix site is not a test-surface path; only test-surface paths can be the authored edit target (inline `#[cfg(test)]` modules don't qualify their file)"
             }
             Some(_other) => "the producer did not establish every repair-readiness fact",
             None => {
@@ -786,6 +786,31 @@ mod tests {
                 "a finding without a strong directly-related test must not be repair-ready: {:?}",
                 item.repair_readiness.ineligibility
             ));
+        }
+        Ok(())
+    }
+
+    /// #5210: the non-surface refusal names the inline-test boundary, so
+    /// an MCP caller learns the permanent scope from the refusal itself.
+    #[test]
+    fn non_surface_reason_names_the_inline_test_boundary() -> Result<(), String> {
+        let readiness = RepairReadiness {
+            ready: false,
+            fix_site: None,
+            ineligibility: Some("fix_site_not_test_surface"),
+        };
+        let reason = readiness.reason();
+        for needle in [
+            "only test-surface paths can be the authored edit target",
+            "inline",
+            "#[cfg(test)]",
+            "don't qualify their file",
+        ] {
+            if !reason.contains(needle) {
+                return Err(format!(
+                    "non-surface reason must name the inline boundary ({needle}): {reason}"
+                ));
+            }
         }
         Ok(())
     }

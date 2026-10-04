@@ -229,7 +229,7 @@ pub(crate) fn render_pilot_summary_md(
         } else {
             out.push_str("## Ranked Seams\n\n");
             out.push_str(
-                "None of these seams can start a repair attempt (`ripr agent repair`); they are ranked for inspection by hand.\n\n",
+                "None of these seams can start a repair attempt (`ripr agent repair`); they are ranked for inspection by hand. Repair scope: `ripr agent repair --help`.\n\n",
             );
         }
         for (idx, entry) in top.iter().enumerate() {
