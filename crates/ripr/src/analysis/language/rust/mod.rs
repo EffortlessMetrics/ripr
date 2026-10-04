@@ -15,6 +15,7 @@
 //! diff, dispatches to this adapter, and applies sort + summary on the
 //! returned findings.
 
+mod dependent_scope;
 pub(crate) mod oracles;
 pub(crate) mod probes;
 
@@ -177,6 +178,12 @@ fn repo_index_file_limit_from_env(
     value: Result<String, std::env::VarError>,
 ) -> Result<usize, String> {
     positive_limit_from_env(REPO_INDEX_FILE_LIMIT_ENV, REPO_INDEX_FILE_LIMIT, value)
+}
+
+/// How many files the full selection indexes once the admitted open files
+/// join it: an open file the selection already holds counts once.
+fn selection_with_open_files(selected: &[PathBuf], open: &BTreeSet<PathBuf>) -> usize {
+    selected.len() + open.iter().filter(|file| !selected.contains(file)).count()
 }
 
 /// Fail closed when a repo-scoped working set exceeds the guard (#2109).
@@ -815,6 +822,14 @@ fn apply_probe_and_oracle_limits(
     oracles::apply_cross_language_limit(finding, probe, index);
 }
 
+/// Whether [`apply_rust_no_static_path_limit`] searches for a witness: a
+/// `no_static_path` finding with no related test and no limitation yet.
+fn needs_no_static_path_limit(finding: &Finding) -> bool {
+    finding.class == ExposureClass::NoStaticPath
+        && finding.related_tests.is_empty()
+        && finding.static_limit_kind.is_none()
+}
+
 fn apply_rust_no_static_path_limit(
     finding: &mut Finding,
     probe: &Probe,
@@ -822,10 +837,7 @@ fn apply_rust_no_static_path_limit(
     property_macro_mentions: &oracles::PropertyMacroMentionIndex<'_>,
     transitive_reach: &classify::TransitiveReachIndex<'_>,
 ) {
-    if !(finding.class == ExposureClass::NoStaticPath
-        && finding.related_tests.is_empty()
-        && finding.static_limit_kind.is_none())
-    {
+    if !needs_no_static_path_limit(finding) {
         return;
     }
 
@@ -1330,16 +1342,84 @@ impl RustAdapter {
             &dependent_package_roots,
             &manifest_dir_prefixes,
         );
+        // #5320: when the whole reverse closure would exceed the index limit
+        // (or the scope mode says so), dependent packages enter the index by
+        // name, not whole. The changed packages stay whole; a dependent file
+        // is admitted when it can change a whole-index scan (see
+        // `dependent_scope`). A changed probe
+        // file without a package prefix keeps the full selection: the
+        // related-test package guard does not apply to it. A selection that
+        // already spans the workspace keeps it too, so the
+        // workspace-complete admits stay on.
+        let mut rust_consumed_sources =
+            crate::analysis::consumed_source::ConsumedRustSources::default();
+        let mut dependent_scope = None;
+        let mut withheld_macro_bindings = classify::WithheldMacroBindings::default();
+        let scope_limit = diff_index_file_limit()?;
         // Open saved Rust documents are index-only inputs. They do not seed
         // changed-file probes, package expansion, or findings. Admit only
         // discovered, analyzable files, then apply the ordinary index budget.
-        let scope_limit = diff_index_file_limit()?;
-        if !options.open_rust_index_paths.is_empty() {
-            index_files.extend(tracked_open_rust_index_paths(
-                options,
-                &analyzable_rust_files,
-                scope_limit,
-            )?);
+        let open_index_files = if options.open_rust_index_paths.is_empty() {
+            BTreeSet::new()
+        } else {
+            tracked_open_rust_index_paths(options, &analyzable_rust_files, scope_limit)?
+        };
+        // With the open files the full selection can already span the
+        // workspace, which turns on the workspace-complete admits.
+        let full_selection = selection_with_open_files(&index_files, &open_index_files);
+        // Parsed before any guard so an invalid override always names itself.
+        let scope_mode = dependent_scope::DependentScopeMode::from_env()?;
+        if !dependent_package_roots.is_empty()
+            && full_selection < analyzable_rust_files.len()
+            && scope_mode.narrows(full_selection, scope_limit)
+        {
+            let seeded_changed_files = analyzable_changed_files
+                .iter()
+                .filter(|file| changed_rust_paths.contains(&file.path))
+                .filter(|file| workspace::seeds_diff_probes(&file.path, &source_role_context))
+                .collect::<Vec<_>>();
+            if seeded_changed_files
+                .iter()
+                .all(|file| classify::package_prefix(&file.path).is_some())
+            {
+                let core_roots = external_module_packages
+                    .values()
+                    .flatten()
+                    .cloned()
+                    .collect::<BTreeSet<_>>();
+                let core_files = workspace::select_rust_files_for_mode_with_dependent_packages(
+                    &analyzable_rust_files,
+                    &changed_rust_paths,
+                    options.mode,
+                    options.include_unchanged_tests,
+                    &core_roots,
+                    &manifest_dir_prefixes,
+                );
+                if core_files.len() < index_files.len() {
+                    let query = dependent_scope::admission_query(
+                        &options.root,
+                        &core_files,
+                        &seeded_changed_files,
+                        &options.test_harnesses,
+                        &mut rust_consumed_sources,
+                    )?;
+                    let admission = dependent_scope::admit_dependents(
+                        &options.root,
+                        &analyzable_rust_files,
+                        core_files,
+                        &index_files,
+                        &query,
+                        &options.test_harnesses,
+                        &mut rust_consumed_sources,
+                    )?;
+                    index_files = admission.main_files;
+                    dependent_scope = admission.narrowed;
+                    withheld_macro_bindings = admission.withheld_macro_bindings;
+                }
+            }
+        }
+        if !open_index_files.is_empty() {
+            index_files.extend(open_index_files);
             index_files.sort();
             index_files.dedup();
         }
@@ -1359,8 +1439,6 @@ impl RustAdapter {
         // cache. This avoids re-parsing unchanged files with ra_ap_syntax on
         // every ripr check / LSP save (#1912). The cache is keyed on a
         // content hash; unchanged files hit the cache and skip the parse.
-        let mut rust_consumed_sources =
-            crate::analysis::consumed_source::ConsumedRustSources::default();
         let loaded_files = index_files
             .iter()
             .map(|file| {
@@ -1541,8 +1619,13 @@ impl RustAdapter {
                 let binding_relation = seeded.binding_relation;
                 candidate_lines.insert((probe.location.file.clone(), probe.location.line));
                 cancellation::checkpoint()?;
-                let related_test_candidate_index = related_test_candidate_index
-                    .get_or_insert_with(|| classify::RelatedTestCandidateIndex::new(&index));
+                let related_test_candidate_index =
+                    related_test_candidate_index.get_or_insert_with(|| {
+                        classify::RelatedTestCandidateIndex::new(&index)
+                            .with_withheld_macro_bindings(std::mem::take(
+                                &mut withheld_macro_bindings,
+                            ))
+                    });
                 let mut finding = classifier::classify_probe_with_candidate_index(
                     &probe,
                     &index,
@@ -1566,13 +1649,59 @@ impl RustAdapter {
                 // RIPR-SPEC-0117: when no lexical transitive path is available,
                 // name a macro-reach limitation only when a same-repo macro
                 // definition lexically mentions the changed owner.
-                apply_rust_no_static_path_limit(
-                    &mut finding,
-                    &probe,
-                    &index,
-                    &property_macro_mentions,
-                    &transitive_reach,
-                );
+                // #5320: with dependent files withheld, the witnesses search
+                // the owner's caller closure, widened on demand.
+                let reach = match dependent_scope.as_mut() {
+                    Some(scope) if needs_no_static_path_limit(&finding) => {
+                        match owner_name_from_id(&probe.owner, &probe.location.file) {
+                            Some(owner) => scope.reach_index(&owner, &index, scope_limit)?,
+                            None => dependent_scope::ReachIndex::Main,
+                        }
+                    }
+                    _ => dependent_scope::ReachIndex::Main,
+                };
+                match reach {
+                    dependent_scope::ReachIndex::Main => apply_rust_no_static_path_limit(
+                        &mut finding,
+                        &probe,
+                        &index,
+                        &property_macro_mentions,
+                        &transitive_reach,
+                    ),
+                    dependent_scope::ReachIndex::Widened(reach_index) => {
+                        // A withheld file that spells the owner can hold the
+                        // unresolved property macro that mentions it.
+                        let reach_property_macro_mentions =
+                            oracles::PropertyMacroMentionIndex::new(reach_index, &options.root);
+                        apply_rust_no_static_path_limit(
+                            &mut finding,
+                            &probe,
+                            reach_index,
+                            &reach_property_macro_mentions,
+                            &classify::TransitiveReachIndex::new(reach_index),
+                        );
+                    }
+                    dependent_scope::ReachIndex::OverLimit { files, limit } => {
+                        // A witness the main index proves is a searched
+                        // result; only an owner it leaves unresolved reads
+                        // as unsearched.
+                        apply_rust_no_static_path_limit(
+                            &mut finding,
+                            &probe,
+                            &index,
+                            &property_macro_mentions,
+                            &transitive_reach,
+                        );
+                        if needs_no_static_path_limit(&finding) {
+                            dependent_scope::apply_reach_search_over_limit(
+                                &mut finding,
+                                &probe,
+                                files,
+                                limit,
+                            );
+                        }
+                    }
+                }
                 // Name unresolved custom assertion macros only after reach has
                 // already been established and no recognized oracle observes
                 // the seam. This is an oracle limitation, not macro expansion
@@ -1608,6 +1737,10 @@ impl RustAdapter {
             )?
         {
             limitations.push(limitation);
+        }
+
+        if let Some(scope) = dependent_scope {
+            rust_consumed_sources.absorb(scope.into_consumed());
         }
 
         let rust_diagnostic_origins = origins_for_rust_findings(
@@ -2041,7 +2174,7 @@ mod tests {
         PARTIAL_DIFF_LANGUAGE_TIER_VERSION, PARTIAL_DIFF_LINE_BUDGET_DEFAULT,
         PARTIAL_DIFF_LINE_BUDGET_ENV, PARTIAL_DIFF_SELECTION_VERSION, PartialDiffBudgets,
         PartialDiffScope, PartialDiffStopReason, REPO_INDEX_FILE_LIMIT, REPO_INDEX_FILE_LIMIT_ENV,
-        RustAdapter, apply_probe_and_oracle_limits, changed_rust_line_count,
+        RustAdapter, apply_probe_and_oracle_limits, changed_rust_line_count, dependent_scope,
         diff_changed_rust_line_limit_from_env, diff_identity_from_changed_files,
         diff_index_file_limit_from_env, enforce_changed_rust_line_limit,
         enforce_repo_index_file_limit, is_binary_source_path, is_cargo_binary_invocation,
@@ -2049,8 +2182,8 @@ mod tests {
         limitations_for_absent_changed_files, macro_reach_limit_kind,
         partial_diff_budgets_from_env, partition_canonical_form,
         replace_witnessed_no_path_infection_summary, repo_index_file_limit_from_env,
-        select_partial_diff_partition, select_partial_diff_partition_with_identity, sha256_hex,
-        transitive_reach_limit_kind,
+        select_partial_diff_partition, select_partial_diff_partition_with_identity,
+        selection_with_open_files, sha256_hex, transitive_reach_limit_kind,
     };
     use crate::analysis::cancellation;
     use crate::analysis::diff::{ChangedFile, ChangedLine};
@@ -2653,6 +2786,545 @@ mod tests {
             has_related_test(&result.findings, "u/tests/quarble_gauge_tests.rs"),
             "the dependent crate's test must become reachable through the attributed scope: {:?}",
             result.findings
+        );
+        Ok(())
+    }
+
+    /// The #5320 scope fixture: `a` holds the changed owner; `b` relays it
+    /// and `c` relays `b`, each with an integration test, so the transitive
+    /// witness runs through two dependent packages. `e` depends on `a` and
+    /// carries `e_source`. `d` depends on nothing, so the full selection
+    /// stays short of the workspace and narrowing applies.
+    const GAUGE_TRAIT_SOURCE: &str = "pub trait Gauge {\n    fn base(&self) -> usize;\n\n    \
+                                      fn tally(&self) -> usize {\n        self.base() + 1\n    }\n}\n\n\
+                                      pub struct Meter;\n\nimpl Meter {\n    pub fn new() -> Self {\n        \
+                                      Meter\n    }\n}\n\nimpl Gauge for Meter {\n    \
+                                      fn base(&self) -> usize {\n        0\n    }\n}\n";
+
+    fn write_dependent_scope_workspace(root: &Path, e_source: &str) -> Result<(), String> {
+        let manifest = |name: &str, deps: &[&str]| {
+            let mut text = format!(
+                "[package]\nname = \"scope_{name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n"
+            );
+            if !deps.is_empty() {
+                text.push_str("\n[dependencies]\n");
+                for dep in deps {
+                    text.push_str(&format!("scope_{dep} = {{ path = \"../{dep}\" }}\n"));
+                }
+            }
+            text
+        };
+        write(
+            &root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"a\", \"b\", \"c\", \"d\", \"e\"]\nresolver = \"2\"\n",
+        )?;
+        write(&root.join("a/Cargo.toml"), &manifest("a", &[]))?;
+        write(&root.join("b/Cargo.toml"), &manifest("b", &["a"]))?;
+        write(&root.join("c/Cargo.toml"), &manifest("c", &["b"]))?;
+        write(&root.join("d/Cargo.toml"), &manifest("d", &[]))?;
+        write(&root.join("e/Cargo.toml"), &manifest("e", &["a"]))?;
+        write(
+            &root.join("a/src/lib.rs"),
+            "pub fn quarble_gauge(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+        )?;
+        write(
+            &root.join("b/src/lib.rs"),
+            "pub fn relay(flag: bool) -> bool {\n    scope_a::quarble_gauge(flag)\n}\n",
+        )?;
+        write(
+            &root.join("b/tests/relay_tests.rs"),
+            "#[test]\nfn relay_holds() {\n    assert!(scope_b::relay(true));\n}\n",
+        )?;
+        write(
+            &root.join("c/src/lib.rs"),
+            "pub fn forward(flag: bool) -> bool {\n    scope_b::relay(flag)\n}\n",
+        )?;
+        write(
+            &root.join("c/tests/forward_tests.rs"),
+            "#[test]\nfn forward_holds() {\n    assert!(scope_c::forward(true));\n}\n",
+        )?;
+        write(
+            &root.join("d/src/lib.rs"),
+            "pub fn island() -> u8 {\n    2\n}\n",
+        )?;
+        write(&root.join("e/src/lib.rs"), e_source)?;
+        write(
+            &root.join("e/tests/e_tests.rs"),
+            "#[test]\nfn e_holds() {\n    assert_eq!(scope_e::unrelated(), 1);\n}\n",
+        )
+    }
+
+    const UNRELATED_E_SOURCE: &str = "pub fn unrelated() -> u8 {\n    1\n}\n";
+
+    /// Debug-rendered findings, the narrowed main-index files (`None` when
+    /// the run did not narrow) and the reach-widened files.
+    type ScopedRun = (String, Option<Vec<PathBuf>>, Vec<PathBuf>);
+
+    fn scoped_findings(
+        root: &Path,
+        mode: dependent_scope::DependentScopeMode,
+    ) -> Result<ScopedRun, String> {
+        dependent_scope::with_forced_mode(mode, || {
+            let result = RustAdapter.analyze_diff(
+                &diff_options(root.to_path_buf(), AnalysisMode::Draft),
+                &OraclePolicy::default(),
+                &changed_a_lib_diff(),
+            )?;
+            if result.findings.is_empty() {
+                return Err("the changed owner must seed probes".to_string());
+            }
+            Ok((
+                format!("{:?}", result.findings),
+                dependent_scope::observed_main_files(),
+                dependent_scope::observed_reach_files(),
+            ))
+        })
+    }
+
+    fn slash_paths(paths: &[PathBuf]) -> Vec<String> {
+        paths
+            .iter()
+            .map(|path| path.to_string_lossy().replace('\\', "/"))
+            .collect()
+    }
+
+    /// #5320: the name-admitted scope indexes `a` plus the one dependent file
+    /// that spells the owner, widens to the relay chain only for the
+    /// no-static-path witness, and never loads `e`. Its findings equal the
+    /// full reverse closure's. The core-only control (no admission, no
+    /// widening) loses the witness, so the widening is load-bearing.
+    #[test]
+    fn dependent_scope_admits_callers_and_keeps_the_full_witness() -> Result<(), String> {
+        use dependent_scope::DependentScopeMode;
+        let root = temp_root("dependent-scope-witness")?;
+        write_dependent_scope_workspace(&root, UNRELATED_E_SOURCE)?;
+
+        let (full, full_main, _) = scoped_findings(&root, DependentScopeMode::Full)?;
+        // Under the index limit the default keeps the full selection.
+        let (auto, auto_main, _) = scoped_findings(&root, DependentScopeMode::Auto)?;
+        assert_eq!(
+            auto, full,
+            "auto under the limit must equal the full closure"
+        );
+        assert!(auto_main.is_none(), "auto must not narrow under the limit");
+        let (named, named_main, named_reach) =
+            scoped_findings(&root, DependentScopeMode::NameAdmitted)?;
+        let (core, _, _) = scoped_findings(&root, DependentScopeMode::CoreOnly)?;
+
+        assert_eq!(full_main, None, "the full mode must not narrow");
+        assert!(
+            full.contains("relay_holds") && full.contains("RustIntegrationPublicApiPathUnresolved"),
+            "fixture premise: the full index names the dependent witness: {full}"
+        );
+        assert_eq!(
+            named, full,
+            "name-admitted findings must equal the full closure's"
+        );
+        assert_ne!(core, full, "without widening the witness must be lost");
+
+        let main = slash_paths(&named_main.ok_or("the named mode must narrow")?);
+        assert_eq!(main, ["a/src/lib.rs", "b/src/lib.rs"], "main index");
+        let reach = slash_paths(&named_reach);
+        assert_eq!(
+            reach,
+            [
+                "b/tests/relay_tests.rs",
+                "c/src/lib.rs",
+                "c/tests/forward_tests.rs"
+            ],
+            "reach widening follows the callers and their tests only"
+        );
+        Ok(())
+    }
+
+    /// #5320: a dependent file that only names the owner (a function
+    /// pointer, no call) keeps reach undecided in the full index. The
+    /// name-admitted scope admits it and matches; the core-only control
+    /// would drop it.
+    #[test]
+    fn dependent_scope_admits_a_bare_owner_mention() -> Result<(), String> {
+        use dependent_scope::DependentScopeMode;
+        let root = temp_root("dependent-scope-mention")?;
+        write_dependent_scope_workspace(
+            &root,
+            "pub fn unrelated() -> u8 {\n    1\n}\n\npub fn pick() -> fn(bool) -> bool {\n    scope_a::quarble_gauge\n}\n",
+        )?;
+
+        let (full, _, _) = scoped_findings(&root, DependentScopeMode::Full)?;
+        let (named, named_main, _) = scoped_findings(&root, DependentScopeMode::NameAdmitted)?;
+
+        assert_eq!(
+            named, full,
+            "name-admitted findings must equal the full closure's"
+        );
+        let main = slash_paths(&named_main.ok_or("the named mode must narrow")?);
+        assert!(
+            main.contains(&"e/src/lib.rs".to_string()),
+            "the mentioning file must be indexed: {main:?}"
+        );
+        assert!(
+            !main.contains(&"e/tests/e_tests.rs".to_string()),
+            "its unrelated test must stay out: {main:?}"
+        );
+        Ok(())
+    }
+
+    /// #5320: each owner's reach closure takes caller facts from every file
+    /// it reaches, including files an earlier owner's closure admitted. Here
+    /// `alpha`'s closure admits `c/src/lib.rs` first; `beta`'s witness runs
+    /// through `hub_beta` in that same file to the test in `d`.
+    #[test]
+    fn dependent_scope_reach_closures_are_per_owner() -> Result<(), String> {
+        use dependent_scope::DependentScopeMode;
+        let root = temp_root("dependent-scope-per-owner")?;
+        let manifest = |name: &str, dep: Option<&str>| {
+            let mut text = format!(
+                "[package]\nname = \"scope_{name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n"
+            );
+            if let Some(dep) = dep {
+                text.push_str(&format!(
+                    "\n[dependencies]\nscope_{dep} = {{ path = \"../{dep}\" }}\n"
+                ));
+            }
+            text
+        };
+        write(
+            &root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"a\", \"b\", \"c\", \"d\", \"e\"]\nresolver = \"2\"\n",
+        )?;
+        // `e` does not depend on `a`, so the selection is not the whole
+        // workspace and narrowing applies.
+        write(&root.join("e/Cargo.toml"), &manifest("e", None))?;
+        write(&root.join("e/src/lib.rs"), UNRELATED_E_SOURCE)?;
+        write(&root.join("a/Cargo.toml"), &manifest("a", None))?;
+        write(&root.join("b/Cargo.toml"), &manifest("b", Some("a")))?;
+        write(&root.join("c/Cargo.toml"), &manifest("c", Some("b")))?;
+        write(&root.join("d/Cargo.toml"), &manifest("d", Some("c")))?;
+        let a_source = "pub fn alpha(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n\n\
+                        pub fn beta(flag: bool) -> bool {\n    if flag { false } else { true }\n}\n";
+        write(&root.join("a/src/lib.rs"), a_source)?;
+        write(
+            &root.join("b/src/lib.rs"),
+            "pub fn relay_alpha(flag: bool) -> bool {\n    scope_a::alpha(flag)\n}\n\n\
+             pub fn relay_beta(flag: bool) -> bool {\n    scope_a::beta(flag)\n}\n",
+        )?;
+        write(
+            &root.join("c/src/lib.rs"),
+            "pub fn hub(flag: bool) -> bool {\n    scope_b::relay_alpha(flag)\n}\n\n\
+             pub fn hub_beta(flag: bool) -> bool {\n    scope_b::relay_beta(flag)\n}\n",
+        )?;
+        write(
+            &root.join("d/tests/hub_tests.rs"),
+            "#[test]\nfn hub_beta_holds() {\n    assert!(scope_c::hub_beta(true) || true);\n}\n",
+        )?;
+        write(
+            &root.join("d/src/lib.rs"),
+            "pub fn island() -> u8 {\n    2\n}\n",
+        )?;
+        let diff = diff::parse_unified_diff(&format!(
+            "diff --git a/a/src/lib.rs b/a/src/lib.rs\nnew file mode 100644\n--- /dev/null\n\
+             +++ b/a/src/lib.rs\n@@ -0,0 +1,7 @@\n{}",
+            a_source
+                .lines()
+                .map(|line| format!("+{line}\n"))
+                .collect::<String>()
+        ));
+        let run = |mode| {
+            dependent_scope::with_forced_mode(mode, || {
+                RustAdapter
+                    .analyze_diff(
+                        &diff_options(root.clone(), AnalysisMode::Draft),
+                        &OraclePolicy::default(),
+                        &diff,
+                    )
+                    .map(|result| format!("{:?}", result.findings))
+            })
+        };
+        let full = run(DependentScopeMode::Full)?;
+        assert!(
+            full.contains("hub_beta_holds"),
+            "fixture premise: the full index names the beta witness: {full}"
+        );
+        let named = run(DependentScopeMode::NameAdmitted)?;
+        assert_eq!(
+            named, full,
+            "name-admitted findings must equal the full closure's"
+        );
+        Ok(())
+    }
+
+    /// #5320: a default trait method's receivers come from every
+    /// `impl <trait> for` block, and a test binding `let x = T::new()` pins
+    /// `T` only when exactly one inherent `T::new` exists (see
+    /// `a_trait_receiver_pins_only_through_its_one_constructor`). `c`
+    /// declares a second `Meter::new` without spelling the trait or the
+    /// owner, so only the trait receiver `Meter` admits it.
+    #[test]
+    fn dependent_scope_admits_trait_receiver_constructors() -> Result<(), String> {
+        use dependent_scope::DependentScopeMode;
+        let write_workspace = |root: &Path| -> Result<(), String> {
+            let manifest = |name: &str, dep: Option<&str>| {
+                let mut text = format!(
+                    "[package]\nname = \"scope_{name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n"
+                );
+                if let Some(dep) = dep {
+                    text.push_str(&format!(
+                        "\n[dependencies]\nscope_{dep} = {{ path = \"../{dep}\" }}\n"
+                    ));
+                }
+                text
+            };
+            write(
+                &root.join("Cargo.toml"),
+                "[workspace]\nmembers = [\"a\", \"b\", \"c\", \"e\"]\nresolver = \"2\"\n",
+            )?;
+            write(&root.join("a/Cargo.toml"), &manifest("a", None))?;
+            write(&root.join("b/Cargo.toml"), &manifest("b", Some("a")))?;
+            write(&root.join("c/Cargo.toml"), &manifest("c", Some("a")))?;
+            write(&root.join("e/Cargo.toml"), &manifest("e", None))?;
+            write(&root.join("e/src/lib.rs"), UNRELATED_E_SOURCE)?;
+            write(&root.join("a/src/lib.rs"), GAUGE_TRAIT_SOURCE)?;
+            write(
+                &root.join("b/src/lib.rs"),
+                "pub fn island() -> u8 {\n    2\n}\n",
+            )?;
+            write(
+                &root.join("a/tests/meter_tests.rs"),
+                "use scope_a::{Gauge, Meter};\n\n#[test]\nfn meter_tallies() {\n    \
+                 let meter = Meter::new();\n    assert_eq!(meter.tally(), 1);\n}\n",
+            )?;
+            write(
+                &root.join("c/src/lib.rs"),
+                "pub struct Meter;\n\nimpl Meter {\n    pub fn new() -> Self {\n        Meter\n    }\n}\n",
+            )
+        };
+        let diff = diff::parse_unified_diff(&format!(
+            "diff --git a/a/src/lib.rs b/a/src/lib.rs\nnew file mode 100644\n--- /dev/null\n\
+             +++ b/a/src/lib.rs\n@@ -0,0 +1,{} @@\n{}",
+            GAUGE_TRAIT_SOURCE.lines().count(),
+            GAUGE_TRAIT_SOURCE
+                .lines()
+                .map(|line| format!("+{line}\n"))
+                .collect::<String>()
+        ));
+        let run = |root: &Path, mode| {
+            dependent_scope::with_forced_mode(mode, || {
+                RustAdapter
+                    .analyze_diff(
+                        &diff_options(root.to_path_buf(), AnalysisMode::Draft),
+                        &OraclePolicy::default(),
+                        &diff,
+                    )
+                    .map(|result| {
+                        (
+                            format!("{:?}", result.findings),
+                            dependent_scope::observed_main_files(),
+                        )
+                    })
+            })
+        };
+
+        let root = temp_root("dependent-scope-trait-receiver")?;
+        write_workspace(&root)?;
+        let (full, _) = run(&root, DependentScopeMode::Full)?;
+        let (named, named_main) = run(&root, DependentScopeMode::NameAdmitted)?;
+        assert_eq!(
+            named, full,
+            "name-admitted findings must equal the full closure's"
+        );
+        let main = slash_paths(&named_main.ok_or("the named mode must narrow")?);
+        assert!(
+            main.contains(&"c/src/lib.rs".to_string()),
+            "the colliding constructor must be admitted: {main:?}"
+        );
+        assert!(
+            !main.contains(&"b/src/lib.rs".to_string()),
+            "a dependent file without the receiver stays withheld: {main:?}"
+        );
+        Ok(())
+    }
+
+    /// #5320: the reach scan reads a name next to a non-ASCII byte (a
+    /// typographic-quoted doc mention) as a whole word, which keeps reach
+    /// undecided in the full index. The admission spelling must agree, or
+    /// the narrowed run would rule reach out and report `no_static_path`.
+    #[test]
+    fn dependent_scope_admits_a_typographic_quoted_mention() -> Result<(), String> {
+        use dependent_scope::DependentScopeMode;
+        let root = temp_root("dependent-scope-quoted-mention")?;
+        write_dependent_scope_workspace(
+            &root,
+            "/// Wraps “quarble_gauge” for callers.\npub fn unrelated() -> u8 {\n    1\n}\n",
+        )?;
+        let (full, _, _) = scoped_findings(&root, DependentScopeMode::Full)?;
+        let (named, named_main, _) = scoped_findings(&root, DependentScopeMode::NameAdmitted)?;
+        assert_eq!(
+            named, full,
+            "name-admitted findings must equal the full closure's"
+        );
+        let main = slash_paths(&named_main.ok_or("the named mode must narrow")?);
+        assert!(
+            main.contains(&"e/src/lib.rs".to_string()),
+            "the typographic-quoted mention must be admitted: {main:?}"
+        );
+        Ok(())
+    }
+
+    /// #5320: an owner whose caller closure exceeds the limit names the
+    /// unsearched reach only when the main index finds no witness itself. A
+    /// test in the changed package that reaches the owner through a helper
+    /// is a searched result and keeps its named witness; without that test
+    /// the finding carries the over-limit note.
+    #[test]
+    fn dependent_scope_over_limit_keeps_a_main_index_witness() -> Result<(), String> {
+        use dependent_scope::DependentScopeMode;
+        let over_limit = |root: &Path| {
+            dependent_scope::with_forced_reach_limit(1, || {
+                scoped_findings(root, DependentScopeMode::NameAdmitted)
+            })
+            .map(|(findings, _, _)| findings)
+        };
+        let unsearched = "did not search dependent packages";
+
+        let root = temp_root("dependent-scope-over-limit")?;
+        write_dependent_scope_workspace(&root, UNRELATED_E_SOURCE)?;
+        let plain = over_limit(&root)?;
+        assert!(
+            plain.contains(unsearched),
+            "fixture premise: the closure is over the forced limit: {plain}"
+        );
+
+        let witnessed_root = temp_root("dependent-scope-over-limit-witnessed")?;
+        write_dependent_scope_workspace(&witnessed_root, UNRELATED_E_SOURCE)?;
+        write(
+            &witnessed_root.join("a/src/lib.rs"),
+            "pub fn quarble_gauge(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n\n\
+             pub fn wrap(flag: bool) -> bool {\n    quarble_gauge(flag)\n}\n",
+        )?;
+        write(
+            &witnessed_root.join("a/tests/wrap_tests.rs"),
+            "#[test]\nfn wrap_holds() {\n    assert!(scope_a::wrap(true));\n}\n",
+        )?;
+        let witnessed = over_limit(&witnessed_root)?;
+        assert!(
+            witnessed.contains("wrap_holds"),
+            "the main-index witness must be named: {witnessed}"
+        );
+        assert!(
+            !witnessed.contains(unsearched),
+            "a searched witness must not read as unsearched: {witnessed}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn open_files_already_selected_count_once() {
+        use std::collections::BTreeSet;
+        let selected = [PathBuf::from("a/src/lib.rs"), PathBuf::from("b/src/lib.rs")];
+        let open = [PathBuf::from("b/src/lib.rs"), PathBuf::from("c/src/lib.rs")]
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        assert_eq!(selection_with_open_files(&selected, &open), 3);
+        assert_eq!(selection_with_open_files(&selected, &BTreeSet::new()), 2);
+    }
+
+    /// #5320: the owner-pin macro-binding union spans every indexed file, so
+    /// a dependent file's foreign glob import makes `assert_eq!` ambiguous
+    /// for the changed package's tests too. The narrowed scope withholds that
+    /// file but folds its bindings in, so the equality-assertion decision
+    /// matches the full closure's. The glob is load-bearing: without it the
+    /// full closure decides differently.
+    #[test]
+    fn dependent_scope_folds_in_withheld_macro_bindings() -> Result<(), String> {
+        use dependent_scope::DependentScopeMode;
+        let gauge_test = "#[test]\nfn gauge_pins_both_arms() {\n    \
+                          assert_eq!(scope_a::quarble_gauge(true), true);\n    \
+                          assert_eq!(scope_a::quarble_gauge(false), false);\n}\n";
+        let glob_e = "use proptest::prelude::*;\n\npub fn unrelated() -> u8 {\n    1\n}\n";
+
+        let root = temp_root("dependent-scope-macro-bindings")?;
+        write_dependent_scope_workspace(&root, glob_e)?;
+        write(&root.join("a/tests/gauge_tests.rs"), gauge_test)?;
+        let (full, _, _) = scoped_findings(&root, DependentScopeMode::Full)?;
+        let (named, named_main, _) = scoped_findings(&root, DependentScopeMode::NameAdmitted)?;
+        assert_eq!(
+            named, full,
+            "name-admitted findings must equal the full closure's"
+        );
+        let main = slash_paths(&named_main.ok_or("the named mode must narrow")?);
+        assert!(
+            !main.contains(&"e/src/lib.rs".to_string()),
+            "the glob file must stay withheld: {main:?}"
+        );
+
+        let plain_root = temp_root("dependent-scope-macro-bindings-plain")?;
+        write_dependent_scope_workspace(&plain_root, UNRELATED_E_SOURCE)?;
+        write(&plain_root.join("a/tests/gauge_tests.rs"), gauge_test)?;
+        let (plain_full, _, _) = scoped_findings(&plain_root, DependentScopeMode::Full)?;
+        let rooted = |text: &str, root: &Path| text.replace(&root.display().to_string(), "<root>");
+        assert_ne!(
+            rooted(&plain_full, &plain_root),
+            rooted(&full, &root),
+            "the withheld glob must change the full closure's decision"
+        );
+        Ok(())
+    }
+
+    /// #5320: a changed root-package file has no package prefix, so the
+    /// related-test package guard does not apply and any indexed test may
+    /// relate by name. The full selection stays.
+    #[test]
+    fn dependent_scope_keeps_full_selection_for_a_root_package_owner() -> Result<(), String> {
+        use dependent_scope::DependentScopeMode;
+        let root = temp_root("dependent-scope-root-package")?;
+        write(
+            &root.join("Cargo.toml"),
+            "[package]\nname = \"scope_root\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n\
+             [workspace]\nmembers = [\"b\", \"d\"]\n",
+        )?;
+        write(
+            &root.join("b/Cargo.toml"),
+            "[package]\nname = \"scope_b\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n\
+             [dependencies]\nscope_root = { path = \"..\" }\n",
+        )?;
+        write(
+            &root.join("d/Cargo.toml"),
+            "[package]\nname = \"scope_d\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        )?;
+        write(
+            &root.join("src/lib.rs"),
+            "pub fn quarble_gauge(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+        )?;
+        write(
+            &root.join("b/tests/quarble_gauge_tests.rs"),
+            "#[test]\nfn quarble_gauge_holds() {\n    assert!(scope_root::quarble_gauge(true));\n}\n",
+        )?;
+        write(
+            &root.join("d/src/lib.rs"),
+            "pub fn island() -> u8 {\n    2\n}\n",
+        )?;
+        let diff = diff::parse_unified_diff(
+            "diff --git a/src/lib.rs b/src/lib.rs\n\
+             new file mode 100644\n\
+             --- /dev/null\n\
+             +++ b/src/lib.rs\n\
+             @@ -0,0 +1,4 @@\n\
+             +pub fn quarble_gauge(flag: bool) -> bool {\n\
+             +    if flag { true } else { false }\n\
+             +}\n",
+        );
+
+        dependent_scope::with_forced_mode(DependentScopeMode::NameAdmitted, || {
+            RustAdapter.analyze_diff(
+                &diff_options(root.clone(), AnalysisMode::Draft),
+                &OraclePolicy::default(),
+                &diff,
+            )
+        })?;
+        assert_eq!(
+            dependent_scope::observed_main_files(),
+            None,
+            "a root-package owner must keep the full selection"
         );
         Ok(())
     }

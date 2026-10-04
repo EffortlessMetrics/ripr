@@ -243,7 +243,15 @@ Environment variables:
                                     index before check fails closed as
                                     diff_scope_oversized. With --json, stdout
                                     carries a non-consumable limited artifact.
+                                    Under RIPR_DIFF_DEPENDENT_SCOPE=auto a
+                                    Draft/Fast selection over it because of
+                                    dependent packages narrows instead.
                                     Default: 1200.
+  RIPR_DIFF_DEPENDENT_SCOPE         How Draft/Fast indexes packages that
+                                    depend on the changed ones: auto (whole
+                                    while under RIPR_MAX_DIFF_INDEX_FILES,
+                                    else named), named (only files that can
+                                    change a result), or full. Default: auto.
   RIPR_PARTIAL_DIFF_FILE_BUDGET     Changed-line files analyzed before check
                                     returns a bounded limited_partial_scope
                                     partition with exact selected paths,

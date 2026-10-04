@@ -936,3 +936,33 @@ fn saturation_hint_skips_workspace_owned_globs() {
         assert_eq!(may_saturate_macro_ambiguity(source), hinted, "{source}");
     }
 }
+
+const GAUGE_LIB: &str = "pub trait Gauge {\n    fn base(&self) -> usize;\n\n    fn tally(&self) -> usize {\n        self.base() + 1\n    }\n}\n\npub struct Meter;\n\nimpl Meter {\n    pub fn new() -> Self {\n        Meter\n    }\n}\n\nimpl Gauge for Meter {\n    fn base(&self) -> usize {\n        0\n    }\n}\n";
+
+/// #5320: a default method's receiver binding `let m = Meter::new()` pins
+/// only while `Meter::new` is the one inherent constructor of that name, so
+/// a same-named type's constructor in a file that never spells the trait
+/// still decides the pin. The dependent scope admits such files through
+/// `trait_impl_self_type_names`.
+#[test]
+fn a_trait_receiver_pins_only_through_its_one_constructor() {
+    let tests = "use demo::{Gauge, Meter};\n\n#[test]\nfn meter_tallies() {\n    let meter = Meter::new();\n    assert_eq!(meter.tally(), 1);\n}\n";
+    let admitted_with = |others: &[(&str, &str)]| {
+        let mut files = vec![(LIB, GAUGE_LIB), (TESTS, tests)];
+        files.extend_from_slice(others);
+        let index = index(&files);
+        let pin = establish(&index, "tally", "self.base() + 1");
+        assert!(pin.is_some(), "the default method must establish a pin");
+        pin.map(|pin| admitted_texts(&index, &pin).len())
+            .unwrap_or_default()
+    };
+    assert_eq!(admitted_with(&[]), 1);
+    let other_meter =
+        "pub struct Meter;\n\nimpl Meter {\n    pub fn new() -> Self {\n        Meter\n    }\n}\n";
+    assert_eq!(admitted_with(&[("src/other.rs", other_meter)]), 0);
+    assert_eq!(
+        trait_impl_self_type_names(GAUGE_LIB, "Gauge"),
+        BTreeSet::from(["Meter".to_string()])
+    );
+    assert!(trait_impl_self_type_names(other_meter, "Gauge").is_empty());
+}

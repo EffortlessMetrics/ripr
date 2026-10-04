@@ -139,6 +139,16 @@ impl RelatedTestCandidateIndex {
         &self.owner_pin_syntax
     }
 
+    /// Fold in the macro bindings of files a narrowed diff index withheld
+    /// (#5320), so the owner-pin ambiguity unions match the full selection.
+    pub(in crate::analysis) fn with_withheld_macro_bindings(
+        mut self,
+        withheld: super::WithheldMacroBindings,
+    ) -> Self {
+        self.owner_pin_syntax = std::mem::take(&mut self.owner_pin_syntax).with_withheld(withheld);
+        self
+    }
+
     /// The run-scoped per-(test, owner) value facts shared by every probe
     /// classified against this index.
     pub(in crate::analysis) fn test_value_facts(&self) -> &super::TestValueFacts {

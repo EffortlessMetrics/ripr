@@ -47,7 +47,7 @@ use crate::analysis::extract::{
 use crate::analysis::facts::{FunctionContainer, SourceRoleProvenanceEdgeKind};
 use crate::analysis::syntax::{
     OwnerPinAssertions, empty_macro_binding_ambiguities, local_empty_macro_names,
-    owner_pin_assertions, trusted_macro_binding_ambiguities,
+    macro_binding_scan, owner_pin_assertions, trusted_macro_binding_ambiguities,
 };
 use crate::domain::{Probe, ProbeFamily};
 use rayon::prelude::*;
@@ -72,9 +72,54 @@ pub(in crate::analysis) struct OwnerPinSyntax {
     ambiguous_macro_bindings: RefCell<Option<BTreeSet<String>>>,
     by_file: RefCell<BTreeMap<PathBuf, OwnerPinAssertions>>,
     empty_macro_ambiguities: RefCell<BTreeMap<PathBuf, BTreeSet<String>>>,
+    withheld: WithheldMacroBindings,
+}
+
+/// The macro bindings of files a narrowed diff index withheld (#5320).
+/// The ambiguity unions below run over every indexed file, so the withheld
+/// files' share is folded in to keep the decision the full selection made.
+/// Name-specific empty-macro bindings need no entry here: the diff scope
+/// admits every file that spells a test file's local empty-macro name.
+#[derive(Clone, Debug, Default)]
+pub(in crate::analysis) struct WithheldMacroBindings {
+    /// Some withheld file may shadow any macro name.
+    any_name: bool,
+    /// Trusted macro names withheld files may shadow.
+    trusted: BTreeSet<String>,
+}
+
+impl WithheldMacroBindings {
+    /// Fold one withheld file in. Returns `true` once nothing further can
+    /// change the result, so the caller can stop reading.
+    pub(in crate::analysis) fn absorb(
+        &mut self,
+        source: &str,
+        packages: &BTreeSet<String>,
+    ) -> bool {
+        if self.any_name {
+            return true;
+        }
+        match macro_binding_scan(source, packages, NON_RETURNING_MACROS, &BTreeSet::new()) {
+            Some(names) => self.trusted.extend(names),
+            None => {
+                self.any_name = true;
+                self.trusted = NON_RETURNING_MACROS
+                    .iter()
+                    .map(|name| (*name).to_string())
+                    .collect();
+            }
+        }
+        self.any_name
+    }
 }
 
 impl OwnerPinSyntax {
+    /// Fold in the macro bindings of files the diff index withheld.
+    pub(in crate::analysis) fn with_withheld(mut self, withheld: WithheldMacroBindings) -> Self {
+        self.withheld = withheld;
+        self
+    }
+
     /// Shared equality-oracle admission for the bounded supported families.
     /// Execution provenance is independent of the error/boundary/value matcher.
     /// Applicability is the invocation
@@ -96,7 +141,11 @@ impl OwnerPinSyntax {
 
     fn admits(&self, test: &TestSummary, assertion: &OracleFact, index: &RustIndex) -> bool {
         let mut ambiguous = self.ambiguous_macro_bindings.borrow_mut();
-        let ambiguous = ambiguous.get_or_insert_with(|| trusted_macro_ambiguities_in(index));
+        let ambiguous = ambiguous.get_or_insert_with(|| {
+            let mut ambiguous = trusted_macro_ambiguities_in(index);
+            ambiguous.extend(self.withheld.trusted.iter().cloned());
+            ambiguous
+        });
         let Some(facts) = index
             .files()
             .get(&test.file)
@@ -124,6 +173,13 @@ impl OwnerPinSyntax {
                         path == &test.file,
                     )
                 })
+                .chain(
+                    self.withheld
+                        .any_name
+                        .then(|| names.clone())
+                        .into_iter()
+                        .flatten(),
+                )
                 .collect()
         });
         let ambiguous: BTreeSet<_> = ambiguous.union(empty_ambiguities).cloned().collect();
@@ -966,6 +1022,62 @@ fn fn_definition_offsets(masked: &str, name: &str) -> Vec<usize> {
         .collect()
 }
 
+/// The name-keyed workspace scans [`OwnerReturnPin::establish`] runs for an
+/// owner that files outside the index could still change (#5320). Each scan
+/// is monotone in the files it sees, so once the index decides it, more
+/// files cannot change it; an undecided scan names what a file must spell.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(in crate::analysis) struct PinScopeNeeds {
+    /// No other indexed `fn <name>` competes yet; another file's could.
+    pub(in crate::analysis) competing_definitions: bool,
+    /// The receiver type is not declared in the index yet; another file's
+    /// `struct`/`enum`/`union` of this name would declare it.
+    pub(in crate::analysis) receiver_type: Option<String>,
+    /// A trait method's receivers come from every `impl <trait> for` block.
+    pub(in crate::analysis) trait_impls: Option<String>,
+    /// A test binding `let x = T::ctor()` pins this receiver type only when
+    /// exactly one inherent `impl T { fn ctor }` exists; another file's
+    /// `impl` block for a same-named type changes that count.
+    pub(in crate::analysis) constructor_type: Option<String>,
+}
+
+/// What [`PinScopeNeeds`] says for `owner` over `index`.
+pub(in crate::analysis) fn pin_scope_needs(
+    owner: &FunctionSummary,
+    index: &RustIndex,
+) -> PinScopeNeeds {
+    let mut needs = PinScopeNeeds::default();
+    if !owner.item.has_body {
+        return needs;
+    }
+    let method = match (&owner.item.container, owner.item.has_self_param) {
+        (FunctionContainer::Free, false) => false,
+        (FunctionContainer::Inherent { self_ty }, true)
+        | (FunctionContainer::TraitImpl { self_ty, .. }, true) => {
+            needs.constructor_type = path_base_name(self_ty).map(str::to_string);
+            if declared_receiver(self_ty, index).is_none() {
+                // A shape `declared_receiver` never accepts stays refused
+                // whatever else is indexed.
+                if self_ty.starts_with(['&', '[', '(', '*']) || self_ty.starts_with("dyn ") {
+                    return needs;
+                }
+                let Some(base) = path_base_name(self_ty) else {
+                    return needs;
+                };
+                needs.receiver_type = Some(base.to_string());
+            }
+            true
+        }
+        (FunctionContainer::Trait { trait_name }, true) => {
+            needs.trait_impls = Some(trait_name.clone());
+            true
+        }
+        _ => return needs,
+    };
+    needs.competing_definitions = !other_definition_competes(owner, index, method);
+    needs
+}
+
 /// The receiver type an `impl` block's self type names, when it is one this
 /// module can match a test binding against.
 fn declared_receiver(self_ty: &str, index: &RustIndex) -> Option<ReceiverType> {
@@ -984,24 +1096,8 @@ fn declared_receiver(self_ty: &str, index: &RustIndex) -> Option<ReceiverType> {
 fn trait_impl_receivers(trait_name: &str, index: &RustIndex) -> Vec<ReceiverType> {
     let mut receivers = Vec::new();
     for facts in index.files().values() {
-        if whole_word_offsets(&facts.source, trait_name).is_empty() {
-            continue;
-        }
-        let masked = mask_comments_and_strings(&facts.source);
-        for offset in whole_word_offsets(&masked, "impl") {
-            let Some(header_end) = masked[offset..].find(['{', ';']) else {
-                continue;
-            };
-            let header = collapse_whitespace(&masked[offset + "impl".len()..offset + header_end]);
-            let header = strip_leading_generics(&header);
-            let Some((trait_path, self_ty)) = header.split_once(" for ") else {
-                continue;
-            };
-            let self_ty = self_ty.split(" where ").next().unwrap_or(self_ty).trim();
-            if path_base_name(trait_path.trim()) != Some(trait_name) {
-                continue;
-            }
-            if let Some(receiver) = declared_receiver(self_ty, index)
+        for self_ty in trait_impl_self_types(&facts.source, trait_name) {
+            if let Some(receiver) = declared_receiver(&self_ty, index)
                 && !receivers.contains(&receiver)
             {
                 receivers.push(receiver);
@@ -1009,6 +1105,44 @@ fn trait_impl_receivers(trait_name: &str, index: &RustIndex) -> Vec<ReceiverType
         }
     }
     receivers
+}
+
+/// The base names of the self types `source` implements `trait_name` for:
+/// the names whose declarations and inherent constructors decide a default
+/// method's receivers (#5320).
+pub(in crate::analysis) fn trait_impl_self_type_names(
+    source: &str,
+    trait_name: &str,
+) -> BTreeSet<String> {
+    trait_impl_self_types(source, trait_name)
+        .iter()
+        .filter_map(|self_ty| path_base_name(self_ty).map(str::to_string))
+        .collect()
+}
+
+/// The self types of the `impl .. <trait_name> for <type>` headers in
+/// `source`.
+fn trait_impl_self_types(source: &str, trait_name: &str) -> Vec<String> {
+    let mut self_types = Vec::new();
+    if whole_word_offsets(source, trait_name).is_empty() {
+        return self_types;
+    }
+    let masked = mask_comments_and_strings(source);
+    for offset in whole_word_offsets(&masked, "impl") {
+        let Some(header_end) = masked[offset..].find(['{', ';']) else {
+            continue;
+        };
+        let header = collapse_whitespace(&masked[offset + "impl".len()..offset + header_end]);
+        let header = strip_leading_generics(&header);
+        let Some((trait_path, self_ty)) = header.split_once(" for ") else {
+            continue;
+        };
+        let self_ty = self_ty.split(" where ").next().unwrap_or(self_ty).trim();
+        if path_base_name(trait_path.trim()) == Some(trait_name) {
+            self_types.push(self_ty.to_string());
+        }
+    }
+    self_types
 }
 
 fn strip_leading_generics(header: &str) -> &str {

@@ -63,6 +63,21 @@ pub fn build_index_with_test_harnesses(
     Ok(index)
 }
 
+/// Parsed facts only, through the same file-fact cache: no role
+/// composition, harness registration or helper crediting. For scans that
+/// read call and body facts by name and keep every function and test
+/// whatever its role (the #5320 reach closure).
+pub(crate) fn parse_loaded_files_with_cache(
+    root: &Path,
+    files: &[(PathBuf, Vec<u8>)],
+) -> Result<RustIndex, String> {
+    let mut cached = index_phase("index_cached_parse", || {
+        build::build_index_from_loaded_files_with_cache(root, files)
+    })?;
+    cached.index.finalize()?;
+    Ok(cached.index)
+}
+
 pub(crate) fn build_index_from_loaded_files_with_cache_and_test_harnesses(
     root: &Path,
     files: &[(PathBuf, Vec<u8>)],

@@ -90,18 +90,29 @@ fn macro_binding_ambiguities(
     trusted: &[&str],
     allowed_empty: &BTreeSet<String>,
 ) -> BTreeSet<String> {
+    macro_binding_scan(source, packages, trusted, allowed_empty)
+        .unwrap_or_else(|| trusted.iter().map(|name| (*name).to_string()).collect())
+}
+
+/// One file's macro-binding scan, kept apart from the run-wide union: the
+/// names it may shadow, or `None` when it may shadow any name (an unclean
+/// parse, `#[macro_use]`, `no_implicit_prelude`, a foreign glob import).
+/// The diff scope (#5320) reads the `None` case for files it withholds.
+pub(crate) fn macro_binding_scan(
+    source: &str,
+    packages: &BTreeSet<String>,
+    trusted: &[&str],
+    allowed_empty: &BTreeSet<String>,
+) -> Option<BTreeSet<String>> {
     let mut ambiguous = BTreeSet::new();
     if !source.contains("macro")
         && !source.contains("use")
         && !source.contains("no_implicit_prelude")
         && !source.contains('!')
     {
-        return ambiguous;
+        return Some(ambiguous);
     }
-    let all = || trusted.iter().map(|name| (*name).to_string()).collect();
-    let Some(parse) = parse_clean_source_file(source) else {
-        return all();
-    };
+    let parse = parse_clean_source_file(source)?;
     for node in parse.tree().syntax().descendants() {
         let definition = ast::MacroRules::cast(node.clone())
             .and_then(|item| item.name())
@@ -122,7 +133,7 @@ fn macro_binding_ambiguities(
                 .filter_map(|element| element.into_token())
                 .any(|token| matches!(token.text(), "macro_use" | "no_implicit_prelude"))
         {
-            return all();
+            return None;
         }
         if let Some(call) = ast::MacroCall::cast(node.clone())
             && call
@@ -142,9 +153,7 @@ fn macro_binding_ambiguities(
             }
         }
         if let Some(import) = ast::Use::cast(node) {
-            let Some(tree) = import.use_tree() else {
-                return all();
-            };
+            let tree = import.use_tree()?;
             let root = tree
                 .path()
                 .map(|path| path.syntax().text().to_string())
@@ -161,7 +170,7 @@ fn macro_binding_ambiguities(
                     .any(|package| package.replace('-', "_") == root);
             for item in tree.syntax().descendants().filter_map(ast::UseTree::cast) {
                 if item.star_token().is_some() && !own {
-                    return all();
+                    return None;
                 }
                 let name = if let Some(rename) = item.rename() {
                     rename.name().map(|name| name.text().to_string())
@@ -182,7 +191,7 @@ fn macro_binding_ambiguities(
             }
         }
     }
-    ambiguous
+    Some(ambiguous)
 }
 
 /// This recognizes one bounded syntax form, not a macro evaluator: a sole

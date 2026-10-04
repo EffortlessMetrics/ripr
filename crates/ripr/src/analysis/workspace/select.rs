@@ -113,7 +113,10 @@ pub(crate) fn select_rust_files_for_mode_with_dependent_packages(
 /// access, deterministic, depth-bounded — and files already selected are
 /// never duplicated. `#[path]` redirections from files outside the default
 /// layouts stay invisible in narrowed modes (fail closed: no composed role).
-fn with_module_context_files(all_files: &[PathBuf], selected: Vec<PathBuf>) -> Vec<PathBuf> {
+pub(crate) fn with_module_context_files(
+    all_files: &[PathBuf],
+    selected: Vec<PathBuf>,
+) -> Vec<PathBuf> {
     if selected.len() >= all_files.len() {
         return selected;
     }

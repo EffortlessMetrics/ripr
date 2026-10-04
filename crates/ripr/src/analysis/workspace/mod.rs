@@ -24,4 +24,6 @@ pub(crate) use discover::{
     changed_source_files_absent_from_worktree, discover_preview_language_files,
     discover_unanalyzed_source_files, limitations_for_absent_changed_files,
 };
-pub(crate) use select::select_rust_files_for_mode_with_dependent_packages;
+pub(crate) use select::{
+    select_rust_files_for_mode_with_dependent_packages, with_module_context_files,
+};

@@ -40,6 +40,21 @@ impl ConsumedRustSources {
             .or_insert(observed);
     }
 
+    /// Fold another carrier's observations in, path by path, with the same
+    /// conflict rule as [`Self::record`].
+    pub(crate) fn absorb(&mut self, other: ConsumedRustSources) {
+        for (path, observed) in other.paths {
+            self.paths
+                .entry(path)
+                .and_modify(|previous| {
+                    if *previous != observed {
+                        *previous = Commitment::Conflicting;
+                    }
+                })
+                .or_insert(observed);
+        }
+    }
+
     /// Resolve an observed relative key. The consumer owns admission under the
     /// snapshot root; this carrier never reads or canonicalizes the filesystem.
     pub(crate) fn digest(&self, relative: &Path) -> Option<String> {

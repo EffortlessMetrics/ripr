@@ -2710,6 +2710,26 @@ fn check_json_diff_scope_oversized_emits_limited_artifact() -> Result<(), String
     Ok(())
 }
 
+/// #5448: an invalid `RIPR_DIFF_DEPENDENT_SCOPE` names itself even when the
+/// diff has no dependent packages to narrow.
+#[test]
+fn check_rejects_an_invalid_dependent_scope_without_dependents() {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+    let output = run_ripr_with_env(
+        &["check", "--root", &root, "--diff", &diff, "--json"],
+        &[("RIPR_DIFF_DEPENDENT_SCOPE", "everything")],
+    );
+    assert_failure(&output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(
+            "RIPR_DIFF_DEPENDENT_SCOPE must be `auto`, `named` or `full`, got `everything`"
+        ),
+        "stderr should name the invalid override: {stderr}"
+    );
+}
+
 #[test]
 fn diff_json_reports_changed_surface_before_full_repo_context() -> Result<(), String> {
     let workspace = unique_temp_workspace("diff-first");
