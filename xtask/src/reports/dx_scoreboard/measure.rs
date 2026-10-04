@@ -789,19 +789,34 @@ fn measure_hostile_repos(binary: &Path) -> Sample {
             "cargo test --test hostile_repos timed out".to_string(),
         );
     }
-    match parse_test_result(&measured.output.stdout) {
-        Some((passed, failed)) => sample(
+    let (outcome, detail) = hostile_outcome(
+        parse_test_result(&measured.output.stdout),
+        &measured.output.stderr,
+    );
+    sample(outcome, detail)
+}
+
+/// The hostile-journey sample from the libtest summary. No summary, or a run
+/// that executed no journey, is a failed instrument rather than zero failures.
+pub(crate) fn hostile_outcome(counts: Option<(u64, u64)>, stderr: &str) -> (SampleOutcome, String) {
+    match counts {
+        Some((0, 0)) => (
+            SampleOutcome::Failed,
+            "cargo test --test hostile_repos ran no tests; check that the file still defines its journeys"
+                .to_string(),
+        ),
+        Some((passed, failed)) => (
             SampleOutcome::Value(failed as f64),
             format!(
                 "{passed} of {} hostile-input journeys pass",
                 passed + failed
             ),
         ),
-        None => sample(
+        None => (
             SampleOutcome::Failed,
             format!(
                 "cargo test --test hostile_repos printed no test result: {}",
-                measured.output.stderr.lines().last().unwrap_or("no output")
+                stderr.lines().last().unwrap_or("no output")
             ),
         ),
     }

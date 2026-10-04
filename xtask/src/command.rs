@@ -1145,7 +1145,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "target/ripr/reports/dx-scoreboard.{json,md}",
             false,
             true,
-            "Measures the developer-experience scoreboards (speed, ci, trust, paste, first_run, agent) declared in benchmarks/dx_scoreboard/scoreboards.toml against a pinned real-repository corpus, merges --ingest results, and with --gate exits nonzero when a metric regresses past its margin against a baseline report.",
+            "Measures the developer-experience scoreboards (speed, ci, trust, paste, first_run, agent, corpus) declared in benchmarks/dx_scoreboard/scoreboards.toml against a pinned real-repository corpus, merges --ingest results, and with --gate exits nonzero when a metric regresses past its margin against a baseline report.",
         ),
         command_entry(
             "scale-cliff-benchmark [--sizes <n,n,n>] [--repo <path> --base <rev>] [--mode <draft|deep|instant>] [--commands <check,pilot>] [--index-cap <n|product>] [--timeout-ms <n>] [--keep-workspaces]",

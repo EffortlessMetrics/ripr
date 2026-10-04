@@ -15,10 +15,11 @@ target, margin, or corpus pin is a reviewed edit to that file.
 |---|---|---|
 | `speed` | How long until ripr says something useful, and whether the edit-check loop stays interactive | cold `ripr pilot` time and peak memory, warm `ripr check` time and peak memory, per corpus repository |
 | `ci` | What it costs to adopt ripr in CI | lines in the workflow `ripr init --ci github` writes, whether compiling ripr is its only install route, prebuilt install time (ingested from the install harness) |
-| `trust` | Whether ripr is ever confidently wrong | commands that exit 0 on a missing repository, hostile-repository journeys (`crates/ripr/tests/hostile_repos.rs`) that neither find nor refuse cleanly, self-contradicting findings, false-verdict, false-actionable, false-exposed, false-silent and abstention rates (kept separate: fewer abstentions or false gaps are not evidence that credited verdicts are right) on the hand-checked verdict corpus (read from `fixtures/rust-verdict-corpus/expected/report.json`, which lands with #5318 together with its drift check; not measured until then), mutation spot-check agreement on discriminator and gap claims plus join coverage (ingested), judged-panel false actionable rate |
+| `trust` | Whether ripr is ever confidently wrong | commands that exit 0 on a missing repository, hostile-repository journeys (`crates/ripr/tests/hostile_repos.rs`) that neither find nor refuse cleanly, self-contradicting findings, false-verdict, false-actionable, false-exposed, false-silent and abstention rates (kept separate: fewer abstentions or false gaps are not evidence that credited verdicts are right) on the hand-checked verdict corpus (read from `fixtures/rust-verdict-corpus/expected/report.json`), mutation spot-check agreement on discriminator and gap claims plus join coverage (ingested), judged-panel false actionable rate |
 | `paste` | Whether a printed command works when pasted | printed commands that break or run injected code under a hostile repository path, printed commands that drop the repository root |
 | `first_run` | The new-developer journey from install to first useful result | time to first useful result, walk seconds per crate, failed steps, steps over budget, friction events, `*_unknown` verdicts (all ingested) |
-| `agent` | Whether an agent using only ripr's help closes a real test gap quickly and without being misled | fix success, mutants caught, ripr commands and tool steps to fix, false weak findings left after the fix, stale re-checks, white-box tests written only for ripr (all ingested from the agent-as-user harness) |
+| `agent` | Whether an agent using only ripr's help closes a real test gap quickly and without being misled | fix success, mutants caught, ripr commands and tool steps to fix, false weak findings left after the fix, stale re-checks, white-box tests written only for ripr, and how many of the stub calls `check` suggested produced a stub (ingested from the agent-as-user harness); share of `ripr agent stub` tests that compile and fail at their own todo, share of gap locations that get a stub, and `observer_required` refusals (ingested from the stub evaluation, source `agent-stub`) |
+| `corpus` | Whether ripr keeps working on the shared pinned Rust corpus | per repository: whether the diff-scoped `ripr check` reached `analyzed`, and its wall time (ingested from `cargo xtask rust-corpus smoke`) |
 
 The rollup counts metrics that meet their target, fall below it, are not
 measured, have a failed instrument, or regressed. A per-repository view groups
@@ -96,7 +97,7 @@ metrics elsewhere and hand them over with `--ingest <file>`:
 an ingest file cannot overwrite a number this command measures. `completed:
 false` records a journey that never reached a useful result.
 
-Two native receipts are also accepted as-is:
+These native receipts are also accepted as-is:
 
 - `first_run.v1` from the scripted first-run harness: time to first useful
   result (install step plus steps through the first successful `check`; not
@@ -117,6 +118,33 @@ Two native receipts are also accepted as-is:
   and join coverage as `seam_precise` pairings over all mutants. These compare
   static claims with real mutation outcomes on a sample; they are evidence
   about ripr's calibration, not a mutation result for the corpus.
+- `ripr-rust-corpus-smoke-v1` from `cargo xtask rust-corpus smoke`: per
+  repository, `corpus.not_analyzed` (0 when the run reached `analyzed`, 1 when
+  it failed closed, timed out or broke) and `corpus.check_ms` (the time of an
+  analyzed run; any other run's time is incomplete). A repository the smoke
+  could not run (`not_fetched`, `spawn_failed`) is incomplete on every
+  metric, so against a baseline that analyzed it the gate reports lost
+  completion rather than a pass.
+
+### The corpus lane
+
+`.github/workflows/rust-corpus.yml` runs the fast tier on demand and the full
+tier nightly, then gates the receipt against
+`metrics/dx-scoreboard/corpus-<tier>-baseline.json`:
+
+```bash
+cargo xtask rust-corpus fetch --allow-network --tier fast
+cargo xtask rust-corpus smoke --tier fast --ripr target/release/ripr
+cargo xtask dx-scoreboard --boards corpus \
+  --ingest target/ripr/reports/rust-corpus-smoke.json \
+  --baseline metrics/dx-scoreboard/corpus-fast-baseline.json --gate
+```
+
+A repository that analyzed in the baseline and now fails closed or times out
+fails the lane; one that failed closed in both does not. To accept a changed
+status (a manifest re-pin, or a fail-closed refusal that is now intended),
+replace the baseline with the new `dx-scoreboard.json` in the same PR, which
+puts the change in front of a reviewer.
 
 ## Targets versus the regression gate
 
@@ -130,6 +158,9 @@ more than `max(regression_pct% of baseline, regression_floor)` (their sum for
 an instrument breaks. The worst value is compared over the repositories both
 reports measured, so a repository new to the corpus is listed as "not in
 baseline" instead of failing the gate; one that does not complete still fails.
+A repository that completes again after an incomplete baseline sample has no
+value to compare, so it is listed as "completed again" and left out of the
+compared worst.
 Metrics the baseline measured that a run cannot compare, such as ingested
 metrics without a receipt, are listed as not compared. Wall-time and memory
 metrics compare only against a baseline from the

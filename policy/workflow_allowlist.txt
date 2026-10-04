@@ -29,6 +29,7 @@
 .github/workflows/python-wheel-qualification.yml|194|Read-only #4490 package rehearsal retains exact native and PEP 440 identities, wheel metadata/RECORD and two executable-integrity negative controls, plus isolated pip/uv Python preview journeys; static adapter and workflow-shape policy remains in Rust xtask and the workflow has no publication authority.
 .github/workflows/release-server-binaries.yml|1|Release workflow delegates server archive packaging, manifest generation, and release upload branching to Rust xtask commands.
 .github/workflows/routed-rust.yml|63|Routed Rust selects one trusted self-hosted runner or the hosted fallback, preserves normalized result semantics, and delegates implementation proof to the reusable Rust gate workflow.
+.github/workflows/rust-corpus.yml|4|Shared Rust corpus lane: one-command build, fetch and smoke steps, then one folded cargo xtask dx-scoreboard gate command.
 .github/workflows/rust-gates.yml|31|Reusable Rust gate implementation preserves scratch tempfail fallback, required proof, bounded PR evidence, and failure-only ordinary artifacts.
 .github/workflows/scratch-gc.yml|3|Scheduled scratch-GC lane reclaims terminal scratch through the shared ci-scratch-lease action (#3841), then trims sccache, reports disk, and keeps the hard-fail guard on a timer so disk recovery does not depend on PR traffic (#1028).
 .github/workflows/security.yml|1|Security workflow installs cargo-deny as a normal binary, then runs the standard cargo-deny command without requiring Docker.
