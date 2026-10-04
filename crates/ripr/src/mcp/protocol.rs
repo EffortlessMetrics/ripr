@@ -7,6 +7,11 @@ use super::repair::{
     CODE_ATTEMPT_INVALID, CODE_ATTEMPT_NOT_FOUND, RECEIPT_STATUS_SCHEMA_VERSION, RECEIPT_TEMPLATE,
     REPAIR_ATTEMPT_SCHEMA_VERSION, REPAIR_ATTEMPT_TEMPLATE, REPAIR_PACKET_SCHEMA_VERSION,
 };
+use super::repair_card::{
+    CODE_BUDGET_OVERFLOW, CODE_IDENTITY_UNNAMEABLE, CODE_POLICY_OMITTED, CODE_SEAM_NOT_FOUND,
+    CODE_WITNESS_UNAVAILABLE, GET_REPAIR_CARD_TOOL_NAME, REPAIR_CARD_SCHEMA_VERSION,
+    REPAIR_CARD_TEMPLATE,
+};
 use super::workspace::{
     AttemptFailure, CODE_NO_SNAPSHOT, REFRESH_SCHEMA_VERSION, RESERVED_FAILURE_CODES,
     SESSION_SCHEMA_VERSION, SessionProfile, WorkspaceSession,
@@ -22,7 +27,6 @@ pub(super) const GET_RECEIPT_STATUS_TOOL_NAME: &str = "ripr_get_receipt_status";
 pub(super) const STATUS_RESOURCE_URI: &str = "ripr://workspace/status";
 pub(super) const SNAPSHOT_RESOURCE_TEMPLATE: &str = "ripr://snapshot/{snapshot_id}";
 pub(super) const GAP_RESOURCE_TEMPLATE: &str = "ripr://gap/{canonical_item_id}";
-
 /// The typed-failure vocabulary every evidence tool can return. Codes a
 /// tool cannot reach in this slice stay named (reserved) so the wire
 /// contract is stable when the owning slice lands; each tool description
@@ -41,6 +45,13 @@ fn failure_vocabulary() -> Vec<&'static str> {
         CODE_ATTEMPT_INVALID,
     ];
     codes.extend(RESERVED_FAILURE_CODES.iter().copied());
+    codes.extend([
+        CODE_SEAM_NOT_FOUND,
+        CODE_POLICY_OMITTED,
+        CODE_WITNESS_UNAVAILABLE,
+        CODE_IDENTITY_UNNAMEABLE,
+        CODE_BUDGET_OVERFLOW,
+    ]);
     codes
 }
 
@@ -48,7 +59,7 @@ fn failure_vocabulary() -> Vec<&'static str> {
 /// this server does not, and the CLI route that runs analysis outside this
 /// session. Naming a route is not invoking it: the server still edits
 /// nothing and executes nothing (ADR 0022).
-pub(super) const INSTRUCTIONS: &str = "RIPR is a static analyzer that asks whether the current tests would notice if the behavior changed in a diff were wrong. This MCP server exposes one read-only workspace session. Call `ripr_workspace_status` for root discovery, authority, and session facts; call `ripr_refresh` to run one bounded static analysis and commit a completed snapshot; call `ripr_list_gaps` for the deterministically bounded working set of canonical items; then call `ripr_get_gap` (or read `ripr://gap/{canonical_item_id}`) for one item's complete bounded evidence. When one item's producer repair-readiness facts are established, call `ripr_prepare_repair` to create (or replay) one bounded in-memory repair transaction bound to that snapshot and item, then read it back with `ripr_get_repair_attempt` or `ripr://repair-attempt/{attempt_id}` and inspect its receipt state with `ripr_get_receipt_status` or `ripr://receipt/{receipt_id}`; durable CLI attempts of this workspace are readable through the same routes. The server never edits source, runs tests or mutation, executes verification commands, launches processes, or loads project-local provider configuration, and no evidence document is ever a repair authorization: the external client's approval and sandbox policy remains authoritative for every command a returned route names. To analyze outside this session, run the ripr CLI in the repository: `ripr check --format json` names each changed-behavior gap and its missing test input.";
+pub(super) const INSTRUCTIONS: &str = "RIPR is a static analyzer that asks whether the current tests would notice if the behavior changed in a diff were wrong. This MCP server exposes one read-only workspace session. Call `ripr_workspace_status` for root discovery, authority, and session facts; call `ripr_refresh` to run one bounded static analysis and commit a completed snapshot; call `ripr_list_gaps` for the deterministically bounded working set of canonical items; then call `ripr_get_gap` (or read `ripr://gap/{canonical_item_id}`) for one item's complete bounded evidence. When one item's producer repair-readiness facts are established, call `ripr_prepare_repair` to create (or replay) one bounded in-memory repair transaction bound to that snapshot and item, then read it back with `ripr_get_repair_attempt` or `ripr://repair-attempt/{attempt_id}` and inspect its receipt state with `ripr_get_receipt_status` or `ripr://receipt/{receipt_id}`; durable CLI attempts of this workspace are readable through the same routes. For one canonical item's bounded repair card — the same repair_card.v1 document `ripr agent card` and the standard language server project — call `ripr_get_repair_card` or read `ripr://repair-card/{canonical_item_id}`; the card binds the analyzed repository head and currentness of its committed snapshot and names the same typed next action the CLI would. The server never edits source, runs tests or mutation, executes verification commands, launches processes, or loads project-local provider configuration, and no evidence document is ever a repair authorization: the external client's approval and sandbox policy remains authoritative for every command a returned route names. To analyze outside this session, run the ripr CLI in the repository: `ripr check --format json` names each changed-behavior gap and its missing test input.";
 
 const STATUS_TOOL_DESCRIPTION: &str = "Report the RIPR workspace and session state. The document contains repository-root discovery state (validated or unavailable, with repository markers and any root error code), launch-trust and authority facts (source edit, verification execution, mutation execution, and model provider are all none), and a session block: current desired input (workspace diff against the default branch, draft mode), current attempt state (no_snapshot, in_flight, completed, or failed), the last completed snapshot identity, last-known-good state, freshness as of the last refresh, the typed AnalysisOutcome of the committed snapshot, and the built-in profile and support facts. `workspace_state: ready` means only that a repository root was discovered — not that analysis ran or that no issues were found. This tool returns session facts only: no gap evidence. It never edits source, runs tests or mutation, executes verification commands, or loads project-local provider configuration. To run analysis, call ripr_refresh.";
 
@@ -74,6 +85,10 @@ const REPAIR_ATTEMPT_TEMPLATE_DESCRIPTION: &str = "One repair transaction, ident
 
 const RECEIPT_TEMPLATE_DESCRIPTION: &str = "The receipt status document for one attempt identity, identical to the ripr_get_receipt_status tool result: the status vocabulary (awaiting_edit, after_pending, verification_pending, improved, closed, unchanged, regressed, limited, stale, invalid), the digest-bound receipt document when a durable attempt retained one, and the currentness basis. Receipt issuance is external authority — RIPR performs no verification and executes nothing on this read.";
 
+const REPAIR_CARD_TEMPLATE_DESCRIPTION: &str = "One canonical item's bounded repair card, identical to the ripr_get_repair_card tool result: the same repair_card.v1 document `ripr agent card` and the standard language server project, assembled by the shared application authority over the committed snapshot. The card binds the analyzed repository head and the commit-time evidence-scope currentness of its snapshot, names the seam, witness, fix instruction, edit cage, attempt state, and the typed next action when a route is ready, and links the snapshot, gap, repair-attempt, and receipt resources. The item must exist in the current completed snapshot and one classified seam must owner-discriminated bind it, or the read fails closed with item_not_found or seam_not_found.";
+
+const GET_REPAIR_CARD_TOOL_DESCRIPTION: &str = "Project the bounded repair card for one canonical item of the current completed snapshot: the same versioned repair_card.v1 document `ripr agent card` and the standard language server project (RIPR-SPEC-0215), assembled by the shared application authority from the committed snapshot — never re-derived or weakened by this server. Inputs: gap_id (required, a canonical item id from ripr_list_gaps) and optional snapshot_id, which must match the current snapshot or the call fails closed with stale_snapshot. The document carries: the item identity and the verbatim card (seam subject, changed behavior, exact blocker or named limitation, fix instruction, edit-cage surfaces, done-when goals, attempt state, and one typed next action when the route gate is open); the analyzed repository head and the commit-time evidence-scope dirty-state probe the card binds (edits after ripr_refresh are visible only after the next refresh); the claim boundary; and links to the snapshot, gap, repair-attempt, and receipt resources. The durable attempt store is re-read at card-read time, so the attempt block matches `ripr agent status` at this moment; in-memory session transactions never ride a card. The card edits nothing, executes nothing, and is never a repair authorization: the external client's approval and sandbox policy remains authoritative for the command the next action names, and the display binds the portable root `.` (never the host-local path). Reachable failure vocabulary: no_snapshot, analysis_in_flight, stale_snapshot, item_not_found, seam_not_found, identity_unnameable, budget_overflow, result_too_large, workspace_unavailable, analysis_failed; policy_omitted and witness_unavailable stay named on the wire for stability. Equivalent reads: the tool ripr_get_repair_card and the resource ripr://repair-card/{canonical_item_id} return the same document.";
+
 pub(super) fn tools_list_result() -> Value {
     json!({"tools": [
         status_tool_descriptor(),
@@ -83,6 +98,7 @@ pub(super) fn tools_list_result() -> Value {
         prepare_repair_tool_descriptor(),
         get_repair_attempt_tool_descriptor(),
         get_receipt_status_tool_descriptor(),
+        get_repair_card_tool_descriptor(),
     ]})
 }
 
@@ -120,6 +136,13 @@ pub(super) fn resource_templates_list_result() -> Value {
             "description": RECEIPT_TEMPLATE_DESCRIPTION,
             "mimeType": "application/json",
         },
+        {
+            "uriTemplate": REPAIR_CARD_TEMPLATE,
+            "name": "ripr-repair-card",
+            "title": "RIPR repair card",
+            "description": REPAIR_CARD_TEMPLATE_DESCRIPTION,
+            "mimeType": "application/json",
+        },
     ]})
 }
 
@@ -134,9 +157,9 @@ struct McpStatusDocument<'a> {
 #[derive(Serialize)]
 struct McpSurfaceStatus {
     transport: &'static str,
-    tools: [&'static str; 7],
+    tools: [&'static str; 8],
     resources: [&'static str; 1],
-    resource_templates: [&'static str; 4],
+    resource_templates: [&'static str; 5],
     bounds: McpBoundsStatus,
 }
 
@@ -168,6 +191,7 @@ pub(super) fn status_document(
                 PREPARE_REPAIR_TOOL_NAME,
                 GET_REPAIR_ATTEMPT_TOOL_NAME,
                 GET_RECEIPT_STATUS_TOOL_NAME,
+                GET_REPAIR_CARD_TOOL_NAME,
             ],
             resources: [STATUS_RESOURCE_URI],
             resource_templates: [
@@ -175,6 +199,7 @@ pub(super) fn status_document(
                 GAP_RESOURCE_TEMPLATE,
                 REPAIR_ATTEMPT_TEMPLATE,
                 RECEIPT_TEMPLATE,
+                REPAIR_CARD_TEMPLATE,
             ],
             bounds: McpBoundsStatus {
                 max_message_bytes,
@@ -469,6 +494,68 @@ fn get_receipt_status_tool_descriptor() -> Value {
     })
 }
 
+fn get_repair_card_tool_descriptor() -> Value {
+    json!({
+        "name": GET_REPAIR_CARD_TOOL_NAME,
+        "title": "RIPR repair card",
+        "description": GET_REPAIR_CARD_TOOL_DESCRIPTION,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "gap_id": { "type": "string", "minLength": 1 },
+                "snapshot_id": { "type": "string" }
+            },
+            "required": ["gap_id"],
+            "additionalProperties": false
+        },
+        "outputSchema": repair_card_output_schema(),
+        "annotations": {
+            "title": "RIPR repair card",
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": false
+        }
+    })
+}
+
+fn repair_card_output_schema() -> Value {
+    json!({
+        "oneOf": [
+            {
+                "type": "object",
+                "properties": {
+                    "schema_version": { "type": "string", "const": REPAIR_CARD_SCHEMA_VERSION },
+                    "snapshot_id": { "type": "string" },
+                    "requested_snapshot_id": { "type": ["string", "null"] },
+                    "item": { "type": "object" },
+                    "card": { "type": "object" },
+                    "currentness": { "type": "object" },
+                    "claim_boundary": { "type": "string" },
+                    "limitations": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    },
+                    "links": { "type": "object" }
+                },
+                "required": [
+                    "schema_version",
+                    "snapshot_id",
+                    "requested_snapshot_id",
+                    "item",
+                    "card",
+                    "currentness",
+                    "claim_boundary",
+                    "limitations",
+                    "links"
+                ],
+                "additionalProperties": false
+            },
+            typed_failure_document_schema(REPAIR_CARD_SCHEMA_VERSION)
+        ]
+    })
+}
+
 fn status_resource_descriptor() -> Value {
     json!({
         "uri": STATUS_RESOURCE_URI,
@@ -731,8 +818,8 @@ fn status_output_schema() -> Value {
                     "tools": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "minItems": 7,
-                        "maxItems": 7
+                        "minItems": 8,
+                        "maxItems": 8
                     },
                     "resources": {
                         "type": "array",
@@ -743,8 +830,8 @@ fn status_output_schema() -> Value {
                     "resource_templates": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "minItems": 4,
-                        "maxItems": 4
+                        "minItems": 5,
+                        "maxItems": 5
                     },
                     "bounds": {
                         "type": "object",
@@ -1069,9 +1156,9 @@ mod tests {
             .and_then(Value::as_array)
             .map(|tools| tools.len())
             .ok_or_else(|| "tools/list payload drifted".to_string())?;
-        if names != 7 {
+        if names != 8 {
             return Err(format!(
-                "expected the seven-tool slice surface, got {names} tools"
+                "expected the eight-tool slice surface, got {names} tools"
             ));
         }
         let description = json_str(&tools, "/tools/0/description")?;
@@ -1095,7 +1182,7 @@ mod tests {
     #[test]
     fn tool_descriptions_state_positive_contracts_and_bounds() -> Result<(), String> {
         let tools = tools_list_result();
-        let descriptions: [(&str, &str, &[&str]); 6] = [
+        let descriptions: [(&str, &str, &[&str]); 7] = [
             (
                 "/tools/1/description",
                 REFRESH_TOOL_NAME,
@@ -1164,6 +1251,19 @@ mod tests {
                     "ripr://receipt/{receipt_id}",
                 ],
             ),
+            (
+                "/tools/7/description",
+                GET_REPAIR_CARD_TOOL_NAME,
+                &[
+                    "same versioned repair_card.v1 document `ripr agent card` and the standard language server project",
+                    "assembled by the shared application authority",
+                    "The durable attempt store is re-read at card-read time",
+                    "never a repair authorization",
+                    "no_snapshot",
+                    "seam_not_found",
+                    "ripr://repair-card/{canonical_item_id}",
+                ],
+            ),
         ];
         for (pointer, name, required_words) in descriptions {
             let tool_name = json_str(&tools, pointer.replace("/description", "/name").as_str())?;
@@ -1211,9 +1311,9 @@ mod tests {
             .pointer("/resourceTemplates")
             .and_then(Value::as_array)
             .ok_or_else(|| "resourceTemplates payload drifted".to_string())?;
-        if templates.len() != 4 {
+        if templates.len() != 5 {
             return Err(format!(
-                "expected four resource templates, got {}",
+                "expected five resource templates, got {}",
                 templates.len()
             ));
         }
@@ -1222,6 +1322,7 @@ mod tests {
             (1, GAP_RESOURCE_TEMPLATE),
             (2, REPAIR_ATTEMPT_TEMPLATE),
             (3, RECEIPT_TEMPLATE),
+            (4, REPAIR_CARD_TEMPLATE),
         ] {
             let value = templates
                 .get(index)
@@ -1263,6 +1364,11 @@ mod tests {
             "superseded",
             "attempt_not_found",
             "attempt_invalid",
+            "seam_not_found",
+            "policy_omitted",
+            "witness_unavailable",
+            "identity_unnameable",
+            "budget_overflow",
         ] {
             if !codes.contains(&required) {
                 return Err(format!("failure vocabulary lost {required}: {codes:?}"));
@@ -1281,9 +1387,11 @@ mod tests {
             "ripr_prepare_repair",
             "ripr_get_repair_attempt",
             "ripr_get_receipt_status",
+            "ripr_get_repair_card",
             "ripr://gap/{canonical_item_id}",
             "ripr://repair-attempt/{attempt_id}",
             "ripr://receipt/{receipt_id}",
+            "ripr://repair-card/{canonical_item_id}",
             "never edits source",
             "ripr check --format json",
         ] {

@@ -11727,3 +11727,31 @@ outputs = []
 metrics = [
   "unit_test_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0215"
+name = "MCP repair card projection"
+spec = "docs/specs/RIPR-SPEC-0215-repair-card-mcp-projection.md"
+tests = [
+  "crates/ripr/src/mcp/repair_card.rs::tests::repair_card_resource_uri_parsing_is_strict",
+  "crates/ripr/src/mcp/repair_card.rs::tests::card_read_fails_closed_on_every_missing_producer_fact",
+  "crates/ripr/src/mcp/repair_card.rs::tests::stale_snapshot_and_in_flight_read_fail_closed",
+  "crates/ripr/src/mcp/repair_card.rs::tests::witness_bound_card_projects_the_shared_handoff_card",
+  "crates/ripr/src/mcp/repair_card.rs::tests::refusal_kinds_travel_under_their_pinned_wire_spellings",
+  "crates/ripr/src/mcp/repair_card.rs::tests::seam_binding_requires_the_gap_owner_match",
+  "crates/ripr/src/mcp/protocol.rs::tests",
+  "crates/ripr/src/mcp/server_tests.rs::repair_card_fails_closed_before_refresh",
+  "crates/ripr/src/mcp/server_tests.rs::repair_tools_reject_bad_arguments_at_the_dispatch_edge",
+  "crates/ripr/tests/mcp_sdk.rs",
+  "crates/ripr/tests/mcp_stdio.rs",
+]
+code = [
+  "crates/ripr/src/mcp/repair_card.rs",
+  "crates/ripr/src/mcp/workspace.rs",
+  "crates/ripr/src/mcp/protocol.rs",
+  "crates/ripr/src/mcp/server.rs",
+]
+outputs = []
+metrics = [
+  "unit_test_pass_rate",
+]

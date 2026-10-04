@@ -1,4 +1,4 @@
-use super::{gaps, protocol, repair, workspace};
+use super::{gaps, protocol, repair, repair_card, workspace};
 use crate::workspace_status::WorkspaceStatus;
 use rmcp::{ErrorData, RoleServer, ServerHandler, model::*, service::RequestContext};
 use serde::de::DeserializeOwned;
@@ -220,6 +220,28 @@ impl McpServer {
         }
     }
 
+    async fn get_repair_card_tool(
+        &self,
+        arguments: Option<serde_json::Map<String, Value>>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        reject_unknown_arguments(&arguments, &["gap_id", "snapshot_id"])?;
+        let gap_id = required_string_argument(&arguments, "gap_id")?;
+        let requested = optional_string_argument(&arguments, "snapshot_id")?;
+        let session = self.session.lock().await;
+        match session.repair_card_document(
+            &gap_id,
+            requested.as_deref(),
+            self.analysis_root.as_deref(),
+        ) {
+            Ok(document) => self.bounded_tool_result(
+                document,
+                repair_card::REPAIR_CARD_SCHEMA_VERSION,
+                "serialize repair card",
+            ),
+            Err(failure) => self.typed_failure(failure, repair_card::REPAIR_CARD_SCHEMA_VERSION),
+        }
+    }
+
     fn typed_failure(
         &self,
         failure: workspace::AttemptFailure,
@@ -400,9 +422,12 @@ impl ServerHandler for McpServer {
             protocol::GET_RECEIPT_STATUS_TOOL_NAME => {
                 self.get_receipt_status_tool(request.arguments).await
             }
+            repair_card::GET_REPAIR_CARD_TOOL_NAME => {
+                self.get_repair_card_tool(request.arguments).await
+            }
             _other => Err(ErrorData::new(
                 ErrorCode::METHOD_NOT_FOUND,
-                "unknown tool; available: ripr_workspace_status, ripr_refresh, ripr_list_gaps, ripr_get_gap, ripr_prepare_repair, ripr_get_repair_attempt, ripr_get_receipt_status",
+                "unknown tool; available: ripr_workspace_status, ripr_refresh, ripr_list_gaps, ripr_get_gap, ripr_prepare_repair, ripr_get_repair_attempt, ripr_get_receipt_status, ripr_get_repair_card",
                 Some(serde_json::json!({
                     "available": [
                         protocol::STATUS_TOOL_NAME,
@@ -412,6 +437,7 @@ impl ServerHandler for McpServer {
                         protocol::PREPARE_REPAIR_TOOL_NAME,
                         protocol::GET_REPAIR_ATTEMPT_TOOL_NAME,
                         protocol::GET_RECEIPT_STATUS_TOOL_NAME,
+                        repair_card::GET_REPAIR_CARD_TOOL_NAME,
                     ]
                 })),
             )),
@@ -481,6 +507,14 @@ impl ServerHandler for McpServer {
                 Err(failure) => Err(resource_failure("receipt", &failure, None)),
             };
         }
+        if let Some(item_id) = repair_card::repair_card_resource_id(&request.uri) {
+            let session = self.session.lock().await;
+            return match session.repair_card_document(item_id, None, self.analysis_root.as_deref())
+            {
+                Ok(document) => self.resource_result(document, &request.uri),
+                Err(failure) => Err(resource_failure("repair-card", &failure, None)),
+            };
+        }
         Err(ErrorData::resource_not_found(
             "unknown resource; available: ripr://workspace/status",
             Some(serde_json::json!({
@@ -490,6 +524,7 @@ impl ServerHandler for McpServer {
                     protocol::GAP_RESOURCE_TEMPLATE,
                     repair::REPAIR_ATTEMPT_TEMPLATE,
                     repair::RECEIPT_TEMPLATE,
+                    repair_card::REPAIR_CARD_TEMPLATE,
                 ],
             })),
         ))

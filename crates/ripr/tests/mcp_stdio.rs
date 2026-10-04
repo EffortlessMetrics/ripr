@@ -748,9 +748,9 @@ fn unsupported_inline_version_is_rejected_and_next_request_recovers() -> Result<
         || recovered
             .pointer("/result/tools")
             .and_then(Value::as_array)
-            .is_none_or(|tools| tools.len() != 7)
+            .is_none_or(|tools| tools.len() != 8)
     {
-        return Err("valid inline request did not recover the seven-tool slice surface".into());
+        return Err("valid inline request did not recover the eight-tool slice surface".into());
     }
     Ok(())
 }
@@ -827,6 +827,16 @@ fn gap_tools_fail_closed_before_the_first_refresh() -> Result<(), String> {
         }))?,
         line(json!({
             "jsonrpc": "2.0",
+            "id": "card",
+            "method": "tools/call",
+            "params": {
+                "_meta": current_meta(),
+                "name": "ripr_get_repair_card",
+                "arguments": { "gap_id": "gap:any" }
+            }
+        }))?,
+        line(json!({
+            "jsonrpc": "2.0",
             "id": "snapshot",
             "method": "resources/read",
             "params": {
@@ -838,8 +848,8 @@ fn gap_tools_fail_closed_before_the_first_refresh() -> Result<(), String> {
     .concat();
     let output = run_mcp(&root, &[&request_bytes])?;
     let responses = response_lines(&output)?;
-    if responses.len() != 8 {
-        return Err(format!("expected 8 MCP responses, got {}", responses.len()));
+    if responses.len() != 9 {
+        return Err(format!("expected 9 MCP responses, got {}", responses.len()));
     }
     // rmcp answers concurrently, so key every response by request id instead
     // of assuming positional order.
@@ -866,6 +876,7 @@ fn gap_tools_fail_closed_before_the_first_refresh() -> Result<(), String> {
         "ripr://gap/{canonical_item_id}",
         "ripr://repair-attempt/{attempt_id}",
         "ripr://receipt/{receipt_id}",
+        "ripr://repair-card/{canonical_item_id}",
     ] {
         if !template_uris.contains(&expected) {
             return Err(format!(
@@ -873,7 +884,7 @@ fn gap_tools_fail_closed_before_the_first_refresh() -> Result<(), String> {
             ));
         }
     }
-    for id in ["list", "get", "prepare"] {
+    for id in ["list", "get", "prepare", "card"] {
         let response = by_id
             .get(id)
             .ok_or_else(|| format!("{id} response missing: {responses:?}"))?;

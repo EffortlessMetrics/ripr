@@ -130,6 +130,7 @@ async fn sdk_session(
                 "ripr://gap/{canonical_item_id}",
                 "ripr://repair-attempt/{attempt_id}",
                 "ripr://receipt/{receipt_id}",
+                "ripr://repair-card/{canonical_item_id}",
             ] {
                 if !template_uris.contains(&expected) {
                     return Err(format!(
@@ -166,17 +167,17 @@ async fn sdk_session(
                 .pointer("/mcp/tools")
                 .and_then(Value::as_array)
                 .map(Vec::len)
-                != Some(7)
+                != Some(8)
             {
-                return Err("SDK status surface block lost the seven-tool contract".into());
+                return Err("SDK status surface block lost the eight-tool contract".into());
             }
             if status
                 .pointer("/mcp/resource_templates")
                 .and_then(Value::as_array)
                 .map(Vec::len)
-                != Some(4)
+                != Some(5)
             {
-                return Err("SDK status surface block lost the four-template contract".into());
+                return Err("SDK status surface block lost the five-template contract".into());
             }
             for authority in [
                 "source_edit_capability",

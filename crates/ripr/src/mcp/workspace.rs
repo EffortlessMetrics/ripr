@@ -115,6 +115,14 @@ pub(crate) struct Snapshot {
     pub(crate) snapshot_id: String,
     pub(crate) outcome: AnalysisOutcome,
     pub(crate) items: Vec<GapItem>,
+    /// The committed findings the evidence projections read (`ripr_get_gap`
+    /// and the repair-card witness matcher both bind from this exact set).
+    pub(crate) findings: Vec<crate::domain::Finding>,
+    /// The repair-card producer facts bound when this snapshot committed
+    /// (RIPR-SPEC-0215). Snapshots committed before the card projection
+    /// existed carry `None`; their card reads fail closed with
+    /// `no_snapshot` instead of silently missing the card surface.
+    pub(crate) card_producers: Option<super::repair_card::SnapshotCardProducers>,
     pub(crate) budget: DiagnosticBudget,
     pub(crate) selection: DiagnosticBudgetResult,
 }
@@ -208,6 +216,8 @@ impl Snapshot {
             snapshot_id,
             outcome,
             items,
+            findings: output.findings.clone(),
+            card_producers: None,
             budget,
             selection,
         })
@@ -670,7 +680,12 @@ pub(crate) fn run_check(
             "retry with ripr_refresh; if the failure persists, run `ripr check --format json` in the repository for the full diagnostic",
         )
     })?;
-    Snapshot::from_output(&output, root_identity)
+    let mut snapshot = Snapshot::from_output(&output, root_identity)?;
+    // Bind the repair-card producers inside the same bounded attempt, after
+    // the shared check authority completed: the snapshot commits complete —
+    // items, findings, head, and card seams — or not at all (RIPR-SPEC-0215).
+    super::repair_card::bind_snapshot_card_producers(root, &mut snapshot)?;
+    Ok(snapshot)
 }
 
 fn overflow_reason_as_str(reason: DiagnosticOverflowReason) -> &'static str {

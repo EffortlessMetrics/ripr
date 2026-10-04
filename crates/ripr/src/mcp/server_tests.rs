@@ -16,9 +16,9 @@ fn sdk_server_metadata_preserves_bounded_status_instructions() -> Result<(), Str
         return Err("SDK metadata changed application identity or analysis authority".into());
     }
     let tools = &server.tools;
-    if tools.tools.len() != 7 {
+    if tools.tools.len() != 8 {
         return Err(format!(
-            "SDK descriptor must expose the seven-tool slice surface, got {} tools",
+            "SDK descriptor must expose the eight-tool slice surface, got {} tools",
             tools.tools.len()
         ));
     }
@@ -61,6 +61,7 @@ fn sdk_server_declares_snapshot_and_gap_resource_templates() -> Result<(), Strin
         protocol::GAP_RESOURCE_TEMPLATE,
         repair::REPAIR_ATTEMPT_TEMPLATE,
         repair::RECEIPT_TEMPLATE,
+        repair_card::REPAIR_CARD_TEMPLATE,
     ] {
         if !uris.contains(&expected) {
             return Err(format!("SDK resource templates lost {expected}: {uris:?}"));
@@ -255,6 +256,46 @@ async fn receipt_status_fails_closed_before_refresh() -> Result<(), String> {
 }
 
 #[tokio::test]
+async fn repair_card_fails_closed_before_refresh() -> Result<(), String> {
+    let server = McpServer::new(WorkspaceStatus::resolve_with_root(None).0, None)
+        .map_err(|error| error.to_string())?;
+    let arguments = serde_json::from_value(serde_json::json!({"gap_id": "gap:test:1"}))
+        .map_err(|error| error.to_string())?;
+    let response = server
+        .get_repair_card_tool(arguments)
+        .await
+        .map_err(|error| error.to_string())?;
+    let result = match response {
+        rmcp::model::CallToolResponse::Complete(result) => result,
+        other => {
+            return Err(format!(
+                "pre-refresh get_repair_card must complete with a typed failure, got {other:?}"
+            ));
+        }
+    };
+    let value = serde_json::to_value(result).map_err(|error| error.to_string())?;
+    if value
+        .pointer("/isError")
+        .and_then(serde_json::Value::as_bool)
+        != Some(true)
+    {
+        return Err(format!(
+            "pre-refresh get_repair_card must be a typed failure: {value}"
+        ));
+    }
+    if value
+        .pointer("/structuredContent/failure/code")
+        .and_then(serde_json::Value::as_str)
+        != Some(workspace::CODE_NO_SNAPSHOT)
+    {
+        return Err(format!(
+            "pre-refresh get_repair_card lost no_snapshot: {value}"
+        ));
+    }
+    Ok(())
+}
+
+#[tokio::test]
 async fn repair_tools_reject_bad_arguments_at_the_dispatch_edge() -> Result<(), String> {
     let server = McpServer::new(WorkspaceStatus::resolve_with_root(None).0, None)
         .map_err(|error| error.to_string())?;
@@ -319,6 +360,26 @@ async fn repair_tools_reject_bad_arguments_at_the_dispatch_edge() -> Result<(), 
             serde_json::json!({"receipt_id": "receipt:x", "verbose": true}),
             "get_receipt_status rejects unknown arguments",
         ),
+        (
+            "card",
+            serde_json::json!({}),
+            "get_repair_card rejects a missing gap_id",
+        ),
+        (
+            "card",
+            serde_json::json!({"gap_id": ""}),
+            "get_repair_card rejects an empty gap_id",
+        ),
+        (
+            "card",
+            serde_json::json!({"gap_id": 7}),
+            "get_repair_card rejects a non-string gap_id",
+        ),
+        (
+            "card",
+            serde_json::json!({"gap_id": "gap:x", "verbose": true}),
+            "get_repair_card rejects unknown arguments",
+        ),
     ] {
         let arguments: Option<serde_json::Map<String, Value>> =
             serde_json::from_value(arguments).map_err(|error| error.to_string())?;
@@ -327,6 +388,7 @@ async fn repair_tools_reject_bad_arguments_at_the_dispatch_edge() -> Result<(), 
         let result = match tool {
             "prepare" => server.prepare_repair_tool(arguments).await,
             "attempt" => server.get_repair_attempt_tool(arguments).await,
+            "card" => server.get_repair_card_tool(arguments).await,
             _ => server.get_receipt_status_tool(arguments).await,
         };
         let rejected = matches!(

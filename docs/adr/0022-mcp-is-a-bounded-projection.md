@@ -210,3 +210,41 @@ transport. The server remains a bounded adapter over shared RIPR authority:
   execution, mutation execution, and model provider remain none; the
   adapter edits nothing, launches nothing, and executes nothing a returned
   route names.
+
+## Slice D (#4668): repair card projection
+
+The repair-transaction slice was extended by #4668 (RIPR-SPEC-0215) with
+the repair card — still without moving any authority into the transport.
+The server remains a bounded adapter over shared RIPR authority:
+
+- `ripr_get_repair_card` / `ripr://repair-card/{canonical_item_id}` project
+  the same versioned `repair_card.v1` the CLI `ripr agent card` handoff and
+  the standard-LSP projection consume, assembled by the shared
+  `app::repair_card_handoff::assemble_repair_card` authority. The adapter
+  never re-derives readiness, identity, currentness, or route state, and a
+  producer refusal never ships a weakened card.
+- Because this ADR forbids launching git per read, the two transport facts
+  the card binds — the analyzed repository head and the evidence-scope
+  dirty-state currentness probe — are captured once, inside the one bounded
+  `ripr_refresh` attempt, alongside the diff-scoped classified seam
+  inventory. The snapshot commits complete (items, findings, head, and card
+  seams) or not at all: any binding failure fails the attempt with
+  `analysis_failed`, so the card surface can never silently vanish under a
+  served snapshot identity. A card therefore binds the analyzed head of its
+  snapshot, and post-refresh edits stay invisible until the next refresh —
+  the session's existing freshness contract.
+- The durable attempt store is plain filesystem state, not analysis: it is
+  re-read live at card-read time through the same inventory the CLI card
+  producer runs, so the card's attempt block matches `ripr agent status` at
+  that moment. In-memory session transactions never ride a card.
+- Refusal kinds travel under the CLI-pinned `AgentCardRefusalKind` wire
+  spellings (`seam_not_found`, `policy_omitted`, `witness_unavailable`,
+  `identity_unnameable`, `budget_overflow`), so one machine state names one
+  refusal on every transport; operational failures stay `analysis_failed`.
+- The next-action display binds the portable root `.`; the host-local
+  checkout path is intentionally not projected (this ADR's hashing posture)
+  and the display string is presentation only, never execution authority.
+- Authority declarations are unchanged: source-edit, verification
+  execution, mutation execution, and model provider remain none; the
+  adapter edits nothing, launches nothing, and executes nothing a returned
+  route names.

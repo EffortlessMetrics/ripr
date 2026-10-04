@@ -49,6 +49,7 @@ ripr_get_gap            → one item's complete bounded evidence
 ripr_prepare_repair     → readiness-gated in-memory repair transaction
 ripr_get_repair_attempt → one session or durable attempt, read-only
 ripr_get_receipt_status → one attempt's receipt state, read-only
+ripr_get_repair_card    → one item's bounded repair card, read-only
 ```
 
 Status and list calls never return the full evidence graph; read one item at
@@ -65,11 +66,13 @@ a time through the tool or the resource.
 | Tool (`gap_id`, `snapshot_id?`) | `ripr_prepare_repair` |
 | Tool (`attempt_id`) | `ripr_get_repair_attempt` |
 | Tool (`receipt_id`) | `ripr_get_receipt_status` |
+| Tool (`gap_id`, `snapshot_id?`) | `ripr_get_repair_card` |
 | Resource (`application/json`) | `ripr://workspace/status` |
 | Resource template | `ripr://snapshot/{snapshot_id}` |
 | Resource template | `ripr://gap/{canonical_item_id}` |
 | Resource template | `ripr://repair-attempt/{attempt_id}` |
 | Resource template | `ripr://receipt/{receipt_id}` |
+| Resource template | `ripr://repair-card/{canonical_item_id}` |
 
 `ripr_workspace_status` and `ripr://workspace/status` return the same JSON
 document, schema `ripr-mcp-workspace-status-v1`. It wraps:
@@ -177,6 +180,23 @@ evidence: the snapshot identity, the typed `AnalysisOutcome`, the full
 canonical item index (identities and locations, not evidence), and the stored
 bounded-selection summary.
 
+`ripr_get_repair_card` (and the equivalent resource
+`ripr://repair-card/{canonical_item_id}`) projects the bounded repair card
+for one canonical item: the same versioned `repair_card.v1` document `ripr
+agent card` and the standard language server project, assembled by the shared
+application authority from the committed snapshot — the adapter never
+re-derives readiness, identity, currentness, or route state. The analyzed
+repository head and the diff-scoped classified seam inventory (each retained
+seam owner-discriminated bound to a snapshot item, with its evidence-scope
+dirty-state currentness probe) are bound when `ripr_refresh` commits the
+snapshot — the adapter never launches git per read — so the card binds the
+analyzed head and the commit-time currentness of its snapshot, and edits
+after the refresh are visible only after the next one. The durable attempt
+store is plain filesystem state and is re-read live at card-read time, so the
+card's attempt block matches `ripr agent status` at that moment; in-memory
+session transactions never ride a card. The next-action display binds the
+portable root `.` and is presentation only, never execution authority.
+
 ## Typed failures
 
 The evidence tools fail closed with structured content (`isError: true` and a
@@ -189,14 +209,21 @@ no_snapshot            analysis_in_flight  stale_snapshot
 item_not_found         result_too_large    attempt_not_found
 config_invalid         workspace_ambiguous static_limitation
 cancelled              superseded          attempt_invalid
+seam_not_found         policy_omitted      witness_unavailable
+identity_unnameable    budget_overflow
 ```
 
 Before the first successful refresh the evidence tools fail with
 `no_snapshot` and the repair-attempt / receipt reads fail with
 `attempt_not_found`; `superseded` is reachable for a session transaction
 bound to a snapshot that is no longer current; `attempt_invalid` reports a
-durable manifest that fails canonical validation; the rest stay reserved for
-the slices that own those states (they are named now so the wire contract
+durable manifest that fails canonical validation; `seam_not_found`,
+`identity_unnameable`, and `budget_overflow` are reachable on the repair-card
+read (an item no seam owner-discriminated binds, an unnameable portable
+workspace identity, a card over its detail budget); `policy_omitted` and
+`witness_unavailable` stay named for wire stability even though this adapter
+cannot reach them; the rest stay reserved for the slices that own those
+states (they are named now so the wire contract
 stays stable). Tool argument shape violations use standard Invalid Params;
 unknown tools use Method Not Found with the available names in `error.data`.
 
