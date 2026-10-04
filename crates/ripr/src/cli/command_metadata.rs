@@ -223,6 +223,18 @@ const TOOL_PROBES: CommandEffects = CommandEffects {
     may_start_child_process: true,
 };
 
+/// The CI packet runs the workflow's analysis and report commands as child
+/// `ripr` processes and resolves the PR diff through `crate::git`; it never
+/// compiles, runs tests, or uses the network.
+const CI_PACKET_RUNNER: CommandEffects = CommandEffects {
+    may_run_analysis: true,
+    may_compile: false,
+    may_run_tests: false,
+    may_run_mutation: false,
+    may_use_network: false,
+    may_start_child_process: true,
+};
+
 /// The governed rich-metadata table. One row per described catalog entry.
 const METADATA: &[CommandMetadata] = &[
     CommandMetadata {
@@ -1116,6 +1128,33 @@ const METADATA: &[CommandMetadata] = &[
         next_routes: &["reports gap-ledger", "pr-summary"],
         stop_states: &["explicit refusal on unreadable inputs"],
         limitations: "an index of what exists; it does not judge report freshness.",
+        not_applicable_reason: None,
+    },
+    CommandMetadata {
+        id: "cmd:reports.ci-packet",
+        summary: "Run the generated CI workflow's RIPR steps and write its artifact packet.",
+        task: "Compose PR evidence",
+        workflows: &["reports", "pr-evidence"],
+        operation: CommandOperation::WritesArtifacts,
+        cost: CommandCost::Workspace,
+        effects: CI_PACKET_RUNNER,
+        primary_inputs: &[
+            "the checkout under --root",
+            "RIPR_* workflow settings and the GitHub Actions run environment",
+        ],
+        outputs: CommandOutputs {
+            default: Some("target/ripr and target/ci artifact packet under --root"),
+            optional: &[],
+        },
+        state_target: None,
+        json_support: false,
+        example: "ripr reports ci-packet --root .",
+        next_routes: &["reports ci-summary", "reports index", "first-pr"],
+        stop_states: &[
+            "advisory steps log a failure and continue",
+            "a failed diff capture, gate evaluation, or blocking-mode producer exits nonzero after the packet is written",
+        ],
+        limitations: "runs the same ripr commands the workflow steps ran; it reads no token and posts no PR comments.",
         not_applicable_reason: None,
     },
     CommandMetadata {

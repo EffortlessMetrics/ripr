@@ -242,6 +242,7 @@ fn option_section(command: &str) -> Option<&'static str> {
         "policy waiver-aging" => Some("Waiver aging options:"),
         "policy suppression-health" => Some("Suppression health options:"),
         "reports index" => Some("Index options:"),
+        "reports ci-packet" => Some("CI packet options:"),
         "reports ci-summary" => Some("CI summary options:"),
         "reports gap-ledger" => Some("Gap ledger options:"),
         "reports ts-limitations" => Some("TypeScript limitation options:"),

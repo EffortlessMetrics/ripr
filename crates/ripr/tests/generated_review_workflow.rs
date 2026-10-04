@@ -107,11 +107,15 @@ fn generated_workflow_replay_prints_only_runnable_next_steps() -> Result<(), Box
     let workflow = fs::read_to_string(root.join(".github/workflows/ripr.yml"))?;
     let steps = replay::parse_steps(&workflow);
     assert!(
-        steps.len() > 20,
-        "workflow step parser found {} steps; the template layout changed",
-        steps.len()
+        steps.iter().any(|step| step.name == "Run RIPR"),
+        "workflow step parser found no `Run RIPR` step; the template layout changed"
     );
     let runs = replay::run_workflow(&root, &base, &steps)?;
+    // Precondition: the packet command printed its steps as log groups.
+    assert!(
+        runs.iter().filter(|run| run.name != "Run RIPR").count() > 20,
+        "`ripr reports ci-packet` printed too few step groups"
+    );
 
     // Precondition: the agent-loop step ran for a real top seam.
     let agent_loop = runs
@@ -1365,17 +1369,23 @@ fn generated_workflow_places_findings_on_pr_head_lines_when_base_moved()
     };
     replay::git(&root, &["checkout", "-q", "--detach", &checkout_sha])?;
 
-    let wanted = [
-        "Capture pull request diff",
-        "Run RIPR PR guidance report",
-        "Emit RIPR PR guidance annotations",
-    ];
+    let wanted = ["Run RIPR"];
     let steps = replay::parse_steps(&workflow)
         .into_iter()
         .filter(|step| wanted.contains(&step.name.as_str()))
         .collect::<Vec<_>>();
     assert_eq!(steps.len(), wanted.len(), "template step names changed");
     let runs = replay::run_workflow(&root, &base, &steps)?;
+    for stage in [
+        "Capture pull request diff",
+        "Run RIPR PR guidance report",
+        "Emit RIPR PR guidance annotations",
+    ] {
+        assert!(
+            runs.iter().any(|run| run.name == stage),
+            "`{stage}` did not run"
+        );
+    }
     for run in &runs {
         assert_eq!(
             run.exit_code,
@@ -1476,11 +1486,7 @@ fn generated_comment_plan_withholds_write_permission_for_dependabot() -> Result<
             String::from_utf8_lossy(&init.stderr)
         );
         let workflow = fs::read_to_string(root.join(".github/workflows/ripr.yml"))?;
-        let wanted = [
-            "Capture pull request diff",
-            "Run RIPR PR guidance report",
-            "Plan RIPR inline comments",
-        ];
+        let wanted = ["Run RIPR"];
         let steps = replay::parse_steps(&workflow)
             .into_iter()
             .filter(|step| wanted.contains(&step.name.as_str()))
@@ -1489,7 +1495,16 @@ fn generated_comment_plan_withholds_write_permission_for_dependabot() -> Result<
         let mut env = vec![("RIPR_COMMENT_MODE", "inline")];
         env.extend_from_slice(overrides);
         let runs = replay::run_workflow_with_env(&root, &base, &steps, &env)?;
-        assert_eq!(runs.len(), wanted.len(), "a step was skipped");
+        for stage in [
+            "Capture pull request diff",
+            "Run RIPR PR guidance report",
+            "Plan RIPR inline comments",
+        ] {
+            assert!(
+                runs.iter().any(|run| run.name == stage),
+                "`{stage}` was skipped"
+            );
+        }
         for run in &runs {
             assert_eq!(
                 run.exit_code,
@@ -1516,10 +1531,10 @@ fn generated_comment_plan_withholds_write_permission_for_dependabot() -> Result<
     // Dependabot as the event actor, and a maintainer reopening a
     // Dependabot-authored PR (the actor is the maintainer).
     for (case, overrides) in [
-        ("dependabot actor", [("RIPR_ACTOR", "dependabot[bot]")]),
+        ("dependabot actor", [("GITHUB_ACTOR", "dependabot[bot]")]),
         (
             "dependabot-authored PR",
-            [("RIPR_PR_AUTHOR", "dependabot[bot]")],
+            [("RIPR_REPLAY_PR_AUTHOR", "dependabot[bot]")],
         ),
     ] {
         let plan = plan_for(&overrides)?;
@@ -1592,7 +1607,7 @@ fn far_above_threshold_discounts() {
     pub(super) struct Step {
         pub(super) name: String,
         condition: Option<String>,
-        run: Option<String>,
+        pub(super) run: Option<String>,
         env: Vec<(String, String)>,
     }
 
@@ -1820,6 +1835,9 @@ fn far_above_threshold_discounts() {
             "github.event.pull_request.head.repo.full_name" => "ripr-test/pricing",
             "github.event.pull_request.head.sha" => head_sha,
             "github.token" => "replay-token-unused",
+            // The replay skips the install and runs the ripr under test,
+            // which is installed.
+            "steps.install.outcome" => "success",
             "github.actor" | "github.event.pull_request.user.login" => "ripr-test-user",
             "vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only'" => "true",
             _ => return None,
@@ -1925,11 +1943,26 @@ fn far_above_threshold_discounts() {
         fs::write(&github_env, "")?;
         fs::write(&summary, "")?;
         fs::write(base.join("github-output"), "")?;
+        // `ripr reports ci-packet` reads the PR facts from the event, as the
+        // retired steps read `github.event.*`. `RIPR_REPLAY_PR_AUTHOR` sets
+        // the PR author a test needs; it is not a workflow variable.
+        let author = overrides
+            .iter()
+            .find(|(name, _)| *name == "RIPR_REPLAY_PR_AUTHOR")
+            .map_or("ripr-test-user", |(_, value)| *value);
         fs::write(
             &event,
-            format!(
-                "{{\"pull_request\":{{\"number\":1,\"labels\":[],\"head\":{{\"sha\":\"{head_sha}\"}}}}}}"
-            ),
+            serde_json::json!({
+                "number": 1,
+                "repository": {"default_branch": "trunk"},
+                "pull_request": {
+                    "number": 1,
+                    "labels": [],
+                    "user": {"login": author},
+                    "head": {"sha": head_sha, "repo": {"full_name": "ripr-test/pricing"}}
+                }
+            })
+            .to_string(),
         )?;
         let mut env = BTreeMap::from([
             ("RIPR_UPLOAD_SARIF".to_string(), "true".to_string()),
@@ -1954,6 +1987,7 @@ fn far_above_threshold_discounts() {
                 "ripr-test/pricing".to_string(),
             ),
             ("GITHUB_SHA".to_string(), head_sha.clone()),
+            ("GITHUB_ACTOR".to_string(), "ripr-test-user".to_string()),
             ("GITHUB_WORKSPACE".to_string(), root.display().to_string()),
             ("RUNNER_TEMP".to_string(), base.display().to_string()),
         ]);
@@ -1986,7 +2020,7 @@ fn far_above_threshold_discounts() {
                 step_env.push((name.clone(), substitute(value, &head_sha)?));
             }
             let output = bash(root, &script, &step_env)?;
-            runs.push(StepRun {
+            let run = StepRun {
                 name: step.name.clone(),
                 exit_code: output.status.code(),
                 output: format!(
@@ -1994,7 +2028,14 @@ fn far_above_threshold_discounts() {
                     String::from_utf8_lossy(&output.stdout),
                     String::from_utf8_lossy(&output.stderr)
                 ),
-            });
+            };
+            let stages = if step.name == "Run RIPR" {
+                stage_runs(&String::from_utf8_lossy(&output.stdout))
+            } else {
+                Vec::new()
+            };
+            runs.push(run);
+            runs.extend(stages);
             for line in fs::read_to_string(&github_env)?.lines() {
                 if let Some((name, value)) = line.split_once('=') {
                     env.insert(name.to_string(), value.to_string());
@@ -2002,6 +2043,37 @@ fn far_above_threshold_discounts() {
             }
         }
         Ok(runs)
+    }
+
+    /// `ripr reports ci-packet` prints each retired workflow step as a log
+    /// group, and names a failed step after its group. Split its stdout back
+    /// into per-step runs so assertions keep naming the step they hold.
+    fn stage_runs(stdout: &str) -> Vec<StepRun> {
+        let mut stages: Vec<StepRun> = Vec::new();
+        let mut open: Option<StepRun> = None;
+        for line in stdout.lines() {
+            if let Some(name) = line.strip_prefix("::group::") {
+                open = Some(StepRun {
+                    name: name.to_string(),
+                    exit_code: Some(0),
+                    output: String::new(),
+                });
+            } else if line == "::endgroup::" {
+                stages.extend(open.take());
+            } else if let Some(run) = open.as_mut() {
+                run.output.push_str(line);
+                run.output.push('\n');
+            } else if let Some(stage) = stages.last_mut().filter(|stage| {
+                line.starts_with(&format!("RIPR step \"{}\" failed", stage.name))
+                    || line.starts_with(&format!("::error title={}::", stage.name))
+            }) {
+                stage.exit_code = Some(1);
+                stage.output.push_str(line);
+                stage.output.push('\n');
+            }
+        }
+        stages.extend(open);
+        stages
     }
 
     pub(super) fn json_files(dir: &Path) -> TestResult<Vec<PathBuf>> {
@@ -2134,25 +2206,36 @@ fn generated_capture_step_uses_pinned_diff_contract() -> Result<(), Box<dyn Erro
         String::from_utf8_lossy(&output.stderr)
     );
 
+    // The capture moved from workflow shell into `ripr reports ci-packet`
+    // (#4696): the workflow runs the command, and the command's capture
+    // pins the presentation flags.
     let workflow = fs::read_to_string(root.join(".github/workflows/ripr.yml"))?;
-    let step = capture_pull_request_diff_step(&workflow)
-        .ok_or("generated workflow has no 'Capture pull request diff' step")?;
+    let step = workflow_step_block(&workflow, "Run RIPR")
+        .ok_or("generated workflow has no 'Run RIPR' step")?;
+    assert!(step.contains("ripr reports ci-packet --root ."), "{step}");
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let source = fs::read_to_string(manifest_dir.join("src/cli/commands/ci_packet.rs"))?;
+    let capture = source
+        .split("fn capture_pull_request_diff(")
+        .nth(1)
+        .and_then(|rest| rest.split("\n    fn ").next())
+        .ok_or("ci_packet.rs has no capture_pull_request_diff")?;
     for pin in [
-        "--no-ext-diff",
-        "--no-textconv",
-        "--no-color",
-        "--src-prefix=a/",
-        "--dst-prefix=b/",
-        "--unified=3",
-        "--inter-hunk-context=0",
-        "core.quotePath",
-        "rev-parse",
-        "sha256sum",
-        "mktemp",
+        "\"--no-ext-diff\"",
+        "\"--no-textconv\"",
+        "\"--no-color\"",
+        "\"--src-prefix=a/\"",
+        "\"--dst-prefix=b/\"",
+        "\"--unified=3\"",
+        "\"--inter-hunk-context=0\"",
+        "\"core.quotePath=true\"",
+        "\"--binary\"",
+        "\"rev-parse\"",
+        "Sha256::digest",
     ] {
         assert!(
-            step.contains(pin),
-            "capture step must pin {pin}; got:\n{step}"
+            capture.contains(pin),
+            "capture must pin {pin}; got:\n{capture}"
         );
     }
 
@@ -2165,7 +2248,7 @@ fn generated_capture_step_uses_pinned_diff_contract() -> Result<(), Box<dyn Erro
 /// --binary` in both); the capture block must stay byte-identical so the
 /// documented recipe cannot promise a different patch than `ripr init` ships.
 #[test]
-fn docs_ci_capture_step_matches_generated_template() -> Result<(), Box<dyn Error>> {
+fn docs_ci_run_step_matches_generated_template() -> Result<(), Box<dyn Error>> {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let root = std::env::temp_dir().join(format!(
         "ripr-generated-capture-doc-sync-{}-{nonce}",
@@ -2182,15 +2265,15 @@ fn docs_ci_capture_step_matches_generated_template() -> Result<(), Box<dyn Error
     );
 
     let workflow = fs::read_to_string(root.join(".github/workflows/ripr.yml"))?;
-    let generated = capture_pull_request_diff_step(&workflow)
-        .ok_or("generated workflow has no 'Capture pull request diff' step")?;
+    let generated = workflow_step_block(&workflow, "Run RIPR")
+        .ok_or("generated workflow has no 'Run RIPR' step")?;
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let doc = fs::read_to_string(manifest_dir.join("../../docs/CI.md"))?;
-    let documented = capture_pull_request_diff_step(&doc)
-        .ok_or("docs/CI.md has no 'Capture pull request diff' step")?;
+    let documented =
+        workflow_step_block(&doc, "Run RIPR").ok_or("docs/CI.md has no 'Run RIPR' step")?;
     assert_eq!(
         generated, documented,
-        "docs/CI.md capture step drifted from the generated template"
+        "docs/CI.md Run RIPR step drifted from the generated template"
     );
 
     fs::remove_dir_all(root)?;
@@ -2318,23 +2401,23 @@ fn generated_capture_step_runs_end_to_end() -> Result<(), Box<dyn Error>> {
         String::from_utf8_lossy(&output.stderr)
     );
     let workflow = fs::read_to_string(init_root.join(".github/workflows/ripr.yml"))?;
-    let step = capture_pull_request_diff_step(&workflow)
-        .ok_or("generated workflow has no 'Capture pull request diff' step")?;
-    let body: Vec<String> = step
-        .lines()
-        .skip_while(|line| !line.trim_start_matches(' ').starts_with("run: |"))
-        .skip(1)
-        .map(|line| {
-            line.strip_prefix("          ")
-                .ok_or("capture run-block line lost its 10-space indent")
-                .map(str::to_string)
-        })
-        .collect::<Result<Vec<String>, &str>>()
-        .map_err(|err| err.to_string())?;
     assert!(
-        !body.is_empty(),
-        "capture step has no shell body to execute"
+        workflow.contains("        run: ripr reports ci-packet --root .\n"),
+        "the generated workflow must run the packet command"
     );
+    // Run the capture step of the command the workflow runs, as a pull
+    // request into `base` would.
+    let capture = |repo: &std::path::Path, base: &str| {
+        replay::bash(
+            repo,
+            "ripr reports ci-packet --root . --step 'Capture pull request diff'",
+            &[
+                ("GITHUB_EVENT_NAME".to_string(), "pull_request".to_string()),
+                ("GITHUB_BASE_REF".to_string(), base.to_string()),
+                ("GITHUB_EVENT_PATH".to_string(), String::new()),
+            ],
+        )
+    };
 
     let repo = std::env::temp_dir().join(format!(
         "ripr-generated-capture-exec-repo-{}-{nonce}",
@@ -2362,6 +2445,12 @@ fn generated_capture_step_runs_end_to_end() -> Result<(), Box<dyn Error>> {
     fixture_git_ok(&repo, &["commit", "--quiet", "-m", "edit"])?;
     let base_sha = fixture_git_output(&repo, &["rev-parse", "--verify", "main^{commit}"])?;
     let head_sha = fixture_git_output(&repo, &["rev-parse", "--verify", "HEAD^{commit}"])?;
+    // The workflow diffs against `origin/<base>`; a fixture has no remote.
+    fixture_git_ok(&repo, &["update-ref", "refs/remotes/origin/main", "main"])?;
+    fixture_git_ok(
+        &repo,
+        &["update-ref", "refs/remotes/origin/feature", "HEAD"],
+    )?;
 
     // Make the ambient repository hostile to the parser's expected side
     // prefixes. The unpinned control proves the fixture actually changes Git's
@@ -2375,13 +2464,11 @@ fn generated_capture_step_runs_end_to_end() -> Result<(), Box<dyn Error>> {
 
     // Positive: the step resolves main, captures the edit, and retains a
     // receipt whose identities and byte count match the run.
-    let script = body
-        .join("\n")
-        .replace("origin/${{ github.base_ref }}", "main");
-    let run = run_sh(&script, &repo)?;
+    let run = capture(&repo, "main")?;
     assert!(
         run.status.success(),
-        "capture step failed: {}",
+        "capture step failed: {}{}",
+        String::from_utf8_lossy(&run.stdout),
         String::from_utf8_lossy(&run.stderr)
     );
     let patch = fs::read(repo.join("target/ripr/reports/pr.diff"))?;
@@ -2419,7 +2506,7 @@ fn generated_capture_step_runs_end_to_end() -> Result<(), Box<dyn Error>> {
     );
     assert_eq!(
         as_str("base_ref")?,
-        "main",
+        "origin/main",
         "receipt must retain the requested base ref"
     );
     assert_eq!(
@@ -2454,27 +2541,22 @@ fn generated_capture_step_runs_end_to_end() -> Result<(), Box<dyn Error>> {
 
     // Negative: an unresolvable base fails closed with the named error
     // instead of handing RIPR an absent patch.
-    let missing = body
-        .join("\n")
-        .replace("origin/${{ github.base_ref }}", "nonexistent-base-branch");
-    let run = run_sh(&missing, &repo)?;
+    let run = capture(&repo, "nonexistent-base-branch")?;
     assert!(
         !run.status.success(),
         "capture step must fail when the base cannot be resolved"
     );
     assert!(
-        String::from_utf8_lossy(&run.stderr).contains("cannot resolve base ref"),
+        String::from_utf8_lossy(&run.stdout)
+            .contains("::error title=Capture pull request diff::ripr: cannot resolve base ref origin/nonexistent-base-branch"),
         "missing base must name the failure; got:\n{}",
-        String::from_utf8_lossy(&run.stderr)
+        String::from_utf8_lossy(&run.stdout)
     );
 
     // Empty range: base == HEAD is an honest zero-change run — the step
     // succeeds with an empty patch and a zero byte count (exercises the
     // mktemp zero-change proof path with zero NUL bytes).
-    let empty = body
-        .join("\n")
-        .replace("origin/${{ github.base_ref }}", "feature");
-    let run = run_sh(&empty, &repo)?;
+    let run = capture(&repo, "feature")?;
     assert!(
         run.status.success(),
         "capture step must accept a real zero-change range; got:\n{}",
@@ -2628,8 +2710,8 @@ fn generated_cleanup_step_removes_checked_in_ripr_artifacts() -> Result<(), Box<
         .ok_or("empty cleanup step")?
         .to_string();
     let first_ripr = workflow
-        .find("      - name: Generate RIPR pilot packet")
-        .ok_or("missing pilot step")?;
+        .find("      - name: Run RIPR\n")
+        .ok_or("missing Run RIPR step")?;
     assert!(at < first_ripr, "cleanup must precede the first RIPR step");
 
     let forged = [
@@ -2728,8 +2810,10 @@ fn generated_annotation_script_preserves_path_and_message_bytes() -> Result<(), 
         )
         .into());
     }
+    // Precondition: the generated workflow runs the packet command, whose
+    // annotation step this test drives.
     let workflow = fs::read_to_string(root.join(".github/workflows/ripr.yml"))?;
-    let script = annotation_run_script(&workflow)?;
+    assert!(workflow.contains("        run: ripr reports ci-packet --root .\n"));
 
     let path_backslash = "src\\app.py";
     let path_newline = "src/a\nb.py";
@@ -2772,18 +2856,44 @@ fn generated_annotation_script_preserves_path_and_message_bytes() -> Result<(), 
         ),
     )?;
 
-    let ran = run_sh(&script, &root)?;
+    let ran = replay::bash(
+        &root,
+        "ripr reports ci-packet --root . --step 'Emit RIPR PR guidance annotations'",
+        &[("GITHUB_EVENT_PATH".to_string(), String::new())],
+    )?;
     let stdout = String::from_utf8_lossy(&ran.stdout).to_string();
     let stderr = String::from_utf8_lossy(&ran.stderr).to_string();
     if !ran.status.success() {
         let _ = fs::remove_dir_all(&root);
-        return Err(format!("annotation script failed\nstderr: {stderr}\nstdout: {stdout}").into());
+        return Err(format!("annotation step failed\nstderr: {stderr}\nstdout: {stdout}").into());
     }
+    let emitted = stdout
+        .lines()
+        .filter(|line| line.starts_with("::warning "))
+        .collect::<Vec<_>>();
+    // Parity with the retired workflow jq program the step replaced: the
+    // same input yields the same workflow commands, byte for byte.
+    let retired = run_sh(
+        &format!(
+            "jq -r '{}' target/ripr/review/comments.json",
+            RETIRED_ANNOTATION_JQ
+        ),
+        &root,
+    )?;
+    assert!(
+        retired.status.success(),
+        "{}",
+        String::from_utf8_lossy(&retired.stderr)
+    );
+    assert_eq!(
+        emitted,
+        String::from_utf8_lossy(&retired.stdout)
+            .lines()
+            .collect::<Vec<_>>(),
+        "the annotation step diverged from the retired jq program"
+    );
     let mut warnings = Vec::new();
-    for line in stdout.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
+    for line in emitted {
         warnings.push(parse_warning(line.trim())?);
     }
     let _ = fs::remove_dir_all(&root);
@@ -3036,22 +3146,22 @@ fn generated_summary_prints_repository_relative_commands() -> Result<(), Box<dyn
 /// helper are `#[cfg(unix)]`, and an ungated helper is dead code (and a
 /// `-D warnings` failure) on Windows builds.
 #[cfg(unix)]
-fn annotation_run_script(workflow: &str) -> Result<String, String> {
-    let marker = "- name: Emit RIPR PR guidance annotations";
-    let start = workflow.find(marker).ok_or("missing annotation step")?;
-    let rest = &workflow[start..];
-    let run_marker = "\n        run: |\n";
-    let run_at = rest.find(run_marker).ok_or("missing annotation run")?;
-    let body = &rest[run_at + run_marker.len()..];
-    let end = body
-        .find("\n      - name:")
-        .ok_or("annotation step does not end")?;
-    let script = body[..end].trim_end();
-    if !script.contains("def escape_data:") || script.contains("@tsv") {
-        return Err("annotation script is not the jq encoder".to_string());
-    }
-    Ok(script.to_string())
-}
+/// The annotation step's jq program before `ripr reports ci-packet`
+/// replaced it (#4696), kept as the parity oracle for the Rust renderer.
+const RETIRED_ANNOTATION_JQ: &str = r#"
+  def escape_data:
+    gsub("%"; "%25") | gsub("\r"; "%0D") | gsub("\n"; "%0A");
+  def escape_property:
+    escape_data | gsub(":"; "%3A") | gsub(","; "%2C");
+  .comments[]?
+  | select(.placement.path and .placement.line)
+  | (.llm_guidance.repair_command // "") as $repair_start
+  | ((.reason // "RIPR targeted test guidance")
+      + (if $repair_start != "" and $repair_start != "null"
+         then " Start the repair: " + $repair_start
+         else "" end)) as $message
+  | "::warning file=\(.placement.path | escape_property),line=\(.placement.line | tostring | escape_property),title=RIPR targeted test guidance::\($message | escape_data)"
+"#;
 
 /// Unix-only like its callers: the shell-backed tests that use this
 /// helper are `#[cfg(unix)]`, and an ungated helper is dead code (and a
@@ -3135,6 +3245,173 @@ fn parse_warning(line: &str) -> Result<(String, String, String, String), String>
 
 /// One spawn site for the built-binary `ripr init` invocations below
 /// (process-policy bound).
+/// #5236 review: without a prebuilt binary the install falls back to
+/// `cargo install`, which needs Rust on the runner. A runner without cargo
+/// fails the install with the cause and the fix, and the summary step, which
+/// runs after the failure, says ripr is not installed and where to look
+/// instead of printing nothing.
+#[cfg(unix)]
+#[test]
+fn generated_workflow_explains_a_failed_install() -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::PermissionsExt;
+    if !replay::tool_available("bash") {
+        if std::env::var_os("GITHUB_ACTIONS").is_some() {
+            return Err("`bash` is not on PATH under GitHub Actions".into());
+        }
+        eprintln!("SKIPPED generated_workflow_explains_a_failed_install: `bash` is not on PATH");
+        return Ok(());
+    }
+    let base = replay::unique_temp_dir("failed-install")?;
+    let root = base.join("repo");
+    fs::create_dir_all(&root)?;
+    let init = run_ripr_init(&root)?;
+    assert!(
+        init.status.success(),
+        "ripr init failed: {}",
+        String::from_utf8_lossy(&init.stderr)
+    );
+    let workflow = fs::read_to_string(root.join(".github/workflows/ripr.yml"))?;
+    let steps = replay::parse_steps(&workflow);
+    let script = |name: &str| {
+        steps
+            .iter()
+            .find(|step| step.name == name)
+            .and_then(|step| step.run.clone())
+            .ok_or_else(|| format!("no `{name}` run step"))
+    };
+    let install = script("Install ripr")?;
+    let summary_step = script("Add RIPR advisory summary")?;
+
+    // A runner PATH with the coreutils the step needs, but no download tool, cargo,
+    // or ripr.
+    let bin = base.join("bin");
+    fs::create_dir_all(&bin)?;
+    // The runner shell itself must resolve on that PATH too.
+    let tool = |name: &str| {
+        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+            .map(|dir| dir.join(name))
+            .find(|path| path.is_file())
+            .ok_or(format!("no {name} on PATH"))
+    };
+    let mkdir = tool("mkdir")?;
+    let bash = tool("bash")?;
+    std::os::unix::fs::symlink(&mkdir, bin.join("mkdir"))?;
+    std::os::unix::fs::symlink(&bash, bin.join("bash"))?;
+    let summary = base.join("step-summary.md");
+    fs::write(&summary, "")?;
+    let runner = |os: &str, path: &std::path::Path| {
+        vec![
+            ("PATH".to_string(), path.display().to_string()),
+            ("RUNNER_OS".to_string(), os.to_string()),
+            ("RUNNER_ARCH".to_string(), "X64".to_string()),
+            ("RUNNER_TEMP".to_string(), base.display().to_string()),
+            (
+                "GITHUB_PATH".to_string(),
+                base.join("github-path").display().to_string(),
+            ),
+            (
+                "GITHUB_ENV".to_string(),
+                base.join("github-env").display().to_string(),
+            ),
+            (
+                "GITHUB_STEP_SUMMARY".to_string(),
+                summary.display().to_string(),
+            ),
+            ("RIPR_INSTALL_OUTCOME".to_string(), "failure".to_string()),
+        ]
+    };
+    let version = env!("CARGO_PKG_VERSION");
+
+    // No prebuilt archive for this runner and no cargo: fail and say both.
+    let windows = replay::bash(&root, &install, &runner("Windows", &bin))?;
+    let windows_out = String::from_utf8_lossy(&windows.stdout);
+    assert_eq!(windows.status.code(), Some(1), "{windows_out}");
+    assert!(
+        windows_out.contains(&format!(
+            "::error::Cannot install ripr: no prebuilt ripr {version} for Windows-X64, and this runner has no cargo to build it. Install Rust on the runner (https://rustup.rs) or add a Rust toolchain step before Install ripr."
+        )),
+        "{windows_out}"
+    );
+    // A failed download names the URL instead of the platform.
+    let linux = replay::bash(&root, &install, &runner("Linux", &bin))?;
+    let linux_out = String::from_utf8_lossy(&linux.stdout);
+    assert_eq!(linux.status.code(), Some(1), "{linux_out}");
+    assert!(
+        linux_out.contains(&format!(
+            "::error::Cannot install ripr: downloading https://github.com/EffortlessMetrics/ripr/releases/download/v{version}/ripr-server-v{version}-x86_64-unknown-linux-gnu.tar.gz failed, and this runner has no cargo"
+        )),
+        "{linux_out}"
+    );
+
+    // Alternate: with cargo on the runner the same fallback builds the
+    // pinned version.
+    let with_cargo = base.join("bin-cargo");
+    fs::create_dir_all(&with_cargo)?;
+    std::os::unix::fs::symlink(&mkdir, with_cargo.join("mkdir"))?;
+    std::os::unix::fs::symlink(&bash, with_cargo.join("bash"))?;
+    let cargo_args = base.join("cargo-args");
+    for (name, body) in [
+        ("cargo", format!("echo \"$@\" > '{}'", cargo_args.display())),
+        ("ripr", format!("echo ripr {version}")),
+    ] {
+        let path = with_cargo.join(name);
+        fs::write(&path, format!("#!/bin/sh\n{body}\n"))?;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755))?;
+    }
+    let built = replay::bash(&root, &install, &runner("Windows", &with_cargo))?;
+    let built_out = String::from_utf8_lossy(&built.stdout);
+    assert!(built.status.success(), "{built_out}");
+    assert!(
+        built_out.contains(&format!(
+            "::notice::no prebuilt ripr {version} for Windows-X64; building it with cargo install"
+        )),
+        "{built_out}"
+    );
+    assert_eq!(
+        fs::read_to_string(&cargo_args)?.trim(),
+        format!("install ripr --version {version} --locked")
+    );
+
+    // The summary step after the failed install.
+    let after = replay::bash(&root, &summary_step, &runner("Linux", &bin))?;
+    let after_out = String::from_utf8_lossy(&after.stdout);
+    assert_eq!(after.status.code(), Some(1), "{after_out}");
+    let rendered = fs::read_to_string(&summary)?;
+    assert!(
+        rendered.starts_with("## RIPR advisory summary\n"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("the pinned ripr is not installed (Install ripr step: failure), so this run produced no RIPR reports."),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("Next: open the Install ripr step log."),
+        "{rendered}"
+    );
+    assert!(
+        after_out
+            .contains("::error::the pinned ripr is not installed (Install ripr step: failure)"),
+        "{after_out}"
+    );
+
+    // Alternate: an older ripr already on the runner's PATH does not stand
+    // in for the failed pinned install.
+    fs::write(&summary, "")?;
+    let stale = replay::bash(&root, &summary_step, &runner("Linux", &with_cargo))?;
+    let stale_out = String::from_utf8_lossy(&stale.stdout);
+    assert_eq!(stale.status.code(), Some(1), "{stale_out}");
+    let rendered = fs::read_to_string(&summary)?;
+    assert!(
+        rendered.contains("the pinned ripr is not installed (Install ripr step: failure)"),
+        "{rendered}"
+    );
+    assert!(!rendered.contains(&format!("ripr {version}")), "{rendered}");
+
+    fs::remove_dir_all(base)?;
+    Ok(())
+}
+
 fn run_ripr_init(root: &std::path::Path) -> Result<std::process::Output, Box<dyn Error>> {
     Ok(Command::new(env!("CARGO_BIN_EXE_ripr"))
         .args(["init", "--root"])
@@ -3157,14 +3434,16 @@ fn run_sh(script: &str, cwd: &std::path::Path) -> Result<std::process::Output, B
         .output()?)
 }
 
-/// Extract the "Capture pull request diff" step block: from its `- name:`
-/// line through (excluding) the next step's `- name:` line.
-fn capture_pull_request_diff_step(text: &str) -> Option<String> {
-    let marker = "- name: Capture pull request diff";
-    let start = text.find(marker)?;
+/// Extract one step block: from its `- name:` line through (excluding) the
+/// next step's `- name:` line or the end of a Markdown code fence.
+fn workflow_step_block(text: &str, name: &str) -> Option<String> {
+    let marker = format!("- name: {name}\n");
+    let start = text.find(&marker)?;
     let rest = &text[start..];
-    let end = rest[marker.len()..]
-        .find("\n      - name: ")
+    let end = ["\n      - name: ", "\n```"]
+        .iter()
+        .filter_map(|stop| rest[marker.len()..].find(stop))
+        .min()
         .map(|offset| marker.len() + offset)
         .unwrap_or(rest.len());
     Some(rest[..end].trim_end().to_string())

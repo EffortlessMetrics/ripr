@@ -91,6 +91,7 @@ const REGISTERED_COMMAND_PATHS: &[&str] = &[
     "pr-summary",
     "receipt check",
     "receipt write",
+    "reports ci-packet",
     "reports ci-summary",
     "reports gap-ledger",
     "reports index",
@@ -161,7 +162,8 @@ pub(super) fn help_text_for(command: &str) -> Option<&'static str> {
         "pr-summary" => PR_SUMMARY_HELP,
         "receipt check" => RECEIPT_CHECK_HELP,
         "receipt write" => RECEIPT_WRITE_HELP,
-        "reports ci-summary"
+        "reports ci-packet"
+        | "reports ci-summary"
         | "reports gap-ledger"
         | "reports index"
         | "reports ts-false-actionable"
@@ -944,6 +946,7 @@ mod tests {
     const AGENT_PARSER_RS: &str = include_str!("agent.rs");
     const CLI_COMMANDS_RS: &str = include_str!("commands.rs");
     const CHECK_PARSER_RS: &str = include_str!("commands/check.rs");
+    const CI_PACKET_PARSER_RS: &str = include_str!("commands/ci_packet.rs");
     const CI_SUMMARY_PARSER_RS: &str = include_str!("commands/ci_summary.rs");
     const REVIEW_COMMENTS_PARSER_RS: &str = include_str!("commands/review_comments.rs");
     const CONTEXT_PARSER_RS: &str = include_str!("commands/context.rs");
@@ -1185,6 +1188,11 @@ mod tests {
             "receipt write",
             RECEIPT_PARSER_RS,
             &["parse_receipt_write_options"],
+        ),
+        (
+            "reports ci-packet",
+            CI_PACKET_PARSER_RS,
+            &["parse_ci_packet_options"],
         ),
         (
             "reports ci-summary",

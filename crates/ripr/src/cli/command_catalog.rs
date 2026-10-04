@@ -488,6 +488,14 @@ const CATALOG: &[CommandCatalogEntry] = &[
         DiscoveryPosture::OrdinaryPublic,
     ),
     nested(
+        "cmd:reports.ci-packet",
+        "reports ci-packet",
+        CommandClass::Public,
+        CommandDispatch::Reports,
+        REPORTS,
+        DiscoveryPosture::OrdinaryPublic,
+    ),
+    nested(
         "cmd:reports.ci-summary",
         "reports ci-summary",
         CommandClass::Public,

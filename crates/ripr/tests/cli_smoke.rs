@@ -11389,14 +11389,11 @@ fn init_ci_github_dry_run_prints_config_and_workflow_without_writing() -> Result
     assert!(stdout.contains("target/ripr/workflow"));
     assert!(stdout.contains("target/ripr/review"));
     assert!(stdout.contains("RIPR advisory summary"));
-    assert!(stdout.contains("target/ripr/review/comments.json"));
-    assert!(stdout.contains("ripr agent start"));
+    assert!(stdout.contains("target/ripr/review/existing-comments.json"));
+    // #4696: the analysis steps run inside one packet command.
+    assert!(stdout.contains("run: ripr reports ci-packet --root ."));
     // #3906: CI writes only the before side of the repair loop.
     assert!(!stdout.contains("ripr agent receipt"));
-    assert!(stdout.contains("ripr agent status"));
-    assert!(stdout.contains("ripr agent review-summary"));
-    assert!(stdout.contains("target/ripr/workflow/agent-status.md"));
-    assert!(stdout.contains("target/ripr/workflow/agent-review-summary.md"));
     assert!(stdout.contains("ripr reports ci-summary --root ."));
     assert!(stdout.contains("github/codeql-action/upload-sarif@v4"));
     assert!(!workspace.join("ripr.toml").exists());
@@ -11464,43 +11461,48 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     // The prebuilt install needs no third-party toolchain or cache action.
     assert!(!workflow.contains("dtolnay/rust-toolchain"));
     assert!(!workflow.contains("Swatinem/rust-cache"));
-    assert!(workflow.contains("ripr pilot"));
-    assert!(workflow.contains("--format sarif"));
-    assert!(workflow.contains("--format repo-sarif"));
-    assert!(workflow.contains("--format repo-badge-json"));
-    assert!(workflow.contains("ripr agent start"));
-    assert!(workflow.contains("ripr agent packet"));
+    assert!(workflow.contains("run: ripr reports ci-packet --root ."));
     // #3906 (F60-1): CI has no test edit between snapshots, so it runs no
     // verify, receipt, or outcome; the repair's after phase writes those.
     assert!(!workflow.contains("ripr agent receipt"));
     assert!(!workflow.contains("ripr outcome"));
-    assert!(!workflow.contains("> target/ripr/workflow/agent-verify.json"));
-    assert!(workflow.contains("ripr review-comments"));
     assert!(workflow.contains("RIPR_COMMENT_MODE"));
-    assert!(workflow.contains("pr-comments plan"));
     assert!(workflow.contains("target/ripr/review/comment-publish-plan.json"));
     assert!(workflow.contains("Capture existing RIPR inline comments"));
-    assert!(workflow.contains("Plan RIPR inline comments"));
     assert!(workflow.contains("Publish RIPR inline comments"));
-    assert!(workflow.contains("ripr agent status"));
-    assert!(workflow.contains("ripr agent review-summary"));
-    assert!(workflow.contains("target/ripr/workflow/agent-packet.json"));
-    assert!(workflow.contains("target/ripr/workflow/agent-brief.json"));
-    assert!(workflow.contains("target/ripr/workflow/agent-verify.json"));
-    assert!(workflow.contains("target/ripr/reports/agent-receipt.json"));
-    assert!(workflow.contains("target/ripr/workflow/agent-status.json"));
-    assert!(workflow.contains("target/ripr/workflow/agent-status.md"));
-    assert!(workflow.contains("target/ripr/workflow/agent-review-summary.json"));
-    assert!(workflow.contains("target/ripr/workflow/agent-review-summary.md"));
-    assert!(workflow.contains("target/ripr/agent/agent-packet.json"));
-    assert!(workflow.contains("target/ripr/agent/agent-brief.json"));
-    assert!(!workflow.contains("target/ripr/agent/agent-verify.json"));
-    assert!(!workflow.contains("target/ripr/agent/agent-receipt.json"));
-    assert!(!workflow.contains("target/ripr/reports/targeted-test-outcome.json"));
     assert!(workflow.contains("target/ripr/review"));
-    assert!(workflow.contains("target/ripr/review/comments.json"));
-    assert!(workflow.contains("Run RIPR PR guidance report"));
-    assert!(workflow.contains("Emit RIPR PR guidance annotations"));
+    // The packet the workflow runs declares the steps it replaced (#4696);
+    // an unknown --step runs nothing and names them all.
+    let packet = run_ripr(&[
+        "reports",
+        "ci-packet",
+        "--root",
+        &root,
+        "--step",
+        "no-such-step",
+    ]);
+    assert_eq!(packet.status.code(), Some(2));
+    let steps = String::from_utf8_lossy(&packet.stderr);
+    for step in [
+        "Generate RIPR pilot packet",
+        "Generate RIPR agent loop artifacts",
+        "Run RIPR PR guidance report",
+        "Plan RIPR inline comments",
+        "Render RIPR diff SARIF",
+        "Render RIPR repo seam SARIF",
+        "Render RIPR repo badge artifacts",
+        "Render RIPR LLM work-loop summaries",
+        "Emit RIPR PR guidance annotations",
+    ] {
+        assert!(
+            steps.contains(step),
+            "ci-packet does not name `{step}`:\n{steps}"
+        );
+    }
+    assert!(
+        !workspace.join("target/ripr").exists(),
+        "an unknown --step ran a step"
+    );
     assert!(workflow.contains("Add RIPR advisory summary"));
     assert!(workflow.contains("ripr reports ci-summary --root ."));
     assert!(!workflow.contains("cargo xtask"));

@@ -441,8 +441,8 @@ mod tests {
             "the workflow must pin bash for every job:\n{workflow}"
         );
         assert!(
-            workflow.contains("gate_args=("),
-            "bash-only syntax the pin protects"
+            workflow.contains("<<< \"$operation\""),
+            "bash-only syntax (a here-string) the pin protects"
         );
     }
 
@@ -463,7 +463,7 @@ mod tests {
     fn generated_workflow_reruns_when_pull_request_labels_change() -> Result<(), String> {
         let workflow = generated_github_actions_workflow();
         assert!(
-            workflow.contains("\"$GITHUB_EVENT_PATH\" > target/ci/labels.json"),
+            include_str!("ci_packet.rs").contains("event.pointer(\"/pull_request/labels\")"),
             "labels are no longer read from the event payload; revisit #4726"
         );
         let on_block: Vec<&str> = workflow

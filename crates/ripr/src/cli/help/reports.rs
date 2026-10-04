@@ -2,6 +2,7 @@ pub(super) const REPORTS_HELP: &str = r#"Write reviewer-first report projections
 
 Usage:
   ripr reports index [--root PATH] [--reports-dir PATH] [--review-dir PATH] [--receipts-dir PATH] [--workflow-dir PATH] [--agent-dir PATH] [--pilot-dir PATH] [--ci-dir PATH] [--out PATH] [--out-md PATH]
+  ripr reports ci-packet [--root PATH] [--step NAME]...
   ripr reports ci-summary [--root PATH] [--base-ref REF] [--upload-sarif VALUE] [--gate-baseline VALUE] [--comment-mode MODE]
   ripr reports gap-ledger --records PATH [--root PATH] [--out PATH] [--out-md PATH]
   ripr reports gap-ledger --check-output PATH [--root PATH] [--out PATH] [--out-md PATH]
@@ -20,6 +21,10 @@ Index options:
   --ci-dir PATH         Directory containing CI context artifacts. Defaults to target/ci.
   --out PATH            JSON output path. Defaults to target/ripr/reports/index.json.
   --out-md PATH         Markdown output path. Defaults to target/ripr/reports/index.md.
+
+CI packet options:
+  --root PATH           Checkout to analyze and write target/ripr and target/ci under. Defaults to current directory.
+  --step NAME           Run only the named step (repeatable), still under its condition, to reproduce one step locally.
 
 CI summary options:
   --root PATH           Checkout whose target/ripr and target/ci artifacts to read. Defaults to current directory.
@@ -54,6 +59,19 @@ artifact, preserves gate-decision as the configured pass/fail authority,
 lists missing expected surfaces with regeneration commands when known, and
 does not rerun analysis, edit source, generate tests, call providers, run
 mutation testing, publish inline comments, or make CI blocking by default.
+
+The CI packet runs the RIPR steps of the `ripr init --ci github` workflow:
+pilot, the agent-loop start, the PR diff capture and guidance, the inline
+comment plan, SARIF and badge renders, the gate when RIPR_GATE_MODE is set,
+the policy and PR ledgers, start-here, the report index, and the PR guidance
+annotations. It reads the workflow settings (RIPR_GATE_MODE,
+RIPR_GATE_BASELINE, RIPR_COMMENT_MODE, RIPR_UPLOAD_SARIF) and the GitHub
+Actions run (GITHUB_EVENT_NAME, GITHUB_BASE_REF, GITHUB_EVENT_PATH,
+GITHUB_REPOSITORY, GITHUB_ACTOR) from its environment. Each step prints as
+a log group; an advisory step's failure is logged and the packet continues,
+while a failed diff capture, gate evaluation, or (in a blocking gate mode)
+PR guidance or SARIF render makes the command exit nonzero after the rest of
+the packet is written. It reads no token and posts no PR comments.
 
 The CI summary prints the generated workflow's step summary as Markdown on
 stdout, from the artifacts earlier steps wrote. It reads only; it never runs

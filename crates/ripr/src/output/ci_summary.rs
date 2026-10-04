@@ -10,6 +10,7 @@
 //! `markdown_inline` escaping, `repo_relative` rewriting, and raw report
 //! inclusion follow [`jq`]'s model of what the step printed.
 
+pub(crate) mod annotations;
 mod jq;
 #[cfg(test)]
 mod tests;

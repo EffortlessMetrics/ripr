@@ -24,6 +24,13 @@ are scoped or reviewed.
   reported as an unreadable config naming the file. It was treated as absent,
   so the run silently used built-in defaults while a directory or non-UTF-8
   `ripr.toml` already failed loudly.
+- The workflow from `ripr init --ci github` now explains a failed install.
+  When no prebuilt binary fits the runner and the runner has no `cargo`, the
+  Install ripr step fails with the cause and the fix (install Rust or add a
+  toolchain step) instead of a bare `cargo: command not found`. When ripr was
+  never installed, the advisory summary says so and points at that step's log
+  instead of rendering nothing.
+
 - `ripr first-pr` and `ripr reports gap-ledger` exit 2 and write nothing when
   `--root` is not a directory or the gap-ledger input cannot be read, instead
   of exiting 0 after writing a `wrong_root` or `blocked` packet. The refusal
@@ -83,6 +90,14 @@ are scoped or reviewed.
   cores and stops once one file already leaves every trusted macro
   unestablished, cutting a one-line check of ripr-swarm from 7.5s to 4.2s
   (8.0s to 4.4s on two cores) with identical output.
+- The generated GitHub workflow shrinks from 1,154 to 385 lines. Its analysis
+  and report steps now run inside one `ripr reports ci-packet` step, which
+  keeps each old step's semantics: a log group per step, advisory failures
+  logged without stopping the rest, and the job failing only when the diff
+  capture or the gate fails, or a gate input fails under a blocking
+  `RIPR_GATE_MODE`. `--step NAME` reruns one step. The comment capture and
+  publish steps stay in YAML, so the token never reaches ripr. Regenerate the
+  workflow with `ripr init --ci github --force` to pick this up (#4696).
 
 - CI: the `ripr init --ci github` workflow downloads the pinned ripr
   release's prebuilt binary and checks its published SHA-256 instead of
