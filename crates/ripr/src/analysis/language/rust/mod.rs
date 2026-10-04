@@ -3154,7 +3154,8 @@ mod tests {
     }
 
     /// #5320: an owner whose caller closure exceeds the limit names the
-    /// unsearched reach only when the main index finds no witness itself. A
+    /// unsearched reach only when the main index finds no witness itself,
+    /// and (#5450) the closure stops before parsing past the limit. A
     /// test in the changed package that reaches the owner through a helper
     /// is a searched result and keeps its named witness; without that test
     /// the finding carries the over-limit note.
@@ -3176,6 +3177,33 @@ mod tests {
             plain.contains(unsearched),
             "fixture premise: the closure is over the forced limit: {plain}"
         );
+        // #5450: the closure stops at the first caller level that would pass
+        // the limit, before parsing it, so no withheld file is indexed.
+        assert_eq!(
+            dependent_scope::observed_reach_parses(),
+            0,
+            "an over-limit closure must not parse its caller levels"
+        );
+        let searched = dependent_scope::with_forced_reach_limit(100, || {
+            scoped_findings(&root, DependentScopeMode::NameAdmitted)
+        })?;
+        let full_parses = dependent_scope::observed_reach_parses();
+        assert!(
+            full_parses > 0 && !searched.0.contains(unsearched),
+            "control: under a roomy limit the same closure admits and searches files"
+        );
+        // A limit one file short of the whole closure falls on a later caller
+        // level: the levels before it are parsed, the crossing one is not.
+        let main_files = searched.1.ok_or("the named mode must narrow")?.len();
+        let between =
+            dependent_scope::with_forced_reach_limit(main_files + full_parses - 1, || {
+                scoped_findings(&root, DependentScopeMode::NameAdmitted)
+            })?;
+        let partial = dependent_scope::observed_reach_parses();
+        assert!(
+            between.0.contains(unsearched) && partial > 0 && partial < full_parses,
+            "a later-level crossing parses only the levels before it: {partial} of {full_parses}"
+        );
 
         let witnessed_root = temp_root("dependent-scope-over-limit-witnessed")?;
         write_dependent_scope_workspace(&witnessed_root, UNRELATED_E_SOURCE)?;
@@ -3196,6 +3224,57 @@ mod tests {
         assert!(
             !witnessed.contains(unsearched),
             "a searched witness must not read as unsearched: {witnessed}"
+        );
+        Ok(())
+    }
+
+    /// #5450: the admission count includes the module parents the widened
+    /// index loads. `c`'s caller sits in `c/src/hop.rs`, whose parent
+    /// `c/src/lib.rs` spells no caller name, so only the module context
+    /// brings it in. A limit equal to the raw closure is one short of the
+    /// loaded files: the crossing level must stop before it is parsed.
+    #[test]
+    fn dependent_scope_over_limit_counts_module_parents() -> Result<(), String> {
+        use dependent_scope::DependentScopeMode;
+        let root = temp_root("dependent-scope-over-limit-module-parent")?;
+        write_dependent_scope_workspace(&root, UNRELATED_E_SOURCE)?;
+        write(&root.join("c/src/lib.rs"), "pub mod hop;\n")?;
+        write(
+            &root.join("c/src/hop.rs"),
+            "pub fn forward(flag: bool) -> bool {\n    scope_b::relay(flag)\n}\n",
+        )?;
+        write(
+            &root.join("c/tests/forward_tests.rs"),
+            "#[test]\nfn forward_holds() {\n    assert!(scope_c::hop::forward(true));\n}\n",
+        )?;
+        let unsearched = "did not search dependent packages";
+
+        let searched = dependent_scope::with_forced_reach_limit(100, || {
+            scoped_findings(&root, DependentScopeMode::NameAdmitted)
+        })?;
+        let full_parses = dependent_scope::observed_reach_parses();
+        let reach = slash_paths(&searched.2);
+        assert!(
+            !searched.0.contains(unsearched)
+                && reach.contains(&"c/src/hop.rs".to_string())
+                && !reach.contains(&"c/src/lib.rs".to_string()),
+            "fixture premise: the closure reaches hop.rs but not its parent: {reach:?}"
+        );
+        let main = slash_paths(&searched.1.ok_or("the named mode must narrow")?);
+        assert!(
+            full_parses == reach.len() && !main.contains(&"c/src/lib.rs".to_string()),
+            "fixture premise: one closure parsed once, the parent outside the main index: \
+             {full_parses} parses, {reach:?}, {main:?}"
+        );
+        let main_files = main.len();
+        let raw = dependent_scope::with_forced_reach_limit(main_files + full_parses, || {
+            scoped_findings(&root, DependentScopeMode::NameAdmitted)
+        })?;
+        let partial = dependent_scope::observed_reach_parses();
+        assert!(
+            raw.0.contains(unsearched) && partial < full_parses,
+            "the module parent must count before the crossing level is parsed: \
+             {partial} of {full_parses}"
         );
         Ok(())
     }
