@@ -10,7 +10,7 @@ Spec: RIPR-SPEC-0219. Corpus version: 2026-10-04.5. Cases: 104.
 | False silent (of not fully discriminated) | 0/48 | 0.0000 |
 | Ideal verdict | 33/104 | 0.3173 |
 | Abstained (limited or silent where acceptable) | 34/104 | 0.3269 |
-| Findings with a contradiction | 4/138 | 0.0290 |
+| Findings with a contradiction | 2/138 | 0.0145 |
 
 By subject origin. Authored cases are written to fill cells the upstream cases leave empty, so only the upstream rates describe real-world tests.
 
@@ -40,7 +40,7 @@ By subject origin. Authored cases are written to fill cells the upstream cases l
 | `serde-derive-rename-variant-lower` | upstream | discriminated | credited | gap | weakly_exposed | false_actionable | no | none |
 | `serde-derive-rename-field-upper` | upstream | discriminated | credited | gap | weakly_exposed | false_actionable | no | none |
 | `semver-leading-zero` | upstream | discriminated | credited | limited | no_static_path | abstained | no | none |
-| `semver-op-greater-eq` | upstream | discriminated | credited | gap | reachable_unrevealed | false_actionable | no | reach_yes_without_related_tests |
+| `semver-op-greater-eq` | upstream | discriminated | credited | gap | reachable_unrevealed | false_actionable | no | none |
 | `itoa-four-digit-loop` | upstream | not_discriminated | gap | limited | no_static_path | abstained | no | none |
 | `semver-digit-upper-first-run` | upstream | discriminated | credited | limited | infection_unknown | abstained | no | none |
 | `bytesize-format-unit-first-run` | upstream | discriminated | credited | limited | infection_unknown | abstained | no | none |

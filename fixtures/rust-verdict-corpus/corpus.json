@@ -1611,7 +1611,7 @@
       "edit_kind": "behavior_preserving_rewrite",
       "behavior_family": "predicate",
       "test_shape": "integration_test_public_api",
-      "hard_case": "contradiction: reach says a related test reaches op() while related_tests_total is 0",
+      "hard_case": "ripr reports reachable_unrevealed although the requirement-parsing tests discriminate '>=' from '>'. Until #5424 the finding named no related test and carried the reach_yes_without_related_tests contradiction.",
       "truth": {
         "state": "discriminated",
         "method": "runtime_mutant_kill",
@@ -1634,7 +1634,7 @@
           "silent"
         ]
       },
-      "reasoning": "Requirement parsing tests fail when '>=' parses as '>'. ripr reports reachable_unrevealed (a gap) with zero related tests, a false actionable verdict and an internal contradiction.",
+      "reasoning": "Requirement parsing tests fail when '>=' parses as '>'. ripr reports reachable_unrevealed (a gap), a false actionable verdict.",
       "labeling_observation": {
         "ripr_commit": "a7a089e",
         "full_checkout_verdict": "gap",

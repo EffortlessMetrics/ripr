@@ -51,13 +51,12 @@
     "rate": "0.3269"
   },
   "contradiction_rate": {
-    "numerator": 4,
+    "numerator": 2,
     "denominator": 138,
-    "rate": "0.0290"
+    "rate": "0.0145"
   },
   "contradictions_by_code": {
-    "no_static_path_with_related_tests": 2,
-    "reach_yes_without_related_tests": 2
+    "no_static_path_with_related_tests": 2
   },
   "by_origin": {
     "authored": {
@@ -519,9 +518,7 @@
         "reachable_unrevealed"
       ],
       "outcome": "false_actionable",
-      "contradictions": [
-        "reach_yes_without_related_tests"
-      ]
+      "contradictions": []
     },
     {
       "case_id": "itoa-four-digit-loop",
