@@ -458,7 +458,7 @@
               "markdown": "walkthrough/trust.md"
             },
             "completionEvents": [
-              "onContext:workspaceTrusted"
+              "onContext:isWorkspaceTrusted"
             ]
           },
           {
