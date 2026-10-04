@@ -8415,6 +8415,12 @@ tests = [
   "crates/ripr/src/lsp/diagnostics.rs::delivery_tests::diagnostic_result_ids_ignore_refresh_clock_and_attempt_snapshot_handle",
   "crates/ripr/src/lsp/diagnostics.rs::delivery_tests::diagnostic_result_ids_change_for_message_only_and_profile_changes",
   "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::diagnostic_data_field_carries_seam_id_and_grip_class",
+  "crates/ripr/tests/lsp_lifecycle.rs::shutdown_publishes_empty_diagnostics_for_tracked_uris",
+  "crates/ripr/tests/lsp_lifecycle.rs::shutdown_publishes_nothing_for_pull_diagnostics_client",
+  "crates/ripr/tests/lsp_lifecycle.rs::shutdown_with_zero_tracked_uris_sends_no_publishes",
+  "crates/ripr/src/lsp/tests.rs::shutdown_clear_tests::shutdown_during_refresh_publication_clears_last",
+  "crates/ripr/src/lsp/tests.rs::shutdown_clear_tests::shutdown_before_refresh_publication_suppresses_rollback",
+  "crates/ripr/src/lsp/tests.rs::shutdown_clear_tests::shutdown_after_root_change_publishes_no_duplicates",
 ]
 fixtures = [
   "fixtures/benches_harness_evidence",

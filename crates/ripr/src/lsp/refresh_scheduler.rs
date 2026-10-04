@@ -452,6 +452,18 @@ impl RefreshScheduler {
         state.active.is_none() && state.pending_latest.is_none()
     }
 
+    /// Whether `stop()` shut the scheduler down. A stopped refresh must not
+    /// roll back (republish previous diagnostics): shutdown owns the terminal
+    /// empty publish and a rollback after it would resurrect stale client
+    /// state (#5202). An unreadable lock reads as stopping so the failed-lock
+    /// path stays silent instead of inventing a republish.
+    pub(super) fn is_stopping(&self) -> bool {
+        let Ok(state) = self.state.lock() else {
+            return true;
+        };
+        state.stopping
+    }
+
     pub(super) fn execution_gate(&self) -> Arc<Mutex<()>> {
         Arc::clone(&self.execution_gate)
     }

@@ -11,6 +11,12 @@ are scoped or reviewed.
 
 ### Fixed
 
+- LSP: `shutdown` publishes an empty diagnostic set for every previously
+  published URI on push clients (pull clients stay silent), matching the
+  root-change path. The terminal clear serializes with in-flight refresh
+  publication behind the shared transition guard, and a refresh cancelled
+  by shutdown no longer rolls back previous diagnostics afterward, so no
+  stale diagnostics survive shutdown (#5202).
 - The `ripr agent card` `full packet:` line, the `ripr pilot` `repair this seam:`
   line, the `agent repair --phase before` next command (stdout and stderr) and
   the workflow packet's `Missing Inputs` commands now print a `(PowerShell)`

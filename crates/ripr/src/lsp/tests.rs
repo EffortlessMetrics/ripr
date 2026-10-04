@@ -82,6 +82,7 @@ use tower_lsp_server::ls_types::{
 use tower_lsp_server::{LspService, Server};
 
 mod consumed_source_tests;
+mod shutdown_clear_tests;
 
 /// Render a fixture path the way the LSP surface renders paths.
 ///

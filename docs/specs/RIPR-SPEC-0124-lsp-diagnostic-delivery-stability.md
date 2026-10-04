@@ -10,6 +10,7 @@ Linked issues:
 
 - #1565
 - #1573
+- #5202
 
 ## Problem
 
@@ -45,6 +46,17 @@ cleared files, published payload bytes, and suppressed payload bytes.
 
 `did_change` remains document-state only. Analysis and publication continue to
 advance on the saved-workspace open/save/close and explicit refresh paths.
+
+`shutdown` publishes one empty diagnostic set per previously published URI
+in push mode and nothing in pull mode, reusing the take-once tracked URIs
+(#5202). The terminal clear holds the shared root-transition guard across
+stop, clear, and publication, so a refresh cancelled mid-publication can
+neither publish another batch nor roll back the previous diagnostics after
+the empties; a stopped refresh skips its rollback instead. A root change
+already drains the same tracking, so a later `shutdown` publishes no
+duplicates, and zero tracked URIs stay silent. These terminal clears are
+lifecycle publishes, not refresh telemetry: `lsp_diagnostic_cleared_files`
+continues to count per-refresh plan clears only.
 
 ## Required Evidence
 
@@ -82,6 +94,21 @@ advance on the saved-workspace open/save/close and explicit refresh paths.
   root digest normalization, refresh-clock/`snapshot_id` exclusion from
   result IDs, and message-only or profile invalidation of those IDs.
 - The boundary-gap LSP fixture pins the additive diagnostic identity field.
+- `crates/ripr/tests/lsp_lifecycle.rs::shutdown_publishes_empty_diagnostics_for_tracked_uris`
+  and `shutdown_publishes_nothing_for_pull_diagnostics_client` — shutdown
+  clears every tracked URI on a push client and publishes nothing for a
+  pull client (#5202).
+- `crates/ripr/tests/lsp_lifecycle.rs::shutdown_with_zero_tracked_uris_sends_no_publishes`
+  — shutdown with nothing tracked stays silent (#5202).
+- `crates/ripr/src/lsp/tests.rs::shutdown_clear_tests::shutdown_during_refresh_publication_clears_last`
+  — shutdown serializes behind an in-flight refresh publication, so the
+  empties are terminal (#5202).
+- `crates/ripr/src/lsp/tests.rs::shutdown_clear_tests::shutdown_before_refresh_publication_suppresses_rollback`
+  — a refresh cancelled before publication does not roll back previous
+  diagnostics after the shutdown clear (#5202).
+- `crates/ripr/src/lsp/tests.rs::shutdown_clear_tests::shutdown_after_root_change_publishes_no_duplicates`
+  — a root change drains tracking, so a later shutdown republishes
+  nothing (#5202).
 
 ## Claim boundary
 
