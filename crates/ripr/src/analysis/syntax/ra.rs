@@ -944,6 +944,10 @@ pub(crate) struct GovernedCfgTestModule {
     pub(crate) body_start: Option<usize>,
     pub(crate) close_brace_start: Option<usize>,
     pub(crate) is_inline: bool,
+    /// Every outer and inner attribute on the module is known to be enabled
+    /// in a plain `cargo test` build. `false` covers feature, target and
+    /// other gates whose state ripr does not assume.
+    pub(crate) enabled_in_test_build: bool,
 }
 
 /// Parser-owned inventory of governed `cfg(test)` modules in one source file.
@@ -999,6 +1003,18 @@ fn governed_cfg_test_modules_in(file: &ast::SourceFile) -> Vec<GovernedCfgTestMo
         };
         let parent_modules = ancestor_module_names(&module);
         let item_start = usize::from(module.syntax().text_range().start());
+        let enabled_in_test_build = module
+            .attrs()
+            .chain(
+                module
+                    .item_list()
+                    .into_iter()
+                    .flat_map(|items| items.attrs()),
+            )
+            .all(|attr| {
+                cfg_predicates::attribute_test_build_availability(&attr.syntax().text().to_string())
+                    == Some(true)
+            });
         match module.item_list() {
             Some(items) => {
                 let Some(open) = items.l_curly_token() else {
@@ -1014,6 +1030,7 @@ fn governed_cfg_test_modules_in(file: &ast::SourceFile) -> Vec<GovernedCfgTestMo
                     body_start: Some(usize::from(open.text_range().end())),
                     close_brace_start: Some(usize::from(close.text_range().start())),
                     is_inline: true,
+                    enabled_in_test_build,
                 });
             }
             None => modules.push(GovernedCfgTestModule {
@@ -1023,6 +1040,7 @@ fn governed_cfg_test_modules_in(file: &ast::SourceFile) -> Vec<GovernedCfgTestMo
                 body_start: None,
                 close_brace_start: None,
                 is_inline: false,
+                enabled_in_test_build,
             }),
         }
     }

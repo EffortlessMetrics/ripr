@@ -8,8 +8,9 @@
 
 use super::parse_clean_source_file;
 use super::ra::module_attributes_require_test;
+use crate::analysis::facts::cfg_predicates::attribute_test_build_availability;
 use ra_ap_syntax::{
-    AstNode, TextSize,
+    AstNode, SyntaxKind, TextSize,
     ast::{self, HasGenericParams, HasName},
 };
 
@@ -37,12 +38,21 @@ pub(crate) struct OwnerParam {
 pub(crate) enum OwnerContainer {
     /// A module-level `fn`.
     Free,
-    /// An inherent `impl` whose self type is a plain path.
+    /// An inherent `impl` whose self type is a plain path, with lifetime
+    /// arguments at most (`Parser<'a>`), spelled as written.
     Inherent { self_type: String },
-    /// A trait `impl` whose self type is a plain path.
-    TraitImpl { self_type: String },
-    /// Anything the stub cannot call by name: a trait body, a generic or
-    /// non-path impl, or a function nested inside another function body.
+    /// A trait `impl` whose self type is a plain path with lifetime
+    /// arguments at most. `trait_path` is the trait as written in the impl
+    /// header, or `None` when it is not a plain path the test can name.
+    TraitImpl {
+        self_type: String,
+        trait_path: Option<String>,
+    },
+    /// An `impl` that declares type or const generics, or whose self type
+    /// has non-lifetime generic arguments: the stub cannot choose them.
+    GenericImpl(&'static str),
+    /// Anything else the stub cannot call by name: a trait body, a non-path
+    /// impl, or a function nested inside another function body.
     Unsupported(&'static str),
 }
 
@@ -274,6 +284,73 @@ pub(crate) fn owner_fn_line_span(source: &str, line: usize) -> Option<(usize, us
         })
 }
 
+/// Whether the innermost struct-literal field at `byte_offset` belongs to the
+/// value its owning `fn` returns directly: the struct literal is that
+/// function's tail expression (through parentheses and nested block tails)
+/// or the operand of a `return` outside any closure. A field nested inside
+/// another literal, a call argument, a branch, or a `let` is not. `None`
+/// when the file does not parse or no struct-literal field covers the
+/// offset.
+pub(crate) fn field_init_is_returned(source: &str, byte_offset: usize) -> Option<bool> {
+    let parse = parse_clean_source_file(source)?;
+    let offset = TextSize::try_from(byte_offset).ok()?;
+    let tree = parse.tree();
+    let field = tree
+        .syntax()
+        .descendants()
+        .filter_map(ast::RecordExprField::cast)
+        .filter(|field| field.syntax().text_range().contains_inclusive(offset))
+        .max_by_key(|field| field.syntax().text_range().start())?;
+    let record = field.syntax().ancestors().find_map(ast::RecordExpr::cast)?;
+    let owner = field.syntax().ancestors().find_map(ast::Fn::cast)?;
+    let mut node = record.syntax().clone();
+    loop {
+        let Some(parent) = node.parent() else {
+            return Some(false);
+        };
+        if ast::ParenExpr::can_cast(parent.kind()) {
+            node = parent;
+            continue;
+        }
+        if ast::ReturnExpr::can_cast(parent.kind()) {
+            let in_closure = parent
+                .ancestors()
+                .take_while(|ancestor| ancestor != owner.syntax())
+                .any(|ancestor| {
+                    // A closure, `async` block or `const` block scopes its
+                    // own `return`.
+                    ast::ClosureExpr::can_cast(ancestor.kind())
+                        || ast::BlockExpr::cast(ancestor).is_some_and(|block| {
+                            block.async_token().is_some() || block.const_token().is_some()
+                        })
+                });
+            return Some(!in_closure);
+        }
+        let Some(list) = ast::StmtList::cast(parent) else {
+            return Some(false);
+        };
+        if list.tail_expr().map(|tail| tail.syntax().clone()) != Some(node) {
+            return Some(false);
+        }
+        // The tail of a plain (or `unsafe`) block is that block's value; an
+        // `async` block yields a future and a labelled block can `break`
+        // with another value, so neither passes the literal through.
+        let Some(block) = list.syntax().parent().and_then(ast::BlockExpr::cast) else {
+            return Some(false);
+        };
+        if block.async_token().is_some() || block.label().is_some() {
+            return Some(false);
+        }
+        let Some(outer) = block.syntax().parent() else {
+            return Some(false);
+        };
+        if ast::Fn::cast(outer.clone()).is_some_and(|function| function == owner) {
+            return Some(true);
+        }
+        node = block.syntax().clone();
+    }
+}
+
 fn signature_of(function: &ast::Fn) -> OwnerSignature {
     let name = function
         .name()
@@ -344,6 +421,19 @@ fn signature_of(function: &ast::Fn) -> OwnerSignature {
 }
 
 fn container_of(function: &ast::Fn) -> OwnerContainer {
+    // A cfg on the owner, an enclosing module or the file (outer or inner
+    // attribute) that a plain `cargo test` build may not enable would leave
+    // the stub compiled out, so the printed run builds zero tests.
+    let gated = function.syntax().ancestors().any(|node| {
+        node.children().filter_map(ast::Attr::cast).any(|attr| {
+            attribute_test_build_availability(&attr.syntax().text().to_string()) != Some(true)
+        })
+    });
+    if gated {
+        return OwnerContainer::Unsupported(
+            "owner sits behind a cfg a plain test build may not enable",
+        );
+    }
     for ancestor in function.syntax().ancestors().skip(1) {
         if ast::Fn::can_cast(ancestor.kind()) {
             return OwnerContainer::Unsupported("owner is nested inside another function body");
@@ -352,24 +442,52 @@ fn container_of(function: &ast::Fn) -> OwnerContainer {
             return OwnerContainer::Unsupported("owner is a trait default method");
         }
         if let Some(item) = ast::Impl::cast(ancestor.clone()) {
+            // An impl inside a fn body or a `const _` block sees names a
+            // test module cannot reach.
+            let at_module_level = item.syntax().parent().is_some_and(|parent| {
+                ast::SourceFile::can_cast(parent.kind())
+                    || parent
+                        .parent()
+                        .is_some_and(|grand| ast::Module::can_cast(grand.kind()))
+            });
+            if !at_module_level {
+                return OwnerContainer::Unsupported("owner impl is local to a block");
+            }
             let has_generics = item.generic_param_list().is_some_and(|list| {
                 list.generic_params()
                     .any(|param| !matches!(param, ast::GenericParam::LifetimeParam(_)))
             });
             if has_generics {
-                return OwnerContainer::Unsupported("owner is in a generic impl");
+                return OwnerContainer::GenericImpl("owner impl declares type or const generics");
             }
             let Some(ast::Type::PathType(path)) = item.self_ty() else {
                 return OwnerContainer::Unsupported("owner impl self type is not a plain path");
             };
-            let self_type = path.syntax().text().to_string();
-            if self_type.contains('<') {
-                return OwnerContainer::Unsupported("owner impl self type has generic arguments");
+            // Lifetime arguments (`Parser<'a>`, `Parser<'_>`) are inferred at
+            // the call, so only type or const arguments block the stub.
+            let non_lifetime_argument = path
+                .syntax()
+                .descendants()
+                .filter_map(ast::GenericArgList::cast)
+                .flat_map(|list| list.generic_args())
+                .any(|arg| !matches!(arg, ast::GenericArg::LifetimeArg(_)));
+            if non_lifetime_argument {
+                return OwnerContainer::GenericImpl(
+                    "owner impl self type has type or const generic arguments",
+                );
             }
-            return if item.trait_().is_some() {
-                OwnerContainer::TraitImpl { self_type }
-            } else {
-                OwnerContainer::Inherent { self_type }
+            let self_type = path.syntax().text().to_string();
+            return match item.trait_() {
+                Some(trait_ty) => OwnerContainer::TraitImpl {
+                    self_type,
+                    trait_path: match trait_ty {
+                        ast::Type::PathType(trait_path) => {
+                            Some(trait_path.syntax().text().to_string())
+                        }
+                        _ => None,
+                    },
+                },
+                None => OwnerContainer::Inherent { self_type },
             };
         }
         if ast::Module::can_cast(ancestor.kind()) || ast::SourceFile::can_cast(ancestor.kind()) {
@@ -412,6 +530,23 @@ pub(crate) fn single_comparison(expression: &str) -> Option<ComparisonFact> {
         op,
         rhs: binary.rhs()?.syntax().text().to_string(),
     })
+}
+
+/// Start offsets of identifier tokens spelled `name`, read from the clean
+/// parse so comments and string literals never count. Empty when the file
+/// does not parse cleanly.
+pub(crate) fn identifier_offsets(source: &str, name: &str) -> Vec<usize> {
+    let Some(parse) = parse_clean_source_file(source) else {
+        return Vec::new();
+    };
+    parse
+        .tree()
+        .syntax()
+        .descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .filter(|token| token.kind() == SyntaxKind::IDENT && token.text() == name)
+        .map(|token| usize::from(token.text_range().start()))
+        .collect()
 }
 
 #[cfg(test)]
@@ -478,6 +613,77 @@ mod tests {
         let signature = owner_signature_at(generic_source, offset).ok_or("parses")?;
         assert!(signature.has_type_generics);
         Ok(())
+    }
+
+    #[test]
+    fn lifetime_only_impls_are_plain_and_type_generic_impls_are_generic() -> Result<(), String> {
+        let container = |source: &str| -> Result<OwnerContainer, String> {
+            let offset = source.find("n > 1").ok_or("predicate")?;
+            Ok(owner_signature_at(source, offset)
+                .ok_or("parses")?
+                .container)
+        };
+        let method = "fn f(&mut self, n: u8) -> u8 { if n > 1 { 1 } else { 0 } }";
+        assert_eq!(
+            container(&format!("impl<'a> Parser<'a> {{ {method} }}"))?,
+            OwnerContainer::Inherent {
+                self_type: "Parser<'a>".to_string()
+            }
+        );
+        assert_eq!(
+            container(&format!("impl Parser<'_> {{ {method} }}"))?,
+            OwnerContainer::Inherent {
+                self_type: "Parser<'_>".to_string()
+            }
+        );
+        assert_eq!(
+            container(&format!(
+                "impl<'a> std::fmt::Display for P<'a> {{ {method} }}"
+            ))?,
+            OwnerContainer::TraitImpl {
+                self_type: "P<'a>".to_string(),
+                trait_path: Some("std::fmt::Display".to_string()),
+            }
+        );
+        for generic in ["impl<T> W<T>", "impl W<u8>", "impl<const N: usize> A<N>"] {
+            assert!(
+                matches!(
+                    container(&format!("{generic} {{ {method} }}"))?,
+                    OwnerContainer::GenericImpl(_)
+                ),
+                "{generic}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn field_init_is_returned_only_for_the_returned_literal() {
+        let at = |source: &str, needle: &str| {
+            source
+                .find(needle)
+                .and_then(|offset| field_init_is_returned(source, offset))
+        };
+        let tail = "fn f(n: u8) -> S { S { a: n + 1, b: 0 } }";
+        assert_eq!(at(tail, "a: n + 1"), Some(true));
+        let returned =
+            "fn f(n: u8) -> S { if n > 9 { return (S { a: n, b: 1 }); } S { a: 0, b: 0 } }";
+        assert_eq!(at(returned, "a: n, b: 1"), Some(true));
+        let nested_block = "fn f(n: u8) -> S { unsafe { S { a: n, b: 2 } } }";
+        assert_eq!(at(nested_block, "a: n, b: 2"), Some(true));
+        let bound = "fn f(n: u8) -> u8 { let s = S { a: n, b: 3 }; s.a }";
+        assert_eq!(at(bound, "a: n, b: 3"), Some(false));
+        let wrapped = "fn f(n: u8) -> Option<S> { Some(S { a: n, b: 4 }) }";
+        assert_eq!(at(wrapped, "a: n, b: 4"), Some(false));
+        let inner = "fn f(n: u8) -> O { O { s: S { a: n, b: 5 } } }";
+        assert_eq!(at(inner, "a: n, b: 5"), Some(false));
+        let closure = "fn f(n: u8) -> u8 { let g = || { return S { a: n, b: 6 }; }; 0 }";
+        assert_eq!(at(closure, "a: n, b: 6"), Some(false));
+        let async_block = "fn f(n: u8) -> u8 { let g = async { return S { a: n, b: 8 }; }; 0 }";
+        assert_eq!(at(async_block, "a: n, b: 8"), Some(false));
+        let branch = "fn f(n: u8) -> S { if n > 1 { S { a: n, b: 7 } } else { S { a: 0, b: 0 } } }";
+        assert_eq!(at(branch, "a: n, b: 7"), Some(false));
+        assert_eq!(at(tail, "fn f"), None);
     }
 
     #[test]

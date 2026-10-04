@@ -212,6 +212,17 @@ compiling test stub, or a named refusal. The line is a route, not a claim
 that a stub exists: side-effect, call-deletion, field-construction, and
 static-unknown families never get it, because the stub producer refuses them.
 
+The stub producer covers free functions and methods of inherent or trait
+impls at module level whose generics are lifetimes only; a trait-impl method
+is called as `<Type as Trait>::method(..)` (#5471). A changed field of the
+struct literal the owner returns gets a stub asserting the whole return
+value. Among several inline test modules gated by plain `cfg(test)`, the stub
+goes into the one naming the owner, else the nearest after it, else the
+nearest before; modules gated by more than `cfg(test)` are never chosen. Impls
+with type or const generics, impls local to a block, owners behind a cfg in
+their own file that a plain `cargo test` build may not enable, and fields of a
+literal the owner does not return are refused by name.
+
 ### Triage states
 
 | State | Meaning |

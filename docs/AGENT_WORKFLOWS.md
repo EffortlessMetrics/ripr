@@ -291,8 +291,16 @@ To go from one `ripr check` finding to a test in one step, run
 prints (or `--seam-id ID`). It prints a compiling `#[test]` placed in the
 owner file's inline `#[cfg(test)]` module, a new inline module, or the
 proposed `tests/` file, calling the changed function with its real receiver
-and arguments and a boundary input when the changed comparison names one. The
-expected value is a labelled `todo!()`, so the test fails until it is
+and arguments and a boundary input when the changed comparison names one. A
+trait-impl method is called as `<Type as Trait>::method`, and an impl with
+only lifetime generics binds its receiver as `Type<'_>`. When the owner file
+has several inline test modules enabled under plain `cfg(test)`, the stub goes
+into the one that already names the owner, else the nearest one after it, else
+the nearest one before it; feature- or target-gated modules are never chosen.
+An owner behind a cfg in its own file that a plain `cargo test` build may not
+enable (a gate on the parent's `mod` declaration is not yet seen, #5616), or in an impl
+local to a function body or `const` block, is refused as `owner_unsupported`.
+The expected value is a labelled `todo!()`, so the test fails until it is
 written. `--write` applies it; `--json` emits the `rust_test_stub` document.
 Its `run_command` runs only that test through the owning package's
 `--manifest-path`, and is `null` when no Cargo package owns the file. A

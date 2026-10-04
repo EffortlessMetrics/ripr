@@ -140,6 +140,101 @@ pub mod inner {
 }
 "#;
 
+/// #5471: owner shapes from real crates (bytesize, humantime, semver) that
+/// were refused with reasons that did not name the blocker.
+const FIXTURE_5471: &str = r#"use std::str::FromStr;
+
+pub fn early(x: u32) -> u32 {
+    if x > 40 { 1 } else { 0 }
+}
+
+#[cfg(all(test, feature = "slow"))]
+mod slow_tests {
+    #[test]
+    fn smoke() {}
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn smoke() {}
+}
+
+pub struct Parser<'a> {
+    pub src: &'a str,
+}
+
+impl<'a> Parser<'a> {
+    pub fn parse_unit(&mut self, start: usize, end: usize) -> Result<u64, String> {
+        if end > start { Ok(1) } else { Err(String::from(self.src)) }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Unit {
+    Second,
+    Minute,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum UnitError {
+    Unknown,
+}
+
+impl FromStr for Unit {
+    type Err = UnitError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "s" => Ok(Unit::Second),
+            "m" => Ok(Unit::Minute),
+            _ => Err(UnitError::Unknown),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Version {
+    pub major: u64,
+    pub minor: u64,
+    pub patch: u64,
+}
+
+impl Version {
+    pub fn next_minor(&self) -> Version {
+        Version {
+            major: self.major,
+            minor: self.minor + 1,
+            patch: 0,
+        }
+    }
+}
+
+pub struct Wrap<T>(pub T);
+
+impl<T: Copy> Wrap<T> {
+    pub fn pick(&self, n: u8) -> u8 {
+        if n > 3 { n } else { 0 }
+    }
+}
+
+pub struct Local;
+
+const _: () = {
+    impl Local {
+        pub fn hidden(&self, n: u8) -> u8 {
+            if n > 11 { n } else { 0 }
+        }
+    }
+};
+
+#[cfg(test)]
+mod more_tests {
+    #[test]
+    fn smoke() {}
+}
+"#;
+
 enum Expect {
     /// The stub is written, compiles, and its test stops at a `ripr:` todo.
     StopsAtRiprTodo,
@@ -173,10 +268,29 @@ fn written_stubs_compile_and_stop_at_their_own_todo() -> Result<(), String> {
         // A type imported under a std name is not assumed comparable.
         ("n > 6", Expect::StopsAtRiprTodo),
         ("n > 7", Expect::Refused("owner_unsupported")),
-        ("self.max > 3", Expect::Refused("owner_trait_method")),
-    ];
-    for (needle, expect) in cases {
-        let line = FIXTURE
+        // A trait method with a `&self` receiver is called through
+        // `<Parser as std::fmt::Display>::fmt(&subject, ..)`.
+        ("self.max > 3", Expect::StopsAtRiprTodo),
+    ]
+    .map(|(needle, expect)| (FIXTURE, needle, expect));
+    let cases_5471 = [
+        // Two plain inline test modules: the nearest one after the owner.
+        // The nearer `cfg(all(test, feature = "slow"))` module is skipped;
+        // a stub there would not run in this plain test build.
+        ("x > 40", Expect::StopsAtRiprTodo),
+        // `impl<'a> Parser<'a>` with a `&mut self` method.
+        ("end > start", Expect::StopsAtRiprTodo),
+        // `impl FromStr for Unit` returning `Result<Self, Self::Err>`.
+        ("\"m\" =>", Expect::StopsAtRiprTodo),
+        // A field of the struct literal the owner returns.
+        ("minor: self.minor + 1", Expect::StopsAtRiprTodo),
+        ("n > 3 { n }", Expect::Refused("owner_generic_impl")),
+        // An impl inside a `const _` block cannot be named from a test module.
+        ("n > 11", Expect::Refused("owner_unsupported")),
+    ]
+    .map(|(needle, expect)| (FIXTURE_5471, needle, expect));
+    for (fixture, needle, expect) in cases.into_iter().chain(cases_5471) {
+        let line = fixture
             .lines()
             .position(|text| text.contains(needle))
             .map(|index| index + 1)
@@ -188,7 +302,7 @@ fn written_stubs_compile_and_stop_at_their_own_todo() -> Result<(), String> {
             "[package]\nname = \"stub_oracle\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
         )
         .map_err(|error| error.to_string())?;
-        std::fs::write(root.join("src/lib.rs"), FIXTURE).map_err(|error| error.to_string())?;
+        std::fs::write(root.join("src/lib.rs"), fixture).map_err(|error| error.to_string())?;
 
         let mut stub = Command::new(env!("CARGO_BIN_EXE_ripr"));
         stub.args(["agent", "stub", "--root"]).arg(&root).args([
@@ -210,7 +324,7 @@ fn written_stubs_compile_and_stop_at_their_own_todo() -> Result<(), String> {
                 assert_eq!(
                     std::fs::read_to_string(root.join("src/lib.rs"))
                         .map_err(|error| error.to_string())?,
-                    FIXTURE,
+                    fixture,
                     "{needle}: a refusal must not touch the file"
                 );
             }
@@ -219,10 +333,55 @@ fn written_stubs_compile_and_stop_at_their_own_todo() -> Result<(), String> {
                 let document: serde_json::Value = serde_json::from_str(&stdout)
                     .map_err(|error| format!("{needle}: stub JSON: {error}: {stdout}"))?;
                 assert_eq!(document["written"], true, "{needle}");
+                if fixture == FIXTURE_5471 {
+                    // Two inline test modules: one is picked, not refused.
+                    assert_eq!(
+                        document["placement"]["kind"], "existing_inline_module",
+                        "{needle}"
+                    );
+                }
                 let test_name = document["test_name"]
                     .as_str()
                     .ok_or_else(|| format!("{needle}: test_name"))?
                     .to_string();
+                if needle == "x > 40" {
+                    // The stub lands in `tests`, the nearest plain module
+                    // after `early`, not the gated one or `more_tests`.
+                    let written = std::fs::read_to_string(root.join("src/lib.rs"))
+                        .map_err(|error| error.to_string())?;
+                    let module = |name: &str| {
+                        written
+                            .find(&format!("mod {name} {{"))
+                            .ok_or_else(|| format!("{needle}: `mod {name}` is kept"))
+                    };
+                    let stub = written
+                        .find(&format!("fn {test_name}("))
+                        .ok_or_else(|| format!("{needle}: the stub is written"))?;
+                    // The closing brace of `mod tests`, so a top-level test
+                    // written between the two modules does not pass.
+                    let open = module("tests")? + "mod tests ".len();
+                    let mut depth = 0usize;
+                    let close = written[open..]
+                        .char_indices()
+                        .find_map(|(offset, ch)| {
+                            match ch {
+                                '{' => depth += 1,
+                                '}' => {
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        return Some(open + offset);
+                                    }
+                                }
+                                _ => {}
+                            }
+                            None
+                        })
+                        .ok_or_else(|| format!("{needle}: `mod tests` closes"))?;
+                    assert!(
+                        open < stub && stub < close && close < module("more_tests")?,
+                        "{needle}: the stub goes in `tests`:\n{written}"
+                    );
+                }
                 let binary = root.join(format!("stub_oracle{}", std::env::consts::EXE_SUFFIX));
                 let mut rustc = Command::new("rustc");
                 rustc

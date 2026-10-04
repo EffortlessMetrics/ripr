@@ -8303,6 +8303,19 @@ tests = [
   "crates/ripr/tests/cli_smoke.rs::first_pr_check_missing_packet_suggests_rooted_out_dir",
   "crates/ripr/tests/cli_smoke.rs::first_pr_check_missing_packet_recovers_without_a_resolvable_base",
   "crates/ripr/tests/cli_smoke.rs::first_pr_check_recovery_write_resolves_the_default_base",
+  "crates/ripr/tests/agent_stub_compiles.rs::written_stubs_compile_and_stop_at_their_own_todo",
+  "crates/ripr/src/analysis/test_stub/tests.rs::several_inline_test_modules_pick_the_one_naming_the_owner_then_the_nearest",
+  "crates/ripr/src/analysis/test_stub/tests.rs::lifetime_only_impl_binds_the_subject_with_an_elided_lifetime",
+  "crates/ripr/src/analysis/test_stub/tests.rs::type_or_const_generic_impls_are_refused_as_generic_impls",
+  "crates/ripr/src/analysis/test_stub/tests.rs::trait_impl_method_is_called_through_its_trait_path",
+  "crates/ripr/src/analysis/test_stub/tests.rs::trait_impl_method_with_a_receiver_passes_it_by_reference",
+  "crates/ripr/src/analysis/test_stub/tests.rs::field_of_the_returned_struct_literal_asserts_the_whole_return_value",
+  "crates/ripr/src/analysis/test_stub/tests.rs::feature_gated_test_modules_are_never_chosen",
+  "crates/ripr/src/analysis/test_stub/tests.rs::impls_local_to_a_block_are_refused",
+  "crates/ripr/src/analysis/test_stub/tests.rs::a_proptest_sibling_module_does_not_outrank_one_naming_the_owner",
+  "crates/ripr/src/analysis/test_stub/tests.rs::refusals_name_the_blocker",
+  "crates/ripr/src/analysis/test_stub/tests.rs::owners_behind_a_non_test_cfg_are_refused",
+  "crates/ripr/src/analysis/test_stub/tests.rs::comments_and_strings_do_not_count_as_naming_the_owner",
 ]
 fixtures = []
 code = [
@@ -8315,6 +8328,8 @@ code = [
   "crates/ripr/src/output/human/sections.rs",
   "crates/ripr/src/output/human/triage.rs",
   "crates/ripr/src/output/render.rs",
+  "crates/ripr/src/analysis/test_stub.rs",
+  "crates/ripr/src/analysis/syntax/fn_signature.rs",
   "xtask/src/main.rs",
 ]
 outputs = [

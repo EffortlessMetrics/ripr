@@ -507,3 +507,523 @@ mod tests {
 }";
     assert_eq!(value_traits("Out", test_only), ValueTraits::Unknown);
 }
+
+/// The inline module a boundary stub for `needle` is inserted into.
+fn stub_module_name(source: &str, needle: &str) -> Result<String, String> {
+    let seam = seam_at(
+        "src/lib.rs",
+        source,
+        needle,
+        SeamKind::PredicateBoundary,
+        boundary(""),
+    )?;
+    match rust_test_stub(&seam, None, source).map_err(|r| r.as_str().to_string())? {
+        RustTestStub {
+            placement: TestStubPlacement::ExistingInlineModule { module_name, .. },
+            ..
+        } => Ok(module_name),
+        other => Err(format!("unexpected placement {:?}", other.placement)),
+    }
+}
+
+#[test]
+fn several_inline_test_modules_pick_the_one_naming_the_owner_then_the_nearest() -> Result<(), String>
+{
+    // #5471: bytesize keeps two `#[cfg(test)]` modules in `lib.rs`.
+    let source = "pub fn early(x: u8) -> u8 { if x > 1 { 1 } else { 0 } }
+
+#[cfg(test)]
+mod a {
+    #[test]
+    fn smoke() {}
+}
+
+pub fn late(x: u8) -> u8 { if x > 2 { 1 } else { 0 } }
+
+#[cfg(test)]
+mod b {
+    use super::*;
+    #[test]
+    fn early_works() { assert_eq!(early(0), 0); }
+}
+";
+    let module_name = stub_module_name;
+    // `b` already names `early`, so it wins over the nearer `a`.
+    assert_eq!(module_name(source, "x > 1")?, "b");
+    // Nothing names `late`: the nearest module after it.
+    assert_eq!(module_name(source, "x > 2")?, "b");
+    // Nothing names `tail` and nothing follows it: the nearest before it.
+    let with_tail =
+        format!("{source}pub fn tail(x: u8) -> u8 {{ if x > 3 {{ 1 }} else {{ 0 }} }}\n");
+    assert_eq!(module_name(&with_tail, "x > 3")?, "b");
+    // Nothing names `head`: the nearest after it is `a`, not `b`.
+    let with_head =
+        format!("pub fn head(x: u8) -> u8 {{ if x > 4 {{ 1 }} else {{ 0 }} }}\n{source}");
+    assert_eq!(module_name(&with_head, "x > 4")?, "a");
+    Ok(())
+}
+
+#[test]
+fn comments_and_strings_do_not_count_as_naming_the_owner() -> Result<(), String> {
+    // Codex review of #5477: a nearer module mentioning `early` only in a
+    // comment or string must not outrank the one that calls it.
+    let source = "pub fn early(x: u8) -> u8 { if x > 1 { 1 } else { 0 } }
+
+#[cfg(test)]
+mod a {
+    // early is covered in b
+    #[test]
+    fn s() { let _ = \"early\"; }
+}
+
+#[cfg(test)]
+mod b {
+    use super::*;
+    #[test]
+    fn early_works() { assert_eq!(early(0), 0); }
+}
+";
+    assert_eq!(stub_module_name(source, "x > 1")?, "b");
+    // `early_works` is a different identifier, not a mention of `early`.
+    let renamed = source.replace("assert_eq!(early(0), 0)", "assert!(true)");
+    assert_eq!(stub_module_name(&renamed, "x > 1")?, "a");
+    Ok(())
+}
+
+#[test]
+fn lifetime_only_impl_binds_the_subject_with_an_elided_lifetime() -> Result<(), String> {
+    // #5471: humantime `impl<'a> Parser<'a> { fn parse_unit(&mut self, ..) }`.
+    for header in ["impl<'a> Parser<'a> {", "impl Parser<'_> {"] {
+        let source = format!(
+            "pub struct Parser<'a> {{ src: &'a str }}
+{header}
+    pub fn parse_unit(&mut self, start: usize, end: usize) -> Result<u64, String> {{
+        if end > start {{ Ok(1) }} else {{ Err(String::new()) }}
+    }}
+    pub fn open(src: &str, limit: usize) -> usize {{
+        if src.len() > limit {{ limit }} else {{ 0 }}
+    }}
+}}
+"
+        );
+        let seam = seam_at(
+            "src/lib.rs",
+            &source,
+            "end > start",
+            SeamKind::PredicateBoundary,
+            boundary("end == start"),
+        )?;
+        let stub = rust_test_stub(&seam, None, &source).map_err(|r| r.reason().to_string())?;
+        assert!(
+            stub.text.contains(
+                "let mut subject: Parser<'_> = todo!(\"ripr: build the `Parser<'_>` that `parse_unit` runs on\");"
+            ),
+            "{header}: {}",
+            stub.text
+        );
+        assert!(
+            stub.text
+                .contains("let actual = subject.parse_unit(start, end);"),
+            "{header}: {}",
+            stub.text
+        );
+        assert!(!stub.text.contains("'a"), "{header}: {}", stub.text);
+        // An associated function is called through the bare type path.
+        let seam = seam_at(
+            "src/lib.rs",
+            &source,
+            "src.len() > limit",
+            SeamKind::PredicateBoundary,
+            boundary(""),
+        )?;
+        let stub = rust_test_stub(&seam, None, &source).map_err(|r| r.reason().to_string())?;
+        assert!(
+            stub.text.contains("let actual = Parser::open(src, limit);"),
+            "{header}: {}",
+            stub.text
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn type_or_const_generic_impls_are_refused_as_generic_impls() -> Result<(), String> {
+    for source in [
+        "pub struct W<T>(T);\nimpl<T> W<T> {\n    pub fn f(&self, n: u8) -> u8 { if n > 1 { 1 } else { 0 } }\n}\n",
+        "pub struct W<T>(T);\nimpl W<u8> {\n    pub fn f(&self, n: u8) -> u8 { if n > 1 { 1 } else { 0 } }\n}\n",
+        "pub struct A<const N: usize>;\nimpl<const N: usize> A<N> {\n    pub fn f(&self, n: u8) -> u8 { if n > 1 { 1 } else { 0 } }\n}\n",
+    ] {
+        let seam = seam_at(
+            "src/lib.rs",
+            source,
+            "n > 1",
+            SeamKind::PredicateBoundary,
+            boundary(""),
+        )?;
+        assert_eq!(
+            rust_test_stub(&seam, None, source),
+            Err(TestStubRefusal::OwnerGenericImpl),
+            "{source}"
+        );
+    }
+    assert_eq!(
+        TestStubRefusal::OwnerGenericImpl.as_str(),
+        "owner_generic_impl"
+    );
+    assert!(
+        TestStubRefusal::OwnerGenericImpl
+            .reason()
+            .contains("type or const generics")
+    );
+    Ok(())
+}
+
+const FROM_STR: &str = "use std::str::FromStr;
+#[derive(Debug, PartialEq)]
+pub enum Unit { Second, Minute }
+#[derive(Debug, PartialEq)]
+pub enum Error { Unknown }
+impl FromStr for Unit {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            \"s\" => Ok(Unit::Second),
+            \"m\" => Ok(Unit::Minute),
+            _ => Err(Error::Unknown),
+        }
+    }
+}
+";
+
+#[test]
+fn trait_impl_method_is_called_through_its_trait_path() -> Result<(), String> {
+    // #5471: humantime `impl FromStr for Unit { fn from_str(..) }`.
+    let seam = seam_at(
+        "src/lib.rs",
+        FROM_STR,
+        "\"m\" => Ok(Unit::Minute)",
+        SeamKind::MatchArm,
+        RequiredDiscriminator::MatchArmTaken {
+            arm: "\"m\" => Ok(Unit::Minute)".to_string(),
+        },
+    )?;
+    let stub = rust_test_stub(&seam, None, FROM_STR).map_err(|r| r.reason().to_string())?;
+    assert!(
+        stub.text
+            .contains("let actual = <Unit as FromStr>::from_str(s);"),
+        "{}",
+        stub.text
+    );
+    // The return type names `Self::Err`, so no comparison is assumed: the
+    // assertion stays the developer's fill-in.
+    assert!(stub.text.contains("let _ = &actual;"), "{}", stub.text);
+    assert!(!stub.text.contains("Unit::Err"), "{}", stub.text);
+    assert!(!stub.text.contains("let expected"), "{}", stub.text);
+
+    let seam = seam_at(
+        "src/lib.rs",
+        FROM_STR,
+        "Err(Error::Unknown)",
+        SeamKind::ErrorVariant,
+        RequiredDiscriminator::ErrorVariant {
+            variant: "Error::Unknown".to_string(),
+        },
+    )?;
+    let stub = rust_test_stub(&seam, None, FROM_STR).map_err(|r| r.reason().to_string())?;
+    assert!(
+        stub.text
+            .contains("assert!(matches!(actual, Err(Error::Unknown { .. }))"),
+        "{}",
+        stub.text
+    );
+    assert_eq!(
+        concrete_type("Result<Self, Self::Err>", Some("Unit"), Some("FromStr")),
+        "Result<Unit, <Unit as FromStr>::Err>"
+    );
+    assert_eq!(
+        variant_pattern("Self::Err::Bad", Some("Unit"), PathScope::ChildModule),
+        None
+    );
+    Ok(())
+}
+
+#[test]
+fn trait_impl_method_with_a_receiver_passes_it_by_reference() -> Result<(), String> {
+    let source = "pub struct Meter(u32);
+impl std::fmt::Display for Meter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.0 > 3 { write!(f, \"big\") } else { write!(f, \"small\") }
+    }
+}
+";
+    let seam = seam_at(
+        "src/lib.rs",
+        source,
+        "self.0 > 3",
+        SeamKind::PredicateBoundary,
+        boundary(""),
+    )?;
+    let stub = rust_test_stub(&seam, None, source).map_err(|r| r.reason().to_string())?;
+    assert!(
+        stub.text
+            .contains("let actual = <Meter as std::fmt::Display>::fmt(&subject, &mut f);"),
+        "{}",
+        stub.text
+    );
+    assert!(
+        stub.text
+            .contains("let mut f: std::fmt::Formatter<'_> = todo!("),
+        "{}",
+        stub.text
+    );
+    Ok(())
+}
+
+const VERSION: &str = "#[derive(Debug, Clone, PartialEq)]
+pub struct Version { pub major: u64, pub minor: u64, pub patch: u64 }
+impl Version {
+    pub fn next_minor(&self) -> Version {
+        Version { major: self.major, minor: self.minor + 1, patch: 0 }
+    }
+    pub fn staged(&self) -> u64 {
+        let v = Version { major: 1, minor: self.minor * 2, patch: 3 };
+        v.minor
+    }
+}
+";
+
+#[test]
+fn field_of_the_returned_struct_literal_asserts_the_whole_return_value() -> Result<(), String> {
+    // #5471: semver `Version::next_minor` builds and returns a `Version`.
+    let field = |needle: &str| RequiredDiscriminator::FieldValue {
+        field: needle.to_string(),
+    };
+    let seam = seam_at(
+        "src/lib.rs",
+        VERSION,
+        "minor: self.minor + 1",
+        SeamKind::FieldConstruction,
+        field("minor: self.minor + 1"),
+    )?;
+    let stub = rust_test_stub(&seam, None, VERSION).map_err(|r| r.reason().to_string())?;
+    assert_eq!(stub.test_name, "next_minor_field_discriminator");
+    assert!(
+        stub.text.contains("let actual = subject.next_minor();"),
+        "{}",
+        stub.text
+    );
+    assert!(
+        stub.text.contains(
+            "let expected: Version = todo!(\"ripr: write the value `next_minor` should return, including its field `minor: self.minor + 1`\");"
+        ),
+        "{}",
+        stub.text
+    );
+    // A literal bound to a local is not the returned value: refused, with a
+    // reason naming that.
+    let seam = seam_at(
+        "src/lib.rs",
+        VERSION,
+        "minor: self.minor * 2",
+        SeamKind::FieldConstruction,
+        field("minor: self.minor * 2"),
+    )?;
+    assert_eq!(
+        rust_test_stub(&seam, None, VERSION),
+        Err(TestStubRefusal::FieldNotReturned)
+    );
+    assert!(
+        TestStubRefusal::FieldNotReturned
+            .reason()
+            .contains("does not return directly")
+    );
+    Ok(())
+}
+
+#[test]
+fn feature_gated_test_modules_are_never_chosen() -> Result<(), String> {
+    // Review of #5477: `cargo test` does not build a feature-gated module, so
+    // a stub there would never compile or run.
+    let gated_first = "pub fn early(x: u32) -> u32 { if x > 40 { 1 } else { 0 } }
+
+#[cfg(all(test, feature = \"slow\"))]
+mod slow_tests {
+    #[test]
+    fn s() {}
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn smoke() {}
+}
+";
+    let seam = seam_at(
+        "src/lib.rs",
+        gated_first,
+        "x > 40",
+        SeamKind::PredicateBoundary,
+        boundary(""),
+    )?;
+    match rust_test_stub(&seam, None, gated_first).map_err(|r| r.as_str().to_string())? {
+        RustTestStub {
+            placement: TestStubPlacement::ExistingInlineModule { module_name, .. },
+            ..
+        } => assert_eq!(module_name, "tests"),
+        other => return Err(format!("unexpected placement {:?}", other.placement)),
+    }
+    for only_gated in [
+        "pub fn early(x: u32) -> u32 { if x > 40 { 1 } else { 0 } }
+
+#[cfg(all(test, feature = \"slow\"))]
+mod slow_tests {
+    #[test]
+    fn s() {}
+}
+",
+        "pub fn early(x: u32) -> u32 { if x > 40 { 1 } else { 0 } }
+
+#[cfg(test)]
+mod slow_tests {
+    #![cfg(feature = \"slow\")]
+    #[test]
+    fn s() {}
+}
+",
+    ] {
+        let seam = seam_at(
+            "src/lib.rs",
+            only_gated,
+            "x > 40",
+            SeamKind::PredicateBoundary,
+            boundary(""),
+        )?;
+        assert_eq!(
+            rust_test_stub(&seam, None, only_gated).map(|stub| stub.test_name),
+            Err(TestStubRefusal::AmbiguousTestModule),
+            "{only_gated}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn impls_local_to_a_block_are_refused() -> Result<(), String> {
+    // Review of #5477: names inside a fn body or `const _` block are out of
+    // the test module's reach.
+    for source in [
+        "pub struct X(pub u8);
+const _: () = {
+    use std::fmt::Display;
+    impl Display for X {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            if self.0 > 31 { write!(f, \"a\") } else { write!(f, \"b\") }
+        }
+    }
+};
+",
+        "pub fn outer() {
+    struct L(u8);
+    impl<'a> L {
+        fn m2(&self, n: u8) -> u8 { if n > 31 { 1 } else { 0 } }
+    }
+}
+",
+    ] {
+        let needle = if source.contains("self.0 > 31") {
+            "self.0 > 31"
+        } else {
+            "n > 31"
+        };
+        let seam = seam_at(
+            "src/lib.rs",
+            source,
+            needle,
+            SeamKind::PredicateBoundary,
+            boundary(""),
+        )?;
+        assert_eq!(
+            rust_test_stub(&seam, None, source).map(|stub| stub.test_name),
+            Err(TestStubRefusal::OwnerUnsupported),
+            "{source}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn a_proptest_sibling_module_does_not_outrank_one_naming_the_owner() -> Result<(), String> {
+    // A macro-only `proptest!` module is nearer, but the module that already
+    // calls the owner wins.
+    let source = "pub fn early(x: u32) -> u32 { if x > 40 { 1 } else { 0 } }
+
+#[cfg(test)]
+mod props {
+    proptest::proptest! {
+        #[test]
+        fn any(x in 0u32..10) { let _ = x; }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn early_works() { assert_eq!(early(0), 0); }
+}
+";
+    let seam = seam_at(
+        "src/lib.rs",
+        source,
+        "x > 40",
+        SeamKind::PredicateBoundary,
+        boundary(""),
+    )?;
+    match rust_test_stub(&seam, None, source).map_err(|r| r.as_str().to_string())? {
+        RustTestStub {
+            placement: TestStubPlacement::ExistingInlineModule { module_name, .. },
+            ..
+        } => assert_eq!(module_name, "tests"),
+        other => return Err(format!("unexpected placement {:?}", other.placement)),
+    }
+    Ok(())
+}
+
+#[test]
+fn owners_behind_a_non_test_cfg_are_refused() -> Result<(), String> {
+    // Codex review of #5477: a stub beside a feature-gated owner compiles
+    // out of a plain `cargo test`, which then builds zero tests and passes.
+    let refused = [
+        "#![cfg(feature = \"x\")]\npub fn f(n: u8) -> u8 { if n > 5 { 1 } else { 0 } }\n",
+        "#[cfg(feature = \"x\")]\nmod inner {\n    pub fn f(n: u8) -> u8 { if n > 5 { 1 } else { 0 } }\n    #[cfg(test)]\n    mod tests {}\n}\n",
+        "mod inner {\n    #![cfg(unix)]\n    pub fn f(n: u8) -> u8 { if n > 5 { 1 } else { 0 } }\n}\n",
+        "#[cfg(feature = \"x\")]\npub fn f(n: u8) -> u8 { if n > 5 { 1 } else { 0 } }\n",
+        "pub struct S;\n#[cfg(not(test))]\nimpl S {\n    pub fn f(&self, n: u8) -> u8 { if n > 5 { 1 } else { 0 } }\n}\n",
+    ];
+    for source in refused {
+        let seam = seam_at(
+            "src/lib.rs",
+            source,
+            "n > 5",
+            SeamKind::PredicateBoundary,
+            boundary(""),
+        )?;
+        assert_eq!(
+            rust_test_stub(&seam, None, source).map(|stub| stub.test_name),
+            Err(TestStubRefusal::OwnerUnsupported),
+            "{source}"
+        );
+    }
+    // Attributes a plain test build keeps do not refuse.
+    let kept =
+        "/// Docs.\n#[inline]\n#[must_use]\npub fn f(n: u8) -> u8 { if n > 5 { 1 } else { 0 } }\n";
+    let seam = seam_at(
+        "src/lib.rs",
+        kept,
+        "n > 5",
+        SeamKind::PredicateBoundary,
+        boundary(""),
+    )?;
+    assert!(rust_test_stub(&seam, None, kept).is_ok(), "{kept}");
+    Ok(())
+}
