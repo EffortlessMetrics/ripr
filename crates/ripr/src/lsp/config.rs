@@ -26,6 +26,17 @@ pub(super) const DEFAULT_LSP_GIT_TIMEOUT_MS: u64 = 30_000;
 /// Overridable per session via the `refreshDeadlineMs` option.
 pub(super) const DEFAULT_LSP_REFRESH_DEADLINE_MS: u64 = 600_000;
 
+/// Floor for `refreshDeadlineMs` (#5093). A zero or sub-100ms value arms
+/// `tokio::time::sleep(ZERO)` (or near-zero) and cancels every refresh
+/// before the first analysis checkpoint, silently publishing no diagnostics.
+pub(super) const MIN_LSP_REFRESH_DEADLINE_MS: u64 = 100;
+
+/// Actionable rejection for a `refreshDeadlineMs` below
+/// [`MIN_LSP_REFRESH_DEADLINE_MS`]. Shared by `apply_session_options` and
+/// `validate_pulled_value` so both ingresses name the same recovery route.
+pub(super) const REFRESH_DEADLINE_MS_TOO_SMALL: &str =
+    "refreshDeadlineMs must be at least 100ms; pass a positive deadline or omit to use the default";
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct LspAnalysisConfig {
     pub(super) base_ref: Option<String>,
@@ -142,9 +153,14 @@ impl LspAnalysisConfig {
         }
         config.session_options = session.map(Value::Object);
         config.pulled_options = pulled.clone().map(Value::Object);
-        apply_session_options(&mut config, &effective_session);
+        // A below-floor `refreshDeadlineMs` is not applied (#5093). The
+        // initialization/push path keeps the session up (#5092) and names
+        // the rejection through `ignored_initialization_option_warnings`;
+        // the pull path fails closed in `validate_pulled_value` before a
+        // degenerate value can become the pulled layer.
+        let _ = apply_session_options(&mut config, &effective_session);
         if let Some(pulled) = &pulled {
-            apply_session_options(&mut config, pulled);
+            let _ = apply_session_options(&mut config, pulled);
         }
         config
     }
@@ -229,6 +245,14 @@ impl LspAnalysisConfig {
             let Some(value) = session.get(option_key) else {
                 continue;
             };
+            if option_key == "refreshDeadlineMs"
+                && value
+                    .as_u64()
+                    .is_some_and(|ms| ms < MIN_LSP_REFRESH_DEADLINE_MS)
+            {
+                warnings.push(REFRESH_DEADLINE_MS_TOO_SMALL.to_string());
+                continue;
+            }
             if session_option_value_is_valid(option_key, value) {
                 continue;
             }
@@ -359,7 +383,10 @@ fn session_options_object(value: &Value) -> Option<&serde_json::Map<String, Valu
         .or(Some(object))
 }
 
-fn apply_session_options(config: &mut LspAnalysisConfig, options: &serde_json::Map<String, Value>) {
+pub(super) fn apply_session_options(
+    config: &mut LspAnalysisConfig,
+    options: &serde_json::Map<String, Value>,
+) -> Result<(), String> {
     if let Some(base_ref) = options
         .get("baseRef")
         .and_then(|value| value.as_str())
@@ -411,13 +438,18 @@ fn apply_session_options(config: &mut LspAnalysisConfig, options: &serde_json::M
         config.git_timeout = Duration::from_millis(git_timeout_ms);
     }
 
-    // Lenient (#1972, #5092): a malformed initialization/pushed value is
-    // ignored and the current physical deadline (600s default) stays in
-    // effect; the pull path validates the same key fail-closed in
-    // `validate_pulled_value`.
+    // Lenient (#1972, #5092): a malformed (wrong-typed) initialization/pushed
+    // value is ignored and the current physical deadline (600s default) stays
+    // in effect. A well-typed value below the 100ms floor is rejected with
+    // an actionable error (#5093) and is not applied; the pull path uses the
+    // same message in `validate_pulled_value`.
     if let Some(refresh_deadline_ms) = options.get("refreshDeadlineMs").and_then(Value::as_u64) {
+        if refresh_deadline_ms < MIN_LSP_REFRESH_DEADLINE_MS {
+            return Err(REFRESH_DEADLINE_MS_TOO_SMALL.to_string());
+        }
         config.refresh_deadline = Duration::from_millis(refresh_deadline_ms);
     }
+    Ok(())
 }
 
 /// Type/literal check shared by the lenient initialization path and the
@@ -433,7 +465,10 @@ fn session_option_value_is_valid(key: &str, value: &Value) -> bool {
         "diagnosticProfile" => value
             .as_str()
             .is_some_and(|literal| LspDiagnosticProfile::parse(literal).is_ok()),
-        "gitTimeoutMs" | "refreshDeadlineMs" => value.as_u64().is_some(),
+        "gitTimeoutMs" => value.as_u64().is_some(),
+        "refreshDeadlineMs" => value
+            .as_u64()
+            .is_some_and(|ms| ms >= MIN_LSP_REFRESH_DEADLINE_MS),
         _ => true,
     }
 }
@@ -517,6 +552,13 @@ fn validate_pulled_value(key: &str, value: &Value) -> Result<(), String> {
         return Err(format!(
             "workspace/configuration value for `{key}` exceeds the {MAX_PULLED_VALUE_BYTES}-byte pulled-value bound"
         ));
+    }
+    if key == "refreshDeadlineMs"
+        && value
+            .as_u64()
+            .is_some_and(|ms| ms < MIN_LSP_REFRESH_DEADLINE_MS)
+    {
+        return Err(REFRESH_DEADLINE_MS_TOO_SMALL.to_string());
     }
     if session_option_value_is_valid(key, value) {
         return Ok(());

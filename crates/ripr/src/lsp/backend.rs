@@ -417,6 +417,7 @@ impl Backend {
             self.refresh_scheduler
                 .record_attempt_outcome(outcome, attempt_duration);
             self.record_health_outcome(&request, outcome);
+            self.disclose_deadline_exceeded(&request, outcome).await;
             self.publish_analysis_status().await;
             self.end_progress_for_attempt(&request, outcome).await;
             self.log_refresh_attempt_outcome(outcome, attempt_duration)
@@ -1447,6 +1448,11 @@ impl Backend {
     }
 
     #[cfg(test)]
+    pub(super) fn mark_attempt_running_for_test(&self, request: &RefreshRequest) {
+        self.mark_attempt_running(request);
+    }
+
+    #[cfg(test)]
     pub(super) fn reset_analysis_health_for_test(&self) {
         self.reset_health_for_input_change();
     }
@@ -1572,6 +1578,10 @@ impl Backend {
         health.reason = Some(request.reason.as_str().to_string());
         health.requested_scope = Some(request.scope.as_str().to_string());
         health.current_input_identity = Some(request.input_identity_id());
+        // A prior attempt's failure (including `deadline_exceeded`) is not
+        // this attempt's outcome. `mark_attempt_queued` already clears it;
+        // the in-loop pending promotion path only calls this method.
+        health.failure = None;
         if health.pending_attempt_id == Some(request.generation) {
             health.pending_attempt_id = None;
             health.pending_reason = None;
@@ -1666,14 +1676,44 @@ impl Backend {
             }
             RefreshAttemptOutcome::Cancelled => health.state = AnalysisAttemptState::Cancelled,
             // A deadline-expired attempt is a fail-closed dropped refresh
-            // (#1972); reuse the existing cancelled health state — no new
-            // run-status or attempt-state string.
+            // (#1972, #5093). Keep `state` on the existing `cancelled`
+            // allowlist so fail-closed clients (including VS Code) still parse
+            // the payload, and distinguish it from a user or superseded cancel
+            // with `failure.kind = deadline_exceeded`.
             RefreshAttemptOutcome::DeadlineExceeded => {
                 health.state = AnalysisAttemptState::Cancelled;
+                health.failure = Some(AnalysisFailure {
+                    kind: AnalysisFailureKind::DeadlineExceeded,
+                    message: bounded_failure_message(&deadline_exceeded_log_message(
+                        refresh_deadline_ms(request.config.refresh_deadline),
+                    )),
+                });
             }
             RefreshAttemptOutcome::Superseded => health.state = AnalysisAttemptState::Superseded,
             RefreshAttemptOutcome::NotStarted => health.state = AnalysisAttemptState::Stopped,
         }
+    }
+
+    /// One bounded `window/logMessage` WARNING on `DeadlineExceeded` (#5093).
+    /// Clients without `window.workDoneProgress` never see the progress-end
+    /// "analysis deadline exceeded" string; this log names the configured
+    /// deadline and the `refreshDeadlineMs` knob. User/superseded cancels
+    /// do not emit it.
+    pub(super) async fn disclose_deadline_exceeded(
+        &self,
+        request: &RefreshRequest,
+        outcome: RefreshAttemptOutcome,
+    ) {
+        if outcome != RefreshAttemptOutcome::DeadlineExceeded {
+            return;
+        }
+        let deadline_ms = refresh_deadline_ms(request.config.refresh_deadline);
+        self.client
+            .log_message(
+                MessageType::WARNING,
+                deadline_exceeded_log_message(deadline_ms),
+            )
+            .await;
     }
 
     async fn publish_analysis_status(&self) {
@@ -1820,7 +1860,7 @@ impl Backend {
         }
     }
 
-    fn analysis_status_payload(&self) -> LSPAny {
+    pub(super) fn analysis_status_payload(&self) -> LSPAny {
         let health = self.analysis_health_snapshot();
         self.analysis_status_payload_for_health(&health)
     }
@@ -4024,6 +4064,16 @@ pub(super) fn refresh_failed_log_message(message: &str, duration: Duration) -> S
         "ripr analysis refresh failed after {}: {message}",
         format_duration(duration)
     )
+}
+
+pub(super) fn deadline_exceeded_log_message(deadline_ms: u64) -> String {
+    format!(
+        "ripr: background analysis exceeded the {deadline_ms}ms deadline and was stopped; adjust the 'refreshDeadlineMs' initialization option or editor setting if the workspace requires more time."
+    )
+}
+
+fn refresh_deadline_ms(deadline: Duration) -> u64 {
+    u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX)
 }
 
 /// The on-screen config failure notice (#4532): the source-free summary, not

@@ -1,14 +1,17 @@
 use super::actions::{SERVER_EXECUTED_COMMANDS, code_action_response, resolve_action};
 use super::backend::{
-    Backend, RefreshLogSummary, WatchedFileChanges, refresh_completed_log_message,
-    refresh_failed_log_message, workspace_input_path_is_relevant,
+    Backend, RefreshLogSummary, WatchedFileChanges, deadline_exceeded_log_message,
+    refresh_completed_log_message, refresh_failed_log_message, workspace_input_path_is_relevant,
 };
 use super::capabilities::{
     ADVERTISED_CODE_ACTION_KINDS, WorkspaceRootResolution, initialize_result,
     root_from_initialize_params,
 };
 use super::client_features::ClientFeatureProfile;
-use super::config::LspAnalysisConfig;
+use super::config::{
+    DEFAULT_LSP_REFRESH_DEADLINE_MS, LspAnalysisConfig, MIN_LSP_REFRESH_DEADLINE_MS,
+    REFRESH_DEADLINE_MS_TOO_SMALL, apply_session_options, validated_pulled_options,
+};
 use super::diagnostics::{
     DiagnosticBatch, FindingDiagnosticProjection, WorkspaceDiagnostics, add_canonical_group_data,
     canonical_finding_groups, canonical_group_has_mixed_classes, diagnostic_for_classified_seam,
@@ -17362,6 +17365,222 @@ fn work_done_progress_capability_is_recorded_at_initialize() -> Result<(), Strin
             .map_err(|err| format!("initialize failed: {err}"))?;
         if backend.progress.is_supported() {
             return Err("capability-absent client must not enable progress".to_string());
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn config_rejects_zero_refresh_deadline() -> Result<(), String> {
+    // #5093: both ingresses reject 0 and any value below 100ms with the same
+    // actionable message. A well-typed 100ms value remains accepted.
+    let expected = REFRESH_DEADLINE_MS_TOO_SMALL;
+    let mut config = LspAnalysisConfig::default();
+    let default_deadline = Duration::from_millis(DEFAULT_LSP_REFRESH_DEADLINE_MS);
+
+    let zero = serde_json::json!({"refreshDeadlineMs": 0})
+        .as_object()
+        .cloned()
+        .ok_or_else(|| "zero options must be an object".to_string())?;
+    match apply_session_options(&mut config, &zero) {
+        Err(err) if err == expected => {}
+        other => {
+            return Err(format!(
+                "apply_session_options must reject 0 with {expected:?}, got {other:?}"
+            ));
+        }
+    }
+    if config.refresh_deadline != default_deadline {
+        return Err(format!(
+            "a rejected zero must not change the default deadline, got {:?}",
+            config.refresh_deadline
+        ));
+    }
+
+    let below = serde_json::json!({"refreshDeadlineMs": MIN_LSP_REFRESH_DEADLINE_MS - 1})
+        .as_object()
+        .cloned()
+        .ok_or_else(|| "below-floor options must be an object".to_string())?;
+    match apply_session_options(&mut config, &below) {
+        Err(err) if err == expected => {}
+        other => {
+            return Err(format!(
+                "apply_session_options must reject 99ms with {expected:?}, got {other:?}"
+            ));
+        }
+    }
+
+    let floor = serde_json::json!({"refreshDeadlineMs": MIN_LSP_REFRESH_DEADLINE_MS})
+        .as_object()
+        .cloned()
+        .ok_or_else(|| "floor options must be an object".to_string())?;
+    apply_session_options(&mut config, &floor)?;
+    if config.refresh_deadline != Duration::from_millis(MIN_LSP_REFRESH_DEADLINE_MS) {
+        return Err(format!(
+            "100ms must apply, got {:?}",
+            config.refresh_deadline
+        ));
+    }
+
+    match validated_pulled_options(&[serde_json::json!({"refreshDeadlineMs": 0})]) {
+        Err(err) if err == expected => {}
+        other => {
+            return Err(format!(
+                "validate_pulled_value must reject 0 with {expected:?}, got {other:?}"
+            ));
+        }
+    }
+    match validated_pulled_options(&[serde_json::json!({"refreshDeadlineMs": 99})]) {
+        Err(err) if err == expected => {}
+        other => {
+            return Err(format!(
+                "validate_pulled_value must reject 99ms with {expected:?}, got {other:?}"
+            ));
+        }
+    }
+    if validated_pulled_options(&[serde_json::json!({"refreshDeadlineMs": 100})])?.is_none() {
+        return Err("a 100ms pulled refreshDeadlineMs must validate".to_string());
+    }
+
+    let ignored = LspAnalysisConfig::from_repo_config_and_options(
+        crate::config::RiprConfig::default(),
+        Some(&serde_json::json!({"refreshDeadlineMs": 0})),
+    );
+    if ignored.refresh_deadline != default_deadline {
+        return Err(format!(
+            "initialization with 0 must keep the default, got {:?}",
+            ignored.refresh_deadline
+        ));
+    }
+    if ignored.ignored_initialization_option_warnings() != [expected.to_string()] {
+        return Err(format!(
+            "initialization with 0 must disclose the floor error, got {:?}",
+            ignored.ignored_initialization_option_warnings()
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn deadline_exceeded_disclosed_in_logs_and_analysis_status_without_work_done_progress()
+-> Result<(), String> {
+    // #5093: a progress-less client still sees the deadline drop. Drive the
+    // same health + log surfaces the refresh loop uses after
+    // RefreshAttemptOutcome::DeadlineExceeded, with work_done_progress = false.
+    work_done_progress_runtime()?.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let mut params = InitializeParams::default();
+        params.capabilities.window = Some(WindowClientCapabilities {
+            work_done_progress: Some(false),
+            ..WindowClientCapabilities::default()
+        });
+        backend
+            .initialize(params)
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+        if backend.progress.is_supported() {
+            return Err("this proof requires work_done_progress = false".to_string());
+        }
+        backend.initialize_test_workspace_root();
+
+        let config = LspAnalysisConfig {
+            refresh_deadline: Duration::from_millis(MIN_LSP_REFRESH_DEADLINE_MS),
+            ..LspAnalysisConfig::default()
+        };
+        let decision = backend.refresh_scheduler_for_test().request(
+            PathBuf::from("/workspace"),
+            config,
+            1,
+            0,
+            RefreshScope::Interactive,
+            RefreshReason::DidSave,
+        );
+        let request = started_request(&decision)?;
+
+        backend.record_health_outcome(&request, RefreshAttemptOutcome::Cancelled);
+        let cancelled = backend.analysis_status_payload();
+        if cancelled["state"].as_str() != Some("cancelled") {
+            return Err(format!(
+                "a user cancel must stay state cancelled, got {}",
+                cancelled["state"]
+            ));
+        }
+        if !cancelled["failure"].is_null() {
+            return Err(format!(
+                "a user cancel must not set failure, got {}",
+                cancelled["failure"]
+            ));
+        }
+        backend
+            .disclose_deadline_exceeded(&request, RefreshAttemptOutcome::Cancelled)
+            .await;
+
+        let expected_warning = deadline_exceeded_log_message(MIN_LSP_REFRESH_DEADLINE_MS);
+        if expected_warning
+            != "ripr: background analysis exceeded the 100ms deadline and was stopped; adjust the 'refreshDeadlineMs' initialization option or editor setting if the workspace requires more time."
+        {
+            return Err(format!(
+                "deadline warning drifted from the #5093 contract: {expected_warning:?}"
+            ));
+        }
+
+        backend.record_health_outcome(&request, RefreshAttemptOutcome::DeadlineExceeded);
+        backend
+            .disclose_deadline_exceeded(&request, RefreshAttemptOutcome::DeadlineExceeded)
+            .await;
+        let status = backend.analysis_status_payload();
+        if status["state"].as_str() != Some("cancelled") {
+            return Err(format!(
+                "deadline drop keeps analysisStatus.state on the cancelled allowlist, got {}",
+                status["state"]
+            ));
+        }
+        if status["failure"]["kind"].as_str() != Some("deadline_exceeded") {
+            return Err(format!(
+                "analysisStatus.failure.kind must be deadline_exceeded, got {}",
+                status["failure"]
+            ));
+        }
+        let Some(message) = status["failure"]["message"].as_str() else {
+            return Err("analysisStatus.failure.message must be present".to_string());
+        };
+        if message != expected_warning {
+            return Err(format!(
+                "analysisStatus.failure.message must match the log warning, got {message:?}"
+            ));
+        }
+
+        // A later attempt must not keep the previous deadline failure.
+        if backend
+            .refresh_scheduler_for_test()
+            .finish(&request, false)
+            .is_some()
+        {
+            return Err("the dropped deadline attempt should leave no pending request".to_string());
+        }
+        let next = backend.refresh_scheduler_for_test().request(
+            PathBuf::from("/workspace"),
+            LspAnalysisConfig::default(),
+            2,
+            0,
+            RefreshScope::Interactive,
+            RefreshReason::DidSave,
+        );
+        let next = started_request(&next)?;
+        backend.mark_attempt_running_for_test(&next);
+        let running = backend.analysis_status_payload();
+        if running["state"].as_str() != Some("running") {
+            return Err(format!(
+                "the next attempt must be running, got {}",
+                running["state"]
+            ));
+        }
+        if !running["failure"].is_null() {
+            return Err(format!(
+                "promoting the next attempt must drop deadline_exceeded failure, got {}",
+                running["failure"]
+            ));
         }
         Ok(())
     })
