@@ -17,6 +17,7 @@ Linked issues:
   content identities.
 - [#1941](https://github.com/EffortlessMetrics/ripr-swarm/issues/1941) - agent
   verify and receipt trust boundary.
+- #5744 - preserve native Unix roots in producer identity and verify inputs.
 
 Support-tier impact:
 
@@ -51,7 +52,13 @@ from `ripr.toml`), and analyzer version — never the
 concrete checkout root or a host-specific path spelling. Equivalent checkouts
 of the same commit under different roots share one input identity; the
 concrete root remains separate envelope evidence (`repository.root`) that the
-verifier compares with exact canonical-path equality. Version 4 (#3906)
+verifier compares with exact canonical-path equality. The producer preserves
+literal Unix filename characters in that concrete root and in
+verify's before/after artifact paths; Windows retains separator normalization.
+Generic report display text is separate from these admitted filesystem inputs.
+Root containment and canonical equality remain mandatory, including when an
+authentic artifact is presented through a different checkout with the same HEAD.
+Version 4 (#3906)
 narrows the lockfile input to Git-tracked lockfiles: an untracked or ignored
 `Cargo.lock` is build state that Cargo writes when it resolves dependencies
 (the first `cargo test` of a library that does not commit one), and the static
@@ -153,6 +160,11 @@ after movement succeeds but discloses `historical_noncurrent`.
 ## Required Evidence
 
 - Producer output tests cover identity and streaming output.
+- `repo_exposure_literal_unix_root_is_admitted_only_at_its_producer` covers
+  actual producer metadata/content commitment and same-HEAD clone refusal.
+  `cli_snapshot_verify_absolute_inputs_retain_literal_unix_root` exercises
+  the real snapshot writer, verify renderer and receipt admission with
+  absolute and relative inputs; it does not invoke the standalone CLI process.
 - CLI smoke tests cover a valid bound pair, a historical comparable pair,
   mixed pair-currentness disclosure (historical-before/current-after,
   current-before/historical-after descendant acceptance, dirty-before,

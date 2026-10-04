@@ -8,6 +8,14 @@ use crate::app::repair_attempt::{
 };
 use std::path::PathBuf;
 
+#[cfg(unix)]
+#[path = "repair_root_tests.rs"]
+mod root_tests;
+
+#[cfg(unix)]
+#[path = "repair_manifest_root_tests.rs"]
+mod manifest_root_tests;
+
 /// Own only an exclusively created test directory, including setup failures
 /// and assertion unwinds. Durable proof receipts live outside this fixture.
 struct FixtureRoot(PathBuf);
@@ -46,6 +54,10 @@ fn snapshot(grip: &str) -> String {
 }
 
 fn prepared(label: &str) -> Result<(FixtureRoot, RepairAttemptId), String> {
+    prepare_at(fixture_root(label)?)
+}
+
+fn fixture_root(label: &str) -> Result<FixtureRoot, String> {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| format!("fixture clock: {error}"))?
@@ -55,7 +67,10 @@ fn prepared(label: &str) -> Result<(FixtureRoot, RepairAttemptId), String> {
         std::process::id()
     ));
     std::fs::create_dir(&root).map_err(|error| format!("create {}: {error}", root.display()))?;
-    let root = FixtureRoot(root);
+    Ok(FixtureRoot(root))
+}
+
+fn prepare_at(root: FixtureRoot) -> Result<(FixtureRoot, RepairAttemptId), String> {
     std::fs::create_dir(root.join("tests")).map_err(|error| error.to_string())?;
     git(&root, &["init"])?;
     git(

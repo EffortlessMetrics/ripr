@@ -640,7 +640,7 @@ fn canonical_root(root: &Path) -> Result<PathBuf, String> {
 }
 
 fn display_root(root: &Path) -> String {
-    root.to_string_lossy().replace('\\', "/")
+    crate::agent::loop_commands::root_path_display(root)
 }
 
 pub(crate) fn git_output(root: &Path, args: &[&str]) -> Result<String, String> {
@@ -1953,6 +1953,79 @@ mod tests {
         cleanup?;
         cleanup_foreign?;
         Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn repo_exposure_literal_unix_root_is_admitted_only_at_its_producer() -> Result<(), String> {
+        use std::os::unix::{ffi::OsStrExt, fs::MetadataExt};
+
+        struct OwnedRoot(PathBuf);
+        impl Drop for OwnedRoot {
+            fn drop(&mut self) {
+                if let Err(error) = std::fs::remove_dir_all(&self.0) {
+                    eprintln!(
+                        "remove owned artifact fixture {}: {error}",
+                        self.0.display()
+                    );
+                }
+            }
+        }
+        let parent = temporary_git_root()?;
+        let _owned = OwnedRoot(parent.clone());
+        (|| -> Result<(), String> {
+            let root = parent.join("team\\repo 'quoted'");
+            std::fs::create_dir(&root).map_err(|error| error.to_string())?;
+            crate::testing::fixture_git::fixture_git_ok(&root, &["init"])?;
+            run_git(&root, &["config", "user.name", "RIPR test"])?;
+            run_git(
+                &root,
+                &["config", "user.email", "ripr-test@example.invalid"],
+            )?;
+            commit_fixture_file(&root)?;
+            let decoy_parent = parent.join("team");
+            std::fs::create_dir(&decoy_parent).map_err(|error| error.to_string())?;
+            let decoy = decoy_parent.join("repo 'quoted'");
+            crate::testing::fixture_git::fixture_git_ok(
+                &parent,
+                &[
+                    "clone",
+                    "--quiet",
+                    "--no-hardlinks",
+                    root.to_str()
+                        .ok_or_else(|| "fixture root is not UTF-8".to_string())?,
+                    decoy
+                        .to_str()
+                        .ok_or_else(|| "fixture decoy is not UTF-8".to_string())?,
+                ],
+            )?;
+            let actual = std::fs::metadata(&root).map_err(|error| error.to_string())?;
+            let other = std::fs::metadata(&decoy).map_err(|error| error.to_string())?;
+            assert_ne!((actual.dev(), actual.ino()), (other.dev(), other.ino()));
+            assert_eq!(current_git_head(&root)?, current_git_head(&decoy)?);
+
+            // Real producer metadata and exact governed content commitment;
+            // neither repository.root nor its digest is edited by this test.
+            let raw = commit_content(&repo_exposure_raw_with_placeholder(&root)?)?;
+            let bytes_before = raw.as_bytes().to_vec();
+            let admitted = validate_repo_exposure_artifact(&root, &raw, "literal-root positive")
+                .map_err(|error| format!("producer artifact failed root admission: {error}"))?;
+            assert_eq!(admitted.currentness, ArtifactCurrentness::Current);
+            let document: Value = serde_json::from_str(&raw).map_err(|error| error.to_string())?;
+            let declared = document["artifact"]["repository"]["root"]
+                .as_str()
+                .ok_or_else(|| "producer omitted its repository root".to_string())?;
+            let canonical = root.canonicalize().map_err(|error| error.to_string())?;
+            assert_eq!(declared.as_bytes(), canonical.as_os_str().as_bytes());
+            let refusal = validate_repo_exposure_artifact(&decoy, &raw, "slash-decoy control")
+                .err()
+                .ok_or_else(|| {
+                    "producer artifact was admitted in its slash-path decoy".to_string()
+                })?;
+            assert!(refusal.contains("repository root") && refusal.contains("does not match"));
+            assert_eq!(raw.as_bytes(), bytes_before);
+            Ok(())
+        })()
     }
 
     #[test]

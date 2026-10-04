@@ -8,7 +8,7 @@
 
 mod store;
 
-use crate::agent::loop_commands::{bound_root, display_path, shell_arg};
+use crate::agent::loop_commands::{bound_root, display_path, root_path_display, shell_arg};
 use crate::analysis::is_test_surface_path;
 use crate::edit_cage::{
     AttemptBaseline, EditCagePolicy, EditCageVerdict, HeadMovement,
@@ -690,7 +690,7 @@ fn complete_repair_attempt(
                 kind: "repair_attempt".to_string(),
                 repair_attempt_id: publication.repair_attempt_id,
                 state: RepairAttemptState::AwaitingEdit,
-                root: display_path(canonical_root),
+                root: root_path_display(canonical_root),
                 repository_head: publication.repository_head,
                 producer_version: env!("CARGO_PKG_VERSION").to_string(),
                 seam_id: publication.seam_id.to_string(),

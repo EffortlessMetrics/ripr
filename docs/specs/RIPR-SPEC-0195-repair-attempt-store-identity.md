@@ -24,7 +24,8 @@ Linked issues:
 - #2927 — parent repair-attempt transaction
 - #4798 — discovery/resume UX (later; not absorbed)
 - #4799 — crash/retry matrix (later; not absorbed)
-- #1613 — `help --json` / workflow catalog (later; not absorbed)
+- #1613 - `help --json` / workflow catalog (later; not absorbed)
+- #5744 - preserve the producer's canonical Unix manifest root
 
 Linked PRs:
 
@@ -77,6 +78,11 @@ Resolution law:
   worktrees, user homes, temporary roots, or a newest-mtime folder.
 - An attempt ID from one store cannot resolve through another store.
 - Repository, root, store, and attempt identities remain separate.
+- Before publication preserves the canonical root's native Unix filename
+  characters in `manifest.root`; Windows retains its existing separator
+  normalization. Reopening still canonicalizes that declared root and requires
+  equality with the selected repository. Copying authentic attempt bytes into
+  a different repository does not transfer root authority.
 - Relative paths are root-contained. Traversal, absolute-outside-root,
   symlink/junction escape, in-tree symlink or case-fold aliases, drive-relative
   ambiguity, and unsupported UNC spelling fail closed.
@@ -145,6 +151,8 @@ Python-specific or editor-specific attempt store.
 ## Test Mapping
 
 - `crates/ripr/src/app/repair_attempt/store.rs::tests::default_store_is_the_repository_local_directory`
+- `crates/ripr/src/mcp/repair_manifest_root_tests.rs::durable_literal_unix_manifest_reopens_in_selected_root`
+- `crates/ripr/src/mcp/repair_manifest_root_tests.rs::durable_literal_unix_manifest_copy_refuses_slash_decoy`
 - `crates/ripr/src/app/repair_attempt/store.rs::tests::equivalent_default_spellings_share_one_identity`
 - `crates/ripr/src/app/repair_attempt/store.rs::tests::explicit_store_prepares_and_reopens_without_falling_back`
 - `crates/ripr/src/app/repair_attempt/store.rs::tests::missing_explicit_store_does_not_fall_back_to_default`

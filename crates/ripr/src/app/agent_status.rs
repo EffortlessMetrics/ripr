@@ -8,7 +8,7 @@ use crate::agent::loop_commands::{
     agent_receipt_command, agent_review_summary_command, agent_review_summary_markdown_command,
     agent_status_command, agent_status_markdown_command, agent_verify_command,
     anchored_redirect_target, bound_root, check_analysis_outcome_command,
-    check_repo_exposure_command, display_path, shell_arg,
+    check_repo_exposure_command, display_path, root_path_display, shell_arg,
 };
 use crate::app::repair_attempt::{
     AfterPhaseHeadAdmission, AttemptTerminalReceipt, DivergedHeadRecovery,
@@ -1808,7 +1808,7 @@ pub(crate) fn selected_attempt_status_reading(
     manifest: &RepairAttemptManifest,
     current_head: Option<&str>,
 ) -> SelectedAttemptStatusReading {
-    let command_root = bound_root(&display_path(root_argument));
+    let command_root = bound_root(&root_path_display(root_argument));
     let workflow_receipt = read_workflow_receipt(root);
     let view = status_repair_attempt(
         root,

@@ -49,6 +49,17 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Repair attempts preserve literal Unix backslashes in the canonical root
+  stored by the before producer. Newly published manifests reopen in the
+  selected repository while authentic copies in another root remain refused
+  (#5744).
+- Repo-exposure snapshots retain native Unix repository root characters for
+  artifact admission, including literal filename backslashes (#5744).
+- Agent verify preserves native Unix characters in its before/after input
+  paths so receipt admission can reopen the selected snapshots (#5744).
+- CLI/MCP: selected failed or open-gap repair attempts preserve literal Unix
+  backslashes in the restart command's `--root` argument. Such a directory no
+  longer redirects restart advice to the corresponding slash path (#5608).
 - CLI: `ripr doctor --profile source-build` warns when the workspace's
   `.cargo/config.toml` redirects linker temp variables (`TEMP`, `TMP`,
   `TMPDIR`) into a workspace-relative directory that does not exist. ripr's

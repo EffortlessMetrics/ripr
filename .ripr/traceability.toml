@@ -7853,6 +7853,8 @@ tests = [
   "crates/ripr/src/agent/artifact.rs::tests::pair_currentness_label_covers_the_closed_vocabulary",
   "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_input_identity_is_portable_across_checkout_roots",
   "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_artifact_from_one_root_is_rejected_at_an_equivalent_clone",
+  "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_literal_unix_root_is_admitted_only_at_its_producer",
+  "crates/ripr/src/cli/commands/agent_root_tests.rs::cli_snapshot_verify_absolute_inputs_retain_literal_unix_root",
   "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_revision_movement_keeps_input_identity_and_moves_snapshot",
   "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_input_identity_tracks_every_semantic_input",
   "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_input_identity_ignores_unconsumed_config_fields",
@@ -7919,6 +7921,7 @@ code = [
   "crates/ripr/src/config.rs",
   "crates/ripr/src/app/agent_receipt.rs",
   "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/commands/agent.rs",
   "crates/ripr/src/output/repo_exposure.rs",
   "crates/ripr/src/output/outcome/render_json.rs",
   "xtask/src/reports/release_negative.rs",
@@ -10945,6 +10948,8 @@ id = "RIPR-SPEC-0195"
 name = "Repair-attempt store identity and resolver"
 spec = "docs/specs/RIPR-SPEC-0195-repair-attempt-store-identity.md"
 tests = [
+  "crates/ripr/src/mcp/repair_manifest_root_tests.rs::durable_literal_unix_manifest_reopens_in_selected_root",
+  "crates/ripr/src/mcp/repair_manifest_root_tests.rs::durable_literal_unix_manifest_copy_refuses_slash_decoy",
   "crates/ripr/src/app/repair_attempt/store.rs::tests::default_store_is_the_repository_local_directory",
   "crates/ripr/src/app/repair_attempt/store.rs::tests::equivalent_default_spellings_share_one_identity",
   "crates/ripr/src/app/repair_attempt/store.rs::tests::explicit_store_prepares_and_reopens_without_falling_back",
@@ -11913,6 +11918,9 @@ tests = [
   "crates/ripr/src/mcp/repair_freshness_tests.rs::durable_selected_action_awaiting_and_descendant_keep_after",
   "crates/ripr/src/mcp/repair_freshness_tests.rs::durable_selected_action_tampered_terminal_restarts_without_old_routes",
   "crates/ripr/src/mcp/repair_freshness_tests.rs::durable_selected_action_open_gap_unknown_head_does_not_offer_restart",
+  "crates/ripr/src/mcp/repair_root_tests.rs::durable_selected_restart_failed_preserves_literal_unix_root",
+  "crates/ripr/src/mcp/repair_root_tests.rs::durable_selected_restart_open_gap_preserves_literal_unix_root",
+  "crates/ripr/src/mcp/repair_root_tests.rs::durable_selected_awaiting_literal_unix_root_retains_after_control",
   "crates/ripr/src/mcp/server_tests.rs::delayed_durable_read_leaves_the_async_executor_and_status_available",
   "crates/ripr/src/mcp/gaps.rs::tests::evidence_document_reports_producer_repair_readiness",
   "crates/ripr/src/mcp/gaps.rs::tests::readiness_stays_fail_closed_on_missing_producer_facts",
