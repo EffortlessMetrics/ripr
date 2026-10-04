@@ -291,6 +291,18 @@ sends readers to `human-full` for full evidence, so that rerun must not lose
 the only runnable next commands. Library renders without CLI navigation omit
 the block.
 
+### Terminal safety
+
+Repository text (assertion source, test names, observed values, paths) reaches
+the human reports verbatim. Every human report printed to a terminal (`check`
+default and `--format human-full`, `explain`) passes through one final escape:
+control characters other than newline and tab, and the bidi
+formatting characters (U+061C, U+200E/F, U+202A-E, U+2066-9), print as `\u{XX}`.
+A repository therefore cannot clear the screen, retitle the window, overwrite a
+line with a bare carriage return, or reorder displayed text. The escape changes
+no classification, count or selection. Machine formats keep the raw value and
+escape it with their own encoders.
+
 ### Repo-scope warnings
 
 When a repo-scoped check format is combined with `--base` or `--diff`, the CLI
@@ -355,6 +367,8 @@ suggested write cannot fail on the same missing base.
 ## Test Mapping
 
 - `crates/ripr/src/output/human.rs::tests::bounded_human_output_caps_many_findings_and_reports_omitted_count`
+- `crates/ripr/src/output/human.rs::tests::terminal_safe_escapes_controls_and_bidi_but_keeps_lines_and_tabs`
+- `crates/ripr/tests/hostile_repos.rs::terminal_control_bytes_in_repo_text_never_reach_the_terminal`
 - `crates/ripr/src/output/human.rs::tests::bounded_human_output_does_not_select_exposed_over_non_exposed_repair`
 - `crates/ripr/src/output/human.rs::tests::bounded_human_output_reports_missing_scope_as_start_here_state`
 - `crates/ripr/src/output/human.rs::tests::start_here_prefers_a_python_finding_with_a_repair_card`

@@ -162,6 +162,15 @@ fn git(dir: &Path, args: &[&str]) -> Result<(), String> {
 /// A repository with `main` at the base commit and `feat` checked out with the
 /// change committed. `edit` rewrites the working tree between the two commits.
 fn repo(root: &Path, edit: impl FnOnce(&Path) -> Result<(), String>) -> Result<(), String> {
+    repo_with_test(root, TEST, edit)
+}
+
+/// [`repo`] with a caller-supplied `tests/t.rs` in the base commit.
+fn repo_with_test(
+    root: &Path,
+    test_source: &str,
+    edit: impl FnOnce(&Path) -> Result<(), String>,
+) -> Result<(), String> {
     let w = |rel: &str, body: &str| -> Result<(), String> {
         let path = root.join(rel);
         if let Some(parent) = path.parent() {
@@ -173,7 +182,7 @@ fn repo(root: &Path, edit: impl FnOnce(&Path) -> Result<(), String>) -> Result<(
     git(root, &["init", "-q", "-b", "main"])?;
     w("Cargo.toml", MANIFEST)?;
     w("src/lib.rs", BASE_LIB)?;
-    w("tests/t.rs", TEST)?;
+    w("tests/t.rs", test_source)?;
     git(root, &["add", "-A"])?;
     git(root, &["commit", "-q", "-m", "base"])?;
     git(root, &["checkout", "-q", "-b", "feat"])?;
@@ -618,4 +627,76 @@ fn default_base_equal_to_head_is_called_out() -> Result<(), String> {
         &ripr(&clone, &["check", "--base", "origin/main"], &[])?,
         "explicit base",
     )
+}
+
+/// Source text reaches the human reports verbatim, so a repository can carry
+/// terminal control bytes in an assertion message: ESC sequences that clear the
+/// screen or retitle the window, BEL, a bare CR that overwrites a line, and a
+/// bidi override. The human reports and `explain` must print them escaped; the
+/// machine formats must stay valid and keep the value.
+#[test]
+fn terminal_control_bytes_in_repo_text_never_reach_the_terminal() -> Result<(), String> {
+    let hostile = "\u{1b}[2J\u{1b}]0;PWNED\u{7}\r\u{202e}gnissim";
+    let test_source =
+        format!("use hx::total;\n#[test]\nfn t() {{ assert_eq!(total(1), 3, \"{hostile}\"); }}\n");
+    let scratch = Scratch::new("termctl")?;
+    let root = scratch.path.join("repo");
+    repo_with_test(&root, &test_source, change_lib)?;
+
+    let leaks = |text: &str| {
+        text.chars()
+            .any(|c| matches!(c, '\u{1b}' | '\u{7}' | '\r' | '\u{202e}'))
+    };
+    let clean = |ran: &Ran, what: &str| -> Result<(), String> {
+        assert_sane(ran, what)?;
+        if leaks(&ran.stdout) {
+            return Err(format!(
+                "{what}: terminal control bytes reached stdout\n{:?}",
+                ran.stdout
+            ));
+        }
+        Ok(())
+    };
+
+    let digest = ripr(&root, &["check", "--base", "main"], &[])?;
+    clean(&digest, "check human")?;
+    let probe = digest
+        .stdout
+        .split_whitespace()
+        .find(|word| word.starts_with("probe:"))
+        .ok_or_else(|| format!("no probe selector in\n{}", digest.stdout))?;
+
+    let full = ripr(
+        &root,
+        &["check", "--base", "main", "--format", "human-full"],
+        &[],
+    )?;
+    clean(&full, "check human-full")?;
+    let explain = ripr(
+        &root,
+        &["explain", "--root", ".", "--base", "main", probe],
+        &[],
+    )?;
+    clean(&explain, "explain")?;
+    // The text is escaped, not dropped: the reader still sees what the
+    // repository wrote, and these reports reached the assertion at all.
+    for (ran, what) in [(&full, "human-full"), (&explain, "explain")] {
+        if !ran.stdout.contains("\\u{1b}[2J") {
+            return Err(format!(
+                "{what}: expected the escaped assertion text\n{}",
+                ran.stdout
+            ));
+        }
+    }
+
+    let json = ripr(&root, &["check", "--base", "main", "--format", "json"], &[])?;
+    assert_sane(&json, "check json")?;
+    if json.stdout.chars().any(|c| c.is_control() && c != '\n') || !json.stdout.contains("\\u001b")
+    {
+        return Err(format!(
+            "json must escape control bytes and keep the value\n{:?}",
+            json.stdout
+        ));
+    }
+    Ok(())
 }

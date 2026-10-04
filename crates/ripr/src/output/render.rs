@@ -42,8 +42,12 @@ pub(crate) fn render_check_with_config_and_progress(
     progress: Option<&dyn AnalysisProgressSink>,
 ) -> Result<String, String> {
     match format {
-        OutputFormat::Human => Ok(human::render_bounded_with_config(output, config)),
-        OutputFormat::HumanFull => Ok(human::render_full_with_config(output, config)),
+        OutputFormat::Human => Ok(human::terminal_safe(human::render_bounded_with_config(
+            output, config,
+        ))),
+        OutputFormat::HumanFull => Ok(human::terminal_safe(human::render_full_with_config(
+            output, config,
+        ))),
         OutputFormat::Json => {
             // Fail-closed budget resolution (#5203): an unparseable
             // `RIPR_CHECK_FINDINGS_BYTES` aborts the run, never rendering.
@@ -230,11 +234,11 @@ pub(crate) fn render_check_with_config_and_navigation_and_progress(
     progress: Option<&dyn AnalysisProgressSink>,
 ) -> Result<String, String> {
     match format {
-        OutputFormat::Human => Ok(human::render_bounded_with_config_and_navigation(
-            output, config, drill_in,
+        OutputFormat::Human => Ok(human::terminal_safe(
+            human::render_bounded_with_config_and_navigation(output, config, drill_in),
         )),
-        OutputFormat::HumanFull => Ok(human::render_full_with_config_and_navigation(
-            output, config, drill_in,
+        OutputFormat::HumanFull => Ok(human::terminal_safe(
+            human::render_full_with_config_and_navigation(output, config, drill_in),
         )),
         _ => render_check_with_config_and_progress(output, format, config, progress),
     }

@@ -50,7 +50,7 @@ fn unanalyzed_working_tree_note(output: &CheckOutput) -> String {
 
 /// Render the bounded triage report in the default human-readable CLI format.
 pub fn render(output: &CheckOutput) -> String {
-    render_bounded_with_config(output, &RiprConfig::default())
+    terminal_safe(render_bounded_with_config(output, &RiprConfig::default()))
 }
 
 #[cfg(test)]
@@ -490,6 +490,42 @@ fn escape_terminal_display(value: &str) -> String {
     out
 }
 
+/// Make a finished human report safe to print to a terminal. Repository text
+/// (assertion source, test names, observed values) reaches the report verbatim,
+/// so a hostile repository could otherwise carry ESC/CSI/OSC sequences (clear
+/// the screen, retitle the window), BEL, a bare CR that overwrites a line, or a
+/// bidi override that reorders what the reader sees. Every control character
+/// except `\n` and `\t`, and the bidi/invisible formatting characters, renders
+/// as `\u{XX}`. Machine formats (JSON, SARIF) keep the raw value, escaped by
+/// their own encoders.
+pub(crate) fn terminal_safe(text: String) -> String {
+    if !text.chars().any(needs_terminal_escape) {
+        return text;
+    }
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        if needs_terminal_escape(ch) {
+            out.push_str(&format!("\\u{{{:02x}}}", ch as u32));
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+fn needs_terminal_escape(ch: char) -> bool {
+    match ch {
+        '\n' | '\t' => false,
+        c if c.is_control() => true,
+        // Arabic letter mark, LRM/RLM, embeddings/overrides (LRE..RLO), and
+        // isolates (LRI..PDI): they reorder text without any visible glyph.
+        '\u{61c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' => {
+            true
+        }
+        _ => false,
+    }
+}
+
 /// Emit an advisory note when every finding is no-path or unknown (zero
 /// exposed/weakly_exposed/reachable_unrevealed). See RIPR-SPEC-0090.
 ///
@@ -757,7 +793,7 @@ fn capitalize_first(s: &str) -> String {
 
 /// Render one finding section for the human-readable CLI output.
 pub fn render_finding(finding: &Finding) -> String {
-    render_finding_with_config(finding, &RiprConfig::default())
+    terminal_safe(render_finding_with_config(finding, &RiprConfig::default()))
 }
 
 /// Render one finding with the bounded context follow-up for the selected
@@ -771,7 +807,7 @@ pub(crate) fn render_finding_with_context_command(
     out.push_str(&explain::render_verdict_explanation(finding));
     out.push_str(&format!("\nNext: {context_command}\n"));
     push_powershell_variant(&mut out, "", context_command);
-    out
+    terminal_safe(out)
 }
 
 /// Follow a bash command line with its PowerShell form when PowerShell needs a
@@ -793,7 +829,7 @@ pub(crate) use sections::render_finding_with_config;
 
 #[cfg(test)]
 mod tests {
-    use super::{render, render_finding};
+    use super::{render, render_finding, terminal_safe};
     use crate::analysis::PreviewLanguageAdvisory;
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
@@ -804,6 +840,19 @@ mod tests {
         StageEvidence, StageState, Summary, SymbolId, ValueContext, ValueFact,
     };
     use std::path::PathBuf;
+
+    #[test]
+    fn terminal_safe_escapes_controls_and_bidi_but_keeps_lines_and_tabs() {
+        let hostile = "ok\u{1b}[2J\u{1b}]0;title\u{7}\r\u{202e}rev\u{2066}x\n\tkept".to_string();
+        let safe = terminal_safe(hostile);
+        assert_eq!(
+            safe,
+            "ok\\u{1b}[2J\\u{1b}]0;title\\u{07}\\u{0d}\\u{202e}rev\\u{2066}x\n\tkept"
+        );
+        // Ordinary text, including non-ASCII, is returned unchanged.
+        let plain = "café — 日本語 ✓\n  - related test tests/t.rs:3 t\n".to_string();
+        assert_eq!(terminal_safe(plain.clone()), plain);
+    }
 
     #[test]
     fn render_includes_summary_counts_and_empty_findings_message() {
