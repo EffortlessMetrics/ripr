@@ -12632,6 +12632,31 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0233"
+name = "Statically contradicted exact-value oracles keep at most weak credit"
+spec = "docs/specs/RIPR-SPEC-0233-statically-contradicted-exact-value-oracle.md"
+tests = [
+  "crates/ripr/src/analysis/test_grip_evidence/value_contradiction.rs::wrongval_assertion_of_the_mutants_value_is_contradicted",
+  "crates/ripr/src/analysis/test_grip_evidence/value_contradiction.rs::correct_boundary_literal_is_consistent",
+  "crates/ripr/src/analysis/test_grip_evidence/value_contradiction.rs::wrong_assert_ne_is_contradicted_and_correct_ne_is_consistent",
+  "crates/ripr/src/analysis/test_grip_evidence/value_contradiction.rs::owner_that_calls_another_function_is_not_evaluable",
+  "crates/ripr/src/analysis/test_grip_evidence/tests.rs::wrongval_boundary_assert_does_not_close_the_gap",
+  "crates/ripr/src/analysis/test_grip_evidence/tests.rs::correct_boundary_literal_still_closes_the_gap",
+  "crates/ripr/src/analysis/test_grip_evidence/tests.rs::non_evaluable_owner_keeps_the_prior_credit",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/test_grip_evidence/value_contradiction.rs",
+  "crates/ripr/src/analysis/test_grip_evidence.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0233-statically-contradicted-exact-value-oracle.md",
+]
+metrics = [
+  "statically_contradicted_exact_value_credit",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0229"
 name = "Match-arm selection names the unselected arm"
 spec = "docs/specs/RIPR-SPEC-0229-match-arm-selection-discriminator.md"

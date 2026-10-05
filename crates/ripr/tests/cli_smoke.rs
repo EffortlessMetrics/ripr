@@ -7406,28 +7406,36 @@ fn agent_receipt_attempt_flag_selects_one_attempt_and_refusals_name_ids()
     assert_failure(&after_a);
     let (_, manifest_a) = sole_repair_attempt(&root)?;
     assert_eq!(manifest_a["state"], "failed", "{manifest_a}");
-    // The refused after phase still published its verify document; keep it
-    // for the receipt reruns below.
-    std::fs::rename(
-        root.join("target/ripr/workflow/agent-verify.json"),
-        root.join("target/ripr/workflow/agent-verify-a.json"),
-    )?;
-
-    // With exactly one attempt for the seam — the failed one — the bare
-    // receipt refuses, and the refusal uses the serialized vocabulary the
-    // manifest and verdict carry: `failed`/`violated`, not Debug spellings.
-    let not_ready = receipt_with_attempt(&root, None, "target/ripr/workflow/agent-verify-a.json")?;
-    assert_failure(&not_ready);
-    let stderr = String::from_utf8_lossy(&not_ready.stderr);
+    // #6033: the refused after phase withdraws the shared workflow artifacts
+    // it wrote, so none of them survives beside the terminal attempt.
+    for artifact in [
+        "target/ripr/workflow/agent-verify.json",
+        "target/ripr/workflow/after.repo-exposure.json",
+        "target/ripr/workflow/analysis-outcome.json",
+    ] {
+        assert!(
+            !root.join(artifact).exists(),
+            "a refused after phase must withdraw {artifact}"
+        );
+    }
+    // The refused phase's typed stdout envelope carries the same serialized
+    // vocabulary the manifest and verdict carry — `failed`/`violated`, not
+    // Debug spellings — so the not-receipt-ready refusal is pinned in-band
+    // even though no receipt document can exist for this attempt.
+    let refusal_envelope: serde_json::Value = serde_json::from_slice(&after_a.stdout)?;
+    assert_eq!(refusal_envelope["kind"], "repair_after_failure");
+    assert_eq!(refusal_envelope["attempt_id"], attempt_a);
+    assert_eq!(refusal_envelope["attempt_state"], "failed");
+    assert_eq!(refusal_envelope["edit_cage_verdict"], "violated");
+    let envelope_error = refusal_envelope["error"]
+        .as_str()
+        .ok_or("failure envelope carries the terse error")?;
+    assert!(envelope_error.contains(&format!(
+        "repair attempt {attempt_a} is not receipt-ready: state `failed`, current true, verdict `violated`"
+    )), "the envelope must carry the serialized refusal vocabulary: {envelope_error}");
     assert!(
-        stderr.contains(&format!(
-            "repair attempt {attempt_a} is not receipt-ready: state `failed`, current true, verdict `violated`"
-        )),
-        "the receipt-ready refusal must use the serialized vocabulary:\n{stderr}"
-    );
-    assert!(
-        !stderr.contains("state Failed") && !stderr.contains("verdict Violated"),
-        "the refusal must not leak Debug spellings:\n{stderr}"
+        !envelope_error.contains("state Failed") && !envelope_error.contains("verdict Violated"),
+        "the envelope must not leak Debug spellings: {envelope_error}"
     );
 
     // Attempt B: fresh, prepared after A's committed edit, finished cleanly.
@@ -23140,5 +23148,147 @@ fn review_comments_help_survives_invalid_admission_environment()
             "{stderr}"
         );
     }
+    Ok(())
+}
+
+/// #6033: a cage-violated after phase is the one failure shape that used to
+/// emit the success-shaped movement document on the documented stdout
+/// channel (`status: advisory`, gap closed) while the attempt terminated as
+/// `failed`. With `--json`, stdout must instead be the typed
+/// `repair_after_failure` envelope naming the terminal attempt state and the
+/// cage verdict, and the shared workflow artifacts the phase wrote must be
+/// withdrawn, so `agent status` does not present them as current loop
+/// artifacts beside the terminal attempt.
+#[test]
+fn agent_repair_after_cage_violation_prints_failure_envelope_and_withdraws_shared_artifacts()
+-> Result<(), Box<dyn std::error::Error>> {
+    // The natural redirect shape from #4216: ripr output redirected into the
+    // checkout sits untracked in the tree, so the cage refuses the attempt.
+    let root = built_repair_fixture("agent-repair-cage-violated-stdout")?;
+    let packet = root.join("packet.json");
+    let before_err = root.join("before.err");
+    let before = run_repair_phase_redirected(
+        &root,
+        &["--seam-id", BOUNDARY_GAP_SEAM_ID],
+        "before",
+        &packet,
+        &before_err,
+    )?;
+    assert!(before.status.success(), "before phase failed: {before:?}");
+    let (attempt_id, _) = sole_repair_attempt(&root)?;
+    add_boundary_test(&root)?;
+    let after = run_repair_phase(&root, &["--attempt", &attempt_id], "after")?;
+    assert_failure(&after);
+    // The terminal cage failure is not a retryable refusal: exit 2, not 3.
+    assert_eq!(after.status.code(), Some(2), "{after:?}");
+
+    let stdout: serde_json::Value = serde_json::from_str(&String::from_utf8_lossy(&after.stdout))
+        .map_err(|error| {
+        format!(
+            "after-phase stdout must be one JSON document: {error}: {}",
+            String::from_utf8_lossy(&after.stdout)
+        )
+    })?;
+    assert_eq!(stdout["kind"], "repair_after_failure", "{stdout}");
+    assert_eq!(stdout["schema_version"], "0.4", "{stdout}");
+    assert_eq!(stdout["attempt_id"], attempt_id, "{stdout}");
+    assert_eq!(stdout["attempt_state"], "failed", "{stdout}");
+    assert_eq!(stdout["edit_cage_verdict"], "violated", "{stdout}");
+    assert!(
+        stdout["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("not receipt-ready")),
+        "the envelope carries the terse final error: {stdout}"
+    );
+    assert!(
+        stdout.get("verify").is_none() && stdout.get("changed_seams").is_none(),
+        "no success-shaped movement document beside a terminal attempt: {stdout}"
+    );
+
+    // The artifacts this phase wrote are withdrawn; the before phase's
+    // retained projection is not this phase's to clean.
+    assert!(
+        !root
+            .join("target/ripr/workflow/after.repo-exposure.json")
+            .exists(),
+        "a refused after phase must not leave a fresh after snapshot as a current loop artifact"
+    );
+    assert!(
+        !root.join("target/ripr/workflow/agent-verify.json").exists(),
+        "a refused after phase must not leave a fresh verify document as a current loop artifact"
+    );
+    assert!(
+        !root
+            .join("target/ripr/workflow/analysis-outcome.json")
+            .exists(),
+        "a refused after phase must not leave a fresh analysis outcome as a current loop artifact"
+    );
+    assert!(
+        root.join("target/ripr/workflow/before.repo-exposure.json")
+            .exists(),
+        "the before phase's own artifact stays"
+    );
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+/// #6033 review: a cage-refused after phase must not leave a success-shaped
+/// projection of the refused attempt in place of a previous attempt's
+/// artifacts either. When all three shared workflow paths already exist
+/// (preseeded here with sentinel bytes), the phase renames their bytes
+/// aside, and a terminal cage failure restores exactly those original
+/// bytes while withdrawing the phase's fresh artifacts.
+#[test]
+fn agent_repair_after_cage_violation_restores_preexisting_shared_artifacts()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = built_repair_fixture("agent-repair-cage-violated-preseeded")?;
+    let packet = root.join("packet.json");
+    let before_err = root.join("before.err");
+    let before = run_repair_phase_redirected(
+        &root,
+        &["--seam-id", BOUNDARY_GAP_SEAM_ID],
+        "before",
+        &packet,
+        &before_err,
+    )?;
+    assert!(before.status.success(), "before phase failed: {before:?}");
+    let (attempt_id, _) = sole_repair_attempt(&root)?;
+    add_boundary_test(&root)?;
+
+    // Preseed all three shared paths the way an earlier loop's projections
+    // would have left them.
+    let preseeded = [
+        (
+            "target/ripr/workflow/after.repo-exposure.json",
+            "{\"stale\":\"after\"}",
+        ),
+        (
+            "target/ripr/workflow/agent-verify.json",
+            "{\"stale\":\"verify\"}",
+        ),
+        (
+            "target/ripr/workflow/analysis-outcome.json",
+            "{\"stale\":\"analysis-outcome\"}",
+        ),
+    ];
+    for (relative, contents) in preseeded {
+        std::fs::create_dir_all(root.join("target/ripr/workflow"))?;
+        std::fs::write(root.join(relative), contents)?;
+    }
+
+    let after = run_repair_phase(&root, &["--attempt", &attempt_id], "after")?;
+    assert_failure(&after);
+    assert_eq!(after.status.code(), Some(2), "{after:?}");
+
+    // The pre-attempt bytes are restored verbatim; the refused attempt's
+    // fresh projection is gone.
+    for (relative, contents) in preseeded {
+        let restored = std::fs::read_to_string(root.join(relative))?;
+        assert_eq!(
+            restored, contents,
+            "{relative} must carry the pre-attempt bytes after the refusal"
+        );
+    }
+    std::fs::remove_dir_all(root)?;
     Ok(())
 }

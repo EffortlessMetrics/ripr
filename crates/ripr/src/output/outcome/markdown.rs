@@ -11,7 +11,9 @@ pub(crate) fn render_targeted_test_outcome_md(report: &TargetedTestOutcomeReport
     out.push_str("Status: advisory\n\n");
     out.push_str("Inputs:\n");
     out.push_str(&format!("- before: {}\n", code_span(&report.before_path)));
-    out.push_str(&format!("- after: {}\n\n", code_span(&report.after_path)));
+    out.push_str(&format!("- after: {}\n", code_span(&report.after_path)));
+    out.push_str(&repository_heads_line(report));
+    out.push('\n');
 
     out.push_str("## Summary\n\n");
     out.push_str("| Bucket | Count |\n| --- | ---: |\n");
@@ -50,6 +52,33 @@ fn count_for_class(counts: &BTreeMap<String, usize>, class: &str) -> usize {
     match counts.get(class) {
         Some(count) => *count,
         None => 0,
+    }
+}
+
+/// The Inputs head line (#6031): what repository head each snapshot
+/// reports, and what that means for attributing the movement. Matching,
+/// mismatching, and head-less pairs each get the sentence that is true of
+/// them — the markdown receipt must not leave the mismatch on stderr only.
+fn repository_heads_line(report: &TargetedTestOutcomeReport) -> String {
+    match (&report.heads.before_repository_head, &report.heads.after_repository_head) {
+        (Some(before), Some(after)) if before == after => format!(
+            "- repository heads: both snapshots report {}\n",
+            code_span(before)
+        ),
+        (Some(before), Some(after)) => format!(
+            "- repository heads: before {} / after {} — the pair spans different heads, so reported movement may include changes other than the one being measured\n",
+            code_span(before),
+            code_span(after)
+        ),
+        (Some(only), None) => format!(
+            "- repository heads: the before snapshot reports {}, the after snapshot does not carry a head SHA, so the receipt cannot confirm the pair came from the same repository\n",
+            code_span(only)
+        ),
+        (None, Some(only)) => format!(
+            "- repository heads: the after snapshot reports {}, the before snapshot does not carry a head SHA, so the receipt cannot confirm the pair came from the same repository\n",
+            code_span(only)
+        ),
+        (None, None) => "- repository heads: neither snapshot carries a head SHA, so the receipt cannot confirm the pair came from the same repository\n".to_string(),
     }
 }
 

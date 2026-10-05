@@ -90,6 +90,40 @@ pub(crate) enum RepairAttemptState {
     Failed,
 }
 
+impl RepairAttemptState {
+    /// The serialized spelling of the state, for surfaces that must use the
+    /// same vocabulary the manifest serializes (the #6033 after-phase
+    /// failure envelope). One owner beside the enum so the serde rename and
+    /// this label cannot drift.
+    pub(crate) fn as_label(&self) -> &'static str {
+        match self {
+            Self::Prepared => "prepared",
+            Self::AwaitingEdit => "awaiting_edit",
+            Self::ReadyToFinish => "ready_to_finish",
+            Self::Stale => "stale",
+            Self::Incomparable => "incomparable",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+/// The durable state a finished attempt carries for a given finish outcome.
+/// One owner beside the finish transition, so the manifest write, `agent
+/// status`, and the #6033 after-phase failure envelope cannot drift.
+pub(crate) fn repair_attempt_state_for_finish(after: &RepairAttemptAfter) -> RepairAttemptState {
+    if after.current {
+        match after.verdict.status {
+            crate::edit_cage::EditCageVerdictStatus::Compliant => RepairAttemptState::ReadyToFinish,
+            crate::edit_cage::EditCageVerdictStatus::Violated => RepairAttemptState::Failed,
+            crate::edit_cage::EditCageVerdictStatus::Incomparable => {
+                RepairAttemptState::Incomparable
+            }
+        }
+    } else {
+        RepairAttemptState::Stale
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RepairAttemptArtifact {
@@ -2215,17 +2249,7 @@ pub(crate) fn finish_repair_attempt_from(
     // This after phase reached the durable finish, so an earlier refusal no
     // longer describes the attempt's last after phase.
     manifest.last_after_refusal = None;
-    manifest.state = if after.current {
-        match after.verdict.status {
-            crate::edit_cage::EditCageVerdictStatus::Compliant => RepairAttemptState::ReadyToFinish,
-            crate::edit_cage::EditCageVerdictStatus::Violated => RepairAttemptState::Failed,
-            crate::edit_cage::EditCageVerdictStatus::Incomparable => {
-                RepairAttemptState::Incomparable
-            }
-        }
-    } else {
-        RepairAttemptState::Stale
-    };
+    manifest.state = repair_attempt_state_for_finish(&after);
     let mut bytes = serde_json::to_vec_pretty(&manifest)
         .map_err(|error| format!("serialize completed repair attempt failed: {error}"))?;
     bytes.push(b'\n');

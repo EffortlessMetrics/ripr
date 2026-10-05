@@ -1,9 +1,19 @@
 use crate::analysis::extract::mask_comments_and_strings;
 
 pub(crate) fn equality_assertion_arguments(line: &str) -> Option<Vec<String>> {
-    ["assert_eq!", "assert_ne!"]
-        .iter()
-        .find_map(|macro_name| macro_invocation_arguments(line, macro_name))
+    [
+        "assert_eq!",
+        "assert_ne!",
+        // The debug variants carry the same asserted relation in the builds
+        // the repair loop runs; the extraction boundary check would
+        // otherwise reject the macro name embedded after `debug_` and a
+        // statically wrong debug assertion would keep its strong credit
+        // (#6701 review).
+        "debug_assert_eq!",
+        "debug_assert_ne!",
+    ]
+    .iter()
+    .find_map(|macro_name| macro_invocation_arguments(line, macro_name))
 }
 
 /// The semantic operands of known assertion macros, with their macro shape

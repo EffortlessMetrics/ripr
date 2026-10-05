@@ -123,6 +123,10 @@ struct TargetedOutcomeEvidenceDelta<'a> {
 pub(crate) struct TargetedTestOutcomeReport {
     before_path: String,
     after_path: String,
+    /// The repository head each compared snapshot reports, when it carries
+    /// one (#6031). A head-carrying pair that disagrees renders the
+    /// mismatch in the receipt itself instead of leaving it on stderr only.
+    heads: OutcomeHeadIdentity,
     before_counts: BTreeMap<String, usize>,
     after_counts: BTreeMap<String, usize>,
     moved: Vec<TargetedTestOutcomeMovement>,
@@ -130,6 +134,35 @@ pub(crate) struct TargetedTestOutcomeReport {
     regressed: Vec<TargetedTestOutcomeMovement>,
     new: Vec<TargetedTestOutcomeSeam>,
     removed: Vec<TargetedTestOutcomeSeam>,
+}
+
+/// The repository-head identity of the compared snapshot pair, as the
+/// artifacts themselves report it (`artifact.repository.head`).
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct OutcomeHeadIdentity {
+    pub(crate) before_repository_head: Option<String>,
+    pub(crate) after_repository_head: Option<String>,
+}
+
+impl OutcomeHeadIdentity {
+    /// `Some(false)` is the cross-head pair: both artifacts carry a full
+    /// head SHA and they differ, so reported movement may include changes
+    /// other than the one being measured. `None` means at least one
+    /// artifact carries no head (the `ripr pilot` snapshot shape), so the
+    /// comparison cannot confirm same-repository provenance either way.
+    pub(crate) fn head_match(&self) -> Option<bool> {
+        match (&self.before_repository_head, &self.after_repository_head) {
+            (Some(before), Some(after)) => Some(before == after),
+            _ => None,
+        }
+    }
+
+    fn from_snapshots(before_json: &str, after_json: &str) -> Self {
+        Self {
+            before_repository_head: snapshot_repository_head(before_json),
+            after_repository_head: snapshot_repository_head(after_json),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -195,9 +228,10 @@ pub(crate) fn targeted_test_outcome_report_from_json(
     before_path: String,
     after_path: String,
 ) -> Result<TargetedTestOutcomeReport, String> {
+    let heads = OutcomeHeadIdentity::from_snapshots(before_json, after_json);
     let before = parse_repo_exposure_static_seams(before_json)?;
     let after = parse_repo_exposure_static_seams(after_json)?;
-    build_targeted_test_outcome_report(&before, &after, before_path, after_path)
+    build_targeted_test_outcome_report(&before, &after, before_path, after_path, heads)
 }
 
 /// Compare explicit static before evidence with current targeted-rerun facts.
@@ -523,6 +557,7 @@ fn build_targeted_test_outcome_report(
     after: &[StaticSeamRecord],
     before_path: String,
     after_path: String,
+    heads: OutcomeHeadIdentity,
 ) -> Result<TargetedTestOutcomeReport, String> {
     let before_by_id = targeted_outcome_seams_by_id(before, "before")?;
     let after_by_id = targeted_outcome_seams_by_id(after, "after")?;
@@ -559,6 +594,7 @@ fn build_targeted_test_outcome_report(
     Ok(TargetedTestOutcomeReport {
         before_path,
         after_path,
+        heads,
         before_counts: targeted_outcome_class_counts(before),
         after_counts: targeted_outcome_class_counts(after),
         moved,
@@ -1390,6 +1426,7 @@ mod tests {
             &after,
             "before.json".to_string(),
             "after.json".to_string(),
+            OutcomeHeadIdentity::default(),
         )?;
         assert_eq!(report.moved.len(), 1);
         assert_eq!(report.moved[0].seam_id, "seam-moved");
@@ -1432,6 +1469,7 @@ mod tests {
             &after,
             "target/ripr/before.json".to_string(),
             "target/ripr/after.json".to_string(),
+            OutcomeHeadIdentity::default(),
         )?;
 
         let json = render_targeted_test_outcome_json(&report)?;
@@ -1510,6 +1548,7 @@ mod tests {
             &after,
             "before.json".to_string(),
             "after.json".to_string(),
+            OutcomeHeadIdentity::default(),
         )?;
 
         let json = render_json::render_agent_verify_json_with_currentness(
@@ -2457,6 +2496,7 @@ mod tests {
             &[],
             "before.json".to_string(),
             "after.json".to_string(),
+            OutcomeHeadIdentity::default(),
         );
         assert!(matches!(result, Err(message) if message.contains("duplicate seam_id `same`")));
     }
@@ -2517,6 +2557,7 @@ mod tests {
             &after,
             "before.json".to_string(),
             "after.json".to_string(),
+            OutcomeHeadIdentity::default(),
         )?;
 
         let json = render_targeted_test_outcome_json(&report)?;
@@ -2691,5 +2732,98 @@ mod tests {
             before_content_sha256: format!("sha256:{}", "b".repeat(64)),
             after_content_sha256: format!("sha256:{}", "c".repeat(64)),
         }
+    }
+    // --- #6031: the JSON receipt carries the pair's head/repository identity
+    // and the cross-head mismatch as typed fields ---
+
+    fn snapshot_json_with_head(head: Option<&str>) -> String {
+        let head_field = match head {
+            Some(head) => format!(r#""head": "{head}""#),
+            None => r#""head": "unavailable""#.to_string(),
+        };
+        format!(
+            r#"{{ "schema_version": "0.2", "artifact": {{ "repository": {{ "root": "/w", {head_field} }} }}, "seams": [{{ "seam_id": "seam-a", "kind": "predicate_boundary", "file": "src/pricing.rs", "line": 3, "grip_class": "weakly_gripped" }}] }}"#
+        )
+    }
+
+    /// A cross-head pair (two different repositories or a stale checkout) must
+    /// name the mismatch in the receipt itself: `inputs.before_repository_head`,
+    /// `inputs.after_repository_head`, `inputs.head_match = false`, plus the
+    /// markdown head line and the reviewer-may-believe sentence. stderr alone
+    /// was the only mismatch signal before #6031.
+    #[test]
+    fn outcome_receipt_carries_head_identity_and_names_the_cross_head_mismatch()
+    -> Result<(), String> {
+        let before = "1111111111111111111111111111111111111111";
+        let after = "2222222222222222222222222222222222222222";
+        let report = targeted_test_outcome_report_from_json(
+            &snapshot_json_with_head(Some(before)),
+            &snapshot_json_with_head(Some(after)),
+            "before.json".to_string(),
+            "after.json".to_string(),
+        )?;
+        let json: Value = serde_json::from_str(&render_targeted_test_outcome_json(&report)?)
+            .map_err(|err| format!("outcome JSON should parse: {err}"))?;
+        assert_eq!(json["inputs"]["before_repository_head"], before);
+        assert_eq!(json["inputs"]["after_repository_head"], after);
+        assert_eq!(json["inputs"]["head_match"], false);
+
+        let markdown = render_targeted_test_outcome_md(&report);
+        assert!(markdown.contains(before) && markdown.contains(after));
+        assert!(
+            markdown.contains("spans different heads"),
+            "the markdown head line must state the mismatch: {markdown}"
+        );
+        assert!(
+            json["review_receipt"]["reviewer_may_believe"]
+                .as_array()
+                .is_some_and(|items| items.iter().any(|item| item.as_str().is_some_and(
+                    |text| text.contains("different repository heads")
+                        && text.contains(before)
+                        && text.contains(after)
+                ))),
+            "the reviewer-may-believe section must carry the mismatch in-band"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn outcome_receipt_reports_matching_heads_as_agreement() -> Result<(), String> {
+        let head = "2bd22c0b0718157870e2e78c9a70b9da1c9c1b21";
+        let report = targeted_test_outcome_report_from_json(
+            &snapshot_json_with_head(Some(head)),
+            &snapshot_json_with_head(Some(head)),
+            "before.json".to_string(),
+            "after.json".to_string(),
+        )?;
+        let json: Value = serde_json::from_str(&render_targeted_test_outcome_json(&report)?)
+            .map_err(|err| format!("outcome JSON should parse: {err}"))?;
+        assert_eq!(json["inputs"]["head_match"], true);
+        let markdown = render_targeted_test_outcome_md(&report);
+        assert!(
+            markdown.contains("both snapshots report"),
+            "matching heads are reported as agreement, not as a warning: {markdown}"
+        );
+        Ok(())
+    }
+
+    /// Pilot-written snapshots carry no head: the typed fields stay null and the
+    /// receipt says it cannot confirm, never claiming a match.
+    #[test]
+    fn outcome_receipt_treats_a_headless_pair_as_unconfirmed() -> Result<(), String> {
+        let report = targeted_test_outcome_report_from_json(
+            &snapshot_json_with_head(None),
+            &snapshot_json_with_head(None),
+            "before.json".to_string(),
+            "after.json".to_string(),
+        )?;
+        let json: Value = serde_json::from_str(&render_targeted_test_outcome_json(&report)?)
+            .map_err(|err| format!("outcome JSON should parse: {err}"))?;
+        assert!(json["inputs"]["before_repository_head"].is_null());
+        assert!(json["inputs"]["after_repository_head"].is_null());
+        assert!(json["inputs"]["head_match"].is_null());
+        let markdown = render_targeted_test_outcome_md(&report);
+        assert!(markdown.contains("neither snapshot carries a head SHA"));
+        Ok(())
     }
 }
