@@ -2211,12 +2211,27 @@ pub(in crate::analysis) fn method_call_resolves_to_impl_type(
         return false;
     }
     let masked_body = mask_comments_and_strings(&test.body);
-    if text_resolves_method_to_type(&masked_body, method, impl_type, &masked_body) {
+    method_call_resolves_to_impl_type_in(test, &masked_body, method, impl_type)
+}
+
+/// [`method_call_resolves_to_impl_type`] with the test body already masked
+/// by `mask_comments_and_strings`, for callers that ask about one test many
+/// times.
+pub(in crate::analysis) fn method_call_resolves_to_impl_type_in(
+    test: &TestSummary,
+    masked_body: &str,
+    method: &str,
+    impl_type: &str,
+) -> bool {
+    if method.is_empty() || impl_type.is_empty() {
+        return false;
+    }
+    if text_resolves_method_to_type(masked_body, method, impl_type, masked_body) {
         return true;
     }
     test.calls.iter().any(|call| {
         call.name == method
-            && text_resolves_method_to_type(&call.text, method, impl_type, &masked_body)
+            && text_resolves_method_to_type(&call.text, method, impl_type, masked_body)
     })
 }
 
