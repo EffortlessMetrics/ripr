@@ -1902,9 +1902,8 @@ fn unknown_command_typo_reports_nearest_known_command() {
 }
 
 #[test]
-fn check_human_output_reports_sample_findings() {
-    let isolated = owned_cli_sample_subject("check_human_output_reports_sample_findings")
-        .expect("create owned CLI sample fixture");
+fn check_human_output_reports_sample_findings() -> Result<(), String> {
+    let isolated = owned_cli_sample_subject("check_human_output_reports_sample_findings")?;
     let root = isolated.path().display().to_string();
     let diff = isolated
         .path()
@@ -1926,13 +1925,14 @@ fn check_human_output_reports_sample_findings() {
     assert!(stdout.contains("Next step:"));
     assert!(stdout.contains("lower-priority finding(s) omitted"));
     assert!(stdout.contains("--format human-full"));
+    Ok(())
 }
 
 #[test]
-fn check_no_unchanged_tests_restates_the_recall_tradeoff_on_stderr() {
-    let isolated =
-        owned_cli_sample_subject("check_no_unchanged_tests_restates_the_recall_tradeoff_on_stderr")
-            .expect("create owned CLI sample fixture");
+fn check_no_unchanged_tests_restates_the_recall_tradeoff_on_stderr() -> Result<(), String> {
+    let isolated = owned_cli_sample_subject(
+        "check_no_unchanged_tests_restates_the_recall_tradeoff_on_stderr",
+    )?;
     // #4946(a): the flag's recall/cost tradeoff is restated on stderr where
     // the user waits, and only while the flag is actually active.
     let root = isolated.path().display().to_string();
@@ -1968,6 +1968,7 @@ fn check_no_unchanged_tests_restates_the_recall_tradeoff_on_stderr() {
         !stderr.contains("unchanged tests are excluded from the index"),
         "the default run must not claim the flag is active; got:\n{stderr}"
     );
+    Ok(())
 }
 
 /// Small single-crate fixture with `include_unchanged_tests = false` set in
@@ -2372,9 +2373,8 @@ fn check_navigation_replays_explicit_draft_over_configured_ready() -> Result<(),
 }
 
 #[test]
-fn check_json_output_has_stable_contract_fields() {
-    let isolated = owned_cli_sample_subject("check_json_output_has_stable_contract_fields")
-        .expect("create owned CLI sample fixture");
+fn check_json_output_has_stable_contract_fields() -> Result<(), String> {
+    let isolated = owned_cli_sample_subject("check_json_output_has_stable_contract_fields")?;
     let root = isolated.path().display().to_string();
     let diff = isolated
         .path()
@@ -2395,6 +2395,7 @@ fn check_json_output_has_stable_contract_fields() {
     assert!(stdout.contains(r#""oracle_kind""#));
     assert!(stdout.contains(r#""recommended_next_step""#));
     assert!(stdout.contains(r#""suggested_next_action""#));
+    Ok(())
 }
 
 // ── `check --suppression-policy` (#1441) ──
@@ -2588,9 +2589,8 @@ fn check_github_over_broad_suppression_policy_emits_denominator_notice() -> Resu
 }
 
 #[test]
-fn check_suppression_policy_missing_file_fails_closed() {
-    let isolated = owned_cli_sample_subject("check_suppression_policy_missing_file_fails_closed")
-        .expect("create owned CLI sample fixture");
+fn check_suppression_policy_missing_file_fails_closed() -> Result<(), String> {
+    let isolated = owned_cli_sample_subject("check_suppression_policy_missing_file_fails_closed")?;
     let root = isolated.path().display().to_string();
     let diff = isolated
         .path()
@@ -2615,6 +2615,7 @@ fn check_suppression_policy_missing_file_fails_closed() {
         stderr.contains("failed to read suppression policy"),
         "stderr: {stderr}"
     );
+    Ok(())
 }
 
 #[test]
@@ -2974,10 +2975,9 @@ fn check_json_diff_scope_oversized_emits_limited_artifact() -> Result<(), String
 /// #5448: an invalid `RIPR_DIFF_DEPENDENT_SCOPE` names itself even when the
 /// diff has no dependent packages to narrow.
 #[test]
-fn check_rejects_an_invalid_dependent_scope_without_dependents() {
+fn check_rejects_an_invalid_dependent_scope_without_dependents() -> Result<(), String> {
     let isolated =
-        owned_cli_sample_subject("check_rejects_an_invalid_dependent_scope_without_dependents")
-            .expect("create owned CLI sample fixture");
+        owned_cli_sample_subject("check_rejects_an_invalid_dependent_scope_without_dependents")?;
     let root = isolated.path().display().to_string();
     let diff = isolated
         .path()
@@ -2996,6 +2996,7 @@ fn check_rejects_an_invalid_dependent_scope_without_dependents() {
         ),
         "stderr should name the invalid override: {stderr}"
     );
+    Ok(())
 }
 
 #[test]
@@ -9650,9 +9651,8 @@ fn agent_receipt_keeps_unmoved_target_unchanged_when_another_seam_moves()
 }
 
 #[test]
-fn check_badge_json_output_has_native_badge_shape() {
-    let isolated = owned_cli_sample_subject("check_badge_json_output_has_native_badge_shape")
-        .expect("create owned CLI sample fixture");
+fn check_badge_json_output_has_native_badge_shape() -> Result<(), String> {
+    let isolated = owned_cli_sample_subject("check_badge_json_output_has_native_badge_shape")?;
     let root = isolated.path().display().to_string();
     let diff = isolated
         .path()
@@ -9689,13 +9689,13 @@ fn check_badge_json_output_has_native_badge_shape() {
     assert!(stdout.contains(r#""message": "4""#));
     assert!(stdout.contains(r#""status": "warn""#));
     assert!(stdout.contains(r#""color": "orange""#));
+    Ok(())
 }
 
 #[test]
-fn check_badge_shields_output_has_exactly_four_top_level_fields() {
+fn check_badge_shields_output_has_exactly_four_top_level_fields() -> Result<(), String> {
     let isolated =
-        owned_cli_sample_subject("check_badge_shields_output_has_exactly_four_top_level_fields")
-            .expect("create owned CLI sample fixture");
+        owned_cli_sample_subject("check_badge_shields_output_has_exactly_four_top_level_fields")?;
     let root = isolated.path().display().to_string();
     let diff = isolated
         .path()
@@ -9738,6 +9738,7 @@ fn check_badge_shields_output_has_exactly_four_top_level_fields() {
     assert!(!stdout.contains('/') || !stdout.contains(r#""message""#));
     assert!(!stdout.to_ascii_lowercase().contains("coverage"));
     assert!(!stdout.to_ascii_lowercase().contains("uncovered"));
+    Ok(())
 }
 
 fn fixture_test_efficiency_report() -> &'static str {
@@ -15559,10 +15560,9 @@ index 0000000..1111111 100644
 }
 
 #[test]
-fn check_badge_command_exits_zero_even_with_nonzero_count() {
+fn check_badge_command_exits_zero_even_with_nonzero_count() -> Result<(), String> {
     let isolated =
-        owned_cli_sample_subject("check_badge_command_exits_zero_even_with_nonzero_count")
-            .expect("create owned CLI sample fixture");
+        owned_cli_sample_subject("check_badge_command_exits_zero_even_with_nonzero_count")?;
     // Default policy is fail_on_nonzero=false. The sample diff has gaps but
     // the command must still exit successfully so CI artifact pipelines work.
     let root = isolated.path().display().to_string();
@@ -15581,12 +15581,12 @@ fn check_badge_command_exits_zero_even_with_nonzero_count() {
         "badge-json",
     ]);
     assert_success(&output);
+    Ok(())
 }
 
 #[test]
-fn explain_returns_targeted_probe_details() {
-    let isolated = owned_cli_sample_subject("explain_returns_targeted_probe_details")
-        .expect("create owned CLI sample fixture");
+fn explain_returns_targeted_probe_details() -> Result<(), String> {
+    let isolated = owned_cli_sample_subject("explain_returns_targeted_probe_details")?;
     let root = isolated.path().display().to_string();
     let diff = isolated
         .path()
@@ -15608,13 +15608,13 @@ fn explain_returns_targeted_probe_details() {
     assert!(stdout.contains("delta:  value"));
     assert!(stdout.contains("Static exposure\n  weakly_exposed"));
     assert!(stdout.contains("No exact error variant discriminator was detected"));
+    Ok(())
 }
 
 #[test]
-fn context_json_returns_probe_and_discriminator_guidance() {
+fn context_json_returns_probe_and_discriminator_guidance() -> Result<(), String> {
     let isolated =
-        owned_cli_sample_subject("context_json_returns_probe_and_discriminator_guidance")
-            .expect("create owned CLI sample fixture");
+        owned_cli_sample_subject("context_json_returns_probe_and_discriminator_guidance")?;
     let root = isolated.path().display().to_string();
     let diff = isolated
         .path()
@@ -15641,12 +15641,12 @@ fn context_json_returns_probe_and_discriminator_guidance() {
     );
     assert!(stdout.contains(r#""discriminate": "weak""#));
     assert!(stdout.contains(r#""missing""#));
+    Ok(())
 }
 
 #[test]
-fn explain_unknown_probe_fails_with_clear_error() {
-    let isolated = owned_cli_sample_subject("explain_unknown_probe_fails_with_clear_error")
-        .expect("create owned CLI sample fixture");
+fn explain_unknown_probe_fails_with_clear_error() -> Result<(), String> {
+    let isolated = owned_cli_sample_subject("explain_unknown_probe_fails_with_clear_error")?;
     let root = isolated.path().display().to_string();
     let diff = isolated
         .path()
@@ -15665,6 +15665,7 @@ fn explain_unknown_probe_fails_with_clear_error() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("no finding matched"));
+    Ok(())
 }
 
 // -------- check-artifact reuse smoke (RIPR-SPEC-0140, #2107) --------
@@ -15890,9 +15891,8 @@ fn explain_from_fails_closed_on_tampered_identity() -> Result<(), String> {
 /// are supported: their base-to-worktree diff source is re-resolvable —
 /// see check_worktree_write_artifact_then_explain_reuse_and_drift_fails_closed.)
 #[test]
-fn check_write_artifact_rejects_unsupported_run_shapes() {
-    let isolated = owned_cli_sample_subject("check_write_artifact_rejects_unsupported_run_shapes")
-        .expect("create owned CLI sample fixture");
+fn check_write_artifact_rejects_unsupported_run_shapes() -> Result<(), String> {
+    let isolated = owned_cli_sample_subject("check_write_artifact_rejects_unsupported_run_shapes")?;
     let root = isolated.path().display().to_string();
     let dir = unique_temp_workspace("check-artifact-reject");
     let artifact = dir.join("last-check.json");
@@ -15913,6 +15913,7 @@ fn check_write_artifact_rejects_unsupported_run_shapes() {
         stderr.contains("repo-scoped"),
         "repo-scope limitation must be named:\n{stderr}"
     );
+    Ok(())
 }
 
 /// `check --worktree --write-artifact` records the base-to-worktree diff
