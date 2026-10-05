@@ -991,14 +991,6 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "Validates the #3806 independent judgment packet against the frozen release-challenge selection: exact selection digest, one terminal judgment per row, two roles on limit/gap/disputed rows, and exclusive false-actionable/false-exposed labels.",
         ),
         command_entry(
-            "check-release-challenge-selection",
-            "non_mutating_check",
-            "target/ripr/reports/release-selection.md, target/ripr/reports/release-selection-floors.json, and stdout",
-            false,
-            true,
-            "Validates the frozen 0.11 release-challenge selection manifest (exact identities, digest-bound diffs, explicit scope stances) and reports acceptance-floor status without lowering unmet floors.",
-        ),
-        command_entry(
             "python-judged-panel check [--check]",
             "non_mutating_check",
             "stdout only",
@@ -1583,7 +1575,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "external_state_mutating",
             "GitHub release assets",
             true,
-            false,
+            true,
             "Source-repo release command; uploads assets only with explicit release approval.",
         ),
         command_entry(

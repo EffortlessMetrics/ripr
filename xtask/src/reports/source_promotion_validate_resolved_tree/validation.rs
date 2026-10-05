@@ -267,6 +267,12 @@ fn validate_materialized_tree(
             &logs_dir,
             &options.source_parent,
         );
+        if *command == "check-command-catalog"
+            && let Err(_error) =
+                retain_command_catalog_context(options, state, root, evidence_root, &receipt)
+        {
+            eprintln!("bounded catalog sidecar unavailable: owned diagnostic write failed");
+        }
         let passed = command_receipt_is_terminal_pass(&receipt, command);
         state.commands[index] = receipt;
         if !passed {

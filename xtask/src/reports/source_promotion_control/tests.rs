@@ -4,9 +4,13 @@ pub(crate) mod source_promotion_control_tests {
     fn live_admission_requires_native_v2_before_authority() -> Result<(), String> {
         let _guard = crate::acquire_test_cwd_read_guard();
         let fixture = admission_snapshot_fixture("live-v1-refusal")?;
-        let reason = validate_current_admission(&fixture.options).err()
+        let reason = validate_current_admission(&fixture.options)
+            .err()
             .ok_or_else(|| "live admission accepted historical v1 geometry".to_string())?;
-        require(reason.contains("requires preflight v2"), "live admission refused the wrong boundary")
+        require(
+            reason.contains("requires preflight v2"),
+            "live admission refused the wrong boundary",
+        )
     }
     // #1613: each test owns one shared CWD guard through its full invocation
     // and cleanup. Controller entry points may capture ambient repository
@@ -111,7 +115,8 @@ pub(crate) mod source_promotion_control_tests {
                     .state
                     .lock()
                     .map_err(|error| format!("inspect cwd gate: {error}"))?
-                    .waiting_writers > 0;
+                    .waiting_writers
+                    > 0;
                 if queued || entered_rx.try_recv().is_ok() {
                     break;
                 }
@@ -354,7 +359,9 @@ pub(crate) mod source_promotion_control_tests {
         })
     }
 
-    fn integration_evidence_from_admission(admission: &Value) -> Result<IntegrationEvidence, String> {
+    fn integration_evidence_from_admission(
+        admission: &Value,
+    ) -> Result<IntegrationEvidence, String> {
         let index_sha256 = json_string(admission, "integration_index_sha256")
             .ok_or_else(|| "admission fixture is missing integration index digest".to_string())?
             .to_string();
@@ -693,7 +700,11 @@ pub(crate) mod source_promotion_control_tests {
             "complete": true,
             "files": files,
         });
-        write_test_json(&root.join(PACKET_INDEX), &index, "test validation packet index")?;
+        write_test_json(
+            &root.join(PACKET_INDEX),
+            &index,
+            "test validation packet index",
+        )?;
         read_indexed_packet(
             root,
             RESOLVED_TREE_PACKET_SCHEMA,
@@ -752,12 +763,8 @@ pub(crate) mod source_promotion_control_tests {
         let index_path = root.join("integration-index.json");
         let index_bytes = write_test_json(&index_path, &index, "integration receipt index")?;
         let index_sha256 = digest_bytes(&index_bytes);
-        let evidence = validate_integration_index(
-            &index_path,
-            &index_sha256,
-            identity,
-            executable_sha256,
-        )?;
+        let evidence =
+            validate_integration_index(&index_path, &index_sha256, identity, executable_sha256)?;
         Ok((index_path, evidence))
     }
 
@@ -886,8 +893,7 @@ pub(crate) mod source_promotion_control_tests {
         )?;
 
         let cargo_lock_sha256 = file_sha256(&repo.join("Cargo.lock"), "test Cargo.lock")?;
-        let builder =
-            valid_builder_receipt(&identity, &executable_sha256, &cargo_lock_sha256);
+        let builder = valid_builder_receipt(&identity, &executable_sha256, &cargo_lock_sha256);
         let builder_packet = write_test_packet(
             &evidence_root.join("builder-packet"),
             CONTROL_PACKET_SCHEMA,
@@ -925,9 +931,7 @@ pub(crate) mod source_promotion_control_tests {
         })
     }
 
-    pub(crate) fn admission_replay_fixture(
-        label: &str,
-    ) -> Result<AdmissionReplayFixture, String> {
+    pub(crate) fn admission_replay_fixture(label: &str) -> Result<AdmissionReplayFixture, String> {
         let fixture = admission_snapshot_fixture(label)?;
         let admission_packet = fixture.repo.join("workflow-admission-packet");
         let admission = admission_success_report(&fixture.evidence);
@@ -939,8 +943,7 @@ pub(crate) mod source_promotion_control_tests {
             ADMISSION_REPORT,
             &admission,
         )?;
-        let admission_receipt_sha256 =
-            packet_file_sha256(&indexed_admission, ADMISSION_REPORT)?;
+        let admission_receipt_sha256 = packet_file_sha256(&indexed_admission, ADMISSION_REPORT)?;
         let network_policy_receipt_sha256 = fixture
             .integration
             .receipt_digests
@@ -1020,11 +1023,8 @@ pub(crate) mod source_promotion_control_tests {
             .and_then(Value::as_str)
             .ok_or_else(|| "test admission receipt is missing executable identity".to_string())?
             .to_string();
-        let (integration_index, integration) = write_test_integration_index(
-            &repo.join("integration"),
-            &identity,
-            &executable_sha256,
-        )?;
+        let (integration_index, integration) =
+            write_test_integration_index(&repo.join("integration"), &identity, &executable_sha256)?;
         replace_object_field(
             &mut admission,
             "integration_index_sha256",
@@ -1064,10 +1064,8 @@ pub(crate) mod source_promotion_control_tests {
             .map_err(|error| format!("failed to write snapshot resolution: {error}"))?;
         fs::write(&qualification_receipt, b"qualification\n")
             .map_err(|error| format!("failed to write snapshot qualification: {error}"))?;
-        let qualification_sha256 = file_sha256(
-            &qualification_receipt,
-            "snapshot qualification receipt",
-        )?;
+        let qualification_sha256 =
+            file_sha256(&qualification_receipt, "snapshot qualification receipt")?;
         let options = ConstructionOptions {
             repo: repo.to_path_buf(),
             admission_packet: admission_root,
@@ -1230,8 +1228,8 @@ pub(crate) mod source_promotion_control_tests {
                 "commands",
                 "resolved-tree receipt fixture",
             )?
-                .first_mut()
-                .ok_or_else(|| "resolved-tree commands fixture is empty".to_string())?;
+            .first_mut()
+            .ok_or_else(|| "resolved-tree commands fixture is empty".to_string())?;
             replace_object_field(
                 command,
                 "state",
@@ -1245,11 +1243,8 @@ pub(crate) mod source_promotion_control_tests {
         }
 
         let mut reordered = valid.clone();
-        let commands = required_array_field_mut(
-            &mut reordered,
-            "commands",
-            "resolved-tree receipt fixture",
-        )?;
+        let commands =
+            required_array_field_mut(&mut reordered, "commands", "resolved-tree receipt fixture")?;
         require(
             commands.len() >= 2,
             "resolved-tree commands fixture requires two entries for reorder",
@@ -1261,11 +1256,8 @@ pub(crate) mod source_promotion_control_tests {
         )?;
 
         let mut duplicate = valid;
-        let commands = required_array_field_mut(
-            &mut duplicate,
-            "commands",
-            "resolved-tree receipt fixture",
-        )?;
+        let commands =
+            required_array_field_mut(&mut duplicate, "commands", "resolved-tree receipt fixture")?;
         let first = commands
             .first()
             .cloned()
@@ -1407,8 +1399,7 @@ pub(crate) mod source_promotion_control_tests {
     }
 
     #[test]
-    fn integration_index_rejects_well_shaped_unbound_bytes_before_attempts()
-    -> Result<(), String> {
+    fn integration_index_rejects_well_shaped_unbound_bytes_before_attempts() -> Result<(), String> {
         let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let directory = test_temp_dir("integration-index-bound-digest")?;
         let identity = test_identity();
@@ -1441,8 +1432,7 @@ pub(crate) mod source_promotion_control_tests {
         fs::write(&index_path, &bytes)
             .map_err(|error| format!("failed to write integration index fixture: {error}"))?;
         let actual_digest = digest_bytes(&bytes);
-        let bound_digest =
-            "0000000000000000000000000000000000000000000000000000000000000000";
+        let bound_digest = "0000000000000000000000000000000000000000000000000000000000000000";
         require(
             actual_digest != bound_digest,
             "hand-authored integration index must differ from its caller-bound digest",
@@ -1538,11 +1528,7 @@ pub(crate) mod source_promotion_control_tests {
         )?;
 
         let mut failed = base.clone();
-        let lane = required_array_field_mut(
-            &mut failed,
-            "lanes",
-            "qualification receipt fixture",
-        )?
+        let lane = required_array_field_mut(&mut failed, "lanes", "qualification receipt fixture")?
             .first_mut()
             .ok_or_else(|| "qualification lanes fixture is empty".to_string())?;
         replace_object_field(
@@ -1571,7 +1557,8 @@ pub(crate) mod source_promotion_control_tests {
             .map_err(|error| format!("failed to serialize qualification fixture: {error}"))?;
         fs::write(&qualification_path, qualification_bytes)
             .map_err(|error| format!("failed to write qualification fixture: {error}"))?;
-        let wrong_expected_sha256 = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+        let wrong_expected_sha256 =
+            "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
         let digest_failure = read_bound_json(
             &qualification_path,
             wrong_expected_sha256,
@@ -1589,18 +1576,17 @@ pub(crate) mod source_promotion_control_tests {
             false,
         );
         require_equal(
-            rejection.get("commit_tree_attempts").and_then(Value::as_u64),
+            rejection
+                .get("commit_tree_attempts")
+                .and_then(Value::as_u64),
             Some(0),
             "substituted qualification receipt commit-tree attempts",
         )?;
         root.cleanup()?;
 
         let mut reordered = base;
-        let lanes = required_array_field_mut(
-            &mut reordered,
-            "lanes",
-            "qualification receipt fixture",
-        )?;
+        let lanes =
+            required_array_field_mut(&mut reordered, "lanes", "qualification receipt fixture")?;
         require(
             lanes.len() >= 2,
             "qualification lanes fixture requires two entries for reorder",
@@ -1661,8 +1647,7 @@ pub(crate) mod source_promotion_control_tests {
             ADMISSION_REPORT,
             &admission,
         )?;
-        let admission_receipt_sha256 =
-            packet_file_sha256(&admission_packet, ADMISSION_REPORT)?;
+        let admission_receipt_sha256 = packet_file_sha256(&admission_packet, ADMISSION_REPORT)?;
         let qualification = valid_qualification_receipt_for(
             &identity,
             &admission,
@@ -1790,10 +1775,8 @@ pub(crate) mod source_promotion_control_tests {
         let schema = fs::read_to_string(root.join("docs/OUTPUT_SCHEMA.md"))
             .map_err(|error| format!("read docs/OUTPUT_SCHEMA.md: {error}"))?
             .replace("\r\n", "\n");
-        const ADMISSION_OWNERSHIP: &str =
-            "Admission consumes the\nproducer-bound `ripr.source_promotion_integration_index.v1` schema";
-        const CONSTRUCTION_OWNERSHIP: &str =
-            "construction\nconsumes the terminal `ripr.source_promotion_tree_qualification.v1` schema";
+        const ADMISSION_OWNERSHIP: &str = "Admission consumes the\nproducer-bound `ripr.source_promotion_integration_index.v1` schema";
+        const CONSTRUCTION_OWNERSHIP: &str = "construction\nconsumes the terminal `ripr.source_promotion_tree_qualification.v1` schema";
         require(
             schema.contains(ADMISSION_OWNERSHIP),
             "OUTPUT_SCHEMA must assign the producer-bound integration index to admission",
@@ -1951,6 +1934,78 @@ pub(crate) mod source_promotion_control_tests {
             )?;
         }
         Ok(())
+    }
+
+    #[test]
+    fn validation_replay_keeps_diagnostic_sibling_outside_exact_inventory() -> Result<(), String> {
+        let _guard = crate::acquire_test_cwd_read_guard();
+        let temp = test_temp_dir("diagnostic-sibling-inventory")?;
+        let root = temp.join("validation-packet");
+        let report = valid_resolved_tree_receipt();
+        let packet = write_validation_packet_with_logs(&root, &report)?;
+        validate_validation_command_evidence(&packet, &report, false)?;
+        let original_index =
+            fs::read(root.join(PACKET_INDEX)).map_err(|error| error.to_string())?;
+        let diagnostic = b"owned optional catalog diagnostic";
+        fs::write(
+            temp.join("validation-packet.command-catalog-context.json"),
+            diagnostic,
+        )
+        .map_err(|error| error.to_string())?;
+        let reread = read_indexed_packet(
+            &root,
+            RESOLVED_TREE_PACKET_SCHEMA,
+            Some("resolved_tree_validation"),
+            Some("validated"),
+            VALIDATION_REPORT,
+        )?;
+        validate_validation_command_evidence(&reread, &report, false)?;
+        if reread.index_sha256 != packet.index_sha256 {
+            return Err("external diagnostic changed canonical packet identity".into());
+        }
+        let extra = "commands/08-check-command-catalog.report.log";
+        fs::write(root.join(extra), diagnostic).map_err(|error| error.to_string())?;
+        let mut index: Value =
+            serde_json::from_slice(&original_index).map_err(|error| error.to_string())?;
+        let files = index["files"]
+            .as_array_mut()
+            .ok_or("validation index files absent")?;
+        files.push(serde_json::json!({"path":extra,"bytes":diagnostic.len(),"sha256":digest_bytes(diagnostic)}));
+        files.sort_by(|left, right| json_string(left, "path").cmp(&json_string(right, "path")));
+        fs::write(
+            root.join(PACKET_INDEX),
+            serde_json::to_vec(&index).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        let changed = read_indexed_packet(
+            &root,
+            RESOLVED_TREE_PACKET_SCHEMA,
+            Some("resolved_tree_validation"),
+            Some("validated"),
+            VALIDATION_REPORT,
+        )?;
+        match validate_validation_command_evidence(&changed, &report, false) {
+            Err(reason) if reason.contains("packet inventory differs from its exact contract") => {}
+            other => {
+                return Err(format!(
+                    "strict replay accepted extra indexed diagnostic: {other:?}"
+                ));
+            }
+        }
+        fs::remove_file(root.join(extra)).map_err(|error| error.to_string())?;
+        fs::write(root.join(PACKET_INDEX), &original_index).map_err(|error| error.to_string())?;
+        let restored = read_indexed_packet(
+            &root,
+            RESOLVED_TREE_PACKET_SCHEMA,
+            Some("resolved_tree_validation"),
+            Some("validated"),
+            VALIDATION_REPORT,
+        )?;
+        validate_validation_command_evidence(&restored, &report, false)?;
+        if restored.index_sha256 != packet.index_sha256 {
+            return Err("restored canonical packet identity changed".into());
+        }
+        temp.cleanup()
     }
 
     #[test]
@@ -2415,11 +2470,8 @@ pub(crate) mod source_promotion_control_tests {
             "guarded push naming another target should reject",
         )?;
         require(
-            parse_guarded_push_porcelain(
-                "* malformed status\n",
-                "refs/heads/promote/0.11.0-w7",
-            )
-            .is_err(),
+            parse_guarded_push_porcelain("* malformed status\n", "refs/heads/promote/0.11.0-w7")
+                .is_err(),
             "malformed guarded-push porcelain should reject",
         )?;
         require(
@@ -2452,12 +2504,8 @@ pub(crate) mod source_promotion_control_tests {
                 .contains("target-update attribution unavailable"),
             "exit-zero malformed porcelain retains an attribution diagnostic",
         )?;
-        let non_utf8_success = classify_guarded_push_output(
-            true,
-            vec![0xff],
-            "",
-            "refs/heads/promote/0.11.0-w7",
-        );
+        let non_utf8_success =
+            classify_guarded_push_output(true, vec![0xff], "", "refs/heads/promote/0.11.0-w7");
         require_equal(
             non_utf8_success.0,
             true,
@@ -2610,23 +2658,19 @@ pub(crate) mod source_promotion_control_tests {
             },
         );
         let admission_packet = IndexedPacket {
-            index_sha256:
-                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                    .to_string(),
+            index_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .to_string(),
             files: admission_files,
         };
         let validation_packet = IndexedPacket {
-            index_sha256:
-                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-                    .to_string(),
+            index_sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                .to_string(),
             files: BTreeMap::new(),
         };
         let integration_index_sha256 =
-            "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-                .to_string();
+            "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".to_string();
         let qualification_sha256 =
-            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
-                .to_string();
+            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".to_string();
         let options = ConstructionOptions {
             repo: repo.to_path_buf(),
             admission_packet: repo.join("unused-admission"),
@@ -2804,10 +2848,18 @@ pub(crate) mod source_promotion_control_tests {
             None,
         )?;
         let (native_reason, _, native_state) = publish_candidate_ref_inner(&options, None)
-            .err().ok_or_else(|| "live publication accepted historical construction packet".to_string())?;
-        require(native_reason.contains("requires retained UTF-8 native acceptance"), "live publication refused the wrong boundary")?;
-        require(native_state.local_ref_attempts == 0 && native_state.remote_push_attempts == 0,
-            "missing native acceptance must refuse before any publication attempt")?;
+            .err()
+            .ok_or_else(|| {
+                "live publication accepted historical construction packet".to_string()
+            })?;
+        require(
+            native_reason.contains("requires retained UTF-8 native acceptance"),
+            "live publication refused the wrong boundary",
+        )?;
+        require(
+            native_state.local_ref_attempts == 0 && native_state.remote_push_attempts == 0,
+            "missing native acceptance must refuse before any publication attempt",
+        )?;
         let mismatched_local = publish_historical_candidate_ref_for_fixture(&options, None);
         require(
             mismatched_local.as_ref().is_err_and(|failure| {
@@ -2872,7 +2924,11 @@ pub(crate) mod source_promotion_control_tests {
             |repo, _remote, _reference| {
                 git_test(
                     repo,
-                    &["update-ref", SOURCE_MAIN_REF, identity.swarm_parent.as_str()],
+                    &[
+                        "update-ref",
+                        SOURCE_MAIN_REF,
+                        identity.swarm_parent.as_str(),
+                    ],
                 )?;
                 Err("injected post-push remote observation failure".to_string())
             },
@@ -2936,11 +2992,7 @@ pub(crate) mod source_promotion_control_tests {
             "post-push observation failure restores the absent local ref",
         )?;
         require_equal(
-            read_remote_ref(
-                &repo,
-                &options.source_remote_url,
-                &evidence.candidate_ref,
-            )?,
+            read_remote_ref(&repo, &options.source_remote_url, &evidence.candidate_ref)?,
             Some(join.clone()),
             "post-push observation failure leaves the attributed remote join intact",
         )?;
@@ -2967,7 +3019,11 @@ pub(crate) mod source_promotion_control_tests {
         )?;
         git_test(
             &repo,
-            &["update-ref", SOURCE_MAIN_REF, identity.source_parent.as_str()],
+            &[
+                "update-ref",
+                SOURCE_MAIN_REF,
+                identity.source_parent.as_str(),
+            ],
         )?;
         git_test(
             &repo,
@@ -3036,7 +3092,9 @@ pub(crate) mod source_promotion_control_tests {
             "rollback observation failure must remain explicit in the rejection reason",
         )?;
         require_equal(
-            unavailable_rollback_observation.2.local_ref_rollback_succeeded,
+            unavailable_rollback_observation
+                .2
+                .local_ref_rollback_succeeded,
             Some(true),
             "rollback update success remains distinct from observation availability",
         )?;
@@ -3228,7 +3286,9 @@ pub(crate) mod source_promotion_control_tests {
             "expected_state_guard_passed",
         ] {
             require(
-                malformed_success_report.get(field).is_some_and(Value::is_null),
+                malformed_success_report
+                    .get(field)
+                    .is_some_and(Value::is_null),
                 format!("exit-zero malformed porcelain receipt {field} must be explicit null"),
             )?;
         }
@@ -3398,12 +3458,7 @@ pub(crate) mod source_promotion_control_tests {
             Some(join.clone()),
             "unavailable local observation still reconciles the exact remote join",
         )?;
-        update_local_ref(
-            &repo,
-            &evidence.candidate_ref,
-            None,
-            Some(join.as_str()),
-        )?;
+        update_local_ref(&repo, &evidence.candidate_ref, None, Some(join.as_str()))?;
         git_test(
             &repo,
             &["push", "origin", &format!(":{}", evidence.candidate_ref)],
@@ -3895,14 +3950,8 @@ pub(crate) mod source_promotion_control_tests {
         ] {
             let out = git_dir.join(relative);
             require(
-                reserve_control_packet_output_protected(
-                    &repo,
-                    &out,
-                    &[],
-                    "test_control",
-                    &context,
-                )
-                .is_err(),
+                reserve_control_packet_output_protected(&repo, &out, &[], "test_control", &context)
+                    .is_err(),
                 "Git-administrative output must reject before reservation",
             )?;
             require(
@@ -3992,10 +4041,7 @@ pub(crate) mod source_promotion_control_tests {
             &valid_resolved_tree_receipt(),
         )?;
         let admission_out = validation_root.join("admission-output");
-        let admission_roots = [(
-            validation_root.as_path(),
-            "resolved-tree validation packet",
-        )];
+        let admission_roots = [(validation_root.as_path(), "resolved-tree validation packet")];
         require(
             reserve_control_packet_output_protected(
                 &repo,
@@ -4007,7 +4053,10 @@ pub(crate) mod source_promotion_control_tests {
             .is_err(),
             "admission output nested in a consumed packet must reject",
         )?;
-        require(!admission_out.exists(), "admission rejection creates nothing")?;
+        require(
+            !admission_out.exists(),
+            "admission rejection creates nothing",
+        )?;
         read_indexed_packet(
             &validation_root,
             RESOLVED_TREE_PACKET_SCHEMA,
@@ -4026,10 +4075,7 @@ pub(crate) mod source_promotion_control_tests {
             &valid_admission_receipt(&identity),
         )?;
         let construction_out = admission_root.join("construction-output");
-        let construction_roots = [(
-            admission_root.as_path(),
-            "resolved-tree admission packet",
-        )];
+        let construction_roots = [(admission_root.as_path(), "resolved-tree admission packet")];
         require(
             reserve_control_packet_output_protected(
                 &repo,
@@ -4206,7 +4252,13 @@ pub(crate) mod source_promotion_control_tests {
             let alias_text = alias.to_string_lossy().into_owned();
             let real_text = real.to_string_lossy().into_owned();
             let output = Command::new("cmd")
-                .args(["/c", "mklink", "/J", alias_text.as_str(), real_text.as_str()])
+                .args([
+                    "/c",
+                    "mklink",
+                    "/J",
+                    alias_text.as_str(),
+                    real_text.as_str(),
+                ])
                 .output()
                 .map_err(|error| format!("failed to start junction fixture command: {error}"))?;
             require(

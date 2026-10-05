@@ -1061,6 +1061,885 @@ fn initial_file_policy_diagnostics_are_bounded_and_exactly_scoped() -> Result<()
     result.and(cleanup)
 }
 
+// This is failure-only context, never an admission validator or a passed-state predicate.
+const INITIAL_REQUIRED_COMMANDS: [&str; 13] = [
+    "check-network-policy",
+    "check-process-policy",
+    "check-workflows",
+    "check-file-policy",
+    "check-dependencies",
+    "check-generated-clean",
+    "check-executable-files",
+    "check-command-catalog",
+    "check-spec-format",
+    "check-traceability",
+    "check-doc-artifacts",
+    "check-public-api",
+    "check-architecture",
+];
+const INITIAL_FIXTURE: &str =
+    "workspace/synthetic-fixture/fixture-repository/.git/source-promotion-admission-fixture";
+
+fn initial_diagnostic_path(root: &Path, relative: &str) -> Result<PathBuf, String> {
+    let root_metadata = fs::symlink_metadata(root).map_err(|_error| "owned root unavailable")?;
+    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+        return Err("unexpected owned diagnostic root type".into());
+    }
+    let mut path = root.to_path_buf();
+    let components = Path::new(relative).components().collect::<Vec<_>>();
+    for (index, component) in components.iter().enumerate() {
+        let std::path::Component::Normal(part) = component else {
+            return Err("diagnostic path is not an owned relative path".into());
+        };
+        path.push(part);
+        let metadata =
+            fs::symlink_metadata(&path).map_err(|_error| "owned diagnostic unavailable")?;
+        if metadata.file_type().is_symlink()
+            || (index + 1 < components.len() && !metadata.is_dir())
+            || (index + 1 == components.len() && !metadata.is_file())
+        {
+            return Err("unexpected owned diagnostic path type".into());
+        }
+    }
+    let canonical = path
+        .canonicalize()
+        .map_err(|_error| "diagnostic canonical path unavailable")?;
+    let owner = root
+        .canonicalize()
+        .map_err(|_error| "owned root canonical path unavailable")?;
+    if !canonical.starts_with(owner) {
+        return Err("diagnostic escaped its owned root".into());
+    }
+    Ok(path)
+}
+
+fn initial_diagnostic_bytes(root: &Path, relative: &str, cap: usize) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    let path = initial_diagnostic_path(root, relative)?;
+    let file = fs::File::open(path).map_err(|_error| "owned diagnostic open failed")?;
+    let mut bytes = Vec::with_capacity(cap + 1);
+    file.take((cap + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|_error| "owned diagnostic read failed")?;
+    if bytes.len() > cap {
+        return Err("owned diagnostic input byte ceiling exceeded".into());
+    }
+    Ok(bytes)
+}
+
+fn initial_diagnostic_text(bytes: &[u8], cap: usize) -> String {
+    let mut text = String::from_utf8_lossy(bytes).into_owned();
+    let mut end = text.len().min(cap);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text.truncate(end);
+    text
+}
+
+fn initial_diagnostic_member<'a>(index: &'a Value, name: &str) -> Result<&'a Value, String> {
+    let files = index["files"]
+        .as_array()
+        .ok_or("packet index files unavailable")?;
+    if files.len() > 28 {
+        return Err("packet index exceeds fixed command packet".into());
+    }
+    let mut matches = files
+        .iter()
+        .filter(|entry| entry["path"].as_str() == Some(name));
+    let entry = matches
+        .next()
+        .ok_or("indexed diagnostic member unavailable")?;
+    if matches.next().is_some() {
+        return Err("duplicate indexed diagnostic member".into());
+    }
+    Ok(entry)
+}
+
+fn initial_diagnostic_stream(
+    root: &Path,
+    relative: &str,
+    receipt: &Value,
+    stream: &str,
+    member: &Value,
+) -> Result<String, String> {
+    use std::io::{Read, Seek, SeekFrom};
+    const LIMIT: usize = 8 * 1024;
+    const CAP: u64 = 2 * 1024 * 1024;
+    let bytes_key = format!("{stream}_bytes");
+    let hash_key = format!("{stream}_sha256");
+    let expected = receipt[&bytes_key]
+        .as_u64()
+        .ok_or("stream byte identity unavailable")?;
+    let digest = receipt[&hash_key]
+        .as_str()
+        .ok_or("stream digest unavailable")?;
+    if expected > CAP
+        || member["bytes"].as_u64() != Some(expected)
+        || member["sha256"].as_str() != Some(digest)
+    {
+        return Err("stream receipt/index identity mismatch".into());
+    }
+    let path = initial_diagnostic_path(root, relative)?;
+    let mut file = fs::File::open(&path).map_err(|_error| "stream open failed")?;
+    let before = file
+        .metadata()
+        .map_err(|_error| "stream metadata unavailable")?;
+    if before.len() != expected {
+        return Err("stream size changed".into());
+    }
+    let mut hash = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    let mut read_bytes = 0u64;
+    while read_bytes < expected {
+        let remaining = usize::try_from((expected - read_bytes).min(buffer.len() as u64))
+            .map_err(|_error| "stream remaining length overflow")?;
+        let count = file
+            .read(&mut buffer[..remaining])
+            .map_err(|_error| "stream hash read failed")?;
+        if count == 0 {
+            return Err("stream ended before its receipt extent".into());
+        }
+        hash.update(&buffer[..count]);
+        read_bytes += count as u64;
+    }
+    let mut growth = [0u8; 1];
+    if file
+        .read(&mut growth)
+        .map_err(|_error| "stream growth read failed")?
+        != 0
+        || format!("{:x}", hash.finalize()) != digest
+    {
+        return Err("stream digest/extent changed".into());
+    }
+    file.seek(SeekFrom::Start(expected.saturating_sub(LIMIT as u64)))
+        .map_err(|_error| "stream tail seek failed")?;
+    let mut tail = Vec::with_capacity(LIMIT);
+    (&mut file)
+        .take(LIMIT as u64)
+        .read_to_end(&mut tail)
+        .map_err(|_error| "stream tail read failed")?;
+    let after = file
+        .metadata()
+        .map_err(|_error| "stream final metadata unavailable")?;
+    if after.len() != before.len()
+        || after.modified().ok() != before.modified().ok()
+        || initial_diagnostic_path(root, relative)? != path
+    {
+        return Err("stream changed during diagnostic read".into());
+    }
+    Ok(format!(
+        "path={relative} file_bytes={expected} sha256={digest} tail_bytes={} limit={LIMIT} \
+         truncated={} capture_truncated={} tail_sha256={:x}\n{}\n",
+        tail.len(),
+        expected > tail.len() as u64,
+        receipt[format!("{stream}_truncated")]
+            .as_bool()
+            .ok_or("stream capture flag unavailable")?,
+        Sha256::digest(&tail),
+        initial_diagnostic_text(&tail, LIMIT),
+    ))
+}
+
+fn initial_required_command_failure_output(root: &Path, catalog_only: bool) -> String {
+    const TOTAL_LIMIT: usize = 48 * 1024;
+    let read = || -> Result<String, String> {
+        let packet = format!("{INITIAL_FIXTURE}/validation-packet");
+        let report_bytes = initial_diagnostic_bytes(
+            root,
+            &format!("{packet}/resolved-tree-validation.json"),
+            128 * 1024,
+        )?;
+        let report: Value = serde_json::from_slice(&report_bytes)
+            .map_err(|_error| "validation report malformed")?;
+        let index_bytes =
+            initial_diagnostic_bytes(root, &format!("{packet}/packet-index.json"), 128 * 1024)?;
+        let index: Value =
+            serde_json::from_slice(&index_bytes).map_err(|_error| "packet index malformed")?;
+        if report["schema"] != "ripr.source_promotion_resolved_tree_validation.v1"
+            || report["tool_version"] != env!("CARGO_PKG_VERSION")
+            || !matches!(report["status"].as_str(), Some("rejected" | "validated"))
+            || index["schema"] != "ripr.source_promotion_resolved_tree_packet.v1"
+            || index["status"] != report["status"]
+            || index["complete"] != true
+        {
+            return Err("failure diagnostic packet schema/status mismatch".into());
+        }
+        let report_member = initial_diagnostic_member(&index, "resolved-tree-validation.json")?;
+        if report_member["bytes"].as_u64() != Some(report_bytes.len() as u64)
+            || report_member["sha256"].as_str()
+                != Some(format!("{:x}", Sha256::digest(&report_bytes)).as_str())
+        {
+            return Err("validation report/index identity mismatch".into());
+        }
+        let preflight_bytes = initial_diagnostic_bytes(
+            root,
+            &format!("{INITIAL_FIXTURE}/preflight.json"),
+            64 * 1024,
+        )?;
+        let resolution_bytes = initial_diagnostic_bytes(
+            root,
+            &format!("{INITIAL_FIXTURE}/resolution.json"),
+            64 * 1024,
+        )?;
+        let preflight: Value = serde_json::from_slice(&preflight_bytes)
+            .map_err(|_error| "owned preflight malformed")?;
+        let resolution: Value = serde_json::from_slice(&resolution_bytes)
+            .map_err(|_error| "owned resolution malformed")?;
+        let head = initial_diagnostic_bytes(
+            root,
+            "workspace/synthetic-fixture/fixture-repository/.git/HEAD",
+            64,
+        )?;
+        let head = std::str::from_utf8(&head)
+            .map_err(|_error| "owned HEAD malformed")?
+            .trim();
+        let source = report["source_parent"]
+            .as_str()
+            .ok_or("source identity unavailable")?;
+        let swarm = report["swarm_parent"]
+            .as_str()
+            .ok_or("swarm identity unavailable")?;
+        let tree = report["reviewed_tree"]
+            .as_str()
+            .ok_or("tree identity unavailable")?;
+        let hex = |value: &str, count: usize| {
+            value.len() == count
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        };
+        if !hex(source, 40)
+            || !hex(swarm, 40)
+            || !hex(tree, 40)
+            || source != head
+            || preflight["schema"] != "ripr.source_promotion_preflight.v1"
+            || resolution["schema"] != "ripr.source_promotion_resolution.v1"
+            || preflight["source_parent"] != source
+            || preflight["swarm_parent"] != swarm
+            || preflight
+                .pointer("/dry_merge/reviewed_resolved_tree")
+                .and_then(Value::as_str)
+                != Some(tree)
+            || resolution["source_parent"] != source
+            || resolution["swarm_parent"] != swarm
+            || resolution["reviewed_join_tree"] != tree
+            || report
+                .pointer("/materialization/reviewed_tree")
+                .and_then(Value::as_str)
+                != Some(tree)
+            || report
+                .pointer("/materialization/created")
+                .and_then(Value::as_bool)
+                != Some(true)
+            || report
+                .pointer("/trusted_checker/source_sha")
+                .and_then(Value::as_str)
+                != Some(source)
+            || !report
+                .pointer("/trusted_checker/executable_sha256")
+                .and_then(Value::as_str)
+                .is_some_and(|value| hex(value, 64))
+            || report
+                .pointer("/preflight/verified")
+                .and_then(Value::as_bool)
+                != Some(true)
+            || report
+                .pointer("/resolution_manifest/verified")
+                .and_then(Value::as_bool)
+                != Some(true)
+        {
+            return Err("owned synthetic fixture/report identity mismatch".into());
+        }
+        let preflight_hash = format!("{:x}", Sha256::digest(&preflight_bytes));
+        let resolution_hash = format!("{:x}", Sha256::digest(&resolution_bytes));
+        if report.pointer("/preflight/sha256").and_then(Value::as_str)
+            != Some(preflight_hash.as_str())
+            || resolution["preflight_sha256"] != preflight_hash
+            || report
+                .pointer("/resolution_manifest/sha256")
+                .and_then(Value::as_str)
+                != Some(resolution_hash.as_str())
+        {
+            return Err("owned input/report digest mismatch".into());
+        }
+        let catalog = report["required_command_catalog"]
+            .as_array()
+            .ok_or("required catalog unavailable")?;
+        let commands = report["commands"]
+            .as_array()
+            .ok_or("required command receipts unavailable")?;
+        if catalog.len() != INITIAL_REQUIRED_COMMANDS.len()
+            || commands.len() != catalog.len()
+            || !catalog
+                .iter()
+                .zip(INITIAL_REQUIRED_COMMANDS)
+                .all(|(value, name)| value.as_str() == Some(name))
+        {
+            return Err("required command catalog mismatch".into());
+        }
+        let mut failed = None;
+        for (position, (receipt, name)) in
+            commands.iter().zip(INITIAL_REQUIRED_COMMANDS).enumerate()
+        {
+            let role = if name == "check-command-catalog" {
+                "source_parent_trusted_checker_self_health"
+            } else {
+                "reviewed_tree_source_governance_contract"
+            };
+            if receipt["command"] != name
+                || receipt["subject_role"] != role
+                || receipt["timeout_bound_ms"] != 180_000
+            {
+                return Err("required command identity/role/bound mismatch".into());
+            }
+            match receipt["state"].as_str() {
+                Some("passed")
+                    if failed.is_none()
+                        && receipt["exit_code"] == 0
+                        && receipt["evidence_present"] == true => {}
+                Some("failed")
+                    if failed.is_none()
+                        && receipt["evidence_present"] == true
+                        && (receipt["exit_code"].is_null()
+                            || receipt["exit_code"].as_i64().is_some_and(|code| code != 0)) =>
+                {
+                    failed = Some((position, receipt, name));
+                }
+                Some("not_run")
+                    if failed.is_some()
+                        && receipt["exit_code"].is_null()
+                        && receipt["evidence_present"] == false => {}
+                _ => return Err("required command failure sequence mismatch".into()),
+            }
+        }
+        if report["status"] == "validated" && failed.is_some() {
+            return Err("failure sequence/report disposition mismatch".into());
+        }
+        if !catalog_only && failed.is_none() {
+            return Ok(format!(
+                "state=no_failed_required_command validation_status={} source={source} swarm={swarm} tree={tree} report_sha256={:x}\n",
+                report["status"]
+                    .as_str()
+                    .ok_or("validation status unavailable")?,
+                Sha256::digest(&report_bytes)
+            ));
+        }
+        let (position, receipt, name) = if catalog_only {
+            let position = INITIAL_REQUIRED_COMMANDS
+                .iter()
+                .position(|name| *name == "check-command-catalog")
+                .ok_or("fixed catalog owner unavailable")?;
+            let receipt = &commands[position];
+            if receipt["evidence_present"] != true {
+                return Err("catalog command was not reached".into());
+            }
+            (position, receipt, INITIAL_REQUIRED_COMMANDS[position])
+        } else {
+            failed.ok_or("no evidenced failed required command")?
+        };
+        let reason = if receipt["state"] == "passed" {
+            if !receipt["failure_reason"].is_null() {
+                return Err("passed catalog has failure reason".into());
+            }
+            "none (actual command passed)"
+        } else {
+            receipt["failure_reason"]
+                .as_str()
+                .filter(|value| !value.is_empty())
+                .ok_or("failed command reason unavailable")?
+        };
+        let mut context = format!(
+            "state=observed command={name} role={} source={source} swarm={swarm} tree={tree} \
+             checker_sha256={} report_sha256={:x} index_sha256={:x}\n\
+             failure_reason excerpt_limit=16384 truncated={}\n{}\n",
+            receipt["subject_role"]
+                .as_str()
+                .ok_or("command role unavailable")?,
+            report["trusted_checker"]["executable_sha256"]
+                .as_str()
+                .ok_or("checker digest unavailable")?,
+            Sha256::digest(&report_bytes),
+            Sha256::digest(&index_bytes),
+            reason.len() > 16 * 1024,
+            initial_diagnostic_text(reason.as_bytes(), 16 * 1024),
+        );
+        for stream in ["stdout", "stderr"] {
+            let relative = format!("commands/{:02}-{name}.{stream}.log", position + 1);
+            if receipt[format!("{stream}_path")].as_str() != Some(relative.as_str()) {
+                return Err("failed command log mapping mismatch".into());
+            }
+            let member = initial_diagnostic_member(&index, &relative)?;
+            context.push_str(&initial_diagnostic_stream(
+                root,
+                &format!("{packet}/{relative}"),
+                receipt,
+                stream,
+                member,
+            )?);
+        }
+        if catalog_only {
+            let relative =
+                format!("{INITIAL_FIXTURE}/validation-packet.command-catalog-context.json");
+            let bytes = initial_diagnostic_bytes(root, &relative, 64 * 1024)?;
+            let sidecar: Value =
+                serde_json::from_slice(&bytes).map_err(|_error| "catalog sidecar malformed")?;
+            let snapshot = sidecar["snapshot"]
+                .as_str()
+                .ok_or("catalog snapshot unavailable")?;
+            if sidecar["diagnostic_kind"] != "bounded_command_catalog_context_v1"
+                || sidecar["diagnostic_only"] != true
+                || sidecar["tool_version"] != env!("CARGO_PKG_VERSION")
+                || sidecar["source_parent"] != source
+                || sidecar["swarm_parent"] != swarm
+                || sidecar["reviewed_tree"] != tree
+                || sidecar["checker_sha256"] != report["trusted_checker"]["executable_sha256"]
+                || sidecar.get("command_receipt") != Some(receipt)
+                || snapshot.len() > 10 * 1024
+                || sidecar["snapshot_bytes"].as_u64() != Some(snapshot.len() as u64)
+                || sidecar["snapshot_sha256"].as_str()
+                    != Some(format!("{:x}", Sha256::digest(snapshot.as_bytes())).as_str())
+            {
+                return Err("catalog sidecar/report identity mismatch".into());
+            }
+            context.push_str(&format!(
+                "catalog_sidecar path={relative} bytes={} sha256={:x}\n{}\n",
+                bytes.len(),
+                Sha256::digest(&bytes),
+                snapshot
+            ));
+        }
+        Ok(context)
+    };
+    let context = match read() {
+        Ok(context) => context,
+        Err(reason) => format!("state=unavailable reason={reason}\n"),
+    };
+    format!(
+        "BEGIN INITIAL REQUIRED COMMAND limit={TOTAL_LIMIT} truncated={}\n{}\
+        END INITIAL REQUIRED COMMAND\n",
+        context.len() > TOTAL_LIMIT,
+        initial_diagnostic_text(context.as_bytes(), TOTAL_LIMIT)
+    )
+}
+
+fn retain_initial_required_command_context(
+    repo: &Path,
+    context: &str,
+    nonce: u128,
+) -> Result<String, String> {
+    const CAP: usize = 64 * 1024;
+    let metadata = fs::symlink_metadata(repo).map_err(|_error| "report owner unavailable")?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err("unexpected report owner type".into());
+    }
+    let mut directory = repo.to_path_buf();
+    for part in ["target", "ripr", "reports"] {
+        directory.push(part);
+        match fs::symlink_metadata(&directory) {
+            Ok(metadata) if !metadata.file_type().is_symlink() && metadata.is_dir() => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                fs::create_dir(&directory)
+                    .map_err(|_error| "owned report directory claim failed")?;
+            }
+            _ => return Err("unexpected owned report directory type".into()),
+        }
+    }
+    let canonical = directory
+        .canonicalize()
+        .map_err(|_error| "report directory identity unavailable")?;
+    if !canonical.starts_with(
+        repo.canonicalize()
+            .map_err(|_error| "report owner identity unavailable")?,
+    ) {
+        return Err("report directory escaped owner".into());
+    }
+    let name = format!(
+        "source-promotion-initial-required-command-context-{}-{nonce}.txt",
+        std::process::id()
+    );
+    let text = format!(
+        "bounded_initial_command_context bytes_limit={CAP} truncated={}\n{}\n",
+        context.len() > CAP - 256,
+        initial_diagnostic_text(context.as_bytes(), CAP - 256)
+    );
+    if text.len() > CAP {
+        return Err("report serialization ceiling exceeded".into());
+    }
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(directory.join(&name))
+        .map_err(|_error| "exclusive report file claim failed")?;
+    file.write_all(text.as_bytes())
+        .map_err(|_error| "bounded report write failed")?;
+    file.flush()
+        .map_err(|_error| "bounded report flush failed")?;
+    Ok(format!(
+        "path=target/ripr/reports/{name} bytes={} sha256={:x}",
+        text.len(),
+        Sha256::digest(text.as_bytes())
+    ))
+}
+
+#[test]
+fn initial_required_command_diagnostics_follow_owned_receipts() -> Result<(), String> {
+    let owner_source =
+        include_str!("../src/reports/source_promotion_validate_resolved_tree/core.rs");
+    let catalog_source = owner_source
+        .split("pub(crate) const REQUIRED_COMMANDS: &[&str] = &[")
+        .nth(1)
+        .and_then(|text| text.split("];").next())
+        .ok_or("required command source owner missing")?;
+    let owner_names = catalog_source
+        .lines()
+        .filter_map(|line| {
+            line.trim()
+                .strip_prefix('"')
+                .and_then(|text| text.strip_suffix("\","))
+        })
+        .collect::<Vec<_>>();
+    if owner_names != INITIAL_REQUIRED_COMMANDS {
+        return Err(
+            "diagnostic allowlist differs from actual source-owned required catalog".into(),
+        );
+    }
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "ripr-required-diagnostic-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir(&root).map_err(|error| error.to_string())?;
+    let result = (|| {
+        let evidence = root.join(INITIAL_FIXTURE);
+        let packet = evidence.join("validation-packet");
+        let logs = packet.join("commands");
+        fs::create_dir_all(&logs).map_err(|error| error.to_string())?;
+        fs::write(
+            root.join("workspace/synthetic-fixture/fixture-repository/.git/HEAD"),
+            format!("{}\n", "a".repeat(40)),
+        )
+        .map_err(|error| error.to_string())?;
+        let preflight = json!({"schema":"ripr.source_promotion_preflight.v1","source_parent":"a".repeat(40),
+            "swarm_parent":"b".repeat(40),"dry_merge":{"reviewed_resolved_tree":"c".repeat(40)}});
+        let preflight_bytes = serde_json::to_vec(&preflight).map_err(|error| error.to_string())?;
+        let preflight_hash = format!("{:x}", Sha256::digest(&preflight_bytes));
+        fs::write(evidence.join("preflight.json"), &preflight_bytes)
+            .map_err(|error| error.to_string())?;
+        let resolution = json!({"schema":"ripr.source_promotion_resolution.v1","source_parent":"a".repeat(40),
+            "swarm_parent":"b".repeat(40),"reviewed_join_tree":"c".repeat(40),"preflight_sha256":preflight_hash});
+        let resolution_bytes =
+            serde_json::to_vec(&resolution).map_err(|error| error.to_string())?;
+        fs::write(evidence.join("resolution.json"), &resolution_bytes)
+            .map_err(|error| error.to_string())?;
+        let stdout = [vec![b'x'; 16 * 1024], b"OWNED_STDOUT_TAIL".to_vec()].concat();
+        let stderr = b"OWNED_STDERR".to_vec();
+        fs::write(
+            logs.join("03-check-workflows.stderr.log"),
+            "UNRELATED_MUST_NOT_APPEAR",
+        )
+        .map_err(|error| error.to_string())?;
+        for position in [3usize, 7] {
+            let name = INITIAL_REQUIRED_COMMANDS[position];
+            let mut commands = Vec::new();
+            for (index, command) in INITIAL_REQUIRED_COMMANDS.into_iter().enumerate() {
+                let mut row = json!({"command":command,"subject_role":if command=="check-command-catalog" {
+                    "source_parent_trusted_checker_self_health"} else {"reviewed_tree_source_governance_contract"},
+                    "timeout_bound_ms":180000,"state":if index<position {"passed"} else if index==position {"failed"} else {"not_run"},
+                    "exit_code":if index<position {Some(0)} else if index==position {Some(1)} else {None},
+                    "evidence_present":index<=position});
+                if index == position {
+                    row["failure_reason"] = json!("ACTUAL_FAILED_OWNER_REPORT");
+                    for (stream, bytes) in [("stdout", &stdout), ("stderr", &stderr)] {
+                        row[format!("{stream}_path")] =
+                            json!(format!("commands/{:02}-{name}.{stream}.log", position + 1));
+                        row[format!("{stream}_bytes")] = json!(bytes.len());
+                        row[format!("{stream}_sha256")] =
+                            json!(format!("{:x}", Sha256::digest(bytes)));
+                        row[format!("{stream}_truncated")] = json!(false);
+                        fs::write(
+                            logs.join(format!("{:02}-{name}.{stream}.log", position + 1)),
+                            bytes,
+                        )
+                        .map_err(|error| error.to_string())?;
+                    }
+                }
+                commands.push(row);
+            }
+            let mut report = json!({"schema":"ripr.source_promotion_resolved_tree_validation.v1",
+                "tool_version":env!("CARGO_PKG_VERSION"),"status":"rejected","source_parent":"a".repeat(40),
+                "swarm_parent":"b".repeat(40),"reviewed_tree":"c".repeat(40),
+                "preflight":{"verified":true,"sha256":preflight_hash},
+                "resolution_manifest":{"verified":true,"sha256":format!("{:x}",Sha256::digest(&resolution_bytes))},
+                "trusted_checker":{"source_sha":"a".repeat(40),"executable_sha256":"d".repeat(64)},
+                "materialization":{"created":true,"reviewed_tree":"c".repeat(40)},
+                "required_command_catalog":INITIAL_REQUIRED_COMMANDS,"commands":commands});
+            let publish = |value: &Value| -> Result<(), String> {
+                let bytes = serde_json::to_vec(value).map_err(|error| error.to_string())?;
+                fs::write(packet.join("resolved-tree-validation.json"), &bytes)
+                    .map_err(|error| error.to_string())?;
+                let mut files = vec![
+                    json!({"path":"resolved-tree-validation.json","bytes":bytes.len(),
+                    "sha256":format!("{:x}",Sha256::digest(&bytes))}),
+                ];
+                for (stream, content) in [("stdout", &stdout), ("stderr", &stderr)] {
+                    files.push(
+                        json!({"path":format!("commands/{:02}-{name}.{stream}.log",position+1),
+                        "bytes":content.len(),"sha256":format!("{:x}",Sha256::digest(content))}),
+                    );
+                }
+                fs::write(
+                    packet.join("packet-index.json"),
+                    serde_json::to_vec(&json!({
+                    "schema":"ripr.source_promotion_resolved_tree_packet.v1","status":"rejected",
+                    "complete":true,"files":files}))
+                    .map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())
+            };
+            report["commands"][position]["failure_reason"] = json!("ACTUAL_FAILED_OWNER_REPORT");
+            publish(&report)?;
+            let observed = initial_required_command_failure_output(&root, false);
+            if !observed.contains(&format!("state=observed command={name}"))
+                || !observed.contains("OWNED_STDOUT_TAIL")
+                || !observed.contains("OWNED_STDERR")
+                || !observed.contains("tail_bytes=8192 limit=8192 truncated=true")
+                || !observed.contains("ACTUAL_FAILED_OWNER_REPORT")
+                || observed.contains("UNRELATED_MUST_NOT_APPEAR")
+                || observed.len() > 49 * 1024
+            {
+                return Err("actual failed-owner bounded context control failed".into());
+            }
+            if position == 7 {
+                let snapshot = b"catalog_snapshot bytes_limit=9216 truncated=false\npath=target/ripr/reports/command-catalog.md\nACTUAL_CATALOG_REPORT";
+                let sidecar_path = evidence.join("validation-packet.command-catalog-context.json");
+                let mut green = report.clone();
+                green["status"] = json!("validated");
+                for row in green["commands"]
+                    .as_array_mut()
+                    .ok_or("green commands absent")?
+                {
+                    row["state"] = json!("passed");
+                    row["exit_code"] = json!(0);
+                    row["evidence_present"] = json!(true);
+                    row["failure_reason"] = Value::Null;
+                }
+                let green_bytes = serde_json::to_vec(&green).map_err(|error| error.to_string())?;
+                fs::write(packet.join("resolved-tree-validation.json"), &green_bytes)
+                    .map_err(|error| error.to_string())?;
+                let green_index_bytes = initial_diagnostic_bytes(
+                    &root,
+                    &format!("{INITIAL_FIXTURE}/validation-packet/packet-index.json"),
+                    128 * 1024,
+                )?;
+                let mut green_index: Value = serde_json::from_slice(&green_index_bytes)
+                    .map_err(|error| error.to_string())?;
+                green_index["status"] = json!("validated");
+                let files = green_index["files"]
+                    .as_array_mut()
+                    .ok_or("green index absent")?;
+                files[0]["bytes"] = json!(green_bytes.len());
+                files[0]["sha256"] = json!(format!("{:x}", Sha256::digest(&green_bytes)));
+                fs::write(
+                    packet.join("packet-index.json"),
+                    serde_json::to_vec(&green_index).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+                let sidecar = json!({"diagnostic_kind":"bounded_command_catalog_context_v1","diagnostic_only":true,
+                    "tool_version":env!("CARGO_PKG_VERSION"),"source_parent":green["source_parent"],
+                    "swarm_parent":green["swarm_parent"],"reviewed_tree":green["reviewed_tree"],
+                    "checker_sha256":green["trusted_checker"]["executable_sha256"],"command_receipt":green["commands"][position],
+                    "snapshot_bytes":snapshot.len(),"snapshot_sha256":format!("{:x}",Sha256::digest(snapshot)),"snapshot":std::str::from_utf8(snapshot).map_err(|error| error.to_string())?});
+                fs::write(
+                    &sidecar_path,
+                    serde_json::to_vec(&sidecar).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+                let catalog = initial_required_command_failure_output(&root, true);
+                if !catalog.contains("state=observed command=check-command-catalog")
+                    || !catalog.contains("none (actual command passed)")
+                    || !catalog.contains("OWNED_STDOUT_TAIL")
+                    || !catalog.contains("OWNED_STDERR")
+                    || !catalog.contains("ACTUAL_CATALOG_REPORT")
+                    || catalog.len() > 49 * 1024
+                {
+                    return Err(
+                        "passed catalog streams/indexed-report retention control failed".into(),
+                    );
+                }
+                let mut late_rejected = green.clone();
+                late_rejected["status"] = json!("rejected");
+                let late_bytes =
+                    serde_json::to_vec(&late_rejected).map_err(|error| error.to_string())?;
+                fs::write(packet.join("resolved-tree-validation.json"), &late_bytes)
+                    .map_err(|error| error.to_string())?;
+                let mut late_index = green_index.clone();
+                late_index["status"] = json!("rejected");
+                late_index["files"][0]["bytes"] = json!(late_bytes.len());
+                late_index["files"][0]["sha256"] =
+                    json!(format!("{:x}", Sha256::digest(&late_bytes)));
+                fs::write(
+                    packet.join("packet-index.json"),
+                    serde_json::to_vec(&late_index).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+                let late_catalog = initial_required_command_failure_output(&root, true);
+                let late_commands = initial_required_command_failure_output(&root, false);
+                if !late_catalog.contains("none (actual command passed)")
+                    || !late_catalog.contains("ACTUAL_CATALOG_REPORT")
+                    || late_catalog.contains("state=unavailable")
+                    || !late_commands
+                        .contains("state=no_failed_required_command validation_status=rejected")
+                {
+                    return Err(
+                        "later-authority rejection lost genuinely passed catalog diagnostics"
+                            .into(),
+                    );
+                }
+                fs::write(packet.join("resolved-tree-validation.json"), &green_bytes)
+                    .map_err(|error| error.to_string())?;
+                fs::write(
+                    packet.join("packet-index.json"),
+                    serde_json::to_vec(&green_index).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+                let mut changed = sidecar.clone();
+                changed["snapshot"] = json!("CHANGED_SNAPSHOT");
+                fs::write(
+                    &sidecar_path,
+                    serde_json::to_vec(&changed).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+                if !initial_required_command_failure_output(&root, true)
+                    .contains("sidecar/report identity mismatch")
+                {
+                    return Err("catalog accepted snapshot digest drift".into());
+                }
+                publish(&report)?;
+            }
+            for (pointer, replacement) in [
+                ("/source_parent", json!("e".repeat(40))),
+                ("/reviewed_tree", json!("e".repeat(40))),
+                ("/preflight/verified", json!(false)),
+                ("/required_command_catalog/0", json!("check-forged")),
+                ("/commands/0/timeout_bound_ms", json!(180001)),
+                ("/commands/0/subject_role", json!("forged")),
+                ("/commands/0/state", json!("not_run")),
+            ] {
+                let mut changed = report.clone();
+                *changed
+                    .pointer_mut(pointer)
+                    .ok_or("negative pointer missing")? = replacement;
+                publish(&changed)?;
+                if !initial_required_command_failure_output(&root, false)
+                    .contains("state=unavailable")
+                {
+                    return Err(format!(
+                        "diagnostic accepted identity/catalog/sequence drift {pointer}"
+                    ));
+                }
+            }
+            for (field, replacement) in [
+                ("stdout_path", json!("../unowned.log")),
+                ("stdout_sha256", json!("e".repeat(64))),
+                ("stdout_bytes", json!(2 * 1024 * 1024 + 1)),
+            ] {
+                let mut changed = report.clone();
+                changed["commands"][position][field] = replacement;
+                publish(&changed)?;
+                if !initial_required_command_failure_output(&root, false)
+                    .contains("state=unavailable")
+                {
+                    return Err(format!(
+                        "diagnostic accepted log mapping/content drift {field}"
+                    ));
+                }
+            }
+            publish(&report)?;
+            let stderr_path = logs.join(format!("{:02}-{name}.stderr.log", position + 1));
+            fs::remove_file(&stderr_path).map_err(|error| error.to_string())?;
+            fs::create_dir(&stderr_path).map_err(|error| error.to_string())?;
+            if !initial_required_command_failure_output(&root, false)
+                .contains("unexpected owned diagnostic path type")
+            {
+                return Err("diagnostic accepted wrong stream type".into());
+            }
+            fs::remove_dir(&stderr_path).map_err(|error| error.to_string())?;
+            #[cfg(unix)]
+            {
+                std::os::unix::fs::symlink(
+                    logs.join("03-check-workflows.stderr.log"),
+                    &stderr_path,
+                )
+                .map_err(|error| error.to_string())?;
+                if !initial_required_command_failure_output(&root, false)
+                    .contains("unexpected owned diagnostic path type")
+                {
+                    return Err("diagnostic followed symlink stream".into());
+                }
+                fs::remove_file(&stderr_path).map_err(|error| error.to_string())?;
+            }
+            if !initial_required_command_failure_output(&root, false).contains("state=unavailable")
+            {
+                return Err("diagnostic accepted missing stream".into());
+            }
+        }
+        let oversized_context = "CONTEXT_MARKER".repeat(10 * 1024);
+        let exported = retain_initial_required_command_context(&root, &oversized_context, nonce)?;
+        if !exported
+            .contains("path=target/ripr/reports/source-promotion-initial-required-command-context-")
+            || !exported.contains("sha256=")
+        {
+            return Err("retained context identity control failed".into());
+        }
+        let export_path = root.join(format!(
+            "target/ripr/reports/source-promotion-initial-required-command-context-{}-{nonce}.txt",
+            std::process::id()
+        ));
+        let exported_bytes = fs::read(&export_path).map_err(|error| error.to_string())?;
+        if exported_bytes.len() > 64 * 1024
+            || !String::from_utf8_lossy(&exported_bytes).contains("truncated=true")
+            || !exported.contains(&format!("sha256={:x}", Sha256::digest(&exported_bytes)))
+        {
+            return Err("retained context cap/hash control failed".into());
+        }
+        match retain_initial_required_command_context(&root, "REPLACEMENT_MUST_NOT_APPEAR", nonce) {
+            Err(reason) if reason == "exclusive report file claim failed" => {}
+            other => return Err(format!("retained context lost exclusive owner: {other:?}")),
+        }
+        if fs::read(&export_path).map_err(|error| error.to_string())? != exported_bytes {
+            return Err("retained context exclusive refusal changed original bytes".into());
+        }
+        fs::remove_file(&export_path).map_err(|error| error.to_string())?;
+        fs::remove_dir_all(root.join("target")).map_err(|error| error.to_string())?;
+        fs::write(root.join("target"), "WRONG_DIRECTORY_TYPE")
+            .map_err(|error| error.to_string())?;
+        match retain_initial_required_command_context(&root, "context", nonce) {
+            Err(reason) if reason == "unexpected owned report directory type" => {}
+            other => {
+                return Err(format!(
+                    "retained context accepted wrong directory type: {other:?}"
+                ));
+            }
+        }
+        fs::write(
+            packet.join("resolved-tree-validation.json"),
+            vec![b'x'; 128 * 1024 + 1],
+        )
+        .map_err(|error| error.to_string())?;
+        if !initial_required_command_failure_output(&root, false)
+            .contains("input byte ceiling exceeded")
+        {
+            return Err("diagnostic accepted oversized report".into());
+        }
+        Ok(())
+    })();
+    result.and(fs::remove_dir_all(&root).map_err(|error| error.to_string()))
+}
+
 fn production_workflow_fixture(profile: &str) -> Result<(), String> {
     let xtask = PathBuf::from(env!("CARGO_BIN_EXE_xtask"));
     // Stage a private copy of the xtask binary beside the original. The suite
@@ -1196,13 +2075,26 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
             .output()
             .map_err(|error| format!("failed to run production J5 workflow: {error}"))?;
         if profile == "positive_synthetic" {
+            let initial_context = format!(
+                "failed_required_context={}\ncatalog_context={}",
+                initial_required_command_failure_output(&root, false),
+                initial_required_command_failure_output(&root, true)
+            );
+            match retain_initial_required_command_context(&repo_root, &initial_context, nonce) {
+                Ok(identity) => println!("retained_initial_command_context {identity}"),
+                Err(reason) => eprintln!("initial command context retention unavailable: {reason}"),
+            }
             if !output.status.success() {
                 return Err(format!(
-                    "positive workflow failed: {}; bounded_initial_file_policy_output={}",
+                    "positive workflow failed: {}; bounded_initial_required_command_output={}",
                     String::from_utf8_lossy(&output.stderr),
-                    initial_file_policy_failure_output(&root)
+                    initial_diagnostic_text(initial_context.as_bytes(), 64 * 1024)
                 ));
             }
+            println!(
+                "bounded_initial_catalog_output={}",
+                initial_required_command_failure_output(&root, true)
+            );
             let finalized = workspace.join("final-workflow-packet");
             let final_output = Command::new(&staged)
                 .current_dir(&repo_root)

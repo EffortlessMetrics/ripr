@@ -3,16 +3,216 @@ mod tests {
     use super::{
         CommandEvidence, PACKET_INDEX, PacketWorkspace, REPORT_JSON, REQUIRED_COMMANDS,
         ValidationState, command_receipt, commands_are_terminal_green, create_exclusive_temp_dir,
-        ensure_checker_source_identity, git, input_echo, packet_entries, parse_args, read_bound_json,
-        reject_parent_components, render_markdown, report_value, resolved_tree_receipt_is_admissible,
-        snapshot_refs, snapshot_worktrees, validate_exact_hex,
-        validate_resolved_tree_receipt_contract, verify_exact_commit,
-        verify_exact_tree, worktree_listing_contains_path, write_new_file,
+        ensure_checker_source_identity, git, input_echo, packet_entries, parse_args,
+        read_bound_json, reject_parent_components, render_markdown, report_value,
+        resolved_tree_receipt_is_admissible, snapshot_refs, snapshot_worktrees, validate_exact_hex,
+        validate_resolved_tree_receipt_contract, verify_exact_commit, verify_exact_tree,
+        worktree_listing_contains_path, write_new_file,
     };
     use serde_json::Value;
     use sha2::{Digest, Sha256};
     use std::fs;
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn command_catalog_failure_report_is_fixed_bounded_and_typed() -> Result<(), String> {
+        let root = TempRoot::create("catalog-failure-context")?;
+        let reports = root.path().join("target/ripr/reports");
+        fs::create_dir_all(&reports).map_err(|error| error.to_string())?;
+        let path = reports.join("command-catalog.md");
+        fs::write(
+            reports.join("unrelated.md"),
+            "UNRELATED_REPORT_MUST_NOT_APPEAR",
+        )
+        .map_err(|error| error.to_string())?;
+        fs::write(
+            &path,
+            "# check-command-catalog\n\nStatus: fail\nOWNED_CATALOG",
+        )
+        .map_err(|error| error.to_string())?;
+        let full = super::bounded_command_catalog_failure_report(root.path());
+        if !full.contains("OWNED_CATALOG")
+            || !full.contains("truncated=false")
+            || !full.contains("sha256=")
+            || full.contains("UNRELATED_REPORT_MUST_NOT_APPEAR")
+        {
+            return Err("small catalog full-output/source-identity control failed".into());
+        }
+        let mut bytes = vec![b'x'; 16 * 1024];
+        bytes[..13].copy_from_slice(b"OWNED_CATALOG");
+        fs::write(&path, &bytes).map_err(|error| error.to_string())?;
+        let bounded = super::bounded_command_catalog_failure_report(root.path());
+        if !bounded.contains("truncated=true")
+            || !bounded.contains("excerpt_bytes=8192")
+            || !bounded.contains(&format!("sha256={:x}", Sha256::digest(&bytes)))
+            || bounded.len() > 9 * 1024
+        {
+            return Err("large catalog hash/8KiB excerpt control failed".into());
+        }
+        let final_out = root
+            .path()
+            .join(".git/source-promotion-admission-fixture/validation-packet");
+        let mut packet = PacketWorkspace::create(&final_out, "sidecar-placement")?;
+        let options = super::Options {
+            repo: root.path().to_path_buf(),
+            source_parent: "a".repeat(40),
+            swarm_parent: "b".repeat(40),
+            reviewed_tree: "c".repeat(40),
+            preflight: root.path().join("preflight.json"),
+            preflight_sha256: "d".repeat(64),
+            resolution_manifest: root.path().join("resolution.json"),
+            resolution_sha256: "e".repeat(64),
+            out: final_out.clone(),
+        };
+        let state = valid_fixture_state();
+        let catalog = state
+            .commands
+            .get(7)
+            .ok_or("catalog fixture receipt absent")?;
+        super::retain_command_catalog_context(
+            &options,
+            &state,
+            root.path(),
+            packet.root(),
+            catalog,
+        )?;
+        if !packet_entries(packet.root())?.is_empty() {
+            return Err("catalog sidecar entered validation staging inventory".into());
+        }
+        let bound_staging = packet.root().to_path_buf();
+        packet.publish(&report_value(&state))?;
+        fs::create_dir(&bound_staging).map_err(|error| error.to_string())?;
+        let index_bytes =
+            fs::read(final_out.join(PACKET_INDEX)).map_err(|error| error.to_string())?;
+        let index: Value =
+            serde_json::from_slice(&index_bytes).map_err(|error| error.to_string())?;
+        let files = index["files"]
+            .as_array()
+            .ok_or("published packet files absent")?;
+        if files.len() != 2
+            || files.iter().any(|entry| {
+                entry["path"]
+                    .as_str()
+                    .is_some_and(|name| name.contains("command-catalog-context"))
+            })
+        {
+            return Err("published validation index contains diagnostic sibling".into());
+        }
+        let sidecar_bytes=fs::read(root.path().join(".git/source-promotion-admission-fixture/validation-packet.command-catalog-context.json"))
+            .map_err(|error| error.to_string())?;
+        let sidecar: Value =
+            serde_json::from_slice(&sidecar_bytes).map_err(|error| error.to_string())?;
+        if sidecar["command_receipt"] != *catalog
+            || sidecar["reviewed_tree"] != options.reviewed_tree
+        {
+            return Err("actual producer sidecar receipt/tree binding changed".into());
+        }
+        let saved_sidecar = sidecar_bytes.clone();
+        match super::retain_command_catalog_context(
+            &options,
+            &state,
+            root.path(),
+            &bound_staging,
+            catalog,
+        ) {
+            Err(reason) if reason.contains("failed to create new packet file") => {}
+            other => {
+                return Err(format!(
+                    "catalog sidecar collision did not refuse: {other:?}"
+                ));
+            }
+        }
+        let sidecar_path=root.path().join(".git/source-promotion-admission-fixture/validation-packet.command-catalog-context.json");
+        if fs::read(&sidecar_path).map_err(|error| error.to_string())? != saved_sidecar {
+            return Err("catalog sidecar collision overwrote original bytes".into());
+        }
+        let mut outside = options.clone();
+        outside.out = root.path().join("arbitrary-output");
+        match super::retain_command_catalog_context(
+            &outside,
+            &state,
+            root.path(),
+            &bound_staging,
+            catalog,
+        ) {
+            Err(reason) if reason == "diagnostic capture outside exact owned fixture output" => {}
+            other => {
+                return Err(format!(
+                    "catalog sidecar admitted unrelated output: {other:?}"
+                ));
+            }
+        }
+        let mut failed_catalog = catalog.clone();
+        failed_catalog["state"] = serde_json::json!("failed");
+        failed_catalog["exit_code"] = serde_json::json!(1);
+        failed_catalog["failure_reason"] =
+            serde_json::json!("actual catalog nonzero diagnostic control");
+        fs::remove_file(&sidecar_path).map_err(|error| error.to_string())?;
+        let fixture_parent = final_out.parent().ok_or("fixture output parent absent")?;
+        let staging = fixture_parent.join(".validation-packet.ripr-tmp-failed-control");
+        fs::create_dir(&staging).map_err(|error| error.to_string())?;
+        super::retain_command_catalog_context(
+            &options,
+            &state,
+            root.path(),
+            &staging,
+            &failed_catalog,
+        )?;
+        let failed_bytes = fs::read(&sidecar_path).map_err(|error| error.to_string())?;
+        let failed_sidecar: Value =
+            serde_json::from_slice(&failed_bytes).map_err(|error| error.to_string())?;
+        if failed_sidecar["command_receipt"] != failed_catalog || failed_bytes.len() > 64 * 1024 {
+            return Err("failed catalog sidecar bound/receipt control failed".into());
+        }
+        fs::remove_file(&sidecar_path).map_err(|error| error.to_string())?;
+        #[cfg(unix)]
+        {
+            let git_dir = root.path().join(".git");
+            let saved_git = root.path().join("owned-git-for-symlink-control");
+            fs::rename(&git_dir, &saved_git).map_err(|error| error.to_string())?;
+            std::os::unix::fs::symlink(&saved_git, &git_dir).map_err(|error| error.to_string())?;
+            match super::retain_command_catalog_context(
+                &options,
+                &state,
+                root.path(),
+                &staging,
+                catalog,
+            ) {
+                Err(reason) if reason == "unexpected owned fixture diagnostic directory type" => {}
+                other => {
+                    return Err(format!(
+                        "catalog sidecar followed Git owner symlink: {other:?}"
+                    ));
+                }
+            }
+            fs::remove_file(&git_dir).map_err(|error| error.to_string())?;
+            fs::rename(&saved_git, &git_dir).map_err(|error| error.to_string())?;
+        }
+        fs::remove_file(&path).map_err(|error| error.to_string())?;
+        fs::create_dir(&path).map_err(|error| error.to_string())?;
+        if !super::bounded_command_catalog_failure_report(root.path())
+            .contains("unexpected catalog report path type")
+        {
+            return Err("catalog wrong-type control failed".into());
+        }
+        fs::remove_dir(&path).map_err(|error| error.to_string())?;
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(reports.join("unrelated.md"), &path)
+                .map_err(|error| error.to_string())?;
+            if !super::bounded_command_catalog_failure_report(root.path())
+                .contains("unexpected catalog report path type")
+            {
+                return Err("catalog symlink control failed".into());
+            }
+            fs::remove_file(&path).map_err(|error| error.to_string())?;
+        }
+        if !super::bounded_command_catalog_failure_report(root.path()).contains("state=unavailable")
+        {
+            return Err("catalog missing control failed".into());
+        }
+        Ok(())
+    }
 
     struct TempRoot(PathBuf);
 
@@ -63,9 +263,12 @@ mod tests {
         options.preflight_sha256 = format!("{:x}", Sha256::digest(&bytes));
         fs::write(&options.preflight, bytes).map_err(|error| error.to_string())?;
         let reason = super::require_current_acceptance_after_diagnostics(&options, &preflight)
-            .err().ok_or_else(|| "green historical diagnostics earned current authority".to_string())?;
+            .err()
+            .ok_or_else(|| "green historical diagnostics earned current authority".to_string())?;
         if !reason.contains("requires preflight v2") {
-            return Err(format!("historical diagnostics refused the wrong boundary: {reason}"));
+            return Err(format!(
+                "historical diagnostics refused the wrong boundary: {reason}"
+            ));
         }
         Ok(())
     }
@@ -118,8 +321,7 @@ mod tests {
         let Err(_) = validate_exact_hex("sha", "abc123", 40) else {
             return Err("abbreviated identity unexpectedly passed".to_string());
         };
-        let Err(_) =
-            validate_exact_hex("sha", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", 40)
+        let Err(_) = validate_exact_hex("sha", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", 40)
         else {
             return Err("uppercase identity unexpectedly passed".to_string());
         };
@@ -129,8 +331,14 @@ mod tests {
     #[test]
     fn required_command_catalog_is_complete_and_stable() {
         assert_eq!(REQUIRED_COMMANDS.len(), 13);
-        assert_eq!(REQUIRED_COMMANDS.first().copied(), Some("check-network-policy"));
-        assert_eq!(REQUIRED_COMMANDS.last().copied(), Some("check-architecture"));
+        assert_eq!(
+            REQUIRED_COMMANDS.first().copied(),
+            Some("check-network-policy")
+        );
+        assert_eq!(
+            REQUIRED_COMMANDS.last().copied(),
+            Some("check-architecture")
+        );
     }
 
     #[test]
@@ -263,7 +471,9 @@ mod tests {
         let mut unknown_top_level = validated.clone();
         unknown_top_level["merge_authorized"] = Value::Bool(true);
         if validate_resolved_tree_receipt_contract(&unknown_top_level, "validated").is_ok() {
-            return Err("receipt contract accepted an unknown top-level authority field".to_string());
+            return Err(
+                "receipt contract accepted an unknown top-level authority field".to_string(),
+            );
         }
 
         let mut unknown_nested = validated;
@@ -311,7 +521,9 @@ mod tests {
                 .ok_or_else(|| format!("fixture has no {pointer}"))?;
             *target = replacement;
             if validate_resolved_tree_receipt_contract(&candidate, "validated").is_ok() {
-                return Err(format!("receipt contract accepted semantic tampering at {pointer}"));
+                return Err(format!(
+                    "receipt contract accepted semantic tampering at {pointer}"
+                ));
             }
         }
 
@@ -344,9 +556,18 @@ mod tests {
     #[test]
     fn worktree_listing_matches_exact_normalized_paths() {
         let listing = "worktree /private/var/tmp/ripr-tree\nHEAD deadbeef\n\n";
-        assert!(worktree_listing_contains_path(listing, "/private/var/tmp/ripr-tree"));
-        assert!(!worktree_listing_contains_path(listing, "/var/tmp/ripr-tree"));
-        assert!(!worktree_listing_contains_path(listing, "/private/var/tmp/ripr"));
+        assert!(worktree_listing_contains_path(
+            listing,
+            "/private/var/tmp/ripr-tree"
+        ));
+        assert!(!worktree_listing_contains_path(
+            listing,
+            "/var/tmp/ripr-tree"
+        ));
+        assert!(!worktree_listing_contains_path(
+            listing,
+            "/private/var/tmp/ripr"
+        ));
     }
 
     #[test]
@@ -380,7 +601,8 @@ mod tests {
     }
 
     #[test]
-    fn repository_observation_detects_ref_mutation_without_canonical_ambient_hashes() -> Result<(), String> {
+    fn repository_observation_detects_ref_mutation_without_canonical_ambient_hashes()
+    -> Result<(), String> {
         let root = TempRoot::create("ref-mutation")?;
         git(root.path(), &["init", "--quiet"], &[])?;
         fs::write(root.path().join("value.txt"), "value\n")
@@ -448,7 +670,11 @@ mod tests {
             ],
         )?;
         let replacement = git(root.path(), &["rev-parse", "HEAD"], &[])?;
-        git(root.path(), &["replace", original.trim(), replacement.trim()], &[])?;
+        git(
+            root.path(),
+            &["replace", original.trim(), replacement.trim()],
+            &[],
+        )?;
         let observed = git(
             root.path(),
             &["show", &format!("{}:value.txt", original.trim())],
@@ -471,14 +697,17 @@ mod tests {
         };
         packet.publish(&report_value(&ValidationState::new(Default::default())))?;
         assert!(final_out.join(PACKET_INDEX).is_file());
-        assert!(packet_entries(&final_out)?
-            .iter()
-            .any(|entry| entry["path"] == REPORT_JSON));
+        assert!(
+            packet_entries(&final_out)?
+                .iter()
+                .any(|entry| entry["path"] == REPORT_JSON)
+        );
         Ok(())
     }
 
     #[test]
-    fn packet_workspace_rejects_existing_output_and_partial_publish_collision() -> Result<(), String> {
+    fn packet_workspace_rejects_existing_output_and_partial_publish_collision() -> Result<(), String>
+    {
         let root = TempRoot::create("packet-collision")?;
         let existing = root.path().join("existing");
         fs::write(&existing, b"occupied").map_err(|error| error.to_string())?;
@@ -489,7 +718,8 @@ mod tests {
         let final_out = root.path().join("late-collision");
         let mut packet = PacketWorkspace::create(&final_out, "late")?;
         fs::create_dir(&final_out).map_err(|error| error.to_string())?;
-        let Err(_) = packet.publish(&report_value(&ValidationState::new(Default::default()))) else {
+        let Err(_) = packet.publish(&report_value(&ValidationState::new(Default::default())))
+        else {
             return Err("partial publish collision unexpectedly succeeded".to_string());
         };
         Ok(())
@@ -518,7 +748,8 @@ mod tests {
     }
 
     #[test]
-    fn canonical_receipt_fixtures_are_byte_stable_and_semantically_distinct() -> Result<(), String> {
+    fn canonical_receipt_fixtures_are_byte_stable_and_semantically_distinct() -> Result<(), String>
+    {
         for (state, expected_json, expected_markdown) in [
             (
                 ValidationState::new(Default::default()),
