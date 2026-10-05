@@ -7,6 +7,7 @@
     "stale": 0,
     "valid": 2
   },
+  "current_gate_status": "advisory",
   "delta": {
     "acknowledged": 1,
     "invalid_baseline_entry": 1,

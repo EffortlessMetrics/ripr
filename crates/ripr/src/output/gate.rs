@@ -37,6 +37,18 @@ pub(crate) const GATE_STATUS_CONFIG_ERROR: &str = "config_error";
 /// maps this token to process exit 3 (`docs/EXIT_CODES.md`); `help --json`
 /// uses the same bytes as the `gate_evaluate` serde key.
 pub(crate) const GATE_STATUS_BLOCKED: &str = "blocked";
+/// The closed top-level `status` set a gate decision may carry
+/// (`schemas/ripr/gate-decision.schema.json`, in schema order), mirrored
+/// from the `top_level_status` producer. Consumers validating an unknown
+/// producer document reject anything outside this set instead of treating
+/// an out-of-contract status as a completed evaluation (#6770 review).
+pub(crate) const GATE_DECISION_KNOWN_STATUSES: [&str; 5] = [
+    "pass",
+    "advisory",
+    "acknowledged",
+    "blocked",
+    "config_error",
+];
 const SCHEMA_VERSION: &str = "0.1";
 const DEFAULT_THRESHOLD: &str = "high_confidence_new_gap";
 const DEFAULT_ACKNOWLEDGEMENT_LABEL: &str = "ripr-waive";
