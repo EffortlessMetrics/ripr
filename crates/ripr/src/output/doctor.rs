@@ -2659,15 +2659,35 @@ mod tests {
 
     #[test]
     fn rust_root_with_missing_cargo_discloses_verification_limitation() -> Result<(), String> {
-        let root = doctor_scope_root(
-            "scope-rust-no-cargo",
-            &[
-                ("Cargo.toml", "[package]\nname = \"probe\"\n"),
-                ("src/lib.rs", "pub fn f() {}\n"),
-            ],
-        )?;
-        let (report, _probed) = evaluate_without_rust_toolchain(&root, &[LanguageId::Rust]);
-        let _ = std::fs::remove_dir_all(&root);
+        struct OwnedMissingCargoScope(std::path::PathBuf);
+        impl Drop for OwnedMissingCargoScope {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let parent = unique_test_dir("scope-rust-no-cargo-boundary");
+        std::fs::create_dir(&parent)
+            .map_err(|err| format!("acquire missing-cargo boundary: {err}"))?;
+        let owned = OwnedMissingCargoScope(parent);
+        std::fs::write(
+            owned.0.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"rust-root\"]\nresolver = \"3\"\n",
+        )
+        .map_err(|err| format!("write missing-cargo boundary: {err}"))?;
+        let root = owned.0.join("rust-root");
+        std::fs::create_dir(&root).map_err(|err| format!("create Rust root: {err}"))?;
+        std::fs::create_dir(root.join("src"))
+            .map_err(|err| format!("create Rust sources: {err}"))?;
+        std::fs::write(root.join("Cargo.toml"), "[package]\nname = \"probe\"\n")
+            .map_err(|err| format!("write original Rust manifest: {err}"))?;
+        std::fs::write(root.join("src/lib.rs"), "pub fn f() {}\n")
+            .map_err(|err| format!("write original Rust source: {err}"))?;
+        let config = load_for_root(&root)?;
+        if config.source_path().is_some() || config.languages().enabled() != [LanguageId::Rust] {
+            return Err("missing-cargo fixture must use built-in Rust defaults".to_string());
+        }
+        let (report, probed) = evaluate_without_rust_toolchain(&root, &[LanguageId::Rust]);
+        drop(owned);
         if check(&report, "cargo_toml")?.status != DoctorCheckStatus::Pass {
             return Err(format!("Cargo.toml must pass: {:?}", report.checks));
         }
@@ -2678,6 +2698,17 @@ mod tests {
                     "{tool} must be advisory for installed analysis: {advisory:?}"
                 ));
             }
+        }
+        let config_check = check(&report, "config")?;
+        if config_check.status != DoctorCheckStatus::Pass
+            || config_check.evidence.as_deref()
+                != Some("ripr.toml not found; using built-in defaults")
+            || report.languages != ["rust"]
+            || probed != ["git", "cargo", "rustc"]
+        {
+            return Err(format!(
+                "missing-cargo defaults/probes changed: {report:?} {probed:?}"
+            ));
         }
         if report.status != DoctorStatus::Pass {
             return Err("missing cargo must not fail installed analysis".to_string());
@@ -2827,9 +2858,35 @@ mod tests {
     /// missing-Cargo.toml failure instead of silently passing.
     #[test]
     fn empty_root_with_default_config_keeps_the_cargo_toml_failure() -> Result<(), String> {
-        let root = doctor_scope_root("scope-empty", &[])?;
-        let (report, _probed) = evaluate_without_rust_toolchain(&root, &[]);
-        let _ = std::fs::remove_dir_all(&root);
+        struct OwnedDoctorScope(std::path::PathBuf);
+        impl Drop for OwnedDoctorScope {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let parent = unique_test_dir("scope-empty-boundary");
+        std::fs::create_dir(&parent)
+            .map_err(|err| format!("acquire empty doctor boundary: {err}"))?;
+        let owned = OwnedDoctorScope(parent);
+        // The analyzed child stays empty. The genuine parent workspace stops
+        // ambient config discovery without supplying the child's manifest.
+        std::fs::write(owned.0.join("Cargo.toml"), "[workspace]\nmembers = []\n")
+            .map_err(|err| format!("write empty doctor boundary: {err}"))?;
+        let root = owned.0.join("empty");
+        std::fs::create_dir(&root).map_err(|err| format!("create empty doctor root: {err}"))?;
+        if std::fs::read_dir(&root)
+            .map_err(|err| format!("read empty doctor root: {err}"))?
+            .next()
+            .is_some()
+        {
+            return Err("default-config doctor root must remain empty".to_string());
+        }
+        let config = load_for_root(&root)?;
+        if config.source_path().is_some() || config.languages().enabled() != [LanguageId::Rust] {
+            return Err("empty doctor root must use built-in Rust defaults".to_string());
+        }
+        let (report, probed) = evaluate_without_rust_toolchain(&root, &[]);
+        drop(owned);
         if check(&report, "cargo_toml")?.status != DoctorCheckStatus::Fail
             || report.status != DoctorStatus::Fail
         {
@@ -2837,6 +2894,26 @@ mod tests {
                 "empty root must fail Cargo.toml: {:?}",
                 report.checks
             ));
+        }
+        let cargo_toml = check(&report, "cargo_toml")?;
+        if !cargo_toml
+            .evidence
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with("no Cargo.toml found")
+            || probed != ["git", "cargo", "rustc"]
+        {
+            return Err(format!(
+                "empty Rust root must retain missing manifest and tool probes: {cargo_toml:?} {probed:?}"
+            ));
+        }
+        let config_check = check(&report, "config")?;
+        if config_check.status != DoctorCheckStatus::Pass
+            || config_check.evidence.as_deref()
+                != Some("ripr.toml not found; using built-in defaults")
+            || report.languages != ["rust"]
+        {
+            return Err(format!("doctor must disclose actual defaults: {report:?}"));
         }
         Ok(())
     }

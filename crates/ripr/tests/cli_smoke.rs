@@ -1081,8 +1081,8 @@ fn normalize_agent_receipt_fixture(text: &str) -> Result<String, Box<dyn std::er
 
 fn normalize_unchanged_repo_exposure_producer_fixture(
     mut value: serde_json::Value,
+    fixture_root: &Path,
 ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let fixture_root = workspace_root().join("fixtures/boundary_gap/input");
     let canonical_root = fixture_root
         .canonicalize()?
         .to_string_lossy()
@@ -1104,6 +1104,100 @@ fn normalize_unchanged_repo_exposure_producer_fixture(
     let mut raw = serde_json::to_string_pretty(&value)?;
     raw.push('\n');
     serde_json::from_str(&recommit_repo_exposure_json(raw)).map_err(Into::into)
+}
+
+/// Actual tracked/dirty Git provenance for the four boundary-gap workflow controls.
+fn owned_live_boundary_gap_subject(label: &str) -> Result<IsolatedFixtureWorkspace, String> {
+    fn copy_live_fixture(source: &Path, destination: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(destination)?;
+        for entry in std::fs::read_dir(source)? {
+            let entry = entry?;
+            if entry.file_name() == "target" || entry.file_name() == ".git" {
+                continue;
+            }
+            let target = destination.join(entry.file_name());
+            let kind = entry.file_type()?;
+            if kind.is_dir() {
+                copy_live_fixture(&entry.path(), &target)?;
+            } else if kind.is_file() {
+                std::fs::copy(entry.path(), target)?;
+            } else {
+                return Err(std::io::Error::other("unsupported live fixture entry type"));
+            }
+        }
+        Ok(())
+    }
+    let root = unique_temp_workspace(label);
+    std::fs::create_dir(&root)
+        .map_err(|error| format!("acquire live boundary fixture: {error}"))?;
+    let isolated = IsolatedFixtureWorkspace(root);
+    std::fs::write(
+        isolated.path().join("Cargo.toml"),
+        "[workspace]\nmembers = [\"fixtures/boundary_gap/input\"]\nresolver = \"3\"\n",
+    )
+    .map_err(|error| format!("write live fixture workspace: {error}"))?;
+    for relative in [
+        "fixtures/boundary_gap/input",
+        "fixtures/boundary_gap/expected/first-useful-action",
+    ] {
+        copy_live_fixture(
+            &workspace_root().join(relative),
+            &isolated.path().join(relative),
+        )
+        .map_err(|error| format!("copy live fixture {relative}: {error}"))?;
+    }
+    for relative in [
+        "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json",
+        "fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json",
+        "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+        "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
+        "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+        "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.json",
+    ] {
+        let target = isolated.path().join(relative);
+        let parent = target.parent().ok_or("live fixture target has no parent")?;
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("create live fixture parent: {error}"))?;
+        std::fs::copy(workspace_root().join(relative), &target)
+            .map_err(|error| format!("copy live fixture {relative}: {error}"))?;
+    }
+    init_git_fixture_repo(isolated.path())
+        .map_err(|error| format!("initialize live fixture Git: {error}"))?;
+    run_git(isolated.path(), &["add", "Cargo.toml", "fixtures"])?;
+    run_git(
+        isolated.path(),
+        &[
+            "-c",
+            "user.name=RIPR test",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-m",
+            "tracked boundary-gap fixture",
+        ],
+    )?;
+    // A tracked non-Rust marker supplies genuine dirty state without moving
+    // the copied package/source/evidence inputs or their content identities.
+    std::fs::write(isolated.path().join("marker.txt"), "owned dirty fixture\n")
+        .map_err(|error| format!("write tracked dirty stimulus: {error}"))?;
+    let status = run_command(
+        "git",
+        Some(isolated.path()),
+        &["status", "--porcelain", "--untracked-files=no"],
+    )
+    .map_err(|error| format!("read owned tracked Git status: {error}"))?;
+    if !status.status.success()
+        || !String::from_utf8_lossy(&status.stdout)
+            .lines()
+            .any(|line| line.ends_with(" marker.txt"))
+    {
+        return Err(format!(
+            "live fixture must have a tracked dirty marker: {status:?}"
+        ));
+    }
+    concrete_fixture_repository_head(isolated.path())
+        .map_err(|error| format!("verify owned real HEAD: {error}"))?;
+    Ok(isolated)
 }
 
 fn assert_repo_exposure_rejects_mutation(
@@ -4370,18 +4464,24 @@ fn agent_card_readiness_agrees_with_repair_target_admission()
 #[test]
 fn first_action_routes_live_unchanged_receipt_to_revise_focused_test()
 -> Result<(), Box<dyn std::error::Error>> {
+    let isolated = owned_live_boundary_gap_subject(
+        "first_action_routes_live_unchanged_receipt_to_revise_focused_test",
+    )?;
+    let run_owned =
+        |argv: &[&str]| run_command(env!("CARGO_BIN_EXE_ripr"), Some(isolated.path()), argv);
     let seam_id = "67fc764ba37d77bd";
     // Own directory: the improved-receipt chain above writes its own
     // verify pair and analysis outcome under `test-agent-verify`.
     let artifact_rel = "target/ripr/test-agent-verify-unchanged";
-    let artifact_dir = workspace_root().join(artifact_rel);
+    let artifact_dir = isolated.path().join(artifact_rel);
     std::fs::create_dir_all(&artifact_dir)?;
     // The same pre-attempt snapshot on both sides: the attempt moved nothing.
-    let snapshot = workspace_root()
+    let snapshot = isolated
+        .path()
         .join("fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json");
     for side in ["before", "after"] {
         bind_repo_exposure_fixture_with_worktree(
-            &workspace_root(),
+            &isolated.path(),
             &snapshot,
             &artifact_dir.join(format!("{side}.repo-exposure.json")),
             "dirty",
@@ -4389,7 +4489,7 @@ fn first_action_routes_live_unchanged_receipt_to_revise_focused_test()
     }
     let before_path = format!("{artifact_rel}/before.repo-exposure.json");
     let after_path = format!("{artifact_rel}/after.repo-exposure.json");
-    let verify = run_ripr_in_workspace(&[
+    let verify = run_owned(&[
         "agent",
         "verify",
         "--root",
@@ -4402,7 +4502,7 @@ fn first_action_routes_live_unchanged_receipt_to_revise_focused_test()
     ])?;
     assert_success(&verify);
     std::fs::write(artifact_dir.join("agent-verify.json"), &verify.stdout)?;
-    let analysis_outcome = run_ripr_in_workspace(&[
+    let analysis_outcome = run_owned(&[
         "check", "--root", ".", "--mode", "draft", "--base", "HEAD", "--format", "json",
     ])?;
     assert_success(&analysis_outcome);
@@ -4418,7 +4518,7 @@ fn first_action_routes_live_unchanged_receipt_to_revise_focused_test()
         .to_str()
         .ok_or("receipt path should be utf-8")?;
     let verify_path = format!("{artifact_rel}/agent-verify.json");
-    let receipt = run_ripr_in_workspace(&[
+    let receipt = run_owned(&[
         "agent",
         "receipt",
         "--root",
@@ -4441,7 +4541,7 @@ fn first_action_routes_live_unchanged_receipt_to_revise_focused_test()
 
     let first_action_out = out_dir.join("first-action.json");
     let first_action_md = out_dir.join("first-action.md");
-    let first_action = run_ripr_in_workspace(&[
+    let first_action = run_owned(&[
         "first-action",
         "--root",
         ".",
@@ -5248,8 +5348,12 @@ fn test_oracle_assistant_canonical_review_loop_fixture_pins_expected_surfaces()
 
 #[test]
 fn first_useful_action_corpus_pins_routing_cases() -> Result<(), Box<dyn std::error::Error>> {
+    let isolated =
+        owned_live_boundary_gap_subject("first_useful_action_corpus_pins_routing_cases")?;
+    let run_owned =
+        |argv: &[&str]| run_command(env!("CARGO_BIN_EXE_ripr"), Some(isolated.path()), argv);
     let base = "fixtures/boundary_gap/expected/first-useful-action";
-    let fixture_dir = workspace_root().join(base);
+    let fixture_dir = isolated.path().join(base);
     let corpus_path = fixture_dir.join("corpus.json");
     let corpus: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(corpus_path)?)?;
     assert_eq!(json_pointer_str(&corpus, "/schema_version")?, "0.1");
@@ -5356,10 +5460,10 @@ fn first_useful_action_corpus_pins_routing_cases() -> Result<(), Box<dyn std::er
             );
 
             let proof: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(
-                workspace_root().join(proof_artifact),
+                isolated.path().join(proof_artifact),
             )?)?;
             let receipt: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(
-                workspace_root().join(receipt_artifact),
+                isolated.path().join(receipt_artifact),
             )?)?;
             assert_eq!(
                 json_pointer_str(&proof, "/evidence_movement/state")?,
@@ -5380,14 +5484,14 @@ fn first_useful_action_corpus_pins_routing_cases() -> Result<(), Box<dyn std::er
                 "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/after.repo-exposure.json"
             );
             let before: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(
-                workspace_root().join(before_artifact),
+                isolated.path().join(before_artifact),
             )?)?;
             let after: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(
-                workspace_root().join(after_artifact),
+                isolated.path().join(after_artifact),
             )?)?;
-            let before_bytes = std::fs::read(workspace_root().join(before_artifact))?;
-            let after_bytes = std::fs::read(workspace_root().join(after_artifact))?;
-            let produced = run_ripr_in_workspace(&[
+            let before_bytes = std::fs::read(isolated.path().join(before_artifact))?;
+            let after_bytes = std::fs::read(isolated.path().join(after_artifact))?;
+            let produced = run_owned(&[
                 "check",
                 "--root",
                 "fixtures/boundary_gap/input",
@@ -5396,7 +5500,10 @@ fn first_useful_action_corpus_pins_routing_cases() -> Result<(), Box<dyn std::er
             ])?;
             assert_success(&produced);
             let produced: serde_json::Value = serde_json::from_slice(&produced.stdout)?;
-            let normalized_produced = normalize_unchanged_repo_exposure_producer_fixture(produced)?;
+            let normalized_produced = normalize_unchanged_repo_exposure_producer_fixture(
+                produced,
+                &isolated.path().join("fixtures/boundary_gap/input"),
+            )?;
             assert_eq!(
                 before, normalized_produced,
                 "before snapshot must be the portable normalization of production output"
@@ -5530,7 +5637,7 @@ fn first_useful_action_corpus_pins_routing_cases() -> Result<(), Box<dyn std::er
                 sha256_hex_bytes(&after_bytes)
             );
             let verify_artifact = json_pointer_str(&receipt, "/inputs/agent_verify_json")?;
-            let verify_bytes = std::fs::read(workspace_root().join(verify_artifact))?;
+            let verify_bytes = std::fs::read(isolated.path().join(verify_artifact))?;
             let verify: serde_json::Value = serde_json::from_slice(&verify_bytes)?;
             assert_eq!(
                 json_pointer_str(&receipt, "/provenance/verify_artifact/path")?,
@@ -5667,7 +5774,7 @@ fn first_useful_action_corpus_pins_routing_cases() -> Result<(), Box<dyn std::er
             // #3906: the carried command is the card's own string, byte for byte.
             let guidance_artifact = json_pointer_str(case, "/inputs/pr_guidance/artifact")?;
             let guidance: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(
-                workspace_root().join(guidance_artifact),
+                isolated.path().join(guidance_artifact),
             )?)?;
             assert_eq!(
                 json_pointer_str(&report, "/commands/repair")?,
@@ -5709,13 +5816,17 @@ fn first_useful_action_corpus_pins_routing_cases() -> Result<(), Box<dyn std::er
 
 #[test]
 fn agent_start_writes_source_edit_free_workflow_packet() -> Result<(), Box<dyn std::error::Error>> {
+    let isolated =
+        owned_live_boundary_gap_subject("agent_start_writes_source_edit_free_workflow_packet")?;
+    let run_owned =
+        |argv: &[&str]| run_command(env!("CARGO_BIN_EXE_ripr"), Some(isolated.path()), argv);
     let seam_id = "67fc764ba37d77bd";
     let out_dir = unique_temp_workspace("agent-start");
     let out = out_dir
         .to_str()
         .ok_or("workflow output path should be utf-8")?;
 
-    let output = run_ripr_in_workspace(&[
+    let output = run_owned(&[
         "agent",
         "start",
         "--root",
@@ -5742,7 +5853,7 @@ fn agent_start_writes_source_edit_free_workflow_packet() -> Result<(), Box<dyn s
         "ripr agent verify --root {} ",
         renderer_shell_arg(&format!(
             "{}/fixtures/boundary_gap/input",
-            workspace_root().to_string_lossy().replace('\\', "/")
+            isolated.path().to_string_lossy().replace('\\', "/")
         ))
     );
     let workflow: serde_json::Value = serde_json::from_str(&workflow_json)?;
@@ -5764,12 +5875,17 @@ fn agent_start_writes_source_edit_free_workflow_packet() -> Result<(), Box<dyn s
 #[test]
 fn agent_start_packet_discloses_that_generated_commands_assume_bash()
 -> Result<(), Box<dyn std::error::Error>> {
+    let isolated = owned_live_boundary_gap_subject(
+        "agent_start_packet_discloses_that_generated_commands_assume_bash",
+    )?;
+    let run_owned =
+        |argv: &[&str]| run_command(env!("CARGO_BIN_EXE_ripr"), Some(isolated.path()), argv);
     let out_dir = unique_temp_workspace("agent-start-shell-disclosure");
     let out = out_dir
         .to_str()
         .ok_or("workflow output path should be utf-8")?;
 
-    let output = run_ripr_in_workspace(&[
+    let output = run_owned(&[
         "agent",
         "start",
         "--root",

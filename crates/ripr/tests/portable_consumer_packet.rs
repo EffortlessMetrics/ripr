@@ -237,6 +237,23 @@ fn stage_native_journey(label: &str) -> Result<NativeJourney, String> {
     fs::create_dir_all(&foreign).map_err(|error| format!("foreign: {error}"))?;
     fs::create_dir_all(&decoy).map_err(|error| format!("decoy: {error}"))?;
     stage_boundary_subject(&workspace, &subject, &diff)?;
+    // The copied Rust package is an actual member of this owned journey.
+    // Keep its original manifest/source/diff bytes and foreign-cwd route.
+    fs::write(
+        root.path.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"subject\"]\nresolver = \"3\"\n",
+    )
+    .map_err(|error| format!("write native subject workspace: {error}"))?;
+    let config = ripr::config::load_for_root(&subject)?;
+    let languages: Vec<&str> = config
+        .languages
+        .enabled
+        .iter()
+        .map(|id| id.as_str())
+        .collect();
+    if config.source_path.is_some() || languages != ["rust"] {
+        return Err("native subject must use built-in Rust defaults".to_string());
+    }
     stage_native_packet(
         &python,
         &workspace,

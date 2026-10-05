@@ -21,6 +21,74 @@ fn workspace_root() -> Result<PathBuf, String> {
         .ok_or_else(|| format!("cannot resolve repository root from {}", manifest.display()))
 }
 
+/// Own only the original Rust subject used by the two resource-trace controls.
+struct OwnedTraceSubject {
+    parent: PathBuf,
+    args: Vec<String>,
+}
+
+impl Drop for OwnedTraceSubject {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.parent);
+    }
+}
+
+impl OwnedTraceSubject {
+    fn args(&self) -> Vec<&str> {
+        self.args.iter().map(String::as_str).collect()
+    }
+}
+
+fn owned_trace_subject(label: &str) -> Result<OwnedTraceSubject, String> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| format!("trace fixture clock: {error}"))?
+        .as_nanos();
+    let parent = std::env::temp_dir().join(format!(
+        "ripr-resource-trace-owned-{label}-{}-{stamp}",
+        std::process::id()
+    ));
+    std::fs::create_dir(&parent).map_err(|error| format!("acquire trace fixture: {error}"))?;
+    let mut owned = OwnedTraceSubject {
+        parent,
+        args: Vec::new(),
+    };
+    let member = "fixtures/boundary_gap/input";
+    std::fs::write(
+        owned.parent.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"fixtures/boundary_gap/input\"]\nresolver = \"3\"\n",
+    )
+    .map_err(|error| format!("write trace fixture workspace: {error}"))?;
+    let original = workspace_root()?.join(member);
+    let subject = owned.parent.join(member);
+    for relative in ["Cargo.toml", "src/lib.rs", "tests/pricing.rs"] {
+        let destination = subject.join(relative);
+        let parent = destination.parent().ok_or("trace input has no parent")?;
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("create trace input parent: {error}"))?;
+        std::fs::copy(original.join(relative), &destination)
+            .map_err(|error| format!("copy original trace input {relative}: {error}"))?;
+    }
+    let config = ripr::config::load_for_root(&subject)?;
+    let languages: Vec<&str> = config
+        .languages
+        .enabled
+        .iter()
+        .map(|id| id.as_str())
+        .collect();
+    if config.source_path.is_some() || languages != ["rust"] {
+        return Err("trace subject must use built-in Rust defaults".to_string());
+    }
+    let subject = std::fs::canonicalize(&subject)
+        .map_err(|error| format!("canonical trace input: {error}"))?;
+    owned.args = CHECK_ARGS.iter().map(|arg| (*arg).to_string()).collect();
+    owned.args[2] = subject
+        .to_str()
+        .ok_or("trace input root is not UTF-8")?
+        .to_string();
+    Ok(owned)
+}
+
 struct Run {
     stdout: Vec<u8>,
     stderr: String,
@@ -70,10 +138,12 @@ const CHECK_ARGS: &[&str] = &[
 
 #[test]
 fn tracing_off_leaves_stdout_and_stderr_byte_identical() -> Result<(), String> {
-    let untraced = run_ripr(CHECK_ARGS, None)?;
+    let owned = owned_trace_subject("tracing_off_leaves_stdout_and_stderr_byte_identical")?;
+    let args = owned.args();
+    let untraced = run_ripr(&args, None)?;
     // The switch is presence-based, so an explicitly empty value is still on.
     // That is the pre-existing contract and this test must not blur it.
-    let traced = run_ripr(CHECK_ARGS, Some("1"))?;
+    let traced = run_ripr(&args, Some("1"))?;
 
     if !untraced.status_ok || !traced.status_ok {
         return Err(format!(
@@ -117,7 +187,9 @@ fn tracing_off_leaves_stdout_and_stderr_byte_identical() -> Result<(), String> {
 
 #[test]
 fn tracing_on_emits_one_attributed_receipt_on_stderr() -> Result<(), String> {
-    let traced = run_ripr(CHECK_ARGS, Some("1"))?;
+    let owned = owned_trace_subject("tracing_on_emits_one_attributed_receipt_on_stderr")?;
+    let args = owned.args();
+    let traced = run_ripr(&args, Some("1"))?;
     let receipts = receipts(&traced.stderr);
     if receipts.len() != 1 {
         return Err(format!(
