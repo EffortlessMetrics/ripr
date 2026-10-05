@@ -21117,6 +21117,17 @@ fn plus_help_exits_cleanly() {
         stdout.contains("--gap-ledger"),
         "help must mention --gap-ledger:\n{stdout}"
     );
+    for kept in [
+        "ripr-plus.last-good.json",
+        "ripr-plus.last-good.md",
+        "may be stale",
+        "keeps no last-good copy",
+    ] {
+        assert!(
+            stdout.contains(kept),
+            "help must name the kept last-good receipt and its staleness ({kept}):\n{stdout}"
+        );
+    }
 }
 
 /// An exposure-only counter is not a complete, current RIPR+ quality result.
