@@ -2566,6 +2566,9 @@ id = "RIPR-SPEC-0027"
 name = "TypeScript preview static facts"
 spec = "docs/specs/RIPR-SPEC-0027-typescript-preview-static-facts.md"
 tests = [
+  "crates/ripr/src/analysis/language/typescript/tests_extract_tests.rs::node_expected_failure_options_cannot_supply_ordinary_test_evidence",
+  "crates/ripr/src/analysis/language/typescript/tests_extract_tests.rs::shadowed_undefined_cannot_disable_test_qualification_options",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::node_expected_failure_test_cannot_donate_classifier_oracle_credit",
   "crates/ripr/src/analysis/language/typescript/bounded_read.rs::tests::no_follow_open_rejects_symlink_and_accepts_regular_file",
   "crates/ripr/src/analysis/language/typescript/bounded_read.rs::tests::no_follow_open_rejects_fifo_without_waiting_for_writer",
   "crates/ripr/src/analysis/language/typescript/mod.rs",

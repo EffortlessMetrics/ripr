@@ -621,6 +621,22 @@ pub(crate) fn collect_tests_from_statements(
         }
         returned |= may_return(stmt, source);
     }
+    // A destructuring or hoisted declaration can also shadow `undefined` at a
+    // registration. Nested blocks contribute only names visible after them
+    // (`var` and, conservatively, function declarations), so a block-local
+    // `let undefined` cannot erase an ordinary registration outside it. Do not
+    // enter unrelated function bodies or count test callback parameters here.
+    let mut declared_names = Vec::new();
+    collect_registration_scope_names(statements, &mut declared_names);
+    if declared_names.iter().any(|name| name == "undefined")
+        && !level.iter().any(|(name, _, _)| name == "undefined")
+    {
+        level.push((
+            "undefined".to_string(),
+            ScopeValue::Other,
+            Phase::Declaration,
+        ));
+    }
     scope.sites.extend(sites);
     // A `beforeEach`/`beforeAll` the file declares, or imports from anything
     // but a test runner, is not known to run before each test: its writes are
@@ -652,9 +668,28 @@ pub(crate) fn collect_tests_from_statements(
     }
     scope.levels.push(level);
     scope.iterables.push(iterables);
+    let unshadowed_undefined = !scope
+        .levels
+        .iter()
+        .flatten()
+        .any(|(name, _, _)| name == "undefined");
     for stmt in statements {
         if let Some(span) = name_literal_span(stmt) {
             scope.names.push(span);
+        }
+        // The structural helpers recognize global `undefined`; apply this
+        // declaration-scope fence before either a test or suite can donate
+        // assertions. Callback-local bindings do not affect registration options.
+        if !unshadowed_undefined
+            && let Statement::ExpressionStatement(expression) = stmt
+            && let Expression::CallExpression(call) = &expression.expression
+            && (call_callee_is_active_declaration(call, TestDeclarationRoot::Test)
+                || call_callee_is_active_each_declaration(call, TestDeclarationRoot::Test)
+                || call_callee_is_active_declaration(call, TestDeclarationRoot::Describe)
+                || call_callee_is_active_each_declaration(call, TestDeclarationRoot::Describe))
+            && !declaration_options_are_active_with_undefined(call, false)
+        {
+            continue;
         }
         if let Some((describe_name, body)) = describe_body_from_statement(stmt, source) {
             // `describe.each(...)('x', (cart) => ...)` binds its parameters
@@ -856,6 +891,10 @@ fn collect_scope_bindings(
     sites: &mut Vec<usize>,
 ) {
     match stmt {
+        // `declare` forms are erased before the test runs: no runtime binding.
+        Statement::VariableDeclaration(declaration) if declaration.declare => {}
+        Statement::FunctionDeclaration(function) if function.declare => {}
+        Statement::ClassDeclaration(class) if class.declare => {}
         Statement::VariableDeclaration(declaration) => {
             for declarator in &declaration.declarations {
                 if let BindingPattern::BindingIdentifier(identifier) = &declarator.id {
@@ -1391,6 +1430,61 @@ fn collect_block_declared_names(statements: &[Statement<'_>], out: &mut Vec<Stri
 
 fn collect_statement_declared_names(statement: &Statement<'_>, out: &mut Vec<String>) {
     match statement {
+        // `declare` forms are erased before the test runs: no runtime binding.
+        Statement::VariableDeclaration(declaration) if declaration.declare => {}
+        Statement::FunctionDeclaration(function) if function.declare => {}
+        Statement::ClassDeclaration(class) if class.declare => {}
+        Statement::ImportDeclaration(import) if import.import_kind != ImportOrExportKind::Type => {
+            for specifier in import.specifiers.iter().flatten() {
+                match specifier {
+                    ImportDeclarationSpecifier::ImportSpecifier(specifier)
+                        if specifier.import_kind != ImportOrExportKind::Type =>
+                    {
+                        out.push(specifier.local.name.to_string())
+                    }
+                    ImportDeclarationSpecifier::ImportDefaultSpecifier(specifier) => {
+                        out.push(specifier.local.name.to_string())
+                    }
+                    ImportDeclarationSpecifier::ImportNamespaceSpecifier(specifier) => {
+                        out.push(specifier.local.name.to_string())
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Statement::ExportDefaultDeclaration(export) => match &export.declaration {
+            oxc_ast::ast::ExportDefaultDeclarationKind::FunctionDeclaration(function) => {
+                if let Some(identifier) = &function.id {
+                    out.push(identifier.name.to_string());
+                }
+            }
+            oxc_ast::ast::ExportDefaultDeclarationKind::ClassDeclaration(class) => {
+                if let Some(identifier) = &class.id {
+                    out.push(identifier.name.to_string());
+                }
+            }
+            _ => {}
+        },
+        Statement::ExportNamedDeclaration(export) => match &export.declaration {
+            Some(oxc_ast::ast::Declaration::VariableDeclaration(declaration))
+                if declaration.declare => {}
+            Some(oxc_ast::ast::Declaration::FunctionDeclaration(function)) if function.declare => {}
+            Some(oxc_ast::ast::Declaration::ClassDeclaration(class)) if class.declare => {}
+            Some(oxc_ast::ast::Declaration::VariableDeclaration(declaration)) => {
+                out.extend(declaration_binding_names(declaration));
+            }
+            Some(oxc_ast::ast::Declaration::FunctionDeclaration(function)) => {
+                if let Some(identifier) = &function.id {
+                    out.push(identifier.name.to_string());
+                }
+            }
+            Some(oxc_ast::ast::Declaration::ClassDeclaration(class)) => {
+                if let Some(identifier) = &class.id {
+                    out.push(identifier.name.to_string());
+                }
+            }
+            _ => {}
+        },
         Statement::VariableDeclaration(declaration) => {
             out.extend(declaration_binding_names(declaration));
         }
@@ -1467,16 +1561,117 @@ fn collect_statement_declared_names(statement: &Statement<'_>, out: &mut Vec<Str
     }
 }
 
+/// Names declared in `statements` that are visible to a later sibling
+/// statement: every declaration at this level, plus the `var` and function
+/// declarations nested blocks hoist out. Block-scoped `let`/`const`/`class`
+/// and catch/loop bindings stay inside their block.
+fn collect_registration_scope_names(statements: &[Statement<'_>], out: &mut Vec<String>) {
+    for statement in statements {
+        match statement {
+            Statement::BlockStatement(_)
+            | Statement::IfStatement(_)
+            | Statement::ForStatement(_)
+            | Statement::ForOfStatement(_)
+            | Statement::ForInStatement(_)
+            | Statement::WhileStatement(_)
+            | Statement::DoWhileStatement(_)
+            | Statement::LabeledStatement(_)
+            | Statement::TryStatement(_)
+            | Statement::SwitchStatement(_) => collect_hoisted_names(statement, out),
+            _ => collect_statement_declared_names(statement, out),
+        }
+    }
+}
+
+fn collect_hoisted_names(statement: &Statement<'_>, out: &mut Vec<String>) {
+    let var_names = |declaration: &oxc_ast::ast::VariableDeclaration<'_>, out: &mut Vec<String>| {
+        if declaration.kind == oxc_ast::ast::VariableDeclarationKind::Var && !declaration.declare {
+            out.extend(declaration_binding_names(declaration));
+        }
+    };
+    let each = |statements: &[Statement<'_>], out: &mut Vec<String>| {
+        for statement in statements {
+            collect_hoisted_names(statement, out);
+        }
+    };
+    match statement {
+        Statement::VariableDeclaration(declaration) => var_names(declaration, out),
+        // Sloppy-mode Annex B hoisting can expose a block function's name, so
+        // keep it; over-collection only withholds credit.
+        Statement::FunctionDeclaration(function) if !function.declare => {
+            if let Some(identifier) = &function.id {
+                out.push(identifier.name.to_string());
+            }
+        }
+        Statement::BlockStatement(block) => each(&block.body, out),
+        Statement::IfStatement(if_stmt) => {
+            collect_hoisted_names(&if_stmt.consequent, out);
+            if let Some(alternate) = &if_stmt.alternate {
+                collect_hoisted_names(alternate, out);
+            }
+        }
+        Statement::ForStatement(for_stmt) => {
+            if let Some(oxc_ast::ast::ForStatementInit::VariableDeclaration(declaration)) =
+                &for_stmt.init
+            {
+                var_names(declaration, out);
+            }
+            collect_hoisted_names(&for_stmt.body, out);
+        }
+        Statement::ForOfStatement(for_of) => {
+            if let oxc_ast::ast::ForStatementLeft::VariableDeclaration(declaration) = &for_of.left {
+                var_names(declaration, out);
+            }
+            collect_hoisted_names(&for_of.body, out);
+        }
+        Statement::ForInStatement(for_in) => {
+            if let oxc_ast::ast::ForStatementLeft::VariableDeclaration(declaration) = &for_in.left {
+                var_names(declaration, out);
+            }
+            collect_hoisted_names(&for_in.body, out);
+        }
+        Statement::WhileStatement(while_stmt) => collect_hoisted_names(&while_stmt.body, out),
+        Statement::DoWhileStatement(do_while) => collect_hoisted_names(&do_while.body, out),
+        Statement::LabeledStatement(labeled) => collect_hoisted_names(&labeled.body, out),
+        Statement::TryStatement(try_stmt) => {
+            each(&try_stmt.block.body, out);
+            if let Some(handler) = &try_stmt.handler {
+                each(&handler.body.body, out);
+            }
+            if let Some(finalizer) = &try_stmt.finalizer {
+                each(&finalizer.body, out);
+            }
+        }
+        Statement::SwitchStatement(switch) => {
+            for case in &switch.cases {
+                each(&case.consequent, out);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn argument_parameter_names(argument: &oxc_ast::ast::Argument<'_>) -> Vec<String> {
     let params = match argument {
         oxc_ast::ast::Argument::ArrowFunctionExpression(arrow) => &arrow.params,
         oxc_ast::ast::Argument::FunctionExpression(function) => &function.params,
         _ => return Vec::new(),
     };
+    let function_name = match argument {
+        oxc_ast::ast::Argument::FunctionExpression(function) => function.id.as_ref(),
+        _ => None,
+    };
     params
         .items
         .iter()
         .flat_map(|param| param.pattern.get_binding_identifiers())
+        .chain(
+            params
+                .rest
+                .iter()
+                .flat_map(|rest| rest.rest.argument.get_binding_identifiers()),
+        )
+        .chain(function_name)
         .map(|identifier| identifier.name.to_string())
         .collect()
 }
@@ -1615,32 +1810,43 @@ fn call_callee_is_active_declaration(
 }
 
 /// Whether a registration's options object leaves it running. `node:test`
-/// and Vitest accept `{ skip, todo }` (and Vitest `{ fails }`, which inverts
-/// the verdict) in the options object, which registers exactly what `.skip` /
+/// and Vitest accept `{ skip, todo }`; Vitest `{ fails }` and Node
+/// `{ expectFailure }` invert the verdict. These options register what `.skip` /
 /// `.todo` / `.fails` register: no running discriminator. The options object
 /// sits before the callback (`it(name, opts, fn)`), in legacy Vitest after
 /// it (`it(name, fn, opts)`), and `node:test` also accepts it in place of
 /// the name (`test(opts, fn)`); all three positions are checked.
 ///
-/// Fail-closed (#4638 review): a `skip` / `todo` / `fails` key whose value is
+/// Fail-closed (#4638 / #5433): a `skip` / `todo` / `fails` / `expectFailure` key whose value is
 /// anything but literal `false` / `undefined`, a spread, a computed key, or a
 /// method/accessor makes the registration inactive — it is then handled
 /// exactly like `.skip` (no test, no describe walk, not a dropped
 /// registration).
 fn declaration_options_are_active(call: &oxc_ast::ast::CallExpression<'_>) -> bool {
+    declaration_options_are_active_with_undefined(call, true)
+}
+
+fn declaration_options_are_active_with_undefined(
+    call: &oxc_ast::ast::CallExpression<'_>,
+    unshadowed_undefined: bool,
+) -> bool {
     call.arguments
         .iter()
         .take(3)
         .all(|argument| match argument {
-            oxc_ast::ast::Argument::ObjectExpression(options) => options
-                .properties
-                .iter()
-                .all(declaration_option_property_is_active),
+            oxc_ast::ast::Argument::ObjectExpression(options) => {
+                options.properties.iter().all(|property| {
+                    declaration_option_property_is_active(property, unshadowed_undefined)
+                })
+            }
             _ => true,
         })
 }
 
-fn declaration_option_property_is_active(property: &ObjectPropertyKind<'_>) -> bool {
+fn declaration_option_property_is_active(
+    property: &ObjectPropertyKind<'_>,
+    unshadowed_undefined: bool,
+) -> bool {
     let ObjectPropertyKind::ObjectProperty(property) = property else {
         // `{ ...opts }` may carry `skip: true`.
         return false;
@@ -1653,7 +1859,7 @@ fn declaration_option_property_is_active(property: &ObjectPropertyKind<'_>) -> b
         PropertyKey::StringLiteral(literal) => literal.value.as_str(),
         _ => return false,
     };
-    if !matches!(key, "skip" | "todo" | "fails") {
+    if !matches!(key, "skip" | "todo" | "fails" | "expectFailure") {
         return true;
     }
     if property.method || property.kind != oxc_ast::ast::PropertyKind::Init {
@@ -1661,7 +1867,9 @@ fn declaration_option_property_is_active(property: &ObjectPropertyKind<'_>) -> b
     }
     match &property.value {
         Expression::BooleanLiteral(literal) => !literal.value,
-        Expression::Identifier(ident) => !property.shorthand && ident.name == "undefined",
+        Expression::Identifier(ident) => {
+            unshadowed_undefined && !property.shorthand && ident.name == "undefined"
+        }
         _ => false,
     }
 }

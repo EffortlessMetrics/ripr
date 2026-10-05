@@ -128,9 +128,27 @@ Test discovery:
   (`it(name, { timeout }, fn)`, `describe(name, { concurrency }, fn)`); a
   trailing timeout (`test(name, fn, 5000)`) keeps argument 1 as the callback;
   an options object (before or after the callback) whose `skip` / `todo` /
-  `fails` key holds anything but literal `false` / `undefined`, or that
+  `fails` / Node `expectFailure` key holds anything but literal `false` /
+  unshadowed global `undefined`, or that
   holds a spread, computed key, or method, registers nothing, exactly like
   `.skip`
+- Node `expectFailure` and Vitest `fails` invert verification; TODO may
+  execute while suppressing failure. Refusing their ordinary discriminator
+  credit does not assert that their bodies never execute. An independent
+  ordinary active test retains its evidence. Runner execution, selection and
+  expected-failure matcher evaluation are not performed by this adapter.
+- A registration's `undefined` option is refused when an explicit import,
+  supported declaration (including named default exports) or enclosing
+  suite/loop callback parameter or function name shadows that identifier.
+  The bounded declaration walk includes names a nested block hoists out
+  (`var` and, conservatively, function declarations) but not block-scoped
+  `let`/`const`/`class` or catch/loop bindings, which end with their block.
+  Ambient `declare` forms are erased before the test runs and do not shadow;
+  unrelated function bodies and the test callback's own parameters do not shadow options
+  evaluated before that callback runs. Literal `false` remains admitted.
+  Runtime TypeScript enum/namespace/import-alias transformations and dynamic
+  rebinding remain outside this bounded declaration check; native Node type
+  stripping rejects those runtime TypeScript forms before test execution.
 - a `describe` / `context` / `suite` whose title is not a string literal
   (`describe(Div.name, fn)`, a template literal): its body is walked and the
   suite is named by the computed-title placeholder `<computed title, line N>`
