@@ -4580,7 +4580,7 @@ fn first_action_routes_live_unchanged_receipt_to_revise_focused_test()
         .join("fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json");
     for side in ["before", "after"] {
         bind_repo_exposure_fixture_with_worktree(
-            &isolated.path(),
+            isolated.path(),
             &snapshot,
             &artifact_dir.join(format!("{side}.repo-exposure.json")),
             "dirty",
@@ -5716,7 +5716,7 @@ fn first_useful_action_corpus_pins_routing_cases() -> Result<(), Box<dyn std::er
             assert_repo_exposure_rejects_mutation(
                 &before,
                 |snapshot| {
-                    let input_identity = "input:v3:fnv1a64:0000000000000000";
+                    let input_identity = "input:v4:fnv1a64:0000000000000000";
                     let Some(head) = snapshot["artifact"]["repository"]["head"].as_str() else {
                         return;
                     };
