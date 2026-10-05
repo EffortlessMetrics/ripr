@@ -10036,6 +10036,21 @@ fn make_temp_workspace(report: Option<&str>) -> Result<PathBuf, String> {
     make_temp_workspace_with_suppressions(report, None)
 }
 
+/// Own a config boundary outside Doctor's selected file or no-Cargo subject.
+/// Acquire before RAII so cleanup never removes a preexisting directory.
+fn owned_doctor_default_subject(
+    label: &str,
+) -> Result<(IsolatedFixtureWorkspace, PathBuf), String> {
+    let outer = unique_temp_workspace(label);
+    std::fs::create_dir(&outer)
+        .map_err(|error| format!("acquire owned Doctor boundary: {error}"))?;
+    let isolated = IsolatedFixtureWorkspace(outer);
+    std::fs::write(isolated.path().join("Cargo.toml"), "[workspace]\n")
+        .map_err(|error| format!("write owned Doctor boundary: {error}"))?;
+    let subject = isolated.path().join("subject");
+    Ok((isolated, subject))
+}
+
 #[test]
 fn doctor_reports_missing_config_defaults() -> Result<(), String> {
     let workspace = make_temp_workspace(None)?;
@@ -10668,7 +10683,7 @@ fn assert_doctor_passes_without_rust_toolchain(
 #[test]
 #[cfg(all(unix, feature = "lang-python"))]
 fn doctor_passes_python_only_root_without_rust_toolchain() -> Result<(), String> {
-    let workspace = unique_temp_workspace("doctor-python-only");
+    let (_isolated, workspace) = owned_doctor_default_subject("doctor-python-only")?;
     std::fs::create_dir_all(workspace.join("src/textfmt"))
         .map_err(|error| format!("create python package: {error}"))?;
     std::fs::write(
@@ -10681,6 +10696,23 @@ fn doctor_passes_python_only_root_without_rust_toolchain() -> Result<(), String>
         "def shout(text):\n    return text.upper()\n",
     )
     .map_err(|error| format!("write python source: {error}"))?;
+    assert!(
+        !workspace.join("Cargo.toml").exists(),
+        "the selected Python-only root must remain without a Cargo manifest"
+    );
+    let config = ripr::config::load_for_root(&workspace)?;
+    assert!(
+        config.source_path.is_none(),
+        "Python auto-enablement must use no inherited config"
+    );
+    assert_eq!(
+        config.languages.enabled,
+        vec![
+            ripr::domain::LanguageId::Rust,
+            ripr::domain::LanguageId::Python
+        ],
+        "only the selected Python markers may extend built-in Rust defaults"
+    );
     let path = doctor_path_without_rust_toolchain(&workspace)?;
     let result = assert_doctor_passes_without_rust_toolchain(
         &workspace,
@@ -11406,7 +11438,7 @@ fn doctor_file_root_is_not_reported_as_missing() -> Result<(), String> {
     // #5101: passing an existing file as --root (Cargo.toml is the common
     // slip) used to print "root directory does not exist" on the human
     // path, skip reasons, first-command guidance, and doctor --json.
-    let dir = unique_temp_workspace("doctor-file-root");
+    let (_isolated, dir) = owned_doctor_default_subject("doctor-file-root")?;
     std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
     let file = dir.join("Cargo.toml");
     std::fs::write(
@@ -11421,6 +11453,16 @@ fn doctor_file_root_is_not_reported_as_missing() -> Result<(), String> {
             file.display()
         ));
     }
+    let config = ripr::config::load_for_root(&file)?;
+    assert!(
+        config.source_path.is_none(),
+        "file-root scope must use no inherited config"
+    );
+    assert_eq!(
+        config,
+        ripr::config::RiprConfig::default(),
+        "the regular-file root requires unconfigured Rust-only built-in defaults"
+    );
     let root = file.display().to_string();
     let output = run_ripr(&["doctor", "--root", &root]);
     assert_failure(&output);
