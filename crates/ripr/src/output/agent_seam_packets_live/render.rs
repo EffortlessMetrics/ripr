@@ -288,6 +288,7 @@ fn blocked_review_entry(
             "reason": currentness.reason.as_str(),
         },
         "refresh_commands": json!(&currentness.refresh_commands),
+        "refresh_replayable": currentness.refresh_replayable(),
     })
 }
 

@@ -61,6 +61,29 @@ are scoped or reviewed.
 
 ### Fixed
 
+- `ripr swarm ingest` no longer fails the packet's forbidden-edit guard open
+  on path spellings. `SRC/PRICING.py`, absolute or verbatim `\\?\` paths
+  under the root, symlinked-root spellings, drive-relative forms, and
+  `..` segments canonicalize before the comparison — directly named absolute
+  or drive-prefixed entries resolve against the filesystem when they exist,
+  root-relative entries that name an existing file resolve against the
+  selected root (so a symlinked spelling anchors to the file it writes
+  through), and everything else matches lexically case-insensitively — so a
+  forbidden production edit can no longer classify `closed`/`resolved`.
+  Entries that do not resolve inside the root surface as
+  `evidence.edited_files_outside_root` instead of passing silently
+  (#5984). The OUTPUT_SCHEMA ingest example now shows the pinned
+  `forbidden_edit` reason token the binary emits instead of prose (#5986).
+- `ripr swarm queue` no longer emits a runnable refresh route a check-output
+  gap ledger cannot replay. The route carries the typed
+  `refresh_replayable: false` state with an empty `refresh_commands` array —
+  check output records no `--diff` scope, so the old command silently
+  rebuilt the ledger at a different scope inside Git and truncated the
+  recorded check output through its own redirect outside Git — and the
+  blocked reason names the manual rerun-with-same-`--diff` route.
+  `refresh_replayable` is `true` only for producer-validated repo-exposure
+  sources; records and unidentified kinds keep their repo-exposure recovery
+  commands but no longer advertise them as a replay (#5985).
 - Calibration: `cargo xtask mutation-calibration` now imports cargo-mutants
   JSON through the same product importer as `ripr calibrate cargo-mutants`.
   A real cargo-mutants 27.1 `mutants.out` (`scenario.Mutant`,
