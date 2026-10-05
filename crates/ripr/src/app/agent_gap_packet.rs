@@ -42,7 +42,10 @@ pub(crate) fn render_agent_packet_from_gap_ledger(
     let (causal_projection, causal_projection_warning) =
         crate::app::causal_projection::CausalDeltaArtifact::load_optional(root);
     if let Some(warning) = causal_projection_warning {
-        eprintln!("ripr agent packet: {warning}");
+        eprintln!(
+            "{}",
+            output::human::terminal_safe(format!("ripr agent packet: {warning}"))
+        );
     }
     output::agent_seam_packets::render_agent_gap_record_packet_json_with_live_currentness(
         &output::outcome::display_path(gap_ledger),

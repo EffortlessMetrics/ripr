@@ -17,7 +17,13 @@
 //! double-encoding yields `%2525`. Unicode passes through raw in all three:
 //! the escape map has no UTF-8 branch.
 
+use crate::output::human::terminal_safe;
+
 /// Escape workflow-command *data* (the message after `::`).
+///
+/// Control and bidi characters other than the ones GitHub decodes print as
+/// `\u{XX}` (see `human::terminal_safe`), so a hostile path or message cannot
+/// drive the terminal or a log viewer.
 ///
 /// Single pass: each input char is visited once, so the `%` introduced by
 /// an insertion is never rescanned — literal `%0A` sequences survive one
@@ -33,7 +39,7 @@ pub(crate) fn escape_data(value: &str) -> String {
             _ => escaped.push(c),
         }
     }
-    escaped
+    terminal_safe(escaped)
 }
 
 /// Escape a workflow-command *property* value from raw text.
@@ -52,7 +58,7 @@ pub(crate) fn escape_property(value: &str) -> String {
             _ => escaped.push(c),
         }
     }
-    escaped
+    terminal_safe(escaped)
 }
 
 /// Escape a workflow-command *property* value from stable path text.
@@ -70,12 +76,26 @@ pub(crate) fn escape_property_pre_encoded(value: &str) -> String {
             _ => escaped.push(c),
         }
     }
-    escaped
+    terminal_safe(escaped)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{escape_data, escape_property, escape_property_pre_encoded};
+
+    #[test]
+    fn control_and_bidi_characters_print_as_escapes_in_every_form() {
+        let hostile = "a\u{1b}[2J\u{7}b\u{202e}c\nd";
+        assert_eq!(escape_data(hostile), "a\\u{1b}[2J\\u{07}b\\u{202e}c%0Ad");
+        assert_eq!(
+            escape_property(hostile),
+            "a\\u{1b}[2J\\u{07}b\\u{202e}c%0Ad"
+        );
+        assert_eq!(
+            escape_property_pre_encoded(hostile),
+            "a\\u{1b}[2J\\u{07}b\\u{202e}c%0Ad"
+        );
+    }
 
     #[test]
     fn data_keeps_comma_colon_literal() {

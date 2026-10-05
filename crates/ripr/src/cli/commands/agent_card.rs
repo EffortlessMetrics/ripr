@@ -49,7 +49,11 @@ pub(super) fn run_agent_card(options: AgentCardOptions) -> Result<(), CommandErr
             // after the envelope, as the human rendering.
             if options.json {
                 match render_agent_card_refusal(&options, kind, &message) {
-                    Ok(rendered) => eprint!("{rendered}"),
+                    // A JSON document, not report text: bidi characters become
+                    // JSON escapes so the envelope stays parseable (#6309).
+                    Ok(rendered) => {
+                        ::std::eprint!("{}", crate::terminal_text::json_terminal_safe(rendered))
+                    }
                     Err(render_error) => eprintln!("ripr: {render_error}"),
                 }
             }

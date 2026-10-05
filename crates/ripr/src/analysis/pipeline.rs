@@ -22,6 +22,7 @@ use crate::analysis_outcome::{
 use crate::config::OraclePolicy;
 use crate::core_error::CoreError;
 use crate::domain::Finding;
+use crate::terminal_text::terminal_safe;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -148,15 +149,18 @@ fn committed_history_overlay(
     if crate::is_verbose() {
         let dirty = overlay.dirty_paths().collect::<Vec<_>>();
         eprintln!(
-            "ripr: committed-history diff; reading HEAD content for {} tracked file(s) with uncommitted changes: {}",
-            dirty.len(),
-            dirty.join(", ")
+            "{}",
+            terminal_safe(format!(
+                "ripr: committed-history diff; reading HEAD content for {} tracked file(s) with uncommitted changes: {}",
+                dirty.len(),
+                dirty.join(", ")
+            ))
         );
     }
     if let Some(message) =
         committed_paths_missing_disclosure(&overlay.committed_paths_missing_on_disk())
     {
-        eprintln!("{message}");
+        eprintln!("{}", terminal_safe(message));
     }
     Ok(Some(std::sync::Arc::new(overlay)))
 }

@@ -382,7 +382,67 @@ pub(crate) fn shell_arg(value: &str) -> String {
     {
         return value.to_string();
     }
+    if value.chars().any(needs_terminal_escape) {
+        return ansi_c_quote(value);
+    }
     format!("'{}'", value.replace('\'', r"'\''"))
+}
+
+/// Which characters must not reach a terminal raw: every control character
+/// except `\n` and `\t`, plus the bidi formatting characters. One owner for the
+/// policy; `output::human::terminal_safe` escapes the same set in reports. It
+/// lives here, dependency-free, because `xtask` includes this file by path.
+pub(crate) fn needs_terminal_escape(ch: char) -> bool {
+    match ch {
+        '\n' | '\t' => false,
+        c if c.is_control() => true,
+        // Arabic letter mark, LRM/RLM, embeddings/overrides (LRE..RLO), and
+        // isolates (LRI..PDI): they reorder text without any visible glyph.
+        '\u{61c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' => {
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Control and bidi characters cannot be printed raw in a report, and the
+/// report escape would change them inside `'...'` so the pasted command named a
+/// different argument. Each such character becomes an adjacent
+/// `"$(printf '\ooo')"` segment, one octal escape per UTF-8 byte; everything
+/// else stays in `'...'` runs. Unlike `$'...'` this is POSIX, so `sh`, dash, bash
+/// and zsh all rebuild the exact bytes. PowerShell has no translation for the
+/// `$(...)` form, so that variant is withheld.
+fn ansi_c_quote(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 8);
+    let mut in_run = false;
+    for ch in value.chars() {
+        if needs_terminal_escape(ch) {
+            if in_run {
+                out.push('\'');
+                in_run = false;
+            }
+            out.push_str("\"$(printf '");
+            let mut buf = [0u8; 4];
+            for byte in ch.encode_utf8(&mut buf).bytes() {
+                out.push_str(&format!("\\{byte:03o}"));
+            }
+            out.push_str("')\"");
+            continue;
+        }
+        if !in_run {
+            out.push('\'');
+            in_run = true;
+        }
+        if ch == '\'' {
+            out.push_str(r"'\''");
+        } else {
+            out.push(ch);
+        }
+    }
+    if in_run {
+        out.push('\'');
+    }
+    out
 }
 
 fn append_redirect(root: &str, command: String, out_path: Option<&str>) -> String {
@@ -761,7 +821,52 @@ mod tests {
             ("ampersand", "a && b"),
             ("tilde", "~/notes"),
             ("leading dash", "--not-a-flag"),
+            ("escape sequence", "a\u{1b}[2Jb'c\\d"),
+            ("bell and carriage return", "x\u{7}y\rz"),
+            ("bidi override", "dir\u{202e}gnissim"),
         ]
+    }
+
+    #[test]
+    fn shell_arg_spells_control_and_bidi_characters_as_escapes() {
+        let quoted = shell_arg("a\u{1b}[2Jb'c\\d\u{202e}");
+        assert_eq!(
+            quoted,
+            r#"'a'"$(printf '\033')"'[2Jb'\''c\d'"$(printf '\342\200\256')""#
+        );
+        assert!(!quoted.chars().any(needs_terminal_escape), "{quoted:?}");
+        // Plain hostile text without control characters keeps `'...'` quoting.
+        assert_eq!(shell_arg("it's"), r"'it'\''s'");
+    }
+
+    /// The control-character form must be POSIX, not bash-only: a pasted line
+    /// runs under `/bin/sh` (dash on Debian) as often as under bash.
+    #[cfg(unix)]
+    #[test]
+    fn shell_arg_control_characters_round_trip_through_posix_sh() -> Result<(), String> {
+        let sh = std::path::Path::new("/bin/sh");
+        if !sh.exists() {
+            return Ok(());
+        }
+        for (label, value) in hostile_values() {
+            let script = format!(
+                "set -- {}\nprintf '%s\\n' \"$#\"\nprintf '%s' \"$1\"\n",
+                shell_arg(value)
+            );
+            let output = std::process::Command::new(sh)
+                .arg("-c")
+                .arg(&script)
+                .output()
+                .map_err(|err| format!("{label}: failed to run sh: {err}"))?;
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let expected = format!("1\n{value}");
+            if !output.status.success() || stdout != expected {
+                return Err(format!(
+                    "{label}: sh gave {stdout:?} for script {script:?}, expected {expected:?}"
+                ));
+            }
+        }
+        Ok(())
     }
 
     #[test]

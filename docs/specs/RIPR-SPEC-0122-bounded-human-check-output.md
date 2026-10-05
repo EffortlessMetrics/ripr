@@ -303,6 +303,17 @@ line with a bare carriage return, or reorder displayed text. The escape changes
 no classification, count or selection. Machine formats keep the raw value and
 escape it with their own encoders.
 
+The same escape covers the other terminal-bound text: the GitHub workflow
+annotation encoders (`--format github`), the command-failure line on stderr
+(`CommandError` display), and every library `eprintln!`, which a
+crate-level shadow (`stderr_guard`) routes through the same escape so a new
+warning is safe by default. The progress sink writes to the stderr handle
+directly and prints fixed stage text only. A printed drill-in command is the exception to "escaped
+text": a control or bidi character in a command argument is spelled as an adjacent
+POSIX `"$(printf '\ooo')"` segment (one octal escape per UTF-8 byte), so the line carries no raw control byte and still names the
+same argument when pasted. PowerShell has no translation for that form, so no
+PowerShell variant is offered for it.
+
 ### Repo-scope warnings
 
 When a repo-scoped check format is combined with `--base` or `--diff`, the CLI
@@ -369,6 +380,7 @@ suggested write cannot fail on the same missing base.
 - `crates/ripr/src/output/human.rs::tests::bounded_human_output_caps_many_findings_and_reports_omitted_count`
 - `crates/ripr/src/output/human.rs::tests::terminal_safe_escapes_controls_and_bidi_but_keeps_lines_and_tabs`
 - `crates/ripr/tests/hostile_repos.rs::terminal_control_bytes_in_repo_text_never_reach_the_terminal`
+- `crates/ripr/tests/hostile_repos.rs::control_bytes_in_names_and_config_never_reach_github_output_stderr_or_commands`
 - `crates/ripr/src/output/human.rs::tests::bounded_human_output_does_not_select_exposed_over_non_exposed_repair`
 - `crates/ripr/src/output/human.rs::tests::bounded_human_output_reports_missing_scope_as_start_here_state`
 - `crates/ripr/src/output/human.rs::tests::start_here_prefers_a_python_finding_with_a_repair_card`

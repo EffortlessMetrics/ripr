@@ -11,6 +11,7 @@ use crate::config::RiprConfig;
 use crate::core_error::CoreError;
 use crate::domain::LanguageId;
 use crate::domain::Summary;
+use crate::output::human::terminal_safe;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -214,7 +215,10 @@ fn check_with_progress_and_origins_with_open_rust_paths(
         match invoke_perl_lsp_producer(perl_config, &input) {
             Ok(packet_path) => input.perl_facts_path = Some(packet_path),
             Err(reason) => {
-                eprintln!("warning: Perl facts exporter failed: {reason}");
+                eprintln!(
+                    "{}",
+                    terminal_safe(format!("warning: Perl facts exporter failed: {reason}"))
+                );
                 eprintln!("warning: Perl analysis will be unavailable; other languages continue.");
             }
         }
@@ -465,10 +469,13 @@ fn invoke_perl_lsp_producer(
 ) -> Result<PathBuf, String> {
     if let Some(refused) = perl_config.refused_executable() {
         eprintln!(
-            "warning: ignoring [perl].executable `{}` from ripr.toml: repository config cannot choose a program for ripr to run; set {}=1 to trust it. Using `{}` from PATH instead.",
-            refused.display(),
-            crate::config::PERL_EXECUTABLE_OPT_IN_ENV,
-            default_executable_for_producer(perl_config.producer()).display()
+            "{}",
+            terminal_safe(format!(
+                "warning: ignoring [perl].executable `{}` from ripr.toml: repository config cannot choose a program for ripr to run; set {}=1 to trust it. Using `{}` from PATH instead.",
+                refused.display(),
+                crate::config::PERL_EXECUTABLE_OPT_IN_ENV,
+                default_executable_for_producer(perl_config.producer()).display()
+            ))
         );
     }
     let executable = perl_config

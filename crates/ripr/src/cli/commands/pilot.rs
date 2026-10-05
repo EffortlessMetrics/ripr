@@ -8,6 +8,7 @@ use crate::cli::progress::{CliProgressSink, ProgressPolicy};
 use crate::cli::suggest::unknown_argument;
 use crate::config::{CheckInputExplicit, RiprConfig, apply_to_check_input, load_for_root};
 use crate::output;
+use crate::output::human::terminal_safe;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -230,7 +231,7 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     let (causal_projection, causal_projection_warning) =
         crate::app::causal_projection::CausalDeltaArtifact::load_optional(&input.root);
     if let Some(warning) = causal_projection_warning {
-        eprintln!("ripr pilot: {warning}");
+        eprintln!("{}", terminal_safe(format!("ripr pilot: {warning}")));
     }
 
     let python_first_use = collect_pilot_python_first_use(&input, &config);
