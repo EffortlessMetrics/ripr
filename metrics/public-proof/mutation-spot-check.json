@@ -1,0 +1,377 @@
+{
+  "claim_boundary": "Agreement is scored only on seam_precise joins (operator mutants whose original operator appears in a predicate_boundary or return_value seam expression on the same line). Claims are limited to the recorded checkout revisions, cargo-mutants versions, and this join rule; this is not a suite adequacy measure.",
+  "disagreement_examples": {
+    "false_gap": [
+      {
+        "expression": "i > 0",
+        "file": "src/display.rs",
+        "grip_class": "ungripped",
+        "line": 39,
+        "mutant": "src/display.rs:39:18: replace > with < in <impl Display for VersionReq>::fmt",
+        "repo": "semver",
+        "revision": "280ebcb6edac3aa4cdc545dbff8a26c5ac4861fe",
+        "runtime_outcome": "caught",
+        "seam_id": "e88add45fb495e40",
+        "seam_kind": "predicate_boundary"
+      },
+      {
+        "expression": "self.op == Op::Wildcard",
+        "file": "src/display.rs",
+        "grip_class": "ungripped",
+        "line": 69,
+        "mutant": "src/display.rs:69:31: replace == with != in <impl Display for Comparator>::fmt",
+        "repo": "semver",
+        "revision": "280ebcb6edac3aa4cdc545dbff8a26c5ac4861fe",
+        "runtime_outcome": "caught",
+        "seam_id": "ab47e0513584d66b",
+        "seam_kind": "predicate_boundary"
+      },
+      {
+        "expression": "self.op == Op::Wildcard",
+        "file": "src/display.rs",
+        "grip_class": "ungripped",
+        "line": 72,
+        "mutant": "src/display.rs:72:27: replace == with != in <impl Display for Comparator>::fmt",
+        "repo": "semver",
+        "revision": "280ebcb6edac3aa4cdc545dbff8a26c5ac4861fe",
+        "runtime_outcome": "caught",
+        "seam_id": "a23f3b51304bfbde",
+        "seam_kind": "predicate_boundary"
+      },
+      {
+        "expression": "val < 10",
+        "file": "src/display.rs",
+        "grip_class": "ungripped",
+        "line": 157,
+        "mutant": "src/display.rs:157:12: replace < with == in digits",
+        "repo": "semver",
+        "revision": "280ebcb6edac3aa4cdc545dbff8a26c5ac4861fe",
+        "runtime_outcome": "caught",
+        "seam_id": "6caf4439e5440023",
+        "seam_kind": "predicate_boundary"
+      },
+      {
+        "expression": "self.0 == '\\0'",
+        "file": "src/error.rs",
+        "grip_class": "ungripped",
+        "line": 120,
+        "mutant": "src/error.rs:120:19: replace == with != in <impl Display for QuotedChar>::fmt",
+        "repo": "semver",
+        "revision": "280ebcb6edac3aa4cdc545dbff8a26c5ac4861fe",
+        "runtime_outcome": "caught",
+        "seam_id": "5eaa975c73abbaf8",
+        "seam_kind": "predicate_boundary"
+      },
+      {
+        "expression": "(len_bits + 6) / 7",
+        "file": "src/identifier.rs",
+        "grip_class": "ungripped",
+        "line": 411,
+        "mutant": "src/identifier.rs:411:20: replace / with % in bytes_for_varint",
+        "repo": "semver",
+        "revision": "280ebcb6edac3aa4cdc545dbff8a26c5ac4861fe",
+        "runtime_outcome": "caught",
+        "seam_id": "12354c9f09adc903",
+        "seam_kind": "return_value"
+      },
+      {
+        "expression": "ordering != Ordering::Equal",
+        "file": "src/impls.rs",
+        "grip_class": "ungripped",
+        "line": 94,
+        "mutant": "src/impls.rs:94:25: replace != with == in <impl Ord for Prerelease>::cmp",
+        "repo": "semver",
+        "revision": "280ebcb6edac3aa4cdc545dbff8a26c5ac4861fe",
+        "runtime_outcome": "caught",
+        "seam_id": "3816a022ec27548c",
+        "seam_kind": "predicate_boundary"
+      },
+      {
+        "expression": "ordering != Ordering::Equal",
+        "file": "src/impls.rs",
+        "grip_class": "ungripped",
+        "line": 139,
+        "mutant": "src/impls.rs:139:25: replace != with == in <impl Ord for BuildMetadata>::cmp",
+        "repo": "semver",
+        "revision": "280ebcb6edac3aa4cdc545dbff8a26c5ac4861fe",
+        "runtime_outcome": "caught",
+        "seam_id": "f4656cc2d461efff",
+        "seam_kind": "predicate_boundary"
+      },
+      {
+        "expression": "segment_len == 0",
+        "file": "src/parse.rs",
+        "grip_class": "ungripped",
+        "line": 235,
+        "mutant": "src/parse.rs:235:32: replace == with != in identifier",
+        "repo": "semver",
+        "revision": "280ebcb6edac3aa4cdc545dbff8a26c5ac4861fe",
+        "runtime_outcome": "caught",
+        "seam_id": "36bf26d07be506e4",
+        "seam_kind": "predicate_boundary"
+      },
+      {
+        "expression": "pos == Position::Pre",
+        "file": "src/parse.rs",
+        "grip_class": "ungripped",
+        "line": 242,
+        "mutant": "src/parse.rs:242:24: replace == with != in identifier",
+        "repo": "semver",
+        "revision": "280ebcb6edac3aa4cdc545dbff8a26c5ac4861fe",
+        "runtime_outcome": "caught",
+        "seam_id": "28f8a9d991cf8d90",
+        "seam_kind": "predicate_boundary"
+      },
+      {
+        "expression": "segment_len > 1",
+        "file": "src/parse.rs",
+        "grip_class": "ungripped",
+        "line": 243,
+        "mutant": "src/parse.rs:243:36: replace > with < in identifier",
+        "repo": "semver",
+        "revision": "280ebcb6edac3aa4cdc545dbff8a26c5ac4861fe",
+        "runtime_outcome": "caught",
+        "seam_id": "1ff312d98c9900a4",
+        "seam_kind": "predicate_boundary"
+      },
+      {
+        "expression": "depth + 1 == MAX_COMPARATORS",
+        "file": "src/parse.rs",
+        "grip_class": "ungripped",
+        "line": 394,
+        "mutant": "src/parse.rs:394:18: replace == with != in version_req",
+        "repo": "semver",
+        "revision": "280ebcb6edac3aa4cdc545dbff8a26c5ac4861fe",
+        "runtime_outcome": "caught",
+        "seam_id": "ef645df634f65594",
+        "seam_kind": "predicate_boundary"
+      }
+    ]
+  },
+  "outcomes_by_pairing_and_grip_class": {
+    "function_body": {
+      "activation_unknown": {
+        "caught": 36,
+        "missed": 30,
+        "timeout": 2,
+        "unviable": 2
+      },
+      "propagation_unknown": {
+        "unviable": 2
+      },
+      "strongly_gripped": {
+        "caught": 26,
+        "unviable": 2
+      },
+      "ungripped": {
+        "caught": 14,
+        "missed": 6,
+        "unviable": 14
+      },
+      "weakly_gripped": {
+        "caught": 30,
+        "missed": 12
+      }
+    },
+    "same_line_other": {
+      "activation_unknown": {
+        "caught": 53,
+        "missed": 18
+      },
+      "strongly_gripped": {
+        "caught": 42,
+        "missed": 1
+      },
+      "ungripped": {
+        "caught": 30,
+        "missed": 7,
+        "unviable": 1
+      },
+      "weakly_gripped": {
+        "caught": 27,
+        "missed": 7
+      }
+    },
+    "seam_precise": {
+      "activation_unknown": {
+        "caught": 95,
+        "missed": 29,
+        "timeout": 1
+      },
+      "strongly_gripped": {
+        "caught": 14,
+        "timeout": 1
+      },
+      "ungripped": {
+        "caught": 22,
+        "missed": 1
+      },
+      "weakly_gripped": {
+        "caught": 8,
+        "missed": 3
+      }
+    }
+  },
+  "repos": [
+    {
+      "calibration_metrics": {
+        "ambiguous_file_line_total": 34,
+        "join_method_counts": {
+          "file_line": 36
+        },
+        "matched_total": 36,
+        "mutants_total": 86,
+        "runtime_outcome_counts": {
+          "caught": 61,
+          "missed": 20,
+          "timeout": 1,
+          "unviable": 4
+        },
+        "static_seams_total": 136,
+        "static_without_runtime_total": 80,
+        "unmatched_mutants_total": 16
+      },
+      "cargo_mutants_version": "27.1.0",
+      "exposure_run_status": "complete",
+      "name": "rust-hex",
+      "pairings": {
+        "function_body": 18,
+        "same_line_other": 16,
+        "seam_precise": 2
+      },
+      "revision": "e25a8701f7f6b5ec4acedffcb4a45cfb69cc34eb"
+    },
+    {
+      "calibration_metrics": {
+        "ambiguous_file_line_total": 176,
+        "join_method_counts": {
+          "file_line": 144
+        },
+        "matched_total": 144,
+        "mutants_total": 365,
+        "runtime_outcome_counts": {
+          "caught": 268,
+          "missed": 60,
+          "timeout": 5,
+          "unviable": 32
+        },
+        "static_seams_total": 895,
+        "static_without_runtime_total": 582,
+        "unmatched_mutants_total": 45
+      },
+      "cargo_mutants_version": "27.1.0",
+      "exposure_run_status": "complete",
+      "name": "semver",
+      "pairings": {
+        "function_body": 49,
+        "same_line_other": 42,
+        "seam_precise": 53
+      },
+      "revision": "280ebcb6edac3aa4cdc545dbff8a26c5ac4861fe"
+    },
+    {
+      "calibration_metrics": {
+        "ambiguous_file_line_total": 106,
+        "join_method_counts": {
+          "file_line": 137
+        },
+        "matched_total": 137,
+        "mutants_total": 358,
+        "runtime_outcome_counts": {
+          "caught": 272,
+          "missed": 79,
+          "timeout": 4,
+          "unviable": 3
+        },
+        "static_seams_total": 245,
+        "static_without_runtime_total": 97,
+        "unmatched_mutants_total": 115
+      },
+      "cargo_mutants_version": "27.1.0",
+      "exposure_run_status": "complete",
+      "name": "strsim-rs",
+      "pairings": {
+        "function_body": 17,
+        "same_line_other": 76,
+        "seam_precise": 44
+      },
+      "revision": "dacc84c0dc61eff0ee0ff66962bcf2e17018ad26"
+    },
+    {
+      "calibration_metrics": {
+        "ambiguous_file_line_total": 219,
+        "join_method_counts": {
+          "file_line": 118
+        },
+        "matched_total": 118,
+        "mutants_total": 362,
+        "runtime_outcome_counts": {
+          "caught": 186,
+          "missed": 144,
+          "timeout": 9,
+          "unviable": 23
+        },
+        "static_seams_total": 376,
+        "static_without_runtime_total": 168,
+        "unmatched_mutants_total": 25
+      },
+      "cargo_mutants_version": "27.1.0",
+      "exposure_run_status": "complete",
+      "name": "bytesize",
+      "pairings": {
+        "function_body": 69,
+        "same_line_other": 14,
+        "seam_precise": 35
+      },
+      "revision": "66a3715e33369e99cb428bcd5aee32291f8e0a94"
+    },
+    {
+      "calibration_metrics": {
+        "ambiguous_file_line_total": 137,
+        "join_method_counts": {
+          "file_line": 101
+        },
+        "matched_total": 101,
+        "mutants_total": 574,
+        "runtime_outcome_counts": {
+          "caught": 537,
+          "missed": 20,
+          "unviable": 17
+        },
+        "static_seams_total": 461,
+        "static_without_runtime_total": 256,
+        "unmatched_mutants_total": 336
+      },
+      "cargo_mutants_version": "27.1.0",
+      "exposure_run_status": "complete",
+      "name": "humantime",
+      "pairings": {
+        "function_body": 23,
+        "same_line_other": 38,
+        "seam_precise": 40
+      },
+      "revision": "76c8929b4cc286f675322475a8e1841f35bafc57"
+    }
+  ],
+  "schema_version": "ripr-mutation-spot-check-v1",
+  "scored_families": {
+    "claims_discriminator": {
+      "agreement_rate": 1.0,
+      "counts": {
+        "agree": 14
+      },
+      "mutants_scored": 14,
+      "seams_scored": 8
+    },
+    "claims_no_discriminator": {
+      "agreement_rate": 0.043,
+      "counts": {
+        "agree": 1,
+        "false_gap": 22
+      },
+      "mutants_scored": 23,
+      "seams_scored": 12
+    }
+  },
+  "status": "advisory"
+}

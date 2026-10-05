@@ -1,0 +1,8 @@
+{
+  "schema_version": "ripr-dx-scoreboard-input-v1",
+  "source": "install",
+  "evidence": "install thread, 2026-10-04: prebuilt ripr 0.10.0 (12.9 MB archive) on linux x86-64 gnu in the cloud container; download + .sha256 + sha256sum -c + extract + ripr --version; runs 0.97 s, 0.60 s, 0.75 s (worst kept). Network-dependent, one runner class, not hosted CI. Compiling from source took 128 s (0.10 release) and 640 s (0.11 dev from git).",
+  "metrics": [
+    {"id": "ci.install_seconds", "value": 0.97}
+  ]
+}

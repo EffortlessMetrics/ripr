@@ -781,3 +781,69 @@ surface = "config"
 classification = "config"
 reason = "cargo-allow spec-system conformance fixtures for legacy TOML dialect validation (#1761/#1836)"
 covered_by = ["cargo xtask check-spec-format", "cargo xtask check-doc-index"]
+
+[[allow]]
+glob = "metrics/public-proof/dx-scoreboard.json"
+kind = "public_proof_receipt"
+owner = "ripr/evidence-quality"
+surface = "repo"
+classification = "generated"
+reason = "Committed copy of metrics/dx-scoreboard/baseline.json that docs/PUBLIC_PROOF.md is rendered from."
+generated_by = "cargo xtask public-proof --refresh-receipts"
+covered_by = ["cargo xtask public-proof --check", "cargo test -p xtask public_proof"]
+
+[[allow]]
+glob = "metrics/public-proof/verdict-corpus.json"
+kind = "public_proof_receipt"
+owner = "ripr/evidence-quality"
+surface = "repo"
+classification = "generated"
+reason = "Committed copy of fixtures/rust-verdict-corpus/expected/report.json that docs/PUBLIC_PROOF.md is rendered from."
+generated_by = "cargo xtask public-proof --refresh-receipts"
+covered_by = ["cargo xtask public-proof --check", "cargo test -p xtask public_proof"]
+
+[[allow]]
+glob = "metrics/public-proof/corpus-manifest.json"
+kind = "public_proof_receipt"
+owner = "ripr/evidence-quality"
+surface = "repo"
+classification = "generated"
+reason = "Committed copy of benchmarks/rust_corpus/manifest.json that docs/PUBLIC_PROOF.md is rendered from."
+generated_by = "cargo xtask public-proof --refresh-receipts"
+covered_by = ["cargo xtask public-proof --check", "cargo test -p xtask public_proof"]
+
+[[allow]]
+glob = "metrics/public-proof/mutation-spot-check.json"
+kind = "public_proof_receipt"
+owner = "ripr/evidence-quality"
+surface = "repo"
+classification = "fixture"
+reason = "Committed mutation spot-check harness output that docs/PUBLIC_PROOF.md is rendered from. It has no in-repo producer command, so it is edited by hand and not refreshed by public-proof."
+covered_by = ["cargo test -p xtask public_proof"]
+
+[[allow]]
+glob = "metrics/public-proof/first-run-*.json"
+kind = "public_proof_receipt"
+owner = "ripr/evidence-quality"
+surface = "repo"
+classification = "fixture"
+reason = "Committed first-run walk harness output that docs/PUBLIC_PROOF.md is rendered from. It has no in-repo producer command, so it is edited by hand and not refreshed by public-proof."
+covered_by = ["cargo test -p xtask public_proof"]
+
+[[allow]]
+glob = "metrics/public-proof/install.json"
+kind = "public_proof_receipt"
+owner = "ripr/evidence-quality"
+surface = "repo"
+classification = "fixture"
+reason = "Committed standalone install timing harness output that docs/PUBLIC_PROOF.md is rendered from. It has no in-repo producer command, so it is edited by hand and not refreshed by public-proof."
+covered_by = ["cargo test -p xtask public_proof"]
+
+[[allow]]
+glob = "metrics/public-proof/agent-as-user.json"
+kind = "public_proof_receipt"
+owner = "ripr/evidence-quality"
+surface = "repo"
+classification = "fixture"
+reason = "Committed agent-as-user run harness output that docs/PUBLIC_PROOF.md is rendered from. It has no in-repo producer command, so it is edited by hand and not refreshed by public-proof."
+covered_by = ["cargo test -p xtask public_proof"]
