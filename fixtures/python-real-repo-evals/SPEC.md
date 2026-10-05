@@ -91,6 +91,14 @@ not execute Python. A historical limitation snapshot is not a golden requiring
 future analyzers to stay limited. Curated upstream cases do not increment
 blind-user, real-opportunity, installed-journey or release denominators.
 
+The separate `native_cases` bucket retains independently justified upstream
+behavior controls before an analyzer observation is available. The
+ItsDangerous future-age case includes an exact bug/fix pair, original inherited
+pytest fixtures, a valid but ineffective payload oracle, method/class skips and
+expected-failure suppression. Its native identities and nonempty control
+subjects are checked by the existing fixture-contract route. It contributes to
+none of the repair-card, no-action, installed-journey or promotion metrics.
+
 ## Must Not
 
 - Do not treat these records as support-tier promotion.

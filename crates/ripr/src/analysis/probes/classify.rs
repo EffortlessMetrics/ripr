@@ -1,5 +1,4 @@
-use super::super::extract::PROBE_SHAPE_UNSAFE_BOUNDARY;
-use super::super::rust_index::{ProbeShapeFact, RustIndex};
+use super::super::rust_index::{ProbeShapeFact, ProbeShapeKind, RustIndex};
 use super::family::family_for_probe_shape;
 use crate::analysis::facts::FileData;
 use crate::analysis::syntax::parse_clean_source_file;
@@ -34,10 +33,8 @@ pub(crate) fn parser_probe_shapes_for_changed_line<'a>(
         if shape.start_line > line || line > shape.end_line {
             continue;
         }
-        let Some(family) = family_for_probe_shape(&shape.kind) else {
-            continue;
-        };
-        let unsafe_boundary = shape.kind == PROBE_SHAPE_UNSAFE_BOUNDARY;
+        let family = family_for_probe_shape(shape.kind);
+        let unsafe_boundary = shape.kind == ProbeShapeKind::UnsafeBoundary;
         if unsafe_boundary && !unsafe_boundary_owns_changed_line(facts, shape, line) {
             continue;
         }
@@ -189,7 +186,7 @@ fn boundary_edge_is_empty(text: &str) -> bool {
 }
 
 fn parser_call_shape_is_standalone(facts: &FileData, shape: &ProbeShapeFact) -> bool {
-    if family_for_probe_shape(&shape.kind) != Some(ProbeFamily::CallDeletion) {
+    if family_for_probe_shape(shape.kind) != ProbeFamily::CallDeletion {
         return true;
     }
     let end = shape.start_byte.saturating_add(shape.text.len());
@@ -282,9 +279,7 @@ pub(crate) fn is_structural_delimiter_line(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::rust_index::{
-        FileFacts, PROBE_SHAPE_ERROR_PATH, PROBE_SHAPE_PREDICATE, ProbeShapeFact, RustIndex,
-    };
+    use super::super::super::rust_index::{FileFacts, ProbeShapeFact, ProbeShapeKind, RustIndex};
     use super::*;
     use std::collections::BTreeMap;
     use std::path::PathBuf;
@@ -343,15 +338,15 @@ mod tests {
                             start_line: 3,
                             end_line: 3,
                             start_byte: 0,
-                            kind: PROBE_SHAPE_PREDICATE.to_string(),
-                            text: "if amount >= threshold {".to_string(),
+                            kind: ProbeShapeKind::Predicate,
+                            text: "if amount >= threshold {".into(),
                         },
                         ProbeShapeFact {
                             start_line: 7,
                             end_line: 7,
                             start_byte: 20,
-                            kind: PROBE_SHAPE_ERROR_PATH.to_string(),
-                            text: "Err(AuthError::Revoked)".to_string(),
+                            kind: ProbeShapeKind::ErrorPath,
+                            text: "Err(AuthError::Revoked)".into(),
                         },
                     ],
                     ..FileFacts::default()
@@ -377,8 +372,8 @@ mod tests {
                         start_line: 3,
                         end_line: 3,
                         start_byte: 0,
-                        kind: PROBE_SHAPE_PREDICATE.to_string(),
-                        text: "if amount >= threshold {".to_string(),
+                        kind: ProbeShapeKind::Predicate,
+                        text: "if amount >= threshold {".into(),
                     }],
                     ..FileFacts::default()
                 },
@@ -408,28 +403,28 @@ mod tests {
                 path.clone(),
                 FileFacts {
                     path: path.clone(),
-                    source: source.to_string(),
+                    source: source.into(),
                     probe_shapes: vec![
                         ProbeShapeFact {
                             start_line: 1,
                             end_line: 5,
                             start_byte: function_start,
-                            kind: PROBE_SHAPE_UNSAFE_BOUNDARY.to_string(),
-                            text: "unsafe fn read_raw".to_string(),
+                            kind: ProbeShapeKind::UnsafeBoundary,
+                            text: "unsafe fn read_raw".into(),
                         },
                         ProbeShapeFact {
                             start_line: 2,
                             end_line: 4,
                             start_byte: block_start,
-                            kind: PROBE_SHAPE_UNSAFE_BOUNDARY.to_string(),
-                            text: "unsafe block".to_string(),
+                            kind: ProbeShapeKind::UnsafeBoundary,
+                            text: "unsafe block".into(),
                         },
                         ProbeShapeFact {
                             start_line: 3,
                             end_line: 3,
                             start_byte: predicate_start,
-                            kind: PROBE_SHAPE_PREDICATE.to_string(),
-                            text: "value < limit".to_string(),
+                            kind: ProbeShapeKind::Predicate,
+                            text: "value < limit".into(),
                         },
                     ],
                     ..FileFacts::default()
@@ -468,13 +463,13 @@ mod tests {
                 path.clone(),
                 FileFacts {
                     path: path.clone(),
-                    source: source.to_string(),
+                    source: source.into(),
                     probe_shapes: vec![ProbeShapeFact {
                         start_line: 1,
                         end_line: 1,
                         start_byte: block_start,
-                        kind: PROBE_SHAPE_UNSAFE_BOUNDARY.to_string(),
-                        text: "unsafe block".to_string(),
+                        kind: ProbeShapeKind::UnsafeBoundary,
+                        text: "unsafe block".into(),
                     }],
                     ..FileFacts::default()
                 },
@@ -504,13 +499,13 @@ mod tests {
                 path.clone(),
                 FileFacts {
                     path: path.clone(),
-                    source: source.to_string(),
+                    source: source.into(),
                     probe_shapes: vec![ProbeShapeFact {
                         start_line: 2,
                         end_line: 2,
                         start_byte: block_start,
-                        kind: PROBE_SHAPE_UNSAFE_BOUNDARY.to_string(),
-                        text: "unsafe block".to_string(),
+                        kind: ProbeShapeKind::UnsafeBoundary,
+                        text: "unsafe block".into(),
                     }],
                     ..FileFacts::default()
                 },
@@ -540,23 +535,21 @@ mod tests {
                 path.clone(),
                 FileFacts {
                     path: path.clone(),
-                    source: source.to_string(),
+                    source: source.into(),
                     probe_shapes: vec![
                         ProbeShapeFact {
                             start_line: 2,
                             end_line: 2,
                             start_byte: first,
-                            kind: crate::analysis::rust_index::PROBE_SHAPE_CALL_DELETION
-                                .to_string(),
-                            text: "read()".to_string(),
+                            kind: ProbeShapeKind::CallDeletion,
+                            text: "read()".into(),
                         },
                         ProbeShapeFact {
                             start_line: 3,
                             end_line: 3,
                             start_byte: second,
-                            kind: crate::analysis::rust_index::PROBE_SHAPE_CALL_DELETION
-                                .to_string(),
-                            text: "read()".to_string(),
+                            kind: ProbeShapeKind::CallDeletion,
+                            text: "read()".into(),
                         },
                     ],
                     ..FileFacts::default()
@@ -590,19 +583,15 @@ mod tests {
                             start_line: 10,
                             end_line: 13,
                             start_byte: 100,
-                            kind: crate::analysis::rust_index::PROBE_SHAPE_CALL_DELETION
-                                .to_string(),
-                            text: "watchdog_reason(\n    \"run-missing\",\n    receipt,\n)"
-                                .to_string(),
+                            kind: ProbeShapeKind::CallDeletion,
+                            text: "watchdog_reason(\n    \"run-missing\",\n    receipt,\n)".into(),
                         },
                         ProbeShapeFact {
                             start_line: 10,
                             end_line: 15,
                             start_byte: 90,
-                            kind: crate::analysis::rust_index::PROBE_SHAPE_CALL_DELETION
-                                .to_string(),
-                            text: "with_reason(watchdog_reason(\"run-missing\", receipt))"
-                                .to_string(),
+                            kind: ProbeShapeKind::CallDeletion,
+                            text: "with_reason(watchdog_reason(\"run-missing\", receipt))".into(),
                         },
                     ],
                     ..FileFacts::default()

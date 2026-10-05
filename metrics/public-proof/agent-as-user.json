@@ -1,0 +1,88 @@
+{
+  "schema_version": "ripr-dx-scoreboard-input-v1",
+  "source": "agent-as-user",
+  "evidence": "docs/AGENT_AS_USER_RUNS.md (PR #5293); ripr 0.11.0 a7a089e",
+  "metrics": [
+    {
+      "id": "agent.fix_success_rate",
+      "value": 1.0
+    },
+    {
+      "id": "agent.answer_key_mutants_caught",
+      "value": 3,
+      "repo": "bytesize",
+      "completed": true
+    },
+    {
+      "id": "agent.answer_key_mutants_caught",
+      "value": 3,
+      "repo": "humantime",
+      "completed": true
+    },
+    {
+      "id": "agent.answer_key_mutants_caught",
+      "value": 3,
+      "repo": "semver",
+      "completed": true
+    },
+    {
+      "id": "agent.ripr_commands_to_fix",
+      "value": 17,
+      "repo": "bytesize",
+      "completed": true
+    },
+    {
+      "id": "agent.ripr_commands_to_fix",
+      "value": 21,
+      "repo": "humantime",
+      "completed": true
+    },
+    {
+      "id": "agent.ripr_commands_to_fix",
+      "value": 20,
+      "repo": "semver",
+      "completed": true
+    },
+    {
+      "id": "agent.tool_steps_to_fix",
+      "value": 19,
+      "repo": "bytesize",
+      "completed": true
+    },
+    {
+      "id": "agent.tool_steps_to_fix",
+      "value": 22,
+      "repo": "humantime",
+      "completed": true
+    },
+    {
+      "id": "agent.tool_steps_to_fix",
+      "value": 21,
+      "repo": "semver",
+      "completed": true
+    },
+    {
+      "id": "agent.false_weak_findings_after_fix",
+      "value": 2,
+      "repo": "bytesize"
+    },
+    {
+      "id": "agent.false_weak_findings_after_fix",
+      "value": 2,
+      "repo": "humantime"
+    },
+    {
+      "id": "agent.false_weak_findings_after_fix",
+      "value": 1,
+      "repo": "semver"
+    },
+    {
+      "id": "agent.stale_recheck_cycles",
+      "value": 3
+    },
+    {
+      "id": "agent.white_box_tests_to_satisfy_ripr",
+      "value": 1
+    }
+  ]
+}

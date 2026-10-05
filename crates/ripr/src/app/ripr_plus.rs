@@ -25,7 +25,11 @@
 //! in `ripr check --format repo-exposure-summary-json`, not inside a
 //! receipt-composition subcommand.
 //!
-//! Output: `target/ripr/reports/ripr-plus.{json,md}`.
+//! Output: `target/ripr/reports/ripr-plus.{json,md}`. A run whose named
+//! artifact cannot be read or composed, and that would replace a receipt whose
+//! status is not `indeterminate`, first copies it to
+//! `target/ripr/reports/ripr-plus.last-good.{json,md}`; that copy describes an
+//! earlier run and is never current evidence.
 
 use crate::cli::unknown_argument;
 use crate::config::RiprConfig;
@@ -39,6 +43,15 @@ const RIPR_PLUS_JSON: &str = "target/ripr/reports/ripr-plus.json";
 const RIPR_PLUS_MD: &str = "target/ripr/reports/ripr-plus.md";
 const RIPR_PLUS_LAST_GOOD_JSON: &str = "target/ripr/reports/ripr-plus.last-good.json";
 const RIPR_PLUS_LAST_GOOD_MD: &str = "target/ripr/reports/ripr-plus.last-good.md";
+/// The authority limit the error text attaches to a kept copy; help repeats
+/// the same wording.
+const LAST_GOOD_IS_STALE: &str =
+    "it describes an earlier run, may be stale for the current HEAD, and is not current evidence.";
+/// The same limit as a standalone sentence, for messages that name no copy
+/// before it.
+const LAST_GOOD_IS_STALE_SENTENCE: &str = "A kept copy describes an earlier run, may be stale for the current HEAD, and is not current evidence.";
+const NO_COPY_KEPT_SENTENCE: &str =
+    "Any last-good copy still on disk is from an earlier run and is not current evidence.";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct RiprPlusOptions {
@@ -124,12 +137,14 @@ fn keep_last_good_receipt(repo: &Path) -> String {
                 RIPR_PLUS_LAST_GOOD_JSON,
                 previous,
             );
+            // `Ok(true)` when the Markdown was kept beside the JSON.
             let markdown_result = match fs::read(repo.join(RIPR_PLUS_MD)) {
                 Ok(markdown) => write_parented_file(
                     &repo.join(RIPR_PLUS_LAST_GOOD_MD),
                     RIPR_PLUS_LAST_GOOD_MD,
                     markdown,
-                ),
+                )
+                .map(|()| true),
                 // No canonical Markdown: drop any saved one so the pair never
                 // describes two different runs.
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
@@ -137,27 +152,48 @@ fn keep_last_good_receipt(repo: &Path) -> String {
                         Err(err) if err.kind() != std::io::ErrorKind::NotFound => Err(format!(
                             "failed to remove stale {RIPR_PLUS_LAST_GOOD_MD}: {err}"
                         )),
-                        _ => Ok(()),
+                        _ => Ok(false),
                     }
                 }
                 Err(err) => Err(format!("failed to read {RIPR_PLUS_MD}: {err}")),
             };
             match (json_result, markdown_result) {
-                (Ok(()), Ok(())) => format!(
-                    " The previous receipt (status `{status}`) is kept at {RIPR_PLUS_LAST_GOOD_JSON}; {RIPR_PLUS_JSON} now records this failed run as indeterminate."
-                ),
-                (json, markdown) => {
-                    let mut failures = Vec::new();
-                    if let Err(err) = json {
-                        failures.push(err);
-                    }
-                    if let Err(err) = markdown {
-                        failures.push(err);
-                    }
+                (Ok(()), Ok(markdown_kept)) => {
+                    let kept_at = if markdown_kept {
+                        format!("{RIPR_PLUS_LAST_GOOD_JSON} and {RIPR_PLUS_LAST_GOOD_MD}")
+                    } else {
+                        RIPR_PLUS_LAST_GOOD_JSON.to_string()
+                    };
                     format!(
-                        " The previous receipt (status `{status}`) was only partly kept ({}); {RIPR_PLUS_JSON} now records this failed run as indeterminate.",
-                        failures.join("; ")
+                        " The previous receipt (status `{status}`) is kept at {kept_at}; {LAST_GOOD_IS_STALE} {RIPR_PLUS_JSON} now records this failed run as indeterminate."
                     )
+                }
+                (json, markdown) => {
+                    let mut kept = Vec::new();
+                    let mut failures = Vec::new();
+                    match json {
+                        Ok(()) => kept.push(RIPR_PLUS_LAST_GOOD_JSON),
+                        Err(err) => failures.push(err),
+                    }
+                    match markdown {
+                        Ok(true) => kept.push(RIPR_PLUS_LAST_GOOD_MD),
+                        Ok(false) => {}
+                        Err(err) => failures.push(err),
+                    }
+                    let failures = failures.join("; ");
+                    if kept.is_empty() {
+                        // Nothing was copied, so no copy is named as kept; a
+                        // file left from an even earlier run is still no
+                        // evidence for this one.
+                        format!(
+                            " The previous receipt (status `{status}`) could not be kept ({failures}). {NO_COPY_KEPT_SENTENCE} {RIPR_PLUS_JSON} now records this failed run as indeterminate."
+                        )
+                    } else {
+                        format!(
+                            " The previous receipt (status `{status}`) was only partly kept ({failures}). Kept: {}. {LAST_GOOD_IS_STALE_SENTENCE} {RIPR_PLUS_JSON} now records this failed run as indeterminate.",
+                            kept.join(" and ")
+                        )
+                    }
                 }
             }
         }
@@ -238,6 +274,16 @@ cannot be read or composed, or --check cannot establish zero (an
 Outputs:
   target/ripr/reports/ripr-plus.json
   target/ripr/reports/ripr-plus.md
+  target/ripr/reports/ripr-plus.last-good.json  (only after a read or compose failure)
+  target/ripr/reports/ripr-plus.last-good.md    (only after a read or compose failure)
+
+When the named artifact cannot be read or composed, the run still writes an
+`indeterminate` receipt to ripr-plus.json. If the receipt it replaces has a
+status other than `indeterminate`, that receipt and its Markdown, when present,
+are first copied to ripr-plus.last-good.{json,md}. A --check failure on a
+composed receipt writes that receipt and keeps no last-good copy.
+The copy describes an earlier run, may be stale for the current HEAD, and is
+not current evidence.
 
 Current inputs contain exposure or ledger evidence only. They do not establish
 complete test-efficiency measurement or bind that evidence to current candidate
@@ -1152,6 +1198,11 @@ mod tests {
         };
         assert!(message.contains("previous receipt"), "{message}");
         assert!(message.contains("ripr-plus.last-good.json"), "{message}");
+        assert!(message.contains("ripr-plus.last-good.md"), "{message}");
+        assert!(
+            message.contains("may be stale for the current HEAD"),
+            "{message}"
+        );
         let canonical: Value = serde_json::from_str(&canonical.map_err(|err| err.to_string())?)
             .map_err(|err| format!("canonical receipt is not JSON: {err}"))?;
         assert_eq!(canonical["status"], "indeterminate");
@@ -1192,6 +1243,10 @@ mod tests {
         let _ = fs::remove_dir_all(&repo);
         assert!(kept.contains("is kept at"), "{kept}");
         assert!(
+            !kept.contains("ripr-plus.last-good.md"),
+            "a dropped Markdown must not be named as kept: {kept}"
+        );
+        assert!(
             !stale_md,
             "a saved Markdown from an older run must not outlive its JSON"
         );
@@ -1225,7 +1280,78 @@ mod tests {
         assert!(kept.contains("only partly kept"), "{kept}");
         assert!(kept.contains("ripr-plus.last-good.md"), "{kept}");
         assert!(!kept.contains("ripr-plus.last-good.json:"), "{kept}");
+        // The surviving copy is named, with the same authority limit.
+        assert!(
+            kept.contains("Kept: target/ripr/reports/ripr-plus.last-good.json."),
+            "{kept}"
+        );
+        assert!(kept.contains("may be stale for the current HEAD"), "{kept}");
         assert_eq!(json.map_err(|err| err.to_string())?, r#"{"status":"pass"}"#);
+        Ok(())
+    }
+
+    #[test]
+    fn no_surviving_copy_is_reported_as_not_kept() -> Result<(), String> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| format!("clock failed: {err}"))?
+            .as_nanos();
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-plus-none-kept-{}-{nanos}",
+            std::process::id()
+        ));
+        let reports = repo.join("target/ripr/reports");
+        fs::create_dir_all(&reports)
+            .map_err(|err| format!("mkdir {}: {err}", reports.display()))?;
+        fs::write(repo.join(RIPR_PLUS_JSON), r#"{"status":"pass"}"#)
+            .map_err(|err| format!("seed json: {err}"))?;
+        fs::write(repo.join(RIPR_PLUS_MD), "good receipt")
+            .map_err(|err| format!("seed md: {err}"))?;
+        // Directories where both saved copies belong make both copies fail.
+        for blocked in [RIPR_PLUS_LAST_GOOD_JSON, RIPR_PLUS_LAST_GOOD_MD] {
+            fs::create_dir_all(repo.join(blocked))
+                .map_err(|err| format!("block {blocked}: {err}"))?;
+        }
+        let kept = keep_last_good_receipt(&repo);
+        let _ = fs::remove_dir_all(&repo);
+        assert!(kept.contains("could not be kept"), "{kept}");
+        assert!(!kept.contains("partly kept"), "{kept}");
+        assert!(!kept.contains("Kept:"), "{kept}");
+        assert!(!kept.contains("A kept copy"), "{kept}");
+        assert!(kept.contains("is not current evidence"), "{kept}");
+        Ok(())
+    }
+
+    #[test]
+    fn surviving_markdown_copy_is_named_when_the_json_copy_fails() -> Result<(), String> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| format!("clock failed: {err}"))?
+            .as_nanos();
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-plus-md-only-kept-{}-{nanos}",
+            std::process::id()
+        ));
+        let reports = repo.join("target/ripr/reports");
+        fs::create_dir_all(&reports)
+            .map_err(|err| format!("mkdir {}: {err}", reports.display()))?;
+        fs::write(repo.join(RIPR_PLUS_JSON), r#"{"status":"pass"}"#)
+            .map_err(|err| format!("seed json: {err}"))?;
+        fs::write(repo.join(RIPR_PLUS_MD), "good receipt")
+            .map_err(|err| format!("seed md: {err}"))?;
+        // A directory where the saved JSON belongs makes only that copy fail.
+        fs::create_dir_all(repo.join(RIPR_PLUS_LAST_GOOD_JSON))
+            .map_err(|err| format!("block saved json: {err}"))?;
+        let kept = keep_last_good_receipt(&repo);
+        let md = fs::read_to_string(repo.join(RIPR_PLUS_LAST_GOOD_MD));
+        let _ = fs::remove_dir_all(&repo);
+        assert!(kept.contains("only partly kept"), "{kept}");
+        assert!(
+            kept.contains("Kept: target/ripr/reports/ripr-plus.last-good.md."),
+            "{kept}"
+        );
+        assert!(kept.contains("may be stale for the current HEAD"), "{kept}");
+        assert_eq!(md.map_err(|err| err.to_string())?, "good receipt");
         Ok(())
     }
 

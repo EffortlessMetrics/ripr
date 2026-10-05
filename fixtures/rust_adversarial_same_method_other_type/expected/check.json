@@ -92,7 +92,7 @@
           "relation_reason": "weak_token_substring",
           "relation_confidence": "low",
           "miss": "observation_unconfirmed",
-          "why": "assertion does not mention the changed expression"
+          "why": "ripr could not confirm that this assertion observes the changed behavior"
         },
         {
           "name": "combinations_inexact_size_hints",
@@ -104,7 +104,7 @@
           "relation_reason": "weak_token_substring",
           "relation_confidence": "low",
           "miss": "observation_unconfirmed",
-          "why": "assertion does not mention the changed expression"
+          "why": "ripr could not confirm that this assertion observes the changed behavior"
         },
         {
           "name": "combinations_inexact_size_hints",
@@ -128,7 +128,7 @@
           "relation_reason": "weak_token_substring",
           "relation_confidence": "low",
           "miss": "observation_unconfirmed",
-          "why": "assertion does not mention the changed expression"
+          "why": "ripr could not confirm that this assertion observes the changed behavior"
         },
         {
           "name": "combinations_inexact_size_hints",
@@ -234,7 +234,7 @@
           "relation_reason": "weak_token_substring",
           "relation_confidence": "low",
           "miss": "observation_unconfirmed",
-          "why": "assertion does not mention the changed expression"
+          "why": "ripr could not confirm that this assertion observes the changed behavior"
         },
         {
           "name": "combinations_inexact_size_hints",
@@ -246,7 +246,7 @@
           "relation_reason": "weak_token_substring",
           "relation_confidence": "low",
           "miss": "observation_unconfirmed",
-          "why": "assertion does not mention the changed expression"
+          "why": "ripr could not confirm that this assertion observes the changed behavior"
         },
         {
           "name": "combinations_inexact_size_hints",
@@ -270,7 +270,7 @@
           "relation_reason": "weak_token_substring",
           "relation_confidence": "low",
           "miss": "observation_unconfirmed",
-          "why": "assertion does not mention the changed expression"
+          "why": "ripr could not confirm that this assertion observes the changed behavior"
         },
         {
           "name": "combinations_inexact_size_hints",

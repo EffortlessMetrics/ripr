@@ -17,6 +17,7 @@ Linked issues:
   content identities.
 - [#1941](https://github.com/EffortlessMetrics/ripr-swarm/issues/1941) - agent
   verify and receipt trust boundary.
+- #5744 - preserve native Unix roots in producer identity and verify inputs.
 
 Support-tier impact:
 
@@ -51,7 +52,30 @@ from `ripr.toml`), and analyzer version — never the
 concrete checkout root or a host-specific path spelling. Equivalent checkouts
 of the same commit under different roots share one input identity; the
 concrete root remains separate envelope evidence (`repository.root`) that the
-verifier compares with exact canonical-path equality. Version 4 (#3906)
+verifier compares with exact canonical-path equality. The producer preserves
+literal Unix filename characters in that concrete root and in
+verify's before/after artifact paths; Windows retains separator normalization.
+Generic report display text is separate from these admitted filesystem inputs.
+Receipt issuance also preserves the native UTF-8 Unix root and artifact paths
+in its provenance and absolute verify locator, so first-action can reopen the
+authentic evidence. This changes identity serialization, not root-independent
+digests, canonical equality, containment or receipt-currentness admission.
+Missing default workflow verify input still refuses receipt issuance. Its
+recovery command preserves the native canonical root and the selected relative
+or absolute output path, so the next receipt reads the genuine verifier output
+from that repository. Custom missing inputs do not invent a workflow producer;
+successful recovery does not promote missing analysis evidence to complete
+receipt evidence (#6684).
+Generated workflow commands must preserve the custom output directory selected
+by `agent start --out` under an absolute repository root without a literal Unix
+backslash in the root's name, including literal UTF-8 Unix backslashes and shell
+quotes in the output directory. A genuine verifier and receipt from a
+different slash-normalized directory do not establish that selected-directory
+identity. Preserving the native locator does not change snapshot commitments,
+containment, canonical equality, currentness or completeness admission (#6809).
+Root containment and canonical equality remain mandatory, including when an
+authentic artifact is presented through a different checkout with the same HEAD.
+Version 4 (#3906)
 narrows the lockfile input to Git-tracked lockfiles: an untracked or ignored
 `Cargo.lock` is build state that Cargo writes when it resolves dependencies
 (the first `cargo test` of a library that does not commit one), and the static
@@ -153,6 +177,17 @@ after movement succeeds but discloses `historical_noncurrent`.
 ## Required Evidence
 
 - Producer output tests cover identity and streaming output.
+- `repo_exposure_literal_unix_root_is_admitted_only_at_its_producer` covers
+  actual producer metadata/content commitment and same-HEAD clone refusal.
+  `cli_snapshot_verify_absolute_inputs_retain_literal_unix_root` exercises
+  the real snapshot writer, verify renderer and receipt admission with
+  absolute and relative inputs; it does not invoke the standalone CLI process.
+- `cli_receipt_first_action_reopens_literal_unix_root_and_refuses_decoy` uses
+  a real committed source diff, complete analysis outcome and same-HEAD
+  `dirty_both` snapshots through actual CLI receipt issuance and first-action
+  admission. A mandatory authentic positive precedes different-root,
+  locator/digest tamper and immutable receipt/verify byte controls. This is
+  private dispatch/consumer evidence, not standalone CLI process execution.
 - CLI smoke tests cover a valid bound pair, a historical comparable pair,
   mixed pair-currentness disclosure (historical-before/current-after,
   current-before/historical-after descendant acceptance, dirty-before,

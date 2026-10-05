@@ -11,6 +11,8 @@ Linked issues:
 - #5344 (finding says "Related tests were found" while listing none)
 - #5329 (finding reports `reach: yes` with `related_tests_total: 0`)
 - #5356 (`ripr explain` repeats the human-full block)
+- #5508 (`observation_unconfirmed` read as an established miss)
+- #5498 (Perl findings list tests without a reason)
 
 Support-tier impact:
 
@@ -51,6 +53,18 @@ developer who disagreed had to re-derive the analysis.
   `missing_exact_assertion` (error-variant and field facts) and
   `observation_unconfirmed` for `weakly_exposed` and `reachable_unrevealed`.
   `exposed` findings and the unknown classes get no class-level miss.
+- `observation_unconfirmed` is an unknown, not an established miss: its sentence
+  says ripr could not confirm that the assertion observes the changed
+  behavior (#5508). Only `assertion_not_observing` claims the assertion
+  observes something else.
+- The Perl v1 producer (#5498) sets `observation_unconfirmed` on a row only
+  when the finding is `weakly_exposed` and comes from a complete packet with
+  no blocking limit (a concrete discriminator is not required), the row is a reachable direct owner call, its linked
+  oracle is the strong exact, owner-targeted oracle that earned the weak
+  exposure, and the shared sink-alignment check establishes no alignment for
+  that row. Unequal sink text stays unconfirmed. Every other Perl row keeps no
+  miss: advisory relations, weak or missing oracles, partial or blocked
+  packets, and the finding-wide discriminator, which has no test identity.
 - `miss` is evidence only. No stage, class, confidence, stop reason, or next
   step reads it. Post-classification gates that asked whether any related
   test survived oracle matching use `Finding::oracle_related_tests`, which
@@ -62,8 +76,16 @@ developer who disagreed had to re-derive the analysis.
 - One prose owner, `output::related_test_miss`, renders the reason. The human
   digest appends it in parentheses after the related test; human-full prints
   `misses: <why>; checked <assertion>`; JSON, the context packet and MCP gap
-  documents carry `miss` and `why`; LSP hover prints it, and diagnostics add up
-  to three related-information rows that open the examined test.
+  documents carry `miss` and `why`; LSP hover uses human-full's label and
+  reason with its own row shapes (a matched row keeps its oracle strength and
+  kind, only an unmatched row uses `<label>: ...; checked ...`, and a row with
+  no recorded oracle shows only the reason, where human-full still prints its
+  `uses none unknown oracle` projection first), and diagnostics add up to three
+  related-information rows that open the examined test.
+- `output::related_test_miss::related_test_miss_label` owns the word before
+  the reason: `unconfirmed` for `observation_unconfirmed`, `misses` otherwise.
+  Human-full, `ripr explain`, LSP hover and LSP related information use it;
+  JSON, MCP and the context packet carry no label.
 - `ripr explain` adds a "Why this verdict" section: every retained examined
   test with its verdict and checked assertion, what a test would need to change
   the verdict (gap classes only), and the meaning of each stop reason.
@@ -88,7 +110,8 @@ developer who disagreed had to re-derive the analysis.
   unknown is RIPR-SPEC-0221's admission rule.
 - Splitting `assertion_not_credited` into proven-inert and admission-unproven
   cases; that needs the typed admission refusal from #5359.
-- Python, TypeScript, and Perl producers, which record no miss yet.
+- Python and TypeScript producers, which record no miss yet (#5491, #5495),
+  and richer Perl reasons that need row-owned facts (#5562).
 
 ## Acceptance Examples
 
@@ -107,6 +130,12 @@ developer who disagreed had to re-derive the analysis.
 - `crates/ripr/src/analysis/classify/reveal.rs::tests` — examined misses are
   listed and rank after matched tests.
 - `crates/ripr/src/output/related_test_miss.rs::tests` — reason prose.
+- `crates/ripr/src/analysis/language/perl/tests.rs` — the Perl v1 rule: only
+  a direct, reachable, strong row without sink alignment is unconfirmed. These
+  controls consume frozen packets (#5510); whether the live perl-lsp emitter
+  produces complete, unblocked packets is tracked by #3216 and #3223.
+- `crates/ripr/src/output/human/explain.rs::tests` — an unconfirmed row is not
+  labelled a miss.
 - Golden fixtures under `fixtures/*/expected/` — rendered parity.
 
 ## Implementation Mapping
@@ -116,7 +145,8 @@ developer who disagreed had to re-derive the analysis.
 | `crates/ripr/src/domain/probe.rs` | `RelatedTestMiss`, `RelatedTest::miss`, `Finding::oracle_related_tests` |
 | `crates/ripr/src/analysis/classify/reveal.rs` | retain examined tests; set assertion-level misses; ranking |
 | `crates/ripr/src/analysis/classifier/finding.rs` | class-level misses |
-| `crates/ripr/src/output/related_test_miss.rs` | the one prose owner |
+| `crates/ripr/src/analysis/language/perl/mod.rs` | Perl v1 `observation_unconfirmed` rows |
+| `crates/ripr/src/output/related_test_miss.rs` | the one prose and label owner |
 | `crates/ripr/src/output/human/{sections,evidence_lines,explain}.rs`, `output/json/report.rs`, `lsp/{hover,diagnostics}.rs`, `mcp/gaps.rs` | projections |
 
 ## Metrics

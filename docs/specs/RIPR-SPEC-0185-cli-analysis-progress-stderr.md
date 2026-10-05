@@ -86,6 +86,12 @@ second stage vocabulary.
 
 - A sample `ripr check --format json` parses stdout while stderr carries
   producer stage tokens and no control sequences.
+- Diff-format and post-analysis artifact-error controls use a small isolated
+  Rust crate with a valid, nonempty predicate diff. JSON must name the changed
+  predicate; SARIF and GitHub must contain located finding records. Loud/quiet
+  pairs share the same fixture root, whose manifest stops workspace and config
+  ancestor lookup. These progress/output controls do not assert whole-workspace
+  indexing or a latency envelope (#5090).
 - The same JSON or SARIF stdout bytes are emitted with `--quiet`; quiet
   stderr has no `ripr progress:` lines.
 - A missing diff projects `failed` and never `completed`.
@@ -159,7 +165,6 @@ second stage vocabulary.
 - `crates/ripr/tests/cli_progress.rs::check_quiet_keeps_json_stdout_byte_identical_and_drops_progress`
 - `crates/ripr/tests/cli_progress.rs::check_sarif_stdout_is_unchanged_by_progress`
 - `crates/ripr/tests/cli_progress.rs::check_github_stdout_is_unchanged_by_progress`
-- `crates/ripr/tests/cli_progress.rs::check_markdown_stdout_is_unchanged_by_progress`
 - `crates/ripr/tests/cli_progress.rs::check_worktree_projects_worktree_scope_on_stderr`
 - `crates/ripr/tests/cli_progress.rs::check_progress_failure_emits_failed_not_completed`
 - `crates/ripr/tests/cli_progress.rs::check_quiet_failure_keeps_errors_and_drops_progress`

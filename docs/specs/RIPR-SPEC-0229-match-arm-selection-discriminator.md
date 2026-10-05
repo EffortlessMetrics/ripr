@@ -167,25 +167,28 @@ selecting call with an exact oracle confirms, and otherwise the finding
 stays below `exposed` (under the #5416 unknown-not-a-gap rule 3 it reads
 `static_unknown` when its nearest oracle is strong).
 
-### Decisions for the owner
+### Decisions
 
-These choices are not implied by existing specs. The recommended default is
-written into the Behavior above; each can be reversed without touching the
-rest.
+Steven delegated these choices on 2026-10-04 ("make reasonable documented
+decisions and proceed"). Each records the adopted option, why, and the
+rejected alternative. Any can be reversed later without touching the rest.
 
-1. **Pattern grammar.** Recommended: the list above, including ranges and
-   bare imported variants. Narrower alternative: literals and qualified
-   enum paths only.
-2. **`_` and binding arms by first-match.** Recommended: a trailing `_` is
+1. **Pattern grammar.** Adopted: the list above, including ranges and
+   bare imported variants, because each is decidable from the pattern's
+   syntax, the file's `use` imports and the argument literal alone. Rejected, narrower: literals and
+   qualified enum paths only.
+2. **`_` and binding arms by first-match.** Adopted: a trailing `_` is
    selected when every earlier arm provably does not match, so a change to
    `_ => 2` with only `f(Kind::A)` (selecting `Kind::A =>`) names `_` as
-   missing. Alternative: never name `_`.
-3. **Mixed resolved and unresolved calls.** Recommended: any unresolved call
+   missing. Rejected: never name `_`.
+3. **Mixed resolved and unresolved calls.** Adopted: any unresolved call
    blocks the "no call selects" claim (fail closed), because the unresolved
-   input may select the arm. Alternative: name the arm from the resolved calls
+   input may select the arm. Rejected: name the arm from the resolved calls
    and disclose the unresolved ones.
-4. **Selected-arm credit.** Recommended: credit (`exposed`) as written above.
-   Alternative: name the selection in the discriminate summary but keep the
+4. **Selected-arm credit.** Adopted: credit (`exposed`) as written above,
+   because an input that provably selects the changed arm, paired with an
+   exact oracle on that call's result, is the discriminator the change
+   needs. Rejected: name the selection in the discriminate summary but keep the
    existing token rule for credit.
 
 ## Required Evidence

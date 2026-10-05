@@ -42,12 +42,15 @@ const MUTATION_SPOT_CHECK_SCHEMA_VERSION: &str = "ripr-mutation-spot-check-v1";
 /// One JSON object per line from the first-run walk's scoreboard export.
 const FIRST_RUN_ROW_SCHEMA_VERSION: &str = "first_run_row.v1";
 const RUST_CORPUS_SMOKE_SCHEMA_VERSION: &str = "ripr-rust-corpus-smoke-v1";
+/// Receipt written by `cargo xtask pilot-ranking score` (pilot's top picks
+/// judged against the checked-in mutation answer key); converted on ingest.
+const PILOT_RANKING_SCHEMA_VERSION: &str = super::pilot_ranking::RECEIPT_SCHEMA_VERSION;
 /// Row metrics that carry their own per-step `budget`.
 const FIRST_RUN_BUDGETED: [&str; 3] = ["secs", "stdout_lines", "workflow_lines"];
 const DEFAULT_CONFIG: &str = "benchmarks/dx_scoreboard/scoreboards.toml";
 const DEFAULT_CORPUS_DIR: &str = "target/ripr/dx-scoreboard/corpus";
 const DEFAULT_TIMEOUT_MS: u64 = 900_000;
-const BOARDS: [&str; 7] = [
+const BOARDS: [&str; 8] = [
     "speed",
     "ci",
     "trust",
@@ -55,6 +58,7 @@ const BOARDS: [&str; 7] = [
     "first_run",
     "agent",
     "corpus",
+    "ranking",
 ];
 
 const USAGE: &str = "usage: cargo xtask dx-scoreboard [--config <path>] [--boards <list>] [--repo <id>]... [--include-heavy] [--corpus-dir <dir>] [--clone] [--ripr-bin <path>] [--ingest <file>]... [--baseline <report.json>] [--gate] [--timeout-ms <n>]
@@ -63,7 +67,7 @@ Measures the developer-experience scoreboards declared in
 benchmarks/dx_scoreboard/scoreboards.toml and writes
 target/ripr/reports/dx-scoreboard.{json,md}.
 
-  --boards <list>     comma-separated subset of speed,ci,trust,paste,first_run,agent,corpus
+  --boards <list>     comma-separated subset of speed,ci,trust,paste,first_run,agent,corpus,ranking
   --repo <id>         limit corpus measurements to these corpus ids
   --include-heavy     also measure corpus entries marked heavy
   --corpus-dir <dir>  where pinned corpus checkouts live
@@ -203,13 +207,51 @@ pub(crate) fn dx_scoreboard(args: &[String]) -> Result<(), String> {
     let json_text = serde_json::to_string_pretty(&report)
         .map_err(|err| format!("serialize dx scoreboard: {err}"))?;
     crate::write_report("dx-scoreboard.json", &format!("{json_text}\n"))?;
-    crate::write_report("dx-scoreboard.md", &render_markdown(&report))?;
+    let markdown = render_markdown(&report);
+    crate::write_report("dx-scoreboard.md", &markdown)?;
     println!("Wrote target/ripr/reports/dx-scoreboard.json");
     println!("Wrote target/ripr/reports/dx-scoreboard.md");
+    publish_to_actions(&json_text, &markdown);
     if options.gate && report["gate"]["status"].as_str() == Some("fail") {
         return Err(gate_failure_message(&report));
     }
     Ok(())
+}
+
+/// On GitHub Actions the report also goes to the run summary and, in a
+/// collapsed group, to the job log. Artifacts are not reachable from every
+/// reader, and a hosted-runner baseline is rebuilt from this JSON.
+fn publish_to_actions(json_text: &str, markdown: &str) {
+    let Some(summary) = std::env::var_os("GITHUB_STEP_SUMMARY") else {
+        return;
+    };
+    // A summary write failure must not replace the gate decision; the
+    // reports are already on disk and uploaded.
+    if let Err(err) = append_step_summary(Path::new(&summary), markdown) {
+        eprintln!("dx-scoreboard: step summary not written: {err}");
+    }
+    // Report details carry child stderr; stop-commands keeps any `##[...]`
+    // text in it from being read as a workflow command.
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_nanos());
+    let token = format!("dx-scoreboard-{}-{nanos}", std::process::id());
+    println!("::group::dx-scoreboard.json");
+    println!("::stop-commands::{token}");
+    println!("{json_text}");
+    println!("::{token}::");
+    println!("::endgroup::");
+}
+
+pub(crate) fn append_step_summary(path: &Path, markdown: &str) -> Result<(), String> {
+    use std::io::Write as _;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|err| format!("open step summary {}: {err}", path.display()))?;
+    file.write_all(markdown.as_bytes())
+        .map_err(|err| format!("write step summary {}: {err}", path.display()))
 }
 
 /// A baseline must be an earlier dx-scoreboard report; any other JSON would
@@ -477,9 +519,13 @@ pub(crate) fn parse_ingest(value: &Value, config: &Config) -> Result<Vec<Sample>
         let converted = rust_corpus_smoke_to_input(value)?;
         return parse_ingest(&converted, config);
     }
+    if value["schema_version"].as_str() == Some(PILOT_RANKING_SCHEMA_VERSION) {
+        let converted = pilot_ranking_to_input(value)?;
+        return parse_ingest(&converted, config);
+    }
     if value["schema_version"].as_str() != Some(INPUT_SCHEMA_VERSION) {
         return Err(format!(
-            "schema_version must be one of `{INPUT_SCHEMA_VERSION}`, `{FIRST_RUN_SCHEMA_VERSION}`, `{MUTATION_SPOT_CHECK_SCHEMA_VERSION}`, `{RUST_CORPUS_SMOKE_SCHEMA_VERSION}`, or `{FIRST_RUN_ROW_SCHEMA_VERSION}` JSON Lines"
+            "schema_version must be one of `{INPUT_SCHEMA_VERSION}`, `{FIRST_RUN_SCHEMA_VERSION}`, `{MUTATION_SPOT_CHECK_SCHEMA_VERSION}`, `{RUST_CORPUS_SMOKE_SCHEMA_VERSION}`, `{PILOT_RANKING_SCHEMA_VERSION}`, or `{FIRST_RUN_ROW_SCHEMA_VERSION}` JSON Lines"
         ));
     }
     let source = value["source"]
@@ -559,19 +605,35 @@ pub(crate) fn parse_ingest(value: &Value, config: &Config) -> Result<Vec<Sample>
 /// - unknown verdicts: cases whose verdict is a `*_unknown` class.
 pub(crate) fn first_run_to_input(value: &Value) -> Result<Value, String> {
     let setup = value["setup"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+    // An empty array is the install-failed walk; a missing or non-array value
+    // is a malformed receipt and must not pass as one.
     let cases = value["cases"]
         .as_array()
-        .filter(|cases| !cases.is_empty())
-        .ok_or("first_run.v1 receipt needs a non-empty cases array")?;
-    let install_secs: Option<f64> = setup
+        .map(Vec::as_slice)
+        .ok_or("first_run.v1 receipt needs a cases array")?;
+    let install_steps: Vec<&Value> = setup
         .iter()
         .filter(|step| {
             step["step"]
                 .as_str()
                 .is_some_and(|name| name.contains("install"))
         })
+        .collect();
+    let install_secs: Option<f64> = install_steps
+        .iter()
         .filter_map(|step| step["secs"].as_f64())
         .reduce(|a, b| a + b);
+    // A walk whose install failed writes no cases but keeps the timed install
+    // step; that receipt still carries the install sample.
+    if cases.is_empty() && install_steps.is_empty() {
+        return Err("first_run.v1 receipt needs a non-empty cases array".to_string());
+    }
+    // A partial sum would let a slow install look fast, so one untimed
+    // install step leaves the row incomplete.
+    let install_timed = install_steps.iter().all(|step| step["secs"].is_number());
+    let install_failed = install_steps
+        .iter()
+        .find(|step| step["exit"].as_i64().is_some_and(|code| code != 0));
     let ripr = value["ripr"].as_str().unwrap_or("unknown ripr");
     let friction_in = |steps: &[Value]| -> usize {
         steps
@@ -611,6 +673,24 @@ pub(crate) fn first_run_to_input(value: &Value) -> Result<Value, String> {
             "completed": reached,
         }));
     }
+    // An install step with no duration at all is an incomplete sample, not an
+    // absent one, so a previously timed install cannot silently drop out.
+    if !install_steps.is_empty() {
+        rows.push(json!({
+            "id": "first_run.install_seconds",
+            "value": install_secs.unwrap_or(0.0),
+            "completed": install_timed && install_secs.is_some() && install_failed.is_none(),
+        }));
+    }
+    if cases.is_empty() {
+        // Install-only walk: case-dependent metrics stay absent.
+        return Ok(json!({
+            "schema_version": INPUT_SCHEMA_VERSION,
+            "source": "first-run",
+            "evidence": format!("first_run.v1 receipt for {ripr}, install only (no cases ran)"),
+            "metrics": rows,
+        }));
+    }
     rows.push(json!({"id": "first_run.friction_events", "value": friction}));
     rows.push(json!({"id": "first_run.unknown_verdicts", "value": unknown}));
     Ok(json!({
@@ -639,6 +719,8 @@ pub(crate) fn first_run_to_input(value: &Value) -> Result<Value, String> {
 /// - unknown verdicts: `verdict` rows of an `*_unknown` class. The verdict
 ///   list is the sample detail, so a change is listed for review and does not
 ///   fail the gate;
+/// - install seconds: the timed install steps in `_setup`, gated against the
+///   baseline so a slower compile or download is a regression on its own;
 /// - time to first useful result per case: install plus every step through
 ///   the first `check` that exited 0, only when the walk timed an install.
 ///
@@ -757,9 +839,6 @@ pub(crate) fn first_run_rows_to_input(value: &Value) -> Result<Value, String> {
                 }
                 cases
             });
-    if cases.is_empty() {
-        return Err("first_run_row.v1 input has no case rows outside _setup".to_string());
-    }
     let failed: Vec<String> = steps
         .iter()
         .filter_map(|s| match s.exit {
@@ -776,6 +855,15 @@ pub(crate) fn first_run_rows_to_input(value: &Value) -> Result<Value, String> {
         .iter()
         .filter(|s| s.case == "_setup" && s.step.contains("install"))
         .all(|s| s.secs.is_some());
+    let install_ok = steps
+        .iter()
+        .filter(|s| s.case == "_setup" && s.step.contains("install"))
+        .all(|s| s.exit == Some(0.0));
+    // A walk whose install failed writes no case rows; its install timing and
+    // failed step are still worth ingesting.
+    if cases.is_empty() && install.is_none() {
+        return Err("first_run_row.v1 input has no case rows outside _setup".to_string());
+    }
     let list = |items: &[String]| {
         if items.is_empty() {
             "none".to_string()
@@ -787,9 +875,22 @@ pub(crate) fn first_run_rows_to_input(value: &Value) -> Result<Value, String> {
     let mut out = vec![
         json!({"id": "first_run.failed_steps", "value": failed.len(), "evidence": list(&failed)}),
         json!({"id": "first_run.over_budget_steps", "value": over.len(), "evidence": list(&over)}),
-        json!({"id": "first_run.friction_events", "value": friction}),
-        json!({"id": "first_run.unknown_verdicts", "value": unknown, "evidence": format!("verdicts: {}", list(&verdicts))}),
     ];
+    // An install-only walk ran no cases, so a zero here would read as "no
+    // friction, no unknown verdicts" rather than "not measured".
+    if !cases.is_empty() {
+        out.push(json!({"id": "first_run.friction_events", "value": friction}));
+        out.push(json!({"id": "first_run.unknown_verdicts", "value": unknown, "evidence": format!("verdicts: {}", list(&verdicts))}));
+    }
+    if let Some(install) = install {
+        // The install alone, so a slower compile is visible even when the
+        // walk after it stays fast.
+        out.push(json!({
+            "id": "first_run.install_seconds",
+            "value": install,
+            "completed": install_timed && install_ok,
+        }));
+    }
     for case in &cases {
         let mine: Vec<&Step> = steps.iter().filter(|s| &s.case == case).collect();
         // A step without a `secs` row has no duration; summing it as zero
@@ -922,6 +1023,180 @@ pub(crate) fn rust_corpus_smoke_to_input(value: &Value) -> Result<Value, String>
     }))
 }
 
+/// Convert a `ripr-pilot-ranking-v1` receipt (`cargo xtask pilot-ranking
+/// score`) into pooled `ranking` rows: precision of pilot's top 5 and top 10,
+/// the share of top-10 picks a label could judge, the share of top-10 picks
+/// whose function no higher pick named, and the number of top-10 picks.
+///
+/// Scored share sits beside precision because precision can rise by making
+/// picks unjudgeable, and the pick count because it can rise by ranking
+/// fewer seams. A receipt that lost or skipped a repository measured a
+/// different population than its baseline, so every row is incomplete (lost
+/// completion to the gate) rather than a rate compared as like for like.
+pub(crate) fn pilot_ranking_to_input(value: &Value) -> Result<Value, String> {
+    let corpus = value["corpus_version"].as_str().unwrap_or("unknown");
+    let unavailable = value["unavailable_repos"]
+        .as_u64()
+        .ok_or("pilot-ranking receipt needs unavailable_repos as a non-negative integer")?;
+    let total = value["repos_total"]
+        .as_u64()
+        .filter(|total| *total > 0 && unavailable <= *total)
+        .ok_or(
+            "pilot-ranking receipt needs a positive repos_total no smaller than unavailable_repos",
+        )?;
+    let complete = unavailable == 0 && value["status"].as_str() == Some("complete");
+    let mut rows = Vec::new();
+    for (metric, cut, field) in [
+        ("ranking.pilot_precision_top5", "top5", "precision"),
+        ("ranking.pilot_precision_top10", "top10", "precision"),
+        ("ranking.pilot_scored_share_top10", "top10", "scored_share"),
+        (
+            "ranking.pilot_distinct_function_share_top10",
+            "top10",
+            "distinct_function_share",
+        ),
+        ("ranking.pilot_picks_top10", "top10", "picks"),
+        ("ranking.pilot_confirmed_top5", "top5", "confirmed"),
+        ("ranking.pilot_refuted_top5", "top5", "refuted"),
+        ("ranking.pilot_confirmed_top10", "top10", "confirmed"),
+        ("ranking.pilot_refuted_top10", "top10", "refuted"),
+    ] {
+        let entry = &value["pooled"][cut];
+        let count = |key: &str| {
+            entry[key]
+                .as_u64()
+                .ok_or_else(|| format!("pilot-ranking pooled.{cut} needs {key}"))
+        };
+        let (picks, confirmed, refuted) = (count("picks")?, count("confirmed")?, count("refuted")?);
+        let distinct = count("distinct_functions")?;
+        // How much of this cut's precision rests on the coarse line and owner
+        // tiers. The split must account for exactly the cut's judged picks.
+        let tiers = match entry.get("by_tier") {
+            None => String::new(),
+            Some(by_tier) => {
+                let mut judged = 0;
+                let mut parts = Vec::new();
+                for tier in ["seam", "line", "owner"] {
+                    let tally = |verdict: &str| by_tier[tier][verdict].as_u64().unwrap_or(0);
+                    let (tier_confirmed, tier_judged) =
+                        (tally("confirmed"), tally("confirmed") + tally("refuted"));
+                    judged += tier_judged;
+                    parts.push(format!("{tier} {tier_confirmed}/{tier_judged}"));
+                }
+                if judged != confirmed + refuted {
+                    return Err(format!(
+                        "pilot-ranking pooled.{cut}.by_tier judges {judged} picks, not the cut's {}",
+                        confirmed + refuted
+                    ));
+                }
+                format!(" (by tier: {})", parts.join(", "))
+            }
+        };
+        if confirmed + refuted > picks || distinct > picks {
+            return Err(format!(
+                "pilot-ranking pooled.{cut} counts more confirmed, refuted or distinct picks than its {picks} picks"
+            ));
+        }
+        // The rate is derived from the validated counts, so a receipt whose
+        // stated ratio disagrees with its own counts cannot pass the gate.
+        let ratio = |numerator: u64, denominator: u64| {
+            (denominator > 0).then(|| numerator as f64 / denominator as f64)
+        };
+        let counted = matches!(field, "picks" | "confirmed" | "refuted");
+        let rate = match field {
+            "picks" => Some(picks as f64),
+            "confirmed" => Some(confirmed as f64),
+            "refuted" => Some(refuted as f64),
+            "precision" => ratio(confirmed, confirmed + refuted),
+            "scored_share" => ratio(confirmed + refuted, picks),
+            _ => ratio(distinct, picks),
+        };
+        if !counted {
+            let stated = entry[field].as_f64();
+            let agrees = match (stated, rate) {
+                (None, None) => entry[field].is_null(),
+                (Some(stated), Some(rate)) => (stated - rate).abs() < 1e-9,
+                _ => false,
+            };
+            if !agrees {
+                return Err(format!(
+                    "pilot-ranking pooled.{cut}.{field} is {}, but its counts give {}",
+                    entry[field],
+                    rate.map_or_else(|| "null".to_string(), |rate| rate.to_string())
+                ));
+            }
+        }
+        let mut evidence = if field == "distinct_function_share" {
+            format!("{distinct} distinct functions in {picks} picks")
+        } else {
+            format!("{confirmed} confirmed, {refuted} refuted of {picks} picks{tiers}")
+        };
+        evidence.push_str(&format!(
+            " over {} of {total} repositories, corpus {corpus}",
+            total - unavailable
+        ));
+        if !complete {
+            evidence.push_str(&format!(
+                "; {unavailable} repositories unavailable or not selected, so this run is not comparable"
+            ));
+        }
+        // The corpus identity is the row's repository, so a baseline taken
+        // on another answer key shares no repository with this run and is
+        // reported uncompared instead of compared as the same population.
+        rows.push(json!({
+            "id": metric,
+            "repo": format!("pilot-ranking corpus {corpus}"),
+            "value": rate.unwrap_or(0.0),
+            "completed": complete && rate.is_some(),
+            "evidence": evidence,
+        }));
+    }
+    Ok(json!({
+        "schema_version": INPUT_SCHEMA_VERSION,
+        "source": "pilot-ranking",
+        "evidence": format!("ripr-pilot-ranking-v1 receipt, corpus {corpus}, {total} repositories"),
+        "metrics": rows,
+    }))
+}
+
+/// The repositories a pilot precision covers, so a row measured over a
+/// different population than its baseline says so in its evidence.
+fn pilot_repos(pilot: &Value) -> String {
+    let names = pilot["repos"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|repo| repo["name"].as_str())
+        .collect::<Vec<_>>();
+    if names.is_empty() {
+        "unrecorded repositories".to_string()
+    } else {
+        names.join(", ")
+    }
+}
+
+/// Scored pilot recommendations per judge tier, so the scoreboard row shows
+/// how much of its precision rests on the coarse `line` and `owner` tiers.
+fn pilot_tier_split(pilot: &Value) -> String {
+    ["seam", "line", "owner"]
+        .iter()
+        .map(|tier| {
+            let count = |verdict: &str| {
+                pilot
+                    .pointer(&format!("/by_tier/{tier}/{verdict}"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
+            };
+            format!(
+                "{tier} {}/{}",
+                count("confirmed"),
+                count("confirmed") + count("refuted")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// Convert a `ripr-mutation-spot-check-v1` receipt into scoreboard rows:
 ///
 /// - discriminator claim agreement: when ripr says a test discriminates the
@@ -929,7 +1204,10 @@ pub(crate) fn rust_corpus_smoke_to_input(value: &Value) -> Result<Value, String>
 /// - gap claim agreement: when ripr says no test discriminates, the share of
 ///   seam-precise mutants a real run missed (the rest are false gaps);
 /// - join coverage: seam-precise joins over all mutants, because agreement
-///   rates only speak for the mutants that could be joined to a seam.
+///   rates only speak for the mutants that could be joined to a seam;
+/// - pilot top-recommendation precision: of `ripr pilot`'s top seams that a
+///   real mutant scores, the share where a mutant was missed (receipts written
+///   before the pilot section existed simply omit the row).
 pub(crate) fn mutation_spot_check_to_input(value: &Value) -> Result<Value, String> {
     let families = value["scored_families"]
         .as_object()
@@ -985,6 +1263,43 @@ pub(crate) fn mutation_spot_check_to_input(value: &Value) -> Result<Value, Strin
         }
         joined += precise;
         mutants += total;
+    }
+    // Older receipts carry no pilot section; a present one must say how many
+    // recommendations it scored, so a malformed receipt fails instead of
+    // reading as not measured.
+    let pilot = &value["pilot_top_recommendations"];
+    let scored = if pilot.is_null() {
+        0
+    } else {
+        pilot["scored"].as_u64().ok_or(
+            "mutation spot-check pilot_top_recommendations needs scored as a non-negative integer",
+        )?
+    };
+    // A run that lost a repository's pilot ranking measured a different
+    // population than the baseline, so it publishes no pilot row rather
+    // than a precision the regression gate would compare as like for like.
+    let unavailable = match &pilot["unavailable_repos"] {
+        Value::Null => 0,
+        count => count.as_u64().ok_or(
+            "mutation spot-check pilot_top_recommendations needs unavailable_repos as a non-negative integer",
+        )?,
+    };
+    if scored > 0 && unavailable == 0 {
+        let precision = pilot["precision"]
+            .as_f64()
+            .filter(|rate| (0.0..=1.0).contains(rate))
+            .ok_or(
+                "mutation spot-check pilot_top_recommendations needs precision between 0 and 1",
+            )?;
+        rows.push(json!({
+            "id": "trust.pilot_top_recommendation_precision",
+            "value": precision,
+            "evidence": format!(
+                "{scored} pilot recommendations scored ({}) over {}",
+                pilot_tier_split(pilot),
+                pilot_repos(pilot)
+            ),
+        }));
     }
     if mutants > 0 {
         rows.push(json!({

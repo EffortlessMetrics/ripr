@@ -397,7 +397,7 @@ mod tests {
             file: PathBuf::from("tests/value.rs"),
             start_line: 1,
             end_line: 3,
-            body: "assert_eq!(score(10), 11);".to_string(),
+            body: "assert_eq!(score(10), 11);".into(),
             calls: Vec::new(),
             assertions: Vec::new(),
             literals: values

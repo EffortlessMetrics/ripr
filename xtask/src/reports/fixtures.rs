@@ -422,6 +422,8 @@ pub(crate) fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "gap-decision-ledger"
                     | "intervention-study"
                     | "issue_lifecycle_attempts"
+                    | "issue_lifecycle_contract_plan"
+                    | "issue_lifecycle_intake"
                     | "github_unanalyzed_states"
                     | "orchestration_attempt_receipts"
                     | "perl_lsp_facts_exporter"

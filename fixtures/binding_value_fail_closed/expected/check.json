@@ -215,13 +215,13 @@
         "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
         "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
-        "discriminate": {"state":"weak","confidence":"high","summary":"Only relational oracle found; it may not discriminate the changed value exactly"}
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach via_dynamic_needle: dynamic_needle_boundary_stays_unresolved", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Only relational oracle found; it may not discriminate the changed value exactly", "related test tests/controls.rs:14 dynamic_needle_boundary_stays_unresolved uses weak relational check oracle: assert!(via_dynamic_needle(\"ax\", 'x'));", "source function argument value delim = 'x' at line 15", "source function argument value input = \"ax\" at line 15", "missing discriminator end == start: No related test call uses end equal to start; observed end values: unknown"],
+      "evidence_path": ["reach yes: Related tests appear to reach via_dynamic_needle: dynamic_needle_boundary_stays_unresolved", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator missing: `end == start`; related oracle: Strong oracle found: exact value or pattern assertion", "related test tests/controls.rs:14 dynamic_needle_boundary_stays_unresolved uses strong relational check oracle: assert!(via_dynamic_needle(\"ax\", 'x'));", "source function argument value delim = 'x' at line 15", "source function argument value input = \"ax\" at line 15", "missing discriminator end == start: No related test call uses end equal to start; observed end values: unknown"],
       "flow_sinks": [
       ],
-      "evidence": ["A related test observes a value or effect near the changed behavior", "Only relational oracle found; it may not discriminate the changed value exactly", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach via_dynamic_needle: dynamic_needle_boundary_stays_unresolved", "Related tests contain input values, but the equality-boundary discriminator is missing", "binding_predicate_relation: changed binding `end` initializer `input.rfind(needle.as_str()).map_or(0, |idx| idx)` -> `input.rfind(needle.as_str()).map_or(1, |idx| idx)` flows into predicate operand at line 25", "binding_predicate_value_unresolved: operand value of `end` unresolved at earliest initializer operation `.rfind(`", "binding_predicate_non_claim: named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test"],
-      "missing": ["Missing discriminator value: end == start", "No clear propagation path from changed behavior to an observable sink", "No strong discriminator was detected"],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach via_dynamic_needle: dynamic_needle_boundary_stays_unresolved", "Related tests contain input values, but the equality-boundary discriminator is missing", "Strong oracle found: exact value or pattern assertion", "binding_predicate_relation: changed binding `end` initializer `input.rfind(needle.as_str()).map_or(0, |idx| idx)` -> `input.rfind(needle.as_str()).map_or(1, |idx| idx)` flows into predicate operand at line 25", "binding_predicate_value_unresolved: operand value of `end` unresolved at earliest initializer operation `.rfind(`", "binding_predicate_non_claim: named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test"],
+      "missing": ["Missing discriminator value: end == start", "No clear propagation path from changed behavior to an observable sink"],
       "assertion_texts": {
         "15": "assert!(via_dynamic_needle(\"ax\", 'x'));"
       },
@@ -271,7 +271,7 @@
           "name": "dynamic_needle_boundary_stays_unresolved",
           "file": "tests/controls.rs",
           "line": 14,
-          "oracle_strength": "weak",
+          "oracle_strength": "strong",
           "oracle_kind": "relational_check",
           "oracle": "assert!(via_dynamic_needle(\"ax\", 'x'));",
           "relation_reason": "direct_owner_call",
@@ -280,7 +280,7 @@
       ],
       "stop_reasons": ["propagation_evidence_unknown"],
       "oracle_kind": "relational_check",
-      "oracle_strength": "weak",
+      "oracle_strength": "strong",
       "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
       "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
       "language": "rust",

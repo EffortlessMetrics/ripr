@@ -4,14 +4,14 @@
 //! parsing, runtime JSON import, seam join, and JSON/markdown rendering
 //! helpers.
 //!
-//! Extracted verbatim from `main.rs` as a behavior-preserving decomposition
-//! slice of #2119. Items are `pub(crate)` where `tests.rs` or `dispatch.rs`
-//! need them so existing call sites compile unchanged.
+//! Cargo-mutants JSON import is owned by
+//! `ripr::output::parse_cargo_mutants_outcomes_json` so this command cannot
+//! drift from `ripr calibrate cargo-mutants` (#5374).
 
 use crate::run::run_output_owned;
 use crate::{
-    StaticSeamRecord, json_scalar_as_string, json_scalar_as_usize, markdown_cell, normalize_path,
-    normalize_report_path, parse_repo_exposure_static_seams, read_json_value, read_text_lossy,
+    StaticSeamRecord, markdown_cell, normalize_path, normalize_report_path,
+    parse_repo_exposure_static_seams, read_json_value, read_text_lossy,
     repo_seam_inventory_command_args_for_root, write_report,
 };
 use serde_json::Value;
@@ -211,267 +211,25 @@ pub(crate) fn read_mutation_input_json(path: &Path) -> Result<String, String> {
     }
     read_text_lossy(path)
 }
+
 pub(crate) fn parse_mutation_outcomes_json(
     json: &str,
 ) -> Result<Vec<MutationOutcomeRecord>, String> {
-    let value: Value = serde_json::from_str(json)
-        .map_err(|err| format!("failed to parse cargo-mutants JSON: {err}"))?;
-    let mut records = Vec::new();
-    collect_mutation_outcome_records(&value, &mut records);
-    let mut records = merge_mutation_outcome_records(records);
-    records.sort_by(|left, right| {
-        left.seam_id
-            .cmp(&right.seam_id)
-            .then(left.file.cmp(&right.file))
-            .then(left.line.cmp(&right.line))
-            .then(left.mutation_operator.cmp(&right.mutation_operator))
-            .then(left.runtime_outcome.cmp(&right.runtime_outcome))
-    });
-    Ok(records)
+    Ok(ripr::output::parse_cargo_mutants_outcomes_json(json)?
+        .into_iter()
+        .map(|record| MutationOutcomeRecord {
+            mutant_id: record.mutant_id,
+            seam_id: record.seam_id,
+            file: record.file,
+            line: record.line,
+            mutation_operator: record.mutation_operator,
+            runtime_outcome: record.runtime_outcome,
+            duration: record.duration,
+            test_command: record.test_command,
+        })
+        .collect())
 }
 
-fn collect_mutation_outcome_records(value: &Value, records: &mut Vec<MutationOutcomeRecord>) {
-    match value {
-        Value::Array(items) => {
-            for item in items {
-                collect_mutation_outcome_records(item, records);
-            }
-        }
-        Value::Object(object) => {
-            for key in [
-                "outcomes",
-                "mutants",
-                "results",
-                "mutations",
-                "mutation_results",
-            ] {
-                if let Some(items) = object.get(key).and_then(Value::as_array) {
-                    for item in items {
-                        collect_mutation_outcome_records(item, records);
-                    }
-                }
-            }
-            if let Some(record) = mutation_outcome_record_from_object(object) {
-                records.push(record);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn mutation_outcome_record_from_object(
-    object: &serde_json::Map<String, Value>,
-) -> Option<MutationOutcomeRecord> {
-    let mutant = nested_object(object, "mutant");
-    let mutation = nested_object(object, "mutation");
-    let location = nested_object(object, "location");
-    let span = nested_object(object, "span")
-        .or_else(|| mutant.and_then(|nested| nested_object(nested, "span")))
-        .or_else(|| mutation.and_then(|nested| nested_object(nested, "span")))
-        .or_else(|| location.and_then(|nested| nested_object(nested, "span")));
-
-    let mutant_id = string_field_any(object, &["id", "mutant_id", "mutantId"]).or_else(|| {
-        mutant.and_then(|nested| string_field_any(nested, &["id", "mutant_id", "mutantId"]))
-    });
-    let seam_id = string_field_any(object, &["seam_id", "seamId", "probe_id", "probeId"])
-        .or_else(|| {
-            mutant.and_then(|nested| {
-                string_field_any(nested, &["seam_id", "seamId", "probe_id", "probeId"])
-            })
-        })
-        .or_else(|| {
-            mutation.and_then(|nested| {
-                string_field_any(nested, &["seam_id", "seamId", "probe_id", "probeId"])
-            })
-        });
-    let file = string_field_any(
-        object,
-        &["file", "path", "source_file", "src_file", "filename"],
-    )
-    .or_else(|| {
-        mutant.and_then(|nested| {
-            string_field_any(
-                nested,
-                &["file", "path", "source_file", "src_file", "filename"],
-            )
-        })
-    })
-    .or_else(|| {
-        mutation.and_then(|nested| {
-            string_field_any(
-                nested,
-                &["file", "path", "source_file", "src_file", "filename"],
-            )
-        })
-    })
-    .or_else(|| {
-        location.and_then(|nested| {
-            string_field_any(
-                nested,
-                &[
-                    "file",
-                    "path",
-                    "source_file",
-                    "src_file",
-                    "filename",
-                    "file_name",
-                ],
-            )
-        })
-    })
-    .or_else(|| {
-        span.and_then(|nested| {
-            string_field_any(
-                nested,
-                &[
-                    "file",
-                    "path",
-                    "source_file",
-                    "src_file",
-                    "filename",
-                    "file_name",
-                ],
-            )
-        })
-    })
-    .map(|path| normalize_report_path(&path));
-    let line = usize_field_any(object, &["line", "line_start", "start_line", "startLine"])
-        .or_else(|| {
-            mutant.and_then(|nested| {
-                usize_field_any(nested, &["line", "line_start", "start_line", "startLine"])
-            })
-        })
-        .or_else(|| {
-            mutation.and_then(|nested| {
-                usize_field_any(nested, &["line", "line_start", "start_line", "startLine"])
-            })
-        })
-        .or_else(|| {
-            location.and_then(|nested| {
-                usize_field_any(nested, &["line", "line_start", "start_line", "startLine"])
-            })
-        })
-        .or_else(|| span.and_then(span_start_line));
-    let mutation_operator = string_field_any(
-        object,
-        &[
-            "operator",
-            "mutation_operator",
-            "mutator",
-            "mutation",
-            "description",
-            "replacement",
-            "name",
-        ],
-    )
-    .or_else(|| {
-        mutant.and_then(|nested| {
-            string_field_any(
-                nested,
-                &[
-                    "operator",
-                    "mutation_operator",
-                    "mutator",
-                    "mutation",
-                    "description",
-                    "replacement",
-                    "name",
-                ],
-            )
-        })
-    })
-    .or_else(|| {
-        mutation.and_then(|nested| {
-            string_field_any(
-                nested,
-                &[
-                    "operator",
-                    "mutation_operator",
-                    "mutator",
-                    "mutation",
-                    "description",
-                    "replacement",
-                    "name",
-                ],
-            )
-        })
-    })
-    .unwrap_or_else(|| "unknown".to_string());
-    let runtime_outcome =
-        string_field_any(object, &["outcome", "status", "result", "summary", "state"])
-            .unwrap_or_else(|| "unknown".to_string());
-    let duration = string_field_any(
-        object,
-        &[
-            "duration_ms",
-            "durationMillis",
-            "duration",
-            "elapsed_ms",
-            "elapsed",
-        ],
-    );
-    let test_command = string_field_any(
-        object,
-        &["test_command", "testCommand", "command", "cmd", "test_cmd"],
-    );
-
-    let has_identity = mutant_id.is_some() || seam_id.is_some() || file.is_some() || line.is_some();
-    let has_runtime_detail = runtime_outcome != "unknown"
-        || mutation_operator != "unknown"
-        || duration.is_some()
-        || test_command.is_some();
-    if !has_identity || !has_runtime_detail {
-        return None;
-    }
-
-    Some(MutationOutcomeRecord {
-        mutant_id,
-        seam_id,
-        file,
-        line,
-        mutation_operator,
-        runtime_outcome,
-        duration,
-        test_command,
-    })
-}
-
-fn nested_object<'a>(
-    object: &'a serde_json::Map<String, Value>,
-    key: &str,
-) -> Option<&'a serde_json::Map<String, Value>> {
-    object.get(key).and_then(Value::as_object)
-}
-
-fn span_start_line(span: &serde_json::Map<String, Value>) -> Option<usize> {
-    usize_field_any(span, &["line", "line_start", "start_line", "startLine"])
-        .or_else(|| {
-            nested_object(span, "start").and_then(|start| {
-                usize_field_any(start, &["line", "line_start", "start_line", "startLine"])
-            })
-        })
-        .or_else(|| {
-            nested_object(span, "start_position").and_then(|start| {
-                usize_field_any(start, &["line", "line_start", "start_line", "startLine"])
-            })
-        })
-        .or_else(|| {
-            nested_object(span, "lo").and_then(|start| {
-                usize_field_any(start, &["line", "line_start", "start_line", "startLine"])
-            })
-        })
-}
-
-fn string_field_any(object: &serde_json::Map<String, Value>, keys: &[&str]) -> Option<String> {
-    keys.iter()
-        .find_map(|key| object.get(*key).and_then(json_scalar_as_string))
-        .filter(|value| !value.trim().is_empty())
-}
-
-fn usize_field_any(object: &serde_json::Map<String, Value>, keys: &[&str]) -> Option<usize> {
-    keys.iter()
-        .find_map(|key| object.get(*key).and_then(json_scalar_as_usize))
-}
 pub(crate) fn build_mutation_calibration_report(
     static_seams: Vec<StaticSeamRecord>,
     runtime_mutants: Vec<MutationOutcomeRecord>,
@@ -886,55 +644,6 @@ fn mutation_outcome_json(record: &MutationOutcomeRecord) -> Value {
         "duration": record.duration.as_deref(),
         "test_command": record.test_command.as_deref(),
     })
-}
-
-fn merge_mutation_outcome_records(
-    records: Vec<MutationOutcomeRecord>,
-) -> Vec<MutationOutcomeRecord> {
-    let mut by_id: BTreeMap<String, MutationOutcomeRecord> = BTreeMap::new();
-    let mut without_id = Vec::new();
-
-    for record in records {
-        match record.mutant_id.clone() {
-            Some(id) => {
-                if let Some(existing) = by_id.get_mut(&id) {
-                    merge_mutation_outcome_record(existing, record);
-                } else {
-                    by_id.insert(id, record);
-                }
-            }
-            None => without_id.push(record),
-        }
-    }
-
-    by_id.into_values().chain(without_id).collect::<Vec<_>>()
-}
-
-fn merge_mutation_outcome_record(
-    target: &mut MutationOutcomeRecord,
-    source: MutationOutcomeRecord,
-) {
-    if target.seam_id.is_none() {
-        target.seam_id = source.seam_id;
-    }
-    if target.file.is_none() {
-        target.file = source.file;
-    }
-    if target.line.is_none() {
-        target.line = source.line;
-    }
-    if target.mutation_operator == "unknown" && source.mutation_operator != "unknown" {
-        target.mutation_operator = source.mutation_operator;
-    }
-    if target.runtime_outcome == "unknown" && source.runtime_outcome != "unknown" {
-        target.runtime_outcome = source.runtime_outcome;
-    }
-    if target.duration.is_none() {
-        target.duration = source.duration;
-    }
-    if target.test_command.is_none() {
-        target.test_command = source.test_command;
-    }
 }
 
 fn runtime_outcome_counts(report: &MutationCalibrationReport) -> BTreeMap<String, usize> {

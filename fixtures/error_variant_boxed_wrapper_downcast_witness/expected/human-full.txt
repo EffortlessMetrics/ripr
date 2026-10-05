@@ -166,11 +166,11 @@ error.downcast_ref::<ParseSummaryError>(),
 Some(ParseSummaryError::MalformedSource)
 ) {
 return Err("boxed variant must preserve ParseSummaryError::MalformedSource".into());
-}; misses: assertion does not mention the changed expression
+}; unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - related test tests/errors.rs:18 parse_summary_boxed_variant_propagates_malformed_source uses strong exact value oracle: matches!(
         error.downcast_ref::<ParseSummaryError>(),
         Some(ParseSummaryError::MalformedSource)
-    ); misses: assertion does not mention the changed expression
+    ); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - related test tests/errors.rs:8 parse_summary_fails_closed_on_malformed_source uses strong exact error variant oracle: if !matches!(result, Err(ParseSummaryError::MalformedSource)) {
 return Err("malformed source should produce ParseSummaryError::MalformedSource".into());
 }; misses: no call to the changed code found; linked by name only
@@ -226,11 +226,11 @@ error.downcast_ref::<ParseSummaryError>(),
 Some(ParseSummaryError::MalformedSource)
 ) {
 return Err("boxed variant must preserve ParseSummaryError::MalformedSource".into());
-}; misses: assertion does not mention the changed expression
+}; unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - related test tests/errors.rs:18 parse_summary_boxed_variant_propagates_malformed_source uses strong exact value oracle: matches!(
         error.downcast_ref::<ParseSummaryError>(),
         Some(ParseSummaryError::MalformedSource)
-    ); misses: assertion does not mention the changed expression
+    ); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - related test tests/errors.rs:8 parse_summary_fails_closed_on_malformed_source uses strong exact error variant oracle: if !matches!(result, Err(ParseSummaryError::MalformedSource)) {
 return Err("malformed source should produce ParseSummaryError::MalformedSource".into());
 }; misses: no call to the changed code found; linked by name only
@@ -285,11 +285,11 @@ error.downcast_ref::<ChecksumError>(),
 Some(ChecksumError::MalformedPayload)
 ) {
 return Err("checksum witness pinned the malformed-payload sibling".into());
-}; misses: assertion does not mention the changed expression
+}; unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - related test tests/errors.rs:33 checksum_summary_pins_wrong_sibling_variant uses strong exact value oracle: matches!(
         error.downcast_ref::<ChecksumError>(),
         Some(ChecksumError::MalformedPayload)
-    ); misses: assertion does not mention the changed expression
+    ); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - source function argument value payload = "payload?" at line 34
   - source enum variant value ChecksumError::MalformedPayload at line 37
   - source enum variant value ChecksumError::MalformedPayload at line 37
@@ -339,11 +339,11 @@ error.downcast_ref::<ChecksumError>(),
 Some(ChecksumError::MalformedPayload)
 ) {
 return Err("checksum witness pinned the malformed-payload sibling".into());
-}; misses: assertion does not mention the changed expression
+}; unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - related test tests/errors.rs:33 checksum_summary_pins_wrong_sibling_variant uses strong exact value oracle: matches!(
         error.downcast_ref::<ChecksumError>(),
         Some(ChecksumError::MalformedPayload)
-    ); misses: assertion does not mention the changed expression
+    ); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - source function argument value payload = "payload?" at line 34
   - source enum variant value ChecksumError::MalformedPayload at line 37
   - source enum variant value ChecksumError::MalformedPayload at line 37
@@ -393,11 +393,11 @@ error.downcast_ref::<ParseSummaryError>(),
 Some(ParseSummaryError::MalformedSource)
 ) {
 return Err("render witness pinned the parse-summary variant instead".into());
-}; misses: assertion does not mention the changed expression
+}; unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - related test tests/errors.rs:47 render_summary_observes_other_enum_variant uses strong exact value oracle: matches!(
         error.downcast_ref::<ParseSummaryError>(),
         Some(ParseSummaryError::MalformedSource)
-    ); misses: assertion does not mention the changed expression
+    ); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - source function argument value raw = "zhex" at line 48
   - source enum variant value ParseSummaryError::MalformedSource at line 51
   - source enum variant value ParseSummaryError::MalformedSource at line 51
@@ -447,11 +447,11 @@ error.downcast_ref::<ParseSummaryError>(),
 Some(ParseSummaryError::MalformedSource)
 ) {
 return Err("render witness pinned the parse-summary variant instead".into());
-}; misses: assertion does not mention the changed expression
+}; unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - related test tests/errors.rs:47 render_summary_observes_other_enum_variant uses strong exact value oracle: matches!(
         error.downcast_ref::<ParseSummaryError>(),
         Some(ParseSummaryError::MalformedSource)
-    ); misses: assertion does not mention the changed expression
+    ); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - source function argument value raw = "zhex" at line 48
   - source enum variant value ParseSummaryError::MalformedSource at line 51
   - source enum variant value ParseSummaryError::MalformedSource at line 51
@@ -587,11 +587,11 @@ error.downcast_ref::<GlyphError>(),
 Some(GlyphError::MalformedGlyph)
 ) {
 return Err("glyph variant witness requires the typed conversion".into());
-}; misses: assertion does not mention the changed expression
+}; unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - related test tests/errors.rs:67 glyph_summary_downcast_witness_on_stringified_wrapper uses strong exact value oracle: matches!(
         error.downcast_ref::<GlyphError>(),
         Some(GlyphError::MalformedGlyph)
-    ); misses: assertion does not mention the changed expression
+    ); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - source function argument value raw = "#glyph" at line 69
   - source enum variant value GlyphError::MalformedGlyph at line 72
   - source enum variant value GlyphError::MalformedGlyph at line 72
@@ -641,11 +641,11 @@ error.downcast_ref::<GlyphError>(),
 Some(GlyphError::MalformedGlyph)
 ) {
 return Err("glyph variant witness requires the typed conversion".into());
-}; misses: assertion does not mention the changed expression
+}; unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - related test tests/errors.rs:67 glyph_summary_downcast_witness_on_stringified_wrapper uses strong exact value oracle: matches!(
         error.downcast_ref::<GlyphError>(),
         Some(GlyphError::MalformedGlyph)
-    ); misses: assertion does not mention the changed expression
+    ); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - source function argument value raw = "#glyph" at line 69
   - source enum variant value GlyphError::MalformedGlyph at line 72
   - source enum variant value GlyphError::MalformedGlyph at line 72
@@ -693,7 +693,7 @@ Evidence
   - related test tests/errors.rs:82 theme_summary_ignores_matches_result uses strong exact value oracle: matches!(
         error.downcast_ref::<ThemeError>(),
         Some(ThemeError::DuplicateTheme)
-    ); misses: assertion does not mention the changed expression
+    ); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - source function argument value raw = "&theme" at line 83
   - source enum variant value ThemeError::DuplicateTheme at line 86
 
@@ -740,7 +740,7 @@ Evidence
   - related test tests/errors.rs:82 theme_summary_ignores_matches_result uses strong exact value oracle: matches!(
         error.downcast_ref::<ThemeError>(),
         Some(ThemeError::DuplicateTheme)
-    ); misses: assertion does not mention the changed expression
+    ); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
   - source function argument value raw = "&theme" at line 83
   - source enum variant value ThemeError::DuplicateTheme at line 86
 

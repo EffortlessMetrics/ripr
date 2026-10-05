@@ -186,6 +186,14 @@ close with that route instead of the Rust before/after snapshot commands. When
 Rust seams exist, the human output is unchanged and other languages are listed
 only in `pilot-summary.json` `language_routes` (#3906).
 
+When a seam limit (the repo-exposure inventory limit or the pilot seam budget)
+cut the classified seams before ranking, `pilot-summary.md` must say so under
+"What Was Inspected": it names how many seams were ranked out of the outermost
+total (the inventory total when both limits cut), reads the actionable count as
+"at least N", and reads each "Also in this function" count as "at least N",
+because seams past the cut were never counted (#6602). Without a limit, the
+wording is unchanged.
+
 The pilot command must remain advisory. It should not edit source files,
 generate tests, run mutation testing, or enable CI blocking policy.
 It should also be bounded for interactive first runs: if analysis exceeds the
@@ -485,6 +493,12 @@ Current tests and reports that support the contract:
 - `crates/ripr/src/output/pilot/tests.rs::pilot_ranking_prefers_actionable_class_order_before_tie_breakers`
 - `crates/ripr/src/output/pilot/tests.rs::pilot_ranking_uses_evidence_tie_breakers_then_stable_location`
 - `crates/ripr/src/output/pilot/tests.rs::pilot_ranking_excludes_solved_governed_classes`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_ranking_takes_one_seam_per_owner_before_a_second`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_ranking_spreads_owners_without_crossing_class_order`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_summary_md_counts_an_owners_unlisted_seams_once`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_summary_md_marks_owner_counts_as_lower_bounds_after_a_seam_limit`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_ranking_counts_owner_rounds_across_classes`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_summary_md_names_unlisted_seams_on_an_owners_first_pick_only`
 - `crates/ripr/src/output/pilot/tests.rs::pilot_summary_json_contains_config_state_artifacts_and_next_commands`
 - `crates/ripr/src/output/pilot/tests.rs::pilot_summary_md_spells_out_first_screen_recommendation`
 - `crates/ripr/src/output/pilot/tests.rs::pilot_terminal_prints_top_test_and_follow_up_commands`

@@ -5,8 +5,7 @@
 use super::classify::parser_probe_shapes_for_changed_line;
 use super::diff::probes_for_file;
 use crate::analysis::diff::{ChangedFile, ChangedLine};
-use crate::analysis::extract::PROBE_SHAPE_UNSAFE_BOUNDARY;
-use crate::analysis::rust_index::RustIndex;
+use crate::analysis::rust_index::{ProbeShapeKind, RustIndex};
 use crate::analysis::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter};
 use crate::domain::{Probe, ProbeFamily};
 use std::collections::BTreeMap;
@@ -147,7 +146,7 @@ fn unsafe_parameter_retains_both_declaration_and_boundary_identity() -> Result<(
     let boundary = facts
         .probe_shapes
         .iter()
-        .find(|shape| shape.kind == PROBE_SHAPE_UNSAFE_BOUNDARY)
+        .find(|shape| shape.kind == ProbeShapeKind::UnsafeBoundary)
         .cloned()
         .ok_or_else(|| "fixture has no unsafe boundary".to_string())?;
     let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {

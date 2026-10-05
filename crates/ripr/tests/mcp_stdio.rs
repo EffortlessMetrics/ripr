@@ -499,11 +499,91 @@ fn legacy_stdio_lifecycle_lists_and_reads_the_same_bounded_status() -> Result<()
         .map_err(|error| error.to_string())?
         .to_string_lossy()
         .into_owned();
-    if String::from_utf8_lossy(&output.stdout).contains(&canonical) {
+    // Match a JSON string, not a raw substring: `ripr://workspace/status`
+    // contains `/workspace` when this checkout's canonical path is that.
+    // Serialize so Windows backslashes are escaped the same way stdout is.
+    let encoded_canonical = serde_json::to_string(&canonical).map_err(|error| error.to_string())?;
+    if String::from_utf8_lossy(&output.stdout).contains(&encoded_canonical) {
         return Err("MCP stdout leaked the canonical repository path".to_string());
     }
     if responses[5].get("result") != Some(&json!({})) {
         return Err("legacy ping did not return an empty result".to_string());
+    }
+    Ok(())
+}
+
+/// After `initialize`, `ping` is identified by method name. A client that
+/// attaches the handshake `_meta` this server requires pre-init (#5267)
+/// must still receive an empty result; empty or omitted params are not
+/// sufficient proof (#6022).
+#[test]
+fn post_initialize_ping_with_handshake_meta_returns_an_empty_result() -> Result<(), String> {
+    let root = workspace_root()?;
+    let request_bytes = [
+        line(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-11-25",
+                "capabilities": {},
+                "clientInfo": { "name": "ripr-integration-test", "version": "1" }
+            }
+        }))?,
+        line(json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized"
+        }))?,
+        line(json!({
+            "jsonrpc": "2.0",
+            "id": "ping-meta",
+            "method": "ping",
+            "params": { "_meta": current_meta() }
+        }))?,
+        line(json!({
+            "jsonrpc": "2.0",
+            "id": "ping-empty",
+            "method": "ping",
+            "params": {}
+        }))?,
+        line(json!({
+            "jsonrpc": "2.0",
+            "id": "ping-omitted",
+            "method": "ping"
+        }))?,
+    ]
+    .concat();
+    let output = run_mcp(&root, &[&request_bytes])?;
+    let responses = response_lines(&output)?;
+    if responses.len() != 4 {
+        return Err(format!(
+            "expected initialize plus three ping replies, got {}: {responses:?}",
+            responses.len()
+        ));
+    }
+    if responses[0]
+        .pointer("/result/protocolVersion")
+        .and_then(Value::as_str)
+        != Some("2025-11-25")
+    {
+        return Err("initialize did not negotiate 2025-11-25".to_string());
+    }
+    for (index, id) in [
+        (1usize, "ping-meta"),
+        (2, "ping-empty"),
+        (3, "ping-omitted"),
+    ] {
+        let response = responses
+            .get(index)
+            .ok_or_else(|| format!("missing ping reply for {id}"))?;
+        if response.get("id") != Some(&json!(id)) {
+            return Err(format!("ping reply lost its request id: {response}"));
+        }
+        if response.get("result") != Some(&json!({})) {
+            return Err(format!(
+                "post-initialize ping {id} must return an empty result, not {response}"
+            ));
+        }
     }
     Ok(())
 }
@@ -792,7 +872,7 @@ fn gap_tools_fail_closed_before_the_first_refresh() -> Result<(), String> {
             "params": {
                 "_meta": current_meta(),
                 "name": "ripr_get_gap",
-                "arguments": { "gap_id": "gap:any" }
+                "arguments": { "canonical_id": "gap:any" }
             }
         }))?,
         line(json!({
@@ -802,7 +882,7 @@ fn gap_tools_fail_closed_before_the_first_refresh() -> Result<(), String> {
             "params": {
                 "_meta": current_meta(),
                 "name": "ripr_prepare_repair",
-                "arguments": { "gap_id": "gap:any" }
+                "arguments": { "canonical_id": "gap:any" }
             }
         }))?,
         line(json!({
@@ -832,7 +912,7 @@ fn gap_tools_fail_closed_before_the_first_refresh() -> Result<(), String> {
             "params": {
                 "_meta": current_meta(),
                 "name": "ripr_get_repair_card",
-                "arguments": { "gap_id": "gap:any" }
+                "arguments": { "canonical_id": "gap:any" }
             }
         }))?,
         line(json!({
@@ -873,10 +953,10 @@ fn gap_tools_fail_closed_before_the_first_refresh() -> Result<(), String> {
         .collect::<Vec<_>>();
     for expected in [
         "ripr://snapshot/{snapshot_id}",
-        "ripr://gap/{canonical_item_id}",
+        "ripr://gap/{canonical_id}",
         "ripr://repair-attempt/{attempt_id}",
         "ripr://receipt/{receipt_id}",
-        "ripr://repair-card/{canonical_item_id}",
+        "ripr://repair-card/{canonical_id}",
     ] {
         if !template_uris.contains(&expected) {
             return Err(format!(

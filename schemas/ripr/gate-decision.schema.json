@@ -12,6 +12,7 @@
     "mode",
     "root",
     "inputs",
+    "subject",
     "policy",
     "summary",
     "new_unsuppressed",
@@ -42,10 +43,64 @@
     "config_errors": { "type": "array", "items": { "type": "string" } },
     "limits_note": { "type": "string", "minLength": 1 },
     "exception_policy": { "type": "object" },
-    "causal_comparison": { "$ref": "#/$defs/causal_comparison" }
+    "causal_comparison": { "$ref": "#/$defs/causal_comparison" },
+    "subject": { "$ref": "#/$defs/subject" }
   },
   "$defs": {
     "nullable_string": { "type": ["string", "null"] },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["analyzer_version", "inputs"],
+      "properties": {
+        "analyzer_version": { "type": "string", "minLength": 1 },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [],
+          "properties": {
+            "pr_guidance": { "$ref": "#/$defs/subject_input" },
+            "gap_ledger": { "$ref": "#/$defs/subject_input" },
+            "repo_exposure": { "$ref": "#/$defs/subject_input" },
+            "sarif_policy": { "$ref": "#/$defs/subject_input" },
+            "labels_json": { "$ref": "#/$defs/subject_input" },
+            "agent_verify": { "$ref": "#/$defs/subject_input" },
+            "agent_receipt": { "$ref": "#/$defs/subject_input" },
+            "recommendation_calibration": { "$ref": "#/$defs/subject_input" },
+            "mutation_calibration": { "$ref": "#/$defs/subject_input" },
+            "baseline": { "$ref": "#/$defs/subject_input" },
+            "exception_policy": { "$ref": "#/$defs/subject_input" }
+          }
+        },
+        "labels_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "subject_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_hash"],
+      "properties": {
+        "content_hash": {
+          "type": ["string", "null"],
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "producer_subject": { "$ref": "#/$defs/producer_subject" }
+      }
+    },
+    "producer_subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_sha", "head_sha"],
+      "properties": {
+        "root_identity": { "type": ["string", "null"] },
+        "base_sha": { "type": "string", "minLength": 1 },
+        "head_sha": { "type": "string", "minLength": 1 },
+        "reusable_cache_identity": { "type": ["string", "null"] }
+      }
+    },
     "inputs": {
       "type": "object",
       "additionalProperties": false,

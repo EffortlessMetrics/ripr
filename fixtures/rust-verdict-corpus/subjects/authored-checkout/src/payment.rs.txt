@@ -1,0 +1,69 @@
+//! Payments that fail with a typed error.
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum PayError {
+    Insufficient,
+    Frozen,
+    Limit,
+}
+
+pub struct Wallet {
+    pub balance: i64,
+    pub frozen: bool,
+}
+
+pub fn withdraw(wallet: &mut Wallet, amount: i64) -> Result<i64, PayError> {
+    if wallet.frozen {
+        return Err(PayError::Frozen);
+    }
+    if amount > wallet.balance {
+        return Err(PayError::Insufficient);
+    }
+    wallet.balance -= amount;
+    Ok(wallet.balance)
+}
+
+pub fn refund(amount: i64) -> Result<i64, PayError> {
+    if amount > 10_000 {
+        return Err(PayError::Limit);
+    }
+    Ok(amount)
+}
+
+pub fn deposit_cap(amount: i64) -> Result<i64, PayError> {
+    if amount > 50_000 {
+        return Err(PayError::Limit);
+    }
+    Ok(amount)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn overdrawing_reports_insufficient() {
+        let mut wallet = Wallet { balance: 10, frozen: false };
+        match withdraw(&mut wallet, 20) {
+            Ok(_) => panic!("overdraw succeeded"),
+            Err(PayError::Insufficient) => {}
+            Err(other) => panic!("wrong error {other:?}"),
+        }
+    }
+
+    #[test]
+    fn withdrawing_reduces_the_balance() {
+        let mut wallet = Wallet { balance: 10, frozen: false };
+        assert_eq!(withdraw(&mut wallet, 4), Ok(6));
+    }
+
+    #[test]
+    fn a_large_refund_hits_the_limit() {
+        assert!(matches!(refund(20_000), Err(PayError::Limit)));
+    }
+
+    #[test]
+    fn a_small_deposit_is_accepted() {
+        assert_eq!(deposit_cap(100), Ok(100));
+    }
+}

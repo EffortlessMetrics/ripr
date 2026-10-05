@@ -1,0 +1,81 @@
+//! Early-return guards, one function per test style.
+
+pub fn average(xs: &[u32]) -> u32 {
+    if xs.is_empty() {
+        return 0;
+    }
+    xs.iter().sum::<u32>() / xs.len() as u32
+}
+
+pub fn initial(name: &str) -> char {
+    if name.is_empty() {
+        return '?';
+    }
+    name.chars().next().unwrap_or('?').to_ascii_uppercase()
+}
+
+pub fn mean_latency(samples: &[u64]) -> u64 {
+    if samples.is_empty() {
+        return 0;
+    }
+    samples.iter().sum::<u64>() / samples.len() as u64
+}
+
+pub fn discount(total: u64) -> u64 {
+    if total < 100 {
+        return 0;
+    }
+    total / 10
+}
+
+pub fn ratio(hits: u32, total: u32) -> u32 {
+    if total == 0 {
+        return 0;
+    }
+    hits * 100 / total
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn average_of_nothing_is_zero() {
+        assert_eq!(average(&[]), 0);
+        assert_eq!(average(&[2, 4]), 3);
+    }
+
+    #[test]
+    fn initial_table() {
+        let cases = [("", '?'), ("ada", 'A'), ("Bob", 'B')];
+        for (name, want) in cases {
+            assert_eq!(initial(name), want, "{name:?}");
+        }
+    }
+
+    #[test]
+    fn mean_lies_between_min_and_max() {
+        let samples: [&[u64]; 3] = [&[5], &[3, 9], &[10, 20, 30]];
+        for s in samples {
+            let mean = mean_latency(s);
+            assert!(mean >= *s.iter().min().unwrap(), "{s:?}");
+            assert!(mean <= *s.iter().max().unwrap(), "{s:?}");
+        }
+    }
+
+    fn check_discount(total: u64, want: u64) {
+        assert_eq!(discount(total), want, "total {total}");
+    }
+
+    #[test]
+    fn small_orders_get_no_discount() {
+        check_discount(99, 0);
+        check_discount(100, 10);
+    }
+
+    #[test]
+    fn ratio_smoke() {
+        let _ = ratio(1, 0);
+        let _ = ratio(3, 4);
+    }
+}

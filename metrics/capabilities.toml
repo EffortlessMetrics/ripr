@@ -1671,6 +1671,7 @@ fixtures = [
   "fixtures/python_unrelated_test_mention",
   "fixtures/python_dynamic_dispatch_limit",
   "fixtures/python_decorator_indirection_limit",
+  "fixtures/python_functools_memoization_not_indirection",
   "fixtures/python_mocked_module_limit",
   "fixtures/python_monkeypatch_module_limit",
   "fixtures/python_opaque_custom_helper_limit",

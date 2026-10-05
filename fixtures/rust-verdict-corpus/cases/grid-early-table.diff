@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 3e0c325..c53445c 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -8,7 +8,7 @@ pub fn average(xs: &[u32]) -> u32 {
+ }
+ 
+ pub fn initial(name: &str) -> char {
+-    if name.is_empty() {
++    if name.len() == 0 {
+         return '?';
+     }
+     name.chars().next().unwrap_or('?').to_ascii_uppercase()

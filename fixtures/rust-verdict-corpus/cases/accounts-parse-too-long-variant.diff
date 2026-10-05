@@ -1,0 +1,13 @@
+diff --git a/src/parse.rs b/src/parse.rs
+index 2cf4683..5fd9975 100644
+--- a/src/parse.rs
++++ b/src/parse.rs
+@@ -12,7 +12,7 @@ pub fn parse_amount(text: &str) -> Result<i64, ParseError> {
+         return Err(ParseError::Empty);
+     }
+     if text.len() > 12 {
+-        return Err(ParseError::TooLong(text.len()));
++        return Err::<i64, ParseError>(ParseError::TooLong(text.len()));
+     }
+     let mut value = 0i64;
+     for c in text.chars() {

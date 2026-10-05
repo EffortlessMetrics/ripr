@@ -1,0 +1,13 @@
+diff --git a/src/account.rs b/src/account.rs
+index 799a22b..4af6bef 100644
+--- a/src/account.rs
++++ b/src/account.rs
+@@ -8,7 +8,7 @@ pub struct Account {
+ 
+ impl Account {
+     pub fn deposit(&mut self, amount: i64) {
+-        self.balance += amount;
++        self.balance = self.balance + amount;
+         self.deposits += 1;
+         self.history.push(amount);
+     }

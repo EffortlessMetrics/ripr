@@ -16,6 +16,7 @@ result means.
 | Add advisory CI or review a PR | [CI strategy](CI.md) · [PR review guidance](PR_REVIEW_GUIDANCE.md) | Generate advisory GitHub Actions, read summaries and artifacts, and keep gate authority explicit. |
 | Hand work to a coding agent | [LLM operator guide](LLM_OPERATOR_GUIDE.md) · [Agent workflows](AGENT_WORKFLOWS.md) | Give an agent a bounded packet with evidence, edit limits, verification, and stop conditions. |
 | Configure RIPR or consume its output | [Configuration](CONFIGURATION.md) · [Output schema](OUTPUT_SCHEMA.md) | Repository policy, CLI and editor settings, JSON contracts, and machine-readable states. |
+| Decide whether to adopt RIPR | [Proof and limits](PUBLIC_PROOF.md) | Scoreboard numbers with trends, mutation agreement, verdict-corpus rates, and where RIPR falls short. |
 | Check language and workflow maturity | [Support tiers](status/SUPPORT_TIERS.md) · [Language adapter preview](LANGUAGE_ADAPTER_PREVIEW.md) | What is usable, preview, advisory, unavailable, or explicitly limited. |
 | Connect another client | [MCP workspace status](interop/mcp.md) · [Other LSP editors](interop/other-editors-lsp.md) · [Neovim LSP recipe](interop/neovim-lsp.md) | Read-only MCP status, Helix/Neovim/Zed setup, and a portable standard-LSP client path. |
 

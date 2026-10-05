@@ -13,6 +13,9 @@ Linked issues:
 - #5267 (every pre-initialize typed-shape violation recovers with the
   SDK's Invalid Request answer on the same connection instead of
   terminating the server process)
+- #6022 (post-initialize `ping` with handshake `params._meta` returns an
+  empty result; pre-initialize ping+_meta and discovery-lifecycle ping
+  rejection stay with #5267 / ADR 0022)
 - #3087 (parent standard MCP server epic)
 - #3088 (transport/discovery/read-only boundary slice; this slice keeps its
   SDK-owned dispatch and bounded framing)
@@ -52,7 +55,7 @@ official SDK transport:
 - Tools `ripr_workspace_status`, `ripr_refresh`, `ripr_list_gaps`,
   `ripr_get_gap`; static resource `ripr://workspace/status`; resource
   templates `ripr://snapshot/{snapshot_id}` and
-  `ripr://gap/{canonical_item_id}`. Tool names and templates follow the
+  `ripr://gap/{canonical_id}`. Tool names and templates follow the
   registry established in #3088's slice.
 - Pre-initialize typed-shape violations recover on the wire (#5267): a
   request that arrives before `initialize` and lacks the SDK's required
@@ -65,6 +68,16 @@ official SDK transport:
   session for one message; a normal `initialize` still completes afterwards,
   and stdin EOF remains the clean exit. Each attempt consumes at least one
   inbound frame, so recovery always makes progress and never spins.
+- After a successful `initialize` handshake, `ping` is routed by method
+  name. A request whose `params._meta` carries the handshake fields this
+  server requires pre-init (`io.modelcontextprotocol/protocolVersion`,
+  `io.modelcontextprotocol/clientCapabilities`,
+  `io.modelcontextprotocol/clientInfo`) is answered with an empty result
+  `{}`, the same as `ping` with empty `params` or omitted `params`. That
+  `_meta` shape must not be read as a `2026-07-28` discovery-lifecycle
+  request and must not produce `-32601` method-not-found. Pre-initialize
+  ping with the same `_meta` remains the handshake path (#5267). After
+  `server/discover`, `ping` stays method-not-found.
 - `ripr_workspace_status` returns the startup workspace block (root
   discovery, configuration presence, trust, authority — all unchanged from
   #3088) plus a `ripr-mcp-session-v1` session block: current desired input
@@ -105,7 +118,7 @@ official SDK transport:
   adapter never re-runs ranking, never truncates silently, and infers no
   business risk. Overflow is disclosed with reasons and the
   `ripr_get_gap` continuation route.
-- `ripr_get_gap` and `ripr://gap/{canonical_item_id}` return one canonical
+- `ripr_get_gap` and `ripr://gap/{canonical_id}` return one canonical
   item's complete bounded evidence bound to its snapshot identity:
   identity/location, changed behavior (expression, before/after, delta
   kind, probe family), causal attribution (canonical gap owner, behavior
@@ -191,7 +204,7 @@ official SDK transport:
    report), `ripr_list_gaps` (bounded working set with disclosed
    omissions), and `ripr_get_gap` (one complete item), or reads
    `ripr://workspace/status`, `ripr://snapshot/{snapshot_id}`, and
-   `ripr://gap/{canonical_item_id}` — no report-file, clipboard, log, or
+   `ripr://gap/{canonical_id}` — no report-file, clipboard, log, or
    LSP-protocol archaeology involved.
 2. Before any refresh, list/get/snapshot reads fail closed with typed
    `no_snapshot`; during an attempt they report `analysis_in_flight`; a
@@ -215,13 +228,17 @@ official SDK transport:
 
 - `crates/ripr/src/mcp/workspace.rs::tests` — session lifecycle, typed
   failures, identity portability, boundedness, last-known-good retention.
+- `crates/ripr/src/workspace_status.rs::tests::dangling_ripr_toml_symlink_is_present_not_built_in_defaults`
+  — a dangling `ripr.toml` is present, not built-in defaults.
 - `crates/ripr/src/mcp/gaps.rs::tests` — canonical item projection and the
   readiness block this slice pinned (the readiness evaluation itself is
   owned with RIPR-SPEC-0214).
 - `crates/ripr/src/mcp/protocol.rs::tests` + `server_tests.rs` —
   descriptor and dispatch contracts.
 - `crates/ripr/tests/mcp_sdk.rs`, `crates/ripr/tests/mcp_stdio.rs` —
-  hosted wire interop controls.
+  hosted wire interop controls, including
+  `post_initialize_ping_with_handshake_meta_returns_an_empty_result`
+  (empty-params ping is not sufficient proof).
 
 ## Implementation Mapping
 
@@ -230,7 +247,7 @@ official SDK transport:
 | `crates/ripr/src/mcp/workspace.rs` | session state machine, snapshot binding, typed failures, bounded documents, `run_check` bridge to `app::check_workspace` |
 | `crates/ripr/src/mcp/gaps.rs` | canonical item projection, budget items, resource-URI parsing |
 | `crates/ripr/src/mcp/protocol.rs` | tool/resource descriptors, schemas, instructions, status document |
-| `crates/ripr/src/mcp/server.rs` | SDK adapter dispatch, refresh single-flight, resource reads |
+| `crates/ripr/src/mcp/server.rs` | SDK adapter dispatch, initialize-session ping-by-method, refresh single-flight, resource reads |
 | `crates/ripr/src/mcp/transport.rs` + `workspace_status.rs` | retained canonical root for in-process refresh (never serialized) |
 | `docs/interop/mcp.md`, `docs/adr/0022` (Slice B note) | operator-facing surface and authority boundary record |
 | `docs/specs/README.md` + `.ripr/traceability.toml` | spec registration and test traceability |

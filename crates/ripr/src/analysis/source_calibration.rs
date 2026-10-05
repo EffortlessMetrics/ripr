@@ -274,7 +274,7 @@ fn git_text(root: &Path, args: &[&str]) -> Result<String, String> {
     let output = crate::git::run_git_output_with_deadline(
         root,
         args,
-        Some(std::time::Duration::from_secs(300)),
+        Some(std::time::Duration::from_mins(5)),
     )
     .map_err(|error| error.to_string())?;
     if !output.status.success() {
@@ -351,7 +351,7 @@ fn driver() -> Result<Value, String> {
     let clean = crate::git::run_git_output_with_deadline(
         &root,
         &["diff", "--quiet", "HEAD", "--"],
-        Some(std::time::Duration::from_secs(300)),
+        Some(std::time::Duration::from_mins(5)),
     )
     .map_err(|error| error.to_string())?;
     if !clean.status.success() {
@@ -390,7 +390,7 @@ fn driver() -> Result<Value, String> {
         diff_file: Some(diff.clone()),
         include_unchanged_tests: false,
         format: crate::app::OutputFormat::Json,
-        git_timeout: Some(std::time::Duration::from_secs(300)),
+        git_timeout: Some(std::time::Duration::from_mins(5)),
         ..Default::default()
     };
     crate::config::apply_to_check_input(
@@ -435,7 +435,7 @@ fn full_source_owner_preflight() -> Result<(), String> {
     let started = std::time::Instant::now();
     let token = super::cancellation::AnalysisCancellationToken::with_budget(
         started,
-        std::time::Duration::from_secs(300),
+        std::time::Duration::from_mins(5),
         std::sync::Arc::new(std::time::Instant::now),
     );
     let result = super::cancellation::with_token(&token, driver);

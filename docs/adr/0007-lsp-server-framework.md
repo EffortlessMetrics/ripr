@@ -38,6 +38,9 @@ Positive:
   and command handling without another transport migration.
 - Analyzer work can remain synchronous behind adapter functions and
   `spawn_blocking` instead of forcing the analysis layer to become async.
+  (Refreshes later moved from `spawn_blocking` to one long-lived analysis
+  thread, `lsp/analysis_thread.rs`, so repeated refreshes stay in one malloc
+  arena; the analysis layer stays synchronous.)
 
 Negative:
 

@@ -1,0 +1,43 @@
+//! A parser whose public error type is converted from an inner one.
+
+#[derive(Debug, PartialEq)]
+pub enum RawError {
+    Malformed,
+    Empty,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ParseXError {
+    MalformedSource,
+    EmptySource,
+}
+
+impl From<RawError> for ParseXError {
+    fn from(e: RawError) -> Self {
+        match e {
+            RawError::Malformed => ParseXError::MalformedSource,
+            RawError::Empty => ParseXError::EmptySource,
+        }
+    }
+}
+
+fn try_parse_x(raw: &str) -> Result<u32, RawError> {
+    if raw.is_empty() {
+        return Err(RawError::Empty);
+    }
+    raw.parse::<u32>().map_err(|_| RawError::Malformed)
+}
+
+pub fn parse_x(raw: &str) -> Result<u32, ParseXError> {
+    try_parse_x(raw).map_err(Into::into)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ParseXError, parse_x};
+
+    #[test]
+    fn try_parse_x_pins_malformed_source() {
+        assert!(matches!(parse_x("zz"), Err(ParseXError::MalformedSource)));
+    }
+}

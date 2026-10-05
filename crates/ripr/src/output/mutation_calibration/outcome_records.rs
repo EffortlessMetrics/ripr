@@ -484,4 +484,47 @@ mod tests {
         );
         Ok(())
     }
+
+    #[test]
+    fn maps_cargo_mutants_timeout_and_unviable_summaries() -> Result<(), String> {
+        let records = parse_mutation_outcomes_json(
+            r#"{
+  "outcomes": [
+    {
+      "scenario": {"Mutant": {
+        "name": "src/a.rs:1:1: replace timeout_mutant with ()",
+        "file": "src/a.rs",
+        "span": {"start": {"line": 1, "column": 1}, "end": {"line": 1, "column": 2}},
+        "replacement": "()",
+        "genre": "FnValue"
+      }},
+      "summary": "Timeout"
+    },
+    {
+      "scenario": {"Mutant": {
+        "name": "src/a.rs:2:1: replace unviable_mutant with ()",
+        "file": "src/a.rs",
+        "span": {"start": {"line": 2, "column": 1}, "end": {"line": 2, "column": 2}},
+        "replacement": "()",
+        "genre": "FnValue"
+      }},
+      "summary": "Unviable"
+    }
+  ]
+}"#,
+        )?;
+
+        assert_eq!(records.len(), 2, "{records:?}");
+        let timeout = records
+            .iter()
+            .find(|record| record.line == Some(1))
+            .ok_or_else(|| "timeout mutant should be imported".to_string())?;
+        assert_eq!(timeout.runtime_outcome, "timeout");
+        let unviable = records
+            .iter()
+            .find(|record| record.line == Some(2))
+            .ok_or_else(|| "unviable mutant should be imported".to_string())?;
+        assert_eq!(unviable.runtime_outcome, "unviable");
+        Ok(())
+    }
 }

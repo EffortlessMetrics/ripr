@@ -25,6 +25,12 @@
 //! claim a single operator mutant can settle, so their outcomes are counted
 //! but not scored. Claims are limited to the recorded checkout revisions, the
 //! cargo-mutants version that produced the outcomes, and this join rule.
+//!
+//! The report also scores `ripr pilot`'s top recommendations against the same
+//! outcomes (see [`pilot`]), because a wrong top recommendation is the error a
+//! developer meets first.
+
+pub(crate) mod pilot;
 
 use crate::run::{
     capture_bytes_in_dir_with_timeout, capture_output_with_timeout,
@@ -285,6 +291,9 @@ struct RepoRun {
     cargo_mutants_version: Option<String>,
     metrics: Value,
     pairs: Vec<Pair>,
+    /// Judged pilot recommendations, or why pilot produced none. A pilot
+    /// failure does not discard the repo's validated mutation outcomes.
+    pilot: Result<Vec<Value>, String>,
 }
 
 fn spot_check_repo(
@@ -350,6 +359,7 @@ fn spot_check_repo(
     let outcomes = read_mutants_out("outcomes.json")?;
     let mutant_records = read_mutants_out("mutants.json")?;
     let diffs_checked = require_mutants_match_checkout(name, checkout, &revision, &mutant_records)?;
+    let pilot_top = pilot::pilot_top_seams(binary, scratch, name, checkout);
 
     let calibration = run_text(
         &path_arg(binary),
@@ -388,6 +398,22 @@ fn spot_check_repo(
             .map(str::to_string),
         metrics: calibration.get("metrics").cloned().unwrap_or(Value::Null),
         pairs: classify_matches(&calibration, &exposure_json, &mutant_records),
+        pilot: pilot_top.map(|top| {
+            pilot::judge_recommendations(
+                &top,
+                &mutant_records,
+                &outcomes,
+                &seam_expressions(&exposure_json),
+                &|file, line| {
+                    let index = usize::try_from(line).ok()?.checked_sub(1)?;
+                    std::fs::read_to_string(checkout.join(file))
+                        .ok()?
+                        .lines()
+                        .nth(index)
+                        .map(str::to_string)
+                },
+            )
+        }),
     })
 }
 
@@ -395,7 +421,7 @@ fn spot_check_repo(
 /// another commit would join stale outcomes to this checkout's seams. Every
 /// mutant diff carries the original lines it replaced; they must still match
 /// the checkout, or nothing from this directory is scored.
-fn require_mutants_match_checkout(
+pub(crate) fn require_mutants_match_checkout(
     name: &str,
     checkout: &Path,
     revision: &str,
@@ -633,7 +659,7 @@ fn run_text(
     Ok(output.stdout)
 }
 
-fn read_json(path: &Path) -> Result<Value, String> {
+pub(crate) fn read_json(path: &Path) -> Result<Value, String> {
     let text = fs::read_to_string(path).map_err(|err| format!("read {}: {err}", path.display()))?;
     serde_json::from_str(&text).map_err(|err| format!("parse {}: {err}", path.display()))
 }
@@ -655,6 +681,22 @@ struct Pair {
     mutant: String,
 }
 
+/// Seam id to source expression, from the repo exposure JSON.
+pub(crate) fn seam_expressions(exposure: &Value) -> BTreeMap<&str, &str> {
+    exposure
+        .get("seams")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|seam| {
+            Some((
+                seam.get("seam_id")?.as_str()?,
+                seam.get("expression").and_then(Value::as_str).unwrap_or(""),
+            ))
+        })
+        .collect()
+}
+
 /// Classify every unambiguous calibration match. Ambiguous and unmatched
 /// runtime records stay in the calibration metrics and are never scored.
 fn classify_matches(calibration: &Value, exposure: &Value, mutants: &Value) -> Vec<Pair> {
@@ -669,18 +711,7 @@ fn classify_matches(calibration: &Value, exposure: &Value, mutants: &Value) -> V
             ))
         })
         .collect();
-    let expressions: BTreeMap<&str, &str> = exposure
-        .get("seams")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|seam| {
-            Some((
-                seam.get("seam_id")?.as_str()?,
-                seam.get("expression").and_then(Value::as_str).unwrap_or(""),
-            ))
-        })
-        .collect();
+    let expressions = seam_expressions(exposure);
     let text = |value: &Value, pointer: &str| {
         value
             .pointer(pointer)
@@ -870,6 +901,12 @@ fn build_report(repos: &[RepoRun], examples: usize) -> Value {
         "outcomes_by_pairing_and_grip_class": by_pairing,
         "scored_families": families,
         "disagreement_examples": disagreements,
+        "pilot_top_recommendations": pilot::summarize(
+            &repos
+                .iter()
+                .map(|repo| (repo.name.clone(), repo.pilot.clone()))
+                .collect::<Vec<_>>(),
+        ),
     })
 }
 
@@ -1018,6 +1055,7 @@ fn spot_check_markdown(report: &Value) -> String {
     if !any {
         out.push_str("None in the scored joins.\n");
     }
+    out.push_str(&pilot::markdown(report));
     out
 }
 
@@ -1324,6 +1362,9 @@ mod tests {
             cargo_mutants_version: Some("27.1.0".to_string()),
             metrics: Value::Null,
             pairs: classify_matches(&calibration, &exposure, &mutants),
+            pilot: Ok(vec![
+                json!({"verdict": "refuted", "tier": "line", "grip_class": "weakly_gripped"}),
+            ]),
         };
         let report = build_report(&[repo], 5);
 
@@ -1356,5 +1397,7 @@ mod tests {
             spot_check_markdown(&report)
                 .contains("demo ran cargo-mutants with `--re=decode` `--workspace`.")
         );
+        assert_eq!(report["pilot_top_recommendations"]["counts"]["refuted"], 1);
+        assert!(spot_check_markdown(&report).contains("## Pilot top recommendations"));
     }
 }

@@ -15,6 +15,7 @@ mod language;
 pub(crate) mod new_test_target;
 pub(crate) mod path_glob;
 mod pipeline;
+pub(crate) use pipeline::NON_TEXT_ONLY_DETAIL;
 mod probes;
 pub(crate) mod repair_route;
 /// Process CPU time and peak resident memory observability (#5213). One
@@ -111,6 +112,7 @@ pub(crate) use workspace::apply_module_graph_evidence;
 pub(crate) use workspace::context_for_files;
 pub(crate) use workspace::is_test_surface_path;
 pub(crate) use workspace::seeds_diff_probes;
+pub(crate) use workspace::{UnlinkedPythonTests, discover_python_test_files};
 
 /// Re-export workspace discovery helpers for the output layer so it can
 /// detect TS-predominant workspaces without importing through analysis::workspace

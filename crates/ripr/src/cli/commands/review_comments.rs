@@ -30,9 +30,11 @@ use super::write_text_file;
 const DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS: u64 = 120_000;
 
 /// Default ceiling on the union of analyzable workspace files and changed
-/// owner-attribution inputs. Match the current diff/repo family default
-/// (raised in #4972 after this repository grew beyond 800 files), while
-/// remaining below the 1,600–1,700-file external failure shapes in #3768.
+/// owner-attribution inputs. Match the repo-scope default and the diff
+/// narrowing threshold (raised in #4972 after this repository grew beyond
+/// 800 files) and stay below the 1,600–1,700-file external failure shapes
+/// in #3768. Guidance indexes the whole workspace, so it does not follow
+/// the 10,000-file diff memory guard.
 /// This is input admission, not an RSS bound or evidence that admitted
 /// execution will complete on every runner.
 const REVIEW_GUIDANCE_MAX_INDEX_FILES_DEFAULT: usize = 1200;
@@ -493,9 +495,8 @@ fn review_comments_with_admission(
     })
     .map_err(|error| {
         if error.is_git_invocation_timeout()
-            || (analysis::cancellation::is_cancellation_error(&error.to_string())
-                && cancellation.abort_kind()
-                    == Some(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded))
+            || cancellation.observed_abort()
+                == Some(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded)
         {
             record_review_comments_timeout(&mut receipt, &receipt_path, "diff_discovery")
         } else {
@@ -594,9 +595,8 @@ fn review_comments_with_admission(
         analysis::analyzable_corpus_payload_size(&input.root, &config, &owner_files)
     })
     .map_err(|error| {
-        if analysis::cancellation::is_cancellation_error(&error)
-            && cancellation.abort_kind()
-                == Some(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded)
+        if cancellation.observed_abort()
+            == Some(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded)
         {
             record_review_comments_timeout(&mut receipt, &receipt_path, "language_facts")
         } else {
@@ -750,9 +750,8 @@ fn review_comments_with_admission(
         )
     })
     .map_err(|error| {
-        if analysis::cancellation::is_cancellation_error(&error)
-            && cancellation.abort_kind()
-                == Some(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded)
+        if cancellation.observed_abort()
+            == Some(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded)
         {
             record_review_comments_timeout(&mut receipt, &receipt_path, "canonical_analysis")
         } else {
@@ -941,7 +940,7 @@ fn live_guidance_input_paths(
     config: &crate::config::RiprConfig,
     owner_files: &[PathBuf],
     ceiling: GuidancePayloadCeiling,
-) -> Result<Vec<PathBuf>, String> {
+) -> Result<Vec<PathBuf>, crate::core_error::CoreError> {
     let source_paths = analysis::review_guidance_input_paths(root, config, owner_files)?;
     let metadata_paths = analysis::seam_cache::review_guidance_metadata_paths(
         root,
@@ -950,12 +949,12 @@ fn live_guidance_input_paths(
     )?;
     let mut files = std::collections::BTreeSet::new();
     for path in source_paths.into_iter().chain(metadata_paths) {
-        analysis::cancellation::checkpoint()?;
+        analysis::cancellation::checkpoint_typed()?;
         if !files.contains(&path) && files.len() >= ceiling.max_index_files {
             return Err(format!(
                 "{REVIEW_GUIDANCE_OVERSIZED_PREFIX}: more than {} live source and metadata inputs; raise {REVIEW_GUIDANCE_MAX_INDEX_FILES_ENV} on an admitted runner",
                 ceiling.max_index_files
-            ));
+            ).into());
         }
         files.insert(path);
     }
@@ -1014,8 +1013,8 @@ fn bind_live_guidance_inputs(
             message: "producer identity or projection changed before live repair guidance; regenerate PR evidence".to_string(),
         });
     }
-    let files =
-        live_guidance_input_paths(&input.root, &config, owner_files, ceiling).map_err(malformed)?;
+    let files = live_guidance_input_paths(&input.root, &config, owner_files, ceiling)
+        .map_err(app::review_comments::live_guidance_git_failure)?;
     let capture_limit =
         usize::try_from(ceiling.max_payload_bytes.min(4 * 1024 * 1024)).unwrap_or(usize::MAX);
     let mut payload = analysis::CorpusPayloadSize {
@@ -1023,7 +1022,8 @@ fn bind_live_guidance_inputs(
         total_bytes: 0,
     };
     for path in &files {
-        analysis::cancellation::checkpoint().map_err(malformed)?;
+        analysis::cancellation::checkpoint_typed()
+            .map_err(app::review_comments::live_guidance_cancelled)?;
         let metadata = std::fs::symlink_metadata(input.root.join(path)).map_err(|error| {
             malformed(format!(
                 "stat live guidance input {}: {error}",
@@ -1051,7 +1051,8 @@ fn bind_live_guidance_inputs(
     let mut source_digests = std::collections::BTreeMap::new();
     let mut remaining = ceiling.max_payload_bytes.saturating_sub(diff.len() as u64);
     for path in files {
-        analysis::cancellation::checkpoint().map_err(malformed)?;
+        analysis::cancellation::checkpoint_typed()
+            .map_err(app::review_comments::live_guidance_cancelled)?;
         use sha2::{Digest, Sha256};
         use std::io::Read;
         let mut file = std::fs::File::open(input.root.join(&path)).map_err(|error| {
@@ -1063,7 +1064,8 @@ fn bind_live_guidance_inputs(
         let mut digest = Sha256::new();
         let mut buffer = [0_u8; 8192];
         loop {
-            analysis::cancellation::checkpoint().map_err(malformed)?;
+            analysis::cancellation::checkpoint_typed()
+                .map_err(app::review_comments::live_guidance_cancelled)?;
             let count = file.read(&mut buffer).map_err(|error| {
                 malformed(format!(
                     "read live guidance source {}: {error}",
@@ -1086,8 +1088,8 @@ fn bind_live_guidance_inputs(
         }
         source_digests.insert(path, format!("sha256:{:x}", digest.finalize()));
     }
-    let corpus =
-        analysis::review_guidance_input_paths(&input.root, &config, &[]).map_err(malformed)?;
+    let corpus = analysis::review_guidance_input_paths(&input.root, &config, &[])
+        .map_err(app::review_comments::live_guidance_git_failure)?;
     let workspace = analysis::seam_cache::review_guidance_workspace_key(
         &input.root,
         &config,
@@ -1095,7 +1097,7 @@ fn bind_live_guidance_inputs(
         ceiling.max_index_files,
         ceiling.max_payload_bytes.saturating_sub(diff.len() as u64),
     )
-    .map_err(malformed)?;
+    .map_err(app::review_comments::live_guidance_git_failure)?;
     Ok((workspace, source_digests))
 }
 
@@ -1923,7 +1925,7 @@ mod tests {
                 })
                 .err()
                 .ok_or("recorded abort did not stop fresh key before filesystem admission")?;
-                if !analysis::cancellation::is_cancellation_error(&refused) {
+                if !refused.is_analysis_cancelled() || token.observed_abort() != Some(kind) {
                     return Err(format!(
                         "fresh key lost {kind:?} cancellation authority: {refused}"
                     ));

@@ -238,7 +238,7 @@ fn captured_file_index<'a>(
             CapturedFile {
                 has_standalone_cr: has_standalone_cr(text),
                 lines: lsp_lines(text),
-                facts_match: facts.is_some_and(|facts| facts.source == text),
+                facts_match: facts.is_some_and(|facts| facts.source.as_ref() == text),
                 used_lexical_fallback: facts.is_some_and(|facts| facts.used_lexical_fallback),
                 cursor: Cell::new(None),
                 source,
@@ -533,7 +533,7 @@ mod tests {
     fn facts_for(source: &str) -> FileFacts {
         FileFacts {
             path: PathBuf::from("src/lib.rs"),
-            source: source.to_string(),
+            source: source.into(),
             ..FileFacts::default()
         }
     }

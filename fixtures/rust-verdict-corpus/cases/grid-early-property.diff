@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 3e0c325..3177cfc 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -15,7 +15,7 @@ pub fn initial(name: &str) -> char {
+ }
+ 
+ pub fn mean_latency(samples: &[u64]) -> u64 {
+-    if samples.is_empty() {
++    if samples.len() == 0 {
+         return 0;
+     }
+     samples.iter().sum::<u64>() / samples.len() as u64

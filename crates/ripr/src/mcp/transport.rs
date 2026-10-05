@@ -1,17 +1,18 @@
 use super::{
     framing::{FrameRead, FrameReader},
-    server::McpServer,
+    server::InitializeSessionService,
     writer::FrameWriter,
 };
 use crate::workspace_status::WorkspaceStatus;
 use rmcp::{
     RoleServer, ServiceExt,
-    model::{ClientJsonRpcMessage, ErrorData, RequestId, ServerJsonRpcMessage},
+    model::{ClientJsonRpcMessage, RequestId, ServerJsonRpcMessage},
     transport::{
         Transport,
         async_rw::{JsonRpcMessageCodec, JsonRpcMessageCodecError},
     },
 };
+use serde_json::json;
 use std::{
     io::Error,
     path::PathBuf,
@@ -82,8 +83,20 @@ struct BoundedTransport<R, W> {
     writer: Arc<Mutex<FrameWriter<W>>>,
     failure: Failure,
     admission: Arc<Admission>,
-    pending_protocol_error: Option<ServerJsonRpcMessage>,
+    pending_protocol_error: Option<Vec<u8>>,
     writer_needs_drain: bool,
+}
+
+/// A transport-level protocol error with an explicit null id, pre-encoded
+/// through the writer cap. rmcp's `JsonRpcError` omits a missing id, but
+/// JSON-RPC requires `"id": null` when the request id is unknown (#5254
+/// item 3), so these frames bypass the SDK type.
+fn protocol_error_frame(code: i32, message: &str) -> std::io::Result<Vec<u8>> {
+    super::writer::encode(&json!({
+        "jsonrpc": "2.0",
+        "id": null,
+        "error": {"code": code, "message": message},
+    }))
 }
 impl<R: AsyncRead + Unpin + Send, W: AsyncWrite + Unpin + Send + 'static> Transport<RoleServer>
     for BoundedTransport<R, W>
@@ -171,12 +184,11 @@ impl<R: AsyncRead + Unpin + Send, W: AsyncWrite + Unpin + Send + 'static> Transp
                     return None;
                 }
                 self.writer_needs_drain = false;
-                if let Some(error) = self.pending_protocol_error.as_ref() {
-                    if let Err(error) = writer.queue(error) {
+                if let Some(frame) = self.pending_protocol_error.take() {
+                    if let Err(error) = writer.queue_raw(frame) {
                         record_failure(&self.failure, super::writer::failure_reason(&error));
                         return None;
                     }
-                    self.pending_protocol_error = None;
                     self.writer_needs_drain = true;
                     if let Err(error) = writer
                         .finish_pending()
@@ -200,14 +212,18 @@ impl<R: AsyncRead + Unpin + Send, W: AsyncWrite + Unpin + Send + 'static> Transp
                 Ok(FrameRead::Eof) => return None,
                 Ok(FrameRead::Empty) => continue,
                 Ok(FrameRead::Oversized) => {
-                    let error = ServerJsonRpcMessage::error(
-                        ErrorData::invalid_request(
-                            "MCP message exceeds the configured byte limit",
-                            None,
-                        ),
-                        None,
-                    );
-                    self.pending_protocol_error = Some(error);
+                    match protocol_error_frame(
+                        -32600,
+                        "MCP message exceeds the configured byte limit",
+                    ) {
+                        Ok(frame) => {
+                            self.pending_protocol_error = Some(frame);
+                        }
+                        Err(error) => {
+                            record_failure(&self.failure, super::writer::failure_reason(&error));
+                            return None;
+                        }
+                    }
                     continue;
                 }
                 Ok(FrameRead::Frame(frame)) => frame,
@@ -238,13 +254,15 @@ impl<R: AsyncRead + Unpin + Send, W: AsyncWrite + Unpin + Send + 'static> Transp
                 {
                     continue;
                 }
-                Err(_) => {
-                    let error = ServerJsonRpcMessage::error(
-                        ErrorData::invalid_request("Invalid request", None),
-                        None,
-                    );
-                    self.pending_protocol_error = Some(error);
-                }
+                Err(_) => match protocol_error_frame(-32600, "Invalid request") {
+                    Ok(frame) => {
+                        self.pending_protocol_error = Some(frame);
+                    }
+                    Err(error) => {
+                        record_failure(&self.failure, super::writer::failure_reason(&error));
+                        return None;
+                    }
+                },
             }
         }
     }
@@ -288,7 +306,7 @@ where
     // least one frame, so the loop always makes progress toward a real
     // initialize, a valid-meta request, or stdin EOF.
     loop {
-        let server = McpServer::new(status.clone(), analysis_root.clone())
+        let server = InitializeSessionService::new(status.clone(), analysis_root.clone())
             .map_err(|_error| "MCP status projection failed".to_owned())?;
         let transport = BoundedTransport {
             reader: reader.clone(),

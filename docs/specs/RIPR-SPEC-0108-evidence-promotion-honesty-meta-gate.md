@@ -514,6 +514,8 @@ gate-specific artifacts.
 | ts_strong_oracle_control | typescript | typescript_strong_oracle |
 | ts_ava_t_is_exact_value | typescript | ts_runner_detect_ava_devdep (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
 | ts_tape_equal_exact_value | typescript | typescript_tape_equal_oracle (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
+| ts_node_expect_failure_no_credit | typescript | ts_node_expect_failure_no_credit (a Node `expectFailure` test is the only related test: `expected_class=no_static_path`, never promoted, no repair packet or receipt command) |
+| ts_node_ordinary_test_control | typescript | ts_node_ordinary_test_control (same test without `expectFailure`: `expected_oracle=exact_value/strong`, `expected_class=exposed`) |
 | ts_dynamic_expected_incomplete_packet | typescript | typescript_dynamic_assertion_unresolved (`expected_oracle=exact_value/strong`, `expected_class=weakly_exposed`, `maximum_class=weakly_exposed` because `clamp(-5, 0, 10)` does not reach the changed `value < min` boundary under the RIPR-SPEC-0027 boundary witness, no repair packet or receipt command) |
 | ts_same_method_owner_identity_positive_control | typescript | typescript_same_method_owner_identity_positive (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
 | perl_sink_aligned_positive_control | perl | reports/perl_sink_aligned_positive_control.json (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |

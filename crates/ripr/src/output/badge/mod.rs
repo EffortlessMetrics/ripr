@@ -20,7 +20,9 @@ mod test_efficiency;
 pub(crate) use model::{
     BadgeBasis, BadgeCounts, BadgeKind, BadgePolicy, BadgeScope, BadgeStatus, BadgeSummary,
 };
-pub(crate) use public_projection::attach_public_projection;
+pub(crate) use public_projection::{
+    attach_public_projection, attach_public_projection_with_optional_source,
+};
 pub(crate) use render::{render_native_json, render_shields_json};
 pub(crate) use summaries::{
     repo_gap_ledger_badge_summary_from_json, ripr_badge_summary_with_suppressions,

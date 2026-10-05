@@ -1,0 +1,52 @@
+//! A store whose writes are made through discarded or swallowed results.
+
+#[derive(Debug, Default)]
+pub struct Store {
+    values: Vec<i64>,
+}
+
+impl Store {
+    pub fn put(&mut self, value: i64) -> bool {
+        self.values.push(value);
+        true
+    }
+
+    pub fn save(&mut self, value: i64) -> Result<(), String> {
+        if value < 0 {
+            return Err("negative".to_string());
+        }
+        self.values.push(value);
+        Ok(())
+    }
+
+    pub fn values(&self) -> &[i64] {
+        &self.values
+    }
+}
+
+pub fn record(store: &mut Store, units: i64) {
+    let _ = store.put(units * 9);
+}
+
+pub fn persist(store: &mut Store, units: i64) {
+    store.save(units * 3).ok();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn record_stores_nine_per_unit() {
+        let mut store = Store::default();
+        record(&mut store, 3);
+        assert_eq!(store.values(), &[27]);
+    }
+
+    #[test]
+    fn persist_stores_three_per_unit() {
+        let mut store = Store::default();
+        persist(&mut store, 2);
+        assert_eq!(store.values(), &[6]);
+    }
+}

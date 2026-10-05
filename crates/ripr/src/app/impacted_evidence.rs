@@ -48,8 +48,11 @@ pub fn run_impacted_evidence_at(repo: &Path, args: &[String]) -> Result<(), Stri
         return Ok(());
     }
     let options = parse_options(args)?;
+    // Taken before the evidence is read, so a refusal removes only outputs
+    // that already existed when this run started (#5307).
+    let previous = stamp_outputs(repo);
     let input = require_pr_evidence(repo, &options.pr_evidence)
-        .map_err(|err| refuse_with_stale_cleanup(repo, err, options.check))?;
+        .map_err(|err| refuse_with_stale_cleanup(repo, err, options.check, &previous))?;
     let packet = packet_from_input(&options, &input);
     let json_text = serde_json::to_string_pretty(&packet)
         .map_err(|err| format!("serialize impacted evidence: {err}"))?;
@@ -335,30 +338,127 @@ fn require_pr_evidence(repo: &Path, relative: &str) -> Result<PrEvidenceInput, S
     }
 }
 
-/// Removes a previous run's outputs so a failed run cannot leave a stale
-/// `latest.*` that a later reader mistakes for this run's routing. Returns the
-/// paths actually removed.
-fn discard_stale_outputs(repo: &Path) -> (Vec<&'static str>, Vec<String>) {
-    let mut removed = Vec::new();
-    let mut failed = Vec::new();
-    for relative in [IMPACTED_JSON, IMPACTED_MD] {
-        match fs::remove_file(repo.join(relative)) {
-            Ok(()) => removed.push(relative),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-            Err(err) => failed.push(format!("{relative}: {err}")),
-        }
-    }
-    (removed, failed)
+const OUTPUTS: [&str; 2] = [IMPACTED_JSON, IMPACTED_MD];
+
+/// Size and modification time of one output file. An output whose stamp
+/// changed was rewritten after the stamp was taken, so it belongs to another
+/// run.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OutputStamp {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
 }
 
-fn refuse_with_stale_cleanup(repo: &Path, err: String, check: bool) -> String {
+/// What a metadata read saw for one output. Only `NotFound` means absent; any
+/// other error is kept so cleanup fails loudly instead of silently skipping
+/// (or misreporting) an output it could not inspect.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum OutputState {
+    Absent,
+    Present(OutputStamp),
+    Unreadable(String),
+}
+
+fn stamp_output(repo: &Path, relative: &str) -> OutputState {
+    match fs::symlink_metadata(repo.join(relative)) {
+        Ok(metadata) => OutputState::Present(OutputStamp {
+            len: metadata.len(),
+            modified: metadata.modified().ok(),
+        }),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => OutputState::Absent,
+        Err(err) => OutputState::Unreadable(err.to_string()),
+    }
+}
+
+fn stamp_outputs(repo: &Path) -> [OutputState; 2] {
+    OUTPUTS.map(|relative| stamp_output(repo, relative))
+}
+
+/// What a refusal did to each output.
+#[derive(Default)]
+struct StaleCleanup {
+    removed: Vec<&'static str>,
+    failed: Vec<String>,
+    /// Written by a concurrent run after this run started, or the unchanged
+    /// partner of such an output; left in place.
+    left: Vec<&'static str>,
+}
+
+/// Removes a previous run's outputs so a failed run cannot leave a stale
+/// `latest.*` that a later reader mistakes for this run's routing. An output
+/// that appeared or changed since `previous` was taken was written by a
+/// concurrent run sharing the target directory, so it and its partner are
+/// left in place (#5307). The stamp check and the removal are not atomic: a write landing
+/// between them can still be removed, which narrows the race to that window.
+/// The stamp is size plus modification time, so on a filesystem with coarse
+/// timestamps (FAT, some network mounts) a same-size rewrite within one tick,
+/// or any same-size rewrite where the platform reports no mtime, also reads
+/// as unchanged and is removed.
+fn discard_stale_outputs(repo: &Path, previous: &[OutputState; 2]) -> StaleCleanup {
+    let mut cleanup = StaleCleanup::default();
+    let current = stamp_outputs(repo);
+    // The JSON and Markdown are one receipt. A concurrent run can publish both
+    // between this run's two start reads, so the start pair may mix an old
+    // stamp with a new one; when either output is newer, the pair belongs to
+    // another run and neither is removed.
+    let newer_generation = current.iter().zip(previous).any(|pair| match pair {
+        (OutputState::Present(_), OutputState::Absent) => true,
+        (OutputState::Present(now), OutputState::Present(before)) => now != before,
+        _ => false,
+    });
+    for ((relative, now), before) in OUTPUTS.into_iter().zip(current).zip(previous) {
+        match (now, before) {
+            (OutputState::Absent, _) => {}
+            (OutputState::Unreadable(err), _) => cleanup
+                .failed
+                .push(format!("{relative}: could not read its metadata: {err}")),
+            // Without a start stamp the run cannot tell its own stale output
+            // from a concurrent run's, so it neither deletes nor claims the
+            // output is newer.
+            (OutputState::Present(_), OutputState::Unreadable(err)) => cleanup.failed.push(
+                format!("{relative}: could not read its metadata when this run started ({err})"),
+            ),
+            (OutputState::Present(_), _) if newer_generation => cleanup.left.push(relative),
+            (OutputState::Present(_), _) => match fs::remove_file(repo.join(relative)) {
+                Ok(()) => cleanup.removed.push(relative),
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                Err(err) => cleanup.failed.push(format!("{relative}: {err}")),
+            },
+        }
+    }
+    cleanup
+}
+
+fn refuse_with_stale_cleanup(
+    repo: &Path,
+    err: String,
+    check: bool,
+    previous: &[OutputState; 2],
+) -> String {
     if check {
         return err;
     }
-    let (removed, failed) = discard_stale_outputs(repo);
+    let StaleCleanup {
+        removed,
+        failed,
+        left,
+    } = discard_stale_outputs(repo, previous);
     let mut message = err;
     if !removed.is_empty() {
         message.push_str(&format!(" Removed stale {}.", removed.join(" and ")));
+    }
+    if !left.is_empty() {
+        // The pair rule can leave an unchanged partner beside the newer
+        // output, so the reason names the concurrent write, not each file.
+        let (pronoun, verb) = if left.len() == 1 {
+            ("it", "does")
+        } else {
+            ("they", "do")
+        };
+        message.push_str(&format!(
+            " Left {} in place: another run wrote output after this run started, so {pronoun} {verb} not describe this refused run.",
+            left.join(" and "),
+        ));
     }
     if !failed.is_empty() {
         message.push_str(&format!(
@@ -825,11 +925,12 @@ mod tests {
         fs::write(repo.join(IMPACTED_JSON), "{}").map_err(|err| err.to_string())?;
         fs::write(repo.join(IMPACTED_MD), "old").map_err(|err| err.to_string())?;
 
-        let kept = refuse_with_stale_cleanup(&repo, "boom.".to_string(), true);
+        let previous = stamp_outputs(&repo);
+        let kept = refuse_with_stale_cleanup(&repo, "boom.".to_string(), true, &previous);
         assert_eq!(kept, "boom.");
         assert!(repo.join(IMPACTED_JSON).exists(), "--check must not delete");
 
-        let cleaned = refuse_with_stale_cleanup(&repo, "boom.".to_string(), false);
+        let cleaned = refuse_with_stale_cleanup(&repo, "boom.".to_string(), false, &previous);
         assert!(cleaned.contains("Removed stale"), "{cleaned}");
         assert!(!repo.join(IMPACTED_JSON).exists() && !repo.join(IMPACTED_MD).exists());
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
@@ -848,13 +949,227 @@ mod tests {
         // A directory where the file belongs makes remove_file fail without NotFound.
         fs::create_dir_all(repo.join(IMPACTED_JSON))
             .map_err(|err| format!("create {}: {err}", repo.display()))?;
-        let message = refuse_with_stale_cleanup(&repo, "boom.".to_string(), false);
+        let previous = stamp_outputs(&repo);
+        let message = refuse_with_stale_cleanup(&repo, "boom.".to_string(), false, &previous);
         assert!(
             message.contains("Could not remove stale output"),
             "{message}"
         );
         assert!(message.contains(IMPACTED_JSON), "{message}");
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    /// #5307: a refusing run must not delete outputs a concurrent run wrote
+    /// after the refusing run started, whether they replaced older outputs or
+    /// appeared where none existed.
+    #[test]
+    fn refusal_leaves_outputs_a_concurrent_run_wrote() -> Result<(), String> {
+        let repo = env::temp_dir().join(format!(
+            "ripr-impacted-evidence-concurrent-{}",
+            std::process::id()
+        ));
+        if repo.exists() {
+            fs::remove_dir_all(&repo).map_err(|err| format!("remove {}: {err}", repo.display()))?;
+        }
+        fs::create_dir_all(repo.join("target/xtask/impacted-evidence"))
+            .map_err(|err| format!("create {}: {err}", repo.display()))?;
+        fs::write(repo.join(IMPACTED_JSON), "{}").map_err(|err| err.to_string())?;
+        // This run starts: the JSON exists, the Markdown does not.
+        let previous = stamp_outputs(&repo);
+        // A concurrent run with valid evidence then writes both outputs.
+        fs::write(repo.join(IMPACTED_JSON), r#"{"status":"concurrent"}"#)
+            .map_err(|err| err.to_string())?;
+        fs::write(repo.join(IMPACTED_MD), "concurrent").map_err(|err| err.to_string())?;
+
+        let message = refuse_with_stale_cleanup(&repo, "boom.".to_string(), false, &previous);
+        let json = fs::read_to_string(repo.join(IMPACTED_JSON));
+        let markdown = fs::read_to_string(repo.join(IMPACTED_MD));
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+
+        assert_eq!(
+            json.map_err(|err| err.to_string())?,
+            r#"{"status":"concurrent"}"#
+        );
+        assert_eq!(markdown.map_err(|err| err.to_string())?, "concurrent");
+        assert!(!message.contains("Removed stale"), "{message}");
+        assert!(
+            message.contains(&format!("Left {IMPACTED_JSON} and {IMPACTED_MD} in place")),
+            "{message}"
+        );
+        Ok(())
+    }
+
+    fn fresh_repo(tag: &str) -> Result<std::path::PathBuf, String> {
+        let repo = env::temp_dir().join(format!(
+            "ripr-impacted-evidence-{tag}-{}",
+            std::process::id()
+        ));
+        if repo.exists() {
+            fs::remove_dir_all(&repo).map_err(|err| format!("remove {}: {err}", repo.display()))?;
+        }
+        Ok(repo)
+    }
+
+    /// The production refusal path stamps before it reads evidence and hands
+    /// that stamp to cleanup, so outputs from before the run are removed.
+    #[test]
+    fn refusing_run_removes_outputs_that_predate_it() -> Result<(), String> {
+        let repo = fresh_repo("run-refusal")?;
+        fs::create_dir_all(repo.join("target/xtask/impacted-evidence"))
+            .map_err(|err| format!("create {}: {err}", repo.display()))?;
+        fs::write(repo.join(IMPACTED_JSON), "{}").map_err(|err| err.to_string())?;
+        fs::write(repo.join(IMPACTED_MD), "old").map_err(|err| err.to_string())?;
+        // No PR evidence exists, so the run refuses.
+        let result = run_impacted_evidence_at(&repo, &[]);
+        let json_left = repo.join(IMPACTED_JSON).exists();
+        let md_left = repo.join(IMPACTED_MD).exists();
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        let message = match result {
+            Ok(()) => return Err("a run without PR evidence must refuse".to_string()),
+            Err(message) => message,
+        };
+        assert!(message.contains("is missing or unreadable"), "{message}");
+        assert!(
+            message.contains(&format!("Removed stale {IMPACTED_JSON} and {IMPACTED_MD}")),
+            "{message}"
+        );
+        assert!(!json_left && !md_left);
+        Ok(())
+    }
+
+    /// The outputs are one receipt: when a concurrent run's Markdown appears,
+    /// the JSON beside it is not removed even though its stamp is unchanged.
+    #[test]
+    fn a_newer_markdown_keeps_its_unchanged_json_partner() -> Result<(), String> {
+        let repo = fresh_repo("newer-partner")?;
+        fs::create_dir_all(repo.join("target/xtask/impacted-evidence"))
+            .map_err(|err| format!("create {}: {err}", repo.display()))?;
+        fs::write(repo.join(IMPACTED_JSON), "{}").map_err(|err| err.to_string())?;
+        let previous = stamp_outputs(&repo);
+        fs::write(repo.join(IMPACTED_MD), "concurrent").map_err(|err| err.to_string())?;
+        let message = refuse_with_stale_cleanup(&repo, "boom.".to_string(), false, &previous);
+        let json_left = repo.join(IMPACTED_JSON).exists();
+        let md_left = repo.join(IMPACTED_MD).exists();
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        assert!(json_left && md_left, "{message}");
+        assert!(!message.contains("Removed stale"), "{message}");
+        assert!(
+            message.contains(&format!("Left {IMPACTED_JSON} and {IMPACTED_MD} in place")),
+            "{message}"
+        );
+        assert!(
+            message.contains(
+                "in place: another run wrote output after this run started, so they do not describe this refused run."
+            ),
+            "{message}"
+        );
+        Ok(())
+    }
+
+    /// Codex interleaving: a concurrent run publishes both outputs between the
+    /// two start reads, so the start pair holds the old JSON stamp and the new
+    /// Markdown stamp. Neither current output is removed.
+    #[test]
+    fn mixed_start_pair_from_an_interleaved_publish_keeps_both() -> Result<(), String> {
+        let repo = fresh_repo("interleaved")?;
+        fs::create_dir_all(repo.join("target/xtask/impacted-evidence"))
+            .map_err(|err| format!("create {}: {err}", repo.display()))?;
+        fs::write(repo.join(IMPACTED_JSON), "{}").map_err(|err| err.to_string())?;
+        let old_json = stamp_output(&repo, IMPACTED_JSON);
+        fs::write(repo.join(IMPACTED_JSON), r#"{"status":"concurrent"}"#)
+            .map_err(|err| err.to_string())?;
+        fs::write(repo.join(IMPACTED_MD), "concurrent").map_err(|err| err.to_string())?;
+        let new_md = stamp_output(&repo, IMPACTED_MD);
+        let message =
+            refuse_with_stale_cleanup(&repo, "boom.".to_string(), false, &[old_json, new_md]);
+        let json_left = repo.join(IMPACTED_JSON).exists();
+        let md_left = repo.join(IMPACTED_MD).exists();
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        assert!(json_left && md_left, "{message}");
+        assert!(!message.contains("Removed stale"), "{message}");
+        Ok(())
+    }
+
+    /// A single output written by a concurrent run, with no partner on disk,
+    /// is named with singular wording.
+    #[test]
+    fn one_concurrent_output_is_left_with_singular_wording() -> Result<(), String> {
+        let repo = fresh_repo("concurrent-one")?;
+        fs::create_dir_all(repo.join("target/xtask/impacted-evidence"))
+            .map_err(|err| format!("create {}: {err}", repo.display()))?;
+        let previous = stamp_outputs(&repo);
+        fs::write(repo.join(IMPACTED_MD), "concurrent").map_err(|err| err.to_string())?;
+        let message = refuse_with_stale_cleanup(&repo, "boom.".to_string(), false, &previous);
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        assert!(
+            message.contains(&format!(
+                "Left {IMPACTED_MD} in place: another run wrote output after this run started, so it does not describe this refused run."
+            )),
+            "{message}"
+        );
+        Ok(())
+    }
+
+    /// A metadata error other than `NotFound` is reported as a cleanup
+    /// failure, never read as an absent output. Unix only: Windows reports a
+    /// file in a path's directory position as `NotFound`.
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_output_metadata_is_reported_not_skipped() -> Result<(), String> {
+        let repo = fresh_repo("unreadable-now")?;
+        fs::create_dir_all(repo.join("target/xtask"))
+            .map_err(|err| format!("create {}: {err}", repo.display()))?;
+        // A file where the outputs directory belongs makes every output
+        // lookup fail with a not-a-directory error, not `NotFound`.
+        fs::write(repo.join("target/xtask/impacted-evidence"), "blocker")
+            .map_err(|err| err.to_string())?;
+        let previous = stamp_outputs(&repo);
+        let message = refuse_with_stale_cleanup(&repo, "boom.".to_string(), false, &previous);
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        assert!(
+            previous
+                .iter()
+                .all(|state| matches!(state, OutputState::Unreadable(_))),
+            "{previous:?}"
+        );
+        assert!(
+            message.contains("Could not remove stale output"),
+            "{message}"
+        );
+        assert!(
+            message.contains(&format!("{IMPACTED_JSON}: could not read its metadata")),
+            "{message}"
+        );
+        Ok(())
+    }
+
+    /// An output whose start stamp could not be read is neither deleted nor
+    /// claimed as a concurrent run's.
+    #[test]
+    fn output_with_unreadable_start_stamp_is_kept_and_reported() -> Result<(), String> {
+        let repo = fresh_repo("unreadable-start")?;
+        fs::create_dir_all(repo.join("target/xtask/impacted-evidence"))
+            .map_err(|err| format!("create {}: {err}", repo.display()))?;
+        fs::write(repo.join(IMPACTED_JSON), "{}").map_err(|err| err.to_string())?;
+        let previous = [
+            OutputState::Unreadable("permission denied".to_string()),
+            OutputState::Absent,
+        ];
+        let message = refuse_with_stale_cleanup(&repo, "boom.".to_string(), false, &previous);
+        let json_left = repo.join(IMPACTED_JSON).exists();
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        assert!(
+            json_left,
+            "an output the run could not stamp must not be deleted"
+        );
+        assert!(!message.contains("Left "), "{message}");
+        assert!(
+            message.contains(&format!(
+                "{IMPACTED_JSON}: could not read its metadata when this run started (permission denied)"
+            )),
+            "{message}"
+        );
         Ok(())
     }
 

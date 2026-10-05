@@ -150,11 +150,17 @@ enabled = ["rust"]
 "#;
 
 /// Whether a `ripr.toml` entry exists at `path`, without following links.
-/// `Path::exists` follows them, so a dangling or self-referencing symlink read
-/// as "no config" and the run silently used defaults. The entry is present;
-/// reading it reports the real failure.
-fn config_entry_present(path: &Path) -> bool {
+/// `Path::exists` and `Path::is_file` follow them, so a dangling or
+/// self-referencing symlink read as "no config" and consumers silently used
+/// built-in defaults. The entry is present; reading it reports the real failure.
+pub(crate) fn config_entry_present(path: &Path) -> bool {
     std::fs::symlink_metadata(path).is_ok()
+}
+
+/// Whether the analyzed root has a `ripr.toml` directory entry. Presence uses
+/// [`config_entry_present`]: a dangling link is present, not absent.
+pub(crate) fn config_present_at_root(root: &Path) -> bool {
+    config_entry_present(&root.join(CONFIG_FILE_NAME))
 }
 
 fn discover_config_path(root: &Path) -> Option<PathBuf> {
@@ -258,6 +264,20 @@ pub(crate) fn check_artifact_config_identity_hash(config: &RiprConfig) -> String
         .collect::<Vec<_>>();
     pairs.sort();
     config_fingerprint(&pairs.join("\n"))
+}
+
+/// The config identity published in the diff-check outcome identity block
+/// (#5988): the fingerprint of the exact `ripr.toml` text loaded for the run,
+/// so any change to the loaded config — finding-affecting allowlist fields,
+/// but also the mode / unchanged-test / enabled-language settings the
+/// check-artifact identity records in separate fields — moves the identity
+/// block agents compare (#6777 review: the finding-affecting allowlist alone
+/// let finding-changing settings share one block). `Some` exactly when a
+/// `ripr.toml` was actually loaded ([`RiprConfig::source_text`] is present);
+/// a defaults-only run — no config file, or a bound Git-candidate subject
+/// that must ignore the worktree config — keeps `null`.
+pub(crate) fn loaded_config_identity(config: &RiprConfig) -> Option<String> {
+    config.source_text().map(config_fingerprint)
 }
 
 /// The exact `ripr.toml` fields the repo-exposure producer (the seam

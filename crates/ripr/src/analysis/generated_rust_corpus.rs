@@ -67,12 +67,23 @@ pub(crate) fn review_guidance_input_paths(
     root: &Path,
     config: &RiprConfig,
     owner_files: &[PathBuf],
-) -> Result<Vec<PathBuf>, String> {
-    let mut paths = guidance_analyzable_rust_paths(root, config)?
+) -> Result<Vec<PathBuf>, crate::CoreError> {
+    super::cancellation::checkpoint_typed()?;
+    let mut paths = guidance_analyzable_rust_paths(root, config)
+        .map_err(guidance_error_from_shared_owner)?
         .into_iter()
         .collect::<std::collections::BTreeSet<_>>();
     paths.extend(owner_files.iter().cloned());
     Ok(paths.into_iter().collect())
+}
+
+/// Transparent error-family bridge for explicit guidance. observed_abort is
+/// pure: recorded/unobserved reason or later deadline cannot relabel source IO.
+fn guidance_error_from_shared_owner(error: String) -> crate::CoreError {
+    match super::cancellation::current_token().and_then(|token| token.observed_abort()) {
+        Some(kind) => super::cancellation::AnalysisCancellation { kind }.into(),
+        None => error.into(),
+    }
 }
 
 fn corpus_payload_size_for_paths(
@@ -182,6 +193,43 @@ mod tests {
     use super::partition_analyzable_rust_corpus;
     use crate::config::RiprConfig;
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn guidance_shared_error_uses_observed_abort_not_text_or_recorded_reason() -> Result<(), String>
+    {
+        use crate::analysis::cancellation::{
+            self, AnalysisAbortKind, AnalysisCancellationToken as CancellationToken,
+        };
+        let token = CancellationToken::new();
+        token.cancel(AnalysisAbortKind::Cancelled);
+        cancellation::with_token(&token, || {
+            let error = super::guidance_error_from_shared_owner(
+                "analysis cancelled: DeadlineExceeded inside a source filename".to_string(),
+            );
+            match error {
+                crate::CoreError::Message(message) if message.contains("source filename") => {}
+                other => {
+                    return Err(format!(
+                        "recorded-only reason relabeled source failure: {other}"
+                    ));
+                }
+            }
+            match token.checkpoint() {
+                Err(cause) if cause.kind == AnalysisAbortKind::Cancelled => {}
+                Err(cause) => return Err(format!("wrong observed abort: {cause}")),
+                Ok(()) => return Err("recorded cancellation was not observed".to_string()),
+            }
+            let error =
+                super::guidance_error_from_shared_owner("wrapped checkpoint failure".to_string());
+            match error {
+                crate::CoreError::AnalysisCancelled(cause)
+                    if cause.kind == AnalysisAbortKind::Cancelled => {}
+                other => return Err(format!("observed abort lost typed authority: {other}")),
+            }
+            Ok(())
+        })?;
+        Ok(())
+    }
 
     fn paths(values: &[&str]) -> Vec<PathBuf> {
         values.iter().map(PathBuf::from).collect()

@@ -1,0 +1,25 @@
+//! A too-long error observed only as a panic.
+
+#[derive(Debug, PartialEq)]
+pub enum E {
+    TooLong,
+    Bad,
+}
+
+pub fn check_panics(len: usize) -> Result<usize, E> {
+    if len >= 256 {
+        return Err(E::TooLong);
+    }
+    Ok(len)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::check_panics;
+
+    #[test]
+    #[should_panic]
+    fn unwrap_panics_on_far_input() {
+        check_panics(300).unwrap();
+    }
+}

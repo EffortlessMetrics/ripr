@@ -7,10 +7,9 @@ use super::super::syntax::{LexicalRustSyntaxAdapter, RaRustSyntaxAdapter, RustSy
 use super::model::{RustIndex, WorkspaceRootAuthority};
 use crate::analysis::cancellation;
 use crate::analysis::seam_cache::{
-    CacheLoad, FileFactCacheStats, RepoFileFactCache, RepoFileFactCacheKey,
+    CacheLoad, FileFactCacheStats, KnownFilePaths, RepoFileFactCache, RepoFileFactCacheKey,
 };
 use rayon::prelude::*;
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 /// Files parsed per parallel batch. Each worker installs the owning request's
@@ -28,15 +27,30 @@ pub(crate) struct CachedRustIndex {
     pub(crate) file_fact_cache: FileFactCacheStats,
 }
 
+/// Whether a cached build names which misses replaced an entry this build
+/// could have served (`FileFactCacheStats::invalidated_files`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MissAttribution {
+    /// Read every cached entry once, at the first miss, to name the
+    /// invalidated files. For callers that report them.
+    Named,
+    /// Skip that read. Its cost grows with the whole cache directory, not
+    /// with the build, so an edit-loop rerun with one miss decoded every
+    /// entry ripr ever stored; callers that discard the stats skip it.
+    Skipped,
+}
+
 pub(crate) fn build_index_from_loaded_files_with_cache(
     root: &Path,
     files: &[(PathBuf, Vec<u8>)],
+    attribution: MissAttribution,
 ) -> Result<CachedRustIndex, String> {
     build_index_from_loaded_files_with_cache_and_adapters(
         root,
         files,
         &RaRustSyntaxAdapter,
         &LexicalRustSyntaxAdapter,
+        attribution,
     )
 }
 
@@ -45,11 +59,20 @@ fn build_index_from_loaded_files_with_cache_and_adapters(
     files: &[(PathBuf, Vec<u8>)],
     adapter: &(dyn RustSyntaxAdapter + Send + Sync),
     fallback: &(dyn RustSyntaxAdapter + Send + Sync),
+    attribution: MissAttribution,
 ) -> Result<CachedRustIndex, String> {
     let cache = RepoFileFactCache::at(root);
-    build_index_with_file_fact_cache(root, files, adapter, fallback, &cache, || {
-        cache.known_file_paths()
-    })
+    build_index_with_file_fact_cache(
+        root,
+        files,
+        adapter,
+        fallback,
+        &cache,
+        || match attribution {
+            MissAttribution::Named => cache.known_file_paths(),
+            MissAttribution::Skipped => KnownFilePaths::default(),
+        },
+    )
 }
 
 fn build_index_with_file_fact_cache(
@@ -58,7 +81,7 @@ fn build_index_with_file_fact_cache(
     adapter: &(dyn RustSyntaxAdapter + Send + Sync),
     fallback: &(dyn RustSyntaxAdapter + Send + Sync),
     cache: &RepoFileFactCache,
-    mut load_known_file_paths: impl FnMut() -> HashSet<PathBuf>,
+    mut load_known_file_paths: impl FnMut() -> KnownFilePaths,
 ) -> Result<CachedRustIndex, String> {
     let mut accounting = CacheAccounting::default();
     let batched = insert_cached_file_batches(
@@ -88,7 +111,7 @@ fn build_index_with_file_fact_cache(
         index
             .files()
             .iter()
-            .map(|(path, facts)| (path, facts.data().source.as_str())),
+            .map(|(path, facts)| (path, facts.data().source.as_ref())),
     ));
     cancellation::checkpoint()?;
     index.package_names = manifest_package_names(root);
@@ -125,7 +148,7 @@ fn insert_cached_file_batches(
     adapter: &(dyn RustSyntaxAdapter + Send + Sync),
     fallback: &(dyn RustSyntaxAdapter + Send + Sync),
     cache: &RepoFileFactCache,
-    load_known_file_paths: &mut impl FnMut() -> HashSet<PathBuf>,
+    load_known_file_paths: &mut impl FnMut() -> KnownFilePaths,
     accounting: &mut CacheAccounting,
 ) -> Result<RustIndex, String> {
     let CacheAccounting {
@@ -140,16 +163,32 @@ fn insert_cached_file_batches(
     // All-hit, corrupt-only, empty, and already-cancelled builds must not walk
     // and decode the entire cache directory just to discard the inventory.
     // Initialized once, at the first miss.
-    let mut known_cached_file_paths: Option<HashSet<PathBuf>> = None;
+    let mut known_cached_file_paths: Option<KnownFilePaths> = None;
     let mut index = RustIndex::default();
     let token = cancellation::current_token();
     for batch in files.chunks(PARSE_BATCH_FILES) {
-        // Phase 1 (sequential): this batch's cache lookups, in input order.
+        // Phase 1: this batch's cache lookups. Reading, decoding and
+        // verifying an entry is most of a warm build, so the lookups run on
+        // the rayon workers; the outcomes are then accounted sequentially in
+        // input order, exactly as a sequential lookup would.
+        cancellation::checkpoint()?;
+        let lookups: Vec<Result<(RepoFileFactCacheKey, CacheLoad<super::FileFacts>), String>> =
+            batch
+                .par_iter()
+                .map(|(file, bytes)| {
+                    cancellation::with_optional_token(token.as_ref(), || {
+                        cancellation::checkpoint()?;
+                        let key = RepoFileFactCacheKey::new(file, bytes);
+                        let load = cache.load_file_facts(&key);
+                        Ok((key, load))
+                    })
+                })
+                .collect();
         let mut pending: Vec<Pending> = Vec::with_capacity(batch.len());
-        for (file, bytes) in batch {
+        for ((file, _), lookup) in batch.iter().zip(lookups) {
             cancellation::checkpoint()?;
-            let key = RepoFileFactCacheKey::new(file, bytes);
-            match cache.load_file_facts(&key) {
+            let (key, load) = lookup?;
+            match load {
                 CacheLoad::Hit(facts) => {
                     stats.hits += 1;
                     pending.push(Pending::Ready(facts));
@@ -350,7 +389,7 @@ fn build_index_with_adapters(
         index
             .files()
             .iter()
-            .map(|(path, facts)| (path, facts.data().source.as_str())),
+            .map(|(path, facts)| (path, facts.data().source.as_ref())),
     ));
     cancellation::checkpoint()?;
     index.package_names = manifest_package_names(root);
@@ -759,7 +798,7 @@ pub fn check(x: i32) -> bool {
         ) -> Result<super::super::FileFacts, String> {
             Ok(super::super::FileFacts {
                 path: path.to_path_buf(),
-                source: text.to_string(),
+                source: text.into(),
                 ..super::super::FileFacts::default()
             })
         }
@@ -789,7 +828,7 @@ pub fn check(x: i32) -> bool {
             index
                 .files()
                 .get(&PathBuf::from("src/lib.rs"))
-                .map_or("", |facts| facts.data().source.as_str()),
+                .map_or("", |facts| facts.data().source.as_ref()),
             "pub fn fallback() {}\n"
         );
         assert!(
@@ -819,14 +858,14 @@ pub fn check(x: i32) -> bool {
         let bytes = b"pub fn cached(value: i32) -> bool { value >= 10 }\n".to_vec();
         let files = [(file.clone(), bytes.clone())];
 
-        let cold = build_index_from_loaded_files_with_cache(&root, &files)?;
+        let cold = build_index_from_loaded_files_with_cache(&root, &files, MissAttribution::Named)?;
         assert_eq!(cold.file_fact_cache.hits, 0);
         assert_eq!(cold.file_fact_cache.misses, 1);
         assert_eq!(cold.file_fact_cache.stores, 1);
         assert!(cold.index.files().contains_key(&file));
         assert!(!cold.index.functions().is_empty());
 
-        let warm = build_index_from_loaded_files_with_cache(&root, &files)?;
+        let warm = build_index_from_loaded_files_with_cache(&root, &files, MissAttribution::Named)?;
         assert_eq!(warm.file_fact_cache.hits, 1);
         assert_eq!(warm.file_fact_cache.misses, 0);
         assert_eq!(warm.file_fact_cache.stores, 0);
@@ -842,8 +881,9 @@ pub fn check(x: i32) -> bool {
         let first = [(file.clone(), b"pub fn cached() -> i32 { 1 }\n".to_vec())];
         let second = [(file.clone(), b"pub fn cached() -> i32 { 2 }\n".to_vec())];
 
-        let _ = build_index_from_loaded_files_with_cache(&root, &first)?;
-        let changed = build_index_from_loaded_files_with_cache(&root, &second)?;
+        let _ = build_index_from_loaded_files_with_cache(&root, &first, MissAttribution::Named)?;
+        let changed =
+            build_index_from_loaded_files_with_cache(&root, &second, MissAttribution::Named)?;
 
         assert_eq!(changed.file_fact_cache.hits, 0);
         assert_eq!(changed.file_fact_cache.misses, 1);
@@ -855,6 +895,55 @@ pub fn check(x: i32) -> bool {
                 .files()
                 .get(&file)
                 .is_some_and(|facts| facts.source.contains("{ 2 }"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn skipped_attribution_misses_without_reading_the_cache_inventory() -> Result<(), Box<dyn Error>>
+    {
+        let root = temp_dir("index_file_fact_cache_unattributed")?;
+        fs::create_dir_all(root.join("src"))?;
+        let file = PathBuf::from("src/lib.rs");
+        let first = [(file.clone(), b"pub fn cached() -> i32 { 1 }\n".to_vec())];
+        let second = [(file.clone(), b"pub fn cached() -> i32 { 2 }\n".to_vec())];
+        let cache = RepoFileFactCache::at(&root);
+        let _ = build_index_from_loaded_files_with_cache(&root, &first, MissAttribution::Named)?;
+
+        let mut inventory_reads = 0;
+        let unattributed = build_index_with_file_fact_cache(
+            &root,
+            &second,
+            &RaRustSyntaxAdapter,
+            &LexicalRustSyntaxAdapter,
+            &cache,
+            || {
+                inventory_reads += 1;
+                cache.known_file_paths()
+            },
+        )?;
+        // The control: the same miss under `Named` reads the inventory once
+        // and names the file, so the empty set below is the skipped read.
+        assert_eq!(inventory_reads, 1);
+        assert!(
+            unattributed
+                .file_fact_cache
+                .invalidated_files
+                .contains(&file)
+        );
+
+        let third = [(file.clone(), b"pub fn cached() -> i32 { 3 }\n".to_vec())];
+        let skipped =
+            build_index_from_loaded_files_with_cache(&root, &third, MissAttribution::Skipped)?;
+        assert_eq!(skipped.file_fact_cache.misses, 1);
+        assert_eq!(skipped.file_fact_cache.stores, 1);
+        assert!(skipped.file_fact_cache.invalidated_files.is_empty());
+        assert!(
+            skipped
+                .index
+                .files()
+                .get(&file)
+                .is_some_and(|facts| facts.source.contains("{ 3 }"))
         );
         Ok(())
     }
@@ -1504,7 +1593,7 @@ pub fn check(x: i32) -> bool {
                 }
                 Ok(super::super::FileFacts {
                     path: path.to_path_buf(),
-                    source: text.to_string(),
+                    source: text.into(),
                     ..super::super::FileFacts::default()
                 })
             }
@@ -1537,7 +1626,7 @@ pub fn check(x: i32) -> bool {
                     &adapter,
                     &StubSyntaxAdapter,
                     &fixture.cache,
-                    HashSet::new,
+                    KnownFilePaths::default,
                 )
             })
         });
@@ -1614,6 +1703,7 @@ pub fn check(x: i32) -> bool {
             &files,
             &PathNamingFailure,
             &PathNamingFailure,
+            MissAttribution::Named,
         );
         let Err(error) = result else {
             return Err("expected failing adapters to fail the cached build".into());
@@ -1640,7 +1730,8 @@ pub fn check(x: i32) -> bool {
             .iter()
             .map(|file| Ok((file.clone(), fs::read(root.join(file))?)))
             .collect::<Result<_, Box<dyn Error>>>()?;
-        let cached = build_index_from_loaded_files_with_cache(&root, &loaded)?;
+        let cached =
+            build_index_from_loaded_files_with_cache(&root, &loaded, MissAttribution::Named)?;
 
         assert_eq!(cached.index.tests(), uncached.tests());
         assert_eq!(cached.index.functions(), uncached.functions());
@@ -1674,7 +1765,7 @@ pub fn check(x: i32) -> bool {
                 }
                 Ok(super::super::FileFacts {
                     path: path.to_path_buf(),
-                    source: text.to_string(),
+                    source: text.into(),
                     ..super::super::FileFacts::default()
                 })
             }
@@ -1729,7 +1820,7 @@ pub fn check(x: i32) -> bool {
                         &adapter,
                         &adapter,
                         &fixture.cache,
-                        HashSet::new,
+                        KnownFilePaths::default,
                     )
                     .err()
                 } else {

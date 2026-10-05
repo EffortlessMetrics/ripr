@@ -9,7 +9,7 @@ Created: 2026-10-05
 Linked issues:
 
 - #4668 (this slice: `ripr_get_repair_card` and the
-  `ripr://repair-card/{canonical_item_id}` resource; closes the MCP half of
+  `ripr://repair-card/{canonical_id}` resource; closes the MCP half of
   the RepairCard transport parity issue)
 - #3087 (parent standard MCP server epic)
 - #3088 / RIPR-SPEC-0211 (transport/discovery/session-evidence slices; this
@@ -59,9 +59,9 @@ change.
 `ripr mcp --stdio` gains one tool and one resource template, both read-only
 and without execution authority (ADR 0022):
 
-- Tool `ripr_get_repair_card` (inputs `gap_id`, optional `snapshot_id`) and
-  resource template `ripr://repair-card/{canonical_item_id}`, routing
-  canonical item ids exactly like `ripr://gap/{canonical_item_id}`.
+- Tool `ripr_get_repair_card` (inputs `canonical_id`, optional `snapshot_id`) and
+  resource template `ripr://repair-card/{canonical_id}`, routing
+  canonical item ids exactly like `ripr://gap/{canonical_id}`.
 - The tool and the template project the same versioned `repair_card.v1`
   document the CLI `ripr agent card` handoff (#4667) and the standard-LSP
   projection (RIPR-SPEC-0198) consume, assembled by the shared pure
@@ -165,7 +165,7 @@ and without execution authority (ADR 0022):
    the fix instruction and edit cage, the live durable attempt state when
    one exists, and links to the snapshot, gap, repair-attempt, and receipt
    resources; the same document answers a
-   `ripr://repair-card/{canonical_item_id}` resource read.
+   `ripr://repair-card/{canonical_id}` resource read.
 2. The same client refreshes a workspace whose evidence changed after the
    snapshot: the card still binds the analyzed head and the commit-time
    currentness of its snapshot, and the document's limitations name that

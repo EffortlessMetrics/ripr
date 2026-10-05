@@ -41,6 +41,12 @@ jobs:
       - run: cargo fmt --check
       - run: cargo check --workspace --all-targets
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Build native calibration observer driver
+        if: ${{ !cancelled() }}
+        run: cargo build --locked -p xtask
+      - name: Prove scoped Ready parser against a wrong implementation
+        timeout-minutes: 5
+        run: python3 .github/scripts/ready_parser_control.py
       - run: cargo nextest run --workspace
       - name: Observe native calibration enforcement readiness
         if: ${{ !cancelled() }}

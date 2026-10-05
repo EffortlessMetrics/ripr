@@ -42,7 +42,7 @@ pub(super) fn validate_agent_receipt_verify_path(
             return failure;
         }
         let producer = crate::agent::loop_commands::agent_verify_command(
-            &crate::output::outcome::display_path(&root),
+            &crate::agent::loop_commands::root_path_display(&root),
             crate::agent::loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
             crate::agent::loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
             Some(path.to_string_lossy().as_ref()),
@@ -59,6 +59,13 @@ pub(super) fn validate_agent_receipt_verify_path(
     }
 
     Ok(candidate)
+}
+
+// These fields are re-opened as filesystem identity. Keep the existing one
+// leading `./` omission, but do not rewrite Unix filename backslashes.
+pub(super) fn agent_identity_path(path: &Path) -> String {
+    let rendered = crate::agent::loop_commands::root_path_display(path);
+    rendered.strip_prefix("./").unwrap_or(&rendered).to_string()
 }
 
 pub(super) fn build_agent_receipt_provenance(
@@ -80,13 +87,13 @@ pub(super) fn build_agent_receipt_provenance(
         "after_artifact",
     )?;
     let verify_artifact = output::agent_receipt::AgentReceiptArtifactProvenance {
-        path: output::outcome::display_path(verify_display_path),
+        path: agent_identity_path(verify_display_path),
         sha256: provenance::sha256_file(verify_path)?,
     };
 
     Ok(output::agent_receipt::AgentReceiptProvenance {
         ripr_version: env!("CARGO_PKG_VERSION").to_string(),
-        repo_root: output::outcome::display_path(root),
+        repo_root: agent_identity_path(root),
         config_fingerprint: agent_receipt_config_fingerprint(root)?,
         command_template_version: crate::agent::loop_commands::AGENT_LOOP_COMMAND_TEMPLATE_VERSION
             .to_string(),
@@ -106,7 +113,8 @@ fn agent_receipt_artifact_provenance(
 ) -> Result<output::agent_receipt::AgentReceiptArtifactProvenance, String> {
     let resolved = validate_agent_receipt_artifact_path(root, Path::new(display_path), role)?;
     Ok(output::agent_receipt::AgentReceiptArtifactProvenance {
-        path: display_path.replace('\\', "/"),
+        // Unlike the other receipt fields, these paths retained leading `./`.
+        path: crate::agent::loop_commands::root_path_display(Path::new(display_path)),
         sha256: provenance::sha256_file(&resolved).map_err(|err| {
             format!(
                 "hash agent receipt {output_name} {} failed: {err}",

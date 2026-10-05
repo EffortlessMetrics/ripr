@@ -11,7 +11,9 @@ use super::non_empty_string_arg;
 const COMMAND: &str = "reports ci-summary";
 
 /// The flags carry the workflow's environment as values, so an unset
-/// variable arrives as an empty string and keeps its shell meaning.
+/// variable arrives as an empty string and keeps its shell meaning. A flag
+/// left out reads the workflow environment instead (#5409): `RIPR_*` for
+/// the settings, and `github.base_ref || default_branch` for the base.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CiSummaryOptions {
     pub(super) root: PathBuf,
@@ -22,7 +24,8 @@ pub(super) struct CiSummaryOptions {
 }
 
 pub(super) fn ci_summary(args: &[String]) -> Result<(), String> {
-    let options = parse_ci_summary_options(args)?;
+    let settings = super::ci_packet::CiSettings::from_env()?;
+    let options = parse_ci_summary_options_with(args, &settings)?;
     let input = CiSummaryInput {
         configured_languages: configured_languages(&options.root),
         root: options.root,
@@ -54,13 +57,26 @@ fn configured_languages(root: &std::path::Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
+#[cfg(test)]
 pub(super) fn parse_ci_summary_options(args: &[String]) -> Result<CiSummaryOptions, String> {
+    parse_ci_summary_options_with(args, &super::ci_packet::CiSettings::default())
+}
+
+/// The options, with every flag left out taken from `workflow`.
+pub(super) fn parse_ci_summary_options_with(
+    args: &[String],
+    workflow: &super::ci_packet::CiSettings,
+) -> Result<CiSummaryOptions, String> {
+    let base_ref = [&workflow.base_ref, &workflow.default_branch]
+        .into_iter()
+        .find(|name| !name.is_empty())
+        .map_or_else(|| "main".to_string(), Clone::clone);
     let mut options = CiSummaryOptions {
         root: PathBuf::from("."),
-        base_ref: "main".to_string(),
-        upload_sarif: String::new(),
-        gate_baseline: String::new(),
-        comment_mode: String::new(),
+        base_ref,
+        upload_sarif: workflow.upload_sarif.clone(),
+        gate_baseline: workflow.gate_baseline.clone(),
+        comment_mode: workflow.comment_mode.clone(),
     };
     let mut i = 0usize;
     while i < args.len() {

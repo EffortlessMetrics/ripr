@@ -74,7 +74,7 @@ fn index_from_files_at_stamp(
         index
             .files()
             .iter()
-            .map(|(path, facts)| (path, facts.data().source.as_str())),
+            .map(|(path, facts)| (path, facts.data().source.as_ref())),
     ));
     Ok(FixtureIndex {
         index,
@@ -3683,7 +3683,7 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
         file: file.clone(),
         start_line: 10,
         end_line: 12,
-        body: "fn discounted_total_helper() {}".to_string(),
+        body: "fn discounted_total_helper() {}".into(),
         calls: Vec::new(),
         returns: Vec::new(),
         literals: Vec::new(),
@@ -3723,7 +3723,7 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
             module_declarations: Vec::new(),
             unresolved_property_macros: Vec::new(),
             role_provenance: Default::default(),
-            source: "fn discounted_total_helper() {}".to_string(),
+            source: "fn discounted_total_helper() {}".into(),
         },
     );
     let seam = RepoSeam::new(
@@ -11904,7 +11904,7 @@ fn assertion_targets_seam_returns_false_for_empty_token_list() {
         file: PathBuf::from("tests/x.rs"),
         start_line: 1,
         end_line: 5,
-        body: "assert_eq!(1, 1);".to_string(),
+        body: "assert_eq!(1, 1);".into(),
         calls: Vec::new(),
         assertions: Vec::new(),
         literals: Vec::new(),
@@ -12594,7 +12594,7 @@ fn closure_boundary_operand_route_ignores_comment_only_closure_pattern() {
             file: PathBuf::from("src/lib.rs"),
             start_line: 1,
             end_line: 5,
-            body: "pub fn score(raw_amount: i32, threshold: i32) -> bool {\n    // values.iter().any(|amount| amount >= threshold)\n    let amount = raw_amount + 1;\n    amount >= threshold\n}".to_string(),
+            body: "pub fn score(raw_amount: i32, threshold: i32) -> bool {\n    // values.iter().any(|amount| amount >= threshold)\n    let amount = raw_amount + 1;\n    amount >= threshold\n}".into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
@@ -13649,7 +13649,7 @@ fn same_file_test_helper_call_counts_as_owner_call_evidence() {
                 file: file.clone(),
                 start_line: 1,
                 end_line: 5,
-                body: "pub fn discounted_total(amount: i32, threshold: i32) -> i32 { if amount >= threshold { amount - 10 } else { amount } }".to_string(),
+                body: "pub fn discounted_total(amount: i32, threshold: i32) -> i32 { if amount >= threshold { amount - 10 } else { amount } }".into(),
                 calls: Vec::new(),
                 returns: Vec::new(),
                 literals: Vec::new(),
@@ -13666,7 +13666,7 @@ fn same_file_test_helper_call_counts_as_owner_call_evidence() {
                 file: file.clone(),
                 start_line: 10,
                 end_line: 12,
-                body: "fn case_at_threshold() -> i32 { discounted_total(100, 100) }".to_string(),
+                body: "fn case_at_threshold() -> i32 { discounted_total(100, 100) }".into(),
                 calls: vec![CallFact {
                     line: 11,
                     name: "discounted_total".to_string(),
@@ -13687,7 +13687,7 @@ fn same_file_test_helper_call_counts_as_owner_call_evidence() {
                 file: file.clone(),
                 start_line: 20,
                 end_line: 23,
-                body: "#[test] fn unit_test_uses_same_file_helper() { assert_eq!(case_at_threshold(), 90); }".to_string(),
+                body: "#[test] fn unit_test_uses_same_file_helper() { assert_eq!(case_at_threshold(), 90); }".into(),
                 calls: vec![CallFact {
                     line: 21,
                     name: "case_at_threshold".to_string(),
@@ -14303,7 +14303,7 @@ fn index_from_edition2021_diagnostics_workspace(
         index
             .files()
             .iter()
-            .map(|(path, facts)| (path, facts.data().source.as_str())),
+            .map(|(path, facts)| (path, facts.data().source.as_ref())),
     ));
     Ok(FixtureIndex {
         index,
@@ -16984,5 +16984,53 @@ fn trait_method_reached_only_by_delegation_is_opaque_not_ungripped() -> Result<(
         reach.summary
     );
     assert_eq!(class, SeamGripClass::Opaque);
+    Ok(())
+}
+
+/// Pilot accuracy (mutation spot check, humantime `item_plural`): a boundary
+/// reached only through trait dispatch has no observed activation value. The
+/// boundary hint stays as guidance, but the seam is `activation_unknown`, not
+/// a `weakly_gripped` gap pilot would rank first. Real mutants were caught.
+#[test]
+fn boundary_with_unobserved_activation_is_activation_unknown_and_keeps_its_hint()
+-> Result<(), String> {
+    let path = PathBuf::from("src/lib.rs");
+    let source = r#"
+use std::fmt;
+pub struct Plural(pub u64);
+fn suffix(value: u64) -> &'static str {
+    if value > 1 { "s" } else { "" }
+}
+impl fmt::Display for Plural {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "item{}", suffix(self.0))
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::Plural;
+    #[test]
+    fn plural_suffix() {
+        assert_eq!(Plural(3).to_string(), "items");
+    }
+}
+"#;
+    let index = index_from_files(&[(path.clone(), source)])?;
+    let seams = inventory_seams_from_index(&[path], &index);
+    let seam = seams
+        .iter()
+        .find(|seam| seam.kind() == SeamKind::PredicateBoundary)
+        .ok_or_else(|| "boundary seam must be inventoried".to_string())?;
+    let evidence = evidence_for_seam(seam, &index);
+    let class = crate::analysis::seam_classification::classify_seam(seam, &evidence);
+    if evidence.activate.state != StageState::Unknown
+        || evidence.missing_discriminators.is_empty()
+        || class != SeamGripClass::ActivationUnknown
+    {
+        return Err(format!(
+            "unobserved activation must keep the hint but not grade a weak grip: class={class:?}, activate={:?}, missing={:?}",
+            evidence.activate.state, evidence.missing_discriminators
+        ));
+    }
     Ok(())
 }

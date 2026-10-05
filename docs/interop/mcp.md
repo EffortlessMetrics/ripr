@@ -62,17 +62,17 @@ a time through the tool or the resource.
 | Tool (no arguments) | `ripr_workspace_status` |
 | Tool (no arguments) | `ripr_refresh` |
 | Tool (`snapshot_id?`) | `ripr_list_gaps` |
-| Tool (`gap_id`, `snapshot_id?`) | `ripr_get_gap` |
-| Tool (`gap_id`, `snapshot_id?`) | `ripr_prepare_repair` |
+| Tool (`canonical_id`, `snapshot_id?`) | `ripr_get_gap` |
+| Tool (`canonical_id`, `snapshot_id?`) | `ripr_prepare_repair` |
 | Tool (`attempt_id`) | `ripr_get_repair_attempt` |
 | Tool (`receipt_id`) | `ripr_get_receipt_status` |
-| Tool (`gap_id`, `snapshot_id?`) | `ripr_get_repair_card` |
+| Tool (`canonical_id`, `snapshot_id?`) | `ripr_get_repair_card` |
 | Resource (`application/json`) | `ripr://workspace/status` |
 | Resource template | `ripr://snapshot/{snapshot_id}` |
-| Resource template | `ripr://gap/{canonical_item_id}` |
+| Resource template | `ripr://gap/{canonical_id}` |
 | Resource template | `ripr://repair-attempt/{attempt_id}` |
 | Resource template | `ripr://receipt/{receipt_id}` |
-| Resource template | `ripr://repair-card/{canonical_item_id}` |
+| Resource template | `ripr://repair-card/{canonical_id}` |
 
 `ripr_workspace_status` and `ripr://workspace/status` return the same JSON
 document, schema `ripr-mcp-workspace-status-v1`. It wraps:
@@ -107,8 +107,10 @@ root evidence stays a separate
 host-local hash), `failed` with a typed failure code and bounded detail (the
 last-known-good snapshot is kept), `in_flight`, or `workspace_unavailable`.
 An attempt runs to a terminal state; cancelling the MCP request never rolls
-an attempt back or manufactures a snapshot, and a cancelled or superseded
-attempt is never committed. Project-local `ripr.toml` stays
+an attempt back or manufactures a snapshot. A cancelled attempt still commits
+as a completed snapshot when it finishes and only transport teardown abandons
+one before it commits, while a superseded attempt is never committed.
+Project-local `ripr.toml` stays
 detected-not-loaded: refresh runs with built-in defaults.
 
 `ripr_list_gaps` returns the snapshot's deterministic bounded working set:
@@ -125,7 +127,7 @@ with reasons and the continuation route (`ripr_get_gap`). Pass `snapshot_id`
 to bind the read to a specific snapshot: a mismatched identity fails closed
 with `stale_snapshot` and the current identity.
 
-`ripr_get_gap` (and the equivalent resource `ripr://gap/{canonical_item_id}`)
+`ripr_get_gap` (and the equivalent resource `ripr://gap/{canonical_id}`)
 returns one canonical item's complete bounded evidence bound to its snapshot
 identity: identity and location, the changed behavior (expression,
 before/after, delta kind, probe family), causal attribution (canonical gap
@@ -142,7 +144,7 @@ then the repair-attempt link names that transaction instead of staying an
 explicit `null`. A missing field stays a typed state; MCP never fills it
 from prose.
 
-`ripr_prepare_repair` (`gap_id`, optional `snapshot_id`) evaluates those
+`ripr_prepare_repair` (`canonical_id`, optional `snapshot_id`) evaluates those
 readiness facts for one canonical item and, only when every gate is
 established, creates — or replays — one bounded in-memory repair transaction
 bound to the current snapshot, the item, and the root identity. The packet
@@ -223,7 +225,7 @@ canonical item index (identities and locations, not evidence), and the stored
 bounded-selection summary.
 
 `ripr_get_repair_card` (and the equivalent resource
-`ripr://repair-card/{canonical_item_id}`) projects the bounded repair card
+`ripr://repair-card/{canonical_id}`) projects the bounded repair card
 for one canonical item: the same versioned `repair_card.v1` document `ripr
 agent card` and the standard language server project, assembled by the shared
 application authority from the committed snapshot — the adapter never
@@ -258,7 +260,9 @@ identity_unnameable    budget_overflow
 Before the first successful refresh the evidence tools fail with
 `no_snapshot` and the repair-attempt / receipt reads fail with
 `attempt_not_found`; `superseded` is reachable for a session transaction
-bound to a snapshot that is no longer current; `attempt_invalid` reports a
+bound to a snapshot that is no longer current, while superseded tombstones
+older than the 64-entry session bound read `attempt_not_found` instead
+(oldest-first eviction); `attempt_invalid` reports a
 durable manifest that fails canonical validation; `seam_not_found`,
 `identity_unnameable`, and `budget_overflow` are reachable on the repair-card
 read (an item no seam owner-discriminated binds, an unnameable portable
@@ -301,13 +305,17 @@ what it does not do. Protocol errors keep standard JSON-RPC codes. The pinned
 official Rust SDK owns negotiation, dispatch, correlation and cancellation.
 Syntax-invalid JSON is ignored; well-formed messages with invalid typed
 shapes receive Invalid Request and the transport can read the next frame.
-Unknown request IDs are omitted in SDK error responses; readable IDs remain
-correlated. Messages are capped at 256 KiB and responses, including their
-delimiter, at 128 KiB; the bound is enforced on the final serialized
-envelope — the document is measured again after the tool or resource wrapper
-adds its text and structured-content representations — so an over-bound
-response fails closed with `result_too_large` before the wire cap is
-reached. If even a
+Unknown request IDs are omitted in SDK-dispatched error responses, while
+transport-level protocol errors (well-formed messages with invalid typed
+shapes) carry an explicit null id per JSON-RPC; readable IDs remain
+correlated. Messages are capped at 256 KiB and response envelopes at
+128 KiB; the 1-byte newline delimiter is appended after the cap check, so a
+wire frame is at most 128 KiB+1 (pinned by
+`exactly_max_response_bytes_passes_and_one_more_falls_back`). The bound is
+enforced on the final serialized envelope — the document is measured again
+after the tool or resource wrapper adds its text and structured-content
+representations — so an over-bound response fails closed with
+`result_too_large` before the wire cap is reached. If even a
 correlated fallback cannot fit its readable ID, the service terminates with
 the bounded stderr reason `MCP output limit`, without substituting an ID.
 Partial reads and writes retain their state across cancellation. EOF closes
@@ -321,4 +329,6 @@ unsupported or discovery-only requested version is answered with
 `2025-11-25`, or with `server/discover`, where every request carries
 `io.modelcontextprotocol/protocolVersion` and
 `io.modelcontextprotocol/clientCapabilities` in `params._meta` and an
-unsupported version is refused.
+unsupported version is refused. After `initialize`, `ping` returns an empty
+result even when `params._meta` carries that handshake shape; after
+`server/discover`, `ping` remains method-not-found.

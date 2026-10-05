@@ -5,6 +5,8 @@
 profile = "gh-runner"
 
 [repo]
+kind = "rust"
+ledger = ""
 base = "origin/main"
 head = "HEAD"
 

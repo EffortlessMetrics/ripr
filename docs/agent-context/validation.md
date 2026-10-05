@@ -36,6 +36,33 @@ necessary, capture its native command status before another command overwrites
 it; `echo done` is not a test result. Do not discard a failed step because a
 later command returned zero.
 
+## Workspace linker temp redirect
+
+`.cargo/config.toml` in this repository force-redirects the linker temp
+variables `TEMP`, `TMP`, and `TMPDIR` into the workspace-relative `target/`
+directory (`force = true`; PR #397: keep MSVC linker temp files off a full
+system temp drive). An exported `TEMP`/`TMP` does not override it.
+
+In a fresh `git worktree add` checkout that builds with an isolated
+`CARGO_TARGET_DIR`, the workspace-local `target/` does not exist, and MSVC
+`link.exe` fails with `LNK1104: cannot open file '...\target\lnk{GUID}.tmp'`
+while linking the first build scripts — even though objects and `/OUT`
+correctly land in the isolated target. Create the directory before building;
+it is git-ignored and holds only transient linker temps:
+
+```bash
+mkdir <worktree>/target
+```
+
+`ripr doctor --profile source-build` warns when this redirect is present and
+the workspace-local directory is absent (#5280).
+
+The same missing `target/` directory makes `std::env::temp_dir()` point at a
+path that does not exist. Tests that create scratch crates under `temp_dir()`
+must `create_dir_all` that root before an exclusive `create_dir` of the child;
+a bare `create_dir` fails with ENOENT and names no path (`agent_stub_compiles`,
+#6712).
+
 ## Owned background work
 
 Bind a background command to its task/session handle, candidate identity and

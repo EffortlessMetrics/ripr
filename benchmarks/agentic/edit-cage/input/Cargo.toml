@@ -1,0 +1,8 @@
+[package]
+name = "edit_cage_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "edit_cage_fixture"
+path = "src/lib.rs"

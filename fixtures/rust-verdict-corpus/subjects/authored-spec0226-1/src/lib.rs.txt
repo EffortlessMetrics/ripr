@@ -1,0 +1,19 @@
+//! A threshold check with one non-asserting boundary test and one far test.
+
+pub fn gate(input: u32) -> bool { input >= 10 }
+
+#[cfg(test)]
+mod tests {
+    use super::gate;
+
+    #[test]
+    fn boundary() {
+        gate(10);
+        gate(9);
+    }
+
+    #[test]
+    fn far() {
+        assert_eq!(gate(100), true);
+    }
+}

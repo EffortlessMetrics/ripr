@@ -1,0 +1,13 @@
+diff --git a/src/limits.rs b/src/limits.rs
+index 577ecb3..90800fb 100644
+--- a/src/limits.rs
++++ b/src/limits.rs
+@@ -9,7 +9,7 @@ use config::DAILY_LIMIT;
+ pub const MIN_ORDER: u32 = 5;
+ 
+ pub fn over_daily_limit(count: u32) -> bool {
+-    count >= DAILY_LIMIT
++    DAILY_LIMIT <= count
+ }
+ 
+ pub fn below_minimum(count: u32) -> bool {

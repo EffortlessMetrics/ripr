@@ -1179,10 +1179,14 @@ fn wait_for_child_sampled(
             });
         }
 
-        // Measured runs poll finer so a sub-second command's wall time is not
-        // rounded up to the next 100 ms tick.
-        thread::sleep(Duration::from_millis(if sample_rss { 10 } else { 100 }));
+        thread::sleep(poll_interval(sample_rss));
     }
+}
+
+/// Measured runs poll finer so a sub-second command's wall time is not
+/// rounded up to the next 100 ms tick; scoreboard timings depend on it.
+pub(crate) fn poll_interval(sample_rss: bool) -> Duration {
+    Duration::from_millis(if sample_rss { 10 } else { 100 })
 }
 
 /// Peak resident set size of a live process from `/proc/<pid>/status`
@@ -1705,6 +1709,15 @@ fn spawn_stream_file_writer_channel<T: Read + Send + 'static>(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn measured_runs_poll_ten_times_finer_than_plain_timed_runs() {
+        assert_eq!(super::poll_interval(true), super::Duration::from_millis(10));
+        assert_eq!(
+            super::poll_interval(false),
+            super::Duration::from_millis(100)
+        );
+    }
+
     #[cfg(unix)]
     use super::POST_KILL_GROUP_CONFIRM_GRACE;
     use super::{

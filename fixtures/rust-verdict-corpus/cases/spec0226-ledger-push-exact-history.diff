@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 6094056..89b2f4d 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -7,7 +7,7 @@ pub struct Ledger {
+ 
+ impl Ledger {
+     pub fn record(&mut self, amount: u64) {
+-        self.history.push(amount);
++        self.history.push(amount * 1);
+     }
+ }
+ 

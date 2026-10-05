@@ -936,11 +936,48 @@ impl PackageWalk {
 }
 
 /// Number of leading path components two paths share.
+///
+/// The directed walk calls this for every queued entry on every step, so
+/// plain `/`-separated paths compare bytes instead of parsing components;
+/// any other spelling takes the component comparison it equals.
 fn shared_prefix_len(left: &Path, right: &Path) -> usize {
-    left.components()
-        .zip(right.components())
-        .take_while(|(left, right)| left == right)
-        .count()
+    match (plain_path_bytes(left), plain_path_bytes(right)) {
+        (Some(left), Some(right)) => shared_plain_prefix_len(left, right),
+        _ => left
+            .components()
+            .zip(right.components())
+            .take_while(|(left, right)| left == right)
+            .count(),
+    }
+}
+
+/// The bytes of a path whose components are exactly its `/`-separated
+/// segments: relative, non-empty segments, no `.` segment, no other
+/// separator and no drive prefix. `None` for any path `components()` would
+/// normalize or split differently.
+fn plain_path_bytes(path: &Path) -> Option<&[u8]> {
+    let bytes = path.to_str()?.as_bytes();
+    let plain = !bytes.is_empty()
+        && !bytes.contains(&b'\\')
+        && !bytes.contains(&b':')
+        && bytes
+            .split(|byte| *byte == b'/')
+            .all(|segment| !segment.is_empty() && segment != b".");
+    plain.then_some(bytes)
+}
+
+fn shared_plain_prefix_len(left: &[u8], right: &[u8]) -> usize {
+    let mut shared = 0;
+    for (left, right) in left
+        .split(|byte| *byte == b'/')
+        .zip(right.split(|byte| *byte == b'/'))
+    {
+        if left != right {
+            break;
+        }
+        shared += 1;
+    }
+    shared
 }
 
 /// The directories a file's default `mod name;` children resolve under.
@@ -997,6 +1034,40 @@ fn read_source(workspace_root: &Path, file: &Path) -> SourceRead {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_prefix_len_matches_the_component_comparison() {
+        let paths = [
+            "crates/a/src/lib.rs",
+            "crates/a/src/lib/mod.rs",
+            "crates/a/src/libx.rs",
+            "crates/ab/src/lib.rs",
+            "crates/a",
+            "crates/a/",
+            "./crates/a/src/lib.rs",
+            "crates/./a/src/lib.rs",
+            "crates//a/src/lib.rs",
+            "/abs/crates/a/src/lib.rs",
+            "src/lib.rs",
+            "src",
+            "",
+        ];
+        for left in paths {
+            for right in paths {
+                let (left, right) = (Path::new(left), Path::new(right));
+                let expected = left
+                    .components()
+                    .zip(right.components())
+                    .take_while(|(left, right)| left == right)
+                    .count();
+                assert_eq!(
+                    shared_prefix_len(left, right),
+                    expected,
+                    "{left:?} vs {right:?}"
+                );
+            }
+        }
+    }
 
     fn fixture(name: &str, files: &[(&str, &str)]) -> Result<PathBuf, String> {
         let stamp = std::time::SystemTime::now()

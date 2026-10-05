@@ -127,10 +127,10 @@ async fn sdk_session(
                 .ok_or_else(|| "SDK omitted resourceTemplates".to_string())?;
             for expected in [
                 "ripr://snapshot/{snapshot_id}",
-                "ripr://gap/{canonical_item_id}",
+                "ripr://gap/{canonical_id}",
                 "ripr://repair-attempt/{attempt_id}",
                 "ripr://receipt/{receipt_id}",
-                "ripr://repair-card/{canonical_item_id}",
+                "ripr://repair-card/{canonical_id}",
             ] {
                 if !template_uris.contains(&expected) {
                     return Err(format!(

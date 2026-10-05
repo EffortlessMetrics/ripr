@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 08239b9..ade5139 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -9,7 +9,7 @@ pub fn first_word(text: &str) -> Option<&str> {
+ }
+ 
+ pub fn slug(title: &str) -> String {
+-    title.to_lowercase().replace(' ', "-")
++    title.replace(' ', "-").to_lowercase()
+ }
+ 
+ pub fn tags(list: &str) -> Vec<String> {

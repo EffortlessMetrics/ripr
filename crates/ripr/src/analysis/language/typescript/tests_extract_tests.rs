@@ -3,6 +3,104 @@
 use super::*;
 
 #[test]
+fn node_expected_failure_options_cannot_supply_ordinary_test_evidence() {
+    let imports =
+        "import assert from 'node:assert/strict'; import { test, suite } from 'node:test';\n";
+    for value in [
+        "true",
+        "\"known defect\"",
+        "/ERR_ASSERTION/",
+        "{ code: 'ERR_ASSERTION' }",
+        "(error) => true",
+        "{ label: 'defect', match: /failed/ }",
+        "configuredMatcher",
+    ] {
+        let callback = "() => { assert.strictEqual(isAdult(18), true); }";
+        for source in [
+            format!("test('qualified', {{ expectFailure: {value} }}, {callback});"),
+            format!("test({{ expectFailure: {value} }}, {callback});"),
+            format!("test('qualified', {callback}, {{ expectFailure: {value} }});"),
+            format!(
+                "suite('qualified', {{ expectFailure: {value} }}, () => {{ test('child', {callback}); }});"
+            ),
+        ] {
+            let source = format!("{imports}{source}");
+            let file = Path::new("tests/qualified.test.ts");
+            let tests = extract_tests(file, &source);
+            assert!(tests.is_empty(), "{source}: {tests:?}");
+        }
+    }
+    for value in ["false", "undefined"] {
+        let source = format!(
+            "{imports}test('ordinary', {{ expectFailure: {value} }}, () => {{ assert.strictEqual(isAdult(18), true); }});"
+        );
+        let tests = extract_tests(Path::new("tests/ordinary.test.ts"), &source);
+        assert_eq!(tests.len(), 1, "{source}: {tests:?}");
+        assert_eq!(tests[0].assertions.len(), 1);
+    }
+}
+
+#[test]
+fn shadowed_undefined_cannot_disable_test_qualification_options() {
+    let imports =
+        "import assert from 'node:assert/strict'; import { test, suite } from 'node:test';\n";
+    let callback = "() => { assert.strictEqual(isAdult(18), true); }";
+    for key in ["skip", "todo", "fails", "expectFailure"] {
+        let registration = format!("test('qualified', {{ {key}: undefined }}, {callback});");
+        for source in [
+            format!("const undefined = true; {registration}"),
+            format!("const {{ flag: undefined }} = config; {registration}"),
+            format!("import {{ flag as undefined }} from './config'; {registration}"),
+            format!("export const undefined = true; {registration}"),
+            format!("export default function undefined() {{ return true; }} {registration}"),
+            format!("export default class undefined {{ }} {registration}"),
+            format!("suite('outer', () => {{ const undefined = true; {registration} }});"),
+            format!("suite.each([true])('outer', (undefined) => {{ {registration} }});"),
+            format!("for (const undefined of [true]) {{ {registration} }}"),
+            format!("[true].forEach((undefined) => {{ {registration} }});"),
+            format!("[true].forEach((...[undefined]) => {{ {registration} }});"),
+            format!(
+                "[true].forEach(function undefined(flag) {{ if (flag !== true) return true; {registration} }});"
+            ),
+            format!(
+                "const undefined = true; suite('qualified', {{ {key}: undefined }}, () => {{ test('child', {callback}); }});"
+            ),
+            // `var` hoists out of its block, so it still shadows.
+            format!("{{ var undefined = true; }} {registration}"),
+            format!("if (flag) {{ var undefined = true; }} {registration}"),
+        ] {
+            let source = format!("{imports}{source}");
+            let tests = extract_tests(Path::new("tests/shadowed.test.ts"), &source);
+            assert!(tests.is_empty(), "{source}: {tests:?}");
+        }
+    }
+    for source in [
+        format!("function unrelated(undefined) {{ return undefined; }} test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        format!("export {{ flag as undefined }} from './config'; test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        format!("import type {{ Flag as undefined }} from './config'; test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        format!("import {{ type Flag as undefined }} from './config'; test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        "test('ordinary', { expectFailure: undefined }, (undefined) => { assert.strictEqual(isAdult(18), true); });".to_string(),
+        "test('ordinary', { expectFailure: undefined }, (...[undefined]) => { assert.strictEqual(isAdult(18), true); });".to_string(),
+        "test('ordinary', { expectFailure: undefined }, function undefined() { assert.strictEqual(isAdult(18), true); });".to_string(),
+        format!("const undefined = true; test('ordinary', {{ expectFailure: false }}, {callback});"),
+        // Ambient `declare` forms are erased before the test runs.
+        format!("declare const undefined: undefined; test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        format!("declare function undefined(): void; test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        format!("export declare const undefined: undefined; test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        // Block-scoped bindings end with their block.
+        format!("{{ let undefined = true; }} test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        format!("if (flag) {{ const undefined = true; }} test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        format!("try {{ run(); }} catch (undefined) {{ }} test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        format!("for (let undefined of []) {{ }} test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+    ] {
+        let source = format!("{imports}{source}");
+        let tests = extract_tests(Path::new("tests/ordinary.test.ts"), &source);
+        assert_eq!(tests.len(), 1, "{source}: {tests:?}");
+        assert_eq!(tests[0].assertions.len(), 1);
+    }
+}
+
+#[test]
 fn extracts_active_test_modifiers_with_assertions() {
     let tests = extract_tests(
         Path::new("tests/pricing.test.ts"),

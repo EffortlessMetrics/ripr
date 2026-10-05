@@ -363,6 +363,19 @@ happens, check crates.io manually before retrying.
 
 ## Post-Publish
 
+The release commit bumps the package version and
+`LATEST_RELEASED_VERSION` in `crates/ripr/src/cli/commands/init_workflow.rs`
+together to the release version, and publication runs from that commit —
+never for a release candidate (#5208). The constant must travel with the
+version it names: `init --ci github` self-pins generators at or below it,
+so a constant bumped only after publication would make the just-published
+generator pin its predecessor with a spurious "not released" warning, on
+every release, permanently. The first post-release commit moves the package
+version to the next development version while the constant stays. Between
+the release commit and verified publication, a dev-built generator self-pins
+a version whose archive is not up yet — publish promptly, and refresh CI
+with the previous release until publication verifies.
+
 ```bash
 cargo install ripr --version 0.8.0 --locked --root target/ripr/install-smoke-cratesio --force
 target/ripr/install-smoke-cratesio/bin/ripr --version

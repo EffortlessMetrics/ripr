@@ -31,8 +31,11 @@ pub(crate) fn related_test_miss_reason(
         RelatedTestMiss::WeakAssertion => {
             "assertion too weak to tell the old behavior from the new".to_string()
         }
+        // #5508: an unknown observation edge, not an established miss. Only
+        // `assertion_not_observing` claims the assertion observes something
+        // else.
         RelatedTestMiss::ObservationUnconfirmed => {
-            "assertion does not mention the changed expression".to_string()
+            "ripr could not confirm that this assertion observes the changed behavior".to_string()
         }
         // The analyzer assigns `missing_input` only for a predicate probe
         // with a boundary fact, and `missing_exact_assertion` only when no
@@ -51,6 +54,15 @@ pub(crate) fn related_test_miss_reason(
             }
         }
     })
+}
+
+/// The word placed before the reason. An unconfirmed observation is an
+/// unknown, so it is not introduced as a miss (#5508).
+pub(crate) fn related_test_miss_label(test: &RelatedTest) -> &'static str {
+    match test.miss {
+        Some(RelatedTestMiss::ObservationUnconfirmed) => "unconfirmed",
+        _ => "misses",
+    }
 }
 
 /// The assertion text a miss was judged by, on one line and without the
@@ -146,7 +158,7 @@ mod tests {
             (
                 RelatedTestMiss::ObservationUnconfirmed,
                 None,
-                "assertion does not mention the changed expression",
+                "ripr could not confirm that this assertion observes the changed behavior",
             ),
         ];
         for (miss, reason, expected) in cases {
@@ -160,6 +172,33 @@ mod tests {
                 "{miss:?}"
             );
         }
+    }
+
+    #[test]
+    fn only_an_unconfirmed_observation_drops_the_misses_label() {
+        let established = [
+            RelatedTestMiss::NoCallPath,
+            RelatedTestMiss::NoAssertion,
+            RelatedTestMiss::AssertionNotObserving,
+            RelatedTestMiss::AssertionNotCredited,
+            RelatedTestMiss::WeakAssertion,
+            RelatedTestMiss::MissingInput,
+            RelatedTestMiss::MissingExactAssertion,
+        ];
+        for miss in established {
+            assert_eq!(
+                related_test_miss_label(&test_with(Some(miss), None)),
+                "misses",
+                "{miss:?}"
+            );
+        }
+        assert_eq!(
+            related_test_miss_label(&test_with(
+                Some(RelatedTestMiss::ObservationUnconfirmed),
+                None
+            )),
+            "unconfirmed"
+        );
     }
 
     #[test]

@@ -39,12 +39,15 @@ mod evidence_promotion;
 mod evidence_quality;
 mod first_run;
 mod fixture_contracts;
+mod public_proof;
 // #4544: one definition of the gap `source_subject` contract, shared with the
 // ripr crate's LSP validator without widening ripr's public API.
 #[path = "../../crates/ripr/src/output/gap_source_subject/shared.rs"]
 mod gap_source_subject_shared;
 mod identity_registry;
 mod issue_lifecycle_attempt;
+mod issue_lifecycle_contract_plan;
+mod issue_lifecycle_intake;
 mod no_panic;
 mod orchestration_attempt;
 mod output_enum_contracts;
@@ -8008,7 +8011,7 @@ fn routed_rust_pull_request_types(workflow: &str) -> Option<Vec<String>> {
             continue;
         }
         if line.starts_with("  ") && !line.starts_with("   ") {
-            in_pull_request = line.trim_end() == "pull_request:";
+            in_pull_request = line.strip_prefix("  ").map(str::trim_end) == Some("pull_request:");
             continue;
         }
         if !in_pull_request || !line.starts_with("    ") || line.starts_with("     ") {
@@ -8060,6 +8063,62 @@ fn routed_rust_event_route(
 /// synchronize / reopened / labeled admission, the ignored-label pseudo-result,
 /// and the synchronize-only cancellation) is rejected here as the actual
 /// failure mode instead of being mandated.
+/// Inspect only the named job's own condition under the real jobs mapping.
+/// Folded condition continuations belong to that field; comments outside it,
+/// with values and step-level cleanup conditions do not.
+fn routed_rust_job_condition_has_always(workflow: &str, job: &str) -> bool {
+    let header = format!("{job}:");
+    let mut in_jobs = false;
+    let mut in_job = false;
+    let mut in_condition = false;
+    for line in workflow.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if !line.starts_with(' ') {
+            in_jobs = line.trim_end() == "jobs:";
+            in_job = false;
+            in_condition = false;
+            continue;
+        }
+        if line.starts_with("  ") && !line.starts_with("   ") {
+            in_job = in_jobs && line.trim_end().strip_prefix("  ") == Some(header.as_str());
+            in_condition = false;
+            continue;
+        }
+        if !in_job {
+            continue;
+        }
+        let expression = if line.starts_with("    ") && !line.starts_with("     ") {
+            match line.strip_prefix("    if:") {
+                Some(value) => {
+                    in_condition = true;
+                    value
+                }
+                None => {
+                    in_condition = false;
+                    continue;
+                }
+            }
+        } else if in_condition && line.starts_with("      ") {
+            trimmed
+        } else {
+            in_condition = false;
+            continue;
+        };
+        let normalized: String = expression
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .collect::<String>()
+            .to_ascii_lowercase();
+        if normalized.contains("always()") {
+            return true;
+        }
+    }
+    false
+}
+
 fn routed_rust_ready_event_contract_violations(workflow: &str) -> Vec<String> {
     let has_pull_request_trigger = workflow
         .lines()
@@ -8101,6 +8160,13 @@ fn routed_rust_ready_event_contract_violations(workflow: &str) -> Vec<String> {
         violations.push(
             ".github/workflows/routed-rust.yml must keep `cancel-in-progress: ${{ github.event_name == 'pull_request' }}` so a second Ready transition replaces the prior admission attempt without cancelling push or manual runs (#4986)".to_string(),
         );
+    }
+    for job in ["rust-cx43", "rust-cpx42", "rust-cx53", "rust-github"] {
+        if routed_rust_job_condition_has_always(workflow, job) {
+            violations.push(format!(
+                ".github/workflows/routed-rust.yml implementation job `{job}` must not use `always()` in its job condition; a job-level `always()` survives cancellation, so a second Ready transition queues behind the obsolete head's full gate. Use `!cancelled()` (#6729)"
+            ));
+        }
     }
     if workflow.contains(ROUTED_RUST_DRAFT_GUARD_SNIPPET) {
         violations.push(
@@ -21360,6 +21426,7 @@ fn is_docs_path(path: &str) -> bool {
         || path == "AGENTS.md"
         || path == "CONTRIBUTING.md"
         || path == "CHANGELOG.md"
+        || path.starts_with("changelog.d/")
         || path.starts_with("docs/")
         || is_plan_path(path)
 }
@@ -23036,6 +23103,7 @@ fn detected_surface_rows(changes: &[ChangedPath]) -> Vec<(&'static str, Vec<Stri
             "Docs",
             paths_matching(changes, |path| {
                 path.starts_with("docs/")
+                    || path.starts_with("changelog.d/")
                     || is_plan_path(path)
                     || matches!(
                         path,
@@ -23109,6 +23177,7 @@ fn public_contract_rows(changes: &[ChangedPath]) -> Vec<(&'static str, Vec<Strin
             "Docs",
             paths_matching(changes, |path| {
                 path.starts_with("docs/")
+                    || path.starts_with("changelog.d/")
                     || is_plan_path(path)
                     || matches!(
                         path,
@@ -23192,6 +23261,7 @@ fn is_evidence_path(path: &str) -> bool {
         || is_policy_path(path)
         || is_plan_path(path)
         || path.starts_with("docs/")
+        || path.starts_with("changelog.d/")
         || path.starts_with("metrics/")
         || matches!(
             path,
@@ -25107,6 +25177,11 @@ synonym (e.g. {hint}). To intentionally allow this line, append \
     reason = "xtask test code uses unwrap/expect for fail-fast assertion. Production paths are receipted via policy/no-panic-allowlist.toml; the test scope is governed by this single module-level expect."
 )]
 mod tests;
+
+#[cfg(test)]
+mod ready_cancellation_tests;
+#[cfg(test)]
+mod ready_types_tests;
 
 #[cfg(test)]
 mod inherited_failure_tests {

@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 8e555ab..be8c76c 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -23,7 +23,7 @@ pub fn parse_year(text: &str) -> Result<i32, ParseIntError> {
+ }
+ 
+ pub fn parse_retries(text: &str) -> Result<u8, ParseIntError> {
+-    let retries = text.parse::<u8>()?;
++    let retries: u8 = text.parse()?;
+     Ok(retries)
+ }
+ 

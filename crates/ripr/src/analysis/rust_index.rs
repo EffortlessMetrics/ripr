@@ -10,22 +10,23 @@ use std::path::{Path, PathBuf};
 #[cfg(test)]
 pub(crate) use super::extract::contains_macro_invocation;
 pub(crate) use super::extract::{
-    OracleTextShape, PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_ERROR_PATH,
-    PROBE_SHAPE_FIELD_CONSTRUCTION, PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE,
-    PROBE_SHAPE_RETURN_VALUE, PROBE_SHAPE_SIDE_EFFECT, classify_assertion,
-    err_return_guard_oracles, extract_assertions, extract_call_facts, extract_identifier_tokens,
-    extract_line_scanned_oracles, extract_literal_facts, extract_literals, extract_return_facts,
-    guarded_result_match_scan_with_shadow_authority, has_oracle_text_shape, is_known_probe_shape,
+    OracleTextShape, classify_assertion, err_return_guard_oracles, extract_assertions,
+    extract_call_facts, extract_identifier_tokens, extract_line_scanned_oracles,
+    extract_literal_facts, extract_literals, extract_return_facts,
+    guarded_result_match_scan_with_shadow_authority, has_oracle_text_shape,
     is_unwrap_err_bound_error_assertion, unwrap_err_bound_variables,
 };
 use super::facts::ModulePathTarget;
-pub(crate) use super::facts::build_index_from_loaded_files_with_cache_and_test_harnesses;
 pub(crate) use super::facts::validated_file_wide_harness_targets;
 #[cfg(test)]
 pub use super::facts::{CallFact, FileFacts, LiteralFact, ReturnFact};
 pub use super::facts::{
-    FileFactsView, FunctionFact, FunctionSummary, OracleFact, ProbeShapeFact, RustIndex, TestFact,
-    TestSummary, build_index, build_index_with_test_harnesses,
+    FileFactsView, FunctionFact, FunctionSummary, OracleFact, ProbeShapeFact, ProbeShapeKind,
+    RustIndex, SourceText, TestFact, TestSummary, build_index, build_index_with_test_harnesses,
+};
+pub(crate) use super::facts::{
+    build_analysis_index_from_loaded_files,
+    build_index_from_loaded_files_with_cache_and_test_harnesses,
 };
 #[cfg(test)]
 use super::syntax::LexicalRustSyntaxAdapter;
@@ -149,7 +150,7 @@ pub(crate) fn include_resolution_disclosure(index: &RustIndex) -> Option<String>
         .collect::<Vec<_>>()
         .join(", ");
     Some(format!(
-        "ripr: {} Rust include boundary limitation(s): {details}; affected compilation-unit relations remain fail-closed.",
+        "ripr: {} Rust include boundary limitation(s): {details}; affected compilation-unit relations remain fail-closed. {ANALYSIS_LIMIT_ORIENTATION}",
         index.include_limitations.len()
     ))
 }
@@ -158,8 +159,9 @@ pub(crate) fn include_resolution_disclosure(index: &RustIndex) -> Option<String>
 /// module (`rust_module_ambiguous_parent`).
 const MODULE_AMBIGUOUS_PARENT_NEXT_STEP: &str = "To resolve rust_module_ambiguous_parent, give each listed file one owner: declare it from a single parent `mod` item (drop duplicate `#[path]` declarations and keep only one of `<name>.rs` or `<name>/mod.rs`); a shared `tests/<name>/mod.rs` helper needs the same `mod <name>;` declaration, with the same `#[cfg(test)]` gating, in every integration test.";
 
-/// Closing sentence of [`module_composition_disclosure`] (#4378).
-const MODULE_COMPOSITION_ORIENTATION: &str = "This is an analysis-limit note about indexed context, not a finding: no action is needed unless evidence you expected from a listed file is missing.";
+/// Closing sentence of [`module_composition_disclosure`] (#4378) and
+/// [`include_resolution_disclosure`].
+const ANALYSIS_LIMIT_ORIENTATION: &str = "This is an analysis-limit note about indexed context, not a finding: no action is needed unless evidence you expected from a listed file is missing.";
 
 /// Returns a stable disclosure when Rust module composition failed closed
 /// (#3533): a file whose composed context chain could not be resolved
@@ -207,7 +209,7 @@ pub(crate) fn module_composition_disclosure(index: &RustIndex) -> Option<String>
         String::new()
     };
     Some(format!(
-        "ripr: {count} Rust module composition limitation(s): {}; affected module contexts remain fail-closed. {MODULE_COMPOSITION_ORIENTATION}{next_step}",
+        "ripr: {count} Rust module composition limitation(s): {}; affected module contexts remain fail-closed. {ANALYSIS_LIMIT_ORIENTATION}{next_step}",
         details.into_iter().collect::<Vec<_>>().join(", ")
     ))
 }
@@ -749,7 +751,7 @@ pub fn parse(input: &str) -> Result<i32, Error> {
         assert!(
             file.probe_shapes
                 .iter()
-                .any(|shape| shape.kind == PROBE_SHAPE_RETURN_VALUE)
+                .any(|shape| shape.kind == ProbeShapeKind::ReturnValue)
         );
     }
 
@@ -941,21 +943,21 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
         let kinds = facts
             .probe_shapes
             .iter()
-            .map(|shape| shape.kind.as_str())
+            .map(|shape| shape.kind)
             .collect::<Vec<_>>();
 
-        assert!(kinds.contains(&PROBE_SHAPE_PREDICATE));
-        assert!(kinds.contains(&PROBE_SHAPE_RETURN_VALUE));
-        assert!(kinds.contains(&PROBE_SHAPE_ERROR_PATH));
-        assert!(kinds.contains(&PROBE_SHAPE_CALL_DELETION));
-        assert!(kinds.contains(&PROBE_SHAPE_FIELD_CONSTRUCTION));
-        assert!(kinds.contains(&PROBE_SHAPE_SIDE_EFFECT));
-        assert!(kinds.contains(&PROBE_SHAPE_MATCH_ARM));
+        assert!(kinds.contains(&ProbeShapeKind::Predicate));
+        assert!(kinds.contains(&ProbeShapeKind::ReturnValue));
+        assert!(kinds.contains(&ProbeShapeKind::ErrorPath));
+        assert!(kinds.contains(&ProbeShapeKind::CallDeletion));
+        assert!(kinds.contains(&ProbeShapeKind::FieldConstruction));
+        assert!(kinds.contains(&ProbeShapeKind::SideEffect));
+        assert!(kinds.contains(&ProbeShapeKind::MatchArm));
 
         let match_shapes = facts
             .probe_shapes
             .iter()
-            .filter(|shape| shape.kind == PROBE_SHAPE_MATCH_ARM)
+            .filter(|shape| shape.kind == ProbeShapeKind::MatchArm)
             .map(|shape| shape.text.as_str())
             .collect::<Vec<_>>();
         assert!(match_shapes.contains(&"match amount"));
@@ -1157,7 +1159,7 @@ fn feature_gated_test() {}
         assert_eq!(
             include_resolution_disclosure(&index).as_deref(),
             Some(
-                "ripr: 1 Rust include boundary limitation(s): src/lib.rs:7:rust_include_dynamic_expression; affected compilation-unit relations remain fail-closed."
+                "ripr: 1 Rust include boundary limitation(s): src/lib.rs:7:rust_include_dynamic_expression; affected compilation-unit relations remain fail-closed. This is an analysis-limit note about indexed context, not a finding: no action is needed unless evidence you expected from a listed file is missing."
             )
         );
     }

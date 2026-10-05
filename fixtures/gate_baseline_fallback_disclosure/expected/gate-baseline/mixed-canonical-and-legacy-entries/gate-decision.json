@@ -161,6 +161,17 @@
   "root": ".",
   "schema_version": "0.1",
   "status": "advisory",
+  "subject": {
+    "analyzer_version": "0.0.0+pinned-golden-analyzer-version",
+    "inputs": {
+      "baseline": {
+        "content_hash": "sha256:60f01ca172ea9069188d070f3df56c2a911ec87888d4f00574ac91cbd435df10"
+      },
+      "pr_guidance": {
+        "content_hash": "sha256:adfb3086effeeb74641df7f45f29a0bef87323ce77fb5d14831d8a49935f6bd9"
+      }
+    }
+  },
   "summary": {
     "acknowledged": 0,
     "advisory": 2,

@@ -127,14 +127,16 @@ large_workspace, wasm_target, async_no_std, and loom_model_tests.
 
 ## Known gaps
 
-`known_gaps` in the manifest is empty as of corpus_version `2026-10-04.5`.
-The three gaps the first version listed now have subjects: nextest
-(`nextest_only`), winreg (`windows_only`), and html5ever
-(`external_test_data`). The pinned fetch is shallow and does not initialise
-submodules, so html5ever's html5lib-tests and xml5lib-tests data is absent by
-design. winreg raises `compile_error!` off Windows, so on a Linux host its
-tests cannot be built or run; ripr still reads them statically. Python
-subjects stay in `fixtures/python-eval-sweep/manifest.json`.
+`known_gaps` in the manifest lists one shape the corpus does not yet
+represent: a crate whose tests live exclusively in a separate test crate of
+another repository. Two of the three gaps the first version listed now have
+subjects: nextest (`nextest_only`) and winreg (`windows_only`). html5ever
+(`external_test_data`) is a related but different shape. Its test code is
+local; only the html5lib-tests and xml5lib-tests data comes from git
+submodules, which the shallow pinned fetch does not initialise. winreg raises
+`compile_error!` off Windows, so on a Linux host its tests cannot be built or
+run; ripr still reads them statically. Python subjects stay in
+`fixtures/python-eval-sweep/manifest.json`.
 
 ## Changing the corpus
 

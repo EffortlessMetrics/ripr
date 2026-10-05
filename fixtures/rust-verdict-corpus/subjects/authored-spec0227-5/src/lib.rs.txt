@@ -1,0 +1,24 @@
+//! A too-long error observed only as some error.
+
+#[derive(Debug, PartialEq)]
+pub enum E {
+    TooLong,
+    Bad,
+}
+
+pub fn check_is_err(len: usize) -> Result<usize, E> {
+    if len >= 256 {
+        return Err(E::TooLong);
+    }
+    Ok(len)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::check_is_err;
+
+    #[test]
+    fn is_err_on_far_input() {
+        assert!(check_is_err(300).is_err());
+    }
+}

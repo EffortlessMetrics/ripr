@@ -1,0 +1,13 @@
+diff --git a/src/store.rs b/src/store.rs
+index 8fdca68..65324de 100644
+--- a/src/store.rs
++++ b/src/store.rs
+@@ -29,7 +29,7 @@ pub fn record(store: &mut Store, units: i64) {
+ }
+ 
+ pub fn persist(store: &mut Store, units: i64) {
+-    store.save(units * 3).ok();
++    store.save(3 * units).ok();
+ }
+ 
+ #[cfg(test)]

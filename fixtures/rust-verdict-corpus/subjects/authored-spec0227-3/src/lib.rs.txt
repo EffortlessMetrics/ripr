@@ -1,0 +1,22 @@
+//! A length guard tested only far past its edge.
+
+#[derive(Debug, PartialEq)]
+pub enum E {
+    TooLong,
+    Bad,
+}
+
+pub fn check_far(len: usize) -> Result<usize, E> {
+    if len >= 256 { return Err(E::TooLong); }
+    Ok(len)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::check_far;
+
+    #[test]
+    fn far_is_refused() {
+        assert!(check_far(300).is_err());
+    }
+}

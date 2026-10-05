@@ -8,15 +8,16 @@ use crate::agent::loop_commands::{
     agent_receipt_command, agent_review_summary_command, agent_review_summary_markdown_command,
     agent_status_command, agent_status_markdown_command, agent_verify_command,
     anchored_redirect_target, bound_root, check_analysis_outcome_command,
-    check_repo_exposure_command, display_path, shell_arg,
+    check_repo_exposure_command, display_path, root_path_display, shell_arg,
 };
 use crate::app::repair_attempt::{
-    AfterPhaseHeadAdmission, AttemptTerminalReceipt, DivergedHeadRecovery,
+    AfterPhaseHeadAdmission, AttemptTerminalReceipt, CanonicalAdmission, DivergedHeadRecovery,
     REPAIR_ATTEMPT_DIRECTORY, RepairAttemptId, RepairAttemptInventoryEntry, RepairAttemptManifest,
     RepairAttemptState, RepairAttemptStoreAccess, RepairAttemptStoreCurrentness,
-    RepairAttemptStoreLocationClass, diverged_head_recovery, inventory_repair_attempts_from,
-    load_attempt_terminal_receipt, load_repair_attempt_manifest_from, quoted_store_flag,
-    repair_attempt_head_reading, repair_attempt_state_label, resolve_store,
+    RepairAttemptStoreLocationClass, canonically_admit_terminal_pair, diverged_head_recovery,
+    inventory_repair_attempts_from, load_attempt_terminal_receipt,
+    load_repair_attempt_manifest_from, quoted_store_flag, repair_attempt_head_reading,
+    repair_attempt_state_label, resolve_store, validate_issued_receipt_evidence,
 };
 use crate::output::agent_receipt::AgentReceiptReading;
 use crate::output::markdown::{COMMAND_SHELL_DISCLOSURE, PowershellForm, powershell_form};
@@ -199,10 +200,11 @@ pub(crate) enum AgentStatusAttemptReceipt {
     /// receipt file is there (or the readable file belongs to other work).
     /// Used only when this attempt did not retain a local result.
     Unreadable,
-    /// This attempt declared terminal retention but the local result cannot
-    /// be projected (missing, digest mismatch, path escape, or binding
-    /// mismatch). Status must not fall back to another attempt's
-    /// compatibility receipt.
+    /// This attempt's result cannot be projected: a declared terminal
+    /// retention that is missing, digest-mismatched, escaped, or unbound, or
+    /// a bound legacy compatibility receipt whose verify document is missing
+    /// or fails verdict binding. Status must not fall back to another
+    /// attempt's compatibility receipt.
     Unavailable {
         path: Option<String>,
         reason: String,
@@ -295,9 +297,9 @@ pub(crate) fn build_agent_status_report_from(
     store: Option<&Path>,
 ) -> AgentStatusReport {
     let root_display = display_path(root_argument);
-    // #3999: every next command binds the selected root once, here; the
-    // report's `root` field keeps the invocation spelling.
-    let command_root = bound_root(&root_display);
+    // #3999/#6313: bind command identity from the native root before rendering;
+    // the report's `root` field keeps its existing display presentation.
+    let command_root = bound_root(&root_path_display(root_argument));
     keep_follow_up_templates_reachable(&command_root);
     let artifacts = ARTIFACTS
         .iter()
@@ -476,11 +478,15 @@ fn attempt_receipt(
         AttemptTerminalReceipt::Unavailable { path, reason } => {
             AgentStatusAttemptReceipt::Unavailable { path, reason }
         }
-        AttemptTerminalReceipt::NotRetained => legacy_workflow_attempt_receipt(after, receipt),
+        AttemptTerminalReceipt::NotRetained => {
+            legacy_workflow_attempt_receipt(root, manifest, after, receipt)
+        }
     }
 }
 
 fn legacy_workflow_attempt_receipt(
+    root: &Path,
+    manifest: &RepairAttemptManifest,
     after: &crate::app::repair_attempt::RepairAttemptAfter,
     receipt: &WorkflowReceiptRead,
 ) -> AgentStatusAttemptReceipt {
@@ -492,25 +498,66 @@ fn legacy_workflow_attempt_receipt(
     let bound = |pointer: &str, expected: &str| {
         receipt.pointer(pointer).and_then(Value::as_str) == Some(expected)
     };
-    if bound("/repair_attempt/attempt_id", after.attempt_id.as_str())
+    if !(bound("/repair_attempt/attempt_id", after.attempt_id.as_str())
         && bound("/repair_attempt/after_head", &after.repository_head)
         && bound("/repair_attempt/delta_sha256", &after.delta_sha256)
-        && bound("/repair_attempt/packet_sha256", &after.packet_sha256)
+        && bound("/repair_attempt/packet_sha256", &after.packet_sha256))
     {
-        AgentStatusAttemptReceipt::Issued {
-            path: WORKFLOW_AGENT_RECEIPT_ARTIFACT.to_string(),
-            reading: AgentReceiptReading::from_value(receipt),
+        if let Some(other) = receipt
+            .pointer("/repair_attempt/attempt_id")
+            .and_then(Value::as_str)
+            .filter(|other| *other != after.attempt_id.as_str())
+        {
+            return AgentStatusAttemptReceipt::Superseded {
+                by_attempt_id: other.to_string(),
+            };
         }
-    } else if let Some(other) = receipt
-        .pointer("/repair_attempt/attempt_id")
-        .and_then(Value::as_str)
-        .filter(|other| *other != after.attempt_id.as_str())
-    {
-        AgentStatusAttemptReceipt::Superseded {
-            by_attempt_id: other.to_string(),
+        return AgentStatusAttemptReceipt::NotIssued;
+    }
+    // The one-slot compatibility file carries no digest of its own, so a
+    // 4-field match alone must not issue a reading: the workflow verify
+    // document must exist and the receipt's verdict must bind to it through
+    // the shared evidence authority (#5256). Anything else is unavailable —
+    // status reports `unconfirmed` with the reason instead of `finished`.
+    let verify_bytes = match std::fs::read(root.join(WORKFLOW_AGENT_VERIFY_ARTIFACT)) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return AgentStatusAttemptReceipt::Unavailable {
+                path: Some(WORKFLOW_AGENT_RECEIPT_ARTIFACT.to_string()),
+                reason: format!(
+                    "the workflow receipt is bound to this attempt but its verify document at `{WORKFLOW_AGENT_VERIFY_ARTIFACT}` cannot be read, so the verdict is unconfirmed"
+                ),
+            };
         }
-    } else {
-        AgentStatusAttemptReceipt::NotIssued
+    };
+    if let Err(reason) = validate_issued_receipt_evidence(root, manifest, receipt, &verify_bytes) {
+        return AgentStatusAttemptReceipt::Unavailable {
+            path: Some(WORKFLOW_AGENT_RECEIPT_ARTIFACT.to_string()),
+            reason,
+        };
+    }
+    // Canonical admission for a never-promoted projection: the pair's
+    // basis is live by construction (it was just minted from these
+    // snapshots or hand-shaped against them), so the workflow verify
+    // document must be their canonical render. This defeats
+    // never-promoted and jointly rewritten projections at the
+    // compatibility fallback. A missing basis is unconfirmed too: the
+    // validator does not check after-path existence, so a pair naming a
+    // missing snapshot would otherwise read issued. Only an admitted
+    // pair issues here. Retained pairs are NOT re-admitted: their basis
+    // is historical and the live snapshots legitimately advance (#5256).
+    match canonically_admit_terminal_pair(root, &verify_bytes) {
+        CanonicalAdmission::Admitted => {}
+        CanonicalAdmission::Refused { reason } | CanonicalAdmission::Unavailable { reason } => {
+            return AgentStatusAttemptReceipt::Unavailable {
+                path: Some(WORKFLOW_AGENT_RECEIPT_ARTIFACT.to_string()),
+                reason,
+            };
+        }
+    }
+    AgentStatusAttemptReceipt::Issued {
+        path: WORKFLOW_AGENT_RECEIPT_ARTIFACT.to_string(),
+        reading: AgentReceiptReading::from_value(receipt),
     }
 }
 
@@ -1032,6 +1079,48 @@ fn pilot_python_repair_card_message(card: &PilotPythonCard, root_display: &str) 
     message
 }
 
+/// Rust files a complete `ripr pilot` run excluded because Rust is not in
+/// the effective `[languages] enabled` set (#5205). The packet carries no
+/// seams and no routed state, so without a dedicated check status would
+/// fall through to `select_seam` and loop pilot forever.
+struct PilotRustExclusion {
+    file_count: u64,
+}
+
+fn pilot_rust_excluded_from_scope(root: &Path) -> Option<PilotRustExclusion> {
+    let text = std::fs::read_to_string(root.join(PILOT_SUMMARY_ARTIFACT)).ok()?;
+    let summary = serde_json::from_str::<Value>(&text).ok()?;
+    let complete = summary.pointer("/status").and_then(Value::as_str) == Some("complete");
+    let no_seams = summary
+        .pointer("/top_actionable_seams")
+        .and_then(Value::as_array)
+        .is_some_and(Vec::is_empty);
+    let no_repair_start = summary
+        .pointer("/next/repair_command")
+        .is_some_and(Value::is_null);
+    let file_count = summary
+        .pointer("/language_routes/rust_excluded_from_scope/file_count")
+        .and_then(Value::as_u64)?;
+    if !(complete && no_seams && no_repair_start) {
+        return None;
+    }
+    Some(PilotRustExclusion { file_count })
+}
+
+fn pilot_rust_excluded_message(excluded: &PilotRustExclusion) -> String {
+    let files = if excluded.file_count == 1 {
+        "1 file".to_string()
+    } else {
+        format!("{} files", excluded.file_count)
+    };
+    // The shared guidance already names the config edit and the rerun, so
+    // no trailing pilot command: rerunning unchanged is exactly the loop.
+    format!(
+        "the last complete `ripr pilot` run ranked no Rust seam because Rust is not enabled in `ripr.toml [languages]` ({files} not analyzed), and running pilot again unchanged ranks nothing again: {}",
+        crate::output::pilot::RUST_EXCLUDED_GUIDANCE,
+    )
+}
+
 /// Python first-use statuses that record "pilot produced no repair card"
 /// (`output::pilot::types::PilotPythonFirstUseStatus`). `analysis_unavailable`
 /// is a failed analysis, not that fact, and `ready` has repair cards.
@@ -1212,6 +1301,17 @@ fn legacy_next_command(
                 artifact: PILOT_SUMMARY_ARTIFACT.to_string(),
                 message: pilot_routed_to_check_message(&routes, root_display),
             });
+            // #5205/#5248 review: a packet can route preview files to check
+            // AND exclude Rust (Rust disabled while preview files are
+            // present). The route warning alone would drop the exclusion's
+            // config remedy, so emit both and still stop.
+            if let Some(excluded) = pilot_rust_excluded_from_scope(root) {
+                warnings.push(AgentStatusWarning {
+                    kind: "pilot_rust_excluded_no_repair_target".to_string(),
+                    artifact: PILOT_SUMMARY_ARTIFACT.to_string(),
+                    message: pilot_rust_excluded_message(&excluded),
+                });
+            }
             return None;
         }
         if let Some(card) = pilot_python_repair_card_ready(root) {
@@ -1219,6 +1319,30 @@ fn legacy_next_command(
                 kind: "pilot_python_repair_card_no_agent_repair".to_string(),
                 artifact: PILOT_SUMMARY_ARTIFACT.to_string(),
                 message: pilot_python_repair_card_message(&card, root_display),
+            });
+            // #5205/#5248 review: a Python card and a Rust exclusion
+            // coexist (Python-only workspace with Rust files present).
+            // The card stays the preferred action; the exclusion's config
+            // remedy rides alongside, as in the routed branch above.
+            if let Some(excluded) = pilot_rust_excluded_from_scope(root) {
+                warnings.push(AgentStatusWarning {
+                    kind: "pilot_rust_excluded_no_repair_target".to_string(),
+                    artifact: PILOT_SUMMARY_ARTIFACT.to_string(),
+                    message: pilot_rust_excluded_message(&excluded),
+                });
+            }
+            return None;
+        }
+        // #5205 (Codex P1): a Rust-disabled packet carries no seams and no
+        // routed state, so without this it falls to `select_seam` and tells
+        // the user to rerun the same pilot indefinitely. Name the exclusion
+        // and its config-edit remedy instead. Last of the specific checks so
+        // only previously-looping packets divert here.
+        if let Some(excluded) = pilot_rust_excluded_from_scope(root) {
+            warnings.push(AgentStatusWarning {
+                kind: "pilot_rust_excluded_no_repair_target".to_string(),
+                artifact: PILOT_SUMMARY_ARTIFACT.to_string(),
+                message: pilot_rust_excluded_message(&excluded),
             });
             return None;
         }
@@ -1731,7 +1855,7 @@ pub(crate) fn selected_attempt_status_reading(
     manifest: &RepairAttemptManifest,
     current_head: Option<&str>,
 ) -> SelectedAttemptStatusReading {
-    let command_root = bound_root(&display_path(root_argument));
+    let command_root = bound_root(&root_path_display(root_argument));
     let workflow_receipt = read_workflow_receipt(root);
     let view = status_repair_attempt(
         root,
@@ -2461,7 +2585,7 @@ fn command_for_missing_artifact(
     seam: Option<&AgentStatusSeam>,
     artifact: &AgentStatusArtifact,
 ) -> String {
-    let root = bound_root(&display_path(root_argument));
+    let root = bound_root(&root_path_display(root_argument));
     let seam_id = seam
         .map(|seam| seam.seam_id.as_str())
         .unwrap_or("<seam-id>");
@@ -3157,11 +3281,16 @@ mod tests {
     }
 
     /// A finished attempt that never retained `terminal_artifacts` still reads
-    /// the one-slot compatibility file. An exact match is issued; a receipt
-    /// bound to another attempt stays superseded and is not reconstructed.
+    /// the one-slot compatibility file — but only with valid verify evidence.
+    /// An exact match backed by the workflow verify document is issued; a
+    /// receipt bound to another attempt stays superseded and is not
+    /// reconstructed; a bound receipt whose verdict disagrees with its verify
+    /// document is unavailable.
     #[test]
     fn agent_status_legacy_manifest_does_not_reconstruct_a_superseded_receipt() -> Result<(), String>
     {
+        use crate::app::repair_attempt::RepairAttemptAfter;
+        use crate::edit_cage::{EditCageVerdict, EditCageVerdictStatus};
         let manifest = ready_to_finish_manifest()?;
         let after = manifest
             .after
@@ -3195,19 +3324,86 @@ mod tests {
             "repair-attempt-aaaaaaaaaaaaaaaaaaaaaaaa"
         );
 
-        let matching = serde_json::json!({
-            "repair_attempt": {
-                "attempt_id": after.attempt_id.as_str(),
-                "after_head": after.repository_head,
-                "delta_sha256": after.delta_sha256,
-                "packet_sha256": after.packet_sha256
-            }
+        // The issued half needs a real finished attempt: a synthetic manifest
+        // carries no retained before snapshot to bind the verify document to.
+        // The manifest below is legacy-shaped (no `terminal_artifacts`) with
+        // a compliant after verdict attached in memory.
+        let root = unique_agent_status_test_dir("legacy-issued");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        run_git(&root, &["init"])?;
+        run_git(
+            &root,
+            &["config", "user.email", "ripr-test@example.invalid"],
+        )?;
+        run_git(&root, &["config", "user.name", "RIPR Test"])?;
+        write_file(&root.join("README.md"), "# test\n")?;
+        run_git(&root, &["add", "."])?;
+        run_git(&root, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+        prepare_attempt_fixture(&root, "seam:legacy")?;
+        let attempt_id = only_attempt_id(&root, None)?;
+        let stored = load_repair_attempt_manifest_from(&root, None, &attempt_id)?;
+        let mut legacy = stored.clone();
+        legacy.state = RepairAttemptState::ReadyToFinish;
+        legacy.after = Some(RepairAttemptAfter {
+            attempt_id: legacy.repair_attempt_id.clone(),
+            repository_head: stored.repository_head.clone(),
+            delta_sha256: "sha256:fixture-delta".to_string(),
+            packet_sha256: "sha256:fixture-packet".to_string(),
+            current: true,
+            verdict: EditCageVerdict {
+                status: EditCageVerdictStatus::Compliant,
+                changed_paths: vec!["tests/target.rs".to_string()],
+                violations: Vec::new(),
+            },
         });
-        match attempt_receipt(
-            Path::new("."),
-            &manifest,
-            &WorkflowReceiptRead::Parsed(matching),
-        ) {
+        // The issued half needs a genuinely canonical pair: mint the
+        // verify from real before/after snapshots so canonical admission
+        // admits it. A fabricated pair with no evaluable basis reads
+        // unavailable now (missing-basis pairs stay unconfirmed).
+        write_file(&root.join("tests/target.rs"), "// focused test\n")?;
+        run_git(&root, &["add", "."])?;
+        run_git(&root, &["commit", "--no-gpg-sign", "-m", "focused test"])?;
+        let after_path = root.join("target/ripr/workflow/after.json");
+        let after_snapshot = crate::testing::verify_fixture::mint_repo_exposure_snapshot(
+            &root,
+            serde_json::json!([crate::testing::verify_fixture::snapshot_seam(
+                "seam:legacy",
+                "predicate_boundary",
+                "src/lib.rs",
+                1,
+                "weakly_gripped",
+            )]),
+        )?;
+        write_file(&after_path, &after_snapshot)?;
+        let retained_before = root.join(
+            &crate::app::repair_attempt::find_manifest_artifact_by_role(&legacy, "before_snapshot")
+                .ok_or_else(|| "fixture manifest has no before_snapshot".to_string())?
+                .path,
+        );
+        let verify = crate::testing::verify_fixture::mint_canonical_verify(
+            &root,
+            &retained_before,
+            &after_path,
+        )?;
+        let verify_bytes = verify.into_bytes();
+        let digest = {
+            use sha2::Digest;
+            let sum = sha2::Sha256::digest(&verify_bytes);
+            let mut rendered = String::from("sha256:");
+            for byte in sum {
+                rendered.push_str(&format!("{byte:02x}"));
+            }
+            rendered
+        };
+        let receipt_bytes =
+            crate::testing::verify_fixture::mint_bound_receipt(&legacy, "unchanged", &digest)?;
+        write_file(
+            &root.join(WORKFLOW_AGENT_VERIFY_ARTIFACT),
+            std::str::from_utf8(&verify_bytes).map_err(|err| format!("verify not UTF-8: {err}"))?,
+        )?;
+        let matching: Value = serde_json::from_slice(&receipt_bytes)
+            .map_err(|err| format!("parse matching receipt: {err}"))?;
+        match attempt_receipt(&root, &legacy, &WorkflowReceiptRead::Parsed(matching)) {
             AgentStatusAttemptReceipt::Issued { path, .. } => {
                 assert_eq!(path, WORKFLOW_AGENT_RECEIPT_ARTIFACT);
             }
@@ -3217,6 +3413,20 @@ mod tests {
                 ));
             }
         }
+        // A bound receipt whose verdict disagrees with its verify document
+        // is unavailable, never issued.
+        let mut forged: Value = serde_json::from_slice(&receipt_bytes)
+            .map_err(|err| format!("parse forged receipt: {err}"))?;
+        forged["seam"]["change"] = Value::String("improved".to_string());
+        match attempt_receipt(&root, &legacy, &WorkflowReceiptRead::Parsed(forged)) {
+            AgentStatusAttemptReceipt::Unavailable { .. } => {}
+            other => {
+                return Err(format!(
+                    "a legacy receipt with a forged verdict must be unavailable, not {other:?}"
+                ));
+            }
+        }
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())
     }
 
@@ -3284,7 +3494,19 @@ mod tests {
         let before = workflow.join("before-status-honesty.json");
         let packet = workflow.join("packet-status-honesty.json");
         let baseline = workflow.join("baseline-status-honesty.json");
-        write_file(&before, "{}")?;
+        // Evidence-grade before snapshot: legacy receipt reads bind the
+        // verify document to its recomputed content commitment.
+        let before_snapshot = crate::testing::verify_fixture::mint_repo_exposure_snapshot(
+            root,
+            serde_json::json!([crate::testing::verify_fixture::snapshot_seam(
+                seam_id,
+                "predicate_boundary",
+                "src/lib.rs",
+                1,
+                "weakly_gripped",
+            )]),
+        )?;
+        write_file(&before, &before_snapshot)?;
         let packet_text = serde_json::json!({
             "seam_id": seam_id,
             "allowed_edit_surface": ["tests/target.rs"],
@@ -4003,6 +4225,131 @@ mod tests {
             report.next_command.as_ref().map(|next| next.step.as_str()),
             Some("select_seam")
         );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    /// #5205 (Codex P1): a complete pilot run that excluded Rust ranks no
+    /// seam and records no routed state, which used to fall through to
+    /// `select_seam` — rerunning the same pilot forever. Status now stops
+    /// and names the config-edit remedy.
+    #[test]
+    fn agent_status_stops_when_pilot_excluded_rust_from_scope() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("pilot-rust-excluded");
+        let summary = |status: &str, seams: &str, repair: &str, excluded: &str| {
+            format!(
+                r#"{{"status": "{status}", "top_actionable_seams": {seams}, "language_routes": {{"state": "not_detected", "routes": []{excluded}}}, "next": {{"repair_command": {repair}}}}}"#
+            )
+        };
+        // Positive: complete, no seams, no repair, exclusion present.
+        let text = summary(
+            "complete",
+            "[]",
+            "null",
+            r#", "rust_excluded_from_scope": {"language": "rust", "file_count": 3, "enabled": false, "guidance": "g"}"#,
+        );
+        write_file(&root.join(PILOT_SUMMARY_ARTIFACT), &text)?;
+        let report = build_agent_status_report(&root, Path::new("."));
+        assert!(
+            report.next_command.is_none(),
+            "exclusion must stop, not loop: {:?}",
+            report.next_command
+        );
+        let warning = report
+            .warnings
+            .iter()
+            .find(|warning| warning.kind == "pilot_rust_excluded_no_repair_target")
+            .ok_or_else(|| format!("expected an exclusion warning: {:?}", report.warnings))?;
+        assert_eq!(warning.artifact, PILOT_SUMMARY_ARTIFACT);
+        for expected in [
+            "ranked no Rust seam because Rust is not enabled",
+            "3 files not analyzed",
+            crate::output::pilot::RUST_EXCLUDED_GUIDANCE,
+        ] {
+            assert!(warning.message.contains(expected), "{}", warning.message);
+        }
+        assert!(!warning.message.contains("  "), "{}", warning.message);
+
+        // Controls: the exclusion member alone never stops an otherwise
+        // actionable packet; each control keeps routing as before.
+        let excluded = r#", "rust_excluded_from_scope": {"language": "rust", "file_count": 3, "enabled": false, "guidance": "g"}"#;
+        for control in [
+            // Missing member: the pre-#5205 shape still loops to select_seam.
+            summary("complete", "[]", "null", ""),
+            // Non-complete, ranked, or repairing packets divert elsewhere.
+            summary("timed_out", "[]", "null", excluded),
+            summary("complete", r#"[{"seam_id": "s"}]"#, "null", excluded),
+            summary("complete", "[]", r#""ripr check --root .""#, excluded),
+        ] {
+            write_file(&root.join(PILOT_SUMMARY_ARTIFACT), &control)?;
+            let report = build_agent_status_report(&root, Path::new("."));
+            assert!(
+                !report
+                    .warnings
+                    .iter()
+                    .any(|warning| warning.kind == "pilot_rust_excluded_no_repair_target"),
+                "control must not raise the exclusion warning: {control}"
+            );
+        }
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    /// #5205/#5248 review: a packet that routes preview files to check AND
+    /// excludes Rust keeps both warnings — the route hand-off and the
+    /// exclusion's config remedy — instead of dropping the remedy.
+    #[test]
+    fn agent_status_keeps_rust_exclusion_alongside_check_routes() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("pilot-routed-plus-excluded");
+        let text = r#"{"status": "complete", "top_actionable_seams": [], "language_routes": {"state": "required", "routes": [{"language": "python", "enabled": true, "command": "ripr check --root ."}], "rust_excluded_from_scope": {"language": "rust", "file_count": 2, "enabled": false, "guidance": "g"}}, "next": {"repair_command": null}}"#;
+        write_file(&root.join(PILOT_SUMMARY_ARTIFACT), text)?;
+        let report = build_agent_status_report(&root, Path::new("."));
+        assert!(
+            report.next_command.is_none(),
+            "routed plus excluded must stop: {:?}",
+            report.next_command
+        );
+        for kind in [
+            "pilot_routed_to_check_no_repair_target",
+            "pilot_rust_excluded_no_repair_target",
+        ] {
+            assert!(
+                report.warnings.iter().any(|warning| warning.kind == kind),
+                "expected {kind}: {:?}",
+                report.warnings
+            );
+        }
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    /// #5205/#5248 review: a Python repair card plus a Rust exclusion keeps
+    /// the card as the preferred action and the exclusion's config remedy
+    /// alongside it.
+    #[test]
+    fn agent_status_keeps_rust_exclusion_alongside_python_card() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("pilot-card-plus-excluded");
+        let text = r#"{"status": "complete", "top_actionable_seams": [], "python_first_use": {"status": "ready", "repair_cards_total": 1, "top_repair_card": {"missing_discriminator": "d", "verify_command": "v"}}, "language_routes": {"rust_excluded_from_scope": {"language": "rust", "file_count": 3, "enabled": false, "guidance": "g"}}, "next": {"repair_command": null}}"#;
+        write_file(&root.join(PILOT_SUMMARY_ARTIFACT), text)?;
+        let report = build_agent_status_report(&root, Path::new("."));
+        assert!(
+            report.next_command.is_none(),
+            "card plus excluded must stop: {:?}",
+            report.next_command
+        );
+        for kind in [
+            "pilot_python_repair_card_no_agent_repair",
+            "pilot_rust_excluded_no_repair_target",
+        ] {
+            assert!(
+                report.warnings.iter().any(|warning| warning.kind == kind),
+                "expected {kind}: {:?}",
+                report.warnings
+            );
+        }
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())

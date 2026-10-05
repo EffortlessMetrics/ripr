@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 37775de..e721904 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -20,7 +20,7 @@ pub fn http_class(status: u16) -> &'static str {
+ pub fn postage_zone(country: &str) -> u32 {
+     match country {
+         "UK" => 1,
+-        "FR" | "DE" => 2,
++        "DE" | "FR" => 2,
+         _ => 3,
+     }
+ }

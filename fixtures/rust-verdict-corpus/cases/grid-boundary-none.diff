@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 19d0213..c6dce83 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -17,7 +17,7 @@ pub fn passes(score: u32) -> bool {
+ }
+ 
+ pub fn overweight(grams: u32) -> bool {
+-    grams >= 2_000
++    2_000 <= grams
+ }
+ 
+ #[cfg(test)]

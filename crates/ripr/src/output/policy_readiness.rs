@@ -1,3 +1,4 @@
+use super::gate::GATE_STATUS_CONFIG_ERROR;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
@@ -251,16 +252,36 @@ pub(crate) fn build_policy_readiness_report(input: PolicyReadinessInput) -> Poli
     warnings.extend(suppression_health.warnings.clone());
     warnings.extend(preview_evidence_boundary.warnings.clone());
 
+    // A gate decision that failed evaluation is a config error for
+    // readiness, not a Loaded artifact (#5251 P1): its zeros are not
+    // evidence, so it must block every ready_for_* promotion.
+    let gate_failed = gate_facts.status.as_deref() == Some(GATE_STATUS_CONFIG_ERROR);
+    if gate_failed {
+        warnings.push(Notice {
+            kind: "gate_decision_config_error".to_string(),
+            message: format!(
+                "gate decision input {} reports status config_error; readiness is config_error until the gate evaluates cleanly",
+                gate.path.as_deref().unwrap_or("unknown")
+            ),
+            source_artifact: gate.path.clone(),
+        });
+    }
     let has_config_error = artifacts
         .iter()
         .any(|artifact| artifact.status == ArtifactStatus::Invalid)
-        || suppression_health.state == "config_error";
+        || suppression_health.state == "config_error"
+        || gate_failed;
     let preview_boundary_healthy = preview_evidence_boundary.missing_language_status == 0;
     let baseline_delta_healthy = baseline_facts.stale == 0
         && baseline_facts.invalid == 0
         && baseline_facts.missing_input == 0;
     let suppression_health_ready = suppression_health.state == "healthy";
-    let visible_only_ready = gate.status == ArtifactStatus::Loaded && preview_boundary_healthy;
+    // A failed gate blocks the ready booleans as well as the top-level
+    // status: every downstream ready derives from `visible_only_ready`, so
+    // gating it here keeps the summary consistent with `config_error`
+    // (#6095 review).
+    let visible_only_ready =
+        !gate_failed && gate.status == ArtifactStatus::Loaded && preview_boundary_healthy;
     let acknowledgeable_ready = visible_only_ready
         && waiver.status == ArtifactStatus::Loaded
         && suppression.status == ArtifactStatus::Loaded
@@ -502,28 +523,45 @@ fn parse_optional_json(
 
 fn blocking_axis(gate: &ArtifactParse, facts: &GateFacts) -> Axis {
     match gate.status {
-        ArtifactStatus::Loaded => Axis {
-            state: "healthy".to_string(),
-            evidence: vec![
-                format!(
-                    "gate_status={}",
-                    facts.status.as_deref().unwrap_or("unknown")
-                ),
-                format!(
-                    "current_gate_mode={}",
-                    facts.mode.as_deref().unwrap_or("unknown")
-                ),
-                format!("blocking_candidates={}", facts.blocking),
-                format!("acknowledged={}", facts.acknowledged),
-                format!("advisory={}", facts.advisory),
-                format!("suppressed={}", facts.suppressed),
-                format!("not_applicable={}", facts.not_applicable),
-            ],
-            warnings: Vec::new(),
-            next_action:
-                "Keep generated CI advisory unless RIPR_GATE_MODE is explicitly configured."
-                    .to_string(),
-        },
+        ArtifactStatus::Loaded => {
+            // A gate that failed evaluation is config_error for this axis
+            // too, not healthy: its zeros are not evidence (#6095 review).
+            if facts.status.as_deref() == Some(GATE_STATUS_CONFIG_ERROR) {
+                return Axis {
+                    state: "config_error".to_string(),
+                    evidence: vec![format!(
+                        "gate_status={}",
+                        facts.status.as_deref().unwrap_or("unknown")
+                    )],
+                    warnings: Vec::new(),
+                    next_action:
+                        "Repair the gate-decision evaluation before trusting blocking readiness."
+                            .to_string(),
+                };
+            }
+            Axis {
+                state: "healthy".to_string(),
+                evidence: vec![
+                    format!(
+                        "gate_status={}",
+                        facts.status.as_deref().unwrap_or("unknown")
+                    ),
+                    format!(
+                        "current_gate_mode={}",
+                        facts.mode.as_deref().unwrap_or("unknown")
+                    ),
+                    format!("blocking_candidates={}", facts.blocking),
+                    format!("acknowledged={}", facts.acknowledged),
+                    format!("advisory={}", facts.advisory),
+                    format!("suppressed={}", facts.suppressed),
+                    format!("not_applicable={}", facts.not_applicable),
+                ],
+                warnings: Vec::new(),
+                next_action:
+                    "Keep generated CI advisory unless RIPR_GATE_MODE is explicitly configured."
+                        .to_string(),
+            }
+        }
         ArtifactStatus::Invalid => Axis {
             state: "config_error".to_string(),
             evidence: Vec::new(),
@@ -1142,6 +1180,65 @@ mod tests {
         let rendered = render_policy_readiness_markdown(&report);
         assert!(rendered.contains("Recommended mode: baseline-check"));
         assert!(rendered.contains("gate_eligible: 0"));
+        Ok(())
+    }
+
+    #[test]
+    fn failed_gate_decision_blocks_every_readiness_promotion() -> Result<(), String> {
+        let mut input = input();
+        supply_gate(
+            &mut input,
+            r#"{
+              "schema_version": "0.1",
+              "kind": "gate_decision",
+              "status": "config_error",
+              "config_errors": ["gate evaluate requires --pr-guidance <path> or --gap-ledger <path>"],
+              "summary": {"blocking": 0, "acknowledged": 0, "advisory": 0, "suppressed": 0, "not_applicable": 0},
+              "decisions": []
+            }"#,
+        );
+        supply_baseline(&mut input, clean_baseline_body());
+
+        let report = build_policy_readiness_report(input);
+        assert_eq!(report.status, "config_error");
+        // The summary booleans must agree with the top-level status: a
+        // failed gate blocks every ready flag, not just the status string
+        // (#6095 review).
+        assert!(!report.summary.visible_only_ready);
+        assert!(!report.summary.acknowledgeable_ready);
+        assert!(!report.summary.baseline_check_ready);
+        assert!(!report.summary.calibrated_gate_ready);
+        assert!(!report.summary.blocking_ready);
+        // The blocking axis must agree too: a failed gate is config_error
+        // there, not healthy (#6095 review).
+        assert_eq!(report.blocking_readiness.state, "config_error");
+        assert!(
+            report
+                .blocking_readiness
+                .evidence
+                .contains(&"gate_status=config_error".to_string())
+        );
+        assert!(
+            report
+                .blocking_readiness
+                .next_action
+                .contains("Repair the gate-decision evaluation")
+        );
+        let rendered = render_policy_readiness_json(&report)?;
+        assert!(
+            rendered.contains("\"status\": \"config_error\""),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("reports status config_error"),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("ready_for_"), "{rendered}");
+        assert!(
+            rendered.contains("\"visible_only_ready\": false"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("\"blocking_ready\": false"), "{rendered}");
         Ok(())
     }
 

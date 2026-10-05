@@ -1,0 +1,62 @@
+//! Closures in iterator adaptors, one function per test style.
+
+pub fn count_positive(xs: &[i32]) -> usize {
+    xs.iter().filter(|x| **x > 0).count()
+}
+
+pub fn doubled(xs: &[u32]) -> Vec<u32> {
+    xs.iter().map(|x| x * 2).collect()
+}
+
+pub fn count_adults(ages: &[u32]) -> usize {
+    ages.iter().filter(|a| **a >= 18).count()
+}
+
+pub fn any_overdue(days: &[i64]) -> bool {
+    days.iter().any(|d| *d > 30)
+}
+
+pub fn total_cents(prices: &[u64]) -> u64 {
+    prices.iter().map(|p| p * 100).sum()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn counts_two_positive() {
+        assert_eq!(count_positive(&[-1, 0, 3, 7]), 2);
+    }
+
+    #[test]
+    fn doubled_table() {
+        let cases: [(&[u32], Vec<u32>); 3] = [(&[], vec![]), (&[1], vec![2]), (&[3, 5], vec![6, 10])];
+        for (xs, want) in cases {
+            assert_eq!(doubled(xs), want, "{xs:?}");
+        }
+    }
+
+    #[test]
+    fn all_adult_groups_count_fully() {
+        for n in 1..10 {
+            let ages = vec![40; n];
+            assert_eq!(count_adults(&ages), n);
+        }
+    }
+
+    fn check_overdue(days: &[i64], want: bool) {
+        assert_eq!(any_overdue(days), want, "{days:?}");
+    }
+
+    #[test]
+    fn overdue_after_thirty_days() {
+        check_overdue(&[31], true);
+        check_overdue(&[30, 2], false);
+    }
+
+    #[test]
+    fn total_cents_smoke() {
+        let _ = total_cents(&[1, 2]);
+    }
+}

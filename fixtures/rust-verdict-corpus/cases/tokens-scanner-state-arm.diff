@@ -1,0 +1,13 @@
+diff --git a/src/scan.rs b/src/scan.rs
+index 0421b61..ed56e08 100644
+--- a/src/scan.rs
++++ b/src/scan.rs
+@@ -12,7 +12,7 @@ pub fn final_state(input: &str) -> State {
+     for sym in input.chars() {
+         state = match (state, sym) {
+             (_, ' ') => State::Space,
+-            (State::Space, _) => State::Word,
++            (State::Space, _) => { State::Word }
+             (_, _) => State::Word,
+         };
+     }

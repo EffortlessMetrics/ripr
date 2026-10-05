@@ -51,7 +51,7 @@ pub enum CommandError {
 }
 
 impl CommandError {
-    /// The human-readable error message, reported on stderr unchanged.
+    /// The raw error message; `Display` is the terminal-safe rendering.
     pub fn message(&self) -> &str {
         match self {
             Self::Failure(message) | Self::Decision(message) => message,
@@ -73,9 +73,14 @@ impl From<String> for CommandError {
     }
 }
 
+/// Display is what reaches stderr, and messages quote repository text (config
+/// values, paths, refs), so control and bidi characters print as `\u{XX}`.
+/// [`CommandError::message`] stays the raw value for programmatic callers.
 impl std::fmt::Display for CommandError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(self.message())
+        formatter.write_str(&crate::output::human::terminal_safe(
+            self.message().to_string(),
+        ))
     }
 }
 
@@ -336,7 +341,13 @@ fn persist_before_repair_attempt(
         "ripr: repair attempt {} is awaiting the focused test edit",
         result.manifest.repair_attempt_id.as_str()
     );
-    eprintln!("ripr: attempt manifest: {}", result.manifest_path.display());
+    eprintln!(
+        "{}",
+        crate::output::human::terminal_safe(format!(
+            "ripr: attempt manifest: {}",
+            result.manifest_path.display()
+        ))
+    );
     eprintln!(
         "ripr: attempt next command: {}",
         result.manifest.next_command
@@ -370,6 +381,13 @@ fn persist_before_repair_attempt(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn command_error_display_escapes_control_text_but_message_stays_raw() {
+        let err = CommandError::Failure("bad value \u{1b}[2J\u{202e}x".to_string());
+        assert_eq!(err.to_string(), "bad value \\u{1b}[2J\\u{202e}x");
+        assert_eq!(err.message(), "bad value \u{1b}[2J\u{202e}x");
+    }
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()

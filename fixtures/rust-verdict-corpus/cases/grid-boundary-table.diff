@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 19d0213..f0eccbf 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -5,7 +5,7 @@ pub fn is_adult(age: u32) -> bool {
+ }
+ 
+ pub fn free_shipping(cents: u64) -> bool {
+-    cents >= 5_000
++    5_000 <= cents
+ }
+ 
+ pub fn can_retire(age: u32) -> bool {

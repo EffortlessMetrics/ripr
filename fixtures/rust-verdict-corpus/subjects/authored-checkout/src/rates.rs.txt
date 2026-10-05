@@ -1,0 +1,54 @@
+//! Rates: two types with the same method name, a literal match helper and
+//! a sink nobody reads.
+
+pub struct Standard;
+pub struct Premium;
+
+impl Standard {
+    pub fn rate(&self) -> u32 {
+        3
+    }
+}
+
+impl Premium {
+    pub fn rate(&self) -> u32 {
+        1
+    }
+}
+
+fn region_code(region: &str) -> &'static str {
+    match region {
+        "north" => "N",
+        "south" => "S",
+        _ => "?",
+    }
+}
+
+pub fn label(region: &str) -> String {
+    format!("zone-{}", region_code(region))
+}
+
+pub fn announce(rate: u32) -> u32 {
+    println!("rate is now {}", rate * 2);
+    rate
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn premium_rate_is_one() {
+        assert_eq!(Premium.rate(), 1);
+    }
+
+    #[test]
+    fn north_is_labeled() {
+        assert_eq!(label("north"), "zone-N");
+    }
+
+    #[test]
+    fn announce_returns_the_rate() {
+        assert_eq!(announce(4), 4);
+    }
+}

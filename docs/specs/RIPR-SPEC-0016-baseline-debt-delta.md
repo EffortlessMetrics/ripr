@@ -352,6 +352,39 @@ The Markdown must distinguish:
 - acknowledged current decisions from hidden success;
 - missing or invalid inputs from passing policy.
 
+## Run-State Disclosure
+
+A delta built from a limited or failed current run must never present as
+complete (#6257). The current side's run-state disclosure propagates
+verbatim into the delta at the shared vocabulary positions the RIPR Zero
+partial-denominator guard reads:
+
+- `analysis_outcome`, `analysis_scope`, and `run_limitations` are copied
+  from the current side when present, and omitted otherwise. Complete runs
+  carry none of these positions, so their deltas render byte-identical to
+  before the disclosure existed.
+- `current_gate_status` carries the current gate decision's `status`
+  verbatim. Gate decisions carry no limitation envelope of their own: a
+  limited input is refused as `config_error` with empty decisions, so the
+  propagated status is the production-live disclosure that the delta's
+  counts come from an evaluation that did not complete.
+
+The JSON report echoes every propagated position. The Markdown sibling
+renders the run-state lines when an envelope is present, and names the gate
+status only on failure (`config_error`); successful evaluations stay
+undisclosed. Zero status withholds `achieved` over a delta disclosing a
+limited run or a `config_error` current, and rejects a delta whose
+disclosure envelope is present but malformed, including corrupt
+predicate-consumed members such as a non-boolean `analysis_complete`.
+A current side whose `status` is present but not a non-blank string is
+rejected as an unreadable current input: a discarded status would hide a
+failed evaluation behind empty decisions. A non-blank status outside the
+schema-closed set (`pass`, `advisory`, `acknowledged`, `blocked`,
+`config_error`) is likewise rejected, since only `config_error` withholds
+`achieved` downstream. Disclosure members must name usable (non-blank)
+discriminators: blank `run_status`/`category` strings and entries without
+one never read as a complete denominator.
+
 ## Command Sequence
 
 Campaign 17 introduces these command surfaces in order:
@@ -448,7 +481,16 @@ The implementation adds tests for:
 - malformed or non-object legacy review metadata being treated as absent rather
   than rejecting the baseline entry;
 - fixture cases for still-present, resolved, new policy-eligible,
-  acknowledged, suppressed, stale, invalid, and missing-current-input buckets.
+  acknowledged, suppressed, stale, invalid, and missing-current-input buckets;
+- current-side run-state disclosure (`analysis_outcome`, `analysis_scope`,
+  `run_limitations`) forwarded verbatim into JSON and Markdown, omitted for
+  complete runs;
+- current gate status propagation, with zero-status withhold over
+  `config_error` deltas, and rejection of present-but-malformed or
+  out-of-schema `status` at parse;
+- zero-status rejection of present-but-malformed disclosure envelopes,
+  including corrupt predicate-consumed members and blank or missing
+  discriminators.
 
 ## Implementation Mapping
 

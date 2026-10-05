@@ -22,10 +22,12 @@ use super::repair_route::{
 };
 use super::seams::{RepoSeam, RequiredDiscriminator, SeamKind};
 use super::syntax::fn_signature::{
-    OwnerContainer, OwnerParam, OwnerReceiver, OwnerSignature, owner_signature_at,
-    single_comparison,
+    OwnerContainer, OwnerParam, OwnerReceiver, OwnerSignature, field_init_is_returned,
+    identifier_offsets, owner_signature_at, single_comparison,
 };
-use super::syntax::{GovernedCfgTestModule, governed_cfg_test_modules};
+use super::syntax::{GovernedCfgTestModule, governed_cfg_test_modules, parse_clean_source_file};
+use ra_ap_syntax::AstNode;
+use ra_ap_syntax::ast::{self, HasName};
 use std::path::{Path, PathBuf};
 
 /// Where the stub text goes.
@@ -91,12 +93,13 @@ pub(crate) enum TestStubRefusal {
     CrossLanguage,
     NotRustSource,
     ObserverRequired,
-    FieldTypeUnresolved,
+    FieldNotReturned,
     SourceUnparsed,
     OwnerUnsupported,
     OwnerAsync,
     OwnerUnsafe,
     OwnerGeneric,
+    OwnerGenericImpl,
     ParameterUnsupported,
     NoReturnValue,
     OpaqueReturn,
@@ -113,12 +116,13 @@ impl TestStubRefusal {
             Self::CrossLanguage => "cross_language_target",
             Self::NotRustSource => "not_rust_source",
             Self::ObserverRequired => "observer_required",
-            Self::FieldTypeUnresolved => "field_type_unresolved",
+            Self::FieldNotReturned => "field_not_returned",
             Self::SourceUnparsed => "source_unparsed",
             Self::OwnerUnsupported => "owner_unsupported",
             Self::OwnerAsync => "owner_async",
             Self::OwnerUnsafe => "owner_unsafe",
             Self::OwnerGeneric => "owner_generic",
+            Self::OwnerGenericImpl => "owner_generic_impl",
             Self::ParameterUnsupported => "parameter_unsupported",
             Self::NoReturnValue => "no_return_value",
             Self::OpaqueReturn => "opaque_return",
@@ -137,16 +141,19 @@ impl TestStubRefusal {
             Self::ObserverRequired => {
                 "the change shows up as a side effect or call, which needs an observer or mock ripr cannot write"
             }
-            Self::FieldTypeUnresolved => {
-                "the changed field's type is not in the owner signature, so an expected value cannot be typed"
+            Self::FieldNotReturned => {
+                "the changed field is set on a struct literal the owner does not return directly (as its tail or `return` value), so the stub cannot tell which value to assert on"
             }
             Self::SourceUnparsed => "the owner file did not parse cleanly",
             Self::OwnerUnsupported => {
-                "the owner is a trait default method, nested function, generic impl member, or takes a typed `self` receiver"
+                "the owner is a trait default method or nested function, sits in an impl local to a block or whose self type is not a plain path, sits behind a cfg a plain `cargo test` build may not enable, or takes a typed `self` receiver"
             }
             Self::OwnerAsync => "the owner is async and needs a runtime the stub cannot pick",
             Self::OwnerUnsafe => "the owner is unsafe; its preconditions need a person",
             Self::OwnerGeneric => "the owner has type parameters the stub cannot choose",
+            Self::OwnerGenericImpl => {
+                "the owner's impl has type or const generics (its own parameters or its self type's arguments) the stub cannot choose; lifetime-only generics are supported"
+            }
             Self::ParameterUnsupported => {
                 "a parameter or the return type uses `impl Trait`, an unnamed pattern, or a module-relative path the test cannot reach"
             }
@@ -155,12 +162,14 @@ impl TestStubRefusal {
             Self::OutOfLineTestModule => {
                 "the owner's tests live in an out-of-line `mod tests;` file"
             }
-            Self::AmbiguousTestModule => "the owner file has more than one inline test module",
+            Self::AmbiguousTestModule => {
+                "the owner file has no inline test module gated by plain `cfg(test)` to insert into"
+            }
             Self::OwnerInNestedModule => {
                 "the owner is in a nested module with no inline test module of its own"
             }
             Self::OwnerTraitMethod => {
-                "the owner implements a trait method; calling it needs the trait in scope, which the stub does not resolve"
+                "the owner implements a trait method, and the trait in the impl header is not a plain path the test can name in `<Type as Trait>::method`"
             }
         }
     }
@@ -203,8 +212,8 @@ pub(crate) fn rust_test_stub(
         SeamKind::SideEffect | SeamKind::CallPresence => {
             return Err(TestStubRefusal::ObserverRequired);
         }
-        SeamKind::FieldConstruction => return Err(TestStubRefusal::FieldTypeUnresolved),
-        SeamKind::PredicateBoundary
+        SeamKind::FieldConstruction
+        | SeamKind::PredicateBoundary
         | SeamKind::ReturnValue
         | SeamKind::MatchArm
         | SeamKind::ErrorVariant => {}
@@ -212,6 +221,13 @@ pub(crate) fn rust_test_stub(
     let signature =
         owner_signature_at(source, seam.byte_offset()).ok_or(TestStubRefusal::SourceUnparsed)?;
     check_signature(&signature)?;
+    // A changed field is visible to the stub's assertion only when the
+    // struct literal holding it is the value the owner returns.
+    if seam.kind() == SeamKind::FieldConstruction
+        && field_init_is_returned(source, seam.byte_offset()) != Some(true)
+    {
+        return Err(TestStubRefusal::FieldNotReturned);
+    }
 
     let integration_crate = integration
         .and_then(|proposal| proposal.owner.split("::").next())
@@ -224,7 +240,7 @@ pub(crate) fn rust_test_stub(
             String::new(),
             None,
         ),
-        _ => inline_placement(seam.file(), source, &signature)?,
+        _ => inline_placement(seam.file(), source, &signature, seam.byte_offset())?,
     };
     let scope_import = match &placement {
         TestStubPlacement::NewIntegrationFile { .. } => {
@@ -266,12 +282,21 @@ pub(crate) fn rust_test_stub(
 }
 
 fn check_signature(signature: &OwnerSignature) -> Result<(), TestStubRefusal> {
+    if matches!(signature.container, OwnerContainer::GenericImpl(_)) {
+        return Err(TestStubRefusal::OwnerGenericImpl);
+    }
     if matches!(signature.container, OwnerContainer::Unsupported(_))
         || signature.receiver == Some(OwnerReceiver::Typed)
     {
         return Err(TestStubRefusal::OwnerUnsupported);
     }
-    if matches!(signature.container, OwnerContainer::TraitImpl { .. }) {
+    if matches!(
+        signature.container,
+        OwnerContainer::TraitImpl {
+            trait_path: None,
+            ..
+        }
+    ) {
         return Err(TestStubRefusal::OwnerTraitMethod);
     }
     if signature.is_async {
@@ -293,13 +318,15 @@ fn check_signature(signature: &OwnerSignature) -> Result<(), TestStubRefusal> {
     Ok(())
 }
 
-/// Inline placement in the owner file: the unique governed inline test
-/// module that is a child of the owner's module, or a new module at the end
-/// of a top-level owner file that has no test module at all.
+/// Inline placement in the owner file: a governed inline test module that
+/// is a child of the owner's module (see [`pick_test_module`] when there are
+/// several), or a new module at the end of a top-level owner file that has
+/// no test module at all.
 fn inline_placement<'a>(
     file: &Path,
     source: &'a str,
     signature: &OwnerSignature,
+    owner_offset: usize,
 ) -> Result<(TestStubPlacement, String, Option<&'a str>), TestStubRefusal> {
     let modules = governed_cfg_test_modules(source).ok_or(TestStubRefusal::SourceUnparsed)?;
     let siblings = modules
@@ -314,8 +341,26 @@ fn inline_placement<'a>(
     if siblings.iter().any(|module| !module.is_inline) {
         return Err(TestStubRefusal::OutOfLineTestModule);
     }
-    match inline.as_slice() {
-        [module] => {
+    // A module gated by more than `cfg(test)` (a feature, a target) may not
+    // be built by `cargo test`, so a stub there could never compile or run.
+    if !inline.is_empty() && !inline.iter().any(|module| module.enabled_in_test_build) {
+        return Err(TestStubRefusal::AmbiguousTestModule);
+    }
+    let plain = inline
+        .iter()
+        .copied()
+        .filter(|module| module.enabled_in_test_build)
+        .collect::<Vec<_>>();
+    let chosen = match plain.as_slice() {
+        [] => None,
+        [module] => Some(*module),
+        several => Some(
+            pick_test_module(several, source, &signature.name, owner_offset)
+                .ok_or(TestStubRefusal::AmbiguousTestModule)?,
+        ),
+    };
+    match chosen {
+        Some(module) => {
             let offset = module
                 .close_brace_start
                 .ok_or(TestStubRefusal::AmbiguousTestModule)?;
@@ -333,7 +378,7 @@ fn inline_placement<'a>(
                 module_body,
             ))
         }
-        [] if signature.parent_modules.is_empty() => Ok((
+        None if signature.parent_modules.is_empty() => Ok((
             TestStubPlacement::NewInlineModule {
                 file: file.to_path_buf(),
                 offset: source.len(),
@@ -341,9 +386,60 @@ fn inline_placement<'a>(
             "    ".to_string(),
             Some(""),
         )),
-        [] => Err(TestStubRefusal::OwnerInNestedModule),
-        _ => Err(TestStubRefusal::AmbiguousTestModule),
+        None => Err(TestStubRefusal::OwnerInNestedModule),
     }
+}
+
+/// One of several inline test modules beside the owner, chosen without
+/// guessing at intent: the modules whose body already names the owner
+/// (as an identifier token, so comments and strings do not count) when any
+/// does, otherwise all of them; then, among
+/// those, the nearest one after the owner, else the nearest one before it.
+/// `None` only when no candidate has a body to insert into.
+fn pick_test_module<'m>(
+    modules: &[&'m GovernedCfgTestModule],
+    source: &str,
+    owner_name: &str,
+    owner_offset: usize,
+) -> Option<&'m GovernedCfgTestModule> {
+    let insertable = modules
+        .iter()
+        .copied()
+        .filter(|module| module.close_brace_start.is_some())
+        .collect::<Vec<_>>();
+    let owner_mentions = identifier_offsets(source, owner_name);
+    let names_owner = |module: &&GovernedCfgTestModule| {
+        module
+            .body_start
+            .zip(module.close_brace_start)
+            .is_some_and(|(start, end)| {
+                owner_mentions
+                    .iter()
+                    .any(|offset| (start..end).contains(offset))
+            })
+    };
+    let referencing = insertable
+        .iter()
+        .copied()
+        .filter(names_owner)
+        .collect::<Vec<_>>();
+    let candidates = if referencing.is_empty() {
+        insertable
+    } else {
+        referencing
+    };
+    let after = candidates
+        .iter()
+        .copied()
+        .filter(|module| module.item_start > owner_offset)
+        .min_by_key(|module| module.item_start);
+    after.or_else(|| {
+        candidates
+            .iter()
+            .copied()
+            .filter(|module| module.item_start <= owner_offset)
+            .max_by_key(|module| module.item_start)
+    })
 }
 
 struct StubBody {
@@ -372,20 +468,46 @@ fn stub_body(
     // `Self` is substituted with the impl type as the owner spells it, and
     // each completed type is respelled for the test once; respelling the
     // impl type first would rebase it twice (`self::S` -> `super::super::S`).
-    let owner_self = match &signature.container {
-        OwnerContainer::Inherent { self_type } | OwnerContainer::TraitImpl { self_type } => {
-            Some(self_type.as_str())
+    // Lifetime arguments on the impl type become `'_` (`Parser<'a>` ->
+    // `Parser<'_>`), which a `let` annotation accepts and the call infers.
+    let (owner_self, owner_trait) = match &signature.container {
+        OwnerContainer::Inherent { self_type } => {
+            (Some(concrete_type(self_type, None, None)), None)
         }
-        OwnerContainer::Free | OwnerContainer::Unsupported(_) => None,
+        OwnerContainer::TraitImpl {
+            self_type,
+            trait_path,
+        } => {
+            let self_type = concrete_type(self_type, None, None);
+            let trait_path = trait_path
+                .as_deref()
+                .map(|path| concrete_type(path, Some(&self_type), None));
+            (Some(self_type), trait_path)
+        }
+        OwnerContainer::Free | OwnerContainer::GenericImpl(_) | OwnerContainer::Unsupported(_) => {
+            (None, None)
+        }
     };
+    let owner_self = owner_self.as_deref();
+    let owner_trait = owner_trait.as_deref();
     let self_type = owner_self
         .map(|ty| rebase_paths(ty, path_scope).ok_or(TestStubRefusal::ParameterUnsupported))
         .transpose()?;
     let self_type = self_type.as_deref();
+    // A trait method is called through its trait, `<Type as Trait>::name`,
+    // spelled as the impl header writes the trait; `use super::*` brings the
+    // parent's imports, so a trait named by a `use` resolves the same way.
+    let qualified_self = match (owner_self, owner_trait) {
+        (Some(ty), Some(trait_path)) => Some(
+            rebase_paths(&format!("<{ty} as {trait_path}>"), path_scope)
+                .ok_or(TestStubRefusal::ParameterUnsupported)?,
+        ),
+        _ => None,
+    };
     let return_type = signature
         .return_type
         .as_deref()
-        .map(|ty| concrete_type(ty, owner_self))
+        .map(|ty| concrete_type(ty, owner_self, owner_trait))
         .ok_or(TestStubRefusal::NoReturnValue)?;
     if return_type.contains("impl ") {
         return Err(TestStubRefusal::OpaqueReturn);
@@ -408,12 +530,13 @@ fn stub_body(
     let mut derived_inputs = Vec::new();
     let mut boundary = boundary_inputs(seam, signature);
     if matches!(path_scope, PathScope::Integration(_)) {
-        // A `tests/` file sees only the crate's public items; a named
-        // constant may be private, so it stays a fill-in there.
+        // A `tests/` file sees crate-root `pub const` items through
+        // `use crate_name::*;`. Private, `pub(crate)`, nested-module, and
+        // cfg-gated constants stay fill-ins; numeric literals always remain.
         boundary.retain(|(_, value)| {
-            value
-                .trim_start_matches('-')
-                .starts_with(|c: char| c.is_ascii_digit())
+            let ident = value.trim_start_matches('-');
+            ident.starts_with(|c: char| c.is_ascii_digit())
+                || crate_public_const_declared(source, ident)
         });
     }
 
@@ -444,8 +567,11 @@ fn stub_body(
             .name
             .clone()
             .unwrap_or_else(|| format!("arg{}", index + 1));
-        let ty = rebase_paths(&concrete_type(&param.ty, owner_self), path_scope)
-            .ok_or(TestStubRefusal::ParameterUnsupported)?;
+        let ty = rebase_paths(
+            &concrete_type(&param.ty, owner_self, owner_trait),
+            path_scope,
+        )
+        .ok_or(TestStubRefusal::ParameterUnsupported)?;
         let (binding_ty, argument, mutable) = match strip_mut_reference(&ty) {
             Some(inner) => (inner.trim().to_string(), format!("&mut {binding}"), true),
             None => (ty.clone(), binding.clone(), false),
@@ -468,12 +594,31 @@ fn stub_body(
         arguments.push(argument);
     }
 
-    let call = match (receiver, self_type) {
-        (Some(subject), _) => format!("{subject}.{}({})", signature.name, arguments.join(", ")),
-        (None, Some(self_type)) => {
-            format!("{self_type}::{}({})", signature.name, arguments.join(", "))
+    let call = match (&qualified_self, receiver, self_type) {
+        (Some(qualified), receiver, _) => {
+            let mut all = Vec::new();
+            if let Some(subject) = receiver {
+                all.push(match signature.receiver {
+                    Some(OwnerReceiver::Ref) => format!("&{subject}"),
+                    Some(OwnerReceiver::RefMut) => format!("&mut {subject}"),
+                    _ => subject.to_string(),
+                });
+            }
+            all.extend(arguments.iter().cloned());
+            format!("{qualified}::{}({})", signature.name, all.join(", "))
         }
-        (None, None) => format!("{}({})", signature.name, arguments.join(", ")),
+        (None, Some(subject), _) => {
+            format!("{subject}.{}({})", signature.name, arguments.join(", "))
+        }
+        // An expression path cannot carry `<'_>` without a turbofish; the
+        // impl's lifetimes are inferred, so the bare type path calls it.
+        (None, None, Some(self_type)) => format!(
+            "{}::{}({})",
+            strip_generic_arguments(self_type),
+            signature.name,
+            arguments.join(", ")
+        ),
+        (None, None, None) => format!("{}({})", signature.name, arguments.join(", ")),
     };
     lines.push(format!("let actual = {call};"));
 
@@ -481,7 +626,7 @@ fn stub_body(
         RequiredDiscriminator::ErrorVariant { variant }
             if seam.kind() == SeamKind::ErrorVariant =>
         {
-            variant_pattern(variant, owner_self, path_scope)
+            variant_pattern(variant, owner_self.map(strip_generic_arguments), path_scope)
                 .filter(|_| is_result_type(&return_type))
         }
         _ => None,
@@ -598,6 +743,58 @@ fn boundary_inputs(seam: &RepoSeam, signature: &OwnerSignature) -> Vec<(String, 
             .unwrap_or_default(),
         _ => Vec::new(),
     }
+}
+
+/// True when `name` is a crate-root `pub const` in `source`. Nested-module,
+/// `pub(crate)`, private, and cfg-gated constants are not established as
+/// visible from a `tests/` file: integration tests compile the library
+/// without `cfg(test)`, and feature/target activation is not known
+/// statically. Parse-backed: braces inside strings and comments cannot
+/// promote a nested item. An unparseable file fails closed (fill-in).
+fn crate_public_const_declared(source: &str, name: &str) -> bool {
+    if name.is_empty()
+        || !name.starts_with(|c: char| c.is_ascii_uppercase())
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+    {
+        return false;
+    }
+    let Some(parse) = parse_clean_source_file(source) else {
+        return false;
+    };
+    parse
+        .tree()
+        .syntax()
+        .children()
+        .filter_map(ast::Const::cast)
+        .any(|constant| {
+            crate_root_pub_visibility(constant.syntax())
+                && !const_has_cfg_gate(&constant)
+                && constant.name().is_some_and(|bound| bound.text() == name)
+        })
+}
+
+fn const_has_cfg_gate(constant: &ast::Const) -> bool {
+    ast::HasAttrs::attrs(constant).any(|attr| {
+        let text = attr
+            .syntax()
+            .text()
+            .to_string()
+            .split_whitespace()
+            .collect::<String>();
+        let body = text
+            .strip_prefix("#![")
+            .or_else(|| text.strip_prefix("#["))
+            .unwrap_or(&text);
+        body.starts_with("cfg(") || body.starts_with("cfg_attr(")
+    })
+}
+
+fn crate_root_pub_visibility(node: &ra_ap_syntax::SyntaxNode) -> bool {
+    node.children()
+        .find_map(ast::Visibility::cast)
+        .is_some_and(|vis| vis.syntax().text() == "pub")
 }
 
 fn boundary_value(operand: &str, ty: &str) -> Option<String> {
@@ -800,8 +997,10 @@ fn is_integer_type(ty: &str) -> bool {
 }
 
 /// Replace `Self` with the impl type and named lifetimes with `'_`, so the
-/// type can annotate a `let` inside a test.
-fn concrete_type(ty: &str, self_type: Option<&str>) -> String {
+/// type can annotate a `let` inside a test. In a trait impl an associated
+/// type `Self::Name` becomes `<Type as Trait>::Name`, since `Type::Name`
+/// is ambiguous outside the impl.
+fn concrete_type(ty: &str, self_type: Option<&str>, trait_path: Option<&str>) -> String {
     let mut out = String::new();
     let mut chars = ty.trim().chars().peekable();
     while let Some(c) = chars.next() {
@@ -820,10 +1019,37 @@ fn concrete_type(ty: &str, self_type: Option<&str>) -> String {
         }
         out.push(c);
     }
+    let out = match trait_path {
+        Some(trait_path) => {
+            let qualified = format!("<Self as {trait_path}>::");
+            let mut rewritten = String::new();
+            let mut rest = out.as_str();
+            while let Some(index) = rest.find("Self::") {
+                let starts_path = rest[..index]
+                    .chars()
+                    .next_back()
+                    .or_else(|| rewritten.chars().next_back())
+                    .is_none_or(|c| !(c.is_alphanumeric() || c == '_' || c == ':'));
+                rewritten.push_str(&rest[..index]);
+                rewritten.push_str(if starts_path { &qualified } else { "Self::" });
+                rest = &rest[index + "Self::".len()..];
+            }
+            rewritten.push_str(rest);
+            rewritten
+        }
+        None => out,
+    };
     match self_type {
         Some(self_type) => replace_word(&out, "Self", self_type),
         None => out,
     }
+}
+
+/// `Parser<'_>` -> `Parser`: the type path an expression can name directly.
+/// Only lifetime arguments reach here, so dropping them loses nothing the
+/// compiler cannot infer.
+fn strip_generic_arguments(ty: &str) -> &str {
+    ty.split('<').next().unwrap_or(ty).trim()
 }
 
 fn replace_word(text: &str, word: &str, replacement: &str) -> String {
@@ -875,6 +1101,10 @@ fn variant_pattern(variant: &str, self_type: Option<&str>, scope: PathScope<'_>)
         return None;
     }
     let path = match (segments.first(), self_type) {
+        // `Self::Variant` names a variant of the impl type; a longer
+        // `Self::Assoc::Variant` goes through an associated type the
+        // pattern cannot spell, so the whole value is asserted instead.
+        (Some(&"Self"), _) if segments.len() != 2 => return None,
         (Some(&"Self"), Some(self_type)) => replace_word(path, "Self", self_type),
         (Some(&"Self"), None) => return None,
         _ => path.to_string(),
@@ -910,6 +1140,9 @@ fn discriminator_hint(seam: &RepoSeam) -> String {
         }
         RequiredDiscriminator::MatchArmTaken { arm } if !arm.trim().is_empty() => {
             format!(" when the `{}` arm runs", one_line(arm))
+        }
+        RequiredDiscriminator::FieldValue { field } if !field.trim().is_empty() => {
+            format!(", including its field `{}`", one_line(field))
         }
         _ => format!(" for these inputs (`{}`)", one_line(seam.expression())),
     }

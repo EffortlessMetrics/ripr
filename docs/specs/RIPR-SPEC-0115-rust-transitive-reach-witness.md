@@ -78,9 +78,23 @@ the first hop that produced the successful walk:
 ### Determinism
 
 When more than one test witnesses a path, the witness is selected **deterministically**: candidate
-witnesses are ordered by `(test_file, test_line, test_name, entry_symbol)` and the first is chosen.
-This keeps goldens stable regardless of index iteration order. If `N > 1` witnesses exist, the
-rendered message notes the count ("and N other tests") without enumerating them.
+witnesses are ordered by `(uncorroborated, test_file, test_line, test_name, entry_symbol)` and the
+first is chosen. This keeps goldens stable regardless of index iteration order. If `N > 1`
+witnesses exist, the rendered message notes the count ("and N other tests") without enumerating
+them.
+
+A candidate is **corroborated** when its entry symbol names a production function that calls toward
+the owner and that function is either a free function, or an associated function the test calls on
+a receiver resolved to its `impl` self type (a constructor, type annotation, UFCS `Type::method` or
+struct literal; a binding's type is its annotation or initializer head, so `Cache::new(Site::default())`
+binds a `Cache`; an unresolved receiver is not corroborated). Name-only facts cannot tell
+`Site::build` from `Cache::build`, so without this rank a unit test calling an unrelated type's
+same-named method could win on file order alone (#5481). A function's declaration line, which call
+facts record under the function's own name, does not count as a call onward; a real call to a
+same-named function on another type (`self.queue.build()`) does.
+Corroboration only ranks candidates: it never removes one, never changes the count, and never
+changes classification. Within one test, a corroborated entry symbol is preferred over a bare
+name match before the lexicographic tiebreak.
 
 ### When found
 
@@ -173,6 +187,13 @@ requirements in this spec remain unchanged.
    reach the owner. The named witness is `test_a` (sorts first by file), and the message notes "and
    1 other test".
 
+4a. **Same-named method on another type**: a unit test in `src/render.rs` calls `cache.build()` on
+   an unrelated `Cache`, while `Site::build` leads to the changed owner and an integration test
+   helper calls `site.build()`. The named witness is the integration test, not the unit test that
+   sorts first by file, so RIPR-SPEC-0118 selects
+   `rust_integration_public_api_path_unresolved`. Fixture:
+   `fixtures/rust_transitive_reach_same_name_other_type/`.
+
 5. **Honest language**: the witness pointer contains "may lead here" and does NOT contain
    "reaches", "covers", "tests", or "exercises".
 
@@ -187,7 +208,8 @@ requirements in this spec remain unchanged.
 
 - `has_transitive_candidate` changed to return `Option<TransitiveWitness>` in
   `analysis/classify/transitive_reach.rs`; `TransitiveWitness` struct defined there.
-- Deterministic witness ordering by `(test_file, test_line, test_name, entry_symbol)`.
+- Deterministic witness ordering by `(uncorroborated, test_file, test_line, test_name,
+  entry_symbol)`.
 - Concrete witness-pointer message builder (reuses "may" language; no coverage claim).
 - Wired in `analysis/language/rust/mod.rs` `analyze_diff` and `analyze_repo` (the existing
   post-classify guards now consume the witness to build the evidence string).
@@ -210,6 +232,14 @@ requirements in this spec remain unchanged.
   — no path returns `None`
 - `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_two_witnesses_then_first_by_file_line_is_selected`
   — deterministic witness ordering
+- `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_same_named_method_on_other_type_then_corroborated_witness_is_named`
+  — a test calling the reaching type's method outranks an unrelated same-named method call
+- `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_type_named_away_from_the_call_then_the_test_is_not_corroborated`
+  — naming the type away from the call does not corroborate
+- `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_type_only_in_constructor_argument_then_the_receiver_is_not_that_type`
+  — a type named only in a constructor argument is not the binding's type
+- `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_cross_type_same_named_call_then_the_caller_still_reaches`
+  — a real same-named call on another type still counts as a path onward
 - `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::witness_pointer_uses_may_language_and_no_coverage_claim`
   — message honesty (contains "may lead here"; excludes reaches/covers/tests/exercises)
 - `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_path_at_depth_5_then_witness_is_captured`
@@ -254,6 +284,7 @@ requirements in this spec remain unchanged.
 | Human renderer (`Where to look` section) | `crates/ripr/src/output/human/sections.rs` |
 | Positive fixture (re-blessed) | `fixtures/rust_transitive_reach_positive/` |
 | Test-helper public API fixture | `fixtures/rust_transitive_reach_test_helper_chain/` |
+| Same-named method on another type | `fixtures/rust_transitive_reach_same_name_other_type/` |
 | Negative fixture (unchanged) | `fixtures/rust_transitive_reach_negative/` |
 
 ## CI Proof

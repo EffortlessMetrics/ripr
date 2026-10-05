@@ -18,12 +18,14 @@ use crate::cli::agent::{
     AgentVerifyExecuteOptions, AgentVerifyOptions, parse_agent_args,
 };
 use crate::cli::commands_agent_support::{
-    build_agent_receipt_provenance, read_agent_verify_snapshot, resolve_agent_brief_working_set,
-    validate_agent_receipt_verify_path, validate_agent_verify_snapshot_path,
+    agent_identity_path, build_agent_receipt_provenance, read_agent_verify_snapshot,
+    resolve_agent_brief_working_set, validate_agent_receipt_verify_path,
+    validate_agent_verify_snapshot_path,
 };
 use crate::cli::commands_context::{ensure_command_root, load_root_input_and_config};
 use crate::config::load_for_root;
 use crate::output;
+use crate::output::human::terminal_safe;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
@@ -369,8 +371,8 @@ fn render_agent_verify(options: &AgentVerifyOptions) -> Result<String, String> {
     let report = output::outcome::targeted_test_outcome_report_from_json(
         &before_json,
         &after_json,
-        output::outcome::display_path(&options.before),
-        output::outcome::display_path(&options.after),
+        agent_identity_path(&options.before),
+        agent_identity_path(&options.after),
     )?;
     // Bind the verify result to the exact artifact bytes it compared (#2922
     // PR B): the validated content commitments ride in canonical output so a
@@ -528,7 +530,7 @@ fn run_agent_receipt_for_attempt(
     };
     let rendered = output::agent_receipt::render_agent_receipt_value_json(
         &validated.verify,
-        output::outcome::display_path(&options.verify_json),
+        agent_identity_path(&options.verify_json),
         &options.seam_id,
         options.test_changed.as_deref(),
         &options.commands_run,
@@ -700,13 +702,13 @@ fn run_agent_repair_with_identity(
     let mut refusal = AfterPhaseRefusalContext::default();
     let result = run_agent_repair_phase(options, &mut refusal, identity);
     if let (Err(error), Some((root, store, attempt_id))) = (&result, &refusal.selected_attempt)
-        && let Err(record_error) =
-            crate::app::repair_attempt::record_repair_attempt_after_refusal_from(
-                root,
-                store.as_deref(),
-                attempt_id,
-                &after_refusal_reason(error, &refusal.narration),
-            )
+        && let Err(record_error) = record_after_phase_refusal(
+            root,
+            store.as_deref(),
+            attempt_id,
+            error,
+            &after_refusal_reason(error, &refusal.narration),
+        )
     {
         eprintln!(
             "ripr: could not record the after-phase refusal on attempt `{}`: {record_error}",
@@ -737,6 +739,33 @@ fn run_agent_repair_with_identity(
     }
 }
 
+/// Records a refused after phase on its attempt, choosing the authority by the
+/// refusal family. A receipt refused on trusted-surface grounds (#5262) fires
+/// only after the durable finish committed the after verdict, so the
+/// resumable authority would refuse the write ("already has an after
+/// verdict"); the terminal authority records that observation beside the
+/// verdict it describes, which is what `agent status` reads for a finished
+/// attempt whose receipt is missing. Every other recorded refusal happens
+/// while the attempt is still resumable and keeps the resumable authority and
+/// its concurrent-finish guard.
+fn record_after_phase_refusal(
+    root: &Path,
+    store: Option<&Path>,
+    attempt_id: &crate::app::repair_attempt::RepairAttemptId,
+    error: &str,
+    reason: &str,
+) -> Result<(), String> {
+    if error.contains(crate::app::repair_attempt::TRUSTED_SURFACE_REFUSAL_TAIL) {
+        crate::app::repair_attempt::record_repair_attempt_terminal_receipt_refusal_from(
+            root, store, attempt_id, reason,
+        )
+    } else {
+        crate::app::repair_attempt::record_repair_attempt_after_refusal_from(
+            root, store, attempt_id, reason,
+        )
+    }
+}
+
 /// What an after phase that refuses leaves for the attempt record: the
 /// attempt it selected, the narration it printed before the final error
 /// (the named cause and the recovery), so `ripr agent status` can repeat the
@@ -751,8 +780,9 @@ struct AfterPhaseRefusalContext {
     )>,
     narration: Vec<String>,
     /// Set only at a deliberate named refusal (diverged HEAD, drifted
-    /// analysis inputs, a no-movement verify refusal, or a replaced
-    /// trust-binding manifest): a refusal the command narrates with its
+    /// analysis inputs, a no-movement verify refusal, a replaced
+    /// trust-binding manifest, or a receipt refused on trusted-surface
+    /// grounds #5262): a refusal the command narrates with its
     /// cause and recovery before returning. Only this maps to the decision
     /// exit code 3; operational errors after attempt selection (an
     /// unreadable retained packet or manifest, a failed snapshot write,
@@ -848,8 +878,11 @@ fn run_agent_repair_phase(
                     .to_string()
             })?;
             eprintln!(
-                "ripr: agent repair --phase before for seam `{seam_id}` at {}",
-                root.display()
+                "{}",
+                terminal_safe(format!(
+                    "ripr: agent repair --phase before for seam `{seam_id}` at {}",
+                    root.display()
+                ))
             );
 
             // Render and admit the packet first (F15-12): a seam whose repair
@@ -887,6 +920,30 @@ fn run_agent_repair_phase(
                 },
             )?;
 
+            // Fail early on a dirty production premise (#5262): the repair
+            // loop pins the repository at its before phase, so tracked
+            // content that already differs from HEAD outside the allowed
+            // test surface would silently pass the edit cage (the baseline
+            // records it as the before state) and only refuse the receipt
+            // after the whole attempt was consumed. The inventory is the
+            // receipt's own, so its boundary is identical: a dirty focused
+            // test file inside the allowed surface stays allowed.
+            let premise_head = crate::agent::artifact::current_git_head(&root)?;
+            let premise_violations = crate::app::repair_attempt::trusted_head_surface_violations(
+                &root,
+                &policy,
+                &[],
+                &premise_head,
+            )?;
+            if !premise_violations.is_empty() {
+                return Err(before_phase_dirty_premise_refusal(
+                    &seam_id,
+                    &root,
+                    store_ref,
+                    &premise_violations,
+                ));
+            }
+
             // Compose existing commands: start (creates workflow + brief) +
             // packet. The start step's `Next: ripr check ...` hint is dropped
             // because this phase writes that before snapshot itself; printing
@@ -898,7 +955,10 @@ fn run_agent_repair_phase(
                 json: false,
             })?;
             for path in &started.paths {
-                eprintln!("ripr: wrote {}", path.display());
+                eprintln!(
+                    "{}",
+                    terminal_safe(format!("ripr: wrote {}", path.display()))
+                );
             }
 
             let before = root.join("target/ripr/workflow/before.repo-exposure.json");
@@ -906,7 +966,10 @@ fn run_agent_repair_phase(
 
             let packet_path = root.join("target/ripr/workflow/agent-packet.json");
             write_text_file(&packet_path, &packet)?;
-            eprintln!("ripr: wrote {}", packet_path.display());
+            eprintln!(
+                "{}",
+                terminal_safe(format!("ripr: wrote {}", packet_path.display()))
+            );
             // Nothing prints on stdout here. The before-phase success stdout —
             // with `--json` the packet document carrying the additive
             // `repair_attempt` continuation (#4329), without it the short
@@ -1275,6 +1338,23 @@ fn run_agent_repair_phase(
                             }
                         }
                     }
+                }
+                // The receipt's trusted-surface refusal is a deliberate named
+                // refusal (#5262): the attempt is terminal, and the bare
+                // one-liner never said the production premise must be
+                // committed first. Narrate the cause and the restart route so
+                // an agent that still hits it mid-loop can recover, and let
+                // the narration ride into the attempt record that
+                // `agent status` reports.
+                if let Err(error) = &receipt_result
+                    && error.contains(crate::app::repair_attempt::TRUSTED_SURFACE_REFUSAL_TAIL)
+                {
+                    for line in repair_after_trusted_surface_recovery_lines(
+                        &root, store_ref, &attempt, error,
+                    ) {
+                        refusal.narrate(line);
+                    }
+                    refusal.typed = true;
                 }
                 receipt_result?;
                 apply_record_result?;
@@ -1724,15 +1804,70 @@ fn repair_after_input_drift_lines(
     lines
 }
 
+/// Recovery narration for an after phase whose finish passed the edit cage
+/// but whose receipt was refused because tracked repository content differs
+/// from the attempt's before-phase head outside the allowed test surface
+/// (#5262). The attempt is terminal: the dominant cause is a production
+/// change that was already uncommitted when the attempt started, which the
+/// before phase now refuses up front; a production edit made during the loop
+/// refuses identically. Names the refusal and the one route that recovers —
+/// repair the premise, then start a new attempt — mirroring the sibling
+/// refusal families' `to recover:` narration.
+fn repair_after_trusted_surface_recovery_lines(
+    root: &Path,
+    store: Option<&Path>,
+    attempt: &crate::app::repair_attempt::ResolvedRepairAttempt,
+    error: &str,
+) -> Vec<String> {
+    use crate::agent::loop_commands::{bound_root, shell_arg};
+
+    let attempt_id = attempt.attempt_id.as_str();
+    let root_arg = shell_arg(&bound_root(&root.to_string_lossy()));
+    let seam_arg = shell_arg(&attempt.seam_id);
+    let store_flag = crate::app::repair_attempt::quoted_store_flag(store);
+    vec![
+        format!("attempt `{attempt_id}` passed its edit cage but its receipt was refused: {error}."),
+        "the refusal means a tracked file differs from the attempt's before-phase head outside the allowed test surface: most often a production change that was already uncommitted when the attempt started, or a production edit made during the loop; the edit cage cannot see either as an edit of this attempt.".to_string(),
+        format!(
+            "to recover: first inspect what moved (`git diff -- <path>`). If the named file was already modified before the attempt started, commit that change (`git commit -- <path>`); if it changed during the loop, set it aside without losing it (`git stash`). Only `git checkout {} -- <path>` restores the before-phase content, and it discards uncommitted work irrecoverably, so run it only when the change is disposable. Then start a new attempt: set your test edit aside (`git stash`), run `ripr agent repair --root {root_arg}{store_flag} --seam-id {seam_arg} --phase before` while the gap still exists, restore the test edit (`git stash pop`), and run the new --attempt command it prints.",
+            attempt.repository_head
+        ),
+    ]
+}
+
+/// A before phase refused because tracked content already differs from HEAD
+/// outside the allowed test surface (#5262). Names the paths, states the
+/// production-vs-test boundary, and gives the commit-first route the late
+/// receipt refusal cannot offer because the attempt no longer exists. The
+/// caller has written nothing yet, so the tail says so explicitly.
+fn before_phase_dirty_premise_refusal(
+    seam_id: &str,
+    root: &Path,
+    store: Option<&Path>,
+    violations: &[String],
+) -> String {
+    use crate::agent::loop_commands::{bound_root, shell_arg};
+
+    let root_arg = shell_arg(&bound_root(&root.to_string_lossy()));
+    let seam_arg = shell_arg(seam_id);
+    let store_flag = crate::app::repair_attempt::quoted_store_flag(store);
+    let first = violations.first().map(String::as_str).unwrap_or_default();
+    format!(
+        "repair attempt cannot start: tracked file(s) outside the allowed test surface already differ from HEAD: {}. The repair loop pins the repository at its before phase, so an uncommitted production change would pass the edit cage and only refuse the receipt at the end, burning the attempt; a dirty focused test file inside the allowed test surface is fine. to recover: commit the listed file(s) (for example `git commit -- {first}`), or restore them, then rerun `ripr agent repair --root {root_arg}{store_flag} --seam-id {seam_arg} --phase before`. No workflow was prepared and no repair attempt was started.",
+        violations.join(", "),
+    )
+}
+
 /// A before phase refused because the seam's repair packet cannot bound a
 /// test-only edit. Names the seam and the reason in plain words, says that
 /// nothing was started, states the observable packet field (#4332 — the
 /// producer-jargon cause alone leaves the agent guessing what to look at),
-/// and points at the surfaces that only offer a repair start for seams that
-/// pass this check.
+/// points at the surfaces that only offer a repair start for seams that
+/// pass this check, and points at the repair help carrying the scope
+/// boundary (#5210).
 fn before_phase_refusal(seam_id: &str, error: &str) -> String {
     format!(
-        "seam `{seam_id}` has no test file ripr can route a repair to, so no repair attempt was started. In the seam's repair packet the observable state is `recommended_test.file: \"not_applicable\"` (no repair target exists). Pick a seam whose `ripr pilot` output or review card shows a repair start. Cause: {error}"
+        "seam `{seam_id}` has no test file ripr can route a repair to, so no repair attempt was started. In the seam's repair packet the observable state is `recommended_test.file: \"not_applicable\"` when no target was proposed (an inline-module proposal instead names the production file with an empty edit surface). Pick a seam whose `ripr pilot` output or review card shows a repair start. Repair scope, including the inline-test boundary, is in `ripr agent repair --help`. Cause: {error}"
     )
 }
 
@@ -1909,6 +2044,10 @@ fn resolve_agent_start_out_dir(root: &Path, out_dir: &Path) -> PathBuf {
     }
 }
 
+#[cfg(all(test, unix))]
+#[path = "agent_root_tests.rs"]
+mod root_tests;
+
 #[cfg(test)]
 mod tests {
     use super::super::tests::{
@@ -2072,6 +2211,210 @@ mod tests {
             }
         }
         Ok(())
+    }
+
+    /// The late trusted-surface refusal narrates like its sibling refusal
+    /// families (#5262): a cause line carrying the raw refusal, and a
+    /// `to recover:` line with the commit-first premise repair and the full
+    /// restart route. The narration is what `after_refusal_reason` folds into
+    /// the attempt record `agent status` reports.
+    #[test]
+    fn repair_after_trusted_surface_lines_name_cause_and_commit_first_recovery()
+    -> Result<(), String> {
+        use crate::app::repair_attempt::{RepairAttemptId, ResolvedRepairAttempt};
+
+        let attempt = ResolvedRepairAttempt {
+            attempt_id: RepairAttemptId::parse(
+                "repair-attempt-0123456789abcdef01234567".to_string(),
+            )?,
+            seam_id: "seam:sample".to_string(),
+            repository_head: "abc123".to_string(),
+            manifest_path: PathBuf::from("attempt.json"),
+            before_snapshot_path: PathBuf::from("before.json"),
+            packet_path: PathBuf::from("packet.json"),
+        };
+        let root = Path::new("some-checkout");
+        let error = format!(
+            "repair receipt observed repository path {}: src/lib.rs",
+            crate::app::repair_attempt::TRUSTED_SURFACE_REFUSAL_TAIL
+        );
+        let lines = repair_after_trusted_surface_recovery_lines(root, None, &attempt, &error);
+        if lines.len() != 3 {
+            return Err(format!(
+                "expected cause, boundary, and recovery lines, got {lines:?}"
+            ));
+        }
+        let joined = lines.join("\n");
+        for fragment in [
+            "src/lib.rs",
+            "outside trusted edit surface",
+            "to recover:",
+            "git commit -- <path>",
+            "--phase before",
+            "abc123",
+        ] {
+            if !joined.contains(fragment) {
+                return Err(format!("narration must name `{fragment}`:\n{joined}"));
+            }
+        }
+        if !lines[2].starts_with("to recover:") {
+            return Err(format!(
+                "recovery must be the explicit to-recover line: {lines:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// Prepares and finishes one real attempt so the refusal-recording
+    /// dispatch is exercised against durable manifests, not mocks.
+    fn prepare_and_finish_sample_attempt(
+        root: &Path,
+        label: &str,
+    ) -> Result<crate::app::repair_attempt::RepairAttemptManifest, String> {
+        use crate::app::repair_attempt::{
+            BeforeArtifactSource, BeginRepairAttemptOptions, begin_repair_attempt_with,
+            edit_cage_policy_from_packet, finish_repair_attempt, write_edit_cage_baseline,
+        };
+        use crate::edit_cage::HeadMovement;
+
+        let workflow = root.join("target/ripr/workflow");
+        std::fs::create_dir_all(&workflow)
+            .map_err(|error| format!("create {} failed: {error}", workflow.display()))?;
+        let before = workflow.join(format!("before-{label}.json"));
+        let packet = workflow.join(format!("packet-{label}.json"));
+        let baseline = workflow.join(format!("baseline-{label}.json"));
+        std::fs::write(&before, b"{}")
+            .map_err(|error| format!("write {} failed: {error}", before.display()))?;
+        let packet_text = serde_json::json!({
+            "seam_id": "seam:sample",
+            "allowed_edit_surface": ["tests/target.rs"],
+            "forbidden_files": []
+        })
+        .to_string();
+        std::fs::write(&packet, packet_text.as_bytes())
+            .map_err(|error| format!("write {} failed: {error}", packet.display()))?;
+        let policy = edit_cage_policy_from_packet(&packet_text, "seam:sample")?;
+        write_edit_cage_baseline(root, &baseline, &policy)?;
+        let prepared = begin_repair_attempt_with(BeginRepairAttemptOptions {
+            root,
+            root_argument: root,
+            seam_id: "seam:sample",
+            sources: &[
+                BeforeArtifactSource {
+                    role: "before_snapshot",
+                    path: &before,
+                },
+                BeforeArtifactSource {
+                    role: "agent_packet",
+                    path: &packet,
+                },
+                BeforeArtifactSource {
+                    role: "edit_cage_baseline",
+                    path: &baseline,
+                },
+            ],
+            expected_repository_head: None,
+            next_command_suffix: None,
+            store: None,
+        })?;
+        let test_path = root.join("tests/target.rs");
+        std::fs::create_dir_all(
+            test_path
+                .parent()
+                .ok_or_else(|| "test path has no parent".to_string())?,
+        )
+        .map_err(|error| format!("create tests dir failed: {error}"))?;
+        std::fs::write(&test_path, "#[test]\nfn focused() {}\n")
+            .map_err(|error| format!("write {} failed: {error}", test_path.display()))?;
+        let retained_packet = root.join(
+            crate::app::repair_attempt::find_manifest_artifact_by_role(
+                &prepared.manifest,
+                "agent_packet",
+            )
+            .ok_or("prepared attempt has no retained agent_packet")?
+            .path
+            .clone(),
+        );
+        finish_repair_attempt(
+            root,
+            &prepared.manifest.repair_attempt_id,
+            &retained_packet,
+            HeadMovement::AdmitDescendantCommits,
+        )?;
+        Ok(prepared.manifest)
+    }
+
+    /// The recording dispatch routes by refusal family (#5262 review): the
+    /// trusted-surface refusal — which only ever fires after the durable
+    /// finish — records beside the committed after verdict through the
+    /// terminal authority, while every other family keeps the resumable
+    /// authority, whose concurrent-finish guard refuses beside a verdict.
+    #[test]
+    fn after_phase_refusal_recording_routes_trusted_surface_to_the_terminal_authority()
+    -> Result<(), String> {
+        use crate::app::repair_attempt::{
+            RepairAttemptState, TRUSTED_SURFACE_REFUSAL_TAIL, load_repair_attempt_manifest,
+        };
+        use crate::testing::fixture_git::fixture_git_ok as run_git;
+
+        // The attempt authority requires an exact Git top-level, so the
+        // fixture is a real repository, not a plain temp directory.
+        let root = unique_command_test_dir("refusal-recording-dispatch");
+        std::fs::create_dir_all(&root)
+            .map_err(|error| format!("create {} failed: {error}", root.display()))?;
+        run_git(&root, &["init"]).map_err(|error| format!("fixture git init: {error}"))?;
+        run_git(
+            &root,
+            &["config", "user.email", "ripr-test@example.invalid"],
+        )
+        .map_err(|error| format!("fixture git email: {error}"))?;
+        run_git(&root, &["config", "user.name", "RIPR Test"])
+            .map_err(|error| format!("fixture git name: {error}"))?;
+        let readme = root.join("README.md");
+        std::fs::write(&readme, "# test\n")
+            .map_err(|error| format!("write {} failed: {error}", readme.display()))?;
+        run_git(&root, &["add", "."]).map_err(|error| format!("fixture git add: {error}"))?;
+        run_git(&root, &["commit", "--no-gpg-sign", "-m", "initial"])
+            .map_err(|error| format!("fixture git commit: {error}"))?;
+        let result = (|| -> Result<(), String> {
+            let manifest = prepare_and_finish_sample_attempt(&root, "dispatch")?;
+            let attempt_id = &manifest.repair_attempt_id;
+
+            let trusted_error = format!(
+                "repair receipt observed repository path {TRUSTED_SURFACE_REFUSAL_TAIL}: src/lib.rs"
+            );
+            record_after_phase_refusal(
+                &root,
+                None,
+                attempt_id,
+                &trusted_error,
+                "repair receipt observed repository path outside trusted edit surface: src/lib.rs. To recover: commit the production change, then start a new attempt.",
+            )?;
+            let recorded = load_repair_attempt_manifest(&root, attempt_id)?;
+            let refusal = recorded
+                .last_after_refusal
+                .ok_or("the trusted-surface refusal was not recorded on the finished attempt")?;
+            if !refusal.reason.contains("To recover") {
+                return Err(format!("recorded refusal lost the recovery: {refusal:?}"));
+            }
+            if recorded.after.is_none() || recorded.state != RepairAttemptState::ReadyToFinish {
+                return Err("the terminal record moved the attempt's finish".to_string());
+            }
+
+            let other_error =
+                "repair attempt changed while the after phase ran; retry the after phase";
+            match record_after_phase_refusal(&root, None, attempt_id, other_error, "changed") {
+                Err(error) if error.contains("already has an after verdict") => {}
+                other => {
+                    return Err(format!(
+                        "the resumable authority must stay guarded beside a verdict: {other:?}"
+                    ));
+                }
+            }
+            Ok(())
+        })();
+        std::fs::remove_dir_all(&root).map_err(|error| format!("remove temp root: {error}"))?;
+        result
     }
 
     #[test]

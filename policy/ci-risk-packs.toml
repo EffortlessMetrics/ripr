@@ -8,7 +8,7 @@ reason = "Seed risk-pack map for planned CI PR forecasting."
 # current workflow does not consume this file yet.
 
 [risk_pack.docs_only]
-paths = ["docs/**", "README.md", "CHANGELOG.md", ".github/pull_request_template.md"]
+paths = ["docs/**", "README.md", "CHANGELOG.md", "changelog.d/**", ".github/pull_request_template.md"]
 required = ["docs", "static-language"]
 advisory = []
 on_demand = []

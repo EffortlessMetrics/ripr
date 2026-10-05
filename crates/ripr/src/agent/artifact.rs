@@ -32,6 +32,17 @@ pub(crate) const CONTENT_COMMITMENT_CANONICALIZATION: &str = "raw_json_placehold
 pub(crate) const CONTENT_SHA256_PLACEHOLDER: &str =
     "sha256:0000000000000000000000000000000000000000000000000000000000000000";
 
+/// `analysis.format` / `analysis.command` token of the repo-exposure identity
+/// envelope. The repo-exposure producer command is part of the validated
+/// identity contract (`validate_repo_exposure_artifact`).
+const REPO_EXPOSURE_ANALYSIS_FORMAT: &str = "repo-exposure-json";
+const REPO_EXPOSURE_PRODUCER_COMMAND: &str = "ripr check --format repo-exposure-json";
+
+/// `analysis.format` / `analysis.command` token of the repo seam inventory
+/// identity envelope (#6609).
+const REPO_SEAMS_ANALYSIS_FORMAT: &str = "repo-seams-json";
+const REPO_SEAMS_PRODUCER_COMMAND: &str = "ripr check --format repo-seams-json";
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct RepoExposureArtifactContext {
     pub(crate) root: PathBuf,
@@ -60,6 +71,41 @@ impl RepoExposureArtifactContext {
         base_revision: Option<String>,
         config: &crate::config::RiprConfig,
     ) -> Result<Self, String> {
+        Self::for_analysis_format(
+            root,
+            mode,
+            base_revision,
+            config,
+            REPO_EXPOSURE_ANALYSIS_FORMAT,
+        )
+    }
+
+    /// Build the same portable identity for one repo seam inventory run
+    /// (#6609). The analysis format is part of the canonical identity, so a
+    /// `repo-seams-json` artifact never shares an input identity with a
+    /// `repo-exposure-json` artifact even on the same tree.
+    pub(crate) fn for_repo_seams(
+        root: PathBuf,
+        mode: String,
+        base_revision: Option<String>,
+        config: &crate::config::RiprConfig,
+    ) -> Result<Self, String> {
+        Self::for_analysis_format(
+            root,
+            mode,
+            base_revision,
+            config,
+            REPO_SEAMS_ANALYSIS_FORMAT,
+        )
+    }
+
+    fn for_analysis_format(
+        root: PathBuf,
+        mode: String,
+        base_revision: Option<String>,
+        config: &crate::config::RiprConfig,
+        analysis_format: &str,
+    ) -> Result<Self, String> {
         let canonical_root = canonical_root(&root)?;
         let (manifest_identity, lockfile_identity) =
             crate::analysis::seam_cache::workspace_named_file_identities_relative(
@@ -67,11 +113,12 @@ impl RepoExposureArtifactContext {
                 |lockfiles| git_tracked_lockfiles(&canonical_root, lockfiles),
             );
         let input_canonical = format!(
-            "identity_version={};mode={};profile={};base={:?};format=repo-exposure-json;manifest={:?};lockfile={:?};config={};analyzer={}",
+            "identity_version={};mode={};profile={};base={:?};format={};manifest={:?};lockfile={:?};config={};analyzer={}",
             INPUT_IDENTITY_VERSION,
             mode,
             mode,
             base_revision,
+            analysis_format,
             manifest_identity,
             lockfile_identity,
             crate::config::repo_exposure_config_identity_hash(config),
@@ -161,6 +208,42 @@ pub(crate) fn repo_exposure_artifact_metadata(
     context: &RepoExposureArtifactContext,
     content_sha256: &str,
 ) -> Result<Value, String> {
+    analysis_artifact_metadata(
+        context,
+        "repo_exposure",
+        REPO_EXPOSURE_ANALYSIS_FORMAT,
+        REPO_EXPOSURE_PRODUCER_COMMAND,
+        content_sha256,
+    )
+}
+
+/// Producer-owned identity envelope for a `repo-seams-json` artifact (#6609).
+/// The same shared projection `repo-exposure-json` carries (ADR 0019): the
+/// only differences are the artifact kind and the analysis format/command
+/// tokens, which also move the input identity.
+pub(crate) fn repo_seams_artifact_metadata(
+    context: &RepoExposureArtifactContext,
+    content_sha256: &str,
+) -> Result<Value, String> {
+    analysis_artifact_metadata(
+        context,
+        "repo_seams",
+        REPO_SEAMS_ANALYSIS_FORMAT,
+        REPO_SEAMS_PRODUCER_COMMAND,
+        content_sha256,
+    )
+}
+
+/// The shared producer identity projection (ADR 0019). `analysis.command` and
+/// `analysis.profile` state the producing operation; `content_sha256` commits
+/// the exact rendered bytes via the fixed placeholder canonicalization.
+fn analysis_artifact_metadata(
+    context: &RepoExposureArtifactContext,
+    artifact_kind: &str,
+    analysis_format: &str,
+    producer_command: &str,
+    content_sha256: &str,
+) -> Result<Value, String> {
     let root = canonical_root(&context.root)?;
     let head = git_output(&root, &["rev-parse", "HEAD"])
         .ok()
@@ -178,7 +261,7 @@ pub(crate) fn repo_exposure_artifact_metadata(
         })
         .unwrap_or("unavailable");
     Ok(json!({
-        "kind": "repo_exposure",
+        "kind": artifact_kind,
         "schema_version": ARTIFACT_IDENTITY_SCHEMA_VERSION,
         "canonicalization": CONTENT_COMMITMENT_CANONICALIZATION,
         "producer": {
@@ -190,11 +273,11 @@ pub(crate) fn repo_exposure_artifact_metadata(
             "head": head,
         },
             "analysis": {
-                "format": "repo-exposure-json",
+                "format": analysis_format,
                 "mode": context.mode,
                 "base_revision": context.base_revision,
                 "input_identity": context.input_identity,
-                "command": "ripr check --format repo-exposure-json",
+                "command": producer_command,
                 "profile": context.mode,
                 "worktree": status,
             },
@@ -640,7 +723,7 @@ fn canonical_root(root: &Path) -> Result<PathBuf, String> {
 }
 
 fn display_root(root: &Path) -> String {
-    root.to_string_lossy().replace('\\', "/")
+    crate::agent::loop_commands::root_path_display(root)
 }
 
 pub(crate) fn git_output(root: &Path, args: &[&str]) -> Result<String, String> {
@@ -993,6 +1076,17 @@ fn governed_commitment_span(raw: &str) -> Result<(usize, usize), ContentCommitme
         [(start, end)] => Ok((*start, *end)),
         _ => Err(ContentCommitmentRejection::Duplicate),
     }
+}
+
+/// Recompute the governed content commitment of artifact bytes without any
+/// repository access. Terminal-receipt readers bind a verify document to the
+/// retained before snapshot through this alone: the retained bytes are
+/// already commitment-anchored, so binding needs the recomputed digest, not
+/// full artifact validation (which requires git liveness and would make
+/// issued receipts unreadable at an unknown HEAD). The typed rejection stays
+/// private; callers get the same rendered reasons validation reports.
+pub(crate) fn recompute_content_commitment(raw: &str) -> Result<String, String> {
+    content_sha256_with_placeholder(raw).map_err(|error| error.to_string())
 }
 
 fn content_sha256_with_placeholder(raw: &str) -> Result<String, ContentCommitmentRejection> {
@@ -1953,6 +2047,79 @@ mod tests {
         cleanup?;
         cleanup_foreign?;
         Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn repo_exposure_literal_unix_root_is_admitted_only_at_its_producer() -> Result<(), String> {
+        use std::os::unix::{ffi::OsStrExt, fs::MetadataExt};
+
+        struct OwnedRoot(PathBuf);
+        impl Drop for OwnedRoot {
+            fn drop(&mut self) {
+                if let Err(error) = std::fs::remove_dir_all(&self.0) {
+                    eprintln!(
+                        "remove owned artifact fixture {}: {error}",
+                        self.0.display()
+                    );
+                }
+            }
+        }
+        let parent = temporary_git_root()?;
+        let _owned = OwnedRoot(parent.clone());
+        (|| -> Result<(), String> {
+            let root = parent.join("team\\repo 'quoted'");
+            std::fs::create_dir(&root).map_err(|error| error.to_string())?;
+            crate::testing::fixture_git::fixture_git_ok(&root, &["init"])?;
+            run_git(&root, &["config", "user.name", "RIPR test"])?;
+            run_git(
+                &root,
+                &["config", "user.email", "ripr-test@example.invalid"],
+            )?;
+            commit_fixture_file(&root)?;
+            let decoy_parent = parent.join("team");
+            std::fs::create_dir(&decoy_parent).map_err(|error| error.to_string())?;
+            let decoy = decoy_parent.join("repo 'quoted'");
+            crate::testing::fixture_git::fixture_git_ok(
+                &parent,
+                &[
+                    "clone",
+                    "--quiet",
+                    "--no-hardlinks",
+                    root.to_str()
+                        .ok_or_else(|| "fixture root is not UTF-8".to_string())?,
+                    decoy
+                        .to_str()
+                        .ok_or_else(|| "fixture decoy is not UTF-8".to_string())?,
+                ],
+            )?;
+            let actual = std::fs::metadata(&root).map_err(|error| error.to_string())?;
+            let other = std::fs::metadata(&decoy).map_err(|error| error.to_string())?;
+            assert_ne!((actual.dev(), actual.ino()), (other.dev(), other.ino()));
+            assert_eq!(current_git_head(&root)?, current_git_head(&decoy)?);
+
+            // Real producer metadata and exact governed content commitment;
+            // neither repository.root nor its digest is edited by this test.
+            let raw = commit_content(&repo_exposure_raw_with_placeholder(&root)?)?;
+            let bytes_before = raw.as_bytes().to_vec();
+            let admitted = validate_repo_exposure_artifact(&root, &raw, "literal-root positive")
+                .map_err(|error| format!("producer artifact failed root admission: {error}"))?;
+            assert_eq!(admitted.currentness, ArtifactCurrentness::Current);
+            let document: Value = serde_json::from_str(&raw).map_err(|error| error.to_string())?;
+            let declared = document["artifact"]["repository"]["root"]
+                .as_str()
+                .ok_or_else(|| "producer omitted its repository root".to_string())?;
+            let canonical = root.canonicalize().map_err(|error| error.to_string())?;
+            assert_eq!(declared.as_bytes(), canonical.as_os_str().as_bytes());
+            let refusal = validate_repo_exposure_artifact(&decoy, &raw, "slash-decoy control")
+                .err()
+                .ok_or_else(|| {
+                    "producer artifact was admitted in its slash-path decoy".to_string()
+                })?;
+            assert!(refusal.contains("repository root") && refusal.contains("does not match"));
+            assert_eq!(raw.as_bytes(), bytes_before);
+            Ok(())
+        })()
     }
 
     #[test]

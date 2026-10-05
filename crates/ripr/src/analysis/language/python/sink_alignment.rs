@@ -518,7 +518,10 @@ pub(super) fn classify_sink_alignment_with_old(
         .next()
         .unwrap_or(owner.name.as_str());
     let mut alias_tokens: Vec<String> = Vec::new();
-    for test in all_tests {
+    for test in all_tests
+        .iter()
+        .filter(|test| super::test_activation::activation_control(test).is_none())
+    {
         for import in &test.imports {
             // For a method/classmethod owner the bare method name is not directly
             // importable, so only the owner's CLASS alias is identity-bearing.
@@ -649,6 +652,7 @@ pub(super) fn classify_sink_alignment_with_old(
             all_tests
                 .iter()
                 .filter(|test| test.name == related.name && test.file == related.file)
+                .filter(|test| super::test_activation::activation_control(test).is_none())
                 .any(|test| {
                     let callees = owner_module_callees(test, owner);
                     callees

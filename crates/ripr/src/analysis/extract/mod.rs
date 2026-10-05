@@ -2,7 +2,6 @@ mod calls;
 mod literals;
 mod mask;
 mod oracles;
-mod probe_shapes;
 pub(crate) mod property_macros;
 mod returns;
 mod shadow;
@@ -17,12 +16,7 @@ pub(crate) use oracles::{
     OracleTextShape, assertion_oracle_text, classify_assertion, equality_assertion_arguments,
     err_return_guard_oracles, extract_assertions, extract_line_scanned_oracles,
     guarded_result_match_scan_with_shadow_authority, has_oracle_text_shape,
-    is_unwrap_err_bound_error_assertion, unwrap_err_bound_variables,
-};
-pub(crate) use probe_shapes::{
-    PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_ERROR_PATH, PROBE_SHAPE_FIELD_CONSTRUCTION,
-    PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE, PROBE_SHAPE_RETURN_VALUE,
-    PROBE_SHAPE_SIDE_EFFECT, PROBE_SHAPE_UNSAFE_BOUNDARY, is_known_probe_shape,
+    is_unwrap_err_bound_error_assertion, outer_assertion_condition, unwrap_err_bound_variables,
 };
 pub(crate) use returns::extract_return_facts;
 pub(crate) use shadow::{

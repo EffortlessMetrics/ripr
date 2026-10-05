@@ -137,6 +137,15 @@ finding. A Rust-only diff therefore stays complete when an unrelated Python
 fixture is refused, and the same refusal still surfaces when the diff touches
 Python.
 
+The Perl adapter is the exception because it never scans the workspace: it
+reads only the fact packet the caller supplied. A limitation it reports, such
+as a packet declared partial, concerns that explicit evidence and is always
+recorded, whatever languages the diff touches (#5421). Because such a
+limitation says nothing about whether the diff parsed, it never stands in for
+the malformed-diff limitation: a non-empty diff with no parseable change is
+still reported as `malformed_diff`, whether or not the supplied packet
+produced findings (#6703).
+
 ### Unavailable changed Python source
 
 A new-side changed Python path absent from the selected source root is not an
@@ -344,6 +353,10 @@ enabled adapter with a matching non-success `language_runs` entry carries
 - `crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_emits_not_enabled_advisory_for_perl_without_adapter`
 - `crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_no_preview_advisory_for_rust_only_diff`
 - `crates/ripr/src/app/tests/preview_analyzed_outcome.rs::unrelated_python_refusal_does_not_degrade_a_rust_only_diff`
+- `crates/ripr/src/app/tests/preview_analyzed_outcome.rs::javascript_diff_keeps_the_typescript_adapter_refusal`
+- `crates/ripr/src/analysis/language/perl/tests.rs::supplied_partial_packet_is_disclosed_on_a_rust_only_diff`
+- `crates/ripr/src/analysis/language/perl/tests.rs::supplied_partial_packet_does_not_hide_a_malformed_diff`
+- `crates/ripr/src/analysis/language/perl/tests.rs::supplied_partial_packet_with_findings_does_not_hide_a_malformed_diff`
 - `crates/ripr/src/app/tests/preview_analyzed_outcome.rs` — production malformed
   Perl failure plus enabled-success and disabled renderer agreement controls.
 - `crates/ripr/src/output/diff_report.rs::tests::diff_report_includes_preview_languages_when_ts_files_in_scope`

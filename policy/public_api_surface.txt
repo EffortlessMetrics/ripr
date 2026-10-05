@@ -90,6 +90,15 @@ pub fn ripr::output::receipt_lifecycle::receipt_lifecycle_state_from_movement
 pub fn ripr::output::receipt_lifecycle::receipt_lifecycle_state_from_presence
 pub fn ripr::output::receipt_lifecycle::receipt_lifecycle_state_from_receipt_value
 pub fn ripr::output::receipt_lifecycle::receipt_lifecycle_state_is_present
+# Issue #5374: owner output/mutation-calibration; reason: one cargo-mutants
+# importer shared by `ripr calibrate cargo-mutants` and
+# `cargo xtask mutation-calibration` so the xtask copy cannot drift on
+# cargo-mutants 27.1 `mutants.out`; covered_by:
+# cargo test -p ripr --lib output::mutation_calibration,
+# cargo test -p xtask mutation_calibration_imports_cargo_mutants_27_1,
+# cargo xtask check-public-api.
+pub use ripr::output::CargoMutantsOutcomeRecord
+pub use ripr::output::parse_cargo_mutants_outcomes_json
 pub fn ripr::output::start_here_state::normalize_start_here_output_state
 pub fn ripr::output::start_here_state::start_here_output_state_is_known
 pub fn ripr::review_input::canonical_projection

@@ -3,6 +3,49 @@
 This log captures repo knowledge that should survive individual PRs and chat
 sessions. It is intentionally short and actionable.
 
+## 2026-10-04: Operand-position error lexemes are not error observers (#5255)
+
+`assert_eq!((rdr.len(), error_count), (10, 0))` observes a successful length
+and a test-local zero, not an error path. `assertion_observes_error` must not
+treat a leading, middle, or undelimited `error`/`err` segment in a compound
+identifier as an error observer (`error_count`, `nonerror`). Trailing tokens
+still count (`Err`, `unwrap_err`, `last_error`, `ParseError`). Diagnostic
+stripping from #4748 is unchanged.
+
+Pin the operand twin beside the message twin: `error_path_operand_error_lexeme`
+must stay `weakly_exposed`, matching `error_path_diagnostic_error`. Existing
+`error_path_diagnostic_*` goldens stay green. Sibling ErrorPath confirmation
+sites (diagnostic operand stripping, guarded owner-result matches, exact-variant
+pins, Python's typed-oracle gate) do not scan identifier lexemes. Do not reopen
+#4748.
+
+## 2026-10-04: cancellation is the token's observed abort, not a phrase (#4860)
+
+Analysis checkpoints render `analysis cancelled: <Kind>` and the text then
+travels through ~120 `Result<_, String>` call sites, where callers wrap it.
+The LSP refresh wrapped it as `workspace analysis failed: ...`, so its
+`starts_with("analysis cancelled:")` check read a real deadline abort as an
+analysis failure. Decide cancellation from
+`AnalysisCancellationToken::observed_abort()`: the recorded kind, set only
+once a checkpoint handed it to the work. A recorded reason that no checkpoint
+saw is not an outcome, because the work failed or finished on its own.
+Inside `CoreError` code (git invocation, diff load) the abort is the typed
+`CoreError::AnalysisCancelled`. `is_cancellation_error(&str)` is test-only
+and asserts rendered wording.
+
+## 2026-10-04: Initialize-session `ping` is the method name, not `params._meta` (#6022)
+
+Pinned `rmcp` 3.5.0 answers pre-init `ping` in the handshake loop (any
+params, including handshake `_meta`) with `{}`. After `initialize`, the
+same SDK classifies a ping whose `params._meta` names `2026-07-28` as a
+discovery-lifecycle request and returns `-32601` with message `"ping"`.
+Empty-params ping on that session still succeeds, so that control is not
+proof. Route initialize-session ping from the negotiated peer version
+(`has_initialize`), not `RequestContext::protocol_version()` — that helper
+prefers request `_meta` over the session. Do not change
+`server/discover` ping rejection. Do not treat this as a `#5267` pre-init
+repair.
+
 ## 2026-10-04: `help --json` must project the typed 0/2/3 exit contract (#5066)
 
 `stop_states` is free-text. An orchestrator that branches on process status
@@ -17,6 +60,20 @@ bytes. `ExitJson::GateEvaluate` still declares those names as fixed serde
 keys; a compile-time assertion requires the keys to match the producer
 tokens. Do not treat a limitation sentence or a "non-zero" stop-state as
 the contract.
+
+## 2026-10-04: Weak grip needs established activation (pilot accuracy)
+
+`ripr pilot` ranks `weakly_gripped` first. The mutation spot check scored its
+top ten recommendations on five crates: 9 of 37 pointed at a missed
+mutant. Most top weak seams had `activate: unknown`. Some had #4214's
+boundary hint with no observed value, others only same-file related tests.
+Real mutants caught 8 of the 11 seam-precise "missing boundary" claims of
+that shape. `classify_seam` now grades weak grip only when activation is
+known. Otherwise the seam is `ActivationUnknown`. The missing-discriminator
+hint stays in the evidence as guidance. Score ranking changes with
+`cargo xtask mutation-spot-check`, whose receipt now carries
+`pilot_top_recommendations`. Do not judge them from verdict agreement:
+`weakly_gripped` and unknown classes are unscored there.
 
 ## 2026-10-04: `help --json` must be named and self-reported (#5266)
 
@@ -76,6 +133,15 @@ selectors, but do not trim the file part or reject interior whitespace. Walk
 slash-split rewrite dropped Windows drive-relative and rooted identities.
 Paths remain the limitation-path rule: they are identities, not prose. Do not
 add a second filesystem authority in a renderer or `lsp/diagnostics.rs`.
+
+## 2026-10-04: `Path::is_file()` is not `ripr.toml` presence (#5404)
+
+`Path::is_file()` follows symlinks. After `load_for_root` started treating a
+dangling `ripr.toml` as present-but-unreadable, workspace status and the two
+Python repair config-profile checks still used `is_file()`, so they reported
+built-in defaults. Use `config_present_at_root` / `config_entry_present`
+(`symlink_metadata`) at every presence site. Keep a dangling-link control per
+site that must not say defaults while `load_for_root` names `ripr.toml`.
 
 ## 2026-10-03: record-count sharding is not a byte bound (#4999)
 
@@ -174,6 +240,8 @@ original oracle text for rendering. The `error_path_diagnostic_*` fixtures pin
 absent, neutral, raw, escaped, formatted and typed-diagnostic controls in the
 RIPR-SPEC-0108 honesty corpus. Genuine typed and guarded Result oracles retain
 their producer-owned evidence; this is not general Rust name/dataflow resolution.
+Operand-position identifier residual (`error_count`) is #5255; do not reopen
+this diagnostic-operand claim for that mechanism.
 
 ## 2026-09-29: Absent worktree files are not `no_static_path` (#4586)
 
@@ -228,9 +296,10 @@ absorb #4478 (confirmation pin), #4486 (proximity-only oracle), or #3727.
 `CallFact`, `LetBindingFact`, and `ValueEnv` cannot prove that a local is the
 direct return of the seam owner. A nearby test name or a `.field` token on
 another object must not emit a compatible missing discriminator. Derive the
-fact only after activation is already `Yes`; nonempty `missing_discriminators`
-classifies `WeaklyGripped` before `ActivationUnknown`, so an unconditional
-field fact would invent actionability. Keep helper-transfer and qualified or
+fact only after activation is already `Yes`; with activation known, nonempty
+`missing_discriminators` classifies `WeaklyGripped` before
+`ActivationUnknown`, so an unconditional field fact would invent
+actionability. Keep helper-transfer and qualified or
 method callees as named limitations until a later producer can resolve them.
 A same-name local or imported callee, a mutable borrow of the observed field,
 an assertion-message-only field mention, and an assertion-local shadow of the
@@ -261,6 +330,26 @@ Do not absorb helper credit (#4574), proximity-only oracles (#4486), or
 bare-name method relation (#4760) into this pairing gate. Pairing reuses
 activation's `==` facts so a same-test oracle that already infected through
 a named constant or helper hop stays `exposed`.
+
+## 2026-10-05: A boundary literal buried in an argument expression is a false `exposed` (#6668)
+
+Same-test pairing reused `owner_argument_values`, which collects every scalar
+token inside the argument text. `assert_eq!(gate(if false { 10 } else { 50 }),
+true)` and `assert_eq!(gate(std::cmp::max(10, 50)), true)` therefore paired as
+boundary inputs even though both calls evaluate to 50; the `10 <= value` →
+`10 < value` mutant still passes. Bool-owner `assert!(gate(..))` pins inherit
+the same matcher. Pairing now admits an argument only when it is the literal
+itself, a named local bound to that literal, or a call infection already
+recorded as `==` the boundary. Do not "fix" this by changing
+`owner_argument_values` / `scalar_values` (those remain the activation
+authority; #5638 / #5359). Activation `==` fallback is refused when the
+compared argument is compound, not when an unrelated extra argument is
+(`gate(LIMIT, make_context())` still pairs) or when the compared argument
+is a path-qualified constant (`bulk_rate(parcels::BULK_ITEMS)`). When a
+compared operand is a local alias rather than a parameter name, activation
+fallback fail-closes to the whole argument list so a buried literal in the
+aliased slot cannot restore pairing. The reverse direction, helper-built
+inputs that read as gaps, is #6615.
 
 ## 2026-09-29: Whole-object equality is not an effect observer of a different collection (#4575)
 

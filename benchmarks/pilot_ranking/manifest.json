@@ -1,0 +1,56 @@
+{
+  "schema_version": "ripr-pilot-ranking-corpus-v1",
+  "corpus_version": "2026-10-04.1",
+  "description": "Answer key for `ripr pilot`'s top recommendations: five small Rust crates pinned to exact commits, each with the outcome of every viable cargo-mutants mutant at that commit. `cargo xtask pilot-ranking score` runs pilot on each checkout and judges its top picks against these labels, so ranking changes are measured without rerunning cargo-mutants.",
+  "label_rule": "Labels are cargo-mutants outcomes (caught or missed) for every viable mutant at the pinned revision, taken from one full run per crate with the recorded cargo-mutants version and arguments. Timeouts and unviable mutants are counted but not labeled. A label belongs to a mutant location, not to a ripr seam, so any seam pilot ranks can be judged without relabeling.",
+  "limits": [
+    "labels speak for the pinned revisions and the recorded cargo-mutants version only",
+    "a missed mutant shows the crate's tests did not notice that one change; it is not a suite adequacy measure",
+    "the judge's line and owner tiers are coarser than its seam tier; the receipt counts them separately",
+    "fetching is opt-in network (--allow-network); checkouts live under target/ and no repository is vendored"
+  ],
+  "max_seams": 10,
+  "top_k": [5, 10],
+  "repos": [
+    {
+      "id": "semver",
+      "url": "https://github.com/dtolnay/semver",
+      "revision": "280ebcb6edac3aa4cdc545dbff8a26c5ac4861fe",
+      "license": "MIT OR Apache-2.0",
+      "labels": "labels/semver.json",
+      "labeled": {"caught": 268, "missed": 60}
+    },
+    {
+      "id": "bytesize",
+      "url": "https://github.com/bytesize-rs/bytesize",
+      "revision": "66a3715e33369e99cb428bcd5aee32291f8e0a94",
+      "license": "Apache-2.0",
+      "labels": "labels/bytesize.json",
+      "labeled": {"caught": 186, "missed": 144}
+    },
+    {
+      "id": "humantime",
+      "url": "https://github.com/tailhook/humantime",
+      "revision": "76c8929b4cc286f675322475a8e1841f35bafc57",
+      "license": "MIT OR Apache-2.0",
+      "labels": "labels/humantime.json",
+      "labeled": {"caught": 539, "missed": 18}
+    },
+    {
+      "id": "strsim-rs",
+      "url": "https://github.com/rapidfuzz/strsim-rs",
+      "revision": "dacc84c0dc61eff0ee0ff66962bcf2e17018ad26",
+      "license": "MIT",
+      "labels": "labels/strsim-rs.json",
+      "labeled": {"caught": 272, "missed": 79}
+    },
+    {
+      "id": "rust-hex",
+      "url": "https://github.com/KokaKiwi/rust-hex",
+      "revision": "e25a8701f7f6b5ec4acedffcb4a45cfb69cc34eb",
+      "license": "MIT OR Apache-2.0",
+      "labels": "labels/rust-hex.json",
+      "labeled": {"caught": 61, "missed": 20}
+    }
+  ]
+}

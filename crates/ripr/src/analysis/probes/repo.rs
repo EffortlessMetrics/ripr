@@ -27,9 +27,7 @@ pub(crate) fn probes_for_repo_file_seeded(
     };
 
     for shape in &facts.probe_shapes {
-        let Some(family) = family_for_probe_shape(&shape.kind) else {
-            continue;
-        };
+        let family = family_for_probe_shape(shape.kind);
 
         // #3284: harness-role functions never enter the production
         // subject inventory. A cfg(test)-module helper inside a
@@ -63,8 +61,8 @@ pub(crate) fn probes_for_repo_file_seeded(
             family,
             delta: DeltaKind::Unknown,
             before: None,
-            after: Some(shape.text.clone()),
-            expression: shape.text.clone(),
+            after: Some(shape.text.to_string()),
+            expression: shape.text.to_string(),
             expected_sinks,
             required_oracles,
         };
@@ -91,7 +89,7 @@ pub(crate) fn probes_for_repo_file_seeded(
 #[cfg(test)]
 mod tests {
     use super::super::super::rust_index::{
-        FileFacts, FunctionFact, PROBE_SHAPE_ERROR_PATH, ProbeShapeFact, RustIndex,
+        FileFacts, FunctionFact, ProbeShapeFact, ProbeShapeKind, RustIndex,
     };
     use super::*;
     use crate::analysis::facts::FunctionSourceRole;
@@ -115,7 +113,7 @@ mod tests {
                         end_line: 6,
                         body:
                             "fn authenticate() -> Result<(), AuthError> { Err(AuthError::Revoked) }"
-                                .to_string(),
+                                .into(),
                         calls: vec![],
                         returns: vec![],
                         literals: vec![],
@@ -127,22 +125,16 @@ mod tests {
                         item: Default::default(),
                         impl_context: Default::default(),
                     }],
-                    probe_shapes: vec![
-                        ProbeShapeFact {
-                            start_line: 4,
-                            end_line: 4,
-                            start_byte: 48,
-                            kind: PROBE_SHAPE_ERROR_PATH.to_string(),
-                            text: "Err(AuthError::Revoked)".to_string(),
-                        },
-                        ProbeShapeFact {
-                            start_line: 5,
-                            end_line: 5,
-                            start_byte: 80,
-                            kind: "opaque_shape".to_string(),
-                            text: "opaque".to_string(),
-                        },
-                    ],
+                    // Unrecognized wire strings can no longer reach this
+                    // function: they fail at the decode boundary (see
+                    // probe_shape_kind_rejects_unknown_wire_strings_at_decode).
+                    probe_shapes: vec![ProbeShapeFact {
+                        start_line: 4,
+                        end_line: 4,
+                        start_byte: 48,
+                        kind: ProbeShapeKind::ErrorPath,
+                        text: "Err(AuthError::Revoked)".into(),
+                    }],
                     ..FileFacts::default()
                 },
             )]),
@@ -194,7 +186,7 @@ mod tests {
                         file: fragment.clone(),
                         start_line: 1,
                         end_line: 4,
-                        body: "fn clamp(&self, value: i32) -> i32 { value }".to_string(),
+                        body: "fn clamp(&self, value: i32) -> i32 { value }".into(),
                         calls: vec![],
                         returns: vec![],
                         literals: vec![],
@@ -210,8 +202,8 @@ mod tests {
                         start_line: 2,
                         end_line: 2,
                         start_byte: 36,
-                        kind: PROBE_SHAPE_ERROR_PATH.to_string(),
-                        text: "value > self.limit".to_string(),
+                        kind: ProbeShapeKind::ErrorPath,
+                        text: "value > self.limit".into(),
                     }],
                     ..FileFacts::default()
                 },

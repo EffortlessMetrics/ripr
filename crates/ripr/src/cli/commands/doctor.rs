@@ -128,6 +128,9 @@ pub(in crate::cli) fn doctor(args: &[String]) -> Result<(), String> {
     report_detected_test_surfaces(&root);
     report_perl_preview(&root);
     report_known_limitations();
+    if profile == output::doctor::DoctorProfile::SourceBuild {
+        report_linker_temp_redirect_status(&root);
+    }
 
     for tool in output::doctor::DOCTOR_TOOLS {
         ok &= report_doctor_core_check(&report, &format!("tool_{tool}"));
@@ -161,6 +164,11 @@ fn doctor_json(root: &Path, profile: output::doctor::DoctorProfile) -> Result<()
         add_language_runtime_probes(root, &enabled_languages, &mut report, false, probe_runtime);
     if let Some(advisory) = generated_workflow_advisory(root) {
         report.add_advisory_check("generated_workflow", advisory);
+    }
+    if profile == output::doctor::DoctorProfile::SourceBuild
+        && let Some(advisory) = linker_temp_redirect_advisory(root)
+    {
+        report.add_advisory_check("linker_temp_redirect", advisory);
     }
     println!("{}", report.render_json()?);
     output::doctor::doctor_report_result(&report)
@@ -1618,10 +1626,214 @@ fn generated_workflow_line(workflow: &str, current_version: &str) -> Option<Stri
         None => Some(format!(
             "{GENERATED_WORKFLOW_PATH} installs ripr without a version (the ripr 0.10-and-earlier template), so CI runs whatever release is newest against these steps; {refresh}"
         )),
-        Some(version) if version.trim_start_matches('=') != current_version => Some(format!(
-            "{GENERATED_WORKFLOW_PATH} installs ripr {version}, but this is ripr {current_version}; {refresh}"
-        )),
+        Some(version) if version.trim_start_matches('=') != current_version => {
+            let pinned = version.trim_start_matches('=');
+            // #5208: an unreleased ripr intentionally pins the latest
+            // release instead of itself. Refreshing would rewrite the
+            // identical pin, so name the fallback and its real repair
+            // (upgrade ripr first) instead of prescribing the loop.
+            if pinned == super::init_workflow::workflow_install_version(current_version) {
+                Some(format!(
+                    "{GENERATED_WORKFLOW_PATH} installs ripr {pinned}, the latest-release fallback pin for this unreleased ripr {current_version} (refreshing now would rewrite the same pin); upgrade ripr to a release, then {refresh}"
+                ))
+            } else {
+                Some(format!(
+                    "{GENERATED_WORKFLOW_PATH} installs ripr {version}, but this is ripr {current_version}; {refresh}"
+                ))
+            }
+        }
         Some(_) => None,
+    }
+}
+
+/// Workspace-relative Cargo config paths Cargo reads `[env]` from, in Cargo's
+/// own precedence order: the extensionless name wins when both exist ("If
+/// both files exist, Cargo will use the file without the extension", Cargo
+/// reference), so the first existing regular file here is the config a build
+/// against this root uses.
+const CARGO_CONFIG_PATHS: [&str; 2] = [".cargo/config", ".cargo/config.toml"];
+
+/// The variables MSVC `link.exe` and other native linkers take their temp
+/// directory from.
+const LINKER_TEMP_VARS: [&str; 3] = ["TEMP", "TMP", "TMPDIR"];
+
+/// Largest Cargo config doctor reads. A real config is a few hundred bytes;
+/// a bigger file is not a config this preflight can vouch for.
+const CARGO_CONFIG_MAX_BYTES: u64 = 1024 * 1024;
+
+/// The `[env]` linker-temp redirect a workspace's Cargo config declares: the
+/// variables it touches, the distinct workspace-relative directories it
+/// targets, and whether every entry is `force = true`.
+#[derive(Debug, Eq, PartialEq)]
+struct LinkerTempRedirect {
+    vars: Vec<&'static str>,
+    dirs: Vec<String>,
+    all_forced: bool,
+}
+
+/// Whether an `[env]` entry's `relative = true` value stays inside the
+/// workspace. Cargo joins such a value to the config's parent directory, but
+/// an absolute value replaces it (on Windows a root-only `/x` does too) and
+/// a `..` component escapes it — those are not workspace-relative
+/// directories, so the preflight must not label or probe them as ones it
+/// owns.
+fn is_workspace_relative_value(dir: &str) -> bool {
+    let path = Path::new(dir);
+    !path.is_absolute()
+        && !path.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir
+                    | std::path::Component::RootDir
+                    | std::path::Component::Prefix(_)
+            )
+        })
+}
+
+/// Parse the `[env]` linker-temp redirect out of a Cargo config's text. Only
+/// table entries with `relative = true` whose value stays inside the
+/// workspace redirect into a workspace directory; plain string values,
+/// absolute or parent-escaping entries and other variables do not, so they
+/// are not reported — an over-broad match would warn on workspaces the
+/// failure cannot hit, and a missing directory is only a defect while it is
+/// the linker's temp directory.
+fn linker_temp_redirect(config_text: &str) -> Option<LinkerTempRedirect> {
+    let config = toml::from_str::<toml::Value>(config_text).ok()?;
+    let env = config.get("env")?.as_table()?;
+    let mut redirect = LinkerTempRedirect {
+        vars: Vec::new(),
+        dirs: Vec::new(),
+        all_forced: true,
+    };
+    for var in LINKER_TEMP_VARS {
+        let Some(entry) = env.get(var) else {
+            continue;
+        };
+        if !entry
+            .get("relative")
+            .and_then(|relative| relative.as_bool())
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let Some(dir) = entry.get("value").and_then(|value| value.as_str()) else {
+            continue;
+        };
+        if !is_workspace_relative_value(dir) {
+            continue;
+        }
+        if !redirect.vars.contains(&var) {
+            redirect.vars.push(var);
+        }
+        if !redirect.dirs.iter().any(|known| known == dir) {
+            redirect.dirs.push(dir.to_string());
+        }
+        if !entry
+            .get("force")
+            .and_then(|force| force.as_bool())
+            .unwrap_or(false)
+        {
+            redirect.all_forced = false;
+        }
+    }
+    (!redirect.vars.is_empty()).then_some(redirect)
+}
+
+/// Read the workspace's own Cargo config, in Cargo's precedence order (the
+/// extensionless `.cargo/config` wins when both names exist). Returns the
+/// relative path for evidence and the text. A repository can commit these
+/// paths as a symlink (to `/dev/zero`, say); read nothing but a regular
+/// file, and an unreadable or oversized config stays silent — the preflight
+/// never fires on evidence it could not read.
+fn read_workspace_cargo_config(root: &Path) -> Option<(&'static str, String)> {
+    for relative in CARGO_CONFIG_PATHS {
+        let path = root.join(relative);
+        if !std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.is_file()) {
+            continue;
+        }
+        return crate::bounded_input::read_to_string_with_limit(&path, CARGO_CONFIG_MAX_BYTES)
+            .ok()
+            .map(|text| (relative, text));
+    }
+    None
+}
+
+/// Preflight for the workspace-relative linker-temp redirect (#5280).
+///
+/// ripr's own `.cargo/config.toml` force-sets `TEMP`/`TMP`/`TMPDIR` to
+/// workspace-relative `target/` so MSVC `link.exe` never writes its temp
+/// files to a full system temp drive (PR #397). The redirect is deliberate
+/// and stays; the cost is that a checkout where the workspace-local
+/// directory does not exist — a fresh `git worktree add` building with an
+/// isolated `CARGO_TARGET_DIR` — fails linking with an opaque
+/// `LNK1104 ... <workspace>\target\lnk{GUID}.tmp` even though objects and
+/// `/OUT` land in the isolated target. This surfaces the constraint and the
+/// one-line repair before the build hits it. Advisory only: a normal
+/// workspace build creates `target/` itself, and a present directory means
+/// the failure cannot occur.
+fn linker_temp_redirect_advisory(root: &Path) -> Option<String> {
+    let (relative_path, config_text) = read_workspace_cargo_config(root)?;
+    let redirect = linker_temp_redirect(&config_text)?;
+    let absent: Vec<&str> = redirect
+        .dirs
+        .iter()
+        .map(|dir| dir.as_str())
+        .filter(|dir| !root.join(dir).is_dir())
+        .collect();
+    if absent.is_empty() {
+        return None;
+    }
+    // Grammar and repair follow the count. The repair names the workspace-
+    // rooted path, not a bare relative name, so running it from a different
+    // working directory than the selected root still creates the directory
+    // cargo will actually use; it is quoted through the shared shell-arg
+    // owner so a root containing spaces survives as one argument, and the
+    // plural repair names every absent directory.
+    let repair_paths = absent
+        .iter()
+        .map(|dir| {
+            crate::agent::loop_commands::shell_arg(&output::path::human_path(&root.join(dir)))
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let (dirs_phrase, existence, persistence, repair) = if absent.len() == 1 {
+        (
+            format!("{}/", absent[0]),
+            "does not exist",
+            "it exists",
+            format!("Create it before building from source (for example `mkdir {repair_paths}`)"),
+        )
+    } else {
+        let dirs_list = absent
+            .iter()
+            .map(|dir| format!("{dir}/"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        (
+            dirs_list,
+            "do not exist",
+            "they exist",
+            format!("Create each before building from source (for example `mkdir {repair_paths}`)"),
+        )
+    };
+    let override_note = if redirect.all_forced {
+        "exported TEMP/TMP cannot override it (force = true)"
+    } else {
+        "an exported TEMP/TMP overrides entries without force = true"
+    };
+    Some(format!(
+        "{relative_path} redirects linker temp variables ({}) into workspace-relative \
+         {dirs_phrase}, which {existence}; building with an isolated CARGO_TARGET_DIR fails \
+         MSVC linking (LNK1104 naming {}/lnk*.tmp) until {persistence}. {repair}; \
+         {override_note}",
+        redirect.vars.join(", "),
+        output::path::human_path(&root.join(absent[0])),
+    ))
+}
+
+fn report_linker_temp_redirect_status(root: &Path) {
+    if let Some(advisory) = linker_temp_redirect_advisory(root) {
+        println!("~ {advisory}");
     }
 }
 
@@ -1736,11 +1948,28 @@ mod tests {
                     && line.contains("ripr init --ci github --force")),
             "{unpinned:?}"
         );
-        let older = generated_workflow_line(pinned, "0.12.0");
+        // #5208: keep this leg release-proof: the stale pin must differ
+        // from both the current version and its computed fallback, or the
+        // next release bump flips this case into the fallback arm.
+        let current = "99.0.0";
+        let fallback = crate::cli::commands::init_workflow::workflow_install_version(current);
+        assert_ne!(
+            fallback, current,
+            "test setup: {current} must stay unreleased"
+        );
+        let stale = "98.0.0";
+        assert_ne!(
+            stale, fallback,
+            "test setup: stale pin must not equal the fallback"
+        );
+        let stale_workflow = format!(
+            "      - name: Install ripr\n        run: cargo install ripr --version {stale} --locked\n"
+        );
+        let older = generated_workflow_line(&stale_workflow, current);
         assert!(
-            older
-                .as_deref()
-                .is_some_and(|line| line.contains("installs ripr 0.11.0, but this is ripr 0.12.0")),
+            older.as_deref().is_some_and(|line| line.contains(&format!(
+                "installs ripr {stale}, but this is ripr {current}"
+            ))),
             "{older:?}"
         );
         assert_eq!(generated_workflow_line(pinned, "0.11.0"), None);
@@ -1748,6 +1977,31 @@ mod tests {
         assert_eq!(
             generated_workflow_line("        run: cargo install ripr-tools --locked\n", "0.11.0"),
             None
+        );
+    }
+
+    #[test]
+    fn generated_workflow_line_names_the_fallback_pin_without_a_refresh_loop() {
+        // #5208 (Codex P2): an unreleased ripr intentionally pins the latest
+        // release. Doctor must recognize that pin and prescribe upgrading
+        // ripr first: a bare "refresh now" would rewrite the identical pin.
+        let current = "99.0.0";
+        let fallback = crate::cli::commands::init_workflow::workflow_install_version(current);
+        assert_ne!(
+            fallback, current,
+            "test setup: {current} must stay unreleased"
+        );
+        let workflow = format!(
+            "      - name: Install ripr\n        run: cargo install ripr --version {fallback} --locked\n"
+        );
+        let line = generated_workflow_line(&workflow, current);
+        assert!(
+            line.as_deref().is_some_and(|line| {
+                line.contains("latest-release fallback pin")
+                    && line.contains("upgrade ripr to a release")
+                    && line.contains("refreshing now would rewrite the same pin")
+            }),
+            "{line:?}"
         );
     }
 
@@ -1785,6 +2039,221 @@ mod tests {
         assert_eq!(too_big, None);
         #[cfg(unix)]
         assert_eq!(through_link, None);
+        Ok(())
+    }
+
+    /// The exact `[env]` shape ripr's own `.cargo/config.toml` ships.
+    const REPO_SHAPED_CARGO_CONFIG: &str = "[env]\n\
+        TEMP = { value = \"target\", relative = true, force = true }\n\
+        TMP = { value = \"target\", relative = true, force = true }\n\
+        TMPDIR = { value = \"target\", relative = true, force = true }\n";
+
+    #[test]
+    fn linker_temp_redirect_parses_only_relative_table_entries() {
+        // The repo shape: three variables, one distinct directory, all forced.
+        let redirect = linker_temp_redirect(REPO_SHAPED_CARGO_CONFIG);
+        assert!(
+            redirect.as_ref().is_some_and(|redirect| {
+                redirect.vars == ["TEMP", "TMP", "TMPDIR"]
+                    && redirect.dirs == ["target"]
+                    && redirect.all_forced
+            }),
+            "ripr's own [env] shape must parse as a redirect: {redirect:?}"
+        );
+
+        // Plain-string entries (never tables, so never `relative`) do not
+        // redirect into the workspace; unrelated variables are ignored; a
+        // non-forced entry keeps all_forced honest for the override note.
+        let mixed = "[env]\n\
+            TEMP = \"elsewhere\"\n\
+            TMPDIR = { value = \"target\", relative = true }\n";
+        let redirect = linker_temp_redirect(mixed);
+        assert!(
+            redirect.as_ref().is_some_and(|redirect| {
+                redirect.vars == ["TMPDIR"] && redirect.dirs == ["target"] && !redirect.all_forced
+            }),
+            "the relative TMPDIR entry must redirect: {redirect:?}"
+        );
+
+        // Absolute and parent-escaping values are not workspace-relative
+        // directories, so they are not recorded at all — not as variables,
+        // directories, or force summary — even when a valid entry coexists.
+        let escaping = "[env]\n\
+            TEMP = { value = \"/elsewhere\", relative = true }\n\
+            TMP = { value = \"../outside\", relative = true, force = true }\n\
+            TMPDIR = { value = \"target\", relative = true }\n";
+        let redirect = linker_temp_redirect(escaping);
+        assert!(
+            redirect.as_ref().is_some_and(|redirect| {
+                redirect.vars == ["TMPDIR"] && redirect.dirs == ["target"] && !redirect.all_forced
+            }),
+            "absolute and parent-escaping entries must be rejected, valid ones kept: {redirect:?}"
+        );
+        assert_eq!(
+            linker_temp_redirect("[env]\nTEMP = { value = \"../outside\", relative = true }\n",),
+            None
+        );
+        // Windows drive-relative values ("C:target") carry a Prefix component
+        // without a root, and joining them discards the workspace base too.
+        #[cfg(windows)]
+        assert_eq!(
+            linker_temp_redirect("[env]\nTEMP = { value = \"C:target\", relative = true }\n",),
+            None
+        );
+
+        assert_eq!(linker_temp_redirect("[env]\nTEMP = \"target\"\n"), None);
+        assert_eq!(linker_temp_redirect("[env]\nRUST_LOG = \"debug\"\n"), None);
+        assert_eq!(linker_temp_redirect("[profile.dev]\nopt-level = 0\n"), None);
+        assert_eq!(linker_temp_redirect("not toml ["), None);
+    }
+
+    #[test]
+    fn linker_temp_redirect_advisory_names_the_missing_dir_and_repair() -> Result<(), String> {
+        let root = unique_command_test_dir("linker-temp-redirect");
+        std::fs::create_dir_all(root.join(".cargo"))
+            .map_err(|err| format!("create .cargo: {err}"))?;
+        let config = root.join(".cargo/config.toml");
+        std::fs::write(&config, REPO_SHAPED_CARGO_CONFIG)
+            .map_err(|err| format!("write config: {err}"))?;
+        // The issue's setup (#5280): redirect present, workspace-local
+        // target/ absent — a fresh worktree about to build with an isolated
+        // CARGO_TARGET_DIR.
+        let absent = linker_temp_redirect_advisory(&root);
+        // Once the directory exists (a normal workspace build creates it
+        // itself) the failure cannot occur and the preflight is silent.
+        std::fs::create_dir_all(root.join("target"))
+            .map_err(|err| format!("create target: {err}"))?;
+        let present = linker_temp_redirect_advisory(&root);
+        // No redirect, no warning: the config's presence alone is not the
+        // defect, the redirect into a missing directory is.
+        std::fs::write(&config, "[alias]\nxtask = \"run -p xtask --\"\n")
+            .map_err(|err| format!("write plain config: {err}"))?;
+        std::fs::remove_dir_all(root.join("target"))
+            .map_err(|err| format!("remove target: {err}"))?;
+        let no_redirect = linker_temp_redirect_advisory(&root);
+        // The legacy extensionless name is the config Cargo reads when
+        // config.toml does not exist.
+        std::fs::remove_file(&config).map_err(|err| format!("remove config: {err}"))?;
+        std::fs::write(root.join(".cargo/config"), REPO_SHAPED_CARGO_CONFIG)
+            .map_err(|err| format!("write legacy config: {err}"))?;
+        let legacy = linker_temp_redirect_advisory(&root);
+        // Cargo's precedence: when both names exist, the extensionless file
+        // wins, so the advisory must reflect its redirect, not config.toml's.
+        std::fs::write(
+            &config,
+            "[env]\nTMP = { value = \"other\", relative = true }\n",
+        )
+        .map_err(|err| format!("write conflicting config.toml: {err}"))?;
+        let conflicting = linker_temp_redirect_advisory(&root);
+        // An unreadable (here: oversized) config stays silent: with the
+        // extensionless file removed, the oversized config.toml is the first
+        // existing name, and an unreadable first name is never traded for a
+        // later readable one.
+        std::fs::remove_file(root.join(".cargo/config"))
+            .map_err(|err| format!("remove legacy config: {err}"))?;
+        let mut oversized = REPO_SHAPED_CARGO_CONFIG.to_string();
+        oversized.push_str(&"#".repeat(CARGO_CONFIG_MAX_BYTES as usize));
+        std::fs::write(&config, oversized).map_err(|err| format!("write oversized: {err}"))?;
+        let too_big = linker_temp_redirect_advisory(&root);
+        // A root whose path contains a space must get a shell-quoted repair,
+        // so the example stays one argument instead of splitting.
+        let spaced_root = root.join("dir with spaces");
+        std::fs::create_dir_all(spaced_root.join(".cargo"))
+            .map_err(|err| format!("create spaced root: {err}"))?;
+        std::fs::write(
+            spaced_root.join(".cargo/config.toml"),
+            REPO_SHAPED_CARGO_CONFIG,
+        )
+        .map_err(|err| format!("write spaced config: {err}"))?;
+        let spaced = linker_temp_redirect_advisory(&spaced_root);
+        // Compute the rooted-repair expectations before the tree is removed.
+        let rooted_target = output::path::human_path(&root.join("target"));
+        let spaced_target = crate::agent::loop_commands::shell_arg(&output::path::human_path(
+            &spaced_root.join("target"),
+        ));
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+
+        let absent = absent.unwrap_or_default();
+        assert!(
+            absent.starts_with(".cargo/config.toml redirects linker temp variables"),
+            "absent workspace target must warn, got: {absent:?}"
+        );
+        assert!(absent.contains("(TEMP, TMP, TMPDIR)"), "{absent}");
+        assert!(absent.contains("workspace-relative target/"), "{absent}");
+        assert!(absent.contains("which does not exist"), "{absent}");
+        assert!(absent.contains("LNK1104"), "{absent}");
+        assert!(
+            absent.contains(&format!("mkdir {rooted_target}")),
+            "the repair must name the workspace-rooted directory, not a cwd-relative one: {absent}"
+        );
+        let spaced = spaced.unwrap_or_default();
+        assert!(
+            spaced.contains(&format!("mkdir {spaced_target}")),
+            "a root with spaces must get a quoted repair argument: {spaced}"
+        );
+        assert!(
+            absent.contains("exported TEMP/TMP cannot override it (force = true)"),
+            "{absent}"
+        );
+        assert_eq!(present, None);
+        assert_eq!(no_redirect, None);
+        let legacy = legacy.unwrap_or_default();
+        assert!(
+            legacy.starts_with(".cargo/config redirects linker temp variables"),
+            "legacy extensionless config must be read, got: {legacy:?}"
+        );
+        let conflicting = conflicting.unwrap_or_default();
+        assert!(
+            conflicting.starts_with(".cargo/config redirects linker temp variables")
+                && conflicting.contains("workspace-relative target/")
+                && !conflicting.contains("other"),
+            "when both config names exist the extensionless redirect must win: {conflicting:?}"
+        );
+        assert_eq!(too_big, None);
+        Ok(())
+    }
+
+    #[test]
+    fn linker_temp_redirect_advisory_pluralizes_multiple_absent_dirs() -> Result<(), String> {
+        // Two variables redirected into two distinct absent directories:
+        // the evidence must read as plural and the repair must name every
+        // directory, not just the first.
+        let config_text = "[env]\n\
+            TEMP = { value = \"target\", relative = true, force = true }\n\
+            TMPDIR = { value = \"elsewhere\", relative = true }\n";
+        let redirect = linker_temp_redirect(config_text);
+        assert!(
+            redirect.as_ref().is_some_and(|redirect| {
+                redirect.dirs == ["target", "elsewhere"] && !redirect.all_forced
+            }),
+            "distinct directories must both be recorded: {redirect:?}"
+        );
+        let root = unique_command_test_dir("linker-temp-redirect-multi");
+        std::fs::create_dir_all(root.join(".cargo"))
+            .map_err(|err| format!("create .cargo: {err}"))?;
+        std::fs::write(root.join(".cargo/config.toml"), config_text)
+            .map_err(|err| format!("write config: {err}"))?;
+        let advisory = linker_temp_redirect_advisory(&root).unwrap_or_default();
+        // Compute both rooted-repair expectations before the tree is removed.
+        let target_arg =
+            crate::agent::loop_commands::shell_arg(&output::path::human_path(&root.join("target")));
+        let elsewhere_arg = crate::agent::loop_commands::shell_arg(&output::path::human_path(
+            &root.join("elsewhere"),
+        ));
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        assert!(
+            advisory.contains("target/, elsewhere/, which do not exist"),
+            "{advisory}"
+        );
+        assert!(
+            advisory.contains(&format!("mkdir {target_arg} {elsewhere_arg}")),
+            "the plural repair must name every absent directory: {advisory}"
+        );
+        assert!(advisory.contains("until they exist"), "{advisory}");
+        assert!(
+            advisory.contains("Create each before building"),
+            "{advisory}"
+        );
         Ok(())
     }
 

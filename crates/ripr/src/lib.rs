@@ -50,6 +50,9 @@
 //! ```
 //!
 
+// Terminal-safe `eprintln!`/`eprint!` for every module declared below it.
+#[macro_use]
+mod stderr_guard;
 // Shared internal outcome vocabulary for parser and output children under
 // #2827. The public Rust API remains unchanged while internal projections
 // deliberately carry the contract.
@@ -134,6 +137,7 @@ pub mod output;
 /// Exact-snapshot, read-only provider DTOs for external proof orchestrators.
 pub mod provider_contract;
 pub mod review_input;
+mod terminal_text;
 mod workspace_status;
 pub use analysis::LanguageRun;
 pub use analysis::LanguageRunStatus;

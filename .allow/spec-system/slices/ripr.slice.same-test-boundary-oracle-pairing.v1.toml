@@ -11,8 +11,12 @@ For a predicate probe, exposed requires one test that both feeds a boundary
 input to the owner and holds a discriminating oracle on that call's result.
 A split (boundary call with no oracle in one test, exact far oracle in another)
 reads at most weakly_exposed and names same_test_pairing_missing. The
-assert_eq!(owner(boundary), ...) control stays exposed. Does not absorb
-#4486, #4760, #4574, or #4715.
+assert_eq!(owner(boundary), ...) control stays exposed. An argument is a
+boundary input only when it is the literal itself, a local bound to it, or a
+call infection already recorded as == the boundary; expressions that merely
+contain the literal do not pair (#6668). A compound extra argument does not
+block named-constant pairing on the compared parameter. Does not absorb
+#4486, #4760, #4574, #4715, or #6615.
 """
 
 non_goals = [

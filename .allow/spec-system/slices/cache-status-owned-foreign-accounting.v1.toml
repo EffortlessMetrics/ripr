@@ -1,0 +1,63 @@
+schema_version = "2.0"
+id = "ripr.slice.cache-status-owned-foreign-accounting.v1"
+generation = 1
+
+source_issue = "issue:5987"
+design_reference = "issue:5987#suggested-direction"
+change_class = "behavior_change"
+
+claim_boundary = """
+`ripr cache status` counts and sizes only the recognized ripr cache layer
+directories — the set `ripr cache clear` removes — so status and clear
+describe the same owned set when they say "entries", and a post-clear status
+reports zero owned entries. A regular file wearing a recognized layer name is
+disclosed as foreign, not owned (review repair: the clear planner accepts
+named layers only as directories and removes nothing in that state). Files
+anywhere else under the cache root (foreign layers, stray notes,
+stale-schema orphans) are disclosed separately as `foreign_entry_count` /
+`foreign_total_size_bytes` and stay preserved by clear. The status report
+schema moves 0.1 -> 0.2 because the meaning of `entry_count` /
+`total_size_bytes` changes. Claims no change to clear's removal set, its
+preserve-siblings design, or the cache producers; the retained per-layer
+inspector keeps its everything-is-owned semantics for clear's plan.
+"""
+
+non_goals = [
+  "removing or naming foreign files from `cache clear` (preserve-siblings stays)",
+  "changing cache producers, layer names, or entry formats",
+  "adding a foreign-file removal or gc verb",
+  "changing the analysis cache read/write path or its keying",
+]
+
+return_conditions = [
+  "Return to root if a post-clear `cache status` again reports owned entries clear refuses to remove.",
+  "Return to root if `cache clear` and `cache status` disagree about the owned set.",
+]
+
+owned_seams = [
+  "seam:ripr:cli:cache-status-report",
+  "seam:ripr:analysis:cache-status-inspection",
+]
+
+shared_seams = [
+  "seam:ripr:analysis:cache-layer-inventory",
+  "seam:ripr:docs:output-schema",
+]
+
+forbidden_seams = [
+  "seam:ripr:cli:cache-clear-planner",
+  "seam:ripr:analysis:file-facts-cache",
+]
+
+[[requirement_delta]]
+requirement_id = "issue:5987#suggested-direction"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

@@ -1,0 +1,25 @@
+pub struct Basket {
+    pub items: Vec<u32>,
+}
+
+impl Basket {
+    pub fn new() -> Self {
+        Basket { items: Vec::new() }
+    }
+
+    pub fn add(&mut self, x: u32) {
+        self.items.push(x);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn add_pushes_the_item() {
+        let mut c = Basket::new();
+        c.add(4);
+        assert_eq!(c.items, vec![4]);
+    }
+}

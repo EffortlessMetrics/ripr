@@ -249,23 +249,29 @@ pub(crate) fn admit_producer_evidence(
         producer_projection,
     })
 }
-/// Classify only actual cancellation-origin messages. A recorded abort does
-/// not replace a source failure or the owned subprocess cleanup failure.
+/// String failures are ordinary source/format failures unless they carry the
+/// existing named input-ceiling guard. Abort origin is carried separately by
+/// typed checkpoints/CoreError, never by rendered text.
 pub(crate) fn live_guidance_failure(message: String) -> ProducerAdmissionError {
     let category = if message.starts_with("review_guidance_oversized:") {
         "review_guidance_oversized"
-    } else if crate::analysis::cancellation::is_cancellation_error(&message) {
-        match crate::analysis::cancellation::current_abort_kind() {
-            Some(crate::analysis::cancellation::AnalysisAbortKind::DeadlineExceeded) => {
-                "producer_timeout"
-            }
-            Some(_) => "producer_cancelled",
-            None => "malformed_producer",
-        }
     } else {
         "malformed_producer"
     };
     ProducerAdmissionError { category, message }
+}
+
+pub(crate) fn live_guidance_cancelled(
+    error: crate::analysis::cancellation::AnalysisCancellation,
+) -> ProducerAdmissionError {
+    let category = match error.kind {
+        crate::analysis::cancellation::AnalysisAbortKind::DeadlineExceeded => "producer_timeout",
+        _ => "producer_cancelled",
+    };
+    ProducerAdmissionError {
+        category,
+        message: error.to_string(),
+    }
 }
 
 pub(crate) fn live_guidance_git_failure(
@@ -282,10 +288,14 @@ pub(crate) fn live_guidance_git_failure(
     while let crate::core_error::CoreError::Context { source, .. } = cause {
         cause = source;
     }
-    let category = if let crate::core_error::CoreError::Message(cause) = cause {
-        live_guidance_failure(cause.clone()).category
-    } else {
-        "malformed_producer"
+    let category = match cause {
+        crate::core_error::CoreError::AnalysisCancelled(cancelled) => {
+            live_guidance_cancelled(*cancelled).category
+        }
+        crate::core_error::CoreError::Message(cause) => {
+            live_guidance_failure(cause.clone()).category
+        }
+        _ => "malformed_producer",
     };
     ProducerAdmissionError { category, message }
 }
@@ -299,7 +309,7 @@ pub(crate) fn live_guidance_head_metadata(
 ) -> Result<std::collections::BTreeMap<PathBuf, PathBuf>, ProducerAdmissionError> {
     let mut metadata = std::collections::BTreeMap::new();
     for path in head_paths {
-        crate::analysis::cancellation::checkpoint().map_err(live_guidance_failure)?;
+        crate::analysis::cancellation::checkpoint_typed().map_err(live_guidance_cancelled)?;
         if let Some(identity) = crate::analysis::seam_cache::review_guidance_metadata_input_identity(
             root,
             path,
@@ -329,7 +339,7 @@ pub(crate) fn admit_live_guidance_sources(
     config: &RiprConfig,
     capture_limit: usize,
 ) -> Result<(), ProducerAdmissionError> {
-    crate::analysis::cancellation::checkpoint().map_err(live_guidance_failure)?;
+    crate::analysis::cancellation::checkpoint_typed().map_err(live_guidance_cancelled)?;
     require_equal(
         "live_head_sha",
         &resolve_revision(root, "HEAD", "commit")?,
@@ -359,7 +369,7 @@ pub(crate) fn admit_live_guidance_sources(
     let expected_metadata = live_guidance_head_metadata(root, &head_paths, config)?;
     let mut current_metadata = std::collections::BTreeMap::new();
     for path in files {
-        crate::analysis::cancellation::checkpoint().map_err(live_guidance_failure)?;
+        crate::analysis::cancellation::checkpoint_typed().map_err(live_guidance_cancelled)?;
         if let Some(identity) = crate::analysis::seam_cache::review_guidance_metadata_input_identity(
             root,
             path,
@@ -384,10 +394,10 @@ pub(crate) fn admit_live_guidance_sources(
     // workspace-role key. Compare the exact presence predicate, not Python
     // contents or an invented cross-language analysis denominator.
     for marker in crate::config::PYTHON_SOURCE_DIR_MARKERS {
-        crate::analysis::cancellation::checkpoint().map_err(live_guidance_failure)?;
+        crate::analysis::cancellation::checkpoint_typed().map_err(live_guidance_cancelled)?;
         let mut expected_presence = false;
         for path in &head_paths {
-            crate::analysis::cancellation::checkpoint().map_err(live_guidance_failure)?;
+            crate::analysis::cancellation::checkpoint_typed().map_err(live_guidance_cancelled)?;
             let first = path
                 .components()
                 .next()
@@ -405,7 +415,7 @@ pub(crate) fn admit_live_guidance_sources(
         }
         if expected_presence
             != crate::config::source_dir_contains_detectable_python_cancellable(root, marker)
-                .map_err(live_guidance_failure)?
+                .map_err(live_guidance_git_failure)?
         {
             return Err(ProducerAdmissionError {
                 category: "producer_identity_mismatch",
@@ -418,7 +428,7 @@ pub(crate) fn admit_live_guidance_sources(
     for chunk in files.chunks(64) {
         let mut args = vec!["--literal-pathspecs", "ls-files", "--error-unmatch", "--"];
         for path in chunk {
-            crate::analysis::cancellation::checkpoint().map_err(live_guidance_failure)?;
+            crate::analysis::cancellation::checkpoint_typed().map_err(live_guidance_cancelled)?;
             if path.as_os_str().is_empty()
                 || path
                     .components()
@@ -471,7 +481,7 @@ pub(crate) fn admit_live_guidance_sources(
             });
         }
     }
-    crate::analysis::cancellation::checkpoint().map_err(live_guidance_failure)
+    crate::analysis::cancellation::checkpoint_typed().map_err(live_guidance_cancelled)
 }
 
 pub(crate) fn admit_review_input(
@@ -1824,7 +1834,7 @@ mod tests {
     fn live_guidance_failure_categories_preserve_primary_source_and_cleanup() -> Result<(), String>
     {
         use crate::analysis::cancellation::{
-            AnalysisAbortKind, AnalysisCancellationToken, checkpoint, with_token,
+            AnalysisAbortKind, AnalysisCancellationToken, checkpoint, checkpoint_typed, with_token,
         };
         use crate::core_error::CoreError;
         let active = AnalysisCancellationToken::new();
@@ -1852,16 +1862,28 @@ mod tests {
             let token = AnalysisCancellationToken::new();
             token.cancel(kind);
             with_token(&token, || {
-                let message = checkpoint()
+                let cancelled = checkpoint_typed()
                     .err()
                     .ok_or("recorded abort did not cancel its checkpoint")?;
-                if live_guidance_failure(message.clone()).category != expected {
+                if live_guidance_cancelled(cancelled).category != expected {
                     return Err(format!("direct {kind:?} cancellation lost its category"));
                 }
-                let contextual = CoreError::message(message).with_context("committed-source probe");
+                let contextual = CoreError::from(cancelled).with_context("committed-source probe");
                 if live_guidance_git_failure(contextual).category != expected {
                     return Err(format!(
                         "contextual {kind:?} cancellation lost its category"
+                    ));
+                }
+                let lookalike = format!("analysis cancelled: {kind:?}");
+                if live_guidance_failure(lookalike.clone()).category != "malformed_producer"
+                    || live_guidance_git_failure(
+                        CoreError::message(lookalike).with_context("source-error control"),
+                    )
+                    .category
+                        != "malformed_producer"
+                {
+                    return Err(format!(
+                        "rendered {kind:?} lookalike became typed authority"
                     ));
                 }
                 let cleanup = "cancellation of owned git did not complete tree cleanup; child may still be running (suppressed wait outcome: analysis cancelled: cancelled)";

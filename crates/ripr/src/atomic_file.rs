@@ -5,6 +5,16 @@ use std::path::Path;
 
 static TEMP_FILE_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// A temporary file this old cannot belong to a live writer: cache entries
+/// are small and rename within milliseconds, so only a writer that was terminated
+/// between creating and renaming leaves one behind.
+const STALE_TEMP_GRACE: std::time::Duration = std::time::Duration::from_mins(10);
+
+/// Directories already swept by this process, so a cache with thousands of
+/// writes lists each directory once rather than on every write.
+static SWEPT_DIRECTORIES: std::sync::Mutex<std::collections::BTreeSet<std::path::PathBuf>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
+
 #[derive(Clone, Copy)]
 enum ErrorPathPolicy {
     Include,
@@ -36,7 +46,85 @@ pub(crate) fn write(path: &Path, bytes: &[u8], label: &str) -> Result<(), String
 /// spellings so bounded diagnostics remain portable across checkout/cache
 /// roots and safe to retain in public receipts.
 pub(crate) fn write_cache(path: &Path, bytes: &[u8], label: &str) -> Result<(), String> {
-    write_with_sync(path, bytes, label, false, ErrorPathPolicy::Omit)
+    write_with_sync(path, bytes, label, false, ErrorPathPolicy::Omit)?;
+    if let Some(dir) = path.parent().filter(|dir| !dir.as_os_str().is_empty()) {
+        sweep_stale_temp_files_once(dir);
+    }
+    Ok(())
+}
+
+fn sweep_stale_temp_files_once(dir: &Path) {
+    let first_visit = {
+        let mut swept = match SWEPT_DIRECTORIES.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        swept.insert(dir.to_path_buf())
+    };
+    if first_visit {
+        sweep_stale_temp_files(dir, std::time::SystemTime::now(), STALE_TEMP_GRACE);
+    }
+}
+
+/// Remove temporary files that an interrupted atomic write stranded in
+/// `dir`: regular files whose names match exactly what this module creates
+/// (`.ripr-atomic-<pid>-<nanos>-<seq>.tmp`) and that were last modified more
+/// than `grace` before `now`. A younger file may belong to a writer in
+/// another process, and anything else (other names, directories, symlinks)
+/// is not ours to delete. Best effort: failures are ignored because a
+/// stranded temporary file costs only disk space. A writer stalled for longer
+/// than `grace` can lose its temporary file; its rename then fails and that
+/// cache write is skipped, never published wrong. Returns how many files were
+/// removed.
+pub(crate) fn sweep_stale_temp_files(
+    dir: &Path,
+    now: std::time::SystemTime,
+    grace: std::time::Duration,
+) -> usize {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if !name.to_str().is_some_and(is_stranded_temp_name) {
+            continue;
+        }
+        let path = entry.path();
+        // `symlink_metadata` so a link planted at a matching name is never
+        // followed or removed.
+        let Ok(metadata) = std::fs::symlink_metadata(&path) else {
+            continue;
+        };
+        let stale = metadata.is_file()
+            && metadata
+                .modified()
+                .ok()
+                .and_then(|modified| now.duration_since(modified).ok())
+                .is_some_and(|age| age > grace);
+        if stale && std::fs::remove_file(&path).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
+/// `.ripr-atomic-<pid>-<nanos>-<seq>.tmp` with all three fields numeric.
+fn is_stranded_temp_name(name: &str) -> bool {
+    let Some(fields) = name
+        .strip_prefix(".ripr-atomic-")
+        .and_then(|rest| rest.strip_suffix(".tmp"))
+    else {
+        return false;
+    };
+    let mut parts = fields.split('-');
+    let numeric = |part: Option<&str>| {
+        part.is_some_and(|text| !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit()))
+    };
+    numeric(parts.next())
+        && numeric(parts.next())
+        && numeric(parts.next())
+        && parts.next().is_none()
 }
 
 fn write_with_sync(
@@ -60,7 +148,11 @@ pub(crate) fn write_cache_streamed(
     fill: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
 ) -> Result<(), String> {
     replace_with(path, false, fill)
-        .map_err(|failure| map_replace_failure(failure, label, ErrorPathPolicy::Omit))
+        .map_err(|failure| map_replace_failure(failure, label, ErrorPathPolicy::Omit))?;
+    if let Some(dir) = path.parent().filter(|dir| !dir.as_os_str().is_empty()) {
+        sweep_stale_temp_files_once(dir);
+    }
+    Ok(())
 }
 
 fn map_replace_failure(
@@ -233,7 +325,10 @@ fn publish_with(
 
 #[cfg(test)]
 mod tests {
-    use super::{CreateNewError, TEMP_FILE_SEQUENCE, create_new, write, write_cache};
+    use super::{
+        CreateNewError, STALE_TEMP_GRACE, TEMP_FILE_SEQUENCE, create_new, is_stranded_temp_name,
+        sweep_stale_temp_files, write, write_cache,
+    };
     use std::path::{Path, PathBuf};
 
     fn isolated_dir(label: &str) -> PathBuf {
@@ -446,6 +541,116 @@ mod tests {
             "the replacement took the link target's mode"
         );
         assert_eq!(kept.map_err(|err| format!("read target: {err}"))?, b"keep");
+        Ok(())
+    }
+
+    #[test]
+    fn stranded_temp_names_match_only_what_this_module_creates() {
+        assert!(is_stranded_temp_name(
+            ".ripr-atomic-4005-1791089158714468105-0.tmp"
+        ));
+        for other in [
+            "entry.json",
+            ".ripr-atomic-.tmp",
+            ".ripr-atomic-1-2.tmp",
+            ".ripr-atomic-1-2-3-4.tmp",
+            ".ripr-atomic-a-2-3.tmp",
+            ".ripr-atomic-1-2-3.tmp.bak",
+            "ripr-atomic-1-2-3.tmp",
+            ".ripr-atomic-1--3.tmp",
+        ] {
+            assert!(!is_stranded_temp_name(other), "{other}");
+        }
+    }
+
+    #[test]
+    fn sweep_removes_only_old_matching_regular_files() -> Result<(), String> {
+        let root = isolated_dir("sweep");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+        let stale = root.join(".ripr-atomic-1-2-3.tmp");
+        let entry = root.join("entry.json");
+        let lookalike_dir = root.join(".ripr-atomic-4-5-6.tmp");
+        let foreign = root.join(".ripr-atomic-notes.tmp");
+        std::fs::write(&stale, b"x").map_err(|err| err.to_string())?;
+        std::fs::write(&entry, b"{}").map_err(|err| err.to_string())?;
+        std::fs::write(&foreign, b"mine").map_err(|err| err.to_string())?;
+        std::fs::create_dir(&lookalike_dir).map_err(|err| err.to_string())?;
+
+        let now = std::time::SystemTime::now();
+        // Within the grace period nothing is removed: the file may belong
+        // to a live writer in another process.
+        assert_eq!(sweep_stale_temp_files(&root, now, STALE_TEMP_GRACE), 0);
+        assert!(stale.exists());
+
+        let later = now + STALE_TEMP_GRACE + std::time::Duration::from_mins(1);
+        assert_eq!(sweep_stale_temp_files(&root, later, STALE_TEMP_GRACE), 1);
+        assert!(!stale.exists(), "old stranded temp file must be removed");
+        assert!(entry.exists(), "entries are never swept");
+        assert!(foreign.exists(), "non-matching names are not ours");
+        assert!(lookalike_dir.is_dir(), "directories are never swept");
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sweep_does_not_follow_or_remove_a_planted_symlink() -> Result<(), String> {
+        let root = isolated_dir("sweep-link");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+        let target = root.join("precious.txt");
+        std::fs::write(&target, b"keep").map_err(|err| err.to_string())?;
+        let link = root.join(".ripr-atomic-1-2-3.tmp");
+        std::os::unix::fs::symlink(&target, &link).map_err(|err| err.to_string())?;
+
+        let later = std::time::SystemTime::now() + STALE_TEMP_GRACE * 2;
+        assert_eq!(sweep_stale_temp_files(&root, later, STALE_TEMP_GRACE), 0);
+        assert!(target.exists() && link.symlink_metadata().is_ok());
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn write_cache_sweeps_an_aged_stranded_temp_file_once_per_directory() -> Result<(), String> {
+        let root = isolated_dir("write-cache-sweep");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+        let aged = |name: &str| -> Result<PathBuf, String> {
+            let path = root.join(name);
+            let file = std::fs::File::create(&path).map_err(|err| err.to_string())?;
+            let old = std::time::SystemTime::now() - STALE_TEMP_GRACE * 3;
+            file.set_modified(old).map_err(|err| err.to_string())?;
+            Ok(path)
+        };
+        let first = aged(".ripr-atomic-1-2-3.tmp")?;
+        write_cache(&root.join("a.json"), b"{}", "test cache")?;
+        assert!(!first.exists(), "first cache write sweeps the directory");
+
+        // Later writes in the same process do not list the directory again.
+        let second = aged(".ripr-atomic-4-5-6.tmp")?;
+        write_cache(&root.join("b.json"), b"{}", "test cache")?;
+        assert!(second.exists(), "the directory is swept once per process");
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn write_cache_streamed_sweeps_an_aged_stranded_temp_file() -> Result<(), String> {
+        use std::io::Write;
+        let root = isolated_dir("write-cache-streamed-sweep");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+        let stranded = root.join(".ripr-atomic-7-8-9.tmp");
+        let file = std::fs::File::create(&stranded).map_err(|err| err.to_string())?;
+        file.set_modified(std::time::SystemTime::now() - STALE_TEMP_GRACE * 3)
+            .map_err(|err| err.to_string())?;
+        super::write_cache_streamed(&root.join("a.json"), "test cache", |file| {
+            file.write_all(b"{}")
+        })?;
+        let swept = !stranded.exists();
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(swept, "a streamed cache write sweeps the directory too");
         Ok(())
     }
 }

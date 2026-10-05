@@ -84,6 +84,7 @@ fn pilot_context(artifacts: &PilotArtifacts) -> PilotSummaryContext<'_> {
         artifacts,
         python_first_use: None,
         language_routes: None,
+        seam_limit: None,
     }
 }
 
@@ -161,6 +162,7 @@ fn pilot_context_with_python<'a>(
         artifacts,
         python_first_use: Some(python_first_use),
         language_routes: None,
+        seam_limit: None,
     }
 }
 
@@ -252,6 +254,210 @@ fn pilot_ranking_uses_evidence_tie_breakers_then_stable_location() {
     assert_eq!(display_path(ranked[3].seam.file()), "src/d.rs");
 }
 
+/// A seam of `owner` in `file`; the shared `seam` helper fixes one owner.
+fn classified_in_owner(
+    class: SeamGripClass,
+    file: &str,
+    owner: &str,
+    line: usize,
+) -> ClassifiedSeam {
+    let mut entry = classified_with(class, file, line, Vec::new(), Vec::new());
+    entry.seam = RepoSeam::new(
+        file,
+        owner,
+        SeamKind::PredicateBoundary,
+        line * 10,
+        line,
+        "amount >= discount_threshold",
+        RequiredDiscriminator::BoundaryValue {
+            description: "amount >= discount_threshold".to_string(),
+        },
+        ExpectedSink::ReturnValue,
+    );
+    entry.evidence.seam_id = entry.seam.id().clone();
+    entry
+}
+
+fn ranked_places(ranked: &[&ClassifiedSeam]) -> Vec<(String, usize)> {
+    ranked
+        .iter()
+        .map(|entry| (entry.seam.owner().to_string(), entry.seam.display_line()))
+        .collect()
+}
+
+#[test]
+fn pilot_ranking_takes_one_seam_per_owner_before_a_second() {
+    // #5770: three adjacent seams of one function sorted ahead of another
+    // function's seam by location alone; each owner now gets one pick first.
+    let entries = [
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 10),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 11),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 12),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::as_str", 40),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/b.rs", "b::parse", 5),
+    ];
+
+    assert_eq!(
+        ranked_places(&top_actionable_seams(&entries, 3)),
+        [
+            ("a::clone".to_string(), 10),
+            ("a::as_str".to_string(), 40),
+            ("b::parse".to_string(), 5),
+        ]
+    );
+    // Past one round, the owner's remaining seams follow in location order.
+    assert_eq!(
+        ranked_places(&top_actionable_seams(&entries, 5))[3..],
+        [("a::clone".to_string(), 11), ("a::clone".to_string(), 12)]
+    );
+}
+
+#[test]
+fn pilot_ranking_spreads_owners_without_crossing_class_order() {
+    // The same owner name in another file is another function.
+    let entries = [
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "fmt", 1),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "fmt", 2),
+        classified_in_owner(SeamGripClass::Ungripped, "src/b.rs", "parse", 1),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/c.rs", "fmt", 1),
+    ];
+
+    let ranked = top_actionable_seams(&entries, 4);
+    assert_eq!(
+        ranked
+            .iter()
+            .map(|entry| (display_path(entry.seam.file()), entry.seam.display_line()))
+            .collect::<Vec<_>>(),
+        [
+            ("src/a.rs".to_string(), 1),
+            ("src/c.rs".to_string(), 1),
+            ("src/a.rs".to_string(), 2),
+            ("src/b.rs".to_string(), 1),
+        ]
+    );
+}
+
+#[test]
+fn pilot_ranking_counts_owner_rounds_across_classes() {
+    // A function already listed for a weak seam does not get a fresh first
+    // pick among the opaque ones: the other function's two opaque seams lead.
+    let entries = [
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/z.rs", "z::fmt", 1),
+        classified_in_owner(SeamGripClass::Opaque, "src/z.rs", "z::fmt", 9),
+        classified_in_owner(SeamGripClass::Opaque, "src/b.rs", "b::parse", 1),
+        classified_in_owner(SeamGripClass::Opaque, "src/b.rs", "b::parse", 2),
+    ];
+
+    assert_eq!(
+        ranked_places(&top_actionable_seams(&entries, 4)),
+        [
+            ("z::fmt".to_string(), 1),
+            ("b::parse".to_string(), 1),
+            ("b::parse".to_string(), 2),
+            ("z::fmt".to_string(), 9),
+        ]
+    );
+}
+
+#[test]
+fn pilot_summary_md_names_unlisted_seams_on_an_owners_first_pick_only() {
+    // a::clone is listed twice (rounds 0 and 1) with two seams left over.
+    let entries = [
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 10),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 11),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 12),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 13),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/b.rs", "b::parse", 5),
+    ];
+    let artifacts = pilot_artifacts();
+    let mut context = pilot_context(&artifacts);
+    context.max_seams = 3;
+    let md = render_pilot_summary_md(&entries, context);
+
+    let note = "   - Also in this function: 2 more actionable seams not listed here\n";
+    assert_eq!(md.matches(note).count(), 1, "{md}");
+    // In the ranked list, the note sits inside entry 1 (a::clone at line 10),
+    // before entry 2 (b::parse) and entry 3 (a::clone's second pick).
+    let ranked = md.find("## Ranked Seams").map_or("", |start| &md[start..]);
+    let entry = |prefix: &str| ranked.find(prefix).unwrap_or(usize::MAX);
+    let at = ranked.find(note).unwrap_or(usize::MAX);
+    assert!(ranked.contains("src/a.rs:10"), "{md}");
+    assert!(entry("1. `") < at && at < entry("2. `"), "{md}");
+    assert!(entry("3. `") > entry("2. `"), "{md}");
+}
+
+#[test]
+fn pilot_summary_md_marks_owner_counts_as_lower_bounds_after_a_seam_limit() {
+    // #6602: a seam limit dropped classified seams before ranking, so a
+    // function may have more seams than the kept slice shows.
+    let entries = [
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 10),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 11),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 12),
+    ];
+    let limit = crate::analysis::SeamLimitInfo {
+        analyzed: 3,
+        total: 7,
+        source: crate::analysis::SeamLimitSource::Default,
+    };
+    let artifacts = pilot_artifacts();
+    let mut context = pilot_context(&artifacts);
+    context.max_seams = 1;
+    context.seam_limit = Some(&limit);
+    let md = render_pilot_summary_md(&entries, context);
+
+    assert!(
+        md.contains("- Seam limit reached: ranked the first 3 of 7 seams; Rust seam counts below cover those only\n- Actionable seams: at least 3, showing up to 1\n\n"),
+        "{md}"
+    );
+    assert!(
+        md.contains(
+            "   - Also in this function: at least 2 more actionable seams not listed here\n"
+        ),
+        "{md}"
+    );
+
+    context.seam_limit = None;
+    let md = render_pilot_summary_md(&entries, context);
+    assert!(!md.contains("Seam limit reached"), "{md}");
+    assert!(
+        md.contains("- Actionable seams: 3 total, showing up to 1\n"),
+        "{md}"
+    );
+    assert!(
+        md.contains("   - Also in this function: 2 more actionable seams not listed here\n"),
+        "{md}"
+    );
+}
+
+#[test]
+fn pilot_summary_md_counts_an_owners_unlisted_seams_once() {
+    let entries = [
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 10),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 11),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 12),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/b.rs", "b::parse", 5),
+        // Solved seams are not "more to do" in the function.
+        classified_in_owner(SeamGripClass::StronglyGripped, "src/b.rs", "b::parse", 6),
+    ];
+    let artifacts = pilot_artifacts();
+    let mut context = pilot_context(&artifacts);
+    context.max_seams = 2;
+    let md = render_pilot_summary_md(&entries, context);
+
+    assert_eq!(
+        md.matches("   - Also in this function: 2 more actionable seams not listed here\n")
+            .count(),
+        1,
+        "{md}"
+    );
+    assert!(!md.contains("more actionable seam not listed"), "{md}");
+
+    context.max_seams = 5;
+    let md = render_pilot_summary_md(&entries, context);
+    assert!(!md.contains("Also in this function"), "{md}");
+}
+
 #[test]
 fn pilot_ranking_excludes_solved_governed_classes() {
     let strong = classified_with(
@@ -314,6 +520,7 @@ fn pilot_summary_json_contains_config_state_artifacts_and_next_commands() {
         artifacts: &artifacts,
         python_first_use: None,
         language_routes: None,
+        seam_limit: None,
     };
 
     let json = crate::testing::cwd_placeholder::project_cwd_text(&render_pilot_summary_json(
@@ -351,10 +558,10 @@ fn pilot_summary_md_spells_out_first_screen_recommendation() {
         " weak (`weakly_gripped`) src/pricing.rs:88 ",
         "- weak, weakly_gripped\n",
         "- Why it matters: missing discriminator: input that hits the boundary: amount >= discount_threshold",
-        "- Focused test: none: this seam has no test target that `ripr agent repair` can use (for example, the only tests are in another crate, or static evidence names no exact discriminator), so it will not start a repair attempt here",
+        "- Focused test: none: this seam has no test target that `ripr agent repair` can use (for example, the only tests are inline `#[cfg(test)]` in a file outside the test-surface paths, the only tests are in another crate, or static evidence names no exact discriminator), so it will not start a repair attempt here",
         "Target seam:",
         "Target placement blocked:",
-        "## Ranked Seams\n\nNone of these seams can start a repair attempt (`ripr agent repair`); they are ranked for inspection by hand.",
+        "## Ranked Seams\n\nNone of these seams can start a repair attempt (`ripr agent repair`); they are ranked for inspection by hand. Repair scope: `ripr agent repair --help`.",
         "## Next Commands",
         "No repair attempt is available for the top seam. Next, add a test for `pricing::discounted_total` in the crate that owns src/pricing.rs, then rerun repo exposure and compare the snapshots:",
         "ripr outcome --before <cwd>/target/ripr/pilot/repo-exposure.json",
@@ -462,7 +669,7 @@ fn pilot_terminal_prints_top_test_and_follow_up_commands() {
         "Top recommendation:",
         "inspected seam:",
         "why it matters: missing discriminator: input that hits the boundary: amount >= discount_threshold",
-        "focused test: none: this seam has no test target that `ripr agent repair` can use (for example, the only tests are in another crate, or static evidence names no exact discriminator), so it will not start a repair attempt here",
+        "focused test: none: this seam has no test target that `ripr agent repair` can use (for example, the only tests are inline `#[cfg(test)]` in a file outside the test-surface paths, the only tests are in another crate, or static evidence names no exact discriminator), so it will not start a repair attempt here",
         "assertion: not_applicable",
         "Detailed brief:",
         "target/ripr/pilot/pilot-summary.md",
@@ -534,6 +741,7 @@ fn timeout_summary_json_is_partial_and_points_to_retry() {
         artifacts: &artifacts,
         python_first_use: None,
         language_routes: None,
+        seam_limit: None,
     };
 
     let json = render_pilot_timeout_summary_json(context);
@@ -568,6 +776,7 @@ fn pilot_context_without_config<'a>(artifacts: &'a PilotArtifacts) -> PilotSumma
         artifacts,
         python_first_use: None,
         language_routes: None,
+        seam_limit: None,
     }
 }
 
@@ -1190,6 +1399,7 @@ fn pilot_terminal_route_label_has_one_shape_for_every_language() {
 
     let context = PilotSummaryContext {
         language_routes: Some(&routes),
+        seam_limit: None,
         ..pilot_context(&artifacts)
     };
     let terminal = render_pilot_terminal(&[], context);
@@ -1223,6 +1433,7 @@ fn pilot_names_unanalyzed_languages_instead_of_an_empty_complete_ranking() -> Re
     assert_eq!(go_only.state, PilotLanguageRoutesState::UnanalyzedOnly);
     let context = PilotSummaryContext {
         language_routes: Some(&go_only),
+        seam_limit: None,
         ..pilot_context(&artifacts)
     };
     let terminal = render_pilot_terminal(&[], context);
@@ -1271,6 +1482,7 @@ fn pilot_names_unanalyzed_languages_instead_of_an_empty_complete_ranking() -> Re
         &[],
         PilotSummaryContext {
             language_routes: Some(&with_rust),
+            seam_limit: None,
             ..pilot_context(&artifacts)
         },
     );
@@ -1293,6 +1505,7 @@ fn pilot_names_unanalyzed_languages_instead_of_an_empty_complete_ranking() -> Re
         &[],
         PilotSummaryContext {
             language_routes: Some(&plain),
+            seam_limit: None,
             ..pilot_context(&artifacts)
         },
     );
@@ -1307,6 +1520,74 @@ fn pilot_names_unanalyzed_languages_instead_of_an_empty_complete_ranking() -> Re
         "{json}"
     );
     assert!(parsed["next"]["outcome_command"].is_string(), "{json}");
+    Ok(())
+}
+
+#[test]
+fn pilot_names_rust_exclusion_instead_of_silently_ranking_nothing() -> Result<(), String> {
+    use crate::domain::LanguageId;
+
+    // #5205: Rust files exist but Rust is disabled. The ranking is empty by
+    // config, not by merit, and all three surfaces say so.
+    let artifacts = pilot_artifacts();
+    let root = Path::new(".");
+    let excluded = PilotLanguageRoutes::from_discovered(root, false, &[LanguageId::Python], &[])
+        .with_unanalyzed(Vec::new(), true)
+        .with_rust_exclusion(Some(3));
+    assert_eq!(excluded.rust_exclusion(), Some(3));
+    let context = PilotSummaryContext {
+        language_routes: Some(&excluded),
+        seam_limit: None,
+        ..pilot_context(&artifacts)
+    };
+    let terminal = render_pilot_terminal(&[], context);
+    assert!(
+        terminal.contains("Excluded from pilot's Rust seam scan:"),
+        "{terminal}"
+    );
+    assert!(
+        terminal.contains("rust: 3 files (not enabled in ripr.toml [languages])"),
+        "{terminal}"
+    );
+    assert!(terminal.contains("Next, to rank Rust seams:"), "{terminal}");
+    assert!(!terminal.contains("ripr outcome --before"), "{terminal}");
+    let md = render_pilot_summary_md(&[], context);
+    assert!(
+        md.contains("## Excluded From Pilot's Rust Seam Scan"),
+        "{md}"
+    );
+    assert!(md.contains("To rank Rust seams:"), "{md}");
+    let json = render_pilot_summary_json(&[], context);
+    let parsed: serde_json::Value = serde_json::from_str(&json)
+        .map_err(|err| format!("pilot summary JSON must parse: {err}\n{json}"))?;
+    assert_eq!(
+        parsed["language_routes"]["rust_excluded_from_scope"]["file_count"],
+        3
+    );
+    assert_eq!(
+        parsed["language_routes"]["rust_excluded_from_scope"]["enabled"],
+        false
+    );
+    assert!(parsed["next"]["after_snapshot_command"].is_null(), "{json}");
+    assert!(parsed["next"]["outcome_command"].is_null(), "{json}");
+
+    // No exclusion: the JSON shape is unchanged for Rust users.
+    let plain = PilotLanguageRoutes::from_discovered(root, true, &[LanguageId::Rust], &[])
+        .with_rust_exclusion(None);
+    let json = render_pilot_summary_json(
+        &[],
+        PilotSummaryContext {
+            language_routes: Some(&plain),
+            seam_limit: None,
+            ..pilot_context(&artifacts)
+        },
+    );
+    let parsed: serde_json::Value = serde_json::from_str(&json)
+        .map_err(|err| format!("pilot summary JSON must parse: {err}\n{json}"))?;
+    assert_eq!(
+        parsed["language_routes"],
+        serde_json::json!({"state": "not_detected", "routes": []})
+    );
     Ok(())
 }
 
@@ -1334,6 +1615,7 @@ fn pilot_renderers_show_language_routes_only_without_rust_seams() -> Result<(), 
         PilotLanguageRoutes::from_discovered(root, true, &[LanguageId::Rust], &files);
     let with_routes = PilotSummaryContext {
         language_routes: Some(&supplementary),
+        seam_limit: None,
         ..pilot_context(&artifacts)
     };
     assert_eq!(
@@ -1355,6 +1637,7 @@ fn pilot_renderers_show_language_routes_only_without_rust_seams() -> Result<(), 
     let required = PilotLanguageRoutes::from_discovered(root, false, &[LanguageId::Rust], &files);
     let context = PilotSummaryContext {
         language_routes: Some(&required),
+        seam_limit: None,
         ..pilot_context(&artifacts)
     };
     let terminal = render_pilot_terminal(&[], context);
@@ -1422,6 +1705,7 @@ fn pilot_renderers_show_language_routes_only_without_rust_seams() -> Result<(), 
         );
         let context = PilotSummaryContext {
             language_routes: Some(&perl_only),
+            seam_limit: None,
             ..pilot_context(&artifacts)
         };
         let terminal = render_pilot_terminal(&[], context);

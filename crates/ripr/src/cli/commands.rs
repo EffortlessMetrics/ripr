@@ -114,6 +114,8 @@ pub(super) use baseline::baseline;
 mod ci_packet;
 #[path = "commands/ci_summary.rs"]
 mod ci_summary;
+#[path = "commands/pr_comments_github.rs"]
+mod pr_comments_github;
 
 #[path = "commands/check.rs"]
 mod check;
@@ -311,18 +313,20 @@ pub(super) fn pr_comments(args: &[String]) -> Result<(), String> {
         help::print_pr_comments_help();
         return Ok(());
     }
-    // The sole subcommand is implied when the command runs bare:
-    // `ripr <cmd>` behaves like `ripr <cmd> "plan"` (#2013).
+    // `plan` is implied when the command runs bare: `ripr pr-comments`
+    // behaves like `ripr pr-comments plan` (#2013).
     let (subcommand, rest) = match args.split_first() {
         Some((subcommand, rest)) => (subcommand.as_str(), rest),
         None => ("plan", &[][..]),
     };
-    if subcommand != "plan" {
-        return Err(format!(
-            "unknown pr-comments subcommand {subcommand:?}; expected `plan`"
-        ));
+    match subcommand {
+        "plan" => pr_comments_plan(rest),
+        "existing" => pr_comments_github::pr_comments_existing(rest),
+        "requests" => pr_comments_github::pr_comments_requests(rest),
+        _ => Err(format!(
+            "unknown pr-comments subcommand {subcommand:?}; expected `plan`, `existing`, or `requests`"
+        )),
     }
-    pr_comments_plan(rest)
 }
 
 pub(super) fn pr_review(args: &[String]) -> Result<(), String> {
@@ -5965,7 +5969,7 @@ language = "rust"
         );
         assert_eq!(
             pr_comments(&args(&["publish"])),
-            Err("unknown pr-comments subcommand \"publish\"; expected `plan`".to_string())
+            Err("unknown pr-comments subcommand \"publish\"; expected `plan`, `existing`, or `requests`".to_string())
         );
         assert_eq!(
             parse_pr_comments_plan_options(&args(&["--mode", "post"])),
@@ -6987,6 +6991,24 @@ language = "rust"
         Err(format!("generated workflow has no `{name}:` env entry"))
     }
 
+    /// One `- \`NAME\` ...` entry of docs/CI.md's generated-workflow
+    /// settings list, joined onto one line.
+    fn ci_doc_setting(name: &str) -> Result<String, String> {
+        let doc = include_str!("../../../../docs/CI.md");
+        let section = doc
+            .split("#### Generated workflow settings and steps\n")
+            .nth(1)
+            .ok_or("docs/CI.md has no generated workflow settings section")?;
+        let start = format!("- `{name}` ");
+        let entry = section
+            .split("\n- ")
+            .map(|entry| format!("- {}", entry.trim_start_matches("- ")))
+            .find(|entry| entry.starts_with(&start))
+            .ok_or_else(|| format!("docs/CI.md settings do not document `{name}`"))?;
+        let entry = entry.split("\n\n").next().unwrap_or_default();
+        Ok(entry.split_whitespace().collect::<Vec<_>>().join(" "))
+    }
+
     /// The generated workflow documents the gate to whoever adopts it, and
     /// nothing else reads those comments, so they drift silently. Bind them to
     /// the two contracts they describe rather than to their own wording.
@@ -7012,7 +7034,9 @@ language = "rust"
                         && line.ends_with(" --baseline .ripr/gate-baseline.json")),
             "generated workflow no longer passes RIPR_GATE_BASELINE to --baseline"
         );
-        let baseline = generated_workflow_env_comment(&workflow, "RIPR_GATE_BASELINE")?;
+        // #5409: the long setting docs live in docs/CI.md; the workflow keeps
+        // a one-line mode list and points there.
+        let baseline = ci_doc_setting("RIPR_GATE_BASELINE")?;
         // The path comes from `ripr baseline create`'s own default rather than
         // from a copy of the docs, so renaming the ledger fails here.
         assert!(
@@ -7058,7 +7082,12 @@ language = "rust"
             "parsed no usable mode inventory from: {mode_line}"
         );
         let mode_comment = generated_workflow_env_comment(&workflow, "RIPR_GATE_MODE")?;
+        let mode_doc = ci_doc_setting("RIPR_GATE_MODE")?;
         for mode in &modes {
+            assert!(
+                mode_doc.contains(&format!("`{mode}`")),
+                "docs/CI.md does not document gate mode `{mode}`:\n{mode_doc}"
+            );
             assert!(
                 mode_comment.contains(mode),
                 "generated workflow does not document gate mode `{mode}`:\n{mode_comment}"
@@ -7076,14 +7105,99 @@ language = "rust"
         // calibration evidence, and warning severity, where acknowledgeable
         // blocks every policy-eligible candidate.
         assert!(
-            !mode_comment.contains("any actionable finding"),
-            "calibrated-gate is described as the broadest mode:\n{mode_comment}"
+            !mode_doc.contains("any actionable finding"),
+            "calibrated-gate is described as the broadest mode:\n{mode_doc}"
         );
         assert!(
-            mode_comment.contains("new") && mode_comment.contains("policy-eligible"),
-            "calibrated-gate comment does not state what it narrows to:\n{mode_comment}"
+            mode_doc.contains("new,") && mode_doc.contains("policy-eligible"),
+            "calibrated-gate entry does not state what it narrows to:\n{mode_doc}"
+        );
+        assert!(
+            workflow.contains("Each setting and step is explained in docs/CI.md"),
+            "the workflow no longer points at the setting docs"
         );
 
+        Ok(())
+    }
+
+    /// The reverse of the setting checks above (#6723): every setting,
+    /// permission, job setting and step that docs/CI.md describes for the
+    /// generated workflow is still in it, so removing one from the template
+    /// while the doc still explains it fails here. A bullet this test cannot
+    /// bind fails too, so a new doc entry has to be added here.
+    #[test]
+    fn ci_doc_describes_only_what_the_generated_workflow_has() -> Result<(), String> {
+        let workflow = generated_github_actions_workflow();
+        let workflow_lines: Vec<&str> = workflow.lines().map(str::trim_start).collect();
+        let doc = include_str!("../../../../docs/CI.md");
+        let section = doc
+            .split_once("#### Generated workflow settings and steps\n")
+            .and_then(|(_, rest)| rest.split_once("\nFor a first rollout"))
+            .map(|(section, _)| section)
+            .ok_or("docs/CI.md has no generated workflow settings section ending at \"For a first rollout\"")?;
+        let mut entries = 0usize;
+        for entry in section.lines().filter_map(|line| line.strip_prefix("- ")) {
+            let step = entry
+                .strip_prefix("**")
+                .and_then(|rest| rest.split_once("**"))
+                .map(|(step, _)| step);
+            let setting = entry
+                .strip_prefix('`')
+                .and_then(|rest| rest.split_once('`'))
+                .map(|(setting, _)| setting);
+            let present = match (step, setting) {
+                // The two unnamed steps are documented by what they use.
+                (Some("Checkout"), _) => workflow_lines
+                    .iter()
+                    .any(|line| line.starts_with("- uses: actions/checkout@")),
+                (Some("actions/cache"), _) => workflow_lines
+                    .iter()
+                    .any(|line| line.starts_with("- uses: actions/cache@")),
+                (Some(name), _) => {
+                    let expected = format!("- name: {name}");
+                    workflow_lines.iter().any(|line| *line == expected)
+                }
+                (None, Some("labeled")) => workflow_lines.iter().any(|line| {
+                    line.starts_with("types: [")
+                        && line.contains(" labeled,")
+                        && line.contains(" unlabeled]")
+                }),
+                (None, Some(setting)) if setting.starts_with("RIPR_") => {
+                    let expected = format!("{setting}:");
+                    workflow_lines
+                        .iter()
+                        .any(|line| line.starts_with(&expected))
+                }
+                (None, Some(permission)) => workflow_lines
+                    .iter()
+                    .any(|line| line.split(" #").next().map(str::trim_end) == Some(permission)),
+                (None, None) if entry.starts_with("Every run step is bash") => {
+                    workflow.contains("\ndefaults:\n  run:\n    shell: bash\n")
+                }
+                (None, None) if entry.starts_with("One run per pull request") => {
+                    workflow.contains("\nconcurrency:\n")
+                        && workflow_lines.contains(&"cancel-in-progress: true")
+                }
+                (None, None) if entry.starts_with("The job is `continue-on-error`") => {
+                    workflow_lines.iter().any(|line| {
+                        line.starts_with("continue-on-error: ${{ vars.RIPR_GATE_MODE == '' ")
+                    })
+                }
+                (None, None) => {
+                    return Err(format!(
+                        "docs/CI.md entry is not bound to the generated workflow; add it to this test: {entry}"
+                    ));
+                }
+            };
+            assert!(
+                present,
+                "docs/CI.md describes `{entry}`, which the generated workflow no longer has"
+            );
+            entries += 1;
+        }
+        // Today's inventory: 4 settings, 6 permission and job entries and 8
+        // steps. Fewer means the section stopped being read or lost an entry.
+        assert!(entries >= 18, "read only {entries} entries:\n{section}");
         Ok(())
     }
 
@@ -7166,27 +7280,22 @@ language = "rust"
     -> Result<(), String> {
         let workflow = generated_github_actions_workflow();
         assert!(workflow.contains("name: RIPR advisory reports"));
-        for path in [
-            "target/ripr/pilot",
-            "target/ripr/agent",
-            "target/ripr/workflow",
-            "target/ripr/reports",
-            "target/ripr/review",
-            "target/ci",
-        ] {
-            assert!(workflow.contains(path), "upload misses {path}");
-        }
+        let upload = workflow_step(&workflow, "Upload RIPR report artifacts");
+        assert!(
+            upload.contains("          path: |\n            target/ripr\n            target/ci\n"),
+            "{upload}"
+        );
         assert!(workflow.contains("name: ripr-reports"));
         // An adopter repository has no xtask; the workflow must not call it.
         assert!(!workflow.contains("cargo xtask"));
         // The RIPR-source-tree-only cockpit step is gone from the adopter
         // workflow (F60-8).
         assert!(!workflow.contains("hashFiles('xtask/src/reports/operator.rs')"));
-        assert!(workflow.contains("existing-comments.raw.json"));
-        assert!(workflow.contains("<!-- ripr:dedupe="));
-        assert!(workflow.contains("jq -e '.summary.safe_to_publish == true'"));
-        assert!(workflow.contains("gh api --method POST"));
-        assert!(workflow.contains("gh api --method PATCH"));
+        // #5409: ripr does the comment JSON work; the YAML only calls GitHub.
+        assert!(workflow.contains("| ripr pr-comments existing --root . --raw -"));
+        assert!(workflow.contains("ripr pr-comments requests --root ."));
+        assert!(workflow.contains("gh api --method \"$method\""));
+        assert!(!workflow.contains("jq "));
         assert!(workflow.contains(
             "env.RIPR_UPLOAD_SARIF == 'true' && hashFiles('target/ripr/reports/ripr-seams.sarif')"
         ));
@@ -7253,27 +7362,27 @@ language = "rust"
         let workflow = generated_github_actions_workflow();
         let summary = workflow_step(&workflow, "Add RIPR advisory summary");
         assert!(summary.contains("        if: always()\n        continue-on-error: true\n"));
-        assert!(summary.contains(
-            "          RIPR_BASE_REF: ${{ github.base_ref || github.event.repository.default_branch }}\n"
-        ));
-        assert!(summary.contains(
-            "          ripr reports ci-summary --root . \\\n            --base-ref \"$RIPR_BASE_REF\" \\\n            --upload-sarif \"${RIPR_UPLOAD_SARIF:-}\" \\\n            --gate-baseline \"${RIPR_GATE_BASELINE:-}\" \\\n            --comment-mode \"${RIPR_COMMENT_MODE:-}\" \\\n            >> \"$GITHUB_STEP_SUMMARY\""
-        ), "{summary}");
+        // #5409: the command reads the base ref and settings from the
+        // workflow env, so the step passes no flags.
+        assert!(
+            summary
+                .contains("          ripr reports ci-summary --root . >> \"$GITHUB_STEP_SUMMARY\""),
+            "{summary}"
+        );
+        assert!(!summary.contains("RIPR_BASE_REF"));
         // #5236 review: when the install failed, the step still writes a
         // summary that says so and where to look, instead of nothing.
         assert!(summary.contains("          RIPR_INSTALL_OUTCOME: ${{ steps.install.outcome }}\n"));
         let (guard, render) = summary
             .split_once("          ripr reports ci-summary")
             .unwrap_or_default();
-        assert!(guard.contains(
-            "if [ \"${RIPR_INSTALL_OUTCOME:-}\" != success ] || ! command -v ripr >/dev/null 2>&1; then"
-        ));
+        assert!(guard.contains("if [ \"${RIPR_INSTALL_OUTCOME:-}\" != success ]; then"));
         assert!(guard.contains("Next: open the Install ripr step log."));
-        // The guard only echoes fixed text; the summary itself is rendered
+        // The guard only prints fixed text; the summary itself is rendered
         // by the command, not by shell.
         for retired in ["markdown_inline", "repo_relative", "jq ", "echo "] {
             assert!(
-                !render.contains(retired) && (retired == "echo " || !guard.contains(retired)),
+                !render.contains(retired),
                 "the summary step still carries `{retired}`"
             );
         }
@@ -7295,10 +7404,56 @@ language = "rust"
             options.map(|options| options.base_ref),
             Ok("trunk".to_string())
         );
+        // With no flags, the settings come from the workflow env: the PR base
+        // first, then the repository default branch, and an explicit flag
+        // still wins.
+        let workflow_env = ci_packet::CiSettings {
+            base_ref: String::new(),
+            default_branch: "trunk".to_string(),
+            upload_sarif: "true".to_string(),
+            gate_baseline: ".ripr/gate-baseline.json".to_string(),
+            comment_mode: "inline".to_string(),
+            ..Default::default()
+        };
+        let from_env = super::ci_summary::parse_ci_summary_options_with(
+            &["--root".to_string(), ".".to_string()],
+            &workflow_env,
+        );
+        assert_eq!(
+            from_env.map(|options| (
+                options.base_ref,
+                options.upload_sarif,
+                options.gate_baseline,
+                options.comment_mode
+            )),
+            Ok((
+                "trunk".to_string(),
+                "true".to_string(),
+                ".ripr/gate-baseline.json".to_string(),
+                "inline".to_string()
+            ))
+        );
+        let pr_env = ci_packet::CiSettings {
+            base_ref: "release".to_string(),
+            ..workflow_env
+        };
+        let overridden = super::ci_summary::parse_ci_summary_options_with(
+            &["--comment-mode".to_string(), "off".to_string()],
+            &pr_env,
+        );
+        assert_eq!(
+            overridden.map(|options| (options.base_ref, options.comment_mode)),
+            Ok(("release".to_string(), "off".to_string()))
+        );
+        // Outside any workflow the base falls back to `main`.
+        let bare = super::ci_summary::parse_ci_summary_options(&[]);
+        assert_eq!(bare.map(|options| options.base_ref), Ok("main".to_string()));
     }
 
     #[test]
     fn init_generated_github_workflow_matches_smoke_fixture() -> Result<(), String> {
+        use super::init_workflow::workflow_install_version;
+
         let workflow = generated_github_actions_workflow();
         let fixture = generated_workflow_smoke_fixture();
         // The analysis steps run inside `ripr reports ci-packet` (#4696). Its
@@ -7309,6 +7464,13 @@ language = "rust"
         assert!(failed.is_empty(), "{failed:?}");
         let packet_source = include_str!("commands/ci_packet.rs");
         let surface = format!("{workflow}\n{packet}\n{packet_source}");
+
+        // The DX bar from #5409: a workflow an adopter can read in one sitting.
+        let line_count = workflow.lines().count();
+        assert!(
+            line_count <= 150,
+            "generated workflow is {line_count} lines; #5409 keeps it at 150 or fewer"
+        );
 
         assert!(workflow.contains("RIPR_UPLOAD_SARIF: \"true\""));
         // The install downloads the prebuilt release binary instead of
@@ -7326,7 +7488,7 @@ language = "rust"
         // Workflow hardening: the job token is not persisted into the
         // checkout that PR-controlled code runs in.
         assert!(
-            workflow.contains("          fetch-depth: 0\n          persist-credentials: false\n")
+            workflow.contains("          fetch-depth: 0\n          persist-credentials: false #")
         );
         // Checked-in files under target/ripr and target/ci are removed before
         // any RIPR step, so gate inputs read "when present" come only from
@@ -7343,16 +7505,18 @@ language = "rust"
             .split("\n\n")
             .find(|block| {
                 block.contains(
-                    "      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9\n",
+                    "      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0",
                 )
             })
             .unwrap_or_default();
         assert!(cache.contains("          path: ${{ runner.temp }}/ripr-cache\n"));
         // The job token has write scopes, so the action is pinned to a SHA.
         assert!(!workflow.contains("actions/cache@v"));
+        // #5208: the cache key pins the installed version — the generator
+        // itself when released, the latest release when unreleased.
         assert!(cache.contains(&format!(
             "          key: ripr-cache-{}-${{{{ runner.os }}}}-",
-            env!("CARGO_PKG_VERSION")
+            workflow_install_version(env!("CARGO_PKG_VERSION"))
         )));
         let cache_at = workflow
             .find("      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9")
@@ -7369,29 +7533,13 @@ language = "rust"
             "Install ripr",
         );
         assert_step_before(&workflow, "Remove checked-in RIPR artifacts", "Run RIPR");
-        // Only comments the workflow itself posted count as existing RIPR
-        // comments; a marker from another author cannot suppress or be
-        // PATCHed.
+        // #5409: the bot-author filter and the CR/LF folding of printed
+        // messages live in `output::pr_inline_comment_github`, whose tests pin
+        // them; the steps hand ripr the API pages and replay its requests.
         let capture = workflow_step(&workflow, "Capture existing RIPR inline comments");
-        assert!(
-            capture.contains(
-                r#"| select(.user.login == "github-actions[bot]" and .user.type == "Bot")"#
-            )
-        );
-        // Repository-derived text printed to the log folds CR/LF so it
-        // cannot open a line GitHub parses as a workflow command.
+        assert!(capture.contains("| ripr pr-comments existing --root . --raw -"));
         let publish = workflow_step(&workflow, "Publish RIPR inline comments");
-        assert!(publish.contains(
-            r#"jq -r '.blocked[]? | "- \(.blocked_reason): \(.message)" | gsub("[\r\n]"; " ")'"#
-        ));
-        assert!(publish.contains(
-            r#"dedupe_key="$(jq -r '.dedupe_key | tostring | gsub("[\r\n]"; " ")' <<< "$operation")""#
-        ));
-        assert!(publish.contains(
-            r#"select(.operation == "keep") | .dedupe_key | tostring | gsub("[\r\n]"; " ")'"#
-        ));
-        assert!(!publish.contains("jq -r '.dedupe_key' "));
-        assert!(!publish.contains(r#"| .dedupe_key' "$publishable""#));
+        assert!(publish.contains("done < target/ripr/review/publish/requests.tsv"));
 
         let run = workflow_step(&workflow, "Run RIPR");
         assert_eq!(
@@ -7414,11 +7562,10 @@ language = "rust"
         assert!(
             existing_comments.contains("pulls/${{ github.event.pull_request.number }}/comments")
         );
-        assert!(existing_comments.contains("target/ripr/review/existing-comments.json"));
-        assert!(
-            existing_comments
-                .contains("capture(\"<!-- ripr:dedupe=(?<key>.*?)(?: presentation=[^ ]+)? -->\")")
-        );
+        // The command's default output is the file the packet's plan reads.
+        assert!(include_str!("commands/pr_comments_github.rs").contains(
+            "const DEFAULT_EXISTING_OUT: &str = \"target/ripr/review/existing-comments.json\";"
+        ));
         // The capture runs before the guidance exists, so it cannot wait on it.
         assert!(!existing_comments.contains("hashFiles"));
 
@@ -7427,12 +7574,12 @@ language = "rust"
         assert!(
             publish_comments.contains("hashFiles('target/ripr/review/comment-publish-plan.json')")
         );
-        assert!(publish_comments.contains("jq -e '.summary.safe_to_publish == true'"));
-        assert!(publish_comments.contains("select(.safe_to_publish == true)"));
-        assert!(publish_comments.contains("published_body: compact_body"));
-        assert!(publish_comments.contains("github.event.pull_request.head.sha"));
-        assert!(publish_comments.contains("gh api --method POST"));
-        assert!(publish_comments.contains("gh api --method PATCH"));
+        assert!(
+            publish_comments.contains("--head-sha \"${{ github.event.pull_request.head.sha }}\"")
+        );
+        assert!(publish_comments.contains(
+            "gh api --method \"$method\" \"repos/${{ github.repository }}/$endpoint\" --input \"$request\""
+        ));
 
         // The packet writes the plan the publish step reads, and the comment
         // capture writes the file the plan reads.
@@ -7453,14 +7600,7 @@ language = "rust"
 
         let artifact_upload = workflow_step(&workflow, "Upload RIPR report artifacts");
         assert!(artifact_upload.contains("if-no-files-found: ignore"));
-        for path in [
-            "target/ripr/pilot",
-            "target/ripr/agent",
-            "target/ripr/workflow",
-            "target/ripr/reports",
-            "target/ripr/review",
-            "target/ci",
-        ] {
+        for path in ["            target/ripr\n", "            target/ci\n"] {
             assert!(
                 artifact_upload.contains(path),
                 "artifact upload must include {path}"

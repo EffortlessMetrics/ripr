@@ -429,7 +429,7 @@ fn workspace_authority_confirms_committed_bytes_of_a_dirty_file() -> Result<(), 
             PathBuf::from(path),
             FileFacts {
                 path: PathBuf::from(path),
-                source: source.to_string(),
+                source: source.into(),
                 ..FileFacts::default()
             },
         )

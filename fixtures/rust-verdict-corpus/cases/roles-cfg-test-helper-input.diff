@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index c000ade..0824cdc 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -16,7 +16,7 @@ mod tests {
+     use super::*;
+ 
+     fn sample() -> u32 {
+-        4
++        2 + 2
+     }
+ 
+     #[test]

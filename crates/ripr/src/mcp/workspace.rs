@@ -304,6 +304,11 @@ pub(crate) struct WorkspaceSession {
     /// packet is pruned, without holding superseded packets in memory for
     /// the lifetime of the session.
     pub(crate) superseded_attempts: std::collections::BTreeMap<String, String>,
+    /// Insertion order of `superseded_attempts` keys, oldest first. Attempt
+    /// ids are unordered digest hex, so the map alone cannot say which
+    /// tombstone is oldest; the queue makes cap eviction drop the oldest
+    /// tombstone first and never a recent one (#6291).
+    pub(crate) superseded_order: std::collections::VecDeque<String>,
 }
 
 impl WorkspaceSession {
@@ -400,11 +405,11 @@ impl WorkspaceSession {
                 .collect::<Vec<_>>(),
             "continuation": {
                 "tool": "ripr_get_gap",
-                "resource_template": "ripr://gap/{canonical_item_id}",
+                "resource_template": "ripr://gap/{canonical_id}",
             },
             "claim_boundary": "Bounded working-set projection over one completed snapshot. Selection is the shared CLI/LSP budget authority; omitted identities and reasons are disclosed, never silently truncated, and no business-risk ranking is inferred.",
             "limitations": [
-                "summaries do not contain evidence detail; read one item with ripr_get_gap or ripr://gap/{canonical_item_id}",
+                "summaries do not contain evidence detail; read one item with ripr_get_gap or ripr://gap/{canonical_id}",
                 "the list is deterministic for its snapshot identity; a refresh replaces the snapshot and its identities",
             ],
         });
@@ -414,14 +419,14 @@ impl WorkspaceSession {
     /// One canonical item's complete bounded evidence.
     pub(crate) fn get_gap(
         &self,
-        gap_id: &str,
+        canonical_id: &str,
         requested: Option<&str>,
     ) -> Result<Value, AttemptFailure> {
         let snapshot = self.active_snapshot(requested)?;
-        let Some(item) = snapshot.item(gap_id) else {
+        let Some(item) = snapshot.item(canonical_id) else {
             return Err(AttemptFailure::new(
                 CODE_ITEM_NOT_FOUND,
-                format!("no canonical item {gap_id} exists in the current snapshot"),
+                format!("no canonical item {canonical_id} exists in the current snapshot"),
                 "list the current canonical ids with ripr_list_gaps, then retry",
             ));
         };
@@ -483,11 +488,11 @@ impl WorkspaceSession {
             },
             "continuation": {
                 "list_tool": "ripr_list_gaps",
-                "item_resource_template": "ripr://gap/{canonical_item_id}",
+                "item_resource_template": "ripr://gap/{canonical_id}",
             },
             "claim_boundary": "Bounded snapshot evidence for one completed analysis. The outcome is typed producer state; a later refresh supersedes this snapshot and its identity.",
             "limitations": [
-                "item entries are identities and locations, not evidence; read one item through ripr_get_gap or ripr://gap/{canonical_item_id}",
+                "item entries are identities and locations, not evidence; read one item through ripr_get_gap or ripr://gap/{canonical_id}",
             ],
         });
         bounded_document(document)
@@ -625,7 +630,7 @@ pub(crate) fn refresh_document(session: &WorkspaceSession) -> Value {
         "claim_boundary": "One bounded static analysis attempt over the workspace diff. The server never edits source, executes verification or mutation commands, or loads project-local provider configuration.",
         "limitations": [
             "an attempt runs to a terminal state; MCP cancellation of the request does not roll back a running attempt and never manufactures a snapshot",
-            "a cancelled or superseded attempt is never committed as a completed snapshot",
+            "a cancelled refresh attempt still commits as a completed snapshot when it finishes; only transport teardown abandons an attempt before it commits (#5254 item 2)",
         ],
     })
 }
@@ -806,6 +811,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             untracked_working_tree_source_paths: Vec::new(),
+            unlinked_python_tests: None,
             suppression: None,
             partial_scope: None,
         })
@@ -821,6 +827,7 @@ mod tests {
             last_failure: None,
             repairs: std::collections::BTreeMap::new(),
             superseded_attempts: std::collections::BTreeMap::new(),
+            superseded_order: std::collections::VecDeque::new(),
         })
     }
 
@@ -848,6 +855,7 @@ mod tests {
             last_failure: None,
             repairs: std::collections::BTreeMap::new(),
             superseded_attempts: std::collections::BTreeMap::new(),
+            superseded_order: std::collections::VecDeque::new(),
         };
         let _ = complete.list_gaps(None).map_err(|failure| failure.detail)?;
         let incomplete_doc = incomplete
@@ -1051,6 +1059,29 @@ mod tests {
     }
 
     #[test]
+    fn refresh_limitations_distinguish_cancel_commit_from_teardown_abandon() -> Result<(), String> {
+        // A cancel notification does not stop a running attempt: it still
+        // commits as completed. Only transport teardown abandons an attempt
+        // before commit (#5254 item 2).
+        let session = session_with(AnalysisOutcomeKind::CompleteNoFindings, 0)?;
+        let document = refresh_document(&session);
+        let limitations = document
+            .pointer("/limitations")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "refresh document lost its limitations".to_string())?;
+        let text = serde_json::to_string(limitations).map_err(|error| error.to_string())?;
+        if !text.contains("still commits as a completed snapshot")
+            || !text.contains("only transport teardown abandons an attempt before it commits")
+        {
+            return Err(format!("cancel/commit limitations drifted: {text}"));
+        }
+        if text.contains("is never committed as a completed snapshot") {
+            return Err(format!("false never-committed claim remained: {text}"));
+        }
+        Ok(())
+    }
+
+    #[test]
     fn refresh_document_reports_failure_without_dropping_last_known_good() -> Result<(), String> {
         let mut session = session_with(AnalysisOutcomeKind::CompleteNoFindings, 0)?;
         let failure = AttemptFailure::new(CODE_ANALYSIS_FAILED, "producer hiccup", "retry");
@@ -1135,6 +1166,7 @@ mod tests {
                 last_failure: None,
                 repairs: std::collections::BTreeMap::new(),
                 superseded_attempts: std::collections::BTreeMap::new(),
+                superseded_order: std::collections::VecDeque::new(),
             };
             let item = original_items
                 .first()

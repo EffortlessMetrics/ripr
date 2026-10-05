@@ -2,6 +2,7 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::app::causal_projection::{CausalDeltaArtifact, insert_canonical_delta_fields};
+use crate::output::gate::{GATE_DECISION_KNOWN_STATUSES, GATE_STATUS_CONFIG_ERROR};
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "baseline_debt_delta";
@@ -34,6 +35,15 @@ pub(crate) struct BaselineDeltaReport {
     items: Vec<DeltaItem>,
     warnings: Vec<String>,
     causal_projection: Option<CausalDeltaArtifact>,
+    /// The current side's run-state disclosure, propagated verbatim (#6257).
+    /// `None` for complete runs, which carry no limitation envelope.
+    run_limitations: Option<Value>,
+    analysis_outcome: Option<Value>,
+    analysis_scope: Option<Value>,
+    /// The current gate decision's `status`, propagated verbatim (#6257
+    /// review): a failed evaluation (`config_error`) has no decisions, so
+    /// without this the delta presents an empty denominator as complete.
+    current_gate_status: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -262,6 +272,25 @@ struct CurrentParse {
     /// Top-level `root` of the current gate-decision report, used to refuse
     /// cross-repository fallback joins (issue #1964).
     root: Option<String>,
+    /// The current side's `run_limitations[]`, propagated so a delta derived
+    /// from a bounded run never presents as complete (#6257, mirroring the
+    /// #5203 gap-ledger propagation). The zero-status guard reads the same
+    /// position on the delta it reads on check output.
+    run_limitations: Option<Value>,
+    /// The current side's typed `analysis_outcome` envelope, propagated for
+    /// the same reason: an incomplete producer outcome is an incomplete
+    /// denominator, and the delta must not launder it (#6257).
+    analysis_outcome: Option<Value>,
+    /// The current side's `analysis_scope`, propagated for the same reason: a
+    /// `limited_partial_scope` check run discloses its run state here, not in
+    /// `run_limitations[]`, so dropping it would drop the disclosure (#6257).
+    analysis_scope: Option<Value>,
+    /// The current gate decision's `status` verbatim (#6257 review). The
+    /// current side is gate-decision shaped, and the gate refuses limited
+    /// inputs as `config_error` with empty decisions rather than carrying
+    /// a limitation envelope, so the status is the production-live
+    /// disclosure that a delta is built from a failed evaluation.
+    current_gate_status: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -458,6 +487,10 @@ pub(crate) fn build_baseline_delta_report(input: BaselineDeltaInput) -> Baseline
         items,
         warnings,
         causal_projection,
+        run_limitations: current.run_limitations,
+        analysis_outcome: current.analysis_outcome,
+        analysis_scope: current.analysis_scope,
+        current_gate_status: current.current_gate_status,
     }
 }
 
@@ -479,6 +512,28 @@ pub(crate) fn render_baseline_delta_json(report: &BaselineDeltaReport) -> Result
         "warnings": report.warnings,
         "limits_note": LIMITS_NOTE,
     });
+    // #6257: additive run-state disclosure, present only when the current
+    // side carried it. The limitation positions are the shared vocabulary
+    // the zero-status partial-denominator guard (#5251/#6095) reads; the
+    // gate status is the production-live disclosure, since gate decisions
+    // carry no limitation envelope of their own.
+    if let Some(object) = output.as_object_mut() {
+        if let Some(outcome) = report.analysis_outcome.as_ref() {
+            object.insert("analysis_outcome".to_string(), outcome.clone());
+        }
+        if let Some(scope) = report.analysis_scope.as_ref() {
+            object.insert("analysis_scope".to_string(), scope.clone());
+        }
+        if let Some(limitations) = report.run_limitations.as_ref() {
+            object.insert("run_limitations".to_string(), limitations.clone());
+        }
+        if let Some(status) = report.current_gate_status.as_ref() {
+            object.insert(
+                "current_gate_status".to_string(),
+                Value::String(status.clone()),
+            );
+        }
+    }
     if let Some(projection) = report.causal_projection.as_ref()
         && let Some(object) = output.as_object_mut()
     {
@@ -492,7 +547,58 @@ pub(crate) fn render_baseline_delta_markdown(report: &BaselineDeltaReport) -> St
     let mut out = String::new();
     out.push_str("# RIPR Baseline Debt Delta\n\n");
     out.push_str("Status: advisory\n");
-    out.push_str(&format!("Baseline: {}\n\n", report.baseline.path));
+    out.push_str(&format!("Baseline: {}\n", report.baseline.path));
+    // #6257: the human surface discloses the propagated run state too, so a
+    // delta from a limited current run never reads as complete. Absent for
+    // complete runs, which carry no limitation envelope.
+    if let Some(outcome) = &report.analysis_outcome {
+        let complete = outcome
+            .get("analysis_complete")
+            .and_then(Value::as_bool)
+            .map_or_else(|| "not_available".to_string(), |value| value.to_string());
+        let kind = outcome
+            .pointer("/outcome/kind")
+            .and_then(Value::as_str)
+            .unwrap_or("not_available");
+        out.push_str(&format!(
+            "Analysis complete: `{complete}`; analysis outcome: `{kind}`\n"
+        ));
+    }
+    if let Some(scope) = report
+        .analysis_scope
+        .as_ref()
+        .and_then(|scope| scope.get("run_status"))
+        .and_then(Value::as_str)
+    {
+        out.push_str(&format!(
+            "Current run scope (propagated from the current run): `{scope}`\n"
+        ));
+    }
+    if let Some(limitations) = report.run_limitations.as_ref().and_then(Value::as_array) {
+        let states = limitations
+            .iter()
+            .filter_map(|entry| {
+                entry
+                    .get("run_status")
+                    .and_then(Value::as_str)
+                    .or_else(|| entry.get("category").and_then(Value::as_str))
+            })
+            .collect::<Vec<_>>();
+        if !states.is_empty() {
+            out.push_str(&format!(
+                "Run limitations (propagated from the current run): `{}`\n",
+                states.join(", ")
+            ));
+        }
+    }
+    // The human surface names a failed current evaluation; successful
+    // evaluations stay undisclosed (failure-only, unlike the JSON echo).
+    if report.current_gate_status.as_deref() == Some(GATE_STATUS_CONFIG_ERROR) {
+        out.push_str(
+            "Current gate status: `config_error` (evaluation did not complete; counts are not a denominator)\n",
+        );
+    }
+    out.push('\n');
     out.push_str("| Bucket | Count |\n");
     out.push_str("| --- | ---: |\n");
     for bucket in bucket_order() {
@@ -680,6 +786,50 @@ fn parse_current_decisions(path: &str, json_text: Result<String, String>) -> Cur
         warnings: Vec::new(),
         unavailable: false,
         root: string_field(value.get("root")),
+        // #6257: propagate the producer's run-state disclosure verbatim, so a
+        // delta built from a limited current side stays visibly limited. Only
+        // presence propagates: complete runs carry none of these positions.
+        run_limitations: value.get("run_limitations").cloned(),
+        analysis_outcome: value.get("analysis_outcome").cloned(),
+        analysis_scope: value.get("analysis_scope").cloned(),
+        // #6257 review: a present-but-malformed gate status is rejected,
+        // never silently discarded: without the propagated status, a failed
+        // evaluation's empty decisions read as a complete denominator.
+        // Absent (or explicit null) stays accepted for older inputs. This
+        // deliberately bypasses string_field's blank-to-None mapping: a
+        // disclosure carrier fails closed where an identity hint stays lenient.
+        // A non-blank status outside the schema-closed set is likewise
+        // rejected: only config_error withholds achieved downstream, so an
+        // out-of-contract status would otherwise read as completed.
+        current_gate_status: match value.get("status") {
+            None => None,
+            Some(status) if status.is_null() => None,
+            Some(Value::String(text))
+                if !text.trim().is_empty()
+                    && GATE_DECISION_KNOWN_STATUSES.contains(&text.as_str()) =>
+            {
+                Some(text.clone())
+            }
+            Some(Value::String(text)) if !text.trim().is_empty() => {
+                return CurrentParse {
+                    unavailable: true,
+                    warnings: vec![format!(
+                        "required current gate-decision input {path} has unknown status `{text}`; status must be one of {}",
+                        GATE_DECISION_KNOWN_STATUSES.join(", ")
+                    )],
+                    ..CurrentParse::default()
+                };
+            }
+            Some(_) => {
+                return CurrentParse {
+                    unavailable: true,
+                    warnings: vec![format!(
+                        "required current gate-decision input {path} has malformed status; status must be a non-blank string"
+                    )],
+                    ..CurrentParse::default()
+                };
+            }
+        },
     }
 }
 
@@ -1444,6 +1594,7 @@ mod tests {
         BaselineDeltaInput, build_baseline_delta_report, render_baseline_delta_json,
         render_baseline_delta_markdown,
     };
+    use serde_json::Value;
     use std::path::{Path, PathBuf};
 
     #[test]
@@ -1799,6 +1950,21 @@ mod tests {
                 Ok(valid_baseline.to_string()),
                 Ok(r#"{"schema_version":"0.1"}"#.to_string()),
                 "current gate-decision input current.json is missing decisions array",
+            ),
+            (
+                Ok(valid_baseline.to_string()),
+                Ok(r#"{"schema_version":"0.1","decisions":[],"status":42}"#.to_string()),
+                "current gate-decision input current.json has malformed status",
+            ),
+            (
+                Ok(valid_baseline.to_string()),
+                Ok(r#"{"schema_version":"0.1","decisions":[],"status":"  "}"#.to_string()),
+                "current gate-decision input current.json has malformed status",
+            ),
+            (
+                Ok(valid_baseline.to_string()),
+                Ok(r#"{"schema_version":"0.1","decisions":[],"status":"error"}"#.to_string()),
+                "current gate-decision input current.json has unknown status",
             ),
         ] {
             let report = build_baseline_delta_report(BaselineDeltaInput {
@@ -2448,6 +2614,298 @@ mod tests {
                 "{markdown}"
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_delta_propagates_current_run_limitations() -> Result<(), String> {
+        // Issue #6257: a current side disclosing a limited run must surface
+        // verbatim in the delta, in the shared vocabulary positions the
+        // zero-status partial-denominator guard (#5251/#6095) reads. The
+        // guard's own predicates are the oracle: no reimplemented matching.
+        // Shape note: production gate decisions carry no limitation
+        // envelope (a limited input is refused as config_error), so this
+        // decisions-plus-envelope document is hand-supplied; the
+        // production-live disclosure is the propagated gate status below.
+        let baseline = r#"{"schema_version": "0.1", "entries": []}"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "decisions": [],
+          "analysis_scope": {
+            "scope": "diff",
+            "run_status": "limited_partial_scope",
+            "basis": "rust_partial_diff_budget",
+            "downstream_consumable": false
+          },
+          "run_limitations": [
+            {
+              "category": "limited_findings_bound",
+              "run_status": "limited_findings_bound",
+              "basis": "check_findings_bytes",
+              "downstream_consumable": false,
+              "message": "findings prefix rendered",
+              "repair_route": "analysis/check-findings-bytes"
+            }
+          ],
+          "analysis_outcome": {
+            "analysis_complete": false,
+            "outcome": {"kind": "diff_scope_oversized"}
+          }
+        }"#;
+        let report = build_baseline_delta_report(BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: Ok(baseline.to_string()),
+            current_gate_decision_json: Ok(current.to_string()),
+        });
+        let rendered = render_baseline_delta_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse self-produced delta: {err}"))?;
+        assert!(
+            crate::output::gate::discloses_limited_partial_scope(&value),
+            "{rendered}"
+        );
+        assert!(
+            crate::output::gate::discloses_limited_findings_bound(&value),
+            "{rendered}"
+        );
+        assert!(
+            crate::output::gate::discloses_incomplete_analysis_outcome(&value),
+            "{rendered}"
+        );
+        assert_eq!(
+            value["analysis_scope"]["run_status"],
+            "limited_partial_scope"
+        );
+        assert_eq!(
+            value["run_limitations"][0]["run_status"],
+            "limited_findings_bound"
+        );
+        assert_eq!(value["analysis_outcome"]["analysis_complete"], false);
+        let markdown = render_baseline_delta_markdown(&report);
+        assert!(markdown.contains("limited_partial_scope"), "{markdown}");
+        assert!(markdown.contains("limited_findings_bound"), "{markdown}");
+        assert!(markdown.contains("diff_scope_oversized"), "{markdown}");
+        Ok(())
+    }
+
+    #[test]
+    fn zero_status_withholds_achieved_over_self_produced_limited_delta() -> Result<(), String> {
+        // Issue #6257: the existing #5251/#6095 guard becomes reachable on
+        // self-produced deltas. An all-clear delta built from a limited
+        // current run withholds `achieved`: the denominator is partial, so
+        // the state is unknown, never achieved.
+        let baseline = r#"{"schema_version": "0.1", "entries": []}"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "decisions": [],
+          "run_limitations": [
+            {
+              "category": "limited_findings_bound",
+              "run_status": "limited_findings_bound",
+              "basis": "check_findings_bytes",
+              "downstream_consumable": false,
+              "message": "findings prefix rendered",
+              "repair_route": "analysis/check-findings-bytes"
+            }
+          ]
+        }"#;
+        let report = build_baseline_delta_report(BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: Ok(baseline.to_string()),
+            current_gate_decision_json: Ok(current.to_string()),
+        });
+        let rendered = render_baseline_delta_json(&report)?;
+        assert!(rendered.contains("\"still_present\": 0"), "{rendered}");
+        let status = crate::output::ripr_zero_status::build_ripr_zero_status_report(
+            crate::output::ripr_zero_status::RiprZeroStatusInput {
+                root: ".".to_string(),
+                generated_at: "unix_ms:100000000".to_string(),
+                baseline_path: None,
+                delta_path: "delta.json".to_string(),
+                gap_ledger_path: None,
+                gate_path: None,
+                pr_guidance_path: None,
+                recommendation_calibration_path: None,
+                baseline_json: None,
+                delta_json: Ok(rendered),
+                gap_ledger_json: None,
+                gate_json: None,
+                pr_guidance_json: None,
+                recommendation_calibration_json: None,
+            },
+        );
+        let status_rendered =
+            crate::output::ripr_zero_status::render_ripr_zero_status_json(&status)?;
+        let status_value: Value = serde_json::from_str(&status_rendered)
+            .map_err(|err| format!("parse zero status: {err}"))?;
+        assert_eq!(status_value["status"], "incomplete");
+        assert_eq!(status_value["ripr_zero"]["state"], "unknown");
+        assert!(
+            status_rendered.contains("bounded denominator can never yield achieved"),
+            "{status_rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_delta_propagates_config_error_gate_status() -> Result<(), String> {
+        // Issue #6257 review: the current side is gate-decision shaped, and
+        // the gate refuses limited inputs as config_error with empty
+        // decisions rather than carrying a limitation envelope. A delta
+        // from a config_error evaluation must carry the status verbatim, or
+        // its empty counts present a complete denominator. The current document
+        // below mirrors render_gate_decision_json (status, config_errors,
+        // decisions; no limitation fields): the production-live shape.
+        let baseline = r#"{"schema_version": "0.1", "entries": []}"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "tool": "ripr",
+          "status": "config_error",
+          "mode": "ci",
+          "root": ".",
+          "decisions": [],
+          "warnings": [],
+          "config_errors": ["gate input check.json discloses a limited_partial_scope producer run"],
+          "limits_note": "Advisory."
+        }"#;
+        let report = build_baseline_delta_report(BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: Ok(baseline.to_string()),
+            current_gate_decision_json: Ok(current.to_string()),
+        });
+        let rendered = render_baseline_delta_json(&report)?;
+        assert!(rendered.contains("\"still_present\": 0"), "{rendered}");
+        assert!(
+            rendered.contains("\"current_gate_status\": \"config_error\""),
+            "{rendered}"
+        );
+        let markdown = render_baseline_delta_markdown(&report);
+        assert!(
+            markdown.contains("Current gate status: `config_error`"),
+            "{markdown}"
+        );
+        // Control: a successful evaluation echoes its status in JSON and
+        // stays undisclosed in Markdown (failure-only human surface).
+        let passing = current.replace("\"config_error\"", "\"advisory\"");
+        let passing_report = build_baseline_delta_report(BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: Ok(baseline.to_string()),
+            current_gate_decision_json: Ok(passing),
+        });
+        let passing_rendered = render_baseline_delta_json(&passing_report)?;
+        assert!(
+            passing_rendered.contains("\"current_gate_status\": \"advisory\""),
+            "{passing_rendered}"
+        );
+        let passing_markdown = render_baseline_delta_markdown(&passing_report);
+        assert!(
+            !passing_markdown.contains("Current gate status:"),
+            "{passing_markdown}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn zero_status_withholds_achieved_over_config_error_gate_delta() -> Result<(), String> {
+        // Issue #6257 review, end to end: a delta-only zero-status
+        // invocation over a delta built from a config_error gate evaluation
+        // withholds achieved. Without the propagated status the empty
+        // counts would read all-clear.
+        let baseline = r#"{"schema_version": "0.1", "entries": []}"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "tool": "ripr",
+          "status": "config_error",
+          "mode": "ci",
+          "root": ".",
+          "decisions": [],
+          "warnings": [],
+          "config_errors": ["missing required PR guidance file"],
+          "limits_note": "Advisory."
+        }"#;
+        let report = build_baseline_delta_report(BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: Ok(baseline.to_string()),
+            current_gate_decision_json: Ok(current.to_string()),
+        });
+        let rendered = render_baseline_delta_json(&report)?;
+        assert!(rendered.contains("\"still_present\": 0"), "{rendered}");
+        let status = crate::output::ripr_zero_status::build_ripr_zero_status_report(
+            crate::output::ripr_zero_status::RiprZeroStatusInput {
+                root: ".".to_string(),
+                generated_at: "unix_ms:100000000".to_string(),
+                baseline_path: None,
+                delta_path: "delta.json".to_string(),
+                gap_ledger_path: None,
+                gate_path: None,
+                pr_guidance_path: None,
+                recommendation_calibration_path: None,
+                baseline_json: None,
+                delta_json: Ok(rendered),
+                gap_ledger_json: None,
+                gate_json: None,
+                pr_guidance_json: None,
+                recommendation_calibration_json: None,
+            },
+        );
+        let status_rendered =
+            crate::output::ripr_zero_status::render_ripr_zero_status_json(&status)?;
+        let status_value: Value = serde_json::from_str(&status_rendered)
+            .map_err(|err| format!("parse zero status: {err}"))?;
+        assert_eq!(status_value["status"], "incomplete");
+        assert_eq!(status_value["ripr_zero"]["state"], "unknown");
+        assert!(
+            status_rendered.contains("failed evaluation can never yield achieved"),
+            "{status_rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_delta_omits_limitation_disclosure_for_complete_runs() -> Result<(), String> {
+        // Issue #6257, happy path: a current side without limitation
+        // disclosures yields a delta without the disclosure positions — no
+        // new noise on complete runs.
+        let baseline = r#"{"schema_version": "0.1", "entries": []}"#;
+        let current = r#"{"schema_version": "0.1", "decisions": []}"#;
+        let report = build_baseline_delta_report(BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: Ok(baseline.to_string()),
+            current_gate_decision_json: Ok(current.to_string()),
+        });
+        let rendered = render_baseline_delta_json(&report)?;
+        assert!(!rendered.contains("run_limitations"), "{rendered}");
+        assert!(!rendered.contains("analysis_outcome"), "{rendered}");
+        assert!(!rendered.contains("analysis_scope"), "{rendered}");
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse self-produced delta: {err}"))?;
+        assert!(!crate::output::gate::discloses_limited_partial_scope(
+            &value
+        ));
+        assert!(!crate::output::gate::discloses_limited_findings_bound(
+            &value
+        ));
+        assert!(!crate::output::gate::discloses_incomplete_analysis_outcome(
+            &value
+        ));
+        let markdown = render_baseline_delta_markdown(&report);
+        assert!(
+            !markdown.contains("propagated from the current run"),
+            "{markdown}"
+        );
+        assert!(!markdown.contains("Analysis complete:"), "{markdown}");
         Ok(())
     }
 

@@ -398,23 +398,37 @@ fn mixed_typescript_diff_counts_only_accepted_files_and_discloses_the_skipped() 
 /// degrade the outcome; the same refusal must still surface when the diff
 /// does touch Python.
 #[cfg(feature = "lang-python")]
-fn limitation_kinds_for_diff(name: &str, changed: &[&str]) -> Result<Vec<String>, String> {
+fn python_refusal_limitation_kinds(name: &str, changed: &[&str]) -> Result<Vec<String>, String> {
+    let nested = format!("x = {}1{}\n", "(".repeat(200), ")".repeat(200));
+    limitation_kinds_for_preview_diff(name, "python", ("fixture.py", &nested), changed)
+}
+
+/// Shared body: a Rust crate plus one refused preview-language fixture, then
+/// the outcome limitation kinds for a diff over `changed`.
+#[cfg(any(feature = "lang-python", feature = "lang-typescript"))]
+fn limitation_kinds_for_preview_diff(
+    name: &str,
+    enabled: &str,
+    fixture: (&str, &str),
+    changed: &[&str],
+) -> Result<Vec<String>, String> {
     let root = temp_root(name)?;
     fs::create_dir_all(root.join("src")).map_err(|error| format!("create src: {error}"))?;
     write(
         &root.join("src/lib.rs"),
         "pub fn discount(amount: u32) -> u32 {\n    if amount > 10 { amount - 1 } else { amount }\n}\n",
     )?;
-    let nested = format!("x = {}1{}\n", "(".repeat(200), ")".repeat(200));
-    write(&root.join("fixture.py"), &nested)?;
+    write(&root.join(fixture.0), fixture.1)?;
     let diff = root.join("change.diff");
     let text = changed
         .iter()
         .map(|path| {
             let body = if path.ends_with(".rs") {
                 "+pub fn discount(amount: u32) -> u32 {\n"
-            } else {
+            } else if path.ends_with(".py") {
                 "+x = 1\n"
+            } else {
+                "+export const x = 1;\n"
             };
             format!(
                 "diff --git a/{path} b/{path}\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1 @@\n{body}"
@@ -422,8 +436,9 @@ fn limitation_kinds_for_diff(name: &str, changed: &[&str]) -> Result<Vec<String>
         })
         .collect::<String>();
     write(&diff, &text)?;
-    let config =
-        crate::config::tests_only_parse("[languages]\nenabled = [\"rust\", \"python\"]\n")?;
+    let config = crate::config::tests_only_parse(&format!(
+        "[languages]\nenabled = [\"rust\", \"{enabled}\"]\n"
+    ))?;
     let output = crate::app::check_workspace_with_config(
         crate::CheckInput {
             root,
@@ -457,18 +472,60 @@ fn limitation_kinds_for_diff(name: &str, changed: &[&str]) -> Result<Vec<String>
 #[cfg(feature = "lang-python")]
 #[test]
 fn unrelated_python_refusal_does_not_degrade_a_rust_only_diff() -> Result<(), String> {
-    let rust_only = limitation_kinds_for_diff("python-refusal-rust-only", &["src/lib.rs"])?;
+    let rust_only = python_refusal_limitation_kinds("python-refusal-rust-only", &["src/lib.rs"])?;
     assert!(
         rust_only.is_empty(),
         "a Python file the diff does not touch must not add limitations: {rust_only:?}"
     );
     let touches_python =
-        limitation_kinds_for_diff("python-refusal-touched", &["src/lib.rs", "fixture.py"])?;
+        python_refusal_limitation_kinds("python-refusal-touched", &["src/lib.rs", "fixture.py"])?;
     assert!(
         touches_python
             .iter()
             .any(|kind| kind == "language_scope_unsupported"),
         "the refusal must remain when the diff touches Python: {touches_python:?}"
+    );
+    Ok(())
+}
+
+/// #5421: `.js` routes to the TypeScript adapter (which `[languages]` enables
+/// as `typescript`), so a `.js`-only change counts as touching that adapter's
+/// language and the adapter's parse refusal of that changed file still
+/// qualifies the diff. The gate compares against the adapter's language, so a
+/// `.js` path must not read as "another language". A Rust-only diff stays
+/// complete.
+#[cfg(feature = "lang-typescript")]
+#[test]
+fn javascript_diff_keeps_the_typescript_adapter_refusal() -> Result<(), String> {
+    // Past the TypeScript adapter's 2_000-level PARSE_NESTING_BUDGET.
+    let depth = 2_500;
+    let nested = format!(
+        "export const deep = {}1{};\n",
+        "(".repeat(depth),
+        ")".repeat(depth)
+    );
+    let fixture = ("src/app.js", nested.as_str());
+    let rust_only = limitation_kinds_for_preview_diff(
+        "ts-refusal-rust-only",
+        "typescript",
+        fixture,
+        &["src/lib.rs"],
+    )?;
+    assert!(
+        rust_only.is_empty(),
+        "a TypeScript file the diff does not touch must not add limitations: {rust_only:?}"
+    );
+    let touches_javascript = limitation_kinds_for_preview_diff(
+        "ts-refusal-js-touched",
+        "typescript",
+        fixture,
+        &["src/lib.rs", "src/app.js"],
+    )?;
+    assert!(
+        touches_javascript
+            .iter()
+            .any(|kind| kind == "language_scope_unsupported"),
+        "a .js change must keep the TypeScript adapter's refusal: {touches_javascript:?}"
     );
     Ok(())
 }

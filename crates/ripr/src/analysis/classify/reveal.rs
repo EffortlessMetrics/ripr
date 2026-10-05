@@ -509,12 +509,24 @@ fn analyze_related_assertions(
             // test-side identity gates live in `owner_pin`; the family and
             // oracle-kind gates are checked first so the closure only runs
             // for return-value exact pins.
-            let owner_pinned = matches!(probe.family, ProbeFamily::ReturnValue)
-                && matches!(
+            //
+            // A bare `assert!` pins a bool owner's return value the same way
+            // (`assert!(f(x))` is `assert_eq!(f(x), true)`), which also
+            // observes a predicate that is that owner's whole tail. Its kind
+            // stays the classifier's `relational_check` (RIPR-SPEC-0235);
+            // only its strength relative to this probe rises.
+            let owner_pinned = match probe.family {
+                ProbeFamily::ReturnValue => matches!(
                     assertion.kind,
-                    OracleKind::ExactValue | OracleKind::WholeObjectEquality
-                )
-                && (return_admission.owner_return_pin)(test, assertion);
+                    OracleKind::ExactValue
+                        | OracleKind::WholeObjectEquality
+                        | OracleKind::RelationalCheck
+                ),
+                ProbeFamily::Predicate => matches!(assertion.kind, OracleKind::RelationalCheck),
+                _ => false,
+            } && (return_admission.owner_return_pin)(test, assertion);
+            let bool_owner_pinned =
+                owner_pinned && matches!(assertion.kind, OracleKind::RelationalCheck);
             let (matched, has_token_match) = assertion_matches_probe_detail_with_literals(
                 &match_context,
                 assertion,
@@ -564,7 +576,11 @@ fn analyze_related_assertions(
                     }
                 }
                 matched_any = true;
-                let relative_strength = probe_relative_oracle_strength(&probe.family, assertion);
+                let relative_strength = if bool_owner_pinned {
+                    OracleStrength::Strong
+                } else {
+                    probe_relative_oracle_strength(&probe.family, assertion)
+                };
                 // Public #1747/#1751: entity identity and a strong change reference
                 // must bind in one admitted oracle; proximity alone cannot credit it.
                 let identity = matches!(
@@ -683,8 +699,13 @@ fn error_path_variant_token(expression: &str) -> Option<String> {
 /// Whether an assertion observes an error at all: a typed error oracle, a
 /// guarded `Result` match, or an identifier that names an error or a panic
 /// (`Err`, `ParseError`, `unwrap_err`, `is_err`, `err`, `should_panic`).
-/// Deliberately lenient: it only decides whether a token overlap may count
-/// as observing a changed error path, never whether the oracle is strong.
+/// Deliberately lenient on trailing error tokens: it only decides whether a
+/// token overlap may count as observing a changed error path, never whether
+/// the oracle is strong. A leading or middle error lexeme in a compound
+/// identifier (`error_count`, `nonerror`) is not an observer (#5255). Sibling ErrorPath
+/// confirmation sites do not scan identifier lexemes: diagnostic stripping,
+/// guarded owner-result matches, and exact-variant pins are independent of
+/// this gate.
 fn assertion_observes_error(assertion: &OracleFact) -> bool {
     if matches!(
         assertion.kind,
@@ -696,14 +717,19 @@ fn assertion_observes_error(assertion: &OracleFact) -> bool {
     // and `is_err` as assertion noise, and they are exactly the signal.
     crate::analysis::extract::mask_comments_and_strings(&assertion.text)
         .split(|ch: char| !(ch.is_alphanumeric() || ch == '_'))
-        .any(|token| {
-            let lower = token.to_ascii_lowercase();
-            lower.ends_with("error")
-                || lower.contains("panic")
-                || lower
-                    .split('_')
-                    .any(|segment| segment == "err" || segment == "error")
-        })
+        .any(identifier_names_error_observer)
+}
+
+/// Trailing `err`/`error` on a real token boundary (or a panic token) names
+/// an error observer. `ends_with("error")` would credit `nonerror`;
+/// any-segment matching would credit `error_count`.
+fn identifier_names_error_observer(token: &str) -> bool {
+    let lower = token.to_ascii_lowercase();
+    if lower.contains("panic") {
+        return true;
+    }
+    let last = lower.rsplit('_').next();
+    last == Some("err") || last == Some("error") || token.ends_with("Error")
 }
 
 /// Probe-side matching inputs shared by every assertion of one probe
@@ -2768,6 +2794,34 @@ mod tests {
         Ok(())
     }
 
+    /// A test-local identifier that merely contains an error lexeme
+    /// (`error_count`, `nonerror`) is not an error observer. #4748 excluded
+    /// diagnostics; this residual is operand position (#5255).
+    #[test]
+    fn error_path_operand_error_lexeme_does_not_confirm_observation() -> Result<(), String> {
+        let probe = probe(ProbeFamily::ErrorPath, "let n = rdr.read(&mut buf)?;");
+        for text in [
+            "assert_eq!((rdr.len(), error_count), (10, 0));",
+            "assert_eq!(rdr.len(), error_count);",
+            "assert_eq!(rdr.len(), err_count);",
+            "assert_eq!((rdr.len(), nonerror), (10, 0));",
+        ] {
+            let classification = crate::analysis::extract::classify_assertion(text);
+            let test = test_with_assertions(
+                "reads_successfully",
+                vec![oracle(text, classification.kind, classification.strength)],
+            );
+            let (_, discriminate, _) =
+                reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+            if discriminate.state != StageState::Weak {
+                return Err(format!(
+                    "operand error lexeme `{text}` confirmed an error path: {discriminate:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
     #[test]
     fn error_path_diagnostic_tokens_cannot_pin_the_changed_error() -> Result<(), String> {
         // The operand observes an error, but only the message names the changed reader.
@@ -4523,7 +4577,7 @@ return Err(\"typed pin\".into());
             file: PathBuf::from("tests/value.rs"),
             start_line: 1,
             end_line: 3,
-            body: "score();".to_string(),
+            body: "score();".into(),
             calls: Vec::new(),
             assertions,
             literals: Vec::new(),
@@ -4542,7 +4596,7 @@ return Err(\"typed pin\".into());
         assertions: Vec<OracleFact>,
     ) -> TestSummary {
         TestSummary {
-            body: body.to_string(),
+            body: body.into(),
             ..test_with_assertions(name, assertions)
         }
     }

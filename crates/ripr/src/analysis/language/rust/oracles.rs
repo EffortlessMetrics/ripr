@@ -659,7 +659,7 @@ mod tests {
             file: PathBuf::from(file),
             start_line: 1,
             end_line: 5,
-            body: format!("pub fn {name}(x: i32) -> i32 {{ x }}"),
+            body: format!("pub fn {name}(x: i32) -> i32 {{ x }}").into(),
             calls: vec![],
             returns: vec![],
             literals: vec![],
@@ -759,7 +759,7 @@ mod tests {
             file: PathBuf::from(file),
             start_line,
             end_line: start_line + body.lines().count(),
-            body: body.to_string(),
+            body: body.into(),
             calls: vec![CallFact {
                 line: start_line,
                 name: "inner".to_string(),

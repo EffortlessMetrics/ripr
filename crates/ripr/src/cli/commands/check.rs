@@ -16,6 +16,7 @@ use crate::cli::suggest::unknown_argument;
 use crate::config::{CheckInputExplicit, RiprConfig, apply_to_check_input, load_for_root};
 use crate::git::WorkTreeRootProbe;
 use crate::output;
+use crate::output::human::terminal_safe;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
@@ -229,9 +230,12 @@ pub(super) fn resolve_implicit_workspace_root(input: &mut CheckInput) -> Result<
     }
 
     eprintln!(
-        "ripr: resolved workspace root to {} ({})",
-        root.display(),
-        reason.disclosure()
+        "{}",
+        terminal_safe(format!(
+            "ripr: resolved workspace root to {} ({})",
+            root.display(),
+            reason.disclosure()
+        ))
     );
     input.root = root;
     Ok(())
@@ -714,7 +718,7 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     if let Some(warning) =
         repo_scope_diff_bound_warning(format, base_explicitly_provided, input.diff_file.as_deref())
     {
-        eprintln!("{warning}");
+        eprintln!("{}", terminal_safe(warning));
     }
     if format.is_repo_scope() {
         validate_repo_scope_diff_inputs(&input, base_explicitly_provided)?;
@@ -884,7 +888,7 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
                 analysis::resolve_base_commit(root, Some(base), timeout).as_deref(),
                 analysis::resolve_base_commit(root, Some("HEAD"), timeout).as_deref(),
             ) {
-                eprintln!("{hedge}");
+                eprintln!("{}", terminal_safe(hedge));
             }
         }
     }
@@ -901,7 +905,7 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
         && !format.is_repo_scope()
         && let Some(hedge) = zero_findings_diff_hedge(output.analysis_outcome.as_ref())
     {
-        eprintln!("{hedge}");
+        eprintln!("{}", terminal_safe(hedge));
     }
     // #2642: surface expired suppression entries as a stderr warning so they
     // are visible even in --json mode (the human output already shows them as
@@ -994,6 +998,15 @@ fn zero_findings_diff_hedge(
     let Some(outcome) = outcome else {
         return Some(generic.to_string());
     };
+    // A well-formed binary- or mode-only diff already got its own stderr note
+    // from the pipeline; the generic "may not be a valid diff" hedge would
+    // contradict it.
+    if outcome.limitations.iter().any(|limitation| {
+        limitation.kind == AnalysisLimitationKind::MalformedDiff
+            && limitation.bounded_detail.as_deref() == Some(crate::analysis::NON_TEXT_ONLY_DETAIL)
+    }) {
+        return None;
+    }
     let causes = outcome
         .limitations
         .iter()
@@ -1390,6 +1403,29 @@ mod tests {
                 "{label}: {hedge}"
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn zero_findings_hedge_stays_silent_for_a_well_formed_non_text_only_diff() -> Result<(), String>
+    {
+        let root = copy_sample_workspace_to_temp("hedge-binary-only")?;
+        std::fs::write(
+            root.join("example.diff"),
+            "diff --git a/logo.png b/logo.png\nBinary files a/logo.png and b/logo.png differ\n",
+        )
+        .map_err(|err| err.to_string())?;
+        let input = CheckInput {
+            root: root.clone(),
+            diff_file: Some(root.join("example.diff")),
+            ..CheckInput::default()
+        };
+        let result = app::check_workspace_with_config(input, &RiprConfig::default());
+        if let Ok(()) = std::fs::remove_dir_all(&root) {}
+        let outcome = result?
+            .analysis_outcome
+            .ok_or_else(|| "diff pipeline must project an analysis outcome".to_string())?;
+        assert_eq!(zero_findings_diff_hedge(Some(&outcome)), None);
         Ok(())
     }
 

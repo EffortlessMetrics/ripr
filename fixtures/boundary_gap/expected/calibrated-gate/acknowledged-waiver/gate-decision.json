@@ -99,6 +99,18 @@
   "root": ".",
   "schema_version": "0.1",
   "status": "acknowledged",
+  "subject": {
+    "analyzer_version": "0.0.0+pinned-golden-analyzer-version",
+    "inputs": {
+      "labels_json": {
+        "content_hash": "sha256:f9cb8507e17ca5b3907c2c69e92d62e36de3b98326f028157c368dd32ae09892"
+      },
+      "pr_guidance": {
+        "content_hash": "sha256:4d2e9d996edf994ca4f557534065749477aeb1fd945859612f73bec1338072c5"
+      }
+    },
+    "labels_sha256": "sha256:95245a3bb93d41769162996af69a9b719b1a09c7d42ab846c780306375c2e070"
+  },
   "summary": {
     "acknowledged": 1,
     "advisory": 0,

@@ -1,0 +1,25 @@
+//! A journal whose only test seeds the entry before noting it again.
+
+#[derive(Debug, Default)]
+pub struct Journal {
+    pub entries: Vec<u64>,
+}
+
+impl Journal {
+    pub fn note(&mut self, amount: u64) {
+        self.entries.push(amount);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Journal;
+
+    #[test]
+    fn note_keeps_a_seeded_entry() {
+        let mut j = Journal::default();
+        j.entries.push(5);
+        j.note(5);
+        assert!(j.entries.contains(&5));
+    }
+}

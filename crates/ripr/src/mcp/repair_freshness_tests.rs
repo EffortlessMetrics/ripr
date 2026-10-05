@@ -3,10 +3,19 @@
 use super::*;
 use crate::app::repair_attempt::{
     BeforeArtifactSource, BeginRepairAttemptOptions, RepairAttemptId, begin_repair_attempt_with,
-    edit_cage_policy_from_packet, finish_repair_attempt, load_repair_attempt_manifest,
-    receipt_binding_from, retain_terminal_evidence, write_edit_cage_baseline,
+    edit_cage_policy_from_packet, find_manifest_artifact_by_role, finish_repair_attempt,
+    load_repair_attempt_manifest, receipt_binding_from, retain_terminal_evidence,
+    write_edit_cage_baseline,
 };
 use std::path::PathBuf;
+
+#[cfg(unix)]
+#[path = "repair_root_tests.rs"]
+mod root_tests;
+
+#[cfg(unix)]
+#[path = "repair_manifest_root_tests.rs"]
+mod manifest_root_tests;
 
 /// Own only an exclusively created test directory, including setup failures
 /// and assertion unwinds. Durable proof receipts live outside this fixture.
@@ -36,16 +45,26 @@ fn write(path: &Path, contents: &str) -> Result<(), String> {
     std::fs::write(path, contents).map_err(|error| format!("write {}: {error}", path.display()))
 }
 
-fn snapshot(grip: &str) -> String {
-    json!({ "schema_version": "0.3", "scope": "repo", "seams": [{
-        "seam_id": "seam:freshness", "kind": "predicate_boundary",
-        "file": "src/subject.rs", "line": 1, "grip_class": grip,
-        "related_tests": [], "observed_values": [], "missing_discriminators": [],
-    }] })
-    .to_string()
+fn snapshot(root: &Path, grip: &str) -> Result<String, String> {
+    // Evidence-grade envelope: terminal readers bind the verify document to
+    // the retained before snapshot's recomputed content commitment.
+    crate::testing::verify_fixture::mint_repo_exposure_snapshot(
+        root,
+        json!([crate::testing::verify_fixture::snapshot_seam(
+            "seam:freshness",
+            "predicate_boundary",
+            "src/subject.rs",
+            1,
+            grip,
+        )]),
+    )
 }
 
 fn prepared(label: &str) -> Result<(FixtureRoot, RepairAttemptId), String> {
+    prepare_at(fixture_root(label)?)
+}
+
+fn fixture_root(label: &str) -> Result<FixtureRoot, String> {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| format!("fixture clock: {error}"))?
@@ -55,7 +74,10 @@ fn prepared(label: &str) -> Result<(FixtureRoot, RepairAttemptId), String> {
         std::process::id()
     ));
     std::fs::create_dir(&root).map_err(|error| format!("create {}: {error}", root.display()))?;
-    let root = FixtureRoot(root);
+    Ok(FixtureRoot(root))
+}
+
+fn prepare_at(root: FixtureRoot) -> Result<(FixtureRoot, RepairAttemptId), String> {
     std::fs::create_dir(root.join("tests")).map_err(|error| error.to_string())?;
     git(&root, &["init"])?;
     git(
@@ -72,7 +94,7 @@ fn prepared(label: &str) -> Result<(FixtureRoot, RepairAttemptId), String> {
     let before = workflow.join("before.json");
     let packet = workflow.join("packet.json");
     let baseline = workflow.join("baseline.json");
-    write(&before, &snapshot("weakly_gripped"))?;
+    write(&before, &snapshot(&root, "weakly_gripped")?)?;
     let verify_spec = crate::agent::command_specs::agent_verify_command_spec(
         ".",
         "target/ripr/workflow/before.json",
@@ -303,25 +325,38 @@ fn issue_terminal_receipt_with_grip(
         AgentReceiptAnalysisOutcome, AgentReceiptArtifactProvenance, AgentReceiptProvenance,
         render_agent_receipt_value_json,
     };
-    let before_path = "target/ripr/workflow/before.json";
     let after_path = "target/ripr/workflow/after.json";
     let verify_path = "target/ripr/workflow/agent-verify.json";
     let receipt_path = "target/ripr/workflow/agent-receipt.json";
-    let before =
-        std::fs::read_to_string(root.join(before_path)).map_err(|error| error.to_string())?;
-    let after = snapshot(after_grip);
+    // The verify document names the retained before snapshot, not the
+    // workflow copy: terminal readers resolve that path to the attempt's
+    // digest-bound bytes and recompute the content commitment from them.
+    let manifest = load_repair_attempt_manifest(root, id)?;
+    let retained_before = root.join(
+        &find_manifest_artifact_by_role(&manifest, "before_snapshot")
+            .ok_or_else(|| "fixture lost retained before".to_string())?
+            .path,
+    );
+    let before = std::fs::read_to_string(&retained_before).map_err(|error| error.to_string())?;
+    let after = snapshot(root, after_grip)?;
     write(&root.join(after_path), &after)?;
     let report = crate::output::outcome::targeted_test_outcome_report_from_json(
         &before,
         &after,
-        before_path.to_string(),
+        retained_before.display().to_string(),
         after_path.to_string(),
     )?;
-    let digest = |bytes: &[u8]| format!("{:x}", Sha256::digest(bytes));
+    let before_identity =
+        crate::agent::artifact::validate_repo_exposure_artifact(root, &before, "fixture before")?;
+    let after_identity =
+        crate::agent::artifact::validate_repo_exposure_artifact(root, &after, "fixture after")?;
     let binding = crate::output::outcome::AgentVerifyArtifactBinding {
-        before_content_sha256: digest(before.as_bytes()),
-        after_content_sha256: digest(after.as_bytes()),
+        before_content_sha256: before_identity.content_sha256,
+        after_content_sha256: after_identity.content_sha256,
     };
+    // Production digest shape (`sha256:`-prefixed): the receipt's recorded
+    // verify digest must match the retained verify bytes exactly.
+    let digest = |bytes: &[u8]| format!("sha256:{:x}", Sha256::digest(bytes));
     let verify = crate::output::outcome::render_agent_verify_json_with_currentness(
         &report,
         Some("current"),
@@ -363,7 +398,7 @@ fn issue_terminal_receipt_with_grip(
             command_template_version: "fixture".to_string(),
             generated_at: "2026-10-04T00:00:00Z".to_string(),
             workflow_artifact: None,
-            before_artifact: artifact(before_path, before.as_bytes()),
+            before_artifact: artifact(&retained_before.display().to_string(), before.as_bytes()),
             after_artifact: artifact(after_path, after.as_bytes()),
             verify_artifact: artifact(verify_path, verify.as_bytes()),
         },
@@ -428,6 +463,62 @@ fn durable_currentness_keeps_tampered_terminal_evidence_invalid_at_historical_he
     assert_eq!(receipt["status"], "invalid");
     assert_eq!(receipt["receipt"]["status"], "unavailable");
     assert_eq!(receipt["currentness"]["state"], "historical");
+    Ok(())
+}
+
+/// #5256 F1 on the MCP path: a retained receipt whose three verdict strings
+/// were flipped and whose manifest digest was rebound must read `invalid` /
+/// `unavailable` from the receipt-status document, never `improved`.
+#[test]
+fn forged_terminal_verdict_reads_invalid_on_mcp_receipt_status() -> Result<(), String> {
+    let (root, id) = prepared("forged-verdict")?;
+    let packet = finish_without_receipt(&root, &id)?;
+    issue_terminal_receipt_with_grip(&root, &id, &packet, "weakly_gripped", "unchanged")?;
+    let honest = receipt_document(&root, &id)?;
+    assert_eq!(honest["status"], "unchanged");
+    assert_eq!(honest["receipt"]["status"], "issued");
+    let manifest = load_repair_attempt_manifest(&root, &id)?;
+    let receipt_path = root.join(
+        &find_terminal_artifact_by_role(&manifest, "agent_receipt")
+            .ok_or_else(|| "fixture lost retained receipt".to_string())?
+            .path,
+    );
+    let mut forged: Value = serde_json::from_str(
+        &std::fs::read_to_string(&receipt_path).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    forged["summary"]["receipt_state"] = json!("receipt_movement_improved");
+    forged["summary"]["next_action"]["kind"] = json!("improved");
+    forged["seam"]["change"] = json!("improved");
+    assert_eq!(forged["provenance"]["movement"], "unchanged");
+    let forged_bytes = serde_json::to_string_pretty(&forged).map_err(|error| error.to_string())?;
+    write(&receipt_path, &forged_bytes)?;
+    let manifest_path = root.join(format!(
+        "target/ripr/repair-attempts/{}/attempt.json",
+        id.as_str()
+    ));
+    let mut manifest_value: Value = serde_json::from_str(
+        &std::fs::read_to_string(&manifest_path).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    let entry = manifest_value["terminal_artifacts"]
+        .as_array_mut()
+        .ok_or_else(|| "fixture lost terminal_artifacts".to_string())?
+        .iter_mut()
+        .find(|artifact| artifact["role"] == "agent_receipt")
+        .ok_or_else(|| "fixture lost its agent_receipt entry".to_string())?;
+    entry["sha256"] = json!(format!(
+        "sha256:{:x}",
+        Sha256::digest(forged_bytes.as_bytes())
+    ));
+    entry["bytes"] = json!(forged_bytes.len() as u64);
+    write(
+        &manifest_path,
+        &serde_json::to_string_pretty(&manifest_value).map_err(|error| error.to_string())?,
+    )?;
+    let forged_document = receipt_document(&root, &id)?;
+    assert_eq!(forged_document["status"], "invalid");
+    assert_eq!(forged_document["receipt"]["status"], "unavailable");
     Ok(())
 }
 

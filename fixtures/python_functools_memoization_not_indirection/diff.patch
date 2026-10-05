@@ -1,0 +1,15 @@
+diff --git a/src/memo.py b/src/memo.py
+index 0000000..1111111 100644
+--- a/src/memo.py
++++ b/src/memo.py
+@@ -4,8 +4,8 @@
+ @lru_cache
+ def format_year(year):
+-    return "%02d" % (year % 100)
++    return "%03d" % (year % 100)
+ 
+ 
+ @lru_cache(maxsize=None)
+ def century_index(year):
+-    return year % 100
++    return year % 1000

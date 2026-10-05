@@ -7,7 +7,8 @@ use super::model::{
     BADGE_REASON_KEYS, BadgeCounts, BadgeKind, BadgePolicy, BadgeStatus, BadgeSummary,
 };
 use super::summaries::{
-    apply_analysis_outcome_disclosure, badge_status_color, ripr_badge_summary_with_suppressions,
+    apply_analysis_outcome_disclosure, badge_status_color, calibrated_unknown_count,
+    ripr_badge_summary_with_suppressions, unknown_headline_contribution,
 };
 
 /// One test-efficiency entry seen by the badge, retained so suppressions
@@ -311,6 +312,7 @@ pub fn ripr_plus_badge_summary_with_suppressions(
         today,
         policy,
         scope,
+        calibrated_unknown_count(&output.findings),
     )
 }
 
@@ -338,11 +340,11 @@ pub(crate) fn ripr_plus_canonical_actionable_gap_badge_summary(
         analyzed_gap_records: exposure.counts.analyzed_gap_records,
         analyzed_tests: test_efficiency.analyzed_tests,
     };
-    let unknown_contribution = if policy.include_unknowns {
-        counts.unknowns + counts.unknowns_test_efficiency
-    } else {
-        0
-    };
+    let unknown_contribution = unknown_headline_contribution(
+        counts.unknowns,
+        counts.unknowns_test_efficiency,
+        policy.include_unknowns,
+    );
     let headline = counts.unsuppressed_exposure_gaps
         + counts.unsuppressed_test_efficiency_findings
         + unknown_contribution;
@@ -365,6 +367,7 @@ fn ripr_plus_badge_summary_from_exposure(
     today: &str,
     policy: BadgePolicy,
     scope: TestEfficiencyAggregationScope<'_>,
+    calibrated_unknowns: usize,
 ) -> BadgeSummary {
     // Decide which entries contribute to this scope's headline. For
     // repo scope, take the parser's pre-computed repo-wide totals and
@@ -432,11 +435,8 @@ fn ripr_plus_badge_summary_from_exposure(
         analyzed_tests: test_efficiency.analyzed_tests,
     };
 
-    let unknown_contribution = if policy.include_unknowns {
-        counts.unknowns + counts.unknowns_test_efficiency
-    } else {
-        0
-    };
+    let unknown_contribution =
+        unknown_headline_contribution(calibrated_unknowns, unknowns_te, policy.include_unknowns);
     let headline = counts.unsuppressed_exposure_gaps
         + counts.unsuppressed_test_efficiency_findings
         + unknown_contribution;

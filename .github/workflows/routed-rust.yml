@@ -175,7 +175,11 @@ jobs:
     needs: [route, detect-docs-only]
     # The source repository's only Rust proof route. It is first-class, not a
     # fallback: nothing upstream can select a self-hosted lane instead.
-    if: always() && needs.route.result == 'success' &&
+    # A second Ready transition must cancel the obsolete implementation gate
+    # (#6729); terminal result and step cleanup keep their own conditions.
+    if: >-
+      !cancelled() &&
+      needs.route.result == 'success' &&
       needs.route.outputs.route == 'github_hosted_rust' &&
       needs.detect-docs-only.result == 'success' &&
       needs.detect-docs-only.outputs.docs_only != 'true'

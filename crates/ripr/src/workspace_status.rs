@@ -282,7 +282,7 @@ fn validate_root(root: PathBuf, source: RootSource) -> ResolvedRoot {
     if markers.is_empty() {
         return unavailable_root_with_source(source, RootErrorCode::RepositoryMarkerMissing);
     }
-    let project_config_state = if canonical.join("ripr.toml").is_file() {
+    let project_config_state = if crate::config::config_present_at_root(&canonical) {
         ProjectConfigState::DetectedNotLoaded
     } else {
         ProjectConfigState::BuiltInDefaultsOnly
@@ -486,6 +486,49 @@ mod tests {
             ));
         }
         Ok(())
+    }
+
+    /// A dangling `ripr.toml` is present but unreadable: workspace status must
+    /// not claim built-in defaults, matching `load_for_root`.
+    #[cfg(unix)]
+    #[test]
+    fn dangling_ripr_toml_symlink_is_present_not_built_in_defaults() -> Result<(), String> {
+        const DETECTED: &str =
+            "project-local ripr.toml is detected but not loaded by workspace discovery";
+        let root = temporary_root("dangling-config");
+        std::fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\nmembers = []\n")
+            .map_err(|error| error.to_string())?;
+        std::os::unix::fs::symlink("no-such-target.toml", root.join("ripr.toml"))
+            .map_err(|error| error.to_string())?;
+
+        let load_error = match crate::config::load_for_root(&root) {
+            Ok(_) => {
+                return Err("load_for_root must refuse a dangling ripr.toml".to_string());
+            }
+            Err(error) => error,
+        };
+        if !load_error.contains("ripr.toml") {
+            return Err(format!(
+                "load_for_root must name ripr.toml for a dangling link: {load_error}"
+            ));
+        }
+
+        let status = WorkspaceStatus::resolve_with_root(Some(root.clone())).0;
+        if status.configuration.project_config_state != ProjectConfigState::DetectedNotLoaded {
+            return Err(format!(
+                "a dangling ripr.toml must be present, not {:?}: {:?}",
+                status.configuration.project_config_state, status.limitations
+            ));
+        }
+        if !status.limitations.contains(&DETECTED) {
+            return Err(format!(
+                "a dangling ripr.toml must not be described as built-in defaults: {:?}",
+                status.limitations
+            ));
+        }
+
+        std::fs::remove_dir_all(root).map_err(|error| error.to_string())
     }
 
     #[test]

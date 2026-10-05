@@ -1041,6 +1041,34 @@
       ]
     },
     {
+      "id": "rust_error_path_operand_error_lexeme",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/error_path_operand_error_lexeme",
+      "vector": "operand_error_lexeme_does_not_observe_changed_error",
+      "probe_family": "error_path",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "weakly_exposed"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
       "id": "rust_error_path_diagnostic_raw",
       "language": "rust",
       "tier": "pure",
@@ -1902,6 +1930,37 @@
           "type": "expected_class",
           "class": "exposed"
         }
+      ]
+    },
+    {
+      "id": "ts_node_expect_failure_no_credit",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/ts_node_expect_failure_no_credit",
+      "vector": "node_expect_failure_registration_no_credit",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "no_static_path" }
+      ]
+    },
+    {
+      "id": "ts_node_ordinary_test_control",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/ts_node_ordinary_test_control",
+      "vector": "node_ordinary_registration_exact_value",
+      "control": "must_stay_exposed",
+      "assertions": [
+        { "type": "must_promote" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "exposed" }
       ]
     },
     {

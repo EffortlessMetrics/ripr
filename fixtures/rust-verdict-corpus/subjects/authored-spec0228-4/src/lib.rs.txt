@@ -1,0 +1,26 @@
+pub struct Badge {
+    pub count: u32,
+    pub label: String,
+}
+
+impl Badge {
+    pub fn new() -> Self {
+        Badge { count: 0, label: String::from("x") }
+    }
+
+    pub fn raise(&mut self) {
+        self.count += 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn raise_keeps_the_label() {
+        let mut c = Badge::new();
+        c.raise();
+        assert_eq!(c.label, "x");
+    }
+}

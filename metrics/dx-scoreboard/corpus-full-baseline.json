@@ -4,9 +4,9 @@
   "boards": [
     {
       "counts": {
-        "below_target": 2,
+        "below_target": 0,
         "failed": 0,
-        "meets_target": 0,
+        "meets_target": 2,
         "not_measured": 0,
         "regressed": 0
       },
@@ -15,27 +15,39 @@
         "corpus.not_analyzed",
         "corpus.check_ms"
       ],
-      "status": "gaps"
+      "status": "meets_target"
     }
   ],
   "claim_boundary": "Numbers hold for the recorded revision, binary, runner class and pinned corpus only. Targets are proposed bars, not product guarantees. Wall-time and memory metrics are compared only against a baseline from the same runner class; peak memory is sampled from /proc every 10 ms on Linux and is a lower bound. Static verdict metrics do not claim runtime mutation outcomes.",
   "corpus": [],
   "corpus_version": null,
   "gate": {
-    "baseline_revision": null,
-    "baseline_runner_class": null,
-    "enabled": false,
+    "baseline_revision": "adf4e6303d53a9b0cd5ec7d1c29d71996b02c8db",
+    "baseline_runner_class": "local-linux-x86_64-4cpu",
+    "enabled": true,
     "failed_instruments": [],
     "regressions": [],
     "review": [],
-    "status": "not_run",
-    "uncompared": []
+    "status": "pass",
+    "uncompared": [
+      {
+        "metric": "corpus.check_ms",
+        "reason": "runner class differs (baseline `local-linux-x86_64-4cpu`, current `github-hosted-linux-x86_64-4cpu-intel-r-xeon-r-platinum-8370c-cpu-2-80ghz`)"
+      }
+    ]
   },
   "metrics": [
     {
       "baseline": {
-        "comparable": false,
-        "reason": "no baseline supplied"
+        "allowed_worsening": 0.0,
+        "comparable": true,
+        "delta": -1.0,
+        "missing_repos": [],
+        "new_repos": [],
+        "recovered_repos": [],
+        "regressed": false,
+        "regressed_repos": [],
+        "value": 1.0
       },
       "board": "corpus",
       "direction": "lower_is_better",
@@ -141,10 +153,10 @@
           "value": 0.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: diff_scope_oversized",
+          "detail": "ingested from rust-corpus-smoke: analyzed",
           "repo": "wasm-bindgen",
-          "status": "below_target",
-          "value": 1.0
+          "status": "meets_target",
+          "value": 0.0
         },
         {
           "detail": "ingested from rust-corpus-smoke: analyzed",
@@ -153,10 +165,10 @@
           "value": 0.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: diff_scope_oversized",
+          "detail": "ingested from rust-corpus-smoke: analyzed",
           "repo": "bevy",
-          "status": "below_target",
-          "value": 1.0
+          "status": "meets_target",
+          "value": 0.0
         },
         {
           "detail": "ingested from rust-corpus-smoke: analyzed",
@@ -189,10 +201,10 @@
           "value": 0.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: diff_scope_oversized",
+          "detail": "ingested from rust-corpus-smoke: analyzed",
           "repo": "nushell",
-          "status": "below_target",
-          "value": 1.0
+          "status": "meets_target",
+          "value": 0.0
         },
         {
           "detail": "ingested from rust-corpus-smoke: analyzed",
@@ -250,16 +262,17 @@
         }
       ],
       "source": "ingest:rust-corpus-smoke",
-      "status": "below_target",
+      "status": "meets_target",
       "target": 0.0,
       "title": "Pinned repository whose diff-scoped `ripr check` did not reach `analyzed`",
       "unit": "repos",
-      "value": 1.0
+      "value": 0.0
     },
     {
       "baseline": {
         "comparable": false,
-        "reason": "no baseline supplied"
+        "reason": "runner class differs (baseline `local-linux-x86_64-4cpu`, current `github-hosted-linux-x86_64-4cpu-intel-r-xeon-r-platinum-8370c-cpu-2-80ghz`)",
+        "value": 13225.0
       },
       "board": "corpus",
       "direction": "lower_is_better",
@@ -269,216 +282,216 @@
       "runner_dependent": true,
       "samples": [
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 801 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 309 ms",
           "repo": "serde",
           "status": "meets_target",
-          "value": 801.0
+          "value": 309.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 1003 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 560 ms",
           "repo": "regex",
           "status": "meets_target",
-          "value": 1003.0
+          "value": 560.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 603 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 316 ms",
           "repo": "ripgrep",
           "status": "meets_target",
-          "value": 603.0
+          "value": 316.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 501 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 133 ms",
           "repo": "anyhow",
           "status": "meets_target",
-          "value": 501.0
+          "value": 133.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 400 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 71 ms",
           "repo": "thiserror",
           "status": "meets_target",
-          "value": 400.0
+          "value": 71.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 601 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 257 ms",
           "repo": "heapless",
           "status": "meets_target",
-          "value": 601.0
+          "value": 257.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 501 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 226 ms",
           "repo": "rstest",
           "status": "meets_target",
-          "value": 501.0
+          "value": 226.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 601 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 207 ms",
           "repo": "proptest",
           "status": "meets_target",
-          "value": 601.0
+          "value": 207.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 601 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 236 ms",
           "repo": "insta",
           "status": "meets_target",
-          "value": 601.0
+          "value": 236.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 401 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 113 ms",
           "repo": "prost",
           "status": "meets_target",
-          "value": 401.0
+          "value": 113.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 601 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 288 ms",
           "repo": "axum",
           "status": "meets_target",
-          "value": 601.0
+          "value": 288.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 801 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 521 ms",
           "repo": "rusqlite",
           "status": "meets_target",
-          "value": 801.0
+          "value": 521.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 506 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 217 ms",
           "repo": "tokio",
           "status": "meets_target",
-          "value": 506.0
+          "value": 217.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 401 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 133 ms",
           "repo": "clap",
           "status": "meets_target",
-          "value": 401.0
+          "value": 133.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 3307 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 2378 ms",
           "repo": "cargo",
           "status": "meets_target",
-          "value": 3307.0
+          "value": 2378.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 13225 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 2020 ms",
           "repo": "rust-analyzer",
-          "status": "below_target",
-          "value": 13225.0
+          "status": "meets_target",
+          "value": 2020.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: diff_scope_oversized after 501 ms; no analyzed run to time",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 1173 ms",
           "repo": "wasm-bindgen",
-          "status": "incomplete",
-          "value": 0.0
+          "status": "meets_target",
+          "value": 1173.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 701 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 286 ms",
           "repo": "embassy",
           "status": "meets_target",
-          "value": 701.0
+          "value": 286.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: diff_scope_oversized after 801 ms; no analyzed run to time",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 3494 ms",
           "repo": "bevy",
-          "status": "incomplete",
-          "value": 0.0
+          "status": "meets_target",
+          "value": 3494.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 1002 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 564 ms",
           "repo": "rust-openssl",
           "status": "meets_target",
-          "value": 1002.0
+          "value": 564.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 1502 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 982 ms",
           "repo": "atuin",
           "status": "meets_target",
-          "value": 1502.0
+          "value": 982.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 801 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 470 ms",
           "repo": "image",
           "status": "meets_target",
-          "value": 801.0
+          "value": 470.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 3105 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 705 ms",
           "repo": "lemmy",
           "status": "meets_target",
-          "value": 3105.0
+          "value": 705.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 1101 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 786 ms",
           "repo": "zola",
           "status": "meets_target",
-          "value": 1101.0
+          "value": 786.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: diff_scope_oversized after 601 ms; no analyzed run to time",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 1093 ms",
           "repo": "nushell",
-          "status": "incomplete",
-          "value": 0.0
+          "status": "meets_target",
+          "value": 1093.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 400 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 55 ms",
           "repo": "iron",
           "status": "meets_target",
-          "value": 400.0
+          "value": 55.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 401 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 73 ms",
           "repo": "rustc-serialize",
           "status": "meets_target",
-          "value": 401.0
+          "value": 73.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 501 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 113 ms",
           "repo": "spotify-tui",
           "status": "meets_target",
-          "value": 501.0
+          "value": 113.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 501 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 166 ms",
           "repo": "cargo-mutants",
           "status": "meets_target",
-          "value": 501.0
+          "value": 166.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 601 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 174 ms",
           "repo": "fd",
           "status": "meets_target",
-          "value": 601.0
+          "value": 174.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 701 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 308 ms",
           "repo": "bat",
           "status": "meets_target",
-          "value": 701.0
+          "value": 308.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 3608 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 1176 ms",
           "repo": "nextest",
           "status": "meets_target",
-          "value": 3608.0
+          "value": 1176.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 302 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 41 ms",
           "repo": "winreg",
           "status": "meets_target",
-          "value": 302.0
+          "value": 41.0
         },
         {
-          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 401 ms",
+          "detail": "ingested from rust-corpus-smoke: `ripr check --base <pinned base>` in 102 ms",
           "repo": "html5ever",
           "status": "meets_target",
-          "value": 401.0
+          "value": 102.0
         }
       ],
       "source": "ingest:rust-corpus-smoke",
-      "status": "below_target",
+      "status": "meets_target",
       "target": 5000.0,
       "title": "Diff-scoped `ripr check` on a pinned real change",
       "unit": "ms",
-      "value": 13225.0
+      "value": 3494.0
     }
   ],
   "report": "dx-scoreboard",
@@ -507,7 +520,7 @@
           "target": 5000.0,
           "title": "Diff-scoped `ripr check` on a pinned real change",
           "unit": "ms",
-          "value": 801.0
+          "value": 309.0
         }
       ],
       "note": "small library workspace, macro-heavy tests",
@@ -538,7 +551,7 @@
           "target": 5000.0,
           "title": "Diff-scoped `ripr check` on a pinned real change",
           "unit": "ms",
-          "value": 603.0
+          "value": 316.0
         }
       ],
       "note": "multi-crate CLI workspace",
@@ -569,7 +582,7 @@
           "target": 5000.0,
           "title": "Diff-scoped `ripr check` on a pinned real change",
           "unit": "ms",
-          "value": 1003.0
+          "value": 560.0
         }
       ],
       "note": "large library workspace with generated test suites",
@@ -591,15 +604,15 @@
       "status": "not_measured"
     }
   ],
-  "revision": "adf4e6303d53a9b0cd5ec7d1c29d71996b02c8db",
+  "revision": "10e56371911a4e6ef8020fbcd7e5f2692fc9b7f1",
   "rollup": {
-    "below_target": 2,
+    "below_target": 0,
     "failed": 0,
-    "meets_target": 0,
+    "meets_target": 2,
     "not_measured": 0,
     "regressed": 0
   },
-  "runner_class": "local-linux-x86_64-4cpu",
+  "runner_class": "github-hosted-linux-x86_64-4cpu-intel-r-xeon-r-platinum-8370c-cpu-2-80ghz",
   "schema_version": "ripr-dx-scoreboard-v1",
   "tool": "ripr"
 }

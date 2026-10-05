@@ -1,7 +1,7 @@
 use super::progress::{
     AnalysisProgressScope, AnalysisProgressSink, AnalysisProgressStage, ProgressRun,
 };
-use super::{CheckInput, CheckOutput};
+use super::{CheckInput, CheckOutput, OutputFormat};
 use crate::analysis::{
     AnalysisResult, run_analysis_with_oracle_policy_and_rust_config,
     run_repo_analysis_with_oracle_policy_and_rust_config,
@@ -11,6 +11,7 @@ use crate::config::RiprConfig;
 use crate::core_error::CoreError;
 use crate::domain::LanguageId;
 use crate::domain::Summary;
+use crate::output::human::terminal_safe;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -214,7 +215,10 @@ fn check_with_progress_and_origins_with_open_rust_paths(
         match invoke_perl_lsp_producer(perl_config, &input) {
             Ok(packet_path) => input.perl_facts_path = Some(packet_path),
             Err(reason) => {
-                eprintln!("warning: Perl facts exporter failed: {reason}");
+                eprintln!(
+                    "{}",
+                    terminal_safe(format!("warning: Perl facts exporter failed: {reason}"))
+                );
                 eprintln!("warning: Perl analysis will be unavailable; other languages continue.");
             }
         }
@@ -269,6 +273,23 @@ fn check_with_progress_and_origins_with_open_rust_paths(
             &config.languages().rust,
         )?,
     };
+    // #5988: the published identity block must distinguish runs whose loaded
+    // `ripr.toml` differs — a config edit that flips findings used to leave
+    // every identity field equal. Bind the canonical finding-affecting
+    // fingerprint (the one the check-artifact reuse gate enforces) whenever a
+    // config file was actually loaded; a defaults-only run keeps `null`.
+    if let Some(outcome) = analysis.analysis_outcome.as_mut()
+        && let Some(config_identity) = crate::config::loaded_config_identity(config)
+    {
+        let mut identity = outcome.identity.clone();
+        identity.config_identity = Some(config_identity);
+        *outcome = crate::analysis_outcome::AnalysisOutcome::new(
+            outcome.kind,
+            identity,
+            outcome.counts,
+            outcome.limitations.clone(),
+        )?;
+    }
 
     if crate::is_verbose() {
         let finding_count = analysis.findings.len();
@@ -280,12 +301,48 @@ fn check_with_progress_and_origins_with_open_rust_paths(
     let suppression_policy = input.suppression_policy.clone();
     let origins = analysis.rust_diagnostic_origins.clone();
     let consumed_sources = std::mem::take(&mut analysis.rust_consumed_sources);
+    let human_output = matches!(input.format, OutputFormat::Human | OutputFormat::HumanFull);
     let mut output = output_builder::check_output_from_analysis(input, analysis);
+    // #6340: only a human-rendered run pays for the Python test walk; JSON, LSP
+    // refreshes and other machine consumers never read the note.
+    if human_output && python_test_note_possible(&output.findings) {
+        output.unlinked_python_tests = crate::analysis::discover_python_test_files(&output.root)?;
+    }
     if let Some(policy) = suppression_policy {
         apply_suppression_policy(&mut output, &policy)?;
     }
     progress.complete();
     Ok((output, origins, consumed_sources))
+}
+
+/// Whether the all-no-path human note could name unlinked Python tests. This
+/// mirrors `render_all_no_path_disclosure` (RIPR-SPEC-0090): no exposed, weakly
+/// exposed or reachable finding, every finding in a no-path or unknown class,
+/// no finding with `reach: yes`, and at least one `no_static_path` finding in a
+/// Rust file. A necessary condition only; the renderer applies the rest.
+pub(crate) fn python_test_note_possible(findings: &[crate::domain::Finding]) -> bool {
+    use crate::domain::{ExposureClass, StageState};
+    let mut rust_no_path = false;
+    for finding in findings {
+        if finding.ripr.reach.state == StageState::Yes {
+            return false;
+        }
+        match finding.class {
+            ExposureClass::NoStaticPath => {
+                rust_no_path |= finding
+                    .probe
+                    .location
+                    .file
+                    .extension()
+                    .is_some_and(|e| e == "rs");
+            }
+            ExposureClass::InfectionUnknown
+            | ExposureClass::PropagationUnknown
+            | ExposureClass::StaticUnknown => {}
+            _ => return false,
+        }
+    }
+    rust_no_path
 }
 
 /// Build a minimal [`CheckOutput`] for repo seam-driven rendering.
@@ -465,10 +522,13 @@ fn invoke_perl_lsp_producer(
 ) -> Result<PathBuf, String> {
     if let Some(refused) = perl_config.refused_executable() {
         eprintln!(
-            "warning: ignoring [perl].executable `{}` from ripr.toml: repository config cannot choose a program for ripr to run; set {}=1 to trust it. Using `{}` from PATH instead.",
-            refused.display(),
-            crate::config::PERL_EXECUTABLE_OPT_IN_ENV,
-            default_executable_for_producer(perl_config.producer()).display()
+            "{}",
+            terminal_safe(format!(
+                "warning: ignoring [perl].executable `{}` from ripr.toml: repository config cannot choose a program for ripr to run; set {}=1 to trust it. Using `{}` from PATH instead.",
+                refused.display(),
+                crate::config::PERL_EXECUTABLE_OPT_IN_ENV,
+                default_executable_for_producer(perl_config.producer()).display()
+            ))
         );
     }
     let executable = perl_config
@@ -599,7 +659,7 @@ fn invoke_perl_lsp_producer(
             // Cooperative cancellation (#2303): the enclosing analysis was
             // superseded or cancelled; the shared wait already terminated +
             // reaped the child. Propagate the named cancellation error.
-            Err(cancelled)
+            Err(cancelled.to_string())
         }
         crate::git::ChildWait::WaitFailed(err) => {
             // The shared wait already terminated + reaped the child.
@@ -823,6 +883,108 @@ mod tests {
         assert!(output.findings.iter().any(|finding| finding.id
             == "probe:crates_ripr_examples_sample_src_lib.rs:error_path:a776c683"));
         Ok(())
+    }
+
+    #[test]
+    fn loaded_config_flips_findings_and_the_identity_block_with_them() -> Result<(), String> {
+        // #5988: the diff-check identity block used to be byte-equal across a
+        // ripr.toml change that flips findings — config_identity stayed null
+        // and input_identity is only the diff digest. A loaded config must
+        // now contribute the fingerprint of the exact loaded text, so any
+        // loaded-config change moves the block (#6777 review: settings the
+        // check-artifact allowlist classifies CapturedElsewhere — mode,
+        // include_unchanged_tests, enabled languages — are recorded in
+        // separate artifact fields but have no outcome sibling, so only the
+        // text fingerprint closes every escape). A defaults-only run stays
+        // null.
+        let defaults = RiprConfig::default();
+        let without_config = check_workspace_with_config(sample_diff_input(), &defaults)?;
+        let plain_identity = without_config
+            .analysis_outcome
+            .as_ref()
+            .ok_or_else(|| "diff run must project an analysis outcome".to_string())?
+            .identity
+            .clone();
+        assert_eq!(
+            plain_identity.config_identity, None,
+            "a defaults-only run keeps config_identity null"
+        );
+
+        // The issue's flip: mark the sample's changed Rust file generated, so
+        // the same diff yields zero findings plus a language-scope
+        // limitation. Fixture precondition: the config really changes the
+        // result, so the identity split below discriminates real inputs.
+        let mut generated = RiprConfig::default();
+        generated
+            .languages
+            .rust
+            .generated_file_patterns
+            .push("lib.rs".to_string());
+        generated.source_path = Some(sample_root().join("ripr.toml"));
+        generated.source_text =
+            Some("[languages.rust]\ngenerated_file_patterns = [\"lib.rs\"]\n".to_string());
+        let with_config = check_workspace_with_config(sample_diff_input(), &generated)?;
+        assert_eq!(
+            with_config.summary.findings, 0,
+            "fixture precondition: the generated pattern must exclude the sample finding"
+        );
+        let generated_identity = with_config
+            .analysis_outcome
+            .as_ref()
+            .ok_or_else(|| "diff run must project an analysis outcome".to_string())?
+            .identity
+            .clone();
+        let loaded_text = generated
+            .source_text()
+            .ok_or_else(|| "fixture must set the loaded config text".to_string())?;
+        assert_eq!(
+            generated_identity.config_identity.as_deref(),
+            Some(crate::config::config_fingerprint(loaded_text).as_str()),
+            "a loaded config publishes the fingerprint of its exact text"
+        );
+        assert_ne!(
+            plain_identity, generated_identity,
+            "runs whose config flips findings must not share an identity block"
+        );
+        // input_identity alone was the old discriminator's whole domain: it
+        // must stay equal here, proving the config field carries the change.
+        assert_eq!(
+            plain_identity.input_identity,
+            generated_identity.input_identity
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn loaded_config_identity_requires_an_actually_loaded_file_and_tracks_the_text() {
+        // No ripr.toml: null, even though the default fields still analyze.
+        assert_eq!(
+            crate::config::loaded_config_identity(&RiprConfig::default()),
+            None
+        );
+        let loaded = RiprConfig {
+            source_text: Some(String::new()),
+            ..RiprConfig::default()
+        };
+        let identity = crate::config::loaded_config_identity(&loaded);
+        assert_eq!(
+            identity.as_deref(),
+            Some(crate::config::config_fingerprint("").as_str()),
+            "any loaded file publishes the fingerprint of its text, even an empty one"
+        );
+        // Any change to the loaded text moves the identity — including the
+        // CapturedElsewhere settings (mode, include_unchanged_tests, enabled
+        // languages) that the finding-affecting allowlist alone would miss
+        // (#6777 review).
+        let enabled_languages = RiprConfig {
+            source_text: Some("[languages]\nenabled = [\"rust\", \"python\"]".to_string()),
+            ..RiprConfig::default()
+        };
+        let other = crate::config::loaded_config_identity(&enabled_languages);
+        assert_ne!(
+            identity, other,
+            "a different loaded config text must publish a different identity"
+        );
     }
 
     #[test]

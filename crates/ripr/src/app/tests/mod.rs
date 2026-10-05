@@ -13,6 +13,7 @@ mod badge_rendering;
 mod handwritten_recovery;
 mod mode_and_selector;
 mod preview_analyzed_outcome;
+mod python_test_note;
 // Drives the Python adapter end to end through `check_workspace_with_config`.
 #[cfg(feature = "lang-python")]
 mod python_packet_eligibility;
@@ -94,6 +95,7 @@ fn check_output_with(findings: Vec<Finding>) -> CheckOutput {
         no_scope_provided: false,
         unanalyzed_working_tree: false,
         untracked_working_tree_source_paths: Vec::new(),
+        unlinked_python_tests: None,
         suppression: None,
         analysis_outcome: None,
         partial_scope: None,

@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 391be2d..068b890 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -35,7 +35,7 @@ pub fn score(rolls: &[u32]) -> u32 {
+ pub fn bytes_sent(packets: &[usize]) -> usize {
+     let mut sent = 0;
+     for p in packets {
+-        sent = sent + p;
++        sent += p;
+     }
+     sent
+ }

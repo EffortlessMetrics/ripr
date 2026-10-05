@@ -28,6 +28,7 @@ pub(super) fn check_output_from_analysis(
         // #5258: name the untracked subset so the note can offer the real
         // repair; `--worktree` covers only the tracked remainder.
         untracked_working_tree_source_paths: analysis.untracked_source_paths,
+        unlinked_python_tests: None,
         suppression: None,
         partial_scope: analysis.partial_scope,
     }

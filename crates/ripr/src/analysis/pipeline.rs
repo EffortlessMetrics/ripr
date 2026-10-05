@@ -22,6 +22,7 @@ use crate::analysis_outcome::{
 use crate::config::OraclePolicy;
 use crate::core_error::CoreError;
 use crate::domain::Finding;
+use crate::terminal_text::terminal_safe;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -148,15 +149,18 @@ fn committed_history_overlay(
     if crate::is_verbose() {
         let dirty = overlay.dirty_paths().collect::<Vec<_>>();
         eprintln!(
-            "ripr: committed-history diff; reading HEAD content for {} tracked file(s) with uncommitted changes: {}",
-            dirty.len(),
-            dirty.join(", ")
+            "{}",
+            terminal_safe(format!(
+                "ripr: committed-history diff; reading HEAD content for {} tracked file(s) with uncommitted changes: {}",
+                dirty.len(),
+                dirty.join(", ")
+            ))
         );
     }
     if let Some(message) =
         committed_paths_missing_disclosure(&overlay.committed_paths_missing_on_disk())
     {
-        eprintln!("{message}");
+        eprintln!("{}", terminal_safe(message));
     }
     Ok(Some(std::sync::Arc::new(overlay)))
 }
@@ -762,6 +766,10 @@ fn run_pipeline_for_diff_text(
             "rust_partition_applied": partial_scope.is_some()}),
         );
     }
+    // Limitations kept only because they describe caller-supplied evidence
+    // (#5421). They say nothing about whether the diff parsed, so the
+    // malformed-diff check below must not treat them as an explanation.
+    let mut supplied_evidence_limitations = 0usize;
     for language in languages {
         cancellation::checkpoint()?;
         // Non-abort contract (Campaign 31 PR 10, #1403): a preview-language
@@ -799,7 +807,14 @@ fn run_pipeline_for_diff_text(
                 // adapter ran above and is unaffected. An adapter that did
                 // produce findings consumed its workspace index (a Bun bridge
                 // profile reports Rust-line findings from TypeScript tests),
-                // so its limitations still qualify those findings.
+                // so its limitations still qualify those findings. The Perl
+                // adapter never scans the workspace: it only reads the fact
+                // packet the caller supplied, so a limitation it reports (a
+                // packet declared partial) concerns that explicit evidence
+                // and is always kept (#5421). It is counted as supplied
+                // evidence whichever branch keeps it, so a Perl finding cannot
+                // hide a malformed diff (#6703).
+                let reads_only_supplied_evidence = matches!(language, LanguageId::Perl);
                 let adapter_language = match language {
                     LanguageId::JavaScript => LanguageId::TypeScript,
                     other => *other,
@@ -807,7 +822,10 @@ fn run_pipeline_for_diff_text(
                 let diff_touches_language = preview_changed_files
                     .iter()
                     .any(|file| route(&file.path) == Some(adapter_language));
-                if diff_touches_language || produced_findings {
+                if reads_only_supplied_evidence {
+                    supplied_evidence_limitations += result.limitations.len();
+                    limitations.extend(result.limitations);
+                } else if diff_touches_language || produced_findings {
                     limitations.extend(result.limitations);
                 }
                 if result.changed_files_by_language.is_empty() {
@@ -973,11 +991,7 @@ fn run_pipeline_for_diff_text(
             .all(|(_, count)| *count == 0)
         && !diff_text.trim().is_empty()
     {
-        eprintln!(
-            "ripr: the diff input contained no parseable file changes (0 hunks, 0 files). \
-             If this is unexpected, verify the --diff path points to a valid unified diff. \
-             The empty result may not reflect sufficient tests — it reflects an empty analysis scope."
-        );
+        eprintln!("{}", zero_file_diff_disclosure(diff_text));
     }
 
     // Disclose a truncated diff stream (#4375): at least one file section
@@ -1000,20 +1014,30 @@ fn run_pipeline_for_diff_text(
         && deleted_file_count == 0
         && submodule_file_count == 0
         && renamed_file_count == 0
-        && limitations.is_empty()
+        && limitations.len() == supplied_evidence_limitations
     {
+        // The schema token stays `malformed_diff` (a new limitation kind is a
+        // schema change); a well-formed diff with only binary or mode changes
+        // gets its own wording so the recovery does not tell the reader to
+        // fix a valid diff.
+        let (recovery, detail) = if has_only_non_text_changes(diff_text) {
+            (
+                "Run the analysis on a diff that includes the source changes; binary and file-mode changes are not analyzed.",
+                NON_TEXT_ONLY_DETAIL,
+            )
+        } else {
+            (
+                "Provide a valid unified diff and re-run the analysis.",
+                "The non-empty diff input contained no parseable file changes or hunks.",
+            )
+        };
         limitations.push(
             AnalysisLimitation::new(
                 AnalysisLimitationKind::MalformedDiff,
                 AnalysisStage::DiffParse,
-                AnalysisRecovery::new(
-                    AnalysisRecoveryKind::Retry,
-                    "Provide a valid unified diff and re-run the analysis.",
-                )?,
+                AnalysisRecovery::new(AnalysisRecoveryKind::Retry, recovery)?,
             )
-            .with_detail(
-                "The non-empty diff input contained no parseable file changes or hunks.",
-            )?,
+            .with_detail(detail)?,
         );
     }
 
@@ -1802,6 +1826,76 @@ fn partial_scope_limitation(scope: &PartialDiffScope) -> Result<AnalysisLimitati
             scope.selected_changed_lines
         )
     })
+}
+
+/// Limitation detail for a well-formed diff with only binary or file-mode
+/// changes; `ripr check --diff` keys its stderr hedge on it.
+pub(crate) const NON_TEXT_ONLY_DETAIL: &str = "The diff is well formed but contains only binary or file-mode changes, so no text hunk was analyzed.";
+
+/// True when every git file section is a complete binary or mode-change
+/// section and no `@@` hunk exists: a valid diff that carries nothing ripr
+/// analyzes. Any other section (a bare or truncated header, a lone mode line,
+/// a malformed binary sentinel) keeps the generic malformed-diff wording.
+fn has_only_non_text_changes(diff_text: &str) -> bool {
+    let mut sections = 0usize;
+    let mut binary = false;
+    let (mut old_mode, mut new_mode) = (false, false);
+    let mut all_ok = true;
+    let mut in_section = false;
+    for line in diff_text.lines() {
+        if line.starts_with("@@") {
+            return false;
+        }
+        if line.starts_with("diff --git ") {
+            if in_section {
+                all_ok &= binary || (old_mode && new_mode);
+            }
+            in_section = true;
+            sections += 1;
+            binary = false;
+            old_mode = false;
+            new_mode = false;
+            continue;
+        }
+        if !in_section {
+            continue;
+        }
+        binary |= is_binary_sentinel(line) || line == "GIT binary patch";
+        old_mode |= line.starts_with("old mode ");
+        new_mode |= line.starts_with("new mode ");
+    }
+    if in_section {
+        all_ok &= binary || (old_mode && new_mode);
+    }
+    sections > 0 && all_ok
+}
+
+/// `Binary files <old> and <new> differ` with a non-empty path on each side.
+/// Paths may be quoted, carry a custom prefix (`--no-prefix`, mnemonic
+/// prefixes) or contain ` and `, so any split point that leaves both sides
+/// non-empty qualifies; `Binary files nonsense differ` has none.
+fn is_binary_sentinel(line: &str) -> bool {
+    let Some(rest) = line
+        .strip_prefix("Binary files ")
+        .and_then(|rest| rest.strip_suffix(" differ"))
+    else {
+        return false;
+    };
+    rest.match_indices(" and ")
+        .any(|(at, sep)| at > 0 && at + sep.len() < rest.len())
+}
+
+/// Stderr note for a non-empty diff that parsed to zero changed files.
+fn zero_file_diff_disclosure(diff_text: &str) -> &'static str {
+    if has_only_non_text_changes(diff_text) {
+        "ripr: the diff changes only binary files or file modes; there are no text hunks to analyze. \
+         This empty result reflects an empty analysis scope, not sufficient tests. \
+         Run ripr on a diff that includes the source changes."
+    } else {
+        "ripr: the diff input contained no parseable file changes (0 hunks, 0 files). \
+         If this is unexpected, verify the --diff path points to a valid unified diff. \
+         The empty result may not reflect sufficient tests \u{2014} it reflects an empty analysis scope."
+    }
 }
 
 #[cfg(test)]
@@ -2871,6 +2965,89 @@ mod tests {
         assert!(outcome.limitations.is_empty());
         let _ = fs::remove_dir_all(root);
         Ok(())
+    }
+
+    #[test]
+    fn binary_or_mode_only_diff_is_named_not_called_malformed_advice() -> Result<(), String> {
+        for diff in [
+            "diff --git a/x.bin b/x.bin\nBinary files a/x.bin and b/x.bin differ\n",
+            "diff --git a/src/lib.rs b/src/lib.rs\nold mode 100644\nnew mode 100755\n",
+        ] {
+            let root = temp_root("analysis-outcome-non-text-diff")?;
+            let result = run_pipeline_for_diff_text(
+                &draft_diff_options(root.clone()),
+                &OraclePolicy::default(),
+                &[LanguageId::Rust],
+                &crate::config::RustLanguageConfig::default(),
+                diff,
+            )?;
+            let outcome = result
+                .analysis_outcome
+                .ok_or_else(|| "non-text diff must carry an analysis outcome".to_string())?;
+            // Still incomplete: nothing was analyzed, so this is never a clean result.
+            assert_eq!(outcome.kind, AnalysisOutcomeKind::UnsupportedInput);
+            let detail = outcome
+                .limitations
+                .iter()
+                .find(|l| l.kind == AnalysisLimitationKind::MalformedDiff)
+                .and_then(|l| l.bounded_detail.as_deref())
+                .unwrap_or_default();
+            assert!(detail.contains("well formed"), "got: {detail}");
+            let _ = fs::remove_dir_all(root);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn non_text_detector_rejects_garbage_and_hunked_diffs() {
+        assert!(!has_only_non_text_changes("this is not a unified diff\n"));
+        assert!(!has_only_non_text_changes(
+            "diff --git a/x b/x\nold mode 100644\nnew mode 100755\n@@ -1 +1 @@\n-a\n+b\n"
+        ));
+        assert!(!has_only_non_text_changes("Binary files a and b differ\n"));
+        // Real git output the strict a/ b/ check would have rejected.
+        for sentinel in [
+            "Binary files \"a/caf\\303\\251.bin\" and \"b/caf\\303\\251.bin\" differ",
+            "Binary files a/x and y.bin and b/x and y.bin differ",
+            "Binary files x and y differ",
+            "Binary files i/x.bin and w/x.bin differ",
+        ] {
+            assert!(
+                has_only_non_text_changes(&format!("diff --git a/x b/x\n{sentinel}\n")),
+                "{sentinel}"
+            );
+        }
+        assert!(has_only_non_text_changes(
+            "diff --git a/x b/x\nGIT binary patch\nliteral 0\n"
+        ));
+        // Incomplete or mixed sections keep the generic wording.
+        assert!(!has_only_non_text_changes(
+            "diff --git a/x b/x\nold mode 100644\n"
+        ));
+        assert!(!has_only_non_text_changes(
+            "diff --git a/x b/x\nBinary files nonsense\n"
+        ));
+        assert!(!has_only_non_text_changes(
+            "diff --git a/x.bin b/x.bin\nBinary files nonsense differ\n"
+        ));
+        assert!(has_only_non_text_changes(
+            "diff --git a/x.bin b/x.bin\nBinary files /dev/null and b/x.bin differ\n"
+        ));
+        assert!(!has_only_non_text_changes(
+            "diff --git a/x.bin b/x.bin\nBinary files a/x.bin and b/x.bin differ\ndiff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n"
+        ));
+        assert!(has_only_non_text_changes(
+            "diff --git a/x.bin b/x.bin\nBinary files a/x.bin and b/x.bin differ\ndiff --git a/y b/y\nold mode 100644\nnew mode 100755\n"
+        ));
+    }
+
+    #[test]
+    fn zero_file_disclosure_names_non_text_diffs_and_keeps_generic_wording() {
+        let binary = "diff --git a/x.bin b/x.bin\nBinary files a/x.bin and b/x.bin differ\n";
+        assert!(zero_file_diff_disclosure(binary).contains("no text hunks to analyze"));
+        let garbage = zero_file_diff_disclosure("not a diff\n");
+        assert!(garbage.contains("valid unified diff"));
+        assert!(!garbage.contains("no text hunks"));
     }
 
     #[test]

@@ -23,6 +23,8 @@ use repair_route::{
 use serde_json::Value;
 #[cfg(test)]
 use serde_json::json;
+use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -35,6 +37,18 @@ pub(crate) const GATE_STATUS_CONFIG_ERROR: &str = "config_error";
 /// maps this token to process exit 3 (`docs/EXIT_CODES.md`); `help --json`
 /// uses the same bytes as the `gate_evaluate` serde key.
 pub(crate) const GATE_STATUS_BLOCKED: &str = "blocked";
+/// The closed top-level `status` set a gate decision may carry
+/// (`schemas/ripr/gate-decision.schema.json`, in schema order), mirrored
+/// from the `top_level_status` producer. Consumers validating an unknown
+/// producer document reject anything outside this set instead of treating
+/// an out-of-contract status as a completed evaluation (#6770 review).
+pub(crate) const GATE_DECISION_KNOWN_STATUSES: [&str; 5] = [
+    "pass",
+    "advisory",
+    "acknowledged",
+    "blocked",
+    "config_error",
+];
 const SCHEMA_VERSION: &str = "0.1";
 const DEFAULT_THRESHOLD: &str = "high_confidence_new_gap";
 const DEFAULT_ACKNOWLEDGEMENT_LABEL: &str = "ripr-waive";
@@ -43,9 +57,11 @@ const LIMITS_NOTE: &str = "Optional policy over static RIPR evidence; advisory b
 pub(crate) fn build_gate_decision_report(
     input: &GateEvaluateInput,
 ) -> Result<GateDecisionReport, String> {
+    let mut consumed = input::ConsumedInputHashes::default();
+    let mut pr_guidance_bytes: Vec<u8> = Vec::new();
     let mut warnings = Vec::new();
     let mut config_errors = Vec::new();
-    let labels = read_labels(input, &mut warnings)?;
+    let labels = read_labels(input, &mut warnings, &mut consumed)?;
     if input.pr_guidance.is_none() && input.gap_ledger.is_none() {
         config_errors
             .push("gate evaluate requires --pr-guidance <path> or --gap-ledger <path>".to_string());
@@ -53,8 +69,12 @@ pub(crate) fn build_gate_decision_report(
     let pr_guidance = match input.pr_guidance.as_ref() {
         Some(path) => {
             let pr_guidance_path = resolve_root_path(&input.root, path);
-            match read_json_value_with_display(&pr_guidance_path, path) {
-                Ok(value) => {
+            // Read once: the bytes parsed here are the bytes the subject
+            // hashes, so the receipt cannot bind the decision to contents
+            // it never evaluated (review round 1, #5263).
+            match read_json_value_and_bytes_with_display(&pr_guidance_path, path) {
+                Ok((value, bytes)) => {
+                    pr_guidance_bytes = bytes;
                     if let Some(defect) = pr_guidance_document_defect(&value) {
                         config_errors.push(format!(
                             "pr-guidance {} is not a recognized review-comments guidance document: {defect}",
@@ -105,7 +125,7 @@ pub(crate) fn build_gate_decision_report(
         }
         None => Value::Null,
     };
-    let gap_ledger = read_gap_ledger(input, &mut config_errors);
+    let gap_ledger = read_gap_ledger(input, &mut config_errors, &mut consumed);
     warn_for_optional_json(
         &input.root,
         input.repo_exposure.as_ref(),
@@ -137,9 +157,10 @@ pub(crate) fn build_gate_decision_report(
         &mut warnings,
     );
 
-    let recommendation_calibration = read_recommendation_calibration(input, &mut warnings);
-    let mutation_calibration = read_mutation_calibration(input, &mut warnings);
-    let baseline = read_baseline(input, &mut warnings, &mut config_errors);
+    let recommendation_calibration =
+        read_recommendation_calibration(input, &mut warnings, &mut consumed);
+    let mutation_calibration = read_mutation_calibration(input, &mut warnings, &mut consumed);
+    let baseline = read_baseline(input, &mut warnings, &mut config_errors, &mut consumed);
     let causal_delta = match CausalDeltaAuthority::load(&input.root) {
         Ok(authority) => authority,
         Err(error) => {
@@ -168,7 +189,13 @@ pub(crate) fn build_gate_decision_report(
         Some(path) => {
             let resolved = resolve_root_path(&input.root, path);
             let display = display_path(path);
-            match exception_policy::load_exception_ledger(&resolved, &display) {
+            let ledger_result = consumed
+                .read_toml_text_and_record(&resolved, &display)
+                .and_then(|(text, digest)| {
+                    consumed.exception_policy = Some(digest);
+                    exception_policy::load_exception_ledger_from_text(&text, &display)
+                });
+            match ledger_result {
                 Ok(ledger) => {
                     let today = crate::output::suppressions::current_iso_date();
                     let report =
@@ -241,6 +268,14 @@ pub(crate) fn build_gate_decision_report(
         input.mode,
         causal_delta.as_ref(),
     );
+    let subject = build_gate_subject(
+        input,
+        // `Value::Null` stands in for an absent or rejected pr-guidance
+        // document; the producer-subject read treats it as absent.
+        (!pr_guidance.is_null()).then_some(&pr_guidance),
+        (!pr_guidance_bytes.is_empty()).then_some(pr_guidance_bytes.as_slice()),
+        &consumed,
+    );
     let exception_blocking = exception_policy
         .as_ref()
         .map(|report| report.blocking_count())
@@ -280,6 +315,7 @@ pub(crate) fn build_gate_decision_report(
                 .as_ref()
                 .map(|path| display_path(path)),
         },
+        subject,
         policy,
         summary,
         new_unsuppressed,
@@ -292,11 +328,134 @@ pub(crate) fn build_gate_decision_report(
     })
 }
 
+/// Subject identity of this evaluation (#5263): the writing binary's build
+/// identity plus, per consumed input, a `sha256` content hash — every
+/// CLI-supplied input that can change the decision (candidates, baseline,
+/// labels, calibration, receipts, policy ledgers) is covered, not only the
+/// candidate sources (review round 1), and each hashes exactly the bytes its
+/// reader parsed (review round 2). Only the warn-only inputs no reader
+/// parses take a fresh read at subject-build time; the read model is
+/// documented in the output contract.
+///
+/// The auto-loaded causal artifacts are outside this block by boundary, not
+/// omission: they are workspace-durable files that self-identify (the
+/// canonical-delta artifact carries its own identity fields), not invocation
+/// inputs.
+///
+/// Hashing is best-effort: an unreadable input leaves `content_hash` absent
+/// while the read failure itself already surfaces as a `config_error` or a
+/// warning, so the subject never invents an identity for bytes it did not
+/// see. Entries are keyed in a `BTreeMap`, so the rendered block is
+/// deterministic for identical inputs.
+fn build_gate_subject(
+    input: &GateEvaluateInput,
+    pr_guidance: Option<&Value>,
+    pr_guidance_bytes: Option<&[u8]>,
+    consumed: &input::ConsumedInputHashes,
+) -> GateSubject {
+    let mut inputs = BTreeMap::new();
+    for (name, path) in [
+        ("gap_ledger", input.gap_ledger.as_ref()),
+        ("pr_guidance", input.pr_guidance.as_ref()),
+        ("repo_exposure", input.repo_exposure.as_ref()),
+        ("sarif_policy", input.sarif_policy.as_ref()),
+        ("labels_json", input.labels_json.as_ref()),
+        ("agent_verify", input.agent_verify.as_ref()),
+        ("agent_receipt", input.agent_receipt.as_ref()),
+        (
+            "recommendation_calibration",
+            input.recommendation_calibration.as_ref(),
+        ),
+        ("mutation_calibration", input.mutation_calibration.as_ref()),
+        ("baseline", input.baseline.as_ref()),
+        ("exception_policy", input.exception_policy.as_ref()),
+    ] {
+        let Some(path) = path else {
+            continue;
+        };
+        // The consumed-bytes hash wins where the reader captured them; a
+        // fresh read only ever backs the advisory optional inputs.
+        // The consumed-bytes hash wins for every reader-parsed input; the
+        // fresh read only backs the warn-only inputs no reader parses.
+        let content_hash = match name {
+            "pr_guidance" => {
+                pr_guidance_bytes.map(|bytes| format!("sha256:{:x}", Sha256::digest(bytes)))
+            }
+            "gap_ledger" => consumed.gap_ledger.clone(),
+            "labels_json" => consumed.labels_json.clone(),
+            "recommendation_calibration" => consumed.recommendation_calibration.clone(),
+            "mutation_calibration" => consumed.mutation_calibration.clone(),
+            "baseline" => consumed.baseline.clone(),
+            "exception_policy" => consumed.exception_policy.clone(),
+            // repo_exposure, sarif_policy, agent_verify, agent_receipt are
+            // validated readable but not parsed for decisions; they hash a
+            // fresh read at subject-build time.
+            _ => {
+                let resolved = resolve_root_path(&input.root, path);
+                std::fs::read(&resolved)
+                    .ok()
+                    .map(|bytes| format!("sha256:{:x}", Sha256::digest(bytes)))
+            }
+        };
+        let producer_subject = if name == "pr_guidance" {
+            pr_guidance.and_then(producer_subject_from_pr_guidance)
+        } else {
+            None
+        };
+        inputs.insert(
+            name.to_string(),
+            GateSubjectInput {
+                content_hash,
+                producer_subject,
+            },
+        );
+    }
+    let labels_sha256 = (!input.labels.is_empty()).then(|| {
+        let mut hasher = Sha256::new();
+        for label in &input.labels {
+            hasher.update(label.as_bytes());
+            hasher.update([0]);
+        }
+        format!("sha256:{:x}", hasher.finalize())
+    });
+    GateSubject {
+        analyzer_version: crate::build_identity::cache_identity().to_string(),
+        inputs,
+        labels_sha256,
+    }
+}
+
+/// Copy the input document's `run_receipt` identity verbatim (#5263). The
+/// receipt must carry resolved base/head SHAs to count as a producer
+/// subject; a receipt missing them is treated as absent rather than partly
+/// quoted, so no field here is ever inferred from a different field.
+fn producer_subject_from_pr_guidance(value: &Value) -> Option<GateProducerSubject> {
+    let receipt = value.get("run_receipt")?;
+    let base_sha = receipt.get("base_sha").and_then(Value::as_str)?;
+    let head_sha = receipt.get("head_sha").and_then(Value::as_str)?;
+    if base_sha.is_empty() || head_sha.is_empty() {
+        return None;
+    }
+    Some(GateProducerSubject {
+        root_identity: receipt
+            .get("root_identity")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        base_sha: base_sha.to_string(),
+        head_sha: head_sha.to_string(),
+        reusable_cache_identity: receipt
+            .get("reusable_cache_identity")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    })
+}
+
 fn read_labels(
     input: &GateEvaluateInput,
     warnings: &mut Vec<String>,
+    consumed: &mut input::ConsumedInputHashes,
 ) -> Result<Vec<String>, String> {
-    Ok(input::read_labels_impl(input, warnings))
+    Ok(input::read_labels_impl(input, warnings, consumed))
 }
 
 fn warn_for_optional_json(
@@ -311,30 +470,34 @@ fn warn_for_optional_json(
 fn read_gap_ledger(
     input: &GateEvaluateInput,
     config_errors: &mut Vec<String>,
+    consumed: &mut input::ConsumedInputHashes,
 ) -> Option<Vec<GapRecord>> {
-    input::read_gap_ledger_impl(input, config_errors)
+    input::read_gap_ledger_impl(input, config_errors, consumed)
 }
 
 fn read_recommendation_calibration(
     input: &GateEvaluateInput,
     warnings: &mut Vec<String>,
+    consumed: &mut input::ConsumedInputHashes,
 ) -> CalibrationIndex {
-    input::read_recommendation_calibration_impl(input, warnings)
+    input::read_recommendation_calibration_impl(input, warnings, consumed)
 }
 
 fn read_mutation_calibration(
     input: &GateEvaluateInput,
     warnings: &mut Vec<String>,
+    consumed: &mut input::ConsumedInputHashes,
 ) -> CalibrationIndex {
-    input::read_mutation_calibration_impl(input, warnings)
+    input::read_mutation_calibration_impl(input, warnings, consumed)
 }
 
 fn read_baseline(
     input: &GateEvaluateInput,
     warnings: &mut Vec<String>,
     config_errors: &mut Vec<String>,
+    consumed: &mut input::ConsumedInputHashes,
 ) -> BaselineIndex {
-    input::read_baseline_impl(input, warnings, config_errors)
+    input::read_baseline_impl(input, warnings, config_errors, consumed)
 }
 
 fn candidates_from_pr_guidance(value: &Value) -> Vec<GateCandidate> {
@@ -1119,6 +1282,26 @@ fn acknowledgement_labels(input: &GateEvaluateInput) -> Vec<String> {
     }
 }
 
+/// Bytes-once reader: the returned bytes are exactly what the returned
+/// value was parsed from, so a subject hash over them identifies the
+/// content the evaluation consumed.
+fn read_json_value_and_bytes_with_display(
+    path: &Path,
+    display: &Path,
+) -> Result<(Value, Vec<u8>), String> {
+    let display = display_path(display);
+    let bytes = fs::read(path).map_err(|err| {
+        if err.kind() == std::io::ErrorKind::NotFound {
+            format!("read {display} failed: not found")
+        } else {
+            format!("read {display} failed: {err}")
+        }
+    })?;
+    let value =
+        serde_json::from_slice(&bytes).map_err(|err| format!("parse {display} failed: {err}"))?;
+    Ok((value, bytes))
+}
+
 fn read_json_value_with_display(path: &Path, display: &Path) -> Result<Value, String> {
     let display = display_path(display);
     let text = fs::read_to_string(path).map_err(|err| {
@@ -1387,6 +1570,36 @@ pub(crate) fn discloses_incomplete_analysis_outcome(value: &Value) -> bool {
         .pointer("/analysis_outcome/analysis_complete")
         .and_then(Value::as_bool)
         == Some(false)
+}
+
+/// Whether a gap-ledger document discloses a blocked producer run: the
+/// producer's own `status: "blocked"` verdict carrying failure warnings.
+/// `build_gap_decision_ledger_report` sets `blocked` whenever the record set
+/// is empty, which also covers a genuinely empty zero-gap ledger — those
+/// carry no warnings and stay a complete zero denominator. A blocked ledger
+/// WITH warnings is a failed producer, never a denominator (#6095 review).
+pub(crate) fn discloses_blocked_producer_outcome(value: &Value) -> bool {
+    value.pointer("/status").and_then(Value::as_str) == Some("blocked")
+        && value
+            .pointer("/warnings")
+            .and_then(Value::as_array)
+            .is_some_and(|warnings| !warnings.is_empty())
+}
+
+/// The producer-owned warnings of a blocked ledger. Consumers surface these
+/// verbatim instead of inventing a verdict from a failed producer.
+pub(crate) fn blocked_producer_warnings(value: &Value) -> Vec<String> {
+    value
+        .pointer("/warnings")
+        .and_then(Value::as_array)
+        .map(|warnings| {
+            warnings
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToOwned::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Return the producer-owned typed outcome kind for an incomplete envelope.

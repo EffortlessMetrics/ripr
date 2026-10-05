@@ -1,0 +1,68 @@
+schema_version = "2.0"
+id = "ripr.slice.machine-output-subject-honesty.v1"
+generation = 1
+
+source_issue = "issue:5263"
+design_reference = "RIPR-SPEC-0014#json-shape"
+change_class = "behavior_change"
+
+claim_boundary = """
+Binds the machine-facing receipts to their subject so stale artifacts are
+distinguishable from fresh ones: gate-decision.json gains an additive
+`subject` identity block (writing binary's analyzer version, per-input sha256
+content hashes, and the pr-guidance producer's own resolved receipt copied
+verbatim), and `pr-ledger record` discloses a caller-asserted base/head that
+disagrees with the gate's recorded producer subject. The same pass moves the
+seam-native repo badge's canonical_actionable_gap count onto the full
+classified inventory so repo-badge-json cannot contradict repo-exposure-json
+on one tree (#5261), and splits the gap-decision-ledger `blocked` status into
+`blocked` (unreadable/malformed input) versus `no_records` (valid input, zero
+derived records) with a route-coverage warning (#5264). Claims no runtime
+verification, no new gate authority, no timestamp (identical evaluations stay
+byte-identical), and no change to decision computation.
+"""
+
+non_goals = [
+  "mutation testing or runtime verification",
+  "changing gate decision computation, thresholds, or blocking behavior",
+  "timestamping gate decisions",
+  "a Rust projection for the gap-ledger --check-output route",
+  "changing the repo-exposure-summary-json inventory basis",
+  "admin merge, settings, or CI authority changes",
+]
+
+return_conditions = [
+  "Return to root if a downstream consumer cannot distinguish stale gate receipts despite the subject block.",
+  "Return to root if the badge and repo-exposure counts diverge again on the same tree.",
+  "Return to root if a valid input ledger still reports blocked, or a malformed one reports no_records.",
+]
+
+owned_seams = [
+  "seam:ripr:output:gate-subject-identity",
+  "seam:ripr:output:badge-canonical-actionable-basis",
+  "seam:ripr:output:gap-ledger-empty-state-vocabulary",
+  "seam:ripr:output:pr-ledger-subject-cross-check",
+]
+
+shared_seams = [
+  "seam:ripr:output:gate-authority",
+  "seam:ripr:output:gap-ledger",
+]
+
+forbidden_seams = [
+  "seam:ripr:agent:command-runner",
+  "seam:ripr:agent:receipt-issuer",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0014#json-shape"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

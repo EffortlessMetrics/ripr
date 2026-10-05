@@ -149,17 +149,21 @@ A single-field read of the changed field (`assert_eq!(c.retries, 4)`) keeps
 crediting as today. A read of a sibling field (`assert_eq!(c.name, "x")`)
 keeps the `FieldValue` missing discriminator.
 
-### Decisions for the owner
+### Decisions
 
-1. **Credit whole-value literals at all.** Recommended: yes, as above. This is
+Steven delegated these choices on 2026-10-04 ("make reasonable documented
+decisions and proceed"). Each records the adopted option, why, and the
+rejected alternative. Any can be reversed later without touching the rest.
+
+1. **Credit whole-value literals at all.** Adopted: yes, as above. This is
    what RIPR-SPEC-0005's "record field/pattern" wording implies.
-2. **Wrapper depth.** Recommended: one level (`Ok(T { .. })`). Alternative:
+2. **Wrapper depth.** Adopted: one level (`Ok(T { .. })`). Rejected:
    none, which keeps `parse()`-style tests as gaps.
-3. **Equality gate.** Recommended: derived `PartialEq` on `T` and on the
+3. **Equality gate.** Adopted: derived `PartialEq` on `T` and on the
    field's type, fail closed otherwise. When the gate refuses, the finding
    keeps its `FieldValue` missing discriminator and stays a gap
    (`weakly_exposed`); the #5416 unknown-not-a-gap rule 3 does not withhold
-   it, because a missing discriminator is named. Alternative: a new
+   it, because a missing discriminator is named. Rejected: a new
    withholding route with its own `static_limit_kind`, so a refused equality
    gate reads as an analyzer limit instead of a gap.
 
@@ -228,7 +232,10 @@ The diff changes `retries: n + 2` to `retries: n + 1` in `build`; `Config` deriv
 - Existing: `fixtures/observation_verified_field_construction`,
   `fixtures/observation_unverified_field_construction`,
   `fixtures/rust_field_construction_token_coincidence`.
-- Planned: one fixture or verdict-corpus case per acceptance example.
+- Verdict corpus: 17 cases `spec0225-*` in
+  `fixtures/rust-verdict-corpus/corpus.json`, one per buildable acceptance
+  example, each naming its example in its reasoning and labeled with runtime
+  mutant truth.
 - Planned: oracle classifier unit tests for braces outside struct-literal
   operands.
 

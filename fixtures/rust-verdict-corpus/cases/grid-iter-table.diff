@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 9cc2aff..8b3f052 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -5,7 +5,7 @@ pub fn count_positive(xs: &[i32]) -> usize {
+ }
+ 
+ pub fn doubled(xs: &[u32]) -> Vec<u32> {
+-    xs.iter().map(|x| x * 2).collect()
++    xs.iter().map(|&x| x * 2).collect()
+ }
+ 
+ pub fn count_adults(ages: &[u32]) -> usize {

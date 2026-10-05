@@ -1775,6 +1775,83 @@ fn non_timeout_analysis_errors_are_not_converted() -> Result<(), String> {
 
 #[cfg(test)]
 #[test]
+fn cancelled_refresh_is_named_by_the_token_not_the_error_text() -> Result<(), String> {
+    // #4860: an LSP refresh whose token is aborted before analysis returns an
+    // error, and the backend must classify it as cancellation. Drive the
+    // real token-owned refresh entry over a real repository, then show the
+    // decision comes from the token's observed abort: prefix-matching the
+    // returned text is not what makes it a cancellation.
+    use crate::analysis::cancellation::{AnalysisAbortKind, AnalysisCancellationToken};
+    let root = crate::lsp::tests::unique_lsp_test_root("cancelled-refresh-token")?;
+    let git = |args: &[&str]| crate::lsp::tests::run_lsp_scope_git(root.path(), args);
+    git(&["init"])?;
+    git(&["config", "user.email", "ripr@example.invalid"])?;
+    git(&["config", "user.name", "RIPR Test"])?;
+    std::fs::write(
+        root.path().join("lib.rs"),
+        "pub fn gate() -> bool {\n    true\n}\n",
+    )
+    .map_err(|error| format!("write fixture: {error}"))?;
+    git(&["add", "lib.rs"])?;
+    git(&["commit", "-m", "base"])?;
+    std::fs::write(
+        root.path().join("lib.rs"),
+        "pub fn gate() -> bool {\n    false\n}\n",
+    )
+    .map_err(|error| format!("write change: {error}"))?;
+    let config = LspAnalysisConfig {
+        base_ref: Some("HEAD".to_string()),
+        ..LspAnalysisConfig::default()
+    };
+
+    // Control: a live token completes and records no observed abort.
+    let live = AnalysisCancellationToken::new();
+    workspace_diagnostics_with_config_and_cancellation(
+        root.path(),
+        &config,
+        false,
+        &live,
+        &Default::default(),
+        None,
+    )?;
+    if live.observed_abort().is_some() {
+        return Err("a completed refresh must not record an observed abort".to_string());
+    }
+
+    let token = AnalysisCancellationToken::new();
+    if !token.cancel(AnalysisAbortKind::DeadlineExceeded) {
+        return Err("a fresh token must accept the deadline abort".to_string());
+    }
+    let Err(error) = workspace_diagnostics_with_config_and_cancellation(
+        root.path(),
+        &config,
+        false,
+        &token,
+        &Default::default(),
+        None,
+    ) else {
+        return Err("a deadline-aborted refresh must not publish a snapshot".to_string());
+    };
+    if token.observed_abort() != Some(AnalysisAbortKind::DeadlineExceeded) {
+        return Err(format!(
+            "the refresh must observe the deadline abort, got {:?} for {error}",
+            token.observed_abort()
+        ));
+    }
+    // The refresh wraps the abort ("workspace analysis failed: analysis
+    // cancelled: DeadlineExceeded"), so the retired `starts_with` predicate
+    // read this real deadline abort as an ordinary analysis failure.
+    if error != "workspace analysis failed: analysis cancelled: DeadlineExceeded" {
+        return Err(format!("public wording must stay unchanged: {error}"));
+    }
+    if error.starts_with("analysis cancelled:") {
+        return Err("the fixture no longer discriminates prefix matching".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[test]
 fn wrapped_timeout_still_converts_to_the_named_kind() -> Result<(), String> {
     // Control 4: structured context around a real timeout must not lose
     // the #2811 kind. Prefix matching on Display would miss this case.
@@ -2652,7 +2729,11 @@ fn examined_test_related_information(
                         test.line.saturating_sub(1) as u32,
                     ),
                 },
-                message: format!("Related test `{}` misses: {why}", test.name),
+                message: format!(
+                    "Related test `{}` {}: {why}",
+                    test.name,
+                    crate::output::related_test_miss::related_test_miss_label(test)
+                ),
             })
         })
         .take(MAX_EXAMINED_TEST_ROWS)

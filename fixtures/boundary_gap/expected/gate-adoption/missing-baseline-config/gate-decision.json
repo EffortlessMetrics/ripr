@@ -33,6 +33,14 @@
   "root": ".",
   "schema_version": "0.1",
   "status": "config_error",
+  "subject": {
+    "analyzer_version": "0.0.0+pinned-golden-analyzer-version",
+    "inputs": {
+      "pr_guidance": {
+        "content_hash": "sha256:4d2e9d996edf994ca4f557534065749477aeb1fd945859612f73bec1338072c5"
+      }
+    }
+  },
   "summary": {
     "acknowledged": 0,
     "advisory": 0,

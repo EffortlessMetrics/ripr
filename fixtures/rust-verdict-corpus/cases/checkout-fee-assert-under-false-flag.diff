@@ -1,0 +1,13 @@
+diff --git a/src/fees.rs b/src/fees.rs
+index db34888..3910798 100644
+--- a/src/fees.rs
++++ b/src/fees.rs
+@@ -5,7 +5,7 @@ pub fn card_fee(amount: i64) -> i64 {
+ }
+ 
+ pub fn wire_fee(amount: i64) -> i64 {
+-    amount / 50
++    amount / (5 * 10)
+ }
+ 
+ pub fn cash_fee(amount: i64) -> i64 {

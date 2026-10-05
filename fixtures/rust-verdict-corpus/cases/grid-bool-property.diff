@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index e475799..b63c6d1 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -9,7 +9,7 @@ pub fn needs_review(flagged: bool, large: bool) -> bool {
+ }
+ 
+ pub fn can_enter(has_ticket: bool, banned: bool) -> bool {
+-    has_ticket && !banned
++    !banned && has_ticket
+ }
+ 
+ pub fn is_visible(hidden: bool) -> bool {

@@ -1,0 +1,23 @@
+//! A length guard tested on both sides of its edge.
+
+#[derive(Debug, PartialEq)]
+pub enum E {
+    TooLong,
+    Bad,
+}
+
+pub fn check_pair(len: usize) -> Result<usize, E> {
+    if len >= 256 { return Err(E::TooLong); }
+    Ok(len)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::check_pair;
+
+    #[test]
+    fn pair_boundary() {
+        assert!(check_pair(256).is_err());
+        assert!(check_pair(255).is_ok());
+    }
+}

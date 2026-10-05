@@ -133,6 +133,7 @@ mod source_utils;
 use source_utils::{is_test_file, normalized_path};
 mod same_class_callees;
 mod static_limits;
+mod test_activation;
 use static_limits::{
     PythonStaticLimit, has_identifier_boundary, line_prefix_before,
     python_callee_start_has_boundary, python_prefix_hides_code,
@@ -275,6 +276,8 @@ struct PythonTest {
     body_text: String,
     imports: Vec<PythonImport>,
     decorators: Vec<String>,
+    /// Recognized test controls resolved before test-body imports can shadow aliases.
+    activation_controls: Vec<test_activation::PythonActivationControl>,
     fixtures: Vec<String>,
     parametrized: bool,
     /// Literal `@pytest.mark.parametrize` cases, when statically certain (#4559).

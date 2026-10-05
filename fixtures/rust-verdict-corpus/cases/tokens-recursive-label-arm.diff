@@ -1,0 +1,13 @@
+diff --git a/src/scan.rs b/src/scan.rs
+index 0421b61..8793884 100644
+--- a/src/scan.rs
++++ b/src/scan.rs
+@@ -22,7 +22,7 @@ pub fn final_state(input: &str) -> State {
+ fn label_of(text: &str) -> &'static str {
+     match text {
+         "a" => "alpha",
+-        "b" => label_of("a"),
++        "b" => { label_of("a") }
+         _ => "other",
+     }
+ }

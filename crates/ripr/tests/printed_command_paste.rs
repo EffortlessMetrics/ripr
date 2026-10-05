@@ -305,11 +305,11 @@ fn is_paste_target(text: &str, bare_line: bool, subcommands: &BTreeSet<String>) 
     !bare_line || text.contains(" --")
 }
 
-/// CommonMark inline code spans on one line: a run of N backticks closes at
-/// the next run of exactly N, and one space pad on each side is not content.
-fn code_spans(line: &str) -> Vec<String> {
+/// Character-index half-open ranges of code-span interiors (between the
+/// opening and closing backtick runs, before CommonMark space-pad stripping).
+fn code_span_interiors(line: &str) -> Vec<(usize, usize)> {
     let chars: Vec<char> = line.chars().collect();
-    let mut spans = Vec::new();
+    let mut ranges = Vec::new();
     let mut index = 0;
     while index < chars.len() {
         if chars[index] != '`' {
@@ -338,17 +338,60 @@ fn code_spans(line: &str) -> Vec<String> {
             }
         }
         let Some(close) = close else { continue };
-        let inner: String = chars[index..close].iter().collect();
-        let inner = match (inner.strip_prefix(' '), inner.strip_suffix(' ')) {
-            (Some(_), Some(_)) if inner.trim().len() == inner.len().saturating_sub(2) => {
-                inner[1..inner.len() - 1].to_string()
-            }
-            _ => inner,
-        };
-        spans.push(inner);
+        ranges.push((index, close));
         index = close + width;
     }
-    spans
+    ranges
+}
+
+/// CommonMark inline code spans on one line: a run of N backticks closes at
+/// the next run of exactly N, and one space pad on each side is not content.
+fn code_spans(line: &str) -> Vec<String> {
+    let chars: Vec<char> = line.chars().collect();
+    code_span_interiors(line)
+        .into_iter()
+        .map(|(start, end)| {
+            let inner: String = chars[start..end].iter().collect();
+            match (inner.strip_prefix(' '), inner.strip_suffix(' ')) {
+                (Some(_), Some(_)) if inner.trim().len() == inner.len().saturating_sub(2) => {
+                    inner[1..inner.len() - 1].to_string()
+                }
+                _ => inner,
+            }
+        })
+        .collect()
+}
+
+/// Remainder after a `(PowerShell)` label that sits outside code spans.
+///
+/// A Bash command can mention `(PowerShell):` inside its own span. That text
+/// is not a pairing label and must not steal the previous command's form.
+fn powershell_label_rest(line: &str) -> Option<&str> {
+    const NEEDLE: &str = "(PowerShell)";
+    let interiors = code_span_interiors(line);
+    let chars: Vec<char> = line.chars().collect();
+    let needle: Vec<char> = NEEDLE.chars().collect();
+    let mut index = 0;
+    while index + needle.len() <= chars.len() {
+        if chars[index..index + needle.len()] == needle[..] {
+            let inside = interiors
+                .iter()
+                .any(|&(start, end)| index >= start && index < end);
+            if !inside {
+                let rest_at = index + needle.len();
+                let byte = line
+                    .char_indices()
+                    .nth(rest_at)
+                    .map(|(byte, _)| byte)
+                    .unwrap_or(line.len());
+                return Some(line[byte..].trim_start_matches([':', ' ']).trim());
+            }
+            index += needle.len();
+            continue;
+        }
+        index += 1;
+    }
+    None
 }
 
 /// Commands in plain text or Markdown, with each PowerShell form folded into
@@ -362,6 +405,8 @@ fn extract_text(
 ) -> Vec<Printed> {
     let mut found: Vec<Printed> = Vec::new();
     let mut fence: Option<String> = None;
+    // A `(PowerShell):` label alone on its line is followed by the form.
+    let mut form_on_next_line = false;
     for line in text.lines() {
         let trimmed = line.trim_start();
         if let Some(info) = trimmed.strip_prefix("```") {
@@ -395,14 +440,20 @@ fn extract_text(
             }
             continue;
         }
-        let powershell = line.contains("(PowerShell)");
-        if powershell {
+        if std::mem::take(&mut form_on_next_line) {
+            if let (Some(form), Some(previous)) =
+                (code_spans(line).into_iter().next(), found.last_mut())
+            {
+                previous.powershell = Some(form);
+            }
+            continue;
+        }
+        if let Some(rest) = powershell_label_rest(line) {
             // The PowerShell form need not start with `ripr`: the redirecting
             // form is a guarded write that calls it mid-expression.
-            let rest = line
-                .split_once("(PowerShell)")
-                .map(|(_, rest)| rest.trim_start_matches([':', ' ']).trim())
-                .unwrap_or_default();
+            // Pair the next line only when this label's rest is empty. An
+            // inline form must not consume the following Bash command.
+            form_on_next_line = rest.is_empty();
             let form = Some(
                 rest.strip_prefix('`')
                     .and_then(|inner| inner.strip_suffix('`'))
@@ -431,6 +482,7 @@ fn extract_text(
         let starts = line.matches("`ripr ").count() + line.matches("`git ").count();
         if starts == 1
             && let Some(at) = line.find("`ripr ").or_else(|| line.find("`git "))
+            && !line[..at].ends_with('`')
             && let Some(end) = line.rfind('`')
             && end > at
         {
@@ -856,75 +908,39 @@ struct KnownGap {
     source: &'static str,
     /// Prefix of the command as printed for Bash.
     command: &'static str,
-    /// The shells that fail. A PowerShell gap is a command printed with no
-    /// PowerShell form that PowerShell cannot parse; the row applies only
-    /// while that is the case.
-    shells: GapShells,
     /// Prefixes of the problems this gap explains. Any other problem on the
     /// same command is a new failure, so the ledger cannot hide it.
     explains: &'static [&'static str],
     reason: &'static str,
 }
 
-/// What a PowerShell parse of a Bash-only command with a hostile root looks
-/// like: a parse error, a command that never ran, or a split argument.
-const POWERSHELL_SPLIT: &[&str] = &[
-    "shell error",
-    "reached the program",
-    "argument ",
-    "--root ",
-    "argv differs",
-];
 /// A drill-in that repeats a typed relative root names another repository.
 const WRONG_ROOT: &[&str] = &["--root ", "argument "];
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum GapShells {
-    PowershellWithoutForm,
-    Every,
-}
-
 const KNOWN_GAPS: &[KnownGap] = &[
-    KnownGap {
-        source: "start-here.md",
-        command: "ripr first-pr --root",
-        shells: GapShells::PowershellWithoutForm,
-        explains: POWERSHELL_SPLIT,
-        reason: "the missing-base recovery sentence embeds a Bash command with no PowerShell form",
-    },
     KnownGap {
         source: "relative-root:check",
         command: "ripr explain --root",
-        shells: GapShells::Every,
         explains: WRONG_ROOT,
         reason: "the `check` drill-in repeats a typed relative --root, so pasting from another directory targets another repository",
     },
     KnownGap {
         source: "relative-root:check",
         command: "ripr agent stub --root",
-        shells: GapShells::Every,
         explains: WRONG_ROOT,
         reason: "the `check` drill-in repeats a typed relative --root, so pasting from another directory targets another repository",
     },
     KnownGap {
         source: "relative-root:check",
         command: "ripr context --root",
-        shells: GapShells::Every,
         explains: WRONG_ROOT,
         reason: "the `check` drill-in repeats a typed relative --root, so pasting from another directory targets another repository",
     },
 ];
 
-fn known_gap(printed: &Printed, shell: Shell) -> Option<usize> {
+fn known_gap(printed: &Printed) -> Option<usize> {
     KNOWN_GAPS.iter().position(|gap| {
-        printed.source.contains(gap.source)
-            && printed.bash.starts_with(gap.command)
-            && match gap.shells {
-                GapShells::PowershellWithoutForm => {
-                    shell.is_powershell() && printed.powershell.is_none()
-                }
-                GapShells::Every => true,
-            }
+        printed.source.contains(gap.source) && printed.bash.starts_with(gap.command)
     })
 }
 
@@ -1155,21 +1171,7 @@ fn printed_commands_paste_unchanged_in_every_shell_from_a_foreign_directory() ->
                 })
             })
             .collect();
-        // PowerShell runs a batch in one process, so a canary cannot be traced
-        // to its command. Known-gap cases get a batch of their own, and only
-        // that batch may leave a canary behind.
-        let (gap_cases, other_cases): (Vec<Case>, Vec<Case>) = if shell.is_powershell() {
-            cases.into_iter().partition(|case| {
-                // Only a command printed with no PowerShell form may run
-                // its tail; a wrong-root gap must still leave no canary.
-                known_gap(&commands[case.id], shell).is_some_and(|index| {
-                    matches!(KNOWN_GAPS[index].shells, GapShells::PowershellWithoutForm)
-                })
-            })
-        } else {
-            (Vec::new(), cases)
-        };
-        for (cases, excused) in [(other_cases, false), (gap_cases, true)] {
+        {
             if cases.is_empty() {
                 continue;
             }
@@ -1226,7 +1228,7 @@ fn printed_commands_paste_unchanged_in_every_shell_from_a_foreign_directory() ->
                 if case_problems.is_empty() {
                     continue;
                 }
-                match known_gap(printed, shell) {
+                match known_gap(printed) {
                     Some(index) => {
                         let gap = &KNOWN_GAPS[index];
                         let (explained, unexplained): (Vec<&String>, Vec<&String>) =
@@ -1257,15 +1259,8 @@ fn printed_commands_paste_unchanged_in_every_shell_from_a_foreign_directory() ->
                 }
             }
             for hit in canary_hits(&fixture) {
-                // A Bash command with no PowerShell form that PowerShell splits at
-                // a `;` in the path runs its tail, which is the injection the
-                // known PowerShell gaps allow. Those cases run in their own
-                // batch, and only that one effect is excused: any other file
-                // (FILECANARY, the tail marker, a stray redirect target) is a
-                // new failure even when the command also hits the listed gap.
-                if !(excused && hit.ends_with("gained \"ROOTCANARY\"")) {
-                    problems.push(format!("[{}] {hit}", shell.name()));
-                }
+                // No listed gap leaves a file behind, so any hit is a new failure.
+                problems.push(format!("[{}] {hit}", shell.name()));
                 // Clear it so one injection is reported against the shell that ran
                 // it, not every shell after.
                 for dir in [&fixture.foreign, &fixture.base, &fixture.root] {
@@ -1284,11 +1279,7 @@ fn printed_commands_paste_unchanged_in_every_shell_from_a_foreign_directory() ->
         }
     }
     for (gap, hits) in KNOWN_GAPS.iter().zip(&gap_hits) {
-        let applies = match gap.shells {
-            GapShells::PowershellWithoutForm => ran.iter().any(|shell| shell.is_powershell()),
-            GapShells::Every => true,
-        };
-        if applies && *hits == 0 {
+        if *hits == 0 {
             problems.push(format!(
                 "known gap no longer reproduces; delete its row: {} / `{}` ({})",
                 gap.source, gap.command, gap.reason
@@ -1320,4 +1311,59 @@ fn printed_commands_paste_unchanged_in_every_shell_from_a_foreign_directory() ->
             commands.len()
         ))
     }
+}
+
+fn paste_subcommands() -> BTreeSet<String> {
+    ["first-pr", "check"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+fn extracted(text: &str) -> Vec<Printed> {
+    extract_text("test.md", text, Origin::Foreign, &paste_subcommands())
+}
+
+#[test]
+fn extract_text_pairs_empty_rest_powershell_label_with_the_next_line() {
+    let found = extracted(
+        "`ripr first-pr --root repo --base HEAD`\n\
+         Recovery step 1 (PowerShell):\n\
+         `Get-Content foo`\n",
+    );
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].bash, "ripr first-pr --root repo --base HEAD");
+    assert_eq!(found[0].powershell.as_deref(), Some("Get-Content foo"));
+}
+
+#[test]
+fn extract_text_empty_rest_guard_does_not_consume_the_next_bash_command() {
+    // Inline form: rest is nonempty, so `form_on_next_line` must stay false.
+    // Mutating that guard to always-true would steal the following Bash span.
+    let found = extracted(
+        "`ripr first-pr --root repo --base HEAD`\n\
+         Recovery step 1 (PowerShell): `Get-Content foo`\n\
+         `ripr check --root repo --diff HEAD`\n",
+    );
+    assert_eq!(found.len(), 2, "{found:?}");
+    assert_eq!(found[0].bash, "ripr first-pr --root repo --base HEAD");
+    assert_eq!(found[0].powershell.as_deref(), Some("Get-Content foo"));
+    assert_eq!(found[1].bash, "ripr check --root repo --diff HEAD");
+    assert_eq!(found[1].powershell, None);
+}
+
+#[test]
+fn extract_text_does_not_pair_powershell_text_inside_a_bash_code_span() {
+    let found = extracted(
+        "`ripr first-pr --root repo --base HEAD`\n\
+         `ripr check --root '(PowerShell):' --diff HEAD`\n",
+    );
+    assert_eq!(found.len(), 2, "{found:?}");
+    assert_eq!(found[0].bash, "ripr first-pr --root repo --base HEAD");
+    assert_eq!(found[0].powershell, None);
+    assert_eq!(
+        found[1].bash,
+        "ripr check --root '(PowerShell):' --diff HEAD"
+    );
+    assert_eq!(found[1].powershell, None);
 }

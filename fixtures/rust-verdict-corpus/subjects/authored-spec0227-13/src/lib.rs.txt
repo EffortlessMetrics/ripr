@@ -1,0 +1,38 @@
+//! Digit sums that refuse letters before reading any digit.
+
+#[derive(Debug, PartialEq)]
+pub enum E {
+    TooLong,
+    Bad,
+}
+
+fn no_letters(s: &str) -> Result<(), E> {
+    if s.chars().any(char::is_alphabetic) {
+        return Err(E::Bad);
+    }
+    Ok(())
+}
+
+fn digit(c: char) -> Result<u32, E> {
+    c.to_digit(10).ok_or(E::Bad)
+}
+
+pub fn total(s: &str) -> Result<u32, E> {
+    no_letters(s)?;
+    let mut sum = 0;
+    for c in s.chars() {
+        let d = digit(c)?;
+        sum += d;
+    }
+    Ok(sum)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::total;
+
+    #[test]
+    fn letter_is_refused() {
+        assert!(total("x").is_err());
+    }
+}

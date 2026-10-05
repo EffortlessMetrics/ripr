@@ -2076,9 +2076,91 @@ fn last_let_statement<'a>(body: &'a str, binding: &str) -> Option<&'a str> {
     last
 }
 
+/// Whether the binding's own type is `type_name`: its annotation
+/// (`let x: Site = ..`) or its initializer head (`Site::new(..)`,
+/// `Site { .. }`, `&mut Site::default()`). A type named only inside nested
+/// arguments (`Cache::new(Site::default())`) is not the binding's type.
 fn let_binding_mentions_type(body: &str, binding: &str, type_name: &str) -> bool {
     last_let_statement(body, binding)
-        .is_some_and(|stmt| super::reveal::contains_as_whole_word(stmt, type_name))
+        .and_then(let_statement_type_head)
+        .is_some_and(|head| head == type_name)
+}
+
+fn let_statement_type_head(stmt: &str) -> Option<&str> {
+    let eq = stmt.find('=')?;
+    let pattern = &stmt[..eq];
+    if let Some(colon) = pattern.find(':') {
+        return type_head(&pattern[colon + 1..]).map(|(segments, _)| segments.last().copied())?;
+    }
+    let (segments, next) = type_head(&stmt[eq + 1..])?;
+    match (segments.as_slice(), next) {
+        ([.., ty, _call], Some(b'(')) => Some(ty),
+        ([.., last], Some(b'(' | b'{')) => Some(last),
+        ([.., ty, _assoc], _) => Some(ty),
+        _ => None,
+    }
+}
+
+/// Leading `a::B::c` path of `text` after `&`/`mut`/`dyn`/whitespace, and the
+/// first non-space byte after it. A turbofish (`Site::<T>::new`) is skipped;
+/// any other generic argument list ends the path.
+fn type_head(text: &str) -> Option<(Vec<&str>, Option<u8>)> {
+    let mut rest = text.trim_start();
+    loop {
+        let trimmed = rest
+            .strip_prefix('&')
+            .or_else(|| {
+                rest.strip_prefix("mut ")
+                    .or_else(|| rest.strip_prefix("dyn "))
+            })
+            .map(str::trim_start);
+        match trimmed {
+            Some(next) => rest = next,
+            None => break,
+        }
+    }
+    let bytes = rest.as_bytes();
+    let mut segments = Vec::new();
+    let mut end = 0;
+    loop {
+        let start = end;
+        while end < bytes.len() && is_ident_byte(bytes[end]) {
+            end += 1;
+        }
+        if start < end {
+            segments.push(&rest[start..end]);
+        }
+        if !rest[end..].starts_with("::") {
+            break;
+        }
+        end += 2;
+        if rest[end..].starts_with('<') {
+            end = skip_generic_args(bytes, end)?;
+        }
+    }
+    if segments.is_empty() {
+        return None;
+    }
+    let next = rest[end..].trim_start().bytes().next();
+    Some((segments, next))
+}
+
+/// Index just past the `<..>` starting at `open`, or `None` if unbalanced.
+fn skip_generic_args(bytes: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    for (offset, byte) in bytes.get(open..)?.iter().enumerate() {
+        match byte {
+            b'<' => depth += 1,
+            b'>' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(open + offset + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn text_resolves_method_to_type(
@@ -2129,12 +2211,27 @@ pub(in crate::analysis) fn method_call_resolves_to_impl_type(
         return false;
     }
     let masked_body = mask_comments_and_strings(&test.body);
-    if text_resolves_method_to_type(&masked_body, method, impl_type, &masked_body) {
+    method_call_resolves_to_impl_type_in(test, &masked_body, method, impl_type)
+}
+
+/// [`method_call_resolves_to_impl_type`] with the test body already masked
+/// by `mask_comments_and_strings`, for callers that ask about one test many
+/// times.
+pub(in crate::analysis) fn method_call_resolves_to_impl_type_in(
+    test: &TestSummary,
+    masked_body: &str,
+    method: &str,
+    impl_type: &str,
+) -> bool {
+    if method.is_empty() || impl_type.is_empty() {
+        return false;
+    }
+    if text_resolves_method_to_type(masked_body, method, impl_type, masked_body) {
         return true;
     }
     test.calls.iter().any(|call| {
         call.name == method
-            && text_resolves_method_to_type(&call.text, method, impl_type, &masked_body)
+            && text_resolves_method_to_type(&call.text, method, impl_type, masked_body)
     })
 }
 
@@ -2657,7 +2754,7 @@ mod tests {
                 file: PathBuf::from("tests/ledger_tests.rs"),
                 start_line: 1,
                 end_line: 4,
-                body: "let mut ledger = Ledger::new(100);\nledger.apply(5);".to_string(),
+                body: "let mut ledger = Ledger::new(100);\nledger.apply(5);".into(),
                 // Body-only: the receiver form is what must be credited.
                 calls: Vec::new(),
                 assertions: Vec::new(),
@@ -3111,7 +3208,7 @@ fn crate_c_score_test() {
                 test_file.clone(),
                 FileFacts {
                     path: test_file.clone(),
-                    source: source.to_string(),
+                    source: source.into(),
                     ..FileFacts::default()
                 },
             )]),
@@ -3171,7 +3268,7 @@ fn crate_c_score_test() {
                 test_file.clone(),
                 FileFacts {
                     path: test_file.clone(),
-                    source: source.to_string(),
+                    source: source.into(),
                     ..FileFacts::default()
                 },
             )]),
@@ -4310,7 +4407,7 @@ fn crate_c_score_test() {
             file: PathBuf::from("tests/macro_boundary.rs"),
             start_line: 1,
             end_line: 5,
-            body: "let result = call_inner!(10, 3); assert_eq!(result, 7);".to_string(),
+            body: "let result = call_inner!(10, 3); assert_eq!(result, 7);".into(),
             calls: vec![CallFact {
                 line: 1,
                 name: "call_inner".to_string(),
@@ -4344,7 +4441,7 @@ fn crate_c_score_test() {
             file: PathBuf::from("tests/public_api.rs"),
             start_line: 1,
             end_line: 5,
-            body: "let result = crate_under_test::internal::inner(10, 3);".to_string(),
+            body: "let result = crate_under_test::internal::inner(10, 3);".into(),
             calls: Vec::new(),
             assertions: Vec::new(),
             literals: Vec::new(),
@@ -4537,7 +4634,7 @@ fn crate_c_score_test() {
         index.insert_file_only(
             PathBuf::from(file),
             FileFacts {
-                source: source.to_string(),
+                source: source.into(),
                 ..FileFacts::default()
             },
         );
@@ -4640,7 +4737,7 @@ fn crate_c_score_test() {
             file: PathBuf::from(file),
             start_line: 1,
             end_line: 3,
-            body: String::new(),
+            body: String::new().into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
@@ -4660,7 +4757,7 @@ fn crate_c_score_test() {
             file: PathBuf::from(file),
             start_line: 1,
             end_line: 4,
-            body: body.to_string(),
+            body: body.into(),
             calls: vec![CallFact {
                 line: 1,
                 name: "score".to_string(),
@@ -5181,6 +5278,31 @@ let r = try_parse_summary(\"x\");",
     // #3714 round-2 review (coderabbit hGkkm): a binding whose name merely
     // BEGINS with the callee is a different binding — the unbounded prefix
     // check would falsely defeat the admit and drop the test's relation.
+    // (#5481 review) A binding's type is its annotation or initializer head;
+    // types nested in arguments and wrappers fail closed.
+    #[test]
+    fn let_statement_type_head_reads_annotation_or_initializer_head() {
+        let cases = [
+            ("let x: Site = make()", Some("Site")),
+            ("let x: &mut Site = make()", Some("Site")),
+            ("let mut x = Site::new()", Some("Site")),
+            ("let x = crate::m::Site::new()", Some("Site")),
+            ("let x = Site { langs: Vec::new() }", Some("Site")),
+            ("let x = Site(1)", Some("Site")),
+            ("let x = &Site::default()", Some("Site")),
+            ("let x = Cache::new(Site::default())", Some("Cache")),
+            ("let x = Box::new(Site::new())", Some("Box")),
+            ("let x = Site::<u8>::new()", Some("Site")),
+            ("let x = Site::<Vec<u8>>::new()", Some("Site")),
+            ("let x = Site::<u8", None),
+            ("let x = make_site()", Some("make_site")),
+            ("let x = |s: Site| s", None),
+        ];
+        for (stmt, expected) in cases {
+            assert_eq!(let_statement_type_head(stmt), expected, "{stmt}");
+        }
+    }
+
     #[test]
     fn given_near_name_binding_when_wrapper_probe_then_relation_survives() {
         let owner = function("src/lib.rs", "parse_summary");
@@ -5382,7 +5504,7 @@ try_parse_summary(raw).map_err(Into::into)"
             file: PathBuf::from(file),
             start_line: 1,
             end_line: 4,
-            body: body.to_string(),
+            body: body.into(),
             calls: vec![CallFact {
                 line: 1,
                 name: call_name.to_string(),
@@ -5449,7 +5571,7 @@ try_parse_summary(raw).map_err(Into::into)"
             file: PathBuf::from(file),
             start_line: 1,
             end_line: 10,
-            body: body.to_string(),
+            body: body.into(),
             calls: Vec::new(),
             assertions,
             literals: Vec::new(),

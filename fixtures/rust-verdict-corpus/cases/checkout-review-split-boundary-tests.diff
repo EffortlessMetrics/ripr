@@ -1,0 +1,13 @@
+diff --git a/src/limits.rs b/src/limits.rs
+index 577ecb3..1ef3a70 100644
+--- a/src/limits.rs
++++ b/src/limits.rs
+@@ -17,7 +17,7 @@ pub fn below_minimum(count: u32) -> bool {
+ }
+ 
+ pub fn needs_review(total: u32) -> bool {
+-    total >= 1000
++    1000 <= total
+ }
+ 
+ #[cfg(test)]

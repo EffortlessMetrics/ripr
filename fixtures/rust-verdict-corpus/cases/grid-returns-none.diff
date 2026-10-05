@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 08239b9..f71cf26 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -17,7 +17,7 @@ pub fn tags(list: &str) -> Vec<String> {
+ }
+ 
+ pub fn banner(version: u32) -> String {
+-    format!("v{version}")
++    format!("v{}", version)
+ }
+ 
+ #[cfg(test)]

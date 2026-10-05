@@ -5,7 +5,7 @@ use super::{
 };
 use crate::agent::loop_commands::display_path;
 use crate::output::markdown::{
-    PowershellForm, powershell_command, powershell_form, push_context_command,
+    PowershellForm, code_span, powershell_command, powershell_form, push_context_command,
 };
 use crate::output::start_here_state::{
     START_HERE_PREVIEW_LIMITED, normalize_start_here_output_state,
@@ -304,11 +304,53 @@ fn render_preflight_markdown(packet: &Value, out: &mut String) {
         .unwrap_or("unknown");
     out.push_str(&format!("Status: `{status}`\n"));
     out.push_str(&format!("Mode: `{mode}`\n"));
-    if let Some(command) = preflight.get("next_command").and_then(Value::as_str) {
+    let recovery_commands = preflight
+        .get("recovery_commands")
+        .and_then(Value::as_array)
+        .filter(|commands| !commands.is_empty());
+    if recovery_commands.is_none()
+        && let Some(command) = preflight.get("next_command").and_then(Value::as_str)
+    {
         out.push_str(&format!(
             "Next command: {}\n",
             markdown_code_or_text(command)
         ));
+    }
+    // The producer carries guidance and executable commands separately, so
+    // quoting is never recovered from prose. Legacy JSON remains unchanged.
+    if let Some(commands) = recovery_commands {
+        if let Some(guidance) = preflight.get("recovery_guidance").and_then(Value::as_str) {
+            out.push_str(&format!("Recovery: {guidance}\n"));
+        }
+        for (index, command) in commands.iter().filter_map(Value::as_str).enumerate() {
+            out.push('\n');
+            if command.contains(['\r', '\n']) {
+                out.push_str(&format!(
+                    "Recovery step {} unavailable: use a single-line root/ref alias and rerun first-pr.\n",
+                    index + 1
+                ));
+                continue;
+            }
+            let label = format!("Recovery step {}", index + 1);
+            out.push_str(&format!("{label}:\n{}\n", code_span(command)));
+            match powershell_form(command) {
+                PowershellForm::Translated(line) => {
+                    out.push_str(&format!("{label} (PowerShell):\n{}\n", code_span(&line)));
+                    out.push_str("The first form is written for Bash; cmd.exe is not supported.\n");
+                }
+                PowershellForm::SameAsBash => {
+                    out.push_str(
+                        "It runs unchanged in Bash and PowerShell; cmd.exe is not supported.\n",
+                    );
+                }
+                PowershellForm::Unavailable => {
+                    out.push_str(&format!(
+                        "{}; use the Bash form. cmd.exe is not supported.\n",
+                        crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE
+                    ));
+                }
+            }
+        }
     }
     out.push('\n');
     if let Some(checks) = preflight.get("checks").and_then(Value::as_array) {
@@ -718,6 +760,71 @@ mod tests {
         // normalization is pinned even where the OS join never mixes.
         let dir = PathBuf::from("/Repo/out\\Reports");
         (dir.join("start-here.json"), dir.join("start-here.md"))
+    }
+
+    #[test]
+    fn preflight_recovery_preserves_markdown_backticks_and_discloses_unsupported_forms() {
+        let command = "ripr first-pr --root 'owner'\\''s `repo`' --base HEAD --head HEAD";
+        let packet = serde_json::json!({
+            "preflight": {
+                "status": "needs_attention", "mode": "write",
+                "recovery_commands": [command, "ripr first-pr --root $(whoami)"],
+            },
+        });
+        let mut out = String::new();
+        render_preflight_markdown(&packet, &mut out);
+        assert!(
+            out.contains(&crate::output::markdown::code_span(command)),
+            "{out}"
+        );
+        assert!(out.contains("Recovery step 1 (PowerShell):"), "{out}");
+        assert!(!out.contains("Recovery step 2 (PowerShell):"), "{out}");
+        assert!(
+            out.contains(crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn preflight_recovery_keeps_legacy_and_withholds_multiline_commands() {
+        let legacy = serde_json::json!({
+            "preflight": {
+                "status": "needs_attention", "mode": "write",
+                "next_command": "Choose a head, then rerun `ripr first-pr`.",
+            },
+        });
+        let mut out = String::new();
+        render_preflight_markdown(&legacy, &mut out);
+        assert!(
+            out.contains("Next command: Choose a head, then rerun `ripr first-pr`."),
+            "{out}"
+        );
+        assert!(!out.contains("Recovery step"), "{out}");
+
+        let packet = serde_json::json!({
+            "preflight": {
+                "status": "needs_attention", "mode": "write",
+                "next_command": "legacy prose",
+                "recovery_guidance": "Commit PR work before rerunning.",
+                "recovery_commands": ["ripr first-pr --root .", "ripr first-pr --root 'line\nbreak'"],
+            },
+        });
+        out.clear();
+        render_preflight_markdown(&packet, &mut out);
+        assert!(
+            out.contains("Recovery: Commit PR work before rerunning."),
+            "{out}"
+        );
+        assert!(
+            out.contains("It runs unchanged in Bash and PowerShell"),
+            "{out}"
+        );
+        assert!(
+            out.contains("Recovery step 2 unavailable: use a single-line root/ref alias"),
+            "{out}"
+        );
+        assert!(!out.contains("line break"), "{out}");
+        assert!(!out.contains("legacy prose"), "{out}");
     }
 
     #[test]

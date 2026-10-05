@@ -6,7 +6,8 @@ name: DX Scoreboard
 # artifact, and the gate fails this lane only when a metric regresses past
 # its margin against metrics/dx-scoreboard/baseline.json or an instrument
 # breaks. Wall-time and memory compare only against a same-runner baseline.
-# The `corpus` board is gated by rust-corpus.yml, which ingests its receipt.
+# The `corpus` board is gated by rust-corpus.yml, which ingests its receipt,
+# and the `ranking` board by pilot-ranking.yml.
 
 on:
   workflow_dispatch:
@@ -37,9 +38,11 @@ jobs:
 
       # Ingested metrics (first-run walk, mutation spot-check, agent-as-user)
       # have no receipt here, so the gate cannot compare them; the report
-      # lists them under "Not compared with the baseline".
+      # lists them under "Not compared with the baseline". The corpus lives
+      # outside target/ because rust-cache saves target/ and restores the
+      # checkouts without a usable .git (#6726).
       - name: Measure developer-experience scoreboards
-        run: cargo xtask dx-scoreboard --clone --include-heavy --baseline metrics/dx-scoreboard/baseline.json --gate
+        run: cargo xtask dx-scoreboard --clone --include-heavy --corpus-dir "$RUNNER_TEMP/dx-scoreboard-corpus" --baseline metrics/dx-scoreboard/baseline.json --gate
 
       - name: Upload scoreboard report
         if: always()

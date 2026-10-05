@@ -3,6 +3,14 @@
 The root changelog records repository-level changes that future contributors,
 users, and agents need to notice.
 
+## Where Entries Go
+
+Add one fragment file under `changelog.d/` per PR instead of editing
+`CHANGELOG.md` directly. Many PRs adding an entry to the same `Unreleased`
+section conflicted with each other on every merge; separate files do not.
+`changelog.d/README.md` has the file name, format, and the fold step at the
+release cut. Entries already in `CHANGELOG.md` stay there.
+
 ## What To Include
 
 Add an entry for:

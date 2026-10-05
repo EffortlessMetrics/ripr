@@ -116,6 +116,17 @@ determined by the badge policy (currently non-headline for `ripr`,
 The mapping table is versioned and lives in the spec, not in the badge
 renderer.
 
+### Weak Grip Requires Established Activation
+
+`weakly_gripped` claims that tests which run the seam have a weak oracle or
+pass activation values that miss a needed discriminator. That claim needs
+activation evidence. When the activate stage is `unknown` (for example a
+same-file relation only, or a boundary predicate with no observed activation
+value), weak discriminate evidence or a missing-discriminator hint does not
+produce `weakly_gripped`; the seam classifies `activation_unknown` and keeps
+its missing-discriminator guidance. A seam with established activation and
+the same evidence stays `weakly_gripped`.
+
 ### Static-Language Boundaries
 
 All static output must use the conservative vocabulary defined in
@@ -317,6 +328,11 @@ duplicative equality assertions remain weak instead of overclaiming exact
 value grip.
 - `analysis/repo-ripr-classification-v1`: tests for `SeamGripClass`
 classification rules and headline mapping.
+- Weak grip requires established activation:
+  `seam_classification.rs::given_activation_unknown_then_weak_evidence_is_activation_unknown_not_weak_grip`
+  pins both directions of the rule, and
+  `test_grip_evidence/tests.rs::boundary_with_unobserved_activation_is_activation_unknown_and_keeps_its_hint`
+  pins it end to end from source.
 
 ## Implementation Mapping
 

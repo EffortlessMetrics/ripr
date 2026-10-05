@@ -408,9 +408,10 @@ pub enum RelatedTestMiss {
     /// change alters (an error variant or a constructed field), so a wrong
     /// value of the same shape still passes.
     MissingExactAssertion,
-    /// The assertion has the right shape, but its text never names the
-    /// changed expression, so ripr cannot confirm it observes this change
-    /// rather than a sibling value.
+    /// The assertion has the right shape, but ripr could not confirm that it
+    /// observes this change rather than a sibling value (Rust: its text never
+    /// names the changed expression; Perl: the packet establishes no sink
+    /// alignment). An unknown, not an established miss.
     ObservationUnconfirmed,
 }
 

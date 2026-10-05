@@ -2,7 +2,7 @@ use crate::agent::loop_commands::{
     WORKFLOW_AGENT_RECEIPT_ARTIFACT, WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT,
     WORKFLOW_AGENT_REVIEW_SUMMARY_MARKDOWN_ARTIFACT, WORKFLOW_AGENT_STATUS_ARTIFACT,
     WORKFLOW_AGENT_STATUS_MARKDOWN_ARTIFACT, WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
-    WORKFLOW_MANIFEST_ARTIFACT, agent_status_command,
+    WORKFLOW_MANIFEST_ARTIFACT, agent_status_command, bound_root, root_path_display,
 };
 use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::agent_status::{AgentStatusReport, artifact_required_by_active_loop};
@@ -148,7 +148,7 @@ pub(super) fn read_json_surface(
 
 pub(super) fn agent_status_surface(
     status: &AgentStatusReport,
-    root_display: &str,
+    root_argument: &Path,
 ) -> AgentReviewSurface {
     let present = status
         .artifacts
@@ -185,7 +185,7 @@ pub(super) fn agent_status_surface(
         summary: format!(
             "{required_present} of {required_count} required artifacts present, {missing} missing, {warnings} warnings. Command: {}",
             agent_status_command(
-                &crate::agent::loop_commands::bound_root(root_display),
+                &bound_root(&root_path_display(root_argument)),
                 Some(WORKFLOW_AGENT_STATUS_ARTIFACT)
             )
         ),

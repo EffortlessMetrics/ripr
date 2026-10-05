@@ -20,6 +20,7 @@ pub(super) enum PythonRelationKind {
     SameStem,
     TestNameSimilarity,
     FixtureName,
+    ActivationLimited,
 }
 
 impl PythonRelationKind {
@@ -35,6 +36,7 @@ impl PythonRelationKind {
             Self::SameStem => 3,
             Self::TestNameSimilarity => 2,
             Self::FixtureName => 1,
+            Self::ActivationLimited => 0,
         }
     }
 
@@ -66,6 +68,7 @@ impl PythonRelationKind {
             Self::SameStem => "same_stem",
             Self::TestNameSimilarity => "test_name_similarity",
             Self::FixtureName => "fixture_name",
+            Self::ActivationLimited => "test_activation_unestablished",
         }
     }
 }
@@ -94,8 +97,14 @@ pub(super) fn related_test_candidates<'a>(
     let mut candidates: Vec<PythonRelatedCandidate<'a>> = all_tests
         .iter()
         .filter_map(|test| {
-            related_test_relation(test, owner)
-                .map(|relation| PythonRelatedCandidate { test, relation })
+            related_test_relation(test, owner).map(|relation| PythonRelatedCandidate {
+                test,
+                relation: if super::test_activation::activation_control(test).is_some() {
+                    PythonRelationKind::ActivationLimited
+                } else {
+                    relation
+                },
+            })
         })
         .collect();
     candidates.sort_by(|left, right| {
@@ -1227,6 +1236,7 @@ pub(super) fn strong_test_imports_owner_from_module(
         all_tests.iter().any(|test| {
             test.name == related_test.name
                 && test.file == related_test.file
+                && super::test_activation::activation_control(test).is_none()
                 && test.imports.iter().any(|import| {
                     import.imported == owner.name
                         && import_source_module_matches_owner(import, owner, &test.file)
@@ -1438,6 +1448,7 @@ pub(super) fn strong_test_calls_owner_method_on_bound_receiver(
         all_tests.iter().any(|test| {
             test.name == related_test.name
                 && test.file == related_test.file
+                && super::test_activation::activation_control(test).is_none()
                 && owner_class_locals(test, owner, class).iter().any(|local| {
                     body_calls_method_on_owner_bound_receiver(&test.body_text, local, method)
                 })
@@ -1462,6 +1473,7 @@ pub(super) fn strong_tests_import_only_rival_modules(
         all_tests.iter().any(|test| {
             test.name == related_test.name
                 && test.file == related_test.file
+                && super::test_activation::activation_control(test).is_none()
                 && test
                     .imports
                     .iter()

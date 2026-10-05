@@ -13,6 +13,15 @@ found, what discriminator is missing, and what test shape should be added.
 `ripr context --json` should emit a packet optimized for writing one targeted
 test.
 
+Finding selection is a prerequisite for both `context` and its `explain`
+sibling. A missing location-shaped selector such as `src/lib.rs:abc` or
+`:::` should explain `file:line` syntax and a positive decimal line number.
+Syntax guidance follows unsuccessful selection; it must preserve exact-ID
+matching and location matching. A well-formed missing ID or
+location remains a lookup miss. Fresh-analysis recovery must list findings
+with the requested root and diff scope so a corrected selector can be retried
+from another working directory. Misses remain exit 2 with no machine stdout.
+
 The packet should include:
 
 - task kind
@@ -70,6 +79,7 @@ Planned tests:
 - golden context packet for weak error oracle
 - golden context packet for unknown propagation
 - LSP copy-context packet equality with CLI context packet
+- malformed-location guidance and valid-ID/location retry through both CLI siblings
 
 ## Implementation Mapping
 

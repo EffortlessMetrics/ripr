@@ -239,14 +239,15 @@ impl<'a> CompactGripContext<'a> {
         let mut tests_by_assertion_token: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         let mut tests_by_file_stem: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         let mut tests_by_import_token: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-        let same_file_helper_owner_calls_by_file =
-            context_build_phase("same_file_helper_owner_calls_by_file", || {
-                helper_owner_calls_by_file(index)
-            });
+        let shared = context_build_phase("shared_index_tables", || SharedIndexTables::build(index));
         checkpoint()?;
-        let helper_owner_calls_by_file = context_build_phase("helper_owner_calls_by_file", || {
-            strict_helper_owner_calls_by_file(index)
-        });
+        let (same_file_helper_owner_calls_by_file, helper_owner_calls_by_file) =
+            context_build_phase("helper_owner_calls_by_file", || {
+                rayon::join(
+                    || helper_owner_calls_by_file_with_fanout(index, &shared, true),
+                    || helper_owner_calls_by_file_with_fanout(index, &shared, false),
+                )
+            });
         checkpoint()?;
         let unambiguous_test_helper_owner_calls_by_name =
             context_build_phase("unambiguous_test_helper_owner_calls_by_name", || {
@@ -268,35 +269,20 @@ impl<'a> CompactGripContext<'a> {
                 production_helper_owner_calls_by_package(&helper_owner_calls_by_file)
             });
         checkpoint()?;
-        let target_affinity_production_owner_calls_by_package =
-            context_build_phase("target_affinity_production_owner_calls_by_package", || {
-                target_affinity_production_owner_calls_by_package(index)
-            });
-        checkpoint()?;
-        let ambiguous_target_affinity_owner_calls_by_package =
-            context_build_phase("ambiguous_target_affinity_owner_calls_by_package", || {
-                ambiguous_target_affinity_owner_calls_by_package(index)
-            });
-        checkpoint()?;
-        let target_affinity_production_owner_calls_by_module_path = context_build_phase(
-            "target_affinity_production_owner_calls_by_module_path",
-            || target_affinity_production_owner_calls_by_module_path(index),
-        );
-        checkpoint()?;
-        let unambiguous_production_owner_names_by_package =
-            context_build_phase("unambiguous_production_owner_names_by_package", || {
-                unambiguous_production_owner_names_by_package(index)
-            });
-        checkpoint()?;
-        let module_import_aliases_by_file =
-            context_build_phase("module_import_aliases_by_file", || {
-                module_import_aliases_by_file(index)
-            });
-        checkpoint()?;
-        let function_names_by_file = context_build_phase("function_names_by_file", || {
-            local_function_names_by_file(index)
+        let TargetAffinityOwnerCalls {
+            by_package: target_affinity_production_owner_calls_by_package,
+            ambiguous_by_package: ambiguous_target_affinity_owner_calls_by_package,
+            by_module_path: target_affinity_production_owner_calls_by_module_path,
+        } = context_build_phase("target_affinity_owner_calls", || {
+            TargetAffinityOwnerCalls::build(index, &shared)
         });
         checkpoint()?;
+        let SharedIndexTables {
+            function_names_by_file,
+            module_import_aliases_by_file,
+            unambiguous_production_owner_names_by_package,
+            ..
+        } = shared;
         let test_scoped_function_names_by_file =
             context_build_phase("test_scoped_function_names_by_file", || {
                 test_scoped_function_names_by_file(index)
@@ -710,7 +696,7 @@ mod candidate_index_tests {
             let Some(test) = tests.first_mut() else {
                 return Err("fixture must contain a parsed test".to_string());
             };
-            test.body = body.to_string();
+            test.body = body.into();
             let mut index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
                 tests,
                 functions: facts.functions.clone(),
@@ -1231,29 +1217,72 @@ pub(in crate::analysis::test_grip_evidence) fn same_file_helper_owner_call_names
         .collect()
 }
 
-pub(in crate::analysis::test_grip_evidence) fn helper_owner_calls_by_file(
-    index: &RustIndex,
-) -> HelperOwnerCallsByFile {
-    helper_owner_calls_by_file_with_fanout(index, true)
+/// Index-wide name and import tables that several context tables read.
+/// Each is a pure function of the index; building them once replaces up to
+/// four rescans of every source's `use` statements per context.
+pub(in crate::analysis::test_grip_evidence) struct SharedIndexTables {
+    function_names_by_file: BTreeMap<PathBuf, BTreeSet<String>>,
+    module_import_aliases_by_file: ModuleImportAliasesByFile,
+    direct_function_import_aliases_by_file: ScopedDirectFunctionImportAliasesByFile,
+    unambiguous_production_owner_names_by_package: ProductionOwnerNamesByPackage,
+    owner_names_by_module_path: OwnerNamesByModulePath,
+    owner_names_by_package_and_module_path: OwnerNamesByPackageAndModulePath,
+    production_owner_names: BTreeSet<String>,
 }
 
-pub(in crate::analysis::test_grip_evidence) fn strict_helper_owner_calls_by_file(
-    index: &RustIndex,
-) -> HelperOwnerCallsByFile {
-    helper_owner_calls_by_file_with_fanout(index, false)
+impl SharedIndexTables {
+    pub(in crate::analysis::test_grip_evidence) fn build(index: &RustIndex) -> Self {
+        let ((module_import_aliases_by_file, direct_function_import_aliases_by_file), rest) =
+            rayon::join(
+                || {
+                    rayon::join(
+                        || module_import_aliases_by_file(index),
+                        || direct_function_import_aliases_by_file(index),
+                    )
+                },
+                || {
+                    (
+                        local_function_names_by_file(index),
+                        unambiguous_production_owner_names_by_package(index),
+                        production_owner_names_by_module_path(index),
+                        production_owner_names_by_package_and_module_path(index),
+                        production_owner_names(index),
+                    )
+                },
+            );
+        let (
+            function_names_by_file,
+            unambiguous_production_owner_names_by_package,
+            owner_names_by_module_path,
+            owner_names_by_package_and_module_path,
+            production_owner_names,
+        ) = rest;
+        Self {
+            function_names_by_file,
+            module_import_aliases_by_file,
+            direct_function_import_aliases_by_file,
+            unambiguous_production_owner_names_by_package,
+            owner_names_by_module_path,
+            owner_names_by_package_and_module_path,
+            production_owner_names,
+        }
+    }
 }
 
 pub(in crate::analysis::test_grip_evidence) fn helper_owner_calls_by_file_with_fanout(
     index: &RustIndex,
+    shared: &SharedIndexTables,
     allow_fanout_wrappers: bool,
 ) -> HelperOwnerCallsByFile {
     let mut helpers: HelperOwnerCallsByFile = BTreeMap::new();
-    let function_names_by_file = local_function_names_by_file(index);
-    let direct_function_import_aliases_by_file = direct_function_import_aliases_by_file(index);
-    let unambiguous_production_owner_names_by_package =
-        unambiguous_production_owner_names_by_package(index);
-    let owner_names_by_module_path = production_owner_names_by_module_path(index);
-    let production_owner_names = production_owner_names(index);
+    let SharedIndexTables {
+        function_names_by_file,
+        direct_function_import_aliases_by_file,
+        unambiguous_production_owner_names_by_package,
+        owner_names_by_module_path,
+        production_owner_names,
+        ..
+    } = shared;
     let actual_tests = actual_test_keys(index);
     for function in index.functions().iter().filter(|function| {
         !actual_tests.contains(&ActualTestKey {
@@ -1265,7 +1294,7 @@ pub(in crate::analysis::test_grip_evidence) fn helper_owner_calls_by_file_with_f
         let helper_name_lower = function.name.to_ascii_lowercase();
         let local_function_names = function_names_by_file.get(&function.file);
         let external_owner_names =
-            rust_index::is_test_file(&function.file).then_some(&production_owner_names);
+            rust_index::is_test_file(&function.file).then_some(production_owner_names);
         let mut owner_calls = function
             .calls
             .iter()
@@ -1287,7 +1316,7 @@ pub(in crate::analysis::test_grip_evidence) fn helper_owner_calls_by_file_with_f
                 function,
                 direct_function_import_aliases_by_file.get(&function.file),
                 unambiguous_production_owner_names_by_package.get(&package),
-                &owner_names_by_module_path,
+                owner_names_by_module_path,
             ));
         }
         if owner_calls.is_empty() {
@@ -1460,125 +1489,89 @@ pub(in crate::analysis::test_grip_evidence) fn production_helper_owner_calls_by_
         .collect()
 }
 
-pub(in crate::analysis::test_grip_evidence) fn target_affinity_production_owner_calls_by_package(
-    index: &RustIndex,
-) -> HelperOwnerCallsByPackage {
-    target_affinity_production_owner_call_sets_by_package(index)
-        .into_iter()
-        .filter_map(|(package, helper_sets)| {
-            let helpers = helper_sets
-                .into_iter()
-                .filter_map(|(helper_name, owner_sets)| {
-                    common_helper_owner_calls(helper_name, owner_sets)
-                })
-                .collect::<HelperOwnerCallsByName>();
-            (!helpers.is_empty()).then_some((package, helpers))
-        })
-        .collect()
+/// The three target-affinity helper tables. All three read the same
+/// per-function direct owner calls, so one pass computes them.
+pub(in crate::analysis::test_grip_evidence) struct TargetAffinityOwnerCalls {
+    pub(in crate::analysis::test_grip_evidence) by_package: HelperOwnerCallsByPackage,
+    pub(in crate::analysis::test_grip_evidence) ambiguous_by_package: HelperOwnerCallsByPackage,
+    pub(in crate::analysis::test_grip_evidence) by_module_path: HelperOwnerCallsByModulePath,
 }
 
-pub(in crate::analysis::test_grip_evidence) fn ambiguous_target_affinity_owner_calls_by_package(
-    index: &RustIndex,
-) -> HelperOwnerCallsByPackage {
-    target_affinity_production_owner_call_sets_by_package(index)
-        .into_iter()
-        .filter_map(|(package, helper_sets)| {
-            let helpers = helper_sets
-                .into_iter()
-                .filter_map(|(helper_name, owner_sets)| {
-                    ambiguous_helper_owner_calls(helper_name, owner_sets)
-                })
-                .collect::<HelperOwnerCallsByName>();
-            (!helpers.is_empty()).then_some((package, helpers))
-        })
-        .collect()
-}
-
-fn target_affinity_production_owner_call_sets_by_package(
-    index: &RustIndex,
-) -> BTreeMap<String, BTreeMap<String, Vec<BTreeSet<String>>>> {
-    let function_names_by_file = local_function_names_by_file(index);
-    let imported_module_aliases_by_file = module_import_aliases_by_file(index);
-    let direct_function_import_aliases_by_file = direct_function_import_aliases_by_file(index);
-    let unambiguous_production_owner_names_by_package =
-        unambiguous_production_owner_names_by_package(index);
-    let owner_names_by_module_path = production_owner_names_by_module_path(index);
-    let owner_names_by_package_and_module_path =
-        production_owner_names_by_package_and_module_path(index);
-    let mut by_package: BTreeMap<String, BTreeMap<String, Vec<BTreeSet<String>>>> = BTreeMap::new();
-    for function in index.functions().iter().filter(|function| {
-        !function.source_role.is_evidence_role() && !rust_index::is_test_file(&function.file)
-    }) {
-        let Some(package) = package_scope(&function.file) else {
-            continue;
-        };
-        let Some(local_function_names) = function_names_by_file.get(&function.file) else {
-            continue;
-        };
-        let owner_calls = target_affinity_direct_owner_calls_for_function(
-            function,
-            local_function_names,
-            imported_module_aliases_by_file.get(&function.file),
-            direct_function_import_aliases_by_file.get(&function.file),
-            unambiguous_production_owner_names_by_package.get(&package),
-            &owner_names_by_module_path,
-            owner_names_by_package_and_module_path.get(&package),
-        );
-        if owner_calls.is_empty() {
-            continue;
+impl TargetAffinityOwnerCalls {
+    pub(in crate::analysis::test_grip_evidence) fn build(
+        index: &RustIndex,
+        shared: &SharedIndexTables,
+    ) -> Self {
+        let mut sets_by_package: BTreeMap<String, BTreeMap<String, Vec<BTreeSet<String>>>> =
+            BTreeMap::new();
+        let mut by_module_path: HelperOwnerCallsByModulePath = BTreeMap::new();
+        for function in index.functions().iter().filter(|function| {
+            !function.source_role.is_evidence_role() && !rust_index::is_test_file(&function.file)
+        }) {
+            let Some(package) = package_scope(&function.file) else {
+                continue;
+            };
+            let Some(local_function_names) = shared.function_names_by_file.get(&function.file)
+            else {
+                continue;
+            };
+            let owner_calls = target_affinity_direct_owner_calls_for_function(
+                function,
+                local_function_names,
+                shared.module_import_aliases_by_file.get(&function.file),
+                shared
+                    .direct_function_import_aliases_by_file
+                    .get(&function.file),
+                shared
+                    .unambiguous_production_owner_names_by_package
+                    .get(&package),
+                &shared.owner_names_by_module_path,
+                shared.owner_names_by_package_and_module_path.get(&package),
+            );
+            if owner_calls.is_empty() {
+                continue;
+            }
+            if let Some(module_path) = module_path_for_index(index, &function.file) {
+                by_module_path
+                    .entry(module_path.replace('/', "::"))
+                    .or_default()
+                    .insert(function.name.clone(), owner_calls.clone());
+            }
+            sets_by_package
+                .entry(package)
+                .or_default()
+                .entry(function.name.clone())
+                .or_default()
+                .push(owner_calls);
         }
-        by_package
-            .entry(package)
-            .or_default()
-            .entry(function.name.clone())
-            .or_default()
-            .push(owner_calls);
-    }
-    by_package
-}
-
-pub(in crate::analysis::test_grip_evidence) fn target_affinity_production_owner_calls_by_module_path(
-    index: &RustIndex,
-) -> HelperOwnerCallsByModulePath {
-    let function_names_by_file = local_function_names_by_file(index);
-    let imported_module_aliases_by_file = module_import_aliases_by_file(index);
-    let direct_function_import_aliases_by_file = direct_function_import_aliases_by_file(index);
-    let unambiguous_production_owner_names_by_package =
-        unambiguous_production_owner_names_by_package(index);
-    let owner_names_by_module_path = production_owner_names_by_module_path(index);
-    let owner_names_by_package_and_module_path =
-        production_owner_names_by_package_and_module_path(index);
-    let mut by_module_path: HelperOwnerCallsByModulePath = BTreeMap::new();
-    for function in index.functions().iter().filter(|function| {
-        !function.source_role.is_evidence_role() && !rust_index::is_test_file(&function.file)
-    }) {
-        let Some(module_path) = module_path_for_index(index, &function.file) else {
-            continue;
-        };
-        let Some(package) = package_scope(&function.file) else {
-            continue;
-        };
-        let Some(local_function_names) = function_names_by_file.get(&function.file) else {
-            continue;
-        };
-        let owner_calls = target_affinity_direct_owner_calls_for_function(
-            function,
-            local_function_names,
-            imported_module_aliases_by_file.get(&function.file),
-            direct_function_import_aliases_by_file.get(&function.file),
-            unambiguous_production_owner_names_by_package.get(&package),
-            &owner_names_by_module_path,
-            owner_names_by_package_and_module_path.get(&package),
-        );
-        if owner_calls.is_empty() {
-            continue;
+        let mut by_package = HelperOwnerCallsByPackage::new();
+        let mut ambiguous_by_package = HelperOwnerCallsByPackage::new();
+        for (package, helper_sets) in sets_by_package {
+            let mut helpers = HelperOwnerCallsByName::new();
+            let mut ambiguous = HelperOwnerCallsByName::new();
+            for (helper_name, owner_sets) in helper_sets {
+                if let Some((name, owners)) =
+                    ambiguous_helper_owner_calls(helper_name.clone(), owner_sets.clone())
+                {
+                    ambiguous.insert(name, owners);
+                }
+                if let Some((name, owners)) = common_helper_owner_calls(helper_name, owner_sets) {
+                    helpers.insert(name, owners);
+                }
+            }
+            if !helpers.is_empty() {
+                by_package.insert(package.clone(), helpers);
+            }
+            if !ambiguous.is_empty() {
+                ambiguous_by_package.insert(package, ambiguous);
+            }
         }
-        by_module_path
-            .entry(module_path.replace('/', "::"))
-            .or_default()
-            .insert(function.name.clone(), owner_calls);
+        Self {
+            by_package,
+            ambiguous_by_package,
+            by_module_path,
+        }
     }
-    by_module_path
 }
 
 pub(in crate::analysis::test_grip_evidence) fn target_affinity_direct_owner_calls_for_function(
@@ -3301,7 +3294,7 @@ mod tests {
                 FileFacts {
                     path: file.clone(),
                     functions: vec![production.clone(), evidence_shadow.clone()],
-                    source: source.to_string(),
+                    source: source.into(),
                     ..FileFacts::default()
                 },
             )]),
@@ -3463,7 +3456,7 @@ mod tests {
             file: file.to_path_buf(),
             start_line,
             end_line: start_line,
-            body: String::new(),
+            body: String::new().into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),

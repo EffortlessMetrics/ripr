@@ -1613,6 +1613,7 @@ pub(crate) fn dogfood_gate_adoption_run_with_binary(
             scenario.expected_advisory, advisory
         ));
     }
+    pin_gate_subject_analyzer_version(&json_path, &mut errors);
     let expected_dir = Path::new(scenario.expected_dir);
     compare_expected_text(
         &json_path,
@@ -1646,6 +1647,53 @@ pub(crate) fn dogfood_gate_adoption_run_with_binary(
         expected_exit_success: scenario.expected_exit_success,
         errors,
     })
+}
+
+/// #5263: the gate-decision `subject.analyzer_version` stamps the writing
+/// binary's build identity, which differs per checkout, so the committed
+/// golden carries a pinned value. Replace the observed value in the actual
+/// output after checking its shape: a render that stopped stamping its own
+/// build would re-pin against itself and fail the shape check.
+fn pin_gate_subject_analyzer_version(json_path: &Path, errors: &mut Vec<String>) {
+    const PINNED: &str = "0.0.0+pinned-golden-analyzer-version";
+    let text = match fs::read_to_string(json_path) {
+        Ok(text) => text,
+        Err(_) => return, // a missing or unreadable output is already an error
+    };
+    let observed = match serde_json::from_str::<Value>(&text) {
+        Ok(value) => value
+            .pointer("/subject/analyzer_version")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        Err(_) => None,
+    };
+    let Some(observed) = observed else {
+        return; // schema/shape failures surface elsewhere
+    };
+    if observed == PINNED {
+        errors.push(format!(
+            "rendered subject.analyzer_version is the pinned golden value, so the render did not stamp its own build identity: {}",
+            normalize_path(json_path)
+        ));
+        return;
+    }
+    if !observed.contains('+') {
+        errors.push(format!(
+            "rendered subject.analyzer_version must be a build identity (version+commit), got `{observed}`: {}",
+            normalize_path(json_path)
+        ));
+        return;
+    }
+    let pinned = text.replace(
+        &format!("\"analyzer_version\": \"{observed}\""),
+        &format!("\"analyzer_version\": \"{PINNED}\""),
+    );
+    if let Err(err) = fs::write(json_path, pinned) {
+        errors.push(format!(
+            "failed to pin subject.analyzer_version in {}: {err}",
+            normalize_path(json_path)
+        ));
+    }
 }
 
 pub(crate) fn dogfood_gate_adoption_args(

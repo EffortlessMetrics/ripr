@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index d20a409..a9f302f 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -9,7 +9,7 @@ pub fn is_weekend(day: u8) -> bool {
+ }
+ 
+ pub fn same_currency(a: &str, b: &str) -> bool {
+-    a == b
++    b == a
+ }
+ 
+ pub fn is_origin(x: i32, y: i32) -> bool {

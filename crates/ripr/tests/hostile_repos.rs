@@ -8,7 +8,8 @@
 //! file, nor a quiet "clean" result for input ripr could not read is accepted.
 //!
 //! Cases: unusual in-repo file names, option-shaped `--base` values, a
-//! non-UTF-8 source file, symlink loops, an oversized diff, shallow clones,
+//! non-UTF-8 source file, symlink loops, an oversized diff, a package over
+//! the narrowing threshold, shallow clones,
 //! detached HEAD, linked worktrees, submodules, a repository without a usable
 //! base, and user git configuration that changes `git diff` output.
 
@@ -162,6 +163,15 @@ fn git(dir: &Path, args: &[&str]) -> Result<(), String> {
 /// A repository with `main` at the base commit and `feat` checked out with the
 /// change committed. `edit` rewrites the working tree between the two commits.
 fn repo(root: &Path, edit: impl FnOnce(&Path) -> Result<(), String>) -> Result<(), String> {
+    repo_with_test(root, TEST, edit)
+}
+
+/// [`repo`] with a caller-supplied `tests/t.rs` in the base commit.
+fn repo_with_test(
+    root: &Path,
+    test_source: &str,
+    edit: impl FnOnce(&Path) -> Result<(), String>,
+) -> Result<(), String> {
     let w = |rel: &str, body: &str| -> Result<(), String> {
         let path = root.join(rel);
         if let Some(parent) = path.parent() {
@@ -173,7 +183,7 @@ fn repo(root: &Path, edit: impl FnOnce(&Path) -> Result<(), String>) -> Result<(
     git(root, &["init", "-q", "-b", "main"])?;
     w("Cargo.toml", MANIFEST)?;
     w("src/lib.rs", BASE_LIB)?;
-    w("tests/t.rs", TEST)?;
+    w("tests/t.rs", test_source)?;
     git(root, &["add", "-A"])?;
     git(root, &["commit", "-q", "-m", "base"])?;
     git(root, &["checkout", "-q", "-b", "feat"])?;
@@ -415,6 +425,51 @@ fn oversized_diff_is_refused_with_a_repair_route() -> Result<(), String> {
     Ok(())
 }
 
+/// A changed package larger than the 1,200-file narrowing threshold runs at
+/// default settings: that threshold bounds time, and only the higher
+/// `RIPR_MAX_DIFF_INDEX_FILES` memory guard refuses. Before the split, the
+/// same 1,200 bounded both and this run was refused. The control lowers the
+/// hard limit back to 1,200 and must refuse, so the fixture really selects
+/// more files than the threshold.
+#[test]
+fn package_over_the_narrowing_threshold_runs_until_the_memory_guard() -> Result<(), String> {
+    let scratch = Scratch::new("narrow")?;
+    let root = scratch.path.join("r");
+    repo(&root, |root| {
+        for i in 0..1_250 {
+            fs::write(
+                root.join(format!("src/m{i}.rs")),
+                format!("pub fn m{i}(a: u32) -> u32 {{ a + {i} }}\n"),
+            )
+            .map_err(|e| format!("write failed: {e}"))?;
+        }
+        // The unchanged modules belong to the base, so only `total` changes.
+        git(root, &["add", "-A"])?;
+        git(root, &["commit", "-q", "-m", "modules"])?;
+        git(root, &["branch", "-f", "main", "HEAD"])?;
+        change_lib(root)
+    })?;
+    let ran = ripr(&root, &["check"], &[])?;
+    assert_found_change(&ran, "package over the narrowing threshold")?;
+    if ran.stderr.contains("diff_scope_oversized") {
+        return Err(format!("the narrowing threshold refused\n{}", ran.stderr));
+    }
+    let refused = ripr(&root, &["check"], &[("RIPR_MAX_DIFF_INDEX_FILES", "1200")])?;
+    assert_sane(&refused, "package over the memory guard")?;
+    if refused.code != Some(2)
+        || !refused.stderr.contains("diff_scope_oversized")
+        || !refused
+            .stderr
+            .contains("RIPR_MAX_DIFF_INDEX_FILES limit (1200)")
+    {
+        return Err(format!(
+            "expected the memory guard to refuse\n{}",
+            refused.stderr
+        ));
+    }
+    Ok(())
+}
+
 #[test]
 fn detached_head_worktree_and_submodule_roots_work() -> Result<(), String> {
     let scratch = Scratch::new("topology")?;
@@ -618,4 +673,249 @@ fn default_base_equal_to_head_is_called_out() -> Result<(), String> {
         &ripr(&clone, &["check", "--base", "origin/main"], &[])?,
         "explicit base",
     )
+}
+
+/// Source text reaches the human reports verbatim, so a repository can carry
+/// terminal control bytes in an assertion message: ESC sequences that clear the
+/// screen or retitle the window, BEL, a bare CR that overwrites a line, and a
+/// bidi override. The human reports and `explain` must print them escaped; the
+/// machine formats must stay valid and keep the value.
+#[test]
+fn terminal_control_bytes_in_repo_text_never_reach_the_terminal() -> Result<(), String> {
+    let hostile = "\u{1b}[2J\u{1b}]0;PWNED\u{7}\r\u{202e}gnissim";
+    let test_source =
+        format!("use hx::total;\n#[test]\nfn t() {{ assert_eq!(total(1), 3, \"{hostile}\"); }}\n");
+    let scratch = Scratch::new("termctl")?;
+    let root = scratch.path.join("repo");
+    repo_with_test(&root, &test_source, change_lib)?;
+
+    let leaks = |text: &str| {
+        text.chars()
+            .any(|c| matches!(c, '\u{1b}' | '\u{7}' | '\r' | '\u{202e}'))
+    };
+    let clean = |ran: &Ran, what: &str| -> Result<(), String> {
+        assert_sane(ran, what)?;
+        if leaks(&ran.stdout) {
+            return Err(format!(
+                "{what}: terminal control bytes reached stdout\n{:?}",
+                ran.stdout
+            ));
+        }
+        Ok(())
+    };
+
+    let digest = ripr(&root, &["check", "--base", "main"], &[])?;
+    clean(&digest, "check human")?;
+    let probe = digest
+        .stdout
+        .split_whitespace()
+        .find(|word| word.starts_with("probe:"))
+        .ok_or_else(|| format!("no probe selector in\n{}", digest.stdout))?;
+
+    let full = ripr(
+        &root,
+        &["check", "--base", "main", "--format", "human-full"],
+        &[],
+    )?;
+    clean(&full, "check human-full")?;
+    let explain = ripr(
+        &root,
+        &["explain", "--root", ".", "--base", "main", probe],
+        &[],
+    )?;
+    clean(&explain, "explain")?;
+    // The text is escaped, not dropped: the reader still sees what the
+    // repository wrote, and these reports reached the assertion at all.
+    for (ran, what) in [(&full, "human-full"), (&explain, "explain")] {
+        if !ran.stdout.contains("\\u{1b}[2J") {
+            return Err(format!(
+                "{what}: expected the escaped assertion text\n{}",
+                ran.stdout
+            ));
+        }
+    }
+
+    let json = ripr(&root, &["check", "--base", "main", "--format", "json"], &[])?;
+    assert_sane(&json, "check json")?;
+    if json.stdout.chars().any(|c| c.is_control() && c != '\n') || !json.stdout.contains("\\u001b")
+    {
+        return Err(format!(
+            "json must escape control bytes and keep the value\n{:?}",
+            json.stdout
+        ));
+    }
+    Ok(())
+}
+
+/// #6309: the terminal-bound surfaces beyond the human report. A directory
+/// name, a changed file name and a `ripr.toml` value carry ESC/OSC/bidi bytes;
+/// the GitHub annotation output, the stderr error and warning lines and the
+/// printed drill-in commands must show them escaped, and the drill-in command
+/// must still name the same directory when a shell decodes it.
+#[cfg(unix)]
+#[test]
+fn control_bytes_in_names_and_config_never_reach_github_output_stderr_or_commands()
+-> Result<(), String> {
+    let leaks = |text: &str| {
+        text.chars()
+            .any(|c| matches!(c, '\u{1b}' | '\u{7}' | '\r' | '\u{202e}'))
+    };
+    let scratch = Scratch::new("termsurf")?;
+    let name = "r\u{1b}]0;PWN\u{7}\u{202e}x";
+    let root = scratch.path.join(name);
+    let edit = |root: &Path| -> Result<(), String> {
+        change_lib(root)?;
+        fs::write(root.join("src/a\u{1b}[2Jb.rs"), "pub fn n() {}\n")
+            .map_err(|e| format!("write hostile file name failed: {e}"))?;
+        // Unanalyzed script and non-source disclosures name changed paths.
+        fs::write(root.join("s\u{1b}]0;pwn\u{7}.sh"), "echo hi\n")
+            .map_err(|e| format!("write hostile script name failed: {e}"))?;
+        fs::write(root.join("q\u{1b}[2J."), "x\n")
+            .map_err(|e| format!("write hostile extensionless name failed: {e}"))
+    };
+    repo(&root, edit)?;
+
+    // GitHub annotations carry the changed file name in a property.
+    let github = ripr(
+        &root,
+        &["check", "--base", "main", "--format", "github"],
+        &[],
+    )?;
+    assert_sane(&github, "check github")?;
+    if leaks(&github.stdout) || leaks(&github.stderr) {
+        return Err(format!("github output leaked\n{:?}", github.stdout));
+    }
+
+    // A repository config value is quoted in the parse error on stderr.
+    fs::write(root.join("ripr.toml"), "mode = \"x\u{1b}[2J\u{202e}\"\n")
+        .map_err(|e| format!("write ripr.toml failed: {e}"))?;
+    let bad_config = ripr(&root, &["check", "--base", "main"], &[])?;
+    assert_sane(&bad_config, "check with bad ripr.toml")?;
+    if leaks(&bad_config.stdout) || leaks(&bad_config.stderr) {
+        return Err(format!("config error leaked\n{:?}", bad_config.stderr));
+    }
+    if !bad_config.stderr.contains("\\u{1b}[2J") {
+        return Err(format!(
+            "expected the escaped config text on stderr\n{}",
+            bad_config.stderr
+        ));
+    }
+    fs::remove_file(root.join("ripr.toml")).map_err(|e| format!("remove ripr.toml failed: {e}"))?;
+
+    // A tracked file deleted from the working tree is named in a stderr notice.
+    fs::remove_file(root.join("src/a\u{1b}[2Jb.rs"))
+        .map_err(|e| format!("delete hostile file failed: {e}"))?;
+    let deleted = ripr(&root, &["check", "--base", "main"], &[])?;
+    assert_sane(&deleted, "check with a deleted hostile file")?;
+    if leaks(&deleted.stdout) || leaks(&deleted.stderr) {
+        return Err(format!("deleted-file notice leaked\n{:?}", deleted.stderr));
+    }
+    if !deleted.stderr.contains("\\u{1b}[2Jb.rs") {
+        return Err(format!(
+            "expected the escaped file name on stderr\n{}",
+            deleted.stderr
+        ));
+    }
+    fs::write(root.join("src/a\u{1b}[2Jb.rs"), "pub fn n() {}\n")
+        .map_err(|e| format!("restore hostile file failed: {e}"))?;
+
+    // The typed refusal envelope on stderr is JSON: a bidi character in the
+    // seam id must stay a parseable JSON escape, not become `\u{202e}`.
+    let refusal = ripr(
+        &root,
+        &[
+            "agent",
+            "card",
+            "--root",
+            ".",
+            "--seam-id",
+            "x\u{202e}y",
+            "--json",
+        ],
+        &[],
+    )?;
+    // A typed refusal exits 3 (decision), which `assert_sane` does not allow.
+    if refusal.code != Some(3) || refusal.stderr.contains("panicked") {
+        return Err(format!("unexpected refusal run\n{:?}", refusal.stderr));
+    }
+    if leaks(&refusal.stderr) {
+        return Err(format!("refusal leaked\n{:?}", refusal.stderr));
+    }
+    let envelope_end = refusal
+        .stderr
+        .find("\n}\n")
+        .ok_or_else(|| format!("no JSON envelope on stderr\n{}", refusal.stderr))?;
+    let envelope: serde_json::Value = serde_json::from_str(&refusal.stderr[..envelope_end + 2])
+        .map_err(|e| {
+            format!(
+                "refusal envelope is not valid JSON: {e}\n{}",
+                refusal.stderr
+            )
+        })?;
+    if envelope["error"]["seam_id"] != "x\u{202e}y" {
+        return Err(format!("seam id did not round-trip\n{envelope}"));
+    }
+
+    // A bad ref echoed back by the failure path.
+    let bad_ref = ripr(&root, &["check", "--base", "nope\u{1b}[2Jx"], &[])?;
+    assert_sane(&bad_ref, "check with hostile ref")?;
+    if leaks(&bad_ref.stdout) || leaks(&bad_ref.stderr) {
+        return Err(format!("ref error leaked\n{:?}", bad_ref.stderr));
+    }
+
+    // The printed drill-in command names the hostile root. It must carry the
+    // directory as bash escapes, with no raw control byte.
+    let root_arg = root
+        .to_str()
+        .ok_or_else(|| "scratch root is not UTF-8".to_string())?;
+    let report = ripr(
+        &scratch.path,
+        &["check", "--root", root_arg, "--base", "main"],
+        &[],
+    )?;
+    assert_sane(&report, "check --root hostile directory")?;
+    if leaks(&report.stdout) || leaks(&report.stderr) {
+        return Err(format!("report leaked\n{:?}", report.stdout));
+    }
+    let command = report
+        .stdout
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with("ripr explain "))
+        .ok_or_else(|| format!("no explain command in\n{}", report.stdout))?;
+    if !command.contains("$(printf '\\033')") {
+        return Err(format!("drill-in command is not shell-escaped: {command}"));
+    }
+    // Run the printed command through bash: it must resolve the same root.
+    // `ripr` is linked into a scratch bin directory so the line runs as printed.
+    let bin_dir = scratch.path.join("bin");
+    fs::create_dir_all(&bin_dir).map_err(|e| format!("mkdir bin failed: {e}"))?;
+    std::os::unix::fs::symlink(ripr_bin(), bin_dir.join("ripr"))
+        .map_err(|e| format!("link ripr failed: {e}"))?;
+    let path = format!(
+        "{}:{}",
+        bin_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let ran = ripr_shell(&scratch.path, command, &path)?;
+    if ran.contains("could not") || !ran.contains("probe:") {
+        return Err(format!(
+            "pasted drill-in command did not resolve the root\n{ran}"
+        ));
+    }
+    Ok(())
+}
+
+/// Run one shell command line with `ripr` on PATH, returning its stdout.
+#[cfg(unix)]
+fn ripr_shell(dir: &Path, line: &str, path: &str) -> Result<String, String> {
+    let output = Command::new("bash")
+        .arg("-c")
+        .arg(line)
+        .current_dir(dir)
+        .env("PATH", path)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("spawn bash failed: {e}"))?;
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }

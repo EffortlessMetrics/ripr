@@ -15,7 +15,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: let n = rdr.read(&mut buf)?;
   Missing discriminator: No exact error variant discriminator was detected
-  Related test: src/lib.rs:14 reads_successfully (assertion does not mention the changed expression)
+  Related test: src/lib.rs:14 reads_successfully (ripr could not confirm that this assertion observes the changed behavior)
   Next step: Assert the exact error variant or payload instead of only is_err().
   Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach read_all: reads_successfully

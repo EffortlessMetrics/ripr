@@ -1489,3 +1489,125 @@ fn predicate_pairing_cannot_reuse_refused_boundary_equalities() -> Result<(), St
     }
     Ok(())
 }
+
+/// A bare `assert!` on a bool owner pins its whole result: the predicate that
+/// is the owner's tail reads `exposed` only when one test pins both sides of
+/// the boundary, and a shadowed or one-sided pin stays below `exposed`. Each
+/// row runs the same test against the rewrite and a `<` mutant.
+#[test]
+fn bool_owner_assert_pin_matched_static_and_runtime_controls() -> Result<(), String> {
+    let production = "pub fn gate(value: u32) -> bool {\n    10 <= value\n}\n";
+    let diff = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,3 +1,3 @@\n pub fn gate(value: u32) -> bool {\n-    value >= 10\n+    10 <= value\n }\n";
+    for (case, body, exposed) in [
+        (
+            "both_sides",
+            "assert!(gate(10));\n        assert!(!gate(9));",
+            true,
+        ),
+        (
+            "let_bound_inputs",
+            "let n = 10;\n        assert!(gate(n), \"ten passes\");\n        let m = 9;\n        assert!(!gate(m));",
+            true,
+        ),
+        (
+            "far_input_only",
+            "assert!(gate(50));\n        assert!(!gate(3));",
+            false,
+        ),
+        ("below_side_only", "assert!(!gate(9));", false),
+        (
+            "shadowed_owner",
+            "let gate = |value: u32| value >= 10;\n        assert!(gate(10));\n        assert!(!gate(9));",
+            false,
+        ),
+        (
+            "boundary_only_in_message",
+            "let got = gate(10);\n        assert!(gate(50), \"{got}\");",
+            false,
+        ),
+        (
+            "boundary_call_in_message",
+            "assert!(gate(50), \"{}\", gate(10));",
+            false,
+        ),
+        (
+            "assert_eq_boundary_only_in_message",
+            "let got = gate(10);\n        assert_eq!(gate(50), true, \"{got}\");",
+            false,
+        ),
+        (
+            "boundary_binding_only_in_operand_comment",
+            "let got = gate(10);\n        assert_eq!(gate(50), true /* got */);",
+            false,
+        ),
+        (
+            "same_line_unasserted_boundary",
+            "let got = gate(10); assert!(gate(50), \"{got}\");",
+            false,
+        ),
+        (
+            "same_line_unasserted_negated_boundary",
+            "let _ = gate(10); assert!(!gate(3));",
+            false,
+        ),
+        (
+            "assert_eq_same_line_unasserted_boundary",
+            "let _ = gate(10); assert_eq!(gate(50), true);",
+            false,
+        ),
+        (
+            "uncalled_closure",
+            "let _check = || assert!(gate(10));\n        assert!(!gate(9));",
+            false,
+        ),
+    ] {
+        let tests = format!(
+            "#[cfg(test)]\nmod tests {{\n    use super::*;\n\n    #[test]\n    fn gate_boundary() {{\n        {body}\n    }}\n}}\n"
+        );
+        let workspace = Scratch::create()?;
+        std::fs::create_dir(workspace.0.join("src")).map_err(|error| error.to_string())?;
+        std::fs::write(
+            workspace.0.join("Cargo.toml"),
+            "[package]\nname = \"bool_pin_control\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        )
+        .map_err(|error| error.to_string())?;
+        std::fs::write(
+            workspace.0.join("src/lib.rs"),
+            format!("{production}\n{tests}"),
+        )
+        .map_err(|error| error.to_string())?;
+        std::fs::write(workspace.0.join("diff.patch"), diff).map_err(|error| error.to_string())?;
+        let report = check_workspace(CheckInput {
+            root: workspace.0.clone(),
+            diff_file: Some(workspace.0.join("diff.patch")),
+            mode: Mode::Fast,
+            format: OutputFormat::Json,
+            ..CheckInput::default()
+        })?;
+        let predicate = report
+            .findings
+            .iter()
+            .find(|finding| finding.probe.family == ProbeFamily::Predicate)
+            .ok_or(format!("{case}: no predicate finding on the changed tail"))?;
+        assert_eq!(
+            predicate.class == ExposureClass::Exposed,
+            exposed,
+            "{case}: {:?}",
+            predicate.class
+        );
+        // The rewrite keeps the test green; only a discriminating test
+        // notices the `<` mutant.
+        for (label, tail, should_fail) in [
+            ("rewrite", "10 <= value", false),
+            ("mutant", "10 < value", exposed),
+        ] {
+            source_runtime_control(
+                &format!("{}\n{tests}", production.replace("10 <= value", tail)),
+                &format!("bool pin {case} {label}"),
+                1,
+                should_fail,
+            )?;
+        }
+    }
+    Ok(())
+}

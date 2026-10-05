@@ -662,7 +662,7 @@ fn missing_base_command(options: &FirstPrOptions) -> String {
         .map(|branch| {
             format!(
                 "git fetch origin -- {}; then rerun `ripr first-pr --root {} --base {} --head {}`.",
-                shell_arg(branch),
+                shell_arg(&base_fetch_refspec(branch)),
                 shell_arg(&options.command_root()),
                 shell_arg(&options.base),
                 shell_arg(&options.head)
@@ -1227,6 +1227,28 @@ fn select_from_gap_ledger(gap_ledger: &Value, root: &Path, options: &FirstPrOpti
             |warning| {
                 format!(
                     "The gap decision ledger is blocked: {warning}. Refresh the first-run evidence before assigning repair work."
+                )
+            },
+        );
+        return Selection::blocked(
+            "blocked_artifact",
+            message,
+            Some(regenerate_blocked_gap_ledger_command(root, options)),
+        );
+    }
+    if ledger_check_output_projected_nothing(gap_ledger) {
+        // #5264: a clean-parse zero-record ledger from the --check-output
+        // route means the route projected nothing for this PR's language
+        // (it projects Python/TypeScript/Perl only), not that the evidence
+        // is corrupt. Recovery is the same regeneration compound the
+        // blocked state offers; the ledger's own warning names the coverage.
+        let message = first_string_array_item(gap_ledger, &["warnings"]).map_or_else(
+            || {
+                "The check-output gap ledger parsed but projected no records for this PR's language; regenerate the ledger from the workspace evidence.".to_string()
+            },
+            |warning| {
+                format!(
+                    "The check-output gap ledger parsed but projected no records: {warning}. Regenerate the ledger from the workspace evidence."
                 )
             },
         );
@@ -1835,6 +1857,16 @@ fn ledger_reports_blocked(value: &Value) -> bool {
             .as_deref(),
         Some("blocked")
     )
+}
+
+/// #5264: `no_records` from a `--check-output` ledger is the honest healthy
+/// no-op for languages that route cannot project. first-pr must still
+/// recover (the route did not see this PR's language), but only for that
+/// source: `no_records` from a repo-exposure or records ledger is a genuine
+/// empty result, not a recoverable projection miss.
+fn ledger_check_output_projected_nothing(value: &Value) -> bool {
+    string_path(value, &["status"]).as_deref() == Some("no_records")
+        && string_path(value, &["inputs", "source_kind"]).as_deref() == Some("check_output")
 }
 
 fn root_mismatch(expected_root: &Path, expected_arg: &str, observed_root: &str) -> bool {
@@ -2627,12 +2659,20 @@ fn git_success_with_ceiling(
     Ok(output.status.success())
 }
 
+/// Fetch refspec with an explicit destination. In a single-branch or shallow
+/// checkout the remote has no mapping for the branch, so a bare
+/// `git fetch origin -- <branch>` only fills FETCH_HEAD and `origin/<branch>`
+/// stays unresolved. Every printed missing-base fetch uses this one spelling.
+fn base_fetch_refspec(branch: &str) -> String {
+    format!("+refs/heads/{branch}:refs/remotes/origin/{branch}")
+}
+
 fn fetch_base_command(options: &FirstPrOptions) -> String {
     if let Some(branch) = options.base.strip_prefix("origin/") {
         format!(
             "git -C {} fetch origin -- {}",
             shell_arg(&options.command_root()),
-            shell_arg(branch)
+            shell_arg(&base_fetch_refspec(branch))
         )
     } else {
         format!(
@@ -3190,6 +3230,60 @@ mod tests {
             violations,
             vec!["selected top_gap must name changed behavior"]
         );
+    }
+
+    /// #5264: a check-output ledger that parsed cleanly but projected zero
+    /// records (the route projects Python/TypeScript/Perl only) recovers
+    /// through the same blocked-artifact regeneration compound; the same
+    /// `no_records` status from any other source is a genuine empty result
+    /// and must not trigger the recovery.
+    #[test]
+    fn no_records_check_output_ledger_recovers_through_regeneration_compound() -> Result<(), String>
+    {
+        let ledger_value = |status: &str, source_kind: &str| {
+            serde_json::json!({
+                "status": status,
+                "inputs": {"source_kind": source_kind},
+                "records": [],
+                "warnings": ["check output contained 3 findings, but the --check-output route projects Python/TypeScript/Perl findings only; no gap records were derived from them"]
+            })
+        };
+        let root = temp_repo("first-pr-no-records-recovery")?;
+        let options = FirstPrOptions::default();
+
+        let selection =
+            select_from_gap_ledger(&ledger_value("no_records", "check_output"), &root, &options);
+        match &selection {
+            Selection::Blocked {
+                state,
+                next_command,
+                ..
+            } => {
+                assert_eq!(state, "blocked_artifact");
+                let command = next_command
+                    .as_deref()
+                    .ok_or("the projection-miss recovery must carry a next command")?;
+                assert!(
+                    command.contains("repo-exposure"),
+                    "the Rust-root recovery compound regenerates repo-exposure evidence: {command}"
+                );
+            }
+            other => return Err(format!("expected a blocked recovery, got {other:?}")),
+        }
+
+        let genuine_empty = select_from_gap_ledger(
+            &ledger_value("no_records", "repo_exposure"),
+            &root,
+            &options,
+        );
+        if let Selection::Blocked { state, .. } = &genuine_empty {
+            return Err(format!(
+                "a repo-exposure no_records ledger is a genuine empty result, not a recoverable projection miss; got blocked {state}"
+            ));
+        }
+
+        let _ = fs::remove_dir_all(&root);
+        Ok(())
     }
 
     #[test]
@@ -3816,7 +3910,11 @@ mod tests {
         );
         assert_eq!(
             packet["selected"]["next_command"],
-            format!("git -C {} fetch origin -- missing-base", bound_arg("."))
+            format!(
+                "git -C {} fetch origin -- {}",
+                bound_arg("."),
+                shell_arg("+refs/heads/missing-base:refs/remotes/origin/missing-base")
+            )
         );
         cleanup(&repo)
     }
@@ -6171,6 +6269,129 @@ mod tests {
     }
 
     #[test]
+    fn preflight_recovery_commands_pair_shell_forms_for_apostrophe_root_and_refs()
+    -> Result<(), String> {
+        let repo = temp_repo("first-pr-owner's repo")?;
+        let hostile = "topic's;touch marker";
+        for (base, head, check_id, count) in [
+            ("HEAD", hostile, "git_head", 1),
+            (hostile, "HEAD", "git_base", 1),
+            ("origin/topic's;touch marker", "HEAD", "git_base", 2),
+            ("HEAD", "HEAD", "git_diff", 1),
+        ] {
+            let options = FirstPrOptions {
+                root: repo.display().to_string(),
+                base: base.to_string(),
+                head: head.to_string(),
+                preflight: true,
+                ..FirstPrOptions::default()
+            };
+            let packet = render_start_here_packet(&repo, &options);
+            let check = preflight_check(&packet, check_id)?;
+            let commands = check["recovery_commands"]
+                .as_array()
+                .ok_or("preflight did not carry executable recovery commands")?;
+            assert_eq!(commands.len(), count, "{check_id}: {packet}");
+            assert_eq!(
+                packet["preflight"]["recovery_commands"],
+                check["recovery_commands"]
+            );
+            assert_eq!(
+                packet["preflight"]["recovery_guidance"],
+                check["recovery_guidance"]
+            );
+            let markdown = render_start_here_markdown(&packet);
+            if check_id == "git_diff" {
+                assert!(
+                    markdown
+                        .contains("Choose a head with changes or commit PR work before rerunning."),
+                    "{markdown}"
+                );
+            }
+            for (index, command) in commands.iter().enumerate() {
+                let bash = command.as_str().ok_or("recovery command is not a string")?;
+                assert!(bash.contains(&shell_arg(&options.command_root())), "{bash}");
+                let powershell = crate::output::markdown::powershell_command(bash)
+                    .ok_or_else(|| format!("recovery cannot be translated: {bash}"))?;
+                assert!(
+                    markdown.contains(&format!("Recovery step {} (PowerShell):", index + 1)),
+                    "{markdown}"
+                );
+                assert!(
+                    markdown.contains(&crate::output::markdown::code_span(&powershell)),
+                    "{markdown}"
+                );
+            }
+            if count == 2 {
+                assert!(
+                    commands[0]
+                        .as_str()
+                        .is_some_and(|command| command.contains(" fetch origin -- "))
+                );
+                // The fetch names its destination, so it works in a
+                // single-branch checkout too.
+                assert!(
+                    commands[0]
+                        .as_str()
+                        .is_some_and(|command| command.contains("refs/remotes/origin/topic")
+                            && command.contains("+refs/heads/")),
+                    "{commands:?}"
+                );
+            }
+            assert_eq!(render_start_here_markdown(&packet), markdown);
+        }
+        cleanup(&repo)
+    }
+
+    #[test]
+    fn preflight_diff_failure_carries_the_same_shell_recovery_steps() -> Result<(), String> {
+        let repo = temp_cargo_root("first-pr-diff-error-owner's repo")?;
+        run_git_setup(&repo, &["init", "--object-format=sha1", "--template="])?;
+        run_git_setup(&repo, &["config", "gc.auto", "0"])?;
+        run_git_setup(&repo, &["config", "commit.gpgsign", "false"])?;
+        init_git_repo(&repo)?;
+        fs::write(repo.join("changed.txt"), "changed\n")
+            .map_err(|error| format!("write diff-error fixture: {error}"))?;
+        run_git_setup(&repo, &["add", "changed.txt"])?;
+        run_git_setup(&repo, &["commit", "-m", "change fixture"])?;
+        let tree = run_git(&repo, &git_args(&["rev-parse", "HEAD^{tree}"]))?;
+        let tree = tree.stdout.trim();
+        if tree.len() != 40 || !tree.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(format!("fixture did not produce a SHA-1 tree: {tree:?}"));
+        }
+        // Only the fixture's loose tree is removed. Both commit refs still
+        // resolve, but diff must inspect a missing tree and fail after that.
+        let object = repo.join(".git/objects").join(&tree[..2]).join(&tree[2..]);
+        fs::remove_file(&object)
+            .map_err(|error| format!("remove fixture tree {}: {error}", object.display()))?;
+        let options = FirstPrOptions {
+            root: repo.display().to_string(),
+            base: "HEAD~1".to_string(),
+            head: "HEAD".to_string(),
+            preflight: true,
+            ..FirstPrOptions::default()
+        };
+        let packet = render_start_here_packet(&repo, &options);
+        assert_eq!(preflight_check(&packet, "git_base")?["status"], "ok");
+        assert_eq!(preflight_check(&packet, "git_head")?["status"], "ok");
+        let diff = preflight_check(&packet, "git_diff")?;
+        assert_eq!(diff["status"], "needs_attention", "{packet}");
+        assert!(
+            diff["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("Could not inspect diff range")),
+            "{packet}"
+        );
+        assert_eq!(diff["recovery_commands"].as_array().map(Vec::len), Some(1));
+        let markdown = render_start_here_markdown(&packet);
+        assert!(
+            markdown.contains("Recovery step 1 (PowerShell):"),
+            "{markdown}"
+        );
+        cleanup(&repo)
+    }
+
+    #[test]
     fn preflight_reports_missing_git_base_and_config_defaults() -> Result<(), String> {
         let repo = temp_repo("first-pr-preflight-missing-base")?;
         fs::write(repo.join("Cargo.toml"), "[workspace]\n")
@@ -6189,7 +6410,10 @@ mod tests {
         assert!(
             base["next_command"]
                 .as_str()
-                .is_some_and(|command| command.contains("git fetch origin -- missing-base"))
+                .is_some_and(|command| command.contains(&format!(
+                    "git fetch origin -- {}",
+                    shell_arg("+refs/heads/missing-base:refs/remotes/origin/missing-base")
+                )))
         );
         let config = preflight_check(&packet, "ripr_config")?;
         assert_eq!(config["status"], "defaulted");

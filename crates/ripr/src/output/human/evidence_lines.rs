@@ -61,10 +61,11 @@ pub(super) fn evidence_path_lines(finding: &Finding) -> Vec<String> {
             // misses, then shows the assertion it was judged by, so the
             // claim can be checked in the source.
             let mut line = format!(
-                "related test {}:{} {} misses: {why}",
+                "related test {}:{} {} {}: {why}",
                 display_path(&test.file),
                 test.line,
                 test.name,
+                crate::output::related_test_miss::related_test_miss_label(test),
             );
             if let Some(oracle) = &test.oracle {
                 line.push_str(&format!(
@@ -92,7 +93,10 @@ pub(super) fn evidence_path_lines(finding: &Finding) -> Vec<String> {
         if let Some(why) = why {
             let kept = line.trim_end_matches(';').len();
             line.truncate(kept);
-            line.push_str(&format!("; misses: {why}"));
+            line.push_str(&format!(
+                "; {}: {why}",
+                crate::output::related_test_miss::related_test_miss_label(test)
+            ));
         }
         lines.push(line);
     }

@@ -47,6 +47,12 @@ cargo install --locked --git https://github.com/EffortlessMetrics/ripr-swarm rip
 ```
 
 From a `ripr-swarm` checkout, `cargo install --path crates/ripr` does the same.
+Either route compiles from source. A `cargo build --release` in the workspace took
+about 12 minutes on a cold 4-core Linux container in October 2026. A local build
+of the packaged crate, which is what `cargo install ripr --locked` should compile
+once 0.11.0 is published, took about 4.6 minutes on the same container because it
+drops the workspace's LTO profile (an estimate, not a crates.io install). A
+prebuilt 0.11 archive exists only after 0.11.0 is published.
 
 With [cargo-binstall](https://github.com/cargo-bins/cargo-binstall) installed,
 `cargo binstall ripr` can use a matching prebuilt release archive when the

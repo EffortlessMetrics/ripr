@@ -11990,6 +11990,41 @@ fn routed_rust_ready_event_matrix_withholds_draft_and_label_context() {
         routed_rust_ready_event_contract_violations(&cancellation_disabled)
     );
 
+    let uncancellable_fallback = workflow.replace("      !cancelled() &&", "      always() &&");
+    assert_ne!(
+        uncancellable_fallback, workflow,
+        "fixture must actually swap the hosted fallback condition"
+    );
+    assert!(
+        routed_rust_ready_event_contract_violations(&uncancellable_fallback)
+            .iter()
+            .any(|violation| violation.contains("`rust-github`") && violation.contains("always()")),
+        "a job-level always() on an implementation job must fail: it survives Ready-run cancellation: {:?}",
+        routed_rust_ready_event_contract_violations(&uncancellable_fallback)
+    );
+
+    let spaced_uppercase = workflow.replace("      !cancelled() &&", "      Always () &&");
+    assert!(
+        routed_rust_ready_event_contract_violations(&spaced_uppercase)
+            .iter()
+            .any(|violation| violation.contains("`rust-github`")),
+        "expression names are case-insensitive and may carry spaces: {:?}",
+        routed_rust_ready_event_contract_violations(&spaced_uppercase)
+    );
+
+    let step_level_cleanup = workflow.replace(
+        "  rust-github:\n    name: Ripr Rust Small on GitHub Hosted",
+        "  rust-github:\n    # cleanup may use always()\n    name: Ripr Rust Small on GitHub Hosted",
+    );
+    assert_ne!(step_level_cleanup, workflow, "fixture must add the comment");
+    assert!(
+        !routed_rust_ready_event_contract_violations(&step_level_cleanup)
+            .iter()
+            .any(|violation| violation.contains("must not use `always()`")),
+        "always() outside the job condition must not be rejected: {:?}",
+        routed_rust_ready_event_contract_violations(&step_level_cleanup)
+    );
+
     let shared_group = workflow.replace(
         "  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}",
         "  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}",
@@ -12803,6 +12838,20 @@ fn pr_summary_lists_top_level_plans_as_docs_evidence() {
     let body = pr_summary_body(&changes);
 
     assert!(body.contains("- `plans/campaign-27/lane3-editor-preview-routing.md (??)`"));
+    assert!(body.contains("Evidence/support delta:"));
+    assert!(body.contains("Docs:"));
+}
+
+#[test]
+fn pr_summary_lists_changelog_fragments_as_docs_evidence() {
+    let changes = vec![ChangedPath {
+        path: "changelog.d/6000-cli-fix.md".to_string(),
+        statuses: BTreeSet::from(["A".to_string()]),
+    }];
+
+    let body = pr_summary_body(&changes);
+
+    assert!(body.contains("- `changelog.d/6000-cli-fix.md (A)`"));
     assert!(body.contains("Evidence/support delta:"));
     assert!(body.contains("Docs:"));
 }
@@ -50966,6 +51015,152 @@ fn mutation_calibration_directory_input_combines_outcomes_and_mutants() -> Resul
     assert_eq!(mutants.len(), 1);
     assert_eq!(mutants[0].file, Some("src/pricing.rs".to_string()));
     assert_eq!(mutants[0].runtime_outcome, "caught");
+    Ok(())
+}
+
+/// Shapes copied from a cargo-mutants 27.1.0 `mutants.out` (rust-hex), combined
+/// the way `read_mutation_input_json` combines `outcomes.json` and
+/// `mutants.json`. The xtask command must not keep a second importer that
+/// reads every outcome as `unknown` (#5374).
+#[test]
+fn mutation_calibration_imports_cargo_mutants_27_1_scenario_mutant_summaries() -> Result<(), String>
+{
+    let runtime_json = r#"[
+  {
+    "outcomes": [
+      {"scenario": "Baseline", "summary": "Success"},
+      {
+        "scenario": {"Mutant": {
+          "name": "src/lib.rs:101:9: replace next -> Option<Self::Item> with None",
+          "package": "hex",
+          "file": "src/lib.rs",
+          "function": {"function_name": "next", "span": {"start": {"line": 99, "column": 5}, "end": {"line": 109, "column": 6}}},
+          "span": {"start": {"line": 101, "column": 9}, "end": {"line": 108, "column": 10}},
+          "replacement": "None",
+          "genre": "FnValue"
+        }},
+        "summary": "CaughtMutant"
+      },
+      {
+        "scenario": {"Mutant": {
+          "name": "src/lib.rs:104:43: replace >> with << in next",
+          "package": "hex",
+          "file": "src/lib.rs",
+          "span": {"start": {"line": 104, "column": 43}, "end": {"line": 104, "column": 45}},
+          "replacement": "<<",
+          "genre": "BinaryOperator"
+        }},
+        "summary": "MissedMutant"
+      },
+      {
+        "scenario": {"Mutant": {
+          "name": "src/lib.rs:110:1: replace timeout_mutant with ()",
+          "package": "hex",
+          "file": "src/lib.rs",
+          "span": {"start": {"line": 110, "column": 1}, "end": {"line": 110, "column": 2}},
+          "replacement": "()",
+          "genre": "FnValue"
+        }},
+        "summary": "Timeout"
+      },
+      {
+        "scenario": {"Mutant": {
+          "name": "src/lib.rs:111:1: replace unviable_mutant with ()",
+          "package": "hex",
+          "file": "src/lib.rs",
+          "span": {"start": {"line": 111, "column": 1}, "end": {"line": 111, "column": 2}},
+          "replacement": "()",
+          "genre": "FnValue"
+        }},
+        "summary": "Unviable"
+      }
+    ],
+    "total_mutants": 4,
+    "caught": 1,
+    "missed": 1,
+    "timeout": 1,
+    "unviable": 1
+  },
+  [
+    {
+      "name": "src/lib.rs:101:9: replace next -> Option<Self::Item> with None",
+      "package": "hex",
+      "file": "src/lib.rs",
+      "span": {"start": {"line": 101, "column": 9}, "end": {"line": 108, "column": 10}},
+      "replacement": "None",
+      "genre": "FnValue"
+    },
+    {
+      "name": "src/lib.rs:104:43: replace >> with << in next",
+      "package": "hex",
+      "file": "src/lib.rs",
+      "span": {"start": {"line": 104, "column": 43}, "end": {"line": 104, "column": 45}},
+      "replacement": "<<",
+      "genre": "BinaryOperator"
+    },
+    {
+      "name": "src/lib.rs:110:1: replace timeout_mutant with ()",
+      "package": "hex",
+      "file": "src/lib.rs",
+      "span": {"start": {"line": 110, "column": 1}, "end": {"line": 110, "column": 2}},
+      "replacement": "()",
+      "genre": "FnValue"
+    },
+    {
+      "name": "src/lib.rs:111:1: replace unviable_mutant with ()",
+      "package": "hex",
+      "file": "src/lib.rs",
+      "span": {"start": {"line": 111, "column": 1}, "end": {"line": 111, "column": 2}},
+      "replacement": "()",
+      "genre": "FnValue"
+    }
+  ]
+]"#;
+
+    let mutants = parse_mutation_outcomes_json(runtime_json)?;
+
+    assert_eq!(
+        mutants.len(),
+        4,
+        "Baseline must not become a record, and the four mutants must merge to one each: {mutants:?}"
+    );
+    assert!(
+        mutants
+            .iter()
+            .all(|record| record.runtime_outcome != "unknown"),
+        "xtask mutation-calibration must not import cargo-mutants 27.1 outcomes as unknown: {mutants:?}"
+    );
+
+    let caught = mutants
+        .iter()
+        .find(|record| record.line == Some(101))
+        .ok_or_else(|| "line 101 mutant should be imported".to_string())?;
+    assert_eq!(caught.file.as_deref(), Some("src/lib.rs"));
+    assert_eq!(caught.runtime_outcome, "caught");
+    assert_eq!(caught.mutation_operator, "None");
+    assert_eq!(
+        caught.mutant_id.as_deref(),
+        Some("src/lib.rs:101:9: replace next -> Option<Self::Item> with None")
+    );
+
+    let missed = mutants
+        .iter()
+        .find(|record| record.line == Some(104))
+        .ok_or_else(|| "line 104 mutant should be imported".to_string())?;
+    assert_eq!(missed.runtime_outcome, "missed");
+    assert_eq!(missed.mutation_operator, "<<");
+
+    let timeout = mutants
+        .iter()
+        .find(|record| record.line == Some(110))
+        .ok_or_else(|| "line 110 timeout mutant should be imported".to_string())?;
+    assert_eq!(timeout.runtime_outcome, "timeout");
+
+    let unviable = mutants
+        .iter()
+        .find(|record| record.line == Some(111))
+        .ok_or_else(|| "line 111 unviable mutant should be imported".to_string())?;
+    assert_eq!(unviable.runtime_outcome, "unviable");
     Ok(())
 }
 

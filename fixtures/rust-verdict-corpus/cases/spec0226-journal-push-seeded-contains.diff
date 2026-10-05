@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index c261423..9d762e6 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -7,7 +7,7 @@ pub struct Journal {
+ 
+ impl Journal {
+     pub fn note(&mut self, amount: u64) {
+-        self.entries.push(amount);
++        self.entries.push(amount * 1);
+     }
+ }
+ 

@@ -302,9 +302,16 @@ jobs:
     name: windows-advisory-subset
     runs-on: windows-latest
     timeout-minutes: 45
+    env:
+      SELECTOR_CONSUMER_ENABLED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
 
     steps:
+      # Bind native subset/consumer proof to the immutable PR head; the required
+      # Rust lane separately owns its integration checkout.
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@1.95
 
@@ -315,6 +322,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: ripr-windows-advisory-subset-1.95-${{ runner.os }}
+          cache-bin: false
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Run lsp::gap_artifacts subset (advisory, #4921)
@@ -332,6 +340,361 @@ jobs:
         run: |
           mkdir -p target; set +e; cargo clippy -p ripr --all-targets -- -D warnings 2>&1 | tee target/subset-clippy.log; pipe_status=("${PIPESTATUS[@]}"); printf '%s\n' "${pipe_status[0]}" > target/subset-clippy.status; if [ "${pipe_status[1]}" != "0" ]; then echo "subset evidence capture failed: tee exited ${pipe_status[1]} writing target/subset-clippy.log" >&2; exit 1; fi; exit 0
 
+      # #5252/#5581: real stock-environment PowerShell recovery, not argv recording.
+      - name: Produce and replay exact-head selector recovery (advisory)
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        shell: pwsh
+        env:
+          SELECTOR_EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $consumer = @'
+          import ctypes as c
+          from ctypes import wintypes as w
+          import hashlib, json, os, re, shutil, subprocess, sys, time
+          from pathlib import Path
+
+          root = Path.cwd().resolve()
+          out = root / "target" / "selector-literal"
+          out.mkdir(parents=True, exist_ok=True)
+          end = time.monotonic() + 720
+          receipt = {"schema_version": 1, "state": "INCOMPLETE", "cases": [], "controls": []}
+          staged_by_consumer = False
+          k = c.WinDLL("kernel32", use_last_error=True)
+
+          class Security(c.Structure):
+              _fields_ = [("length", w.DWORD), ("descriptor", c.c_void_p), ("inherit", w.BOOL)]
+          class Startup(c.Structure):
+              _fields_ = [(n, w.DWORD) for n in ("cb",)] + [(n, w.LPWSTR) for n in ("reserved", "desktop", "title")] + [(n, w.DWORD) for n in ("x", "y", "width", "height", "xchars", "ychars", "fill", "flags")] + [("show", w.WORD), ("reserved_count", w.WORD), ("reserved_bytes", c.c_void_p)] + [(n, w.HANDLE) for n in ("stdin", "stdout", "stderr")]
+          class Process(c.Structure):
+              _fields_ = [("process", w.HANDLE), ("thread", w.HANDLE), ("pid", w.DWORD), ("tid", w.DWORD)]
+          class Basic(c.Structure):
+              _fields_ = [("process_time", c.c_int64), ("job_time", c.c_int64), ("flags", w.DWORD), ("min_ws", c.c_size_t), ("max_ws", c.c_size_t), ("active_limit", w.DWORD), ("affinity", c.c_size_t), ("priority", w.DWORD), ("scheduling", w.DWORD)]
+          class IO(c.Structure):
+              _fields_ = [(n, c.c_uint64) for n in ("read_ops", "write_ops", "other_ops", "read_bytes", "write_bytes", "other_bytes")]
+          class Accounting(c.Structure):
+              _fields_ = [(n, c.c_int64) for n in ("user", "kernel", "period_user", "period_kernel")] + [(n, w.DWORD) for n in ("faults", "total", "active", "terminated")]
+          class Limits(c.Structure):
+              _fields_ = [("basic", Basic), ("io", IO)] + [(n, c.c_size_t) for n in ("process_memory", "job_memory", "peak_process_memory", "peak_job_memory")]
+
+          def api(name, args, result=w.BOOL):
+              fn = getattr(k, name)
+              fn.argtypes, fn.restype = args, result
+              return fn
+          api("CreateJobObjectW", [c.c_void_p, w.LPCWSTR], w.HANDLE)
+          api("SetInformationJobObject", [w.HANDLE, c.c_int, c.c_void_p, w.DWORD])
+          api("QueryInformationJobObject", [w.HANDLE, c.c_int, c.c_void_p, w.DWORD, c.c_void_p])
+          api("CreateFileW", [w.LPCWSTR, w.DWORD, w.DWORD, c.c_void_p, w.DWORD, w.DWORD, w.HANDLE], w.HANDLE)
+          api("CreateProcessW", [w.LPCWSTR, w.LPWSTR, c.c_void_p, c.c_void_p, w.BOOL, w.DWORD, c.c_void_p, w.LPCWSTR, c.c_void_p, c.c_void_p])
+          api("AssignProcessToJobObject", [w.HANDLE, w.HANDLE])
+          api("ResumeThread", [w.HANDLE], w.DWORD)
+          api("WaitForSingleObject", [w.HANDLE, w.DWORD], w.DWORD)
+          api("GetExitCodeProcess", [w.HANDLE, c.c_void_p])
+          api("TerminateJobObject", [w.HANDLE, w.UINT])
+          api("TerminateProcess", [w.HANDLE, w.UINT])
+          api("CloseHandle", [w.HANDLE])
+
+          def require(ok, message):
+              if not ok:
+                  raise RuntimeError(message)
+          def digest(path):
+              return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+          def remove_staged(path, owned):
+              if not owned:
+                  return {"state": "NOT_CREATED"}
+              path = Path(path)
+              cleanup = {"path": str(path), "initially_absent": True}
+              if path.exists():
+                  cleanup["sha256_before_removal"] = digest(path)
+                  path.unlink()
+              require(not path.exists(), "owned staged executable remains")
+              cleanup["state"] = "REMOVED"
+              return cleanup
+
+          def run(label, argv, cwd, seconds=30, memory=512 * 1024**2, output_cap=2 * 1024**2, active=2):
+              require(time.monotonic() < end, "consumer total deadline exceeded")
+              paths = [out / (label + ".stdout"), out / (label + ".stderr")]
+              handles, job, proc = [], None, Process()
+              started, stop = time.monotonic(), None
+              limits = Limits()
+              limits.basic.flags = 0x2000 | 0x200 | 0x10
+              limits.basic.affinity = 3
+              if active:
+                  limits.basic.flags |= 0x8
+                  limits.basic.active_limit = active
+              limits.job_memory = memory
+              try:
+                  job = k.CreateJobObjectW(None, None)
+                  require(job, "CreateJobObject failed")
+                  require(k.SetInformationJobObject(job, 9, c.byref(limits), c.sizeof(limits)), "Job limits failed")
+                  sa = Security(c.sizeof(Security), None, True)
+                  for path, access, disposition in [(Path("NUL"), 0x80000000, 3)] + [(p, 0x40000000, 2) for p in paths]:
+                      handle = k.CreateFileW(str(path), access, 3, c.byref(sa), disposition, 0x80, None)
+                      require(handle not in (None, c.c_void_p(-1).value), "Output handle failed")
+                      handles.append(handle)
+                  startup = Startup()
+                  startup.cb, startup.flags = c.sizeof(Startup), 0x100
+                  startup.stdin, startup.stdout, startup.stderr = handles
+                  line = c.create_unicode_buffer(subprocess.list2cmdline([str(a) for a in argv]))
+                  # Inherit the unchanged environment; assign while suspended before any child code runs.
+                  require(k.CreateProcessW(str(argv[0]), line, None, None, True, 0x08000004, None, str(cwd), c.byref(startup), c.byref(proc)), "CreateProcess failed")
+                  require(k.AssignProcessToJobObject(job, proc.process), "Job assignment failed")
+                  require(k.ResumeThread(proc.thread) != 0xffffffff, "ResumeThread failed")
+                  deadline = min(end, started + seconds)
+                  while True:
+                      waited = k.WaitForSingleObject(proc.process, 100)
+                      require(waited != 0xffffffff, "Process wait failed")
+                      if sum(p.stat().st_size for p in paths) > output_cap:
+                          stop = "output_limit"
+                      elif time.monotonic() >= deadline:
+                          stop = "deadline"
+                      if stop:
+                          require(k.TerminateJobObject(job, 124), "Job termination failed")
+                          require(k.WaitForSingleObject(proc.process, 5000) == 0, "Terminated process not reaped")
+                          break
+                      if waited == 0:
+                          break
+                  code = w.DWORD()
+                  require(k.GetExitCodeProcess(proc.process, c.byref(code)), "Exit status unavailable")
+                  require(k.QueryInformationJobObject(job, 9, c.byref(limits), c.sizeof(limits), None), "Job peak unavailable")
+                  row = {"label": label, "argv": [str(a) for a in argv], "cwd": str(cwd), "exit": code.value,
+                         "stop": stop, "elapsed_ms": round((time.monotonic() - started) * 1000, 2),
+                         "affinity_mask": 3, "job_memory_limit": memory, "peak_job_memory": limits.peak_job_memory}
+                  receipt["cases"].append(row)
+              finally:
+                  cleanup_ok = True
+                  try:
+                      if proc.process:
+                          # Owns a still-suspended process even if job assignment failed.
+                          k.TerminateProcess(proc.process, 124)
+                      if job:
+                          k.TerminateJobObject(job, 124)
+                      if proc.process:
+                          cleanup_ok = k.WaitForSingleObject(proc.process, 5000) == 0
+                      if job:
+                          accounting = Accounting()
+                          reap_end = time.monotonic() + 5
+                          while True:
+                              require(k.QueryInformationJobObject(job, 1, c.byref(accounting), c.sizeof(accounting), None), "Job cleanup state unavailable")
+                              if accounting.active == 0:
+                                  break
+                              if time.monotonic() >= reap_end:
+                                  cleanup_ok = False
+                                  break
+                              time.sleep(0.02)
+                  finally:
+                      if job:
+                          k.CloseHandle(job)
+                      for handle in handles + [proc.thread, proc.process]:
+                          if handle:
+                              k.CloseHandle(handle)
+                  require(cleanup_ok, "owned process tree was not reaped")
+              stdout, stderr = [p.read_bytes() for p in paths]
+              row.update(stdout_sha256=hashlib.sha256(stdout).hexdigest(), stderr_sha256=hashlib.sha256(stderr).hexdigest())
+              require(not stop, label + ": bounded process stopped")
+              return code.value, stdout, stderr
+
+          def admit(actual_source, expected_source, actual_digest, expected_digest, actual_path, expected_path):
+              require(actual_source == expected_source, "stale source receipt")
+              require(actual_digest == expected_digest, "wrong executable digest")
+              require(Path(actual_path).resolve() == Path(expected_path).resolve(), "wrong stock executable resolution")
+
+          def packet(raw, selected_file, expected_id=None):
+              data = json.loads(raw)
+              findings = data.get("findings")
+              require(isinstance(findings, list) and findings, "listing has no findings")
+              selected_file = Path(selected_file).resolve()
+              selected = [f for f in findings if f.get("language") == "rust" and f.get("probe", {}).get("family") == "predicate"
+                          and f["probe"].get("line") == 2 and Path(f["probe"].get("file", "")).is_absolute()
+                          and Path(f["probe"]["file"]).resolve() == selected_file
+                          and f["probe"].get("expression") == "amount >= threshold"]
+              require(len(selected) == 1, "listing does not identify the frozen fixture predicate")
+              finding = selected[0]
+              require(finding.get("id") and finding["probe"].get("id") == finding["id"], "listing identities disagree")
+              if expected_id is not None:
+                  require(finding["id"] == expected_id, "listing selected another actual ID")
+              return finding["id"]
+
+          def rejected(name, operation):
+              before = len(receipt["cases"])
+              try:
+                  operation()
+              except RuntimeError as error:
+                  require(len(receipt["cases"]) == before, "negative admission launched a process")
+                  receipt["controls"].append({"name": name, "rejected": True, "reason": str(error), "processes_launched": 0})
+              else:
+                  raise RuntimeError(name + ": wrong input admitted")
+
+          try:
+              require(os.name == "nt", "native Windows required")
+              git, cargo, shell = [shutil.which(name) for name in ("git", "cargo", "pwsh")]
+              require(all((git, cargo, shell)), "stock git/cargo/PowerShell unavailable")
+              def git_value(*args):
+                  status, stdout, _ = run("git-" + args[0] + "-" + str(len(receipt["cases"])), [git, *args], root)
+                  require(status == 0, "source identity unavailable")
+                  return stdout.decode().strip()
+              actual_head = git_value("rev-parse", "HEAD")
+              source_tree = git_value("rev-parse", "HEAD^{tree}")
+              expected_head = os.environ["SELECTOR_EXPECTED_HEAD"]
+              require(re.fullmatch("[0-9a-f]{40}", expected_head), "invalid expected head")
+              require(actual_head == expected_head, "checkout is not the immutable selected head")
+              require(not git_value("status", "--porcelain", "--untracked-files=no"), "tracked producer source is dirty")
+              receipt["source"] = {"head": actual_head, "tree": source_tree, "lock_sha256": digest(root / "Cargo.lock"),
+                                   "workflow_checkout": os.environ["SELECTOR_EXPECTED_HEAD"]}
+              status, stdout, _ = run("cargo-version", [cargo, "-Vv"], root)
+              require(status == 0, "Cargo identity unavailable")
+              receipt["cargo"] = stdout.decode()
+              rustc = shutil.which("rustc")
+              require(rustc, "stock rustc unavailable")
+              status, stdout, _ = run("rustc-version", [rustc, "-Vv"], root)
+              require(status == 0 and stdout.startswith(b"rustc 1.95.0 ") and "host: x86_64-pc-windows-msvc" in stdout.decode(), "Windows toolchain mismatch")
+              receipt["rustc"] = stdout.decode()
+              status, stdout, _ = run("build", [cargo, "build", "-p", "ripr", "--bin", "ripr", "--locked", "-j", "2", "--message-format=json"],
+                                      root, seconds=600, memory=8 * 1024**3, output_cap=16 * 1024**2, active=0)
+              require(status == 0, "exact-head CLI build failed")
+              require(git_value("rev-parse", "HEAD") == actual_head and git_value("rev-parse", "HEAD^{tree}") == source_tree, "producer source moved")
+              require(not git_value("status", "--porcelain", "--untracked-files=no"), "producer changed tracked source")
+              artifacts = [json.loads(line) for line in stdout.splitlines() if line.startswith(b"{")]
+              binaries = [a for a in artifacts if a.get("reason") == "compiler-artifact" and a.get("target", {}).get("name") == "ripr"
+                          and a["target"].get("kind") == ["bin"] and a.get("executable")]
+              require(len(binaries) == 1, "one real CLI compiler artifact required")
+              artifact = binaries[0]
+              require(set(artifact["features"]) == {"default", "lang-rust", "lang-typescript", "lang-python"}, "default feature mismatch")
+              require(Path(artifact["manifest_path"]).resolve() == root / "crates" / "ripr" / "Cargo.toml", "wrong producer manifest")
+              binary = Path(artifact["executable"]).resolve()
+              binary_digest = digest(binary)
+              stock_bin = Path(shutil.which("cargo")).resolve().parent
+              require(str(stock_bin).lower() in [p.rstrip("\\/").lower() for p in os.environ["PATH"].split(os.pathsep)], "Cargo bin is not a stock PATH slot")
+              staged = stock_bin / "ripr.exe"
+              require(not staged.exists() and shutil.which("ripr") is None, "unexpected existing stock ripr occupant")
+              require(2 * binary.stat().st_size + sum(p.stat().st_size for p in out.glob("*") if p.is_file()) < 128 * 1024**2, "staging/evidence budget exceeded")
+              staged_by_consumer = True  # Exact path was absent; this run owns even a partial copy.
+              shutil.copyfile(binary, staged)
+              resolved = shutil.which("ripr")
+              require(resolved, "staged candidate does not resolve")
+              rejected("wrong-digest-before-launch", lambda: admit(actual_head, expected_head, digest(resolved), "0" * 64, resolved, staged))
+              rejected("stale-source-receipt-before-launch", lambda: admit(actual_head, "0" * 40, digest(resolved), binary_digest, resolved, staged))
+              admit(actual_head, expected_head, digest(resolved), binary_digest, resolved, staged)
+              receipt["producer"] = {"artifact": artifact, "bytes": binary.stat().st_size, "sha256": binary_digest,
+                                     "stock_resolution": resolved, "staging_before_journey_admission": True}
+              fixture = Path(os.environ["RUNNER_TEMP"]) / ("selector literal " + os.environ["GITHUB_RUN_ID"] + "-" + os.environ["GITHUB_RUN_ATTEMPT"])
+              require(not fixture.exists(), "fixture collision")
+              (fixture / "src").mkdir(parents=True)
+              foreign = fixture / "foreign"
+              foreign.mkdir()
+              (fixture / "Cargo.toml").write_text('[package]\nname = "selector-literal"\nversion = "0.1.0"\nedition = "2021"\n')
+              source = fixture / "src" / "lib.rs"
+              source.write_text("pub fn price(amount: i32, threshold: i32) -> i32 {\n    if amount >= threshold { amount - 100 } else { amount }\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n    #[test]\n    fn positive_price() { assert!(price(500, 300) > 0); }\n}\n")
+              diff = fixture / "fixture change.diff"
+              diff.write_text("diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,3 +1,3 @@\n pub fn price(amount: i32, threshold: i32) -> i32 {\n-    if amount > threshold { amount - 100 } else { amount }\n+    if amount >= threshold { amount - 100 } else { amount }\n }\n")
+              frozen_env = dict(os.environ)
+              frozen = {str(p): digest(p) for p in (fixture / "Cargo.toml", source, diff, staged)}
+              shell_digest = digest(shell)
+              status, shell_path, _ = run("shell-resolution", [shell, "-NoProfile", "-NonInteractive", "-Command", "(Get-Command ripr).Source"], foreign)
+              require(status == 0 and Path(shell_path.decode().strip()).resolve() == staged.resolve(), "actual PowerShell resolution mismatch")
+              status, shell_version, _ = run("shell-version", [shell, "-NoProfile", "-NonInteractive", "-Command", "$PSVersionTable.PSVersion.ToString()"], foreign)
+              require(status == 0 and shell_version.strip(), "shell version unavailable")
+              receipt["admission"] = {"safe_environment": {n: os.environ.get(n) for n in ("PATHEXT", "ComSpec", "LANG", "LC_ALL", "RUSTUP_TOOLCHAIN")},
+                                      "PATH_sha256": hashlib.sha256(os.environ["PATH"].encode()).hexdigest(),
+                                      "PYTHONPATH_present": "PYTHONPATH" in os.environ,
+                                      "environment_scope": "full inherited environment compared in memory; safe whitelist retained",
+                                      "shell_version": shell_version.decode().strip(), "cwd": str(foreign), "fixture_hashes": frozen, "shell": shell, "shell_sha256": shell_digest,
+                                      "environment_changes": [], "PowerShell_resolved_ripr": shell_path.decode().strip(), "stale_control": "mutated source receipt; no historical binary built"}
+              def frozen_inputs():
+                  require(dict(os.environ) == frozen_env, "environment changed after admission")
+                  require(all(digest(p) == value for p, value in frozen.items()), "admitted input changed")
+                  require(digest(shell) == shell_digest and shutil.which("ripr") == resolved, "shell/resolution changed")
+              def invoke(label, args):
+                  frozen_inputs()
+                  result = run(label, [resolved, *args], foreign)
+                  frozen_inputs()
+                  return result
+              status, stdout, _ = invoke("version", ["--version"])
+              require(status == 0 and stdout.decode().strip().endswith("(" + actual_head + ")"), "candidate version/source identity mismatch")
+              receipt["producer"]["version"] = stdout.decode().strip()
+              check_args = ["check", "--root", str(fixture), "--diff", str(diff), "--json"]
+              status, stdout, _ = invoke("initial-list", check_args)
+              require(status == 0, "fixture listing failed")
+              actual_id = packet(stdout, source)
+              require(all(f.get("id") != "repo-probe:src_lib.rs:error_path:3bf8c64c" for f in json.loads(stdout)["findings"]), "opaque negative ID is present in fixture")
+              rejected("wrong-listing-identity", lambda: packet(stdout, source, "probe:wrong-control"))
+              for name, field, value in (("wrong-fixture-file-identity", "file", str(foreign / "src" / "lib.rs")),
+                                         ("wrong-predicate-condition", "expression", "amount > threshold")):
+                  wrong = json.loads(stdout)
+                  for finding in wrong["findings"]:
+                      if finding.get("id") == actual_id:
+                          finding["probe"][field] = value
+                  rejected(name, lambda: packet(json.dumps(wrong).encode(), source, actual_id))
+              commands = []
+              for sibling, selector in (("explain", "src/lib.rs:abc"), ("context", ":::")):
+                  args = [sibling, "--root", str(fixture), "--diff", str(diff)] + (["--at"] if sibling == "context" else []) + [selector]
+                  status, stdout, stderr = invoke(sibling + "-malformed", args)
+                  require(status == 2 and not stdout and b"file:line with a nonempty path" in stderr, "malformed miss contract changed")
+                  matches = re.findall(chr(96) + r"(ripr check [^\x60]+)" + chr(96), stderr.decode())
+                  require(len(matches) == 1, "one printed recovery command required")
+                  command = matches[0]
+                  require(command == f"ripr check --root '{fixture}' --diff '{diff}' --json", "printed command lost frozen root/diff/JSON scope")
+                  commands.append(command)
+                  (out / (sibling + "-literal-command.txt")).write_text(command, encoding="utf-8")
+                  frozen_inputs()
+                  status, stdout, _ = run(sibling + "-literal-replay", [shell, "-NoProfile", "-NonInteractive", "-Command", command], foreign)
+                  frozen_inputs()
+                  require(status == 0, "literal PowerShell recovery failed")
+                  require(packet(stdout, source, actual_id) == actual_id, "literal replay selected another fixture")
+                  receipt["cases"][-1]["command_exactly_as_printed"] = command
+                  status, stdout, _ = invoke(sibling + "-actual-id", [sibling, "--root", str(fixture), "--diff", str(diff)]
+                                            + (["--at"] if sibling == "context" else []) + [actual_id])
+                  require(status == 0, "actual listed ID retry failed")
+                  if sibling == "context":
+                      selected = json.loads(stdout)
+                      require(selected.get("probe", {}).get("id") == actual_id, "context selected another listed ID")
+                  else:
+                      require(actual_id in stdout.decode(), "explain omitted actual selected ID")
+                  status, stdout, stderr = invoke(sibling + "-opaque-negative", [sibling, "--root", str(fixture), "--diff", str(diff)]
+                                                  + (["--at"] if sibling == "context" else []) + ["repo-probe:src_lib.rs:error_path:3bf8c64c"])
+                  require(status == 2 and not stdout and b"file:line with a nonempty path" not in stderr, "opaque ID miss got syntax guidance")
+              require(commands[0] == commands[1], "siblings advertised different recovery scope")
+              frozen_inputs()
+              status, stdout, _ = run("literal-repeat", [shell, "-NoProfile", "-NonInteractive", "-Command", commands[0]], foreign)
+              frozen_inputs()
+              require(status == 0 and packet(stdout, source, actual_id) == actual_id, "literal repeat changed selected fixture")
+              receipt.update(state="PASS", actual_listed_id=actual_id, literal_replays=3, siblings_retried=["explain", "context"])
+          except Exception as error:
+              receipt.update(state="FAIL", error_type=type(error).__name__, error=str(error))
+          finally:
+              try:
+                  receipt["staging_cleanup"] = remove_staged(globals().get("staged"), staged_by_consumer)
+              except Exception as cleanup_error:
+                  receipt["staging_cleanup"] = {"state": "FAILED", "error": str(cleanup_error)}
+                  if receipt.get("error"):
+                      receipt["primary_error"] = receipt["error"]
+                  receipt.update(state="FAIL", error_type="StagingCleanup", error=str(cleanup_error))
+              receipt["python"] = sys.version
+              receipt["total_deadline_seconds"] = 720
+              receipt["evidence_bytes"] = sum(p.stat().st_size for p in out.glob("*") if p.is_file())
+              receipt["charged_binary_and_staging_bytes"] = 2 * binary.stat().st_size if "binary" in globals() and binary.exists() else 0
+              base_bytes = receipt["evidence_bytes"] + receipt["charged_binary_and_staging_bytes"] + 16
+              if "fixture" in globals() and fixture.exists():
+                  base_bytes += sum(p.stat().st_size for p in fixture.rglob("*") if p.is_file())
+              receipt["final_charged_bytes"] = 0
+              for _ in range(6):
+                  # Charge both the pretty receipt and its compact copy in the wrapper log.
+                  retained = base_bytes + len(json.dumps(receipt, indent=2).encode()) + len(json.dumps(receipt).encode()) + 2
+                  if retained > 128 * 1024**2:
+                      receipt.update(state="FAIL", error_type="EvidenceBudget", error="final evidence/staging budget exceeded")
+                  if receipt["final_charged_bytes"] == retained:
+                      break
+                  receipt["final_charged_bytes"] = retained
+              (out / "receipt.json").write_bytes(json.dumps(receipt, indent=2).encode())
+              print(json.dumps(receipt), flush=True)
+          sys.exit(0 if receipt["state"] == "PASS" else 1)
+          '@
+          $consumer | python - 2>&1 | Tee-Object -FilePath target/subset-selector-literal.log
+          $nativeExit = $LASTEXITCODE
+          Set-Content -LiteralPath target/subset-selector-literal.status -Value $nativeExit
+          # Preserve the advisory verdict; missing receipt/log/status remains a hard failure.
+          exit 0
+
       # Verdicts go to the job log, the step summary, and
       # target/windows-subset-verdict.md -- the same three copies the full
       # suite above keeps -- because none of them is gated, so a reader who
@@ -344,7 +707,8 @@ jobs:
           {
             printf '## Windows advisory subset (#4938)\n\n'
             printf 'Advisory only: not a required check and does not gate merges. Test/lint verdicts:\n\n'
-            for label in subset-gap-artifacts subset-cache-warning subset-clippy; do
+            for label in subset-gap-artifacts subset-cache-warning subset-clippy subset-selector-literal; do
+            if [ "$label" = subset-selector-literal ] && [ "$SELECTOR_CONSUMER_ENABLED" != true ]; then continue; fi
               status_file="target/${label}.status"
               if [ ! -f "$status_file" ]; then
                 echo "- ${label}: not_run (no status file)"
@@ -379,6 +743,43 @@ jobs:
             fi
           done
 
+      - name: Require selector consumer receipt, log and native status
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          paths = [Path("target/subset-selector-literal.log"), Path("target/subset-selector-literal.status"), Path("target/selector-literal/receipt.json")]
+          if not all(p.is_file() and p.stat().st_size for p in paths):
+              raise SystemExit("selector consumer evidence missing or empty")
+          status = int(paths[1].read_text(encoding="utf-8-sig").strip())
+          receipt = json.loads(paths[2].read_text(encoding="utf-8-sig"))
+          logged = json.loads(paths[0].read_text(encoding="utf-8-sig").splitlines()[-1])
+          if logged != receipt or receipt.get("schema_version") != 1 or receipt.get("state") not in ("PASS", "FAIL"):
+              raise SystemExit("selector receipt/log malformed or inconsistent")
+          if status != (0 if receipt["state"] == "PASS" else 1):
+              raise SystemExit("selector native status disagrees with retained receipt")
+          cleanup = receipt.get("staging_cleanup", {}).get("state")
+          if cleanup not in ("NOT_CREATED", "REMOVED") or (receipt["state"] == "PASS" and cleanup != "REMOVED"):
+              raise SystemExit("selector staged executable cleanup missing or failed")
+          if receipt["state"] == "FAIL":
+              if not receipt.get("error"):
+                  raise SystemExit("selector FAIL has no retained failure")
+          else:
+              cases = {c["label"]: c for c in receipt.get("cases", [])}
+              literal = ("explain-literal-replay", "context-literal-replay", "literal-repeat")
+              retries = ("explain-actual-id", "context-actual-id")
+              if receipt.get("literal_replays") != 3 or receipt.get("siblings_retried") != ["explain", "context"] or not receipt.get("actual_listed_id"):
+                  raise SystemExit("selector PASS lacks actual listing/retry subjects")
+              if not all(n in cases and cases[n].get("exit") == 0 and not cases[n].get("stop") for n in literal + retries):
+                  raise SystemExit("selector PASS lacks successful native replay/retry")
+              controls = receipt.get("controls", [])
+              if {c.get("name") for c in controls} != {"wrong-digest-before-launch", "stale-source-receipt-before-launch", "wrong-listing-identity", "wrong-fixture-file-identity", "wrong-predicate-condition"} or len(controls) != 5 or not all(c.get("rejected") and c.get("processes_launched") == 0 for c in controls):
+                  raise SystemExit("selector PASS lacks five rejected controls")
+          print("Selector consumer evidence retained: " + receipt["state"])
+          PY
+
       - name: Upload subset evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -392,4 +793,7 @@ jobs:
             target/subset-clippy.log
             target/subset-clippy.status
             target/windows-subset-verdict.md
+            target/subset-selector-literal.log
+            target/subset-selector-literal.status
+            target/selector-literal/
           if-no-files-found: ignore

@@ -841,8 +841,7 @@ fn nearby_removed_line(
 mod tests {
     use super::super::super::diff::ChangedLine;
     use super::super::super::rust_index::{
-        FileFacts, FunctionFact, PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_PREDICATE,
-        PROBE_SHAPE_SIDE_EFFECT, ProbeShapeFact, RustIndex,
+        FileFacts, FunctionFact, ProbeShapeFact, ProbeShapeKind, RustIndex,
     };
     use super::*;
     use crate::analysis::facts::{
@@ -879,7 +878,7 @@ mod tests {
                         file: path.clone(),
                         start_line: 1,
                         end_line: 5,
-                        body: "fn discounted_total() { if amount >= threshold {} }".to_string(),
+                        body: "fn discounted_total() { if amount >= threshold {} }".into(),
                         calls: vec![],
                         returns: vec![],
                         literals: vec![],
@@ -895,8 +894,8 @@ mod tests {
                         start_line: 3,
                         end_line: 3,
                         start_byte: 20,
-                        kind: PROBE_SHAPE_PREDICATE.to_string(),
-                        text: "if amount >= threshold {".to_string(),
+                        kind: ProbeShapeKind::Predicate,
+                        text: "if amount >= threshold {".into(),
                     }],
                     ..FileFacts::default()
                 },
@@ -992,14 +991,14 @@ mod tests {
                 path.clone(),
                 FileFacts {
                     path: path.clone(),
-                    source: source.to_string(),
+                    source: source.into(),
                     functions: vec![FunctionFact {
                         id: SymbolId("price".to_string()),
                         name: "price".to_string(),
                         file: path.clone(),
                         start_line: 1,
                         end_line: 3,
-                        body: source.to_string(),
+                        body: source.into(),
                         calls: vec![],
                         returns: vec![],
                         literals: vec![],
@@ -1015,8 +1014,8 @@ mod tests {
                         start_line: 2,
                         end_line: 2,
                         start_byte: producer,
-                        kind: PROBE_SHAPE_PREDICATE.to_string(),
-                        text: PREDICATE.to_string(),
+                        kind: ProbeShapeKind::Predicate,
+                        text: PREDICATE.into(),
                     }],
                     ..FileFacts::default()
                 },
@@ -1096,14 +1095,14 @@ mod tests {
                 path.clone(),
                 FileFacts {
                     path: path.clone(),
-                    source: format!("{expression};"),
+                    source: format!("{expression};").into(),
                     functions: vec![FunctionFact {
                         id: SymbolId("gate_watchdog::classify".to_string()),
                         name: "classify".to_string(),
                         file: path.clone(),
                         start_line: 1,
                         end_line: 20,
-                        body: expression.to_string(),
+                        body: expression.into(),
                         calls: vec![],
                         returns: vec![],
                         literals: vec![],
@@ -1119,8 +1118,8 @@ mod tests {
                         start_line: 10,
                         end_line: 13,
                         start_byte: 0,
-                        kind: PROBE_SHAPE_CALL_DELETION.to_string(),
-                        text: expression.to_string(),
+                        kind: ProbeShapeKind::CallDeletion,
+                        text: expression.into(),
                     }],
                     ..FileFacts::default()
                 },
@@ -1164,8 +1163,8 @@ mod tests {
                         start_line: 10,
                         end_line: 13,
                         start_byte: 100,
-                        kind: crate::analysis::rust_index::PROBE_SHAPE_RETURN_VALUE.to_string(),
-                        text: "HirLet {\n    name,\n    storage,\n}".to_string(),
+                        kind: ProbeShapeKind::ReturnValue,
+                        text: "HirLet {\n    name,\n    storage,\n}".into(),
                     }],
                     ..FileFacts::default()
                 },
@@ -1248,54 +1247,56 @@ mod tests {
 
     #[test]
     fn probes_for_file_preserves_wildcard_discard_head() -> Result<(), String> {
-        for changed_text in [
-            "let _ = compute_fee(amount * 9);",
-            "let _ : u32 = compute_fee(amount * 9);",
-            "let _= compute_fee(amount * 9);",
-        ] {
-            let path = PathBuf::from("src/lib.rs");
-            let changed = ChangedFile {
-                path: path.clone(),
-                added_lines: vec![ChangedLine {
-                    line: 4,
-                    new_side_line: 4,
-                    text: changed_text.to_string(),
-                }],
-                removed_lines: vec![],
-            };
-            let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
-                files: BTreeMap::from([(
-                    path.clone(),
-                    FileFacts {
-                        path,
-                        probe_shapes: vec![ProbeShapeFact {
-                            start_line: 4,
-                            end_line: 4,
-                            start_byte: 40,
-                            kind: PROBE_SHAPE_SIDE_EFFECT.to_string(),
-                            text: "compute_fee(amount * 9)".to_string(),
-                        }],
-                        ..FileFacts::default()
-                    },
-                )]),
-                ..crate::analysis::facts::OwnedRustIndex::default()
-            });
+        for kind in [ProbeShapeKind::SideEffect, ProbeShapeKind::CallDeletion] {
+            for changed_text in [
+                "let _ = compute_fee(amount * 9);",
+                "let _ : u32 = compute_fee(amount * 9);",
+                "let _= compute_fee(amount * 9);",
+            ] {
+                let path = PathBuf::from("src/lib.rs");
+                let changed = ChangedFile {
+                    path: path.clone(),
+                    added_lines: vec![ChangedLine {
+                        line: 4,
+                        new_side_line: 4,
+                        text: changed_text.to_string(),
+                    }],
+                    removed_lines: vec![],
+                };
+                let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
+                    files: BTreeMap::from([(
+                        path.clone(),
+                        FileFacts {
+                            path,
+                            probe_shapes: vec![ProbeShapeFact {
+                                start_line: 4,
+                                end_line: 4,
+                                start_byte: 40,
+                                kind,
+                                text: "compute_fee(amount * 9)".into(),
+                            }],
+                            ..FileFacts::default()
+                        },
+                    )]),
+                    ..crate::analysis::facts::OwnedRustIndex::default()
+                });
 
-            let probes = probes_for_file(Path::new("workspace"), &changed, &index);
-            let Some(probe) = probes.first() else {
-                return Err("expected wildcard-discard call probe".to_string());
-            };
-            if probe.expression != changed_text {
-                return Err(format!("wildcard discard context was erased: {probe:?}"));
-            }
-            let sinks = crate::analysis::classify::local_flow_sinks(probe, None);
-            if !sinks
-                .first()
-                .is_some_and(|sink| sink.kind == crate::domain::FlowSinkKind::Unknown)
-            {
-                return Err(format!(
-                    "wildcard discard did not produce an unknown sink: {probe:?}"
-                ));
+                let probes = probes_for_file(Path::new("workspace"), &changed, &index);
+                let Some(probe) = probes.first() else {
+                    return Err("expected wildcard-discard call probe".to_string());
+                };
+                if probe.expression != changed_text {
+                    return Err(format!("wildcard discard context was erased: {probe:?}"));
+                }
+                let sinks = crate::analysis::classify::local_flow_sinks(probe, None);
+                if !sinks
+                    .first()
+                    .is_some_and(|sink| sink.kind == crate::domain::FlowSinkKind::Unknown)
+                {
+                    return Err(format!(
+                        "wildcard discard did not produce an unknown sink: {probe:?}"
+                    ));
+                }
             }
         }
         Ok(())
@@ -1325,7 +1326,7 @@ mod tests {
                             file: path.clone(),
                             start_line: 1,
                             end_line: 5,
-                            body: "fn parses() { let config = toml::from_str(text)?; }".to_string(),
+                            body: "fn parses() { let config = toml::from_str(text)?; }".into(),
                             calls: vec![],
                             returns: vec![],
                             literals: vec![],
@@ -1740,7 +1741,7 @@ mod tests {
                         file: path.clone(),
                         start_line: 1,
                         end_line: 6,
-                        body: "fn record_invoice() { }".to_string(),
+                        body: "fn record_invoice() { }".into(),
                         calls: vec![],
                         returns: vec![],
                         literals: vec![],
@@ -2016,7 +2017,7 @@ mod tests {
                         file: path.clone(),
                         start_line: 1,
                         end_line: 9,
-                        body: body.to_string(),
+                        body: body.into(),
                         calls: vec![],
                         returns: vec![],
                         literals: vec![],
@@ -2092,7 +2093,7 @@ mod tests {
                         file: PathBuf::from("src/lib.rs"),
                         start_line: 1,
                         end_line: 8,
-                        body: body.to_string(),
+                        body: body.into(),
                         calls: vec![],
                         returns: vec![],
                         literals: vec![],
@@ -2156,7 +2157,7 @@ mod tests {
                         file: PathBuf::from("src/lib.rs"),
                         start_line: 1,
                         end_line: 8,
-                        body: body.to_string(),
+                        body: body.into(),
                         calls: vec![],
                         returns: vec![],
                         literals: vec![],

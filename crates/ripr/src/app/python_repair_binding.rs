@@ -994,9 +994,10 @@ fn render_record(
 
 /// The analyzed root's config identity, detected from the real producer (the
 /// analyzer loads `ripr.toml` from the analyzed root when present), following
-/// the eval-sweep config-profile vocabulary.
+/// the eval-sweep config-profile vocabulary. Presence uses the same rule as
+/// config discovery: a dangling `ripr.toml` link is present, not defaults.
 fn detect_config_profile(root: &Path) -> String {
-    if root.join("ripr.toml").is_file() {
+    if crate::config::config_present_at_root(root) {
         "subject-ripr-toml".to_string()
     } else {
         "default".to_string()
@@ -2004,6 +2005,48 @@ mod tests {
         let second_bytes = serde_json::to_vec(&second).map_err(|error| error.to_string())?;
         if first_bytes != second_bytes {
             return Err("identical accepted record inputs serialized differently".to_string());
+        }
+        Ok(())
+    }
+
+    /// A dangling `ripr.toml` is present: the binding profile must match
+    /// config discovery, not report built-in defaults.
+    #[cfg(unix)]
+    #[test]
+    fn dangling_ripr_toml_symlink_is_subject_config_not_defaults() -> Result<(), String> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| format!("clock: {error}"))?
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "ripr-python-repair-binding-dangling-{}-{stamp}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+        if detect_config_profile(&root) != "default" {
+            let _ = std::fs::remove_dir_all(&root);
+            return Err("an absent ripr.toml must stay the default profile".to_string());
+        }
+        std::os::unix::fs::symlink("no-such-target.toml", root.join("ripr.toml"))
+            .map_err(|error| error.to_string())?;
+        let load_error = match crate::config::load_for_root(&root) {
+            Ok(_) => {
+                let _ = std::fs::remove_dir_all(&root);
+                return Err("load_for_root must refuse a dangling ripr.toml".to_string());
+            }
+            Err(error) => error,
+        };
+        let profile = detect_config_profile(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        if !load_error.contains("ripr.toml") {
+            return Err(format!(
+                "load_for_root must name ripr.toml for a dangling link: {load_error}"
+            ));
+        }
+        if profile != "subject-ripr-toml" {
+            return Err(format!(
+                "a dangling ripr.toml must be subject-ripr-toml, not {profile}"
+            ));
         }
         Ok(())
     }

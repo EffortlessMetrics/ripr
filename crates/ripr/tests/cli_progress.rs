@@ -67,16 +67,160 @@ impl Drop for OwnedProgressSample {
     }
 }
 
-fn run_check(fixture: &OwnedProgressSample, extra: &[&str]) -> Result<Output, String> {
-    let root = fixture.root_arg();
-    let diff = fixture.diff_arg();
-    let mut args = vec!["check", "--root", root.as_str(), "--diff", diff.as_str()];
+/// The format/progress contract needs real, nonempty diff analysis, not this
+/// repository's unrelated source/test inventory. Keep one root for each pair
+/// so the loud/quiet byte comparison observes the same analysis identity.
+struct DiffFixture(PathBuf);
+
+impl DiffFixture {
+    fn new() -> Result<Self, String> {
+        static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let tag = format!(
+            "diff-{}-{}",
+            std::process::id(),
+            SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
+        let fixture = Self(repo_fixture_root(&tag)?);
+        // The shared owned factory already writes the genuine [workspace]
+        // boundary. A second table would make its Cargo manifest invalid.
+        let config = ripr::config::load_for_root(&fixture.0)?;
+        let languages = config
+            .languages
+            .enabled
+            .iter()
+            .map(|id| id.as_str())
+            .collect::<Vec<_>>();
+        if config.source_path.is_some() || languages != ["rust"] {
+            return Err(
+                "diff fixture must use built-in Rust defaults at its owned workspace boundary"
+                    .to_string(),
+            );
+        }
+        std::fs::create_dir_all(fixture.0.join("tests"))
+            .map_err(|error| format!("create diff fixture tests: {error}"))?;
+        std::fs::write(
+            fixture.0.join("tests/threshold.rs"),
+            format!(
+                "use ripr_cli_progress_{}::over_threshold;\n\n#[test]\nfn either_side_of_threshold() {{\n    assert!(over_threshold(11, 10));\n    assert!(!over_threshold(9, 10));\n}}\n",
+                tag.replace('-', "_")
+            ),
+        )
+        .map_err(|error| format!("write diff fixture tests: {error}"))?;
+        std::fs::write(
+            fixture.0.join("change.diff"),
+            "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,3 +1,3 @@\n pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n-    amount > threshold\n+    amount >= threshold\n }\n",
+        )
+        .map_err(|error| format!("write diff fixture input: {error}"))?;
+        Ok(fixture)
+    }
+}
+
+impl Drop for DiffFixture {
+    fn drop(&mut self) {
+        ignore_remove_dir_all(&self.0);
+    }
+}
+
+fn run_check(fixture: &DiffFixture, extra: &[&str]) -> Result<Output, String> {
+    run_check_at(&fixture.0, &fixture.0.join("change.diff"), extra)
+}
+
+fn run_check_at(root: &Path, diff: &Path, extra: &[&str]) -> Result<Output, String> {
+    let root_arg = root.display().to_string();
+    let diff_arg = diff.display().to_string();
+    let mut args = vec![
+        "check",
+        "--root",
+        root_arg.as_str(),
+        "--diff",
+        diff_arg.as_str(),
+    ];
     args.extend_from_slice(extra);
     ripr()
-        .current_dir(&fixture.root)
+        .current_dir(root)
         .args(&args)
         .output()
         .map_err(|error| format!("run ripr {args:?}: {error}"))
+}
+
+#[test]
+fn owned_sample_progress_retains_original_nonempty_input_and_quiet_parity() -> Result<(), String> {
+    let fixture = OwnedProgressSample::new("original-sample-parity")?;
+    let config = ripr::config::load_for_root(&fixture.root)?;
+    let languages = config
+        .languages
+        .enabled
+        .iter()
+        .map(|id| id.as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        config.source_path.is_none(),
+        "owned sample must not inherit checkout config"
+    );
+    assert_eq!(
+        languages,
+        ["rust"],
+        "sample parity requires built-in Rust defaults"
+    );
+    let diff = fixture.diff_arg();
+    let loud = run_check_at(&fixture.root, Path::new(&diff), &["--format", "json"])?;
+    let quiet = run_check_at(
+        &fixture.root,
+        Path::new(&diff),
+        &["--format", "json", "--quiet"],
+    )?;
+    assert!(loud.status.success(), "{}", stderr_text(&loud));
+    assert!(quiet.status.success(), "{}", stderr_text(&quiet));
+    assert_eq!(
+        loud.stdout, quiet.stdout,
+        "original sample machine bytes must retain quiet parity"
+    );
+    let parsed: serde_json::Value = serde_json::from_slice(&loud.stdout)
+        .map_err(|error| format!("owned sample stdout is not JSON: {error}"))?;
+    assert_eq!(parsed["schema_version"], "0.2");
+    assert!(
+        !parsed["findings"]
+            .as_array()
+            .ok_or("sample findings missing")?
+            .is_empty(),
+        "original tracked sample bytes must still exercise actual analysis"
+    );
+    assert!(stderr_text(&loud).contains("ripr progress: loading_input [diff]"));
+    assert!(!stderr_text(&quiet).contains("ripr progress:"));
+    Ok(())
+}
+
+fn assert_fixture_json_findings(
+    fixture: &DiffFixture,
+    parsed: &serde_json::Value,
+) -> Result<(), String> {
+    let expected_file = fixture
+        .0
+        .join("src/lib.rs")
+        .to_string_lossy()
+        .replace('\\', "/")
+        .replace('%', "%25");
+    assert_eq!(
+        parsed["summary"]["changed_rust_files"], 1,
+        "fixture must analyze its one changed Rust file"
+    );
+    let findings = parsed["findings"]
+        .as_array()
+        .ok_or_else(|| "diff fixture must produce a findings array".to_string())?;
+    assert!(
+        findings.iter().any(|finding| {
+            finding
+                .pointer("/probe/file")
+                .and_then(serde_json::Value::as_str)
+                == Some(expected_file.as_str())
+                && finding
+                    .pointer("/probe/expression")
+                    .and_then(serde_json::Value::as_str)
+                    == Some("amount >= threshold")
+        }),
+        "real analyzer must report the fixture's changed predicate: {parsed}"
+    );
+    Ok(())
 }
 
 fn stderr_text(output: &Output) -> String {
@@ -91,8 +235,7 @@ fn stdout_has_progress_record(stdout: &str) -> bool {
 
 #[test]
 fn check_json_stdout_parses_while_progress_stays_on_stderr() -> Result<(), String> {
-    let fixture =
-        OwnedProgressSample::new("check_json_stdout_parses_while_progress_stays_on_stderr")?;
+    let fixture = DiffFixture::new()?;
     let output = run_check(&fixture, &["--format", "json"])?;
     assert!(
         output.status.success(),
@@ -109,6 +252,7 @@ fn check_json_stdout_parses_while_progress_stays_on_stderr() -> Result<(), Strin
             .is_empty(),
         "owned sample diff must exercise actual analysis"
     );
+    assert_fixture_json_findings(&fixture, &parsed)?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = stderr_text(&output);
     assert!(
@@ -145,9 +289,7 @@ fn check_json_stdout_parses_while_progress_stays_on_stderr() -> Result<(), Strin
 
 #[test]
 fn check_quiet_keeps_json_stdout_byte_identical_and_drops_progress() -> Result<(), String> {
-    let fixture = OwnedProgressSample::new(
-        "check_quiet_keeps_json_stdout_byte_identical_and_drops_progress",
-    )?;
+    let fixture = DiffFixture::new()?;
     let loud = run_check(&fixture, &["--format", "json"])?;
     let quiet = run_check(&fixture, &["--format", "json", "--quiet"])?;
     assert!(loud.status.success(), "{}", stderr_text(&loud));
@@ -156,6 +298,9 @@ fn check_quiet_keeps_json_stdout_byte_identical_and_drops_progress() -> Result<(
         loud.stdout, quiet.stdout,
         "quiet must not change machine stdout"
     );
+    let parsed: serde_json::Value = serde_json::from_slice(&loud.stdout)
+        .map_err(|error| format!("stdout is not JSON: {error}"))?;
+    assert_fixture_json_findings(&fixture, &parsed)?;
     let quiet_err = stderr_text(&quiet);
     assert!(
         !quiet_err.contains("ripr progress:"),
@@ -170,7 +315,7 @@ fn check_quiet_keeps_json_stdout_byte_identical_and_drops_progress() -> Result<(
 
 #[test]
 fn check_sarif_stdout_is_unchanged_by_progress() -> Result<(), String> {
-    let fixture = OwnedProgressSample::new("check_sarif_stdout_is_unchanged_by_progress")?;
+    let fixture = DiffFixture::new()?;
     let loud = run_check(&fixture, &["--format", "sarif"])?;
     let quiet = run_check(&fixture, &["--format", "sarif", "--quiet"])?;
     assert!(loud.status.success(), "{}", stderr_text(&loud));
@@ -180,6 +325,22 @@ fn check_sarif_stdout_is_unchanged_by_progress() -> Result<(), String> {
     assert!(stdout.contains("\"version\": \"2.1.0\"") || stdout.contains("sarif"));
     assert!(!stdout.contains("ripr progress:"));
     assert!(stderr_text(&loud).contains("ripr progress:"));
+    let parsed: serde_json::Value = serde_json::from_slice(&loud.stdout)
+        .map_err(|error| format!("stdout is not SARIF JSON: {error}"))?;
+    assert_eq!(parsed["version"], "2.1.0");
+    let results = parsed
+        .pointer("/runs/0/results")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "SARIF fixture must produce a results array".to_string())?;
+    assert!(
+        results.iter().any(|result| {
+            result
+                .pointer("/locations/0/physicalLocation/artifactLocation/uri")
+                .and_then(serde_json::Value::as_str)
+                == Some("src/lib.rs")
+        }),
+        "SARIF must contain a located finding for the changed fixture: {parsed}"
+    );
     Ok(())
 }
 
@@ -242,15 +403,8 @@ fn check_github_stdout_is_unchanged_by_progress() -> Result<(), String> {
     machine_format_stdout_is_unchanged("github")
 }
 
-#[test]
-fn check_markdown_stdout_is_unchanged_by_progress() -> Result<(), String> {
-    // Published traceability still names this symbol. `ripr check` has no
-    // `--format markdown`; the discriminator uses the github machine format.
-    machine_format_stdout_is_unchanged("github")
-}
-
 fn machine_format_stdout_is_unchanged(format: &str) -> Result<(), String> {
-    let fixture = OwnedProgressSample::new("machine_format_stdout_is_unchanged")?;
+    let fixture = DiffFixture::new()?;
     let loud = run_check(&fixture, &["--format", format])?;
     let quiet = run_check(&fixture, &["--format", format, "--quiet"])?;
     assert!(loud.status.success(), "{}", stderr_text(&loud));
@@ -259,6 +413,16 @@ fn machine_format_stdout_is_unchanged(format: &str) -> Result<(), String> {
     let stdout = String::from_utf8_lossy(&loud.stdout);
     assert!(!stdout.contains("ripr progress:"));
     assert!(stderr_text(&loud).contains("ripr progress: loading_input [diff]"));
+    assert!(
+        stdout.lines().any(|line| {
+            (line.starts_with("::warning ")
+                || line.starts_with("::error ")
+                || line.starts_with("::notice "))
+                && line.contains("file=src/lib.rs,")
+                && line.contains("title=ripr ")
+        }),
+        "GitHub must emit a finding annotation, not an empty-result notice: {stdout}"
+    );
     Ok(())
 }
 
@@ -355,8 +519,8 @@ fn check_quiet_failure_keeps_errors_and_drops_progress() -> Result<(), String> {
 
 #[test]
 fn check_unwritable_artifact_projects_failed_not_completed() -> Result<(), String> {
-    let fixture = OwnedProgressSample::new("artifact-directory")?;
-    let dir = fixture.root.join("progress-artifact-dir");
+    let fixture = DiffFixture::new()?;
+    let dir = fixture.0.join("artifact-dir");
     std::fs::create_dir_all(&dir).map_err(|error| format!("create artifact dir: {error}"))?;
     let dir_arg = dir.display().to_string();
     let output = run_check(
@@ -369,6 +533,10 @@ fn check_unwritable_artifact_projects_failed_not_completed() -> Result<(), Strin
         stderr_text(&output)
     );
     let stderr = stderr_text(&output);
+    assert!(
+        stderr.contains("ripr progress: building_output [diff]"),
+        "artifact failure must follow real analysis: {stderr}"
+    );
     assert!(
         stderr.contains("ripr progress: failed [diff]"),
         "post-analysis artifact failure must project failed: {stderr}"
@@ -522,14 +690,20 @@ fn repo_format_disclosure_is_absent_outside_the_audit_path_group() -> Result<(),
         "diff-scoped json must not claim audit-path cost: {}",
         stderr_text(&diff_json)
     );
-    // Repo badge surface: repo-scoped, but renders the compact summary, not
-    // the audit walk, so it must not claim minutes it does not charge.
+    // Repo badge surface: since #5261 its canonical_actionable_gap count
+    // derives from the same full classified walk repo-exposure renders, so
+    // it joined the audit-path group and must disclose the cost class it
+    // now charges. The diff-scoped control above stays outside the group.
     let badge = run_repo_format(&root, "repo-badge-json", &[])?;
     assert!(badge.status.success(), "{}", stderr_text(&badge));
     let badge_err = stderr_text(&badge);
     assert!(
-        !badge_err.contains("audit path"),
-        "repo-badge-json must not claim audit-path cost: {badge_err}"
+        badge_err.contains("full-repo audit path"),
+        "repo-badge-json must disclose audit-path cost now that it walks the          classified inventory: {badge_err}"
+    );
+    assert!(
+        badge_err.contains("warm reruns reuse the seam-facts cache"),
+        "cache-backed badge disclosure must claim warm reruns: {badge_err}"
     );
     ignore_remove_dir_all(&root);
     Ok(())

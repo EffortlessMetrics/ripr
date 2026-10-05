@@ -43,7 +43,11 @@ pub(super) fn run_agent_stub(options: AgentStubOptions) -> Result<(), CommandErr
                     "state": "refused",
                     "refusal": {"kind": refusal.as_str(), "reason": refusal.reason()},
                 });
-                eprintln!("{}", render(&document)?);
+                // A JSON document, not report text: keep it parseable (#6309).
+                ::std::eprintln!(
+                    "{}",
+                    crate::terminal_text::json_terminal_safe(render(&document)?)
+                );
             }
             return Err(CommandError::Decision(format!(
                 "agent stub: no test stub for seam {} ({}): {}",

@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 9cc2aff..fd04377 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -17,7 +17,7 @@ pub fn any_overdue(days: &[i64]) -> bool {
+ }
+ 
+ pub fn total_cents(prices: &[u64]) -> u64 {
+-    prices.iter().map(|p| p * 100).sum()
++    prices.iter().map(|&p| p * 100).sum()
+ }
+ 
+ #[cfg(test)]

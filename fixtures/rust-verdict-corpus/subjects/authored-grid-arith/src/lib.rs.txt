@@ -1,0 +1,61 @@
+//! Arithmetic, one function per test style.
+
+pub fn line_total(price: u64, qty: u64) -> u64 {
+    price * qty
+}
+
+pub fn area(width: u32, height: u32) -> u32 {
+    width * height
+}
+
+pub fn order_cost(unit: u64, qty: u64) -> u64 {
+    unit * qty
+}
+
+pub fn with_tip(bill: u64, tip: u64) -> u64 {
+    bill + tip
+}
+
+pub fn seconds(minutes: u64) -> u64 {
+    minutes * 60
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn three_at_seven_costs_twenty_one() {
+        assert_eq!(line_total(7, 3), 21);
+    }
+
+    #[test]
+    fn area_table() {
+        let cases = [(1, 1, 1), (2, 3, 6), (4, 5, 20), (10, 0, 0)];
+        for (w, h, want) in cases {
+            assert_eq!(area(w, h), want, "{w} x {h}");
+        }
+    }
+
+    #[test]
+    fn zero_quantity_costs_nothing() {
+        for unit in 1..50 {
+            assert_eq!(order_cost(unit, 0), 0, "unit {unit}");
+        }
+    }
+
+    fn check_tip(bill: u64, tip: u64, want: u64) {
+        assert_eq!(with_tip(bill, tip), want);
+    }
+
+    #[test]
+    fn tip_is_added() {
+        check_tip(40, 6, 46);
+        check_tip(10, 0, 10);
+    }
+
+    #[test]
+    fn seconds_smoke() {
+        let _ = seconds(3);
+    }
+}

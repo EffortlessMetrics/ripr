@@ -1,0 +1,141 @@
+//! Prices, tiers and quotes. The orders crate depends on this one by path.
+
+pub fn score(points: i64) -> i64 {
+    points * 3
+}
+
+pub fn rebate(total: i64) -> i64 {
+    total / 10
+}
+
+pub fn discount(total: i64) -> i64 {
+    total - 5
+}
+
+pub trait Price {
+    fn cents(&self) -> i64;
+}
+
+pub struct Item {
+    pub units: i64,
+}
+
+impl Price for Item {
+    fn cents(&self) -> i64 {
+        self.units * 125
+    }
+}
+
+impl Item {
+    pub fn total(&self) -> i64 {
+        self.units * 100
+    }
+}
+
+pub fn total(units: i64) -> i64 {
+    units * 90
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Tier {
+    Gold,
+    Silver,
+    Bronze,
+}
+
+pub fn tier(points: i64) -> Tier {
+    match points {
+        p if p >= 100 => Tier::Gold,
+        p if p >= 50 => Tier::Silver,
+        _ => Tier::Bronze,
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Cart {
+    pub items: Vec<i64>,
+    pub removed: Vec<i64>,
+}
+
+impl Cart {
+    pub fn add(&mut self, cents: i64) {
+        self.items.push(cents);
+    }
+
+    pub fn remove(&mut self, cents: i64) {
+        self.items.retain(|c| *c != cents);
+        self.removed.push(cents);
+    }
+}
+
+pub struct Quote {
+    pub units: i64,
+    pub total: i64,
+}
+
+pub fn quote(units: i64) -> Quote {
+    Quote {
+        units,
+        total: units * 10,
+    }
+}
+
+pub fn cap(value: u32) -> u32 {
+    if value > 10 {
+        10
+    } else {
+        value
+    }
+}
+
+pub fn gate(value: u32) -> bool {
+    value >= 10
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn item_cents_are_per_unit() {
+        let item = Item { units: 2 };
+        assert_eq!(item.cents(), 250);
+    }
+
+    #[test]
+    fn free_total_uses_the_bulk_price() {
+        assert_eq!(total(2), 180);
+    }
+
+    #[test]
+    fn fifty_points_is_silver() {
+        assert_eq!(tier(60), Tier::Silver);
+    }
+
+    #[test]
+    fn removing_records_the_removal() {
+        let mut cart = Cart::default();
+        cart.add(5);
+        cart.remove(5);
+        assert_eq!(cart.removed, vec![5]);
+    }
+
+    #[test]
+    fn quote_total_is_ten_per_unit() {
+        let quoted = quote(3);
+        assert_eq!(quoted.total, 30);
+    }
+
+    #[test]
+    fn large_values_are_capped() {
+        assert_eq!(cap(50), 10);
+    }
+
+    #[test]
+    fn ten_passes_the_gate() {
+        let n = 10;
+        assert!(gate(n));
+        let m = 9;
+        assert!(!gate(m));
+    }
+}

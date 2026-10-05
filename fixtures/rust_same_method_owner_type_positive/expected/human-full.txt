@@ -57,7 +57,7 @@ Evidence
   - observation yes: A related test observes a value or effect near the changed behavior
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches returned value: (0, Some(self.remaining)) (line 22)
-  - related test tests/size_hints.rs:4 while_some_size_hint_upper_bound uses strong exact value oracle: assert_eq!(it.size_hint().1, Some(it.remaining)); misses: assertion does not mention the changed expression
+  - related test tests/size_hints.rs:4 while_some_size_hint_upper_bound uses strong exact value oracle: assert_eq!(it.size_hint().1, Some(it.remaining)); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
 
 Weakness
   - No strong discriminator was detected

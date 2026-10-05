@@ -121,6 +121,56 @@ fn declared_binding_reads_only_a_let_declaration() {
 }
 
 #[test]
+fn retarget_relation_matches_an_initializer_containing_backticks() {
+    let relation = "binding_predicate_relation: changed binding `cut` initializer `input.find('`')` -> `input.rfind('`')` flows into predicate operand at line 13";
+    assert!(is_anchor_relation(
+        relation,
+        "    let cut = input.rfind('`');",
+        "cut"
+    ));
+    assert!(!is_anchor_relation(
+        relation,
+        "    let cut = input.find('`');",
+        "cut"
+    ));
+    assert!(!is_anchor_relation(
+        relation,
+        "    let cut = input.rfind('`');",
+        "end"
+    ));
+    // Only the declaration's own initializer counts, not text after a later
+    // `=` inside it.
+    let tail_eq = "binding_predicate_relation: changed binding `ok` initializer `b` flows into predicate operand at line 13";
+    assert!(!is_anchor_relation(tail_eq, "    let ok = a == b;", "ok"));
+    assert_eq!(let_initializer("let ok = a == b"), Some("a == b"));
+    assert_eq!(let_initializer("let x: Vec<u8> = g()"), Some("g()"));
+    assert_eq!(let_initializer("let x = |a| a >= 1"), Some("|a| a >= 1"));
+    assert_eq!(
+        let_initializer("let it: Box<dyn Iterator<Item = u32>> = b()"),
+        Some("b()")
+    );
+    assert_eq!(let_initializer("let f: fn(u8) -> u8 = g"), Some("g"));
+    assert_eq!(
+        let_initializer("let end: Option<usize>=Some(text.len())"),
+        Some("Some(text.len())")
+    );
+    assert_eq!(let_initializer("let x: Vec<Vec<u8>>= v"), Some("v"));
+    assert_eq!(let_initializer("let ok = a <= b"), Some("a <= b"));
+    // Without a distinct old initializer the relation names the new one alone.
+    let single = "binding_predicate_relation: changed binding `cut` initializer `input.rfind('`')` flows into predicate operand at line 13";
+    assert!(is_anchor_relation(
+        single,
+        "    let cut = input.rfind('`');",
+        "cut"
+    ));
+    assert!(!is_anchor_relation(
+        single,
+        "    let cut = input.find('`');",
+        "cut"
+    ));
+}
+
+#[test]
 fn anchored_findings_follow_a_retarget_only_for_the_anchor_binding() {
     let relation = "binding_predicate_relation: changed binding `end` initializer `a.find(d)` -> `a.rfind(d)` flows into predicate operand at line 13";
     let anchor_line = "    let end = a.rfind(d);";
@@ -373,6 +423,93 @@ fn validator_rejects_a_label_that_contradicts_its_mutant_outcomes() -> Result<()
         violations
             .iter()
             .any(|v| v.contains("does not follow from")),
+        "{violations:#?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn validator_requires_a_replayable_mutated_line_that_changes_the_anchor() -> Result<(), String> {
+    let missing = tampered(|raw| {
+        if let Some(mutant) = raw["cases"][0]["truth"]["mutants"][0].as_object_mut() {
+            mutant.remove("mutated_line");
+        }
+    })?;
+    assert!(
+        missing.iter().any(|v| v.contains("has no mutated_line")),
+        "{missing:#?}"
+    );
+    // cases[0] edits `if n >= 100 {` to `if n > 99 {`; replaying that same
+    // line is a mutant that changes nothing.
+    let no_op = tampered(|raw| {
+        raw["cases"][0]["truth"]["mutants"][0]["mutated_line"] = json!("if n > 99 {");
+    })?;
+    assert!(
+        no_op
+            .iter()
+            .any(|v| v.contains("equals the edited anchor line")),
+        "{no_op:#?}"
+    );
+    let listed = tampered(|raw| {
+        raw["cases"][0]["truth"]["mutants"][0]["failing_test"] = json!("a, b (+3 more)");
+    })?;
+    assert!(
+        listed.iter().any(|v| v.contains("is not one test name")),
+        "{listed:#?}"
+    );
+    // Each half of the rule separately: an interior newline, and padding
+    // that would slip a no-op past the trimmed-anchor comparison.
+    for bad in ["if n > 100 {\nx", " if n > 99 {"] {
+        let shaped = tampered(|raw| {
+            raw["cases"][0]["truth"]["mutants"][0]["mutated_line"] = json!(bad);
+        })?;
+        assert!(
+            shaped
+                .iter()
+                .any(|v| v.contains("must be one trimmed line")),
+            "{bad:?}: {shaped:#?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn validator_refuses_a_test_command_the_replay_cannot_run() -> Result<(), String> {
+    for command in [
+        "cargo test --manifest-path /elsewhere/Cargo.toml",
+        "make test",
+    ] {
+        let refused = tampered(|raw| {
+            raw["cases"][0]["truth"]["test_command"] = json!(command);
+        })?;
+        assert!(
+            refused.iter().any(|v| v.contains("cannot be replayed")),
+            "{command}: {refused:#?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn validator_refuses_a_mutated_line_on_a_behavior_change() -> Result<(), String> {
+    let dir = repo_corpus_dir();
+    let raw: Value =
+        serde_json::from_str(&read(&dir.join("corpus.json"))?).map_err(|err| err.to_string())?;
+    let index = raw["cases"]
+        .as_array()
+        .and_then(|cases| {
+            cases
+                .iter()
+                .position(|case| case["edit_kind"] == json!("behavior_change"))
+        })
+        .ok_or("the committed corpus has no behavior_change case")?;
+    let violations = tampered(|raw| {
+        raw["cases"][index]["truth"]["mutants"][0]["mutated_line"] = json!("x");
+    })?;
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("whose mutant is the edit itself")),
         "{violations:#?}"
     );
     Ok(())

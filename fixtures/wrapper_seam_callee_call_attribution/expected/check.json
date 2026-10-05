@@ -92,7 +92,7 @@
           "relation_reason": "seam_callee_call",
           "relation_confidence": "medium",
           "miss": "observation_unconfirmed",
-          "why": "assertion does not mention the changed expression"
+          "why": "ripr could not confirm that this assertion observes the changed behavior"
         },
         {
           "name": "calls_callee_before_shadow_binding",
@@ -206,7 +206,7 @@
           "relation_reason": "seam_callee_call",
           "relation_confidence": "medium",
           "miss": "observation_unconfirmed",
-          "why": "assertion does not mention the changed expression"
+          "why": "ripr could not confirm that this assertion observes the changed behavior"
         },
         {
           "name": "calls_callee_before_shadow_binding",
@@ -218,7 +218,7 @@
           "relation_reason": "seam_callee_call",
           "relation_confidence": "medium",
           "miss": "observation_unconfirmed",
-          "why": "assertion does not mention the changed expression"
+          "why": "ripr could not confirm that this assertion observes the changed behavior"
         },
         {
           "name": "observes_callee_outcome",
@@ -230,7 +230,7 @@
           "relation_reason": "seam_callee_call",
           "relation_confidence": "medium",
           "miss": "observation_unconfirmed",
-          "why": "assertion does not mention the changed expression"
+          "why": "ripr could not confirm that this assertion observes the changed behavior"
         }
       ],
       "stop_reasons": [],

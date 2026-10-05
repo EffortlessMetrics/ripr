@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 391be2d..d526bd4 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -3,7 +3,7 @@
+ pub fn total_weight(items: &[u32]) -> u32 {
+     let mut sum = 0;
+     for w in items {
+-        sum = sum + w;
++        sum += w;
+     }
+     sum
+ }

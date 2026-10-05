@@ -17,6 +17,20 @@
     "mutation_calibration": null,
     "baseline": null
   },
+  "subject": {
+    "analyzer_version": "0.11.0+0000000000000000000000000000000000000000",
+    "inputs": {
+      "pr_guidance": {
+        "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "producer_subject": {
+          "root_identity": null,
+          "base_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "reusable_cache_identity": null
+        }
+      }
+    }
+  },
   "policy": {
     "mode": "acknowledgeable",
     "threshold": "high_confidence_new_gap",

@@ -102,67 +102,64 @@ impl ClassifiedProbeEvidence {
             .owner_fn
             .map(owner_local_binding_names)
             .unwrap_or_default();
+        // #3731 review (F11): the related test's file source is reachable
+        // here, so the caller computes the same-name-import defeat per test
+        // instead of restructuring the reveal inputs.
+        let import_defeats = |test: &TestSummary, callee: &str| {
+            context.index.files().get(&test.file).is_some_and(|facts| {
+                context.test_file_imports_foreign_callee_name(&test.file, &facts.source, callee)
+            })
+        };
+        // #3731 review (G1): the test's OWN package defining a same-named
+        // function defeats the bare-scrutinee binding the same way a foreign
+        // import does — the bare call in that test may bind the local
+        // definition while the changed owner lives in another package.
+        // Index-backed, not a new lexical scan: package scopes come from the
+        // shared `package_prefix` authority and the same-named definition
+        // from the workspace's indexed functions. Both package scopes must
+        // resolve; an unscopable side (single-crate relative paths, absolute
+        // paths) keeps today's behavior.
+        let cross_package_defeats = |test: &TestSummary, callee: &str| {
+            memoized_file_defeat(&package_defeats_by_file, &test.file, callee, || {
+                let Some(test_package) = package_prefix(&test.file) else {
+                    return false;
+                };
+                let Some(owner_package) = owner_package.as_deref() else {
+                    return false;
+                };
+                if test_package == owner_package {
+                    return false;
+                }
+                context.index.functions().iter().any(|function| {
+                    function.name == callee
+                        && package_prefix(&function.file).as_deref() == Some(test_package.as_str())
+                })
+            })
+        };
+        let owner_pin_admits = |test: &TestSummary, assertion: &OracleFact| {
+            owner_return_pin.as_ref().is_some_and(|pin| {
+                pin.admits(
+                    test,
+                    assertion,
+                    context.index,
+                    &|file, name| {
+                        context.index.files().get(file).is_some_and(|facts| {
+                            context.test_file_imports_foreign_callee_name(file, &facts.source, name)
+                        })
+                    },
+                    pin_syntax,
+                )
+            })
+        };
         let (observe, discriminate, related_tests, matched_total) = reveal_evidence_with_expression(
             context.probe,
             reveal_expression,
             &context.related_tests,
             &owner_locals,
-            // #3731 review (F11): the related test's file source is
-            // reachable here, so the caller computes the same-name-import
-            // defeat per test instead of restructuring the reveal inputs.
-            &|test, callee| {
-                context.index.files().get(&test.file).is_some_and(|facts| {
-                    context.test_file_imports_foreign_callee_name(&test.file, &facts.source, callee)
-                })
-            },
-            // #3731 review (G1): the test's OWN package defining a
-            // same-named function defeats the bare-scrutinee binding the
-            // same way a foreign import does — the bare call in that test
-            // may bind the local definition while the changed owner lives
-            // in another package. Index-backed, not a new lexical scan:
-            // package scopes come from the shared `package_prefix`
-            // authority and the same-named definition from the workspace's
-            // indexed functions. Both package scopes must resolve; an
-            // unscopable side (single-crate relative paths, absolute
-            // paths) keeps today's behavior.
-            &|test, callee| {
-                memoized_file_defeat(&package_defeats_by_file, &test.file, callee, || {
-                    let Some(test_package) = package_prefix(&test.file) else {
-                        return false;
-                    };
-                    let Some(owner_package) = owner_package.as_deref() else {
-                        return false;
-                    };
-                    if test_package == owner_package {
-                        return false;
-                    }
-                    context.index.functions().iter().any(|function| {
-                        function.name == callee
-                            && package_prefix(&function.file).as_deref()
-                                == Some(test_package.as_str())
-                    })
-                })
-            },
+            &import_defeats,
+            &cross_package_defeats,
             &ReturnOracleAdmission {
-                owner_return_pin: &|test, assertion| {
-                    owner_return_pin.as_ref().is_some_and(|pin| {
-                        pin.admits(
-                            test,
-                            assertion,
-                            context.index,
-                            &|file, name| {
-                                context.index.files().get(file).is_some_and(|facts| {
-                                    context.test_file_imports_foreign_callee_name(
-                                        file,
-                                        &facts.source,
-                                        name,
-                                    )
-                                })
-                            },
-                            pin_syntax,
-                        )
-                    })
-                },
+                owner_return_pin: &owner_pin_admits,
                 assertion_admitted: &assertion_admitted,
             },
         );
@@ -185,6 +182,16 @@ impl ClassifiedProbeEvidence {
                 &test_summaries,
                 &activation,
                 &assertion_admitted,
+                // The same owner-pin decision and binding defeats reveal
+                // applied, so pairing cannot credit a pin reveal refused.
+                &|test, assertion| {
+                    matches!(assertion.kind, OracleKind::RelationalCheck)
+                        && context.owner_fn.is_some_and(|owner| {
+                            !import_defeats(test, &owner.name)
+                                && !cross_package_defeats(test, &owner.name)
+                        })
+                        && owner_pin_admits(test, assertion)
+                },
             ) {
             StageEvidence::new(
                 StageState::Weak,
@@ -418,7 +425,7 @@ mod tests {
             file: PathBuf::from(file),
             start_line: 1,
             end_line: 9,
-            body: "match expect_response(&input, \"ready\") { .. }".to_string(),
+            body: "match expect_response(&input, \"ready\") { .. }".into(),
             calls: Vec::new(),
             assertions: vec![guarded_oracle()],
             literals: Vec::new(),
@@ -435,7 +442,7 @@ mod tests {
             file: PathBuf::from(file),
             start_line: 1,
             end_line: 4,
-            body: "fn expect_response() -> Result<u32, ParseError> { Ok(1) }".to_string(),
+            body: "fn expect_response() -> Result<u32, ParseError> { Ok(1) }".into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
@@ -475,7 +482,7 @@ mod tests {
             file: PathBuf::from("crates/alpha/src/lib.rs"),
             start_line: 1,
             end_line: 20,
-            body: "fn expect_response() -> Result<u32, ParseError> { Ok(1) }".to_string(),
+            body: "fn expect_response() -> Result<u32, ParseError> { Ok(1) }".into(),
             calls: Vec::new(),
             returns: vec![ReturnFact {
                 line: 14,
@@ -627,7 +634,7 @@ mod tests {
             file: PathBuf::from("src/lib.rs"),
             start_line: 1,
             end_line: 20,
-            body: "fn calculate(amount: i32) -> Result<i32, Error> { Ok(amount) }".to_string(),
+            body: "fn calculate(amount: i32) -> Result<i32, Error> { Ok(amount) }".into(),
             calls: Vec::new(),
             returns: vec![ReturnFact {
                 line: 14,
@@ -674,7 +681,7 @@ mod tests {
             file: PathBuf::from("src/lib.rs"),
             start_line: 1,
             end_line: 20,
-            body: "fn calculate(amount: i32) -> Result<i32, Error> { Ok(amount) }".to_string(),
+            body: "fn calculate(amount: i32) -> Result<i32, Error> { Ok(amount) }".into(),
             calls: Vec::new(),
             returns: vec![ReturnFact {
                 line: 14,
@@ -725,7 +732,7 @@ mod tests {
             file: PathBuf::from("src/lib.rs"),
             start_line: 1,
             end_line: 6,
-            body: "fn from_rows(cache: &mut Cache, rows: Vec<u32>) -> Result<Table, String> {\n    let cache = cache;\n    let table = Table { rows };\n    table.validate()?;\n    Ok(table)\n}".to_string(),
+            body: "fn from_rows(cache: &mut Cache, rows: Vec<u32>) -> Result<Table, String> {\n    let cache = cache;\n    let table = Table { rows };\n    table.validate()?;\n    Ok(table)\n}".into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
@@ -764,7 +771,7 @@ mod tests {
             start_line: 1,
             end_line: 11,
             body: "pub fn quote_body(rest: &str, open: char, close: char) -> Option<&str> {\n    let start = open.len_utf8();\n    let end = rest.rfind(close)?;\n    if end == start {\n        Some(\"\")\n    } else if end > start {\n        Some(&rest[start..end])\n    } else {\n        None\n    }\n}"
-                .to_string(),
+                .into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
@@ -781,7 +788,7 @@ mod tests {
             file: PathBuf::from("tests/q.rs"),
             start_line: 4,
             end_line: 6,
-            body: "assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));".to_string(),
+            body: "assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));".into(),
             calls: vec![CallFact {
                 name: "quote_body".to_string(),
                 line: 5,
@@ -853,7 +860,7 @@ mod tests {
             start_line: 1,
             end_line: 7,
             body: "pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 {\n    if amount >= discount_threshold {\n        amount - 10\n    } else {\n        amount\n    }\n}"
-                .to_string(),
+                .into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
@@ -870,7 +877,7 @@ mod tests {
             file: PathBuf::from("tests/d.rs"),
             start_line: 4,
             end_line: 6,
-            body: "assert_eq!(discounted_total(150, 100), 140);".to_string(),
+            body: "assert_eq!(discounted_total(150, 100), 140);".into(),
             calls: vec![CallFact {
                 name: "discounted_total".to_string(),
                 line: 5,
@@ -887,7 +894,7 @@ mod tests {
             file: PathBuf::from("tests/d.rs"),
             start_line: 8,
             end_line: 10,
-            body: "assert_eq!(discounted_total(50, 100), 50);".to_string(),
+            body: "assert_eq!(discounted_total(50, 100), 50);".into(),
             calls: vec![CallFact {
                 name: "discounted_total".to_string(),
                 line: 9,

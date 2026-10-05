@@ -15,7 +15,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: "sensor" /* "focused-test" */ =>
   Missing discriminator: No strong discriminator was detected
-  Related test: tests/route.rs:4 only_the_unchanged_sibling_is_observed (assertion does not mention the changed expression)
+  Related test: tests/route.rs:4 only_the_unchanged_sibling_is_observed (ripr could not confirm that this assertion observes the changed behavior)
   Next step: Strengthen the related assertion so it discriminates the changed behavior.
   Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach route: only_the_unchanged_sibling_is_observed

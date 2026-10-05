@@ -1,0 +1,32 @@
+//! Code in different source roles: a constant, a production function and a
+//! test-only helper.
+
+pub const LIMIT: u32 = 10;
+
+pub fn within(value: u32) -> bool {
+    value <= LIMIT
+}
+
+pub fn doubled(value: u32) -> u32 {
+    value * 2
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample() -> u32 {
+        4
+    }
+
+    #[test]
+    fn the_limit_is_ten() {
+        assert!(within(10));
+        assert!(!within(11));
+    }
+
+    #[test]
+    fn doubling_the_sample() {
+        assert_eq!(doubled(sample()), 8);
+    }
+}

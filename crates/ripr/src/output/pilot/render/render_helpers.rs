@@ -12,7 +12,7 @@ use std::path::Path;
 /// terminal or the brief get what it means for them instead (#4216 row 3).
 /// `ripr agent repair` needs a test in the seam's own package, so a test that
 /// reaches the seam from another crate is not a target.
-pub(super) const NO_REPAIR_TARGET_FOCUSED_TEST: &str = "none: this seam has no test target that `ripr agent repair` can use (for example, the only tests are in another crate, or static evidence names no exact discriminator), so it will not start a repair attempt here";
+pub(super) const NO_REPAIR_TARGET_FOCUSED_TEST: &str = "none: this seam has no test target that `ripr agent repair` can use (for example, the only tests are inline `#[cfg(test)]` in a file outside the test-surface paths, the only tests are in another crate, or static evidence names no exact discriminator), so it will not start a repair attempt here";
 
 /// The hand step that replaces a repair start when the top seam has no
 /// repair target: a test in the seam's own crate. Never a pilot rerun, which

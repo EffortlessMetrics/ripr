@@ -31,9 +31,9 @@ The MCP surface is read-only. It exposes tools `ripr_workspace_status`,
 `ripr_get_repair_attempt`, `ripr_get_receipt_status`, and
 `ripr_get_repair_card`, the resource
 `ripr://workspace/status`, and the resource templates
-`ripr://snapshot/{snapshot_id}`, `ripr://gap/{canonical_item_id}`,
+`ripr://snapshot/{snapshot_id}`, `ripr://gap/{canonical_id}`,
 `ripr://repair-attempt/{attempt_id}`, `ripr://receipt/{receipt_id}`, and
-`ripr://repair-card/{canonical_item_id}`.
+`ripr://repair-card/{canonical_id}`.
 `ripr_refresh` runs one bounded static analysis per call through the same
 shared check authority as `ripr check`; the other tools read the committed
 snapshot and never re-run analysis. `ripr_prepare_repair` evaluates producer

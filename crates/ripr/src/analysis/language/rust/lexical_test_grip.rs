@@ -15,6 +15,8 @@ use super::mask_rust_comments_and_strings;
 use super::owner_name_from_id;
 #[cfg(test)]
 use crate::analysis::facts::FileFacts;
+#[cfg(test)]
+use crate::analysis::facts::SourceText;
 use crate::analysis::facts::{FileFactsView, RustIndex};
 use crate::analysis::rust_index;
 use crate::analysis::workspace;
@@ -421,7 +423,7 @@ mod tests {
                     file: PathBuf::from(path),
                     start_line: 1,
                     end_line: 2,
-                    body: source.to_string(),
+                    body: SourceText::from(source),
                     calls: Vec::new(),
                     assertions: Vec::new(),
                     literals: Vec::new(),
@@ -438,7 +440,7 @@ mod tests {
             module_declarations: Vec::new(),
             unresolved_property_macros: Vec::new(),
             role_provenance: Default::default(),
-            source: source.to_string(),
+            source: std::sync::Arc::from(source),
         }
     }
 

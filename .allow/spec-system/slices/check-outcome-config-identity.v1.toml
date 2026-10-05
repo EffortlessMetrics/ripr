@@ -1,0 +1,70 @@
+schema_version = "2.0"
+id = "ripr.slice.check-outcome-config-identity.v1"
+generation = 1
+
+source_issue = "issue:5988"
+design_reference = "RIPR-SPEC-0140"
+change_class = "behavior_change"
+
+claim_boundary = """
+The diff-check outcome identity block (`ripr check` JSON,
+`analysis_outcome.outcome.identity.config_identity`) publishes the
+fingerprint of the exact `ripr.toml` text loaded for the run exactly when a
+config file was actually loaded. A defaults-only run (no config file, or a
+bound `--candidate-tree` subject that must ignore the worktree config) keeps
+`null`. Any change to the loaded config content therefore moves the identity
+block — the finding-affecting allowlist fields, and equally the mode /
+unchanged-test / enabled-language settings the check-artifact identity
+records in separate fields (review repair: a narrow finding-affecting hash
+alone let those finding-changing settings share one block). Two runs whose
+loaded config text differs never share an identity block, even when
+`input_identity` (the diff digest alone) is equal. Additive field population
+in the git_candidate_subject house style: no outcome schema_version bump, and
+`schemas/ripr/check.schema.json` already declares `config_identity` as a
+nullable string. Claims no change to analysis behavior, finding content, the
+artifact reuse gate, or the cache keying (the file-fact cache already keyed
+on config before this change).
+"""
+
+non_goals = [
+  "changing which config fields are finding-affecting (the closed SPEC-0140 allowlist stays)",
+  "verifying config identity at artifact read time beyond the existing gate",
+  "populating repository_identity, root_identity, or snapshot_identity",
+  "folding config bytes into input_identity",
+  "changing the LSP- or MCP-constructed outcome identity paths",
+]
+
+return_conditions = [
+  "Return to root if a config change that flips findings again leaves the identity block byte-equal.",
+  "Return to root if config_identity becomes non-null for a run that loaded no ripr.toml.",
+  "Return to root if a bound Git-candidate subject starts reading the worktree config into its identity.",
+]
+
+owned_seams = [
+  "seam:ripr:app:check-outcome-identity",
+  "seam:ripr:config:loaded-config-identity",
+]
+
+shared_seams = [
+  "seam:ripr:config:check-artifact-identity-fields",
+  "seam:ripr:docs:output-schema",
+]
+
+forbidden_seams = [
+  "seam:ripr:analysis:file-facts-cache",
+  "seam:ripr:app:check-artifact-reuse-gate",
+  "seam:ripr:analysis:exposure-classification",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0140"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

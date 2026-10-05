@@ -11,8 +11,8 @@
 //! 2. any stage `== Opaque`                              → `Opaque`
 //! 3. all five stages `== Yes`                           → `StronglyGripped`
 //! 4. `discriminate == No`                               → `ReachableUnrevealed`
-//! 5. `discriminate == Weak`
-//!    or `missing_discriminators` non-empty              → `WeaklyGripped`
+//! 5. `activate != Unknown` and (`discriminate == Weak`
+//!    or `missing_discriminators` non-empty)             → `WeaklyGripped`
 //! 6. `activate == Unknown`                              → `ActivationUnknown`
 //! 7. `propagate == Unknown`                             → `PropagationUnknown`
 //! 8. `observe == Unknown`                               → `ObservationUnknown`
@@ -127,8 +127,15 @@ pub(crate) fn classify_seam(_seam: &RepoSeam, evidence: &TestGripEvidence) -> Se
         return SeamGripClass::ReachableUnrevealed;
     }
 
-    if evidence.discriminate.state == StageState::Weak
-        || !evidence.missing_discriminators.is_empty()
+    // Weak grip is a claim about tests that run the seam: their oracle is
+    // weak, or the activation values they pass miss a needed discriminator.
+    // With activation unknown ripr has not established that any related
+    // test runs the seam (a same-file relation, or #4214's boundary hint
+    // with no observed value), so the seam falls through to
+    // `ActivationUnknown` instead of ranking as a weak-grip gap.
+    if evidence.activate.state != StageState::Unknown
+        && (evidence.discriminate.state == StageState::Weak
+            || !evidence.missing_discriminators.is_empty())
     {
         return SeamGripClass::WeaklyGripped;
     }
@@ -313,6 +320,44 @@ mod tests {
             classify_seam(&sample_seam(), &evidence),
             SeamGripClass::WeaklyGripped
         );
+    }
+
+    #[test]
+    fn given_activation_unknown_then_weak_evidence_is_activation_unknown_not_weak_grip() {
+        // The mutation spot check found pilot's top `weakly_gripped` seams of
+        // these shapes mostly caught by real mutants: a boundary hint with no
+        // observed activation value, and a weak oracle from tests ripr only
+        // relates by file. Neither establishes that a test runs the seam.
+        for (discriminate, missing) in [
+            (StageState::Yes, one_missing()),
+            (StageState::Weak, no_missing()),
+        ] {
+            let unknown_activation = evidence_with(
+                StageState::Yes,
+                StageState::Unknown,
+                StageState::Yes,
+                StageState::Yes,
+                discriminate.clone(),
+                missing.clone(),
+            );
+            assert_eq!(
+                classify_seam(&sample_seam(), &unknown_activation),
+                SeamGripClass::ActivationUnknown
+            );
+            // Established activation keeps the same evidence a weak grip.
+            let activated = evidence_with(
+                StageState::Yes,
+                StageState::Yes,
+                StageState::Yes,
+                StageState::Yes,
+                discriminate,
+                missing,
+            );
+            assert_eq!(
+                classify_seam(&sample_seam(), &activated),
+                SeamGripClass::WeaklyGripped
+            );
+        }
     }
 
     #[test]

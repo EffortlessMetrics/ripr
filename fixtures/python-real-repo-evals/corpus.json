@@ -1,4 +1,15 @@
 {
+  "native_cases": [
+    {
+      "id": "itsdangerous_future_age_native_test_understanding",
+      "source_kind": "external_repo",
+      "source_ref": "fixtures/python-real-repo-evals/itsdangerous-future-age",
+      "manifest": "itsdangerous-future-age/manifest.json",
+      "analyzer_execution": "not_established",
+      "metrics_eligible": false,
+      "authority": "https://github.com/pallets/itsdangerous/issues/126"
+    }
+  ],
   "schema_version": "0.1",
   "kind": "python_real_repo_eval_corpus",
   "spec": "RIPR-SPEC-0028",

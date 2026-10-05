@@ -42,7 +42,7 @@ use super::reveal::{
 };
 use crate::analysis::extract::{
     fact_body_defines_callee_fn, fact_body_let_shadow_line, mask_comments_and_strings,
-    test_body_defines_callee_fn, test_body_let_shadow_line,
+    outer_assertion_condition, test_body_defines_callee_fn, test_body_let_shadow_line,
 };
 use crate::analysis::facts::{FunctionContainer, SourceRoleProvenanceEdgeKind};
 use crate::analysis::syntax::{
@@ -60,6 +60,9 @@ pub(in crate::analysis) struct OwnerReturnPin {
     name: String,
     call: PinCall,
     path: ReturnPathGate,
+    /// The owner declares `-> bool`, so `assert!(owner(..))` pins its whole
+    /// return value to `true` and `assert!(!owner(..))` to `false`.
+    returns_bool: bool,
     /// Per test file: whether the owner's trait is in scope. The trait is
     /// fixed per pin and the scan masks the whole file, so it runs once.
     trait_scope_by_file: RefCell<BTreeMap<PathBuf, bool>>,
@@ -243,7 +246,7 @@ fn trusted_macro_ambiguities_in(index: &RustIndex) -> BTreeSet<String> {
     let (likely, rest): (Vec<&str>, Vec<&str>) = index
         .files()
         .values()
-        .map(|facts| facts.data().source.as_str())
+        .map(|facts| facts.data().source.as_ref())
         .partition(|source| may_saturate_macro_ambiguity(source));
     let mut ambiguous = scan(&likely);
     if ambiguous.len() < NON_RETURNING_MACROS.len() {
@@ -312,8 +315,16 @@ impl OwnerReturnPin {
         owner: &FunctionSummary,
         index: &RustIndex,
     ) -> Option<Self> {
-        if !matches!(probe.family, ProbeFamily::ReturnValue) || !owner.item.has_body {
+        if !owner.item.has_body {
             return None;
+        }
+        let returns_bool = declared_return_type(&owner.body).as_deref() == Some("bool");
+        // A predicate that is a bool owner's whole tail is the owner's return
+        // value, so the same pin observes it.
+        match probe.family {
+            ProbeFamily::ReturnValue => {}
+            ProbeFamily::Predicate if returns_bool => {}
+            _ => return None,
         }
         let parser_backed = index
             .files()
@@ -365,6 +376,7 @@ impl OwnerReturnPin {
             name: name.to_string(),
             call,
             path,
+            returns_bool,
             trait_scope_by_file: RefCell::default(),
         })
     }
@@ -388,25 +400,48 @@ impl OwnerReturnPin {
         if test
             .attrs
             .iter()
-            .chain(std::iter::once(&test.body))
+            .map(String::as_str)
+            .chain(std::iter::once(test.body.as_str()))
             .any(|text| text.contains("should_panic"))
         {
             return false;
         }
-        if !is_plain_assert_eq(&assertion.text) || !syntax.admits(test, assertion, index) {
+        let condition;
+        let (call, expected) = if is_plain_macro(&assertion.text, "assert_eq") {
+            let Some(operands) = assertion_comparison_operands(&assertion.text) else {
+                return false;
+            };
+            match (
+                owner_call_shape(operands[0], &self.name),
+                owner_call_shape(operands[1], &self.name),
+            ) {
+                (Some(call), None) => (call, operands[1]),
+                (None, Some(call)) => (call, operands[0]),
+                _ => return false,
+            }
+        } else if self.returns_bool && is_plain_macro(&assertion.text, "assert") {
+            // `assert!(owner(..))` is `assert_eq!(owner(..), true)` and
+            // `assert!(!owner(..))` is `assert_eq!(owner(..), false)`. The
+            // message arguments never decide whether the test fails.
+            let Some(text) = outer_assertion_condition(&assertion.text) else {
+                return false;
+            };
+            condition = text;
+            let operand = condition.trim();
+            let (operand, expected) = match operand.strip_prefix('!') {
+                Some(negated) => (negated.trim_start(), "false"),
+                None => (operand, "true"),
+            };
+            let Some(call) = owner_call_shape(operand, &self.name) else {
+                return false;
+            };
+            (call, expected)
+        } else {
+            return false;
+        };
+        if !syntax.admits(test, assertion, index) {
             return false;
         }
-        let Some(operands) = assertion_comparison_operands(&assertion.text) else {
-            return false;
-        };
-        let (call, expected) = match (
-            owner_call_shape(operands[0], &self.name),
-            owner_call_shape(operands[1], &self.name),
-        ) {
-            (Some(call), None) => (call, operands[1]),
-            (None, Some(call)) => (call, operands[0]),
-            _ => return false,
-        };
         // `assert_eq!(f(4), f(2) + f(2))` compares the owner with itself.
         if contains_as_whole_word(&mask_comments_and_strings(expected), &self.name) {
             return false;
@@ -417,7 +452,7 @@ impl OwnerReturnPin {
         let test_source = index
             .files()
             .get(&test.file)
-            .map(|facts| facts.data().source.as_str());
+            .map(|facts| facts.data().source.as_ref());
         let masked_body = mask_comments_and_strings(&test.body);
         match (&self.call, call) {
             (PinCall::Bare, CallShape::Bare) => {
@@ -816,15 +851,16 @@ fn is_bare_assert_eq_invocation(text: &str) -> bool {
 /// Whether `text` is one plain `assert_eq!` invocation: not
 /// `debug_assert_eq!` (compiled out in release tests), not a crate's own
 /// `*_assert_eq!`, not a path-qualified or repeated one.
-fn is_plain_assert_eq(text: &str) -> bool {
+/// The text is exactly one unqualified invocation of `macro_name`.
+fn is_plain_macro(text: &str, macro_name: &str) -> bool {
     let masked = mask_comments_and_strings(text);
     let invocations = macro_invocations(&masked);
     let [(name, _)] = invocations.as_slice() else {
         return false;
     };
-    *name == "assert_eq"
+    *name == macro_name
         && masked
-            .find("assert_eq")
+            .find(macro_name)
             .is_some_and(|offset| !masked[..offset].trim_end().ends_with(':'))
 }
 

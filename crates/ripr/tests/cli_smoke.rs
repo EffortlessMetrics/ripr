@@ -26,8 +26,14 @@ mod implicit_git_root;
 #[cfg(feature = "lang-python")]
 #[path = "cli_smoke/python_source_admission.rs"]
 mod python_source_admission;
+#[cfg(unix)]
+#[path = "cli_smoke/receipt_recovery_root.rs"]
+mod receipt_recovery_root;
 #[path = "cli_smoke/related_test_count.rs"]
 mod related_test_count;
+#[cfg(unix)]
+#[path = "cli_smoke/workflow_directory.rs"]
+mod workflow_directory;
 
 // All plain fixture-setup git invocations below route through the shared
 // hardened helper (deadline + one idempotent retry + commit reconcile,
@@ -2463,6 +2469,125 @@ fn config_validate_discovers_parent_config_from_nested_directory() -> Result<(),
             expected_config_path.display()
         ));
     }
+    Ok(())
+}
+
+#[test]
+fn selector_location_misses_explain_syntax_and_preserve_retry_scope()
+-> Result<(), Box<dyn std::error::Error>> {
+    let (root, diff) = agent_brief_sample_workspace("selector-location-recovery")?;
+    let foreign = root.join("foreign");
+    std::fs::create_dir_all(&foreign)?;
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let root_arg = root.display().to_string();
+    let diff_arg = diff.display().to_string();
+    let expected_listing = format!(
+        "ripr check --root {} --diff {} --json",
+        renderer_shell_arg(&root_arg),
+        renderer_shell_arg(&diff_arg)
+    );
+    let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+        let listed = run_command(
+            bin,
+            Some(&foreign),
+            &["check", "--root", &root_arg, "--diff", &diff_arg, "--json"],
+        )?;
+        if !listed.status.success() {
+            return Err(format!(
+                "selector fixture did not analyze: {}",
+                String::from_utf8_lossy(&listed.stderr)
+            )
+            .into());
+        }
+        let packet: serde_json::Value = serde_json::from_slice(&listed.stdout)?;
+        let findings = packet["findings"]
+            .as_array()
+            .ok_or("selector fixture must carry a finding set")?;
+        // Producer-shaped ID from probes::repo's retained emission control.
+        let missing_repo_id = "repo-probe:src_lib.rs:error_path:3bf8c64c";
+        if findings
+            .iter()
+            .any(|finding| finding["id"].as_str() == Some(missing_repo_id))
+        {
+            return Err("repo-probe negative control must be absent from this fixture".into());
+        }
+        let finding = findings
+            .first()
+            .ok_or("selector fixture must produce a nonempty finding set")?;
+        let id = finding["id"].as_str().ok_or("finding must carry an id")?;
+        let line = finding["probe"]["line"]
+            .as_u64()
+            .ok_or("finding must carry its source line")?;
+        let locator = format!("src/lib.rs:{line}");
+
+        for command in ["explain", "context"] {
+            for (selector, needs_hint, success) in [
+                ("src/lib.rs:abc", true, false),
+                (":::", true, false),
+                ("probe:not-a-real-id", false, false),
+                (missing_repo_id, false, false),
+                ("src/lib.rs:999999", false, false),
+                (id, false, true),
+                (locator.as_str(), false, true),
+            ] {
+                let mut args = vec![command, "--root", &root_arg, "--diff", &diff_arg];
+                if command == "context" {
+                    args.push("--at");
+                }
+                args.push(selector);
+                let output = run_command(bin, Some(&foreign), &args)?;
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                if success {
+                    if !output.status.success() {
+                        return Err(format!(
+                            "valid {command} selector {selector:?} failed: {stderr}"
+                        )
+                        .into());
+                    }
+                    if command == "context" {
+                        let selected: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+                        if selected["probe"]["id"].as_str() != Some(id) {
+                            return Err(format!(
+                                "valid locator selected another finding: {selected}"
+                            )
+                            .into());
+                        }
+                    } else if !String::from_utf8_lossy(&output.stdout).contains(id) {
+                        return Err("explain did not render the selected finding identity".into());
+                    }
+                } else {
+                    if output.status.code() != Some(2) || !output.stdout.is_empty() {
+                        return Err(format!(
+                            "selector miss changed the CLI failure contract: {output:?}"
+                        )
+                        .into());
+                    }
+                    if stderr.contains("file:line with a nonempty path") != needs_hint {
+                        return Err(format!(
+                            "wrong syntax guidance for {command} {selector:?}: {stderr}"
+                        )
+                        .into());
+                    }
+                    let listing = stderr
+                        .split('`')
+                        .find(|part| part.starts_with("ripr check "))
+                        .ok_or_else(|| {
+                            format!("selector miss omitted its retry command: {stderr}")
+                        })?;
+                    if listing != expected_listing || !stderr.contains("list available finding ids")
+                    {
+                        return Err(
+                            format!("selector retry lost the requested scope: {stderr}").into()
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
+    })();
+    let cleanup = std::fs::remove_dir_all(&root);
+    result?;
+    cleanup?;
     Ok(())
 }
 
@@ -7400,6 +7525,23 @@ fn agent_repair_before_refuses_a_seam_without_a_test_file_before_writing_anythin
         stderr.contains("recommended_test.file: \"not_applicable\""),
         "the refusal must name the observable packet field:\n{stderr}"
     );
+    // #5210: the inline-only boundary is reachable from the refusal via
+    // the repair help carrying the scope statement.
+    assert!(
+        stderr.contains(
+            "Repair scope, including the inline-test boundary, is in `ripr agent repair --help`"
+        ),
+        "the refusal must point at the repair scope boundary:\n{stderr}"
+    );
+    // The packet-field claim covers both states: not_applicable when no
+    // target was proposed, the production file with an empty surface for
+    // an inline-module proposal.
+    assert!(
+        stderr.contains(
+            "when no target was proposed (an inline-module proposal instead names the production file with an empty edit surface)"
+        ),
+        "the refusal must state both packet states:\n{stderr}"
+    );
     assert!(
         !stderr.contains("before phase complete"),
         "a refused before phase must not claim completion:\n{stderr}"
@@ -10084,6 +10226,146 @@ fn doctor_reports_missing_config_defaults() -> Result<(), String> {
     Ok(())
 }
 
+// #5280: ripr's .cargo/config.toml force-redirects linker TEMP/TMP/TMPDIR
+// into workspace-relative target/, so a fresh checkout building with an
+// isolated CARGO_TARGET_DIR fails MSVC linking (LNK1104) until target/
+// exists. The source-build doctor profile must surface that constraint and
+// the mkdir repair; the analysis profile stays quiet about it, and a present
+// directory resolves the advisory.
+#[test]
+fn doctor_source_build_preflight_warns_on_linker_temp_redirect() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    // RAII cleanup: a failed assertion or early error must not leak the
+    // temporary workspace, matching the Drop-guard fixtures used by the
+    // other test files.
+    struct TempWorkspaceGuard<'a>(&'a Path);
+    impl Drop for TempWorkspaceGuard<'_> {
+        fn drop(&mut self) {
+            ignore_remove_dir_all(self.0);
+        }
+    }
+    let _cleanup = TempWorkspaceGuard(&workspace);
+    std::fs::create_dir_all(workspace.join(".cargo")).map_err(|e| format!("create .cargo: {e}"))?;
+    std::fs::write(
+        workspace.join(".cargo/config.toml"),
+        "[env]\n\
+         TEMP = { value = \"target\", relative = true, force = true }\n\
+         TMP = { value = \"target\", relative = true, force = true }\n\
+         TMPDIR = { value = \"target\", relative = true, force = true }\n",
+    )
+    .map_err(|e| format!("write .cargo/config.toml: {e}"))?;
+    let root = workspace.display().to_string();
+
+    // `doctor_check_status` is unix-gated, so this test extracts the check
+    // status itself and stays cross-platform: the redirect constraint is a
+    // Windows-MSVC failure mode, but the doctor surface is not.
+    let check_status = |report: &serde_json::Value, name: &str| -> String {
+        report["checks"]
+            .as_array()
+            .and_then(|checks| checks.iter().find(|check| check["name"] == name))
+            .and_then(|check| check["status"].as_str())
+            .unwrap_or("absent")
+            .to_string()
+    };
+
+    let source = run_ripr(&[
+        "doctor",
+        "--root",
+        &root,
+        "--profile",
+        "source-build",
+        "--json",
+    ]);
+    assert!(
+        source.status.success(),
+        "an advisory must not fail the source-build doctor: {source:?}"
+    );
+    let source_report: serde_json::Value = serde_json::from_slice(&source.stdout)
+        .map_err(|e| format!("source-build doctor JSON did not parse: {e}"))?;
+    if check_status(&source_report, "linker_temp_redirect") != "advisory" {
+        return Err(format!(
+            "absent workspace target/ with a linker-temp redirect must warn: {source_report}"
+        ));
+    }
+    let evidence = source_report["checks"]
+        .as_array()
+        .and_then(|checks| {
+            checks
+                .iter()
+                .find(|check| check["name"] == "linker_temp_redirect")
+                .and_then(|check| check["evidence"].as_str())
+        })
+        .unwrap_or_default()
+        .to_string();
+    for needle in ["LNK1104", "workspace-relative target/", "mkdir "] {
+        assert!(
+            evidence.contains(needle),
+            "evidence must name {needle}: {evidence}"
+        );
+    }
+
+    // The analysis profile stays quiet: the constraint matters only when
+    // building ripr from source.
+    let analysis = run_ripr(&["doctor", "--root", &root, "--profile", "analysis", "--json"]);
+    assert!(
+        analysis.status.success(),
+        "analysis doctor must succeed: {analysis:?}"
+    );
+    let analysis_report: serde_json::Value = serde_json::from_slice(&analysis.stdout)
+        .map_err(|e| format!("analysis doctor JSON did not parse: {e}"))?;
+    assert_eq!(
+        check_status(&analysis_report, "linker_temp_redirect"),
+        "absent",
+        "the analysis profile must not carry the source-build preflight"
+    );
+
+    // The human surface prints the same advisory with its repair. The repair
+    // names the workspace-rooted directory (the binary is invoked from a
+    // different working directory here), not a bare cwd-relative name.
+    let human = run_ripr(&["doctor", "--root", &root, "--profile", "source-build"]);
+    let stdout = String::from_utf8_lossy(&human.stdout);
+    assert!(
+        stdout.contains("~ .cargo/config.toml redirects linker temp variables"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("LNK1104"), "{stdout}");
+    let raw_target = workspace.join("target").display().to_string();
+    let rooted_target = if cfg!(windows) {
+        raw_target.replace('\\', "/")
+    } else {
+        raw_target
+    };
+    assert!(
+        stdout.contains(&format!("mkdir {rooted_target}")),
+        "repair must name the workspace-rooted directory {rooted_target}:\n{stdout}"
+    );
+
+    // Once the directory exists (a normal workspace build creates it), the
+    // preflight is silent again.
+    std::fs::create_dir_all(workspace.join("target")).map_err(|e| format!("create target: {e}"))?;
+    let resolved = run_ripr(&[
+        "doctor",
+        "--root",
+        &root,
+        "--profile",
+        "source-build",
+        "--json",
+    ]);
+    assert!(
+        resolved.status.success(),
+        "resolved doctor must succeed: {resolved:?}"
+    );
+    let resolved_report: serde_json::Value = serde_json::from_slice(&resolved.stdout)
+        .map_err(|e| format!("resolved doctor JSON did not parse: {e}"))?;
+    assert_eq!(
+        check_status(&resolved_report, "linker_temp_redirect"),
+        "absent",
+        "a present workspace target must resolve the advisory"
+    );
+
+    Ok(())
+}
+
 #[test]
 fn doctor_reports_present_start_here_packet() -> Result<(), String> {
     let workspace = make_temp_workspace(None)?;
@@ -12162,11 +12444,11 @@ fn init_ci_github_dry_run_prints_config_and_workflow_without_writing() -> Result
     assert!(stdout.contains("continue-on-error: true"));
     assert!(stdout.contains("RIPR_UPLOAD_SARIF"));
     assert!(stdout.contains("actions/upload-artifact@v7"));
-    assert!(stdout.contains("target/ripr/agent"));
-    assert!(stdout.contains("target/ripr/workflow"));
-    assert!(stdout.contains("target/ripr/review"));
+    // #5409: one upload path covers every RIPR report directory.
+    assert!(stdout.contains("            target/ripr\n            target/ci\n"));
+    assert!(stdout.contains("target/ripr/review/publish/requests.tsv"));
     assert!(stdout.contains("RIPR advisory summary"));
-    assert!(stdout.contains("target/ripr/review/existing-comments.json"));
+    assert!(stdout.contains("ripr pr-comments existing --root . --raw -"));
     // #4696: the analysis steps run inside one packet command.
     assert!(stdout.contains("run: ripr reports ci-packet --root ."));
     // #3906: CI writes only the before side of the repair loop.
@@ -12219,16 +12501,65 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     assert!(workspace.join("ripr.toml").exists());
     assert!(workflow.contains("pull_request:"));
     assert!(workflow.contains("workflow_dispatch:"));
-    // The steps use the generating version's CLI, so the install is pinned
-    // to it rather than taking the newest crates.io release.
-    assert!(workflow.contains(&format!(
-        "          version={}\n",
-        env!("CARGO_PKG_VERSION")
-    )));
-    assert!(workflow.contains(&format!(
-        "            cargo install ripr --version {} --locked\n",
-        env!("CARGO_PKG_VERSION")
-    )));
+    // #5208: the pin/warning pair must stay consistent in both release
+    // states, on both install routes (the prebuilt `version=` and the
+    // cargo fallback). A released generator self-pins silently; an
+    // unreleased one pins an exact released version (its own would
+    // neither download nor install) and warns on stderr. Branching on the
+    // observed warning keeps this test valid when the package and release
+    // constant meet at parity (CodeRabbit Major): at that commit the
+    // released path is the correct expectation. Exact released/dev
+    // mappings are pinned by unit tests without rebuilding; this test
+    // pins the end-to-end wiring and consistency.
+    let generator = env!("CARGO_PKG_VERSION");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let warned = stderr.contains("is not released");
+    if warned {
+        // The warning names the fallback pin; both install routes must
+        // carry exactly it (#5244 review: positive exact pins, not just
+        // the absence of the generator version).
+        let pinned = stderr
+            .split("pins the latest release (")
+            .nth(1)
+            .and_then(|rest| rest.split(") instead").next())
+            .ok_or_else(|| format!("warning must name the fallback pin: {stderr}"))?;
+        assert!(
+            workflow.contains(&format!("          version={pinned}\n")),
+            "a warned run must pin the fallback {pinned} on the prebuilt route"
+        );
+        assert!(
+            workflow.contains(&format!(
+                "            cargo install ripr --version {pinned} --locked\n"
+            )),
+            "a warned run must pin the fallback {pinned} on the cargo route"
+        );
+        assert!(
+            !workflow.contains(&format!("          version={generator}\n")),
+            "a warned run must not self-pin the unreleased generator"
+        );
+        assert!(
+            !workflow.contains(&format!(
+                "            cargo install ripr --version {generator} --locked\n"
+            )),
+            "a warned run must not self-pin the fallback either"
+        );
+        assert!(
+            stderr.contains("pins the latest release")
+                && stderr.contains("ripr init --ci github --force"),
+            "missing unreleased-generator warning: {stderr}"
+        );
+    } else {
+        assert!(
+            workflow.contains(&format!("          version={generator}\n")),
+            "an unwarned run must self-pin the released generator"
+        );
+        assert!(
+            workflow.contains(&format!(
+                "            cargo install ripr --version {generator} --locked\n"
+            )),
+            "an unwarned run must self-pin the fallback too"
+        );
+    }
     assert!(!workflow.contains("cargo install ripr --locked"));
     // A newer push cancels the older run of the same PR, so two runs never
     // publish the same inline cards (#4448).
@@ -12924,7 +13255,7 @@ fn pilot_snapshot_truncated_by_the_seam_budget_is_not_a_verify_baseline()
     init_producer_fixture_repo(&root)?;
     let mut lib = std::fs::read_to_string(root.join("src/lib.rs"))?;
     lib.push_str(
-        "\npub fn shipping_fee(weight: i32, free_limit: i32) -> i32 {\n    if weight > free_limit { 5 } else { 0 }\n}\n",
+        "\npub fn shipping_fee(weight: i32, free_limit: i32) -> i32 {\n    if weight > free_limit { 5 } else { 0 }\n}\n\npub fn handling_fee(items: i32) -> i32 {\n    if items > 3 { 2 } else { 0 }\n}\n",
     );
     std::fs::write(root.join("src/lib.rs"), lib)?;
 
@@ -12968,7 +13299,175 @@ fn pilot_snapshot_truncated_by_the_seam_budget_is_not_a_verify_baseline()
         before.get("artifact").is_none(),
         "a budget-truncated pilot snapshot must not carry the comparable identity"
     );
+    // #6602: the summary says the budget cut the ranked population, out of
+    // every seam the inventory found.
+    let summary = std::fs::read_to_string(root.join("target/ripr/pilot/pilot-summary.md"))?;
+    let full_total = count(&full);
+    assert!(
+        summary.contains(&format!(
+            "- Seam limit reached: ranked the first 1 of {full_total} seams;"
+        )),
+        "{summary}"
+    );
+    // When the inventory limit also cuts, the disclosed total is still the
+    // inventory's, not the already-capped list the budget saw.
+    assert!(
+        full_total > 2,
+        "fixture must exceed the inventory limit: {full}"
+    );
+    let pilot = run_command_with_env(
+        env!("CARGO_BIN_EXE_ripr"),
+        &root,
+        &["pilot", "--root", ".", "--mode", "draft"],
+        &[
+            ("RIPR_PILOT_SEAM_BUDGET", "1"),
+            ("RIPR_REPO_EXPOSURE_SEAM_LIMIT", "2"),
+        ],
+    )?;
+    assert_success(&pilot);
+    let summary = std::fs::read_to_string(root.join("target/ripr/pilot/pilot-summary.md"))?;
+    assert!(
+        summary.contains(&format!(
+            "- Seam limit reached: ranked the first 1 of {full_total} seams;"
+        )),
+        "{summary}"
+    );
     std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+/// #5205: pilot honors `[languages] enabled` like `check` does. With Rust
+/// disabled, pilot ranks no Rust seam and discloses the exclusion — in the
+/// terminal and the summary packet — instead of silently ranking Rust.
+/// Requires `lang-python`: the fixture excludes Rust via `enabled = ["python"]`,
+/// which is a (correct, fail-closed) config error on binaries built without
+/// that feature, so the rust-only lane cannot express this case.
+#[test]
+#[cfg(feature = "lang-python")]
+fn pilot_excludes_rust_when_disabled_in_language_config() -> Result<(), String> {
+    let root = unique_temp_workspace("pilot-rust-disabled");
+    std::fs::create_dir_all(root.join("src")).map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn gate_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+    )
+    .map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"gate\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("ripr.toml"),
+        "[languages]\nenabled = [\"python\"]\n",
+    )
+    .map_err(|err| err.to_string())?;
+    let out_dir = unique_temp_workspace("pilot-rust-disabled-out");
+    let output = run_ripr(&[
+        "pilot",
+        "--root",
+        &root.display().to_string(),
+        "--out",
+        &out_dir.display().to_string(),
+    ]);
+    assert_success(&output);
+    // Terminal: no Rust seam ranked; the exclusion disclosed with its remedy.
+    let terminal = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !terminal.contains("gate_state"),
+        "must rank no Rust seam: {terminal}"
+    );
+    assert!(
+        terminal.contains("Excluded from pilot's Rust seam scan:")
+            && terminal.contains("not enabled in ripr.toml [languages]"),
+        "missing exclusion disclosure: {terminal}"
+    );
+    // Markdown: the exclusion section.
+    let md =
+        std::fs::read_to_string(out_dir.join("pilot-summary.md")).map_err(|err| err.to_string())?;
+    assert!(
+        md.contains("## Excluded From Pilot's Rust Seam Scan"),
+        "missing md exclusion section"
+    );
+    // Packet: empty ranking, exclusion object, nulled follow-up commands.
+    let summary: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(out_dir.join("pilot-summary.json"))
+            .map_err(|err| err.to_string())?,
+    )
+    .map_err(|err| err.to_string())?;
+    let empty: Vec<serde_json::Value> = Vec::new();
+    assert_eq!(
+        summary
+            .pointer("/top_actionable_seams")
+            .and_then(serde_json::Value::as_array),
+        Some(&empty),
+        "{summary}"
+    );
+    assert_eq!(
+        summary
+            .pointer("/language_routes/rust_excluded_from_scope/file_count")
+            .and_then(serde_json::Value::as_u64),
+        Some(1),
+        "{summary}"
+    );
+    assert!(
+        summary
+            .pointer("/next/after_snapshot_command")
+            .is_some_and(serde_json::Value::is_null),
+        "exclusion must null the snapshot follow-up: {summary}"
+    );
+    // Codex P1: the exclusion must not depend on the inventory it skips.
+    // With Rust disabled, pilot bypasses the Rust walk entirely, so even a
+    // 1ms budget completes with the exclusion packet instead of timing out
+    // (pre-bypass, a large workspace could exhaust the timeout and return
+    // the timeout branch with no exclusion at all).
+    let impatient = run_ripr(&[
+        "pilot",
+        "--root",
+        &root.display().to_string(),
+        "--out",
+        &out_dir.display().to_string(),
+        "--timeout-ms",
+        "1",
+    ]);
+    assert_success(&impatient);
+    let impatient_summary: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(out_dir.join("pilot-summary.json"))
+            .map_err(|err| err.to_string())?,
+    )
+    .map_err(|err| err.to_string())?;
+    assert_eq!(
+        impatient_summary
+            .pointer("/status")
+            .and_then(|v| v.as_str()),
+        Some("complete"),
+        "a bypassed run completes under any budget: {impatient_summary}"
+    );
+    assert_eq!(
+        impatient_summary
+            .pointer("/language_routes/rust_excluded_from_scope/file_count")
+            .and_then(serde_json::Value::as_u64),
+        Some(1),
+        "{impatient_summary}"
+    );
+    // Precondition guard: the fixture really holds a rankable Rust seam —
+    // with the default config the same pilot run ranks it.
+    std::fs::remove_file(root.join("ripr.toml")).map_err(|err| err.to_string())?;
+    let enabled = run_ripr(&[
+        "pilot",
+        "--root",
+        &root.display().to_string(),
+        "--out",
+        &out_dir.display().to_string(),
+    ]);
+    assert_success(&enabled);
+    let enabled_terminal = String::from_utf8_lossy(&enabled.stdout);
+    assert!(
+        enabled_terminal.contains("gate_state"),
+        "fixture must hold a rankable Rust seam: {enabled_terminal}"
+    );
+    std::fs::remove_dir_all(&root).map_err(|err| err.to_string())?;
+    std::fs::remove_dir_all(&out_dir).map_err(|err| err.to_string())?;
     Ok(())
 }
 
@@ -14074,12 +14573,14 @@ fn pilot_projects_python_repair_card_for_git_diff() -> Result<(), String> {
 
 /// A Python preview gap reaches `agent packet` through a check-output gap
 /// ledger. That packet stays blocked (check output carries no snapshot
-/// identity), and its `refresh_commands` are the only next step it names.
-/// They used to rewrite `check.json` with the Rust-only repo-exposure route
-/// and rebuild the ledger from it, which dropped every Python record, so the
-/// same packet command then failed with "gap_id ... was not found". Pasting
-/// the printed refresh from another directory must keep the check-output
-/// route, the recorded base and the Python gap.
+/// identity), and it used to print a runnable refresh route that could not
+/// reproduce the recorded run (#5985): check output does not record whether
+/// its scope came from `--diff`, so a rerun rebuilt the ledger at a
+/// different scope, and the emitted redirect truncated the recorded check
+/// output whenever the first command failed. The packet now types the route
+/// as not replayable (`refresh_replayable: false`, empty
+/// `refresh_commands`) and names the manual rerun-with-same-`--diff` route,
+/// leaving the recorded check output and the ledger untouched.
 #[cfg(all(unix, feature = "lang-python"))]
 #[test]
 fn python_check_output_packet_refresh_keeps_the_preview_gap() -> Result<(), String> {
@@ -14185,6 +14686,15 @@ fn python_check_output_packet_refresh_keeps_the_preview_gap() -> Result<(), Stri
             && !reason.contains("repo-exposure"),
         "the blocked reason must name the usable route and the unreplayable --diff scope, not the Rust-only route: {reason}"
     );
+    assert!(
+        reason.contains("ripr reports gap-ledger --check-output"),
+        "the blocked reason must carry the manual ledger route: {reason}"
+    );
+    assert_eq!(
+        currentness["refresh_replayable"],
+        serde_json::Value::Bool(false),
+        "a check-output route must type itself as not replayable: {currentness}"
+    );
     let refresh: Vec<String> = currentness["refresh_commands"]
         .as_array()
         .map(|commands| {
@@ -14194,47 +14704,34 @@ fn python_check_output_packet_refresh_keeps_the_preview_gap() -> Result<(), Stri
                 .collect()
         })
         .unwrap_or_default();
-    assert_eq!(refresh.len(), 2, "{refresh:?}");
     assert!(
-        refresh[0].contains("--base origin/main")
-            && refresh[0].contains("--json >")
-            && refresh[1].contains("gap-ledger --check-output"),
-        "refresh must replay the check-output route with its recorded base: {refresh:?}"
+        refresh.is_empty(),
+        "a not-replayable route must not offer runnable commands: {refresh:?}"
     );
-    assert!(
-        refresh
-            .iter()
-            .all(|command| !command.contains("repo-exposure")),
-        "refresh must not route a check-output ledger through repo-exposure: {refresh:?}"
+    assert_eq!(
+        packet["blocked_candidate"]["refresh_commands"],
+        serde_json::Value::Array(Vec::new()),
+        "the blocked packet projection must not carry a runnable refresh either: {packet}"
     );
 
-    // Paste the printed refresh from an unrelated directory, `ripr` resolving
-    // to the binary under test.
-    let elsewhere = unique_temp_workspace("python-packet-refresh-elsewhere");
-    std::fs::create_dir_all(&elsewhere).map_err(|err| format!("create elsewhere: {err}"))?;
-    for command in &refresh {
-        let script = format!("ripr() {{ \"$0\" \"$@\"; }}; {command}");
-        let run = run_command(
-            "bash",
-            Some(&elsewhere),
-            &["-c", &script, env!("CARGO_BIN_EXE_ripr")],
-        )
-        .map_err(|err| format!("run refresh `{command}`: {err}"))?;
-        assert_success(&run);
-    }
+    // The blocked report is advisory: reading it ran no refresh, so the
+    // recorded check output and the ledger it derived must be untouched.
+    let recorded = std::fs::read_to_string(&check_path)
+        .map_err(|err| format!("the recorded check output must survive: {err}"))?;
+    serde_json::from_str::<serde_json::Value>(&recorded)
+        .map_err(|err| format!("the recorded check output must stay valid JSON: {err}"))?;
     assert_eq!(
         python_gap_ids(&ledger_path)?,
         before_ids,
-        "the refreshed ledger must keep the Python records"
+        "the ledger must keep the Python records while the route is blocked"
     );
-    let refreshed = packet_for(&gap_id)?;
+    let re_read = packet_for(&gap_id)?;
     assert_eq!(
-        refreshed["source_currentness"]["source_kind"], "check_output",
-        "{refreshed}"
+        re_read["source_currentness"]["source_kind"], "check_output",
+        "{re_read}"
     );
 
     ignore_remove_dir_all(&root);
-    ignore_remove_dir_all(&elsewhere);
     Ok(())
 }
 
@@ -21498,6 +21995,17 @@ fn plus_help_exits_cleanly() {
         stdout.contains("--gap-ledger"),
         "help must mention --gap-ledger:\n{stdout}"
     );
+    for kept in [
+        "ripr-plus.last-good.json",
+        "ripr-plus.last-good.md",
+        "may be stale",
+        "keeps no last-good copy",
+    ] {
+        assert!(
+            stdout.contains(kept),
+            "help must name the kept last-good receipt and its staleness ({kept}):\n{stdout}"
+        );
+    }
 }
 
 /// An exposure-only counter is not a complete, current RIPR+ quality result.

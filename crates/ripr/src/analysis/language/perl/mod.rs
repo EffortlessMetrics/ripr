@@ -413,7 +413,7 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
         // from the production `file.path`. The test LINE is re-resolved from
         // the TestFact (PerlRelatedTestEvidence intentionally carries no
         // range), so the projection sees the real assertion location.
-        let related: Vec<RelatedTest> = related_evidence
+        let mut related: Vec<RelatedTest> = related_evidence
             .iter()
             .map(|ev| {
                 let test_line = packet
@@ -486,6 +486,25 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
             }
         };
         let is_already_observed = class == ExposureClass::Exposed;
+        // RIPR-SPEC-0224 / #5498: on a weakly exposed finding from a
+        // complete, unblocked packet (a concrete discriminator is not
+        // required), a row whose own direct, strong exact, owner-targeted
+        // oracle earned the weak exposure but establishes no sink alignment
+        // says observation is unconfirmed.
+        // `related` maps `related_evidence` one to one and in order. Every
+        // other row keeps no miss: advisory, weak and unknown evidence is not
+        // an established per-test defect, and the finding-wide discriminator
+        // has no test identity to lend a row.
+        let packet_admitted = packet.packet_status == PacketStatus::Complete
+            && !class_blocked
+            && !actionability_blocked;
+        if class == ExposureClass::WeaklyExposed && packet_admitted {
+            for (row, ev) in related.iter_mut().zip(&related_evidence) {
+                if perl_row_observation_unconfirmed(packet, change, ev) {
+                    row.miss = Some(crate::domain::RelatedTestMiss::ObservationUnconfirmed);
+                }
+            }
+        }
 
         // Concrete discriminator gate (H1). A canonical repair gap requires a
         // concrete, packet-provided discriminator (`discriminator:` prefix on
@@ -2842,6 +2861,22 @@ struct SinkAlignedObservation {
     test_name: String,
     observed_sink: String,
     oracle_shape: String,
+}
+
+/// Whether this row's own evidence earned the finding's weak exposure (a
+/// direct, reachable owner call whose linked oracle is strong, exact, in the
+/// same test and targets the changed owner) while the shared sink-alignment
+/// check establishes no alignment for it. Unequal sink text is only
+/// unconfirmed, never proof that the oracle observes another sink (#5498).
+fn perl_row_observation_unconfirmed(
+    packet: &PerlFactPacket,
+    change: &ChangeFact,
+    ev: &PerlRelatedTestEvidence,
+) -> bool {
+    ev.relation_kind == RelationKind::DirectOwnerCall
+        && ev.reachability_hint == ReachabilityHint::Reachable
+        && ev.class == ExposureClass::WeaklyExposed
+        && sink_aligned_observation(std::slice::from_ref(ev), change, packet).is_none()
 }
 
 /// H2 (Campaign 31): determine whether a related test's oracle observes the

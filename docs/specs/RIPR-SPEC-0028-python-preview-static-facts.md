@@ -86,6 +86,43 @@ RIPR-SPEC-0026 owner-kind vocabulary explicitly adds a class value.
 
 ## Test and Assertion Facts
 
+Known pytest skip/skipif/xfail marks and unittest controls in runner-honored
+placements retain a related pointer but cannot contribute an oracle or boundary
+input. Function-level unittest skip wraps the function under either runner;
+unittest class skip flags and expected-failure metadata qualify only TestCase
+tests. Those flags do not suppress ordinary pytest assertions. The relation is
+`test_activation_unestablished`. Conditions are not evaluated: even a visible
+false conditional skip remains uncertain within this bounded static contract.
+Imported decorator aliases use the last explicit binding in the declaration-time
+module/class scope, before test-body imports or later imports can shadow them.
+A canonical-looking name explicitly imported from another module is not a
+framework control. Unresolved canonical spellings remain conservative; arbitrary
+assignment rebinding is not evaluated.
+Unaliased dotted imports bind their root (`import unittest.mock` binds
+`unittest`); explicit aliases bind the alias. Method body lookup keeps
+its separate module/global scope; class-local imports are not method globals.
+When no independent eligible test supplies a relation, report
+`decorator_indirection` with the test activation reason and emit no repair
+packet. A separate active test can still supply its own evidence. Module-level
+`pytestmark`, dynamic `skipTest`, custom decorator semantics and imported-base
+activation remain outside this rule.
+
+Oracle admission does not prove the absence of side effects. Expected-failure
+bodies may execute, conditional skips may be inactive, and a pytest-skipped
+function can be called directly by an active test or helper. The existing
+whole-module constant-rebinding veto therefore remains conservative, including
+writes in marked bodies. Independent active assertions retain their own oracle
+identity; resolving their boundary still requires constants unaffected by
+potential writes. Proving nonexecution of body effects requires a separate
+execution-effect model.
+
+Curated upstream `native_cases` in the existing Python real-repo corpus record
+independent behavior/test-understanding controls without implying an analyzer
+run. The ItsDangerous future-age case retains immutable upstream source/license,
+the real defect/fix, original pytest fixture closure, a weak alternate observer,
+skip and expected-failure controls. Native evidence does not establish current
+static classifications, installed journeys, or support-tier promotion.
+
 Test discovery:
 
 - `pytest` test functions with the default `test` name prefix at module level
@@ -302,7 +339,10 @@ values defined in RIPR-SPEC-0026:
   way the syntax-first adapter cannot follow; simple route decorators such as
   `@app.get(...)`, `@api.post(...)`, or `@router.api_route(...)` may be treated
   as static route metadata when the changed behavior itself is a supported
-  repair shape)
+  repair shape; `functools.lru_cache` (bare or called with arguments), and
+  bare `functools.cache` / `functools.cached_property`, including the same
+  names qualified as `functools.*`, are not this limit when they bind from
+  `functools`)
 - `mocked_module` (e.g., `@patch(...)`, `patch.object(...)` (#4565) or `monkeypatch.setattr(...)`
   observed at the related-test call site)
 - `opaque_custom_assertion_helper` (e.g., a related test observes the changed
@@ -511,6 +551,10 @@ can show:
 - fixtures proving static-limit Python findings fail closed as `static_unknown`
   with typed stop reasons and no repair recommendation or canonical repair-gap
   ID
+- a fixture proving `functools.lru_cache` / `cache` / `cached_property` do not
+  emit `decorator_indirection`, so a memoized owner with a direct exact test is
+  credited and a twin whose test misses the change remains a gap, while `@retry`
+  stays limited
 - fixtures proving the first repair classes carry activation-level missing
   discriminators for predicate boundaries, return values, exception paths,
   field/object values, and output/log/call effects
@@ -629,6 +673,27 @@ Expected static evidence:
 - probe emits `static_limit_kind = "decorator_indirection"`; finding
   stays conservative.
 
+Functools memoization is not decorator indirection:
+
+```python
+from functools import lru_cache
+
+@lru_cache
+def format_year(year):
+    return "%03d" % (year % 100)
+
+@lru_cache(maxsize=None)
+def century_index(year):
+    return year % 1000
+```
+
+Expected static evidence:
+
+- neither owner emits `decorator_indirection`;
+- a direct exact-value test on `format_year` can credit the owner;
+- a related test that reaches `century_index` without observing the
+  changed return remains a gap.
+
 Simple route decorator repair:
 
 ```python
@@ -653,6 +718,13 @@ Default-prefix regression cases live in
 module functions, pytest methods, unittest methods, and async definitions;
 exclude near-miss names and helpers; and check that collected tests retain
 framework-specific selectors and relate only to the referenced owner.
+
+Functools memoization transparency (`lru_cache` / `cache` /
+`cached_property`) is covered by
+`crates/ripr/src/analysis/language/python/static_limits.rs` tests and
+`fixtures/python_functools_memoization_not_indirection`. Arbitrary
+decorators such as `@retry` remain limited via
+`fixtures/python_decorator_indirection_limit`.
 
 Follow-up fixtures and tests cover the owner, test, assertion, related
 test, probe, and static-limit cases listed under Required Evidence, plus

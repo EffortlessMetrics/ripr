@@ -1,0 +1,13 @@
+diff --git a/pricing/src/lib.rs b/pricing/src/lib.rs
+index 20a5b7f..552d081 100644
+--- a/pricing/src/lib.rs
++++ b/pricing/src/lib.rs
+@@ -45,7 +45,7 @@ pub enum Tier {
+ 
+ pub fn tier(points: i64) -> Tier {
+     match points {
+-        p if p >= 100 => Tier::Gold,
++        p if 100 <= p => Tier::Gold,
+         p if p >= 50 => Tier::Silver,
+         _ => Tier::Bronze,
+     }

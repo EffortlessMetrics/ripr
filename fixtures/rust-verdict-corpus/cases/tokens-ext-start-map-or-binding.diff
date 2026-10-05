@@ -1,0 +1,13 @@
+diff --git a/src/flow.rs b/src/flow.rs
+index 18a0c6b..05fabe8 100644
+--- a/src/flow.rs
++++ b/src/flow.rs
+@@ -1,7 +1,7 @@
+ //! Values that flow through a local binding before a comparison.
+ 
+ pub fn ext_starts_at(path: &str, at: usize) -> bool {
+-    let start = path.rfind('.').map_or(0, |i| i + 1);
++    let start = path.rfind('.').map_or(0, |dot| dot + 1);
+     start == at
+ }
+ 

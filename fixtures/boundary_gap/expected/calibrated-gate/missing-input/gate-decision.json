@@ -33,6 +33,17 @@
   "root": ".",
   "schema_version": "0.1",
   "status": "config_error",
+  "subject": {
+    "analyzer_version": "0.0.0+pinned-golden-analyzer-version",
+    "inputs": {
+      "baseline": {
+        "content_hash": "sha256:3923f45fbf2eab6ccdd46d5fea272da01af6a3ec05cf6afc7010cab58adac76e"
+      },
+      "pr_guidance": {
+        "content_hash": null
+      }
+    }
+  },
   "summary": {
     "acknowledged": 0,
     "advisory": 0,

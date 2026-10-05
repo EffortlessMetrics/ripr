@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0465730..ead58f7 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -15,7 +15,7 @@ impl Stats {
+     }
+ 
+     pub fn record_miss(&mut self) {
+-        self.misses = self.misses + 1;
++        self.misses += 1;
+     }
+ 
+     pub fn record_read(&mut self) {

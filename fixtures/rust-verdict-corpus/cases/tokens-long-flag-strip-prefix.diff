@@ -1,0 +1,13 @@
+diff --git a/src/flow.rs b/src/flow.rs
+index 18a0c6b..386382f 100644
+--- a/src/flow.rs
++++ b/src/flow.rs
+@@ -12,7 +12,7 @@ pub fn fits(text: &str, width: usize) -> bool {
+ 
+ pub fn long_flag(arg: &str) -> bool {
+     let name = arg.strip_prefix("--").unwrap_or("");
+-    name.len() >= 2
++    2 <= name.len()
+ }
+ 
+ #[cfg(test)]

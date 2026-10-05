@@ -31,6 +31,7 @@ mod mutation_spot_check;
 mod operator;
 mod orchestration;
 mod perl_migration;
+mod pilot_ranking;
 mod pr;
 mod pr_causal_delta;
 mod pr_evidence;
@@ -76,6 +77,7 @@ mod targeted_rerun;
 mod targeted_test;
 mod test_oracles;
 mod verdict_corpus;
+mod verdict_corpus_relabel;
 
 pub(crate) use agentic_bench::agentic_bench;
 pub(crate) use annotations::ripr_annotations;
@@ -139,7 +141,9 @@ pub(crate) use fixtures::{
 pub(crate) use index::{reports, reports_index};
 pub(crate) use issue_intake::issue_intake;
 pub(crate) use issue_lifecycle::{
-    assess_issue_lifecycle_fixture_corpus, issue_lifecycle_scorecard_report,
+    assess_issue_lifecycle_fixture_corpus, build_issue_lifecycle_scorecard,
+    issue_lifecycle_corpus_identity, issue_lifecycle_scorecard_json,
+    issue_lifecycle_scorecard_markdown, issue_lifecycle_scorecard_report,
 };
 pub(crate) use lsp::lsp_cockpit_report;
 pub(crate) use lsp_performance::lsp_performance_report;
@@ -159,6 +163,7 @@ pub(crate) use operator::operator_cockpit_report;
 pub(crate) use orchestration::{
     assess_orchestration_fixture_corpus, orchestration_scorecard_report,
 };
+pub(crate) use pilot_ranking::pilot_ranking;
 pub(crate) use pr::{critic, gh_pr_status, pr_summary, pr_triage_report};
 pub(crate) use pr_evidence::ripr_pr;
 pub(crate) use pr_evidence_summary::ripr_pr_summary;

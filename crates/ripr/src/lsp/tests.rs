@@ -81,6 +81,7 @@ use tower_lsp_server::ls_types::{
 };
 use tower_lsp_server::{LspService, Server};
 
+mod analysis_thread_routing_tests;
 mod consumed_source_tests;
 mod shutdown_clear_tests;
 
@@ -1186,8 +1187,13 @@ fn serve_stdio_call_presence_observer() -> Result<(), String> {
         "serve_streams should set the explicit in-flight request concurrency bound (#2034)"
     );
     assert!(
-        serve_streams.contains(".serve(dollar_requests::AnswerDollarRequests(service))"),
-        "serve_streams should hand the bounded transport, the socket, and the service (behind the `$/` request layer, #4456) to the tower LSP server"
+        serve_streams.contains("dollar_requests::AnswerDollarRequests(")
+            && serve_streams.contains("RecordShutdownExit::new(service, order.clone())"),
+        "serve_streams should hand the bounded transport, the socket, and the service (behind the `$/` request layer, #4456, with the shutdown/exit order recorder inside it, #5249) to the tower LSP server"
+    );
+    assert!(
+        serve_streams.contains("order.exit_without_shutdown()"),
+        "serve_streams should exit nonzero when `exit` arrives without a prior `shutdown` (LSP section exit, #5249)"
     );
 
     Ok(())
@@ -21916,4 +21922,81 @@ fn framed_lsp_zero_git_timeout_commits_limited_once_and_recovers() -> Result<(),
         }
         Ok(())
     })
+}
+
+/// #5927: hover shares human output's label and reason for related-test rows. A
+/// matched row that still misses keeps its oracle kind and strength and adds
+/// the reason; only an unmatched row uses the `misses ...; checked` form.
+#[test]
+fn hover_keeps_oracle_kind_on_a_matched_row_that_still_misses() -> Result<(), String> {
+    use crate::domain::RelatedTestMiss;
+    let mut finding = sample_finding();
+    let related = |name: &str, line: usize, miss: RelatedTestMiss| RelatedTest {
+        name: name.to_string(),
+        file: PathBuf::from("src/lib.rs"),
+        line,
+        oracle: Some("assert!(matches!(value, _));".to_string()),
+        oracle_kind: OracleKind::RelationalCheck,
+        oracle_strength: OracleStrength::Weak,
+        relation_reason: None,
+        relation_confidence: None,
+        miss: Some(miss),
+    };
+    let mut no_assertion = related("calls_only", 30, RelatedTestMiss::NoAssertion);
+    no_assertion.oracle = None;
+    no_assertion.oracle_kind = OracleKind::Unknown;
+    no_assertion.oracle_strength = OracleStrength::None;
+    finding.related_tests = vec![
+        related("observes_score", 8, RelatedTestMiss::WeakAssertion),
+        related(
+            "asserts_elsewhere",
+            20,
+            RelatedTestMiss::AssertionNotObserving,
+        ),
+        no_assertion,
+        related(
+            "observer_unconfirmed",
+            40,
+            RelatedTestMiss::ObservationUnconfirmed,
+        ),
+    ];
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let HoverContents::Markup(markup) =
+        super::hover::finding_hover_response(&finding, &diagnostic).contents
+    else {
+        return Err("expected hover markdown".to_string());
+    };
+    let row = |name: &str| {
+        markup
+            .value
+            .lines()
+            .find(|line| line.starts_with("- `src/lib.rs") && line.contains(name))
+            .map(str::to_string)
+            .ok_or_else(|| format!("missing {name} related-test row in:\n{}", markup.value))
+    };
+    assert_eq!(
+        row("observes_score")?,
+        "- `src/lib.rs:8` `observes_score` \u{2014} weak relational_check oracle: \
+         assert!(matches!(value, _)); misses: assertion too weak to tell the old \
+         behavior from the new"
+    );
+    assert_eq!(
+        row("asserts_elsewhere")?,
+        "- `src/lib.rs:20` `asserts_elsewhere` misses: asserts, but not on the \
+         changed value; checked `assert!(matches!(value, _))`"
+    );
+    // A row with no recorded oracle must not be graded as one.
+    assert_eq!(
+        row("calls_only")?,
+        "- `src/lib.rs:30` `calls_only` misses: has no assertion"
+    );
+    // #6702: an unknown observation edge reads `unconfirmed`, not `misses`,
+    // and keeps the oracle it could not confirm.
+    assert_eq!(
+        row("observer_unconfirmed")?,
+        "- `src/lib.rs:40` `observer_unconfirmed` \u{2014} weak relational_check oracle: \
+         assert!(matches!(value, _)); unconfirmed: ripr could not confirm that this \
+         assertion observes the changed behavior"
+    );
+    Ok(())
 }

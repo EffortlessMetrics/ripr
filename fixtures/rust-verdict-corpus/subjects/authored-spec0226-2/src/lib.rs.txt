@@ -1,0 +1,24 @@
+//! A ledger that records every amount it is given.
+
+#[derive(Debug, Default)]
+pub struct Ledger {
+    pub history: Vec<u64>,
+}
+
+impl Ledger {
+    pub fn record(&mut self, amount: u64) {
+        self.history.push(amount);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Ledger;
+
+    #[test]
+    fn record_appends_the_amount() {
+        let mut l = Ledger::default();
+        l.record(5);
+        assert_eq!(l.history, vec![5]);
+    }
+}

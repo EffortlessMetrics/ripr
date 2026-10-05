@@ -1,0 +1,21 @@
+//! An unsafe accessor whose caller promises the bounds.
+
+/// Reads one byte without a bounds check.
+///
+/// # Safety
+///
+/// `index` must be less than `bytes.len()`.
+pub unsafe fn byte_at(bytes: &[u8], index: usize) -> u8 {
+    *bytes.get_unchecked(index)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn byte_at_reads_the_index() {
+        // SAFETY: 1 < 3.
+        assert_eq!(unsafe { byte_at(b"xyz", 1) }, b'y');
+    }
+}

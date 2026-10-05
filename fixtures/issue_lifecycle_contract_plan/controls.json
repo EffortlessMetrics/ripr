@@ -1,0 +1,2104 @@
+{
+ "schema_version": "issue_lifecycle_contract_plan_control_corpus.v1",
+ "rows": [
+  {
+   "id": "control_adversary_catches_missing_failure_state",
+   "control": "adversary_catches_missing_failure_state_or_bounded_none_found",
+   "scenario": "adversary returns a concrete finding: the author draft missed a required failure state",
+   "row": {
+    "id": "control_adversary_catches_missing_failure_state",
+    "category": "contract_required",
+    "snapshot": {
+     "issue_number": 0,
+     "issue_ref": "synthetic-control",
+     "snapshot_path": null,
+     "comments_path": null,
+     "timeline_path": null,
+     "timeline_snapshot_id": null,
+     "captured_at": "2026-10-04T21:31:42Z",
+     "issue_snapshot_id": "synthetic-control-snapshot",
+     "comments_snapshot_id": "synthetic-control-comments"
+    },
+    "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+    "contract": {
+     "source_of_truth": "synthetic source of truth",
+     "spec_required_rationale": "synthetic decision rationale",
+     "draft_spec_identity": "RIPR-SPEC-draft-synthetic-control",
+     "author": {
+      "role": "contract_author",
+      "config_identity": "synthetic-author-config",
+      "result_identity": "synthetic-author-result",
+      "carries_acceptance": false
+     },
+     "adversary": {
+      "result_identity": "synthetic-adversary-result",
+      "inspected_scope": "synthetic adversary inspected scope",
+      "findings": [
+       "missing failure state: the author draft named no negative row for the declared failure control"
+      ],
+      "none_found": false
+     },
+     "open_decisions": [],
+     "root_disposition": "qualified_spec_required",
+     "contract_state": "amended",
+     "root": {
+      "role": "contract_root",
+      "config_identity": "root-config-adversary_catches_missing_failure_state-v1",
+      "result_identity": "root-result-adversary_catches_missing_failure_state-v1",
+      "carries_acceptance": true
+     }
+    },
+    "planning": {
+     "shape_decision": "one_pr",
+     "shape_rationale": "synthetic control rationale",
+     "work_items": [
+      {
+       "id": "wi-control-a",
+       "depends_on": []
+      }
+     ],
+     "acceptance_covered": [
+      "synthetic acceptance row"
+     ],
+     "acceptance_omitted": [],
+     "edit_cages": [
+      "synthetic-edit-cage"
+     ],
+     "conflict_resources": [
+      "synthetic-conflict-resource"
+     ],
+     "proof_commands": [
+      {
+       "command": "cargo test -p xtask synthetic",
+       "denominator": "synthetic denominator"
+      }
+     ],
+     "stop_conditions": [
+      "synthetic stop condition"
+     ],
+     "non_goals": [
+      "synthetic non-goal"
+     ],
+     "portfolio_placement": "synthetic-portfolio-label",
+     "root_corrections": [
+      "control root correction: restated the root disposition after the adversary pass for control_adversary_catches_missing_failure_state"
+     ],
+     "re_splits": []
+    },
+    "retrieval_steps": [],
+    "limitations": [
+     "synthetic mechanics control; never enters a real denominator"
+    ],
+    "non_claims": [
+     "claims nothing about any real issue"
+    ],
+    "attempt": {
+     "schema_version": "issue_lifecycle_attempt.v1",
+     "lifecycle_id": "control_adversary_catches_missing_failure_state",
+     "observation_key": "observation-control_adversary_catches_missing_failure_state",
+     "synthetic": true,
+     "disposition": "qualified_spec_required",
+     "base_attempts": [
+      {
+       "attempt_id": "attempt-control_adversary_catches_missing_failure_state",
+       "shared_facts": [
+        "context"
+       ]
+      }
+     ],
+     "issue": {
+      "snapshot_id": "synthetic-control-snapshot",
+      "issue_ref": "synthetic-control",
+      "comments_ref": "synthetic-control-comments",
+      "labels_ref": "gh-issue-labels:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "assignees_ref": null,
+      "milestone_ref": null
+     },
+     "initial": {
+      "information_completeness": "complete",
+      "issue_family": "mechanics"
+     },
+     "context": {
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+      "relevant_prs": [],
+      "portfolio": "ripr-swarm-issue-lifecycle-contract-plan-controls",
+      "selected_work": "synthetic-control",
+      "claim_ids": []
+     },
+     "intake": {
+      "evidence": [
+       {
+        "identity": "synthetic-control-snapshot",
+        "bytes": 1
+       }
+      ],
+      "missing_evidence_questions": []
+     },
+     "contract_decision": {
+      "spec_required": true,
+      "decision_rationale": "synthetic decision rationale",
+      "root_disposition": "amended"
+     },
+     "contract_artifacts": {
+      "proposal": "RIPR-SPEC-draft-synthetic-control",
+      "spec": null,
+      "adr": null,
+      "challenge": "synthetic-adversary-result",
+      "amendments": [],
+      "acceptance": null
+     },
+     "plan": {
+      "plan_id": "plan-synthetic-control",
+      "work_items": [
+       "wi-control-a"
+      ],
+      "dependencies": [],
+      "acceptance_coverage": [
+       "synthetic acceptance row"
+      ]
+     },
+     "claim_events": [],
+     "execution_refs": {
+      "pr": null,
+      "review": null,
+      "checks": [],
+      "verification": null,
+      "merge": null,
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e"
+     },
+     "progress": {
+      "mutation_plan": null,
+      "before_digest": null,
+      "after_digest": null,
+      "suppressed_unchanged": false
+     },
+     "burn_down": {
+      "state": "open",
+      "uncovered_rows": [],
+      "contradicted_rows": [],
+      "deferred_rows": []
+     },
+     "closeout": {
+      "state": "not_started",
+      "reason": null,
+      "remaining_limitations": [],
+      "current_head_verification": null
+     },
+     "limitations": [
+      "synthetic mechanics control; never enters a real denominator"
+     ],
+     "non_claims": [
+      "claims nothing about any real issue"
+     ],
+     "row_digest": "2ed104ace31974c5d44edd4d02a11de1568cc295a2be24e76cca23f207c6f51e"
+    }
+   }
+  },
+  {
+   "id": "control_adversary_bounded_none_found",
+   "control": "adversary_catches_missing_failure_state_or_bounded_none_found",
+   "scenario": "adversary inspects the whole declared scope and returns bounded none_found with an empty finding list",
+   "row": {
+    "id": "control_adversary_bounded_none_found",
+    "category": "contract_required",
+    "snapshot": {
+     "issue_number": 0,
+     "issue_ref": "synthetic-control",
+     "snapshot_path": null,
+     "comments_path": null,
+     "timeline_path": null,
+     "timeline_snapshot_id": null,
+     "captured_at": "2026-10-04T21:31:42Z",
+     "issue_snapshot_id": "synthetic-control-snapshot",
+     "comments_snapshot_id": "synthetic-control-comments"
+    },
+    "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+    "contract": {
+     "source_of_truth": "synthetic source of truth",
+     "spec_required_rationale": "synthetic decision rationale",
+     "draft_spec_identity": "RIPR-SPEC-draft-synthetic-control",
+     "author": {
+      "role": "contract_author",
+      "config_identity": "synthetic-author-config",
+      "result_identity": "synthetic-author-result",
+      "carries_acceptance": false
+     },
+     "adversary": {
+      "result_identity": "synthetic-adversary-result",
+      "inspected_scope": "synthetic adversary inspected scope",
+      "findings": [],
+      "none_found": true
+     },
+     "open_decisions": [],
+     "root_disposition": "qualified_spec_required",
+     "contract_state": "accepted",
+     "root": {
+      "role": "contract_root",
+      "config_identity": "root-config-adversary_bounded_none_found-v1",
+      "result_identity": "root-result-adversary_bounded_none_found-v1",
+      "carries_acceptance": true
+     }
+    },
+    "planning": {
+     "shape_decision": "one_pr",
+     "shape_rationale": "synthetic control rationale",
+     "work_items": [
+      {
+       "id": "wi-control-a",
+       "depends_on": []
+      }
+     ],
+     "acceptance_covered": [
+      "synthetic acceptance row"
+     ],
+     "acceptance_omitted": [],
+     "edit_cages": [
+      "synthetic-edit-cage"
+     ],
+     "conflict_resources": [
+      "synthetic-conflict-resource"
+     ],
+     "proof_commands": [
+      {
+       "command": "cargo test -p xtask synthetic",
+       "denominator": "synthetic denominator"
+      }
+     ],
+     "stop_conditions": [
+      "synthetic stop condition"
+     ],
+     "non_goals": [
+      "synthetic non-goal"
+     ],
+     "portfolio_placement": "synthetic-portfolio-label",
+     "root_corrections": [],
+     "re_splits": []
+    },
+    "retrieval_steps": [],
+    "limitations": [
+     "synthetic mechanics control; never enters a real denominator"
+    ],
+    "non_claims": [
+     "claims nothing about any real issue"
+    ],
+    "attempt": {
+     "schema_version": "issue_lifecycle_attempt.v1",
+     "lifecycle_id": "control_adversary_bounded_none_found",
+     "observation_key": "observation-control_adversary_bounded_none_found",
+     "synthetic": true,
+     "disposition": "qualified_spec_required",
+     "base_attempts": [
+      {
+       "attempt_id": "attempt-control_adversary_bounded_none_found",
+       "shared_facts": [
+        "context"
+       ]
+      }
+     ],
+     "issue": {
+      "snapshot_id": "synthetic-control-snapshot",
+      "issue_ref": "synthetic-control",
+      "comments_ref": "synthetic-control-comments",
+      "labels_ref": "gh-issue-labels:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "assignees_ref": null,
+      "milestone_ref": null
+     },
+     "initial": {
+      "information_completeness": "complete",
+      "issue_family": "mechanics"
+     },
+     "context": {
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+      "relevant_prs": [],
+      "portfolio": "ripr-swarm-issue-lifecycle-contract-plan-controls",
+      "selected_work": "synthetic-control",
+      "claim_ids": []
+     },
+     "intake": {
+      "evidence": [
+       {
+        "identity": "synthetic-control-snapshot",
+        "bytes": 1
+       }
+      ],
+      "missing_evidence_questions": []
+     },
+     "contract_decision": {
+      "spec_required": true,
+      "decision_rationale": "synthetic decision rationale",
+      "root_disposition": "accepted"
+     },
+     "contract_artifacts": {
+      "proposal": "RIPR-SPEC-draft-synthetic-control",
+      "spec": null,
+      "adr": null,
+      "challenge": "synthetic-adversary-result",
+      "amendments": [],
+      "acceptance": null
+     },
+     "plan": {
+      "plan_id": "plan-synthetic-control",
+      "work_items": [
+       "wi-control-a"
+      ],
+      "dependencies": [],
+      "acceptance_coverage": [
+       "synthetic acceptance row"
+      ]
+     },
+     "claim_events": [],
+     "execution_refs": {
+      "pr": null,
+      "review": null,
+      "checks": [],
+      "verification": null,
+      "merge": null,
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e"
+     },
+     "progress": {
+      "mutation_plan": null,
+      "before_digest": null,
+      "after_digest": null,
+      "suppressed_unchanged": false
+     },
+     "burn_down": {
+      "state": "open",
+      "uncovered_rows": [],
+      "contradicted_rows": [],
+      "deferred_rows": []
+     },
+     "closeout": {
+      "state": "not_started",
+      "reason": null,
+      "remaining_limitations": [],
+      "current_head_verification": null
+     },
+     "limitations": [
+      "synthetic mechanics control; never enters a real denominator"
+     ],
+     "non_claims": [
+      "claims nothing about any real issue"
+     ],
+     "row_digest": "2bd5886984a0e507b89faf9a3adcf777dfcbc316163d3b6038fd9d5ec86193b3"
+    }
+   }
+  },
+  {
+   "id": "control_author_cannot_accept_own_contract",
+   "control": "author_cannot_accept_own_contract",
+   "scenario": "the author result carries no acceptance state; only the root disposition records the amended contract state",
+   "row": {
+    "id": "control_author_cannot_accept_own_contract",
+    "category": "contract_required",
+    "snapshot": {
+     "issue_number": 0,
+     "issue_ref": "synthetic-control",
+     "snapshot_path": null,
+     "comments_path": null,
+     "timeline_path": null,
+     "timeline_snapshot_id": null,
+     "captured_at": "2026-10-04T21:31:42Z",
+     "issue_snapshot_id": "synthetic-control-snapshot",
+     "comments_snapshot_id": "synthetic-control-comments"
+    },
+    "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+    "contract": {
+     "source_of_truth": "synthetic source of truth",
+     "spec_required_rationale": "synthetic decision rationale",
+     "draft_spec_identity": "RIPR-SPEC-draft-synthetic-control",
+     "author": {
+      "role": "contract_author",
+      "config_identity": "synthetic-author-config",
+      "result_identity": "synthetic-author-result",
+      "carries_acceptance": false
+     },
+     "adversary": {
+      "result_identity": "synthetic-adversary-result",
+      "inspected_scope": "synthetic adversary inspected scope",
+      "findings": [
+       "missing failure state: synthetic"
+      ],
+      "none_found": false
+     },
+     "open_decisions": [],
+     "root_disposition": "qualified_spec_required",
+     "contract_state": "amended",
+     "root": {
+      "role": "contract_root",
+      "config_identity": "root-config-author_cannot_accept_own_contract-v1",
+      "result_identity": "root-result-author_cannot_accept_own_contract-v1",
+      "carries_acceptance": true
+     }
+    },
+    "planning": {
+     "shape_decision": "one_pr",
+     "shape_rationale": "synthetic control rationale",
+     "work_items": [
+      {
+       "id": "wi-control-a",
+       "depends_on": []
+      }
+     ],
+     "acceptance_covered": [
+      "synthetic acceptance row"
+     ],
+     "acceptance_omitted": [],
+     "edit_cages": [
+      "synthetic-edit-cage"
+     ],
+     "conflict_resources": [
+      "synthetic-conflict-resource"
+     ],
+     "proof_commands": [
+      {
+       "command": "cargo test -p xtask synthetic",
+       "denominator": "synthetic denominator"
+      }
+     ],
+     "stop_conditions": [
+      "synthetic stop condition"
+     ],
+     "non_goals": [
+      "synthetic non-goal"
+     ],
+     "portfolio_placement": "synthetic-portfolio-label",
+     "root_corrections": [
+      "control root correction: restated the root disposition after the adversary pass for control_author_cannot_accept_own_contract"
+     ],
+     "re_splits": []
+    },
+    "retrieval_steps": [],
+    "limitations": [
+     "synthetic mechanics control; never enters a real denominator"
+    ],
+    "non_claims": [
+     "claims nothing about any real issue"
+    ],
+    "attempt": {
+     "schema_version": "issue_lifecycle_attempt.v1",
+     "lifecycle_id": "control_author_cannot_accept_own_contract",
+     "observation_key": "observation-control_author_cannot_accept_own_contract",
+     "synthetic": true,
+     "disposition": "qualified_spec_required",
+     "base_attempts": [
+      {
+       "attempt_id": "attempt-control_author_cannot_accept_own_contract",
+       "shared_facts": [
+        "context"
+       ]
+      }
+     ],
+     "issue": {
+      "snapshot_id": "synthetic-control-snapshot",
+      "issue_ref": "synthetic-control",
+      "comments_ref": "synthetic-control-comments",
+      "labels_ref": "gh-issue-labels:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "assignees_ref": null,
+      "milestone_ref": null
+     },
+     "initial": {
+      "information_completeness": "complete",
+      "issue_family": "mechanics"
+     },
+     "context": {
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+      "relevant_prs": [],
+      "portfolio": "ripr-swarm-issue-lifecycle-contract-plan-controls",
+      "selected_work": "synthetic-control",
+      "claim_ids": []
+     },
+     "intake": {
+      "evidence": [
+       {
+        "identity": "synthetic-control-snapshot",
+        "bytes": 1
+       }
+      ],
+      "missing_evidence_questions": []
+     },
+     "contract_decision": {
+      "spec_required": true,
+      "decision_rationale": "synthetic decision rationale",
+      "root_disposition": "amended"
+     },
+     "contract_artifacts": {
+      "proposal": "RIPR-SPEC-draft-synthetic-control",
+      "spec": null,
+      "adr": null,
+      "challenge": "synthetic-adversary-result",
+      "amendments": [],
+      "acceptance": null
+     },
+     "plan": {
+      "plan_id": "plan-synthetic-control",
+      "work_items": [
+       "wi-control-a"
+      ],
+      "dependencies": [],
+      "acceptance_coverage": [
+       "synthetic acceptance row"
+      ]
+     },
+     "claim_events": [],
+     "execution_refs": {
+      "pr": null,
+      "review": null,
+      "checks": [],
+      "verification": null,
+      "merge": null,
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e"
+     },
+     "progress": {
+      "mutation_plan": null,
+      "before_digest": null,
+      "after_digest": null,
+      "suppressed_unchanged": false
+     },
+     "burn_down": {
+      "state": "open",
+      "uncovered_rows": [],
+      "contradicted_rows": [],
+      "deferred_rows": []
+     },
+     "closeout": {
+      "state": "not_started",
+      "reason": null,
+      "remaining_limitations": [],
+      "current_head_verification": null
+     },
+     "limitations": [
+      "synthetic mechanics control; never enters a real denominator"
+     ],
+     "non_claims": [
+      "claims nothing about any real issue"
+     ],
+     "row_digest": "fc2584b2c488f5531fb3bec57821b85b91853264aa2c298f15a378e2c63f9fe3"
+    }
+   }
+  },
+  {
+   "id": "control_unresolved_decision_blocks_implementation",
+   "control": "unresolved_decision_blocks_implementation",
+   "scenario": "an open product decision is preserved verbatim and the row stays spec-qualified with implementation blocked by a stop condition",
+   "row": {
+    "id": "control_unresolved_decision_blocks_implementation",
+    "category": "contract_required",
+    "snapshot": {
+     "issue_number": 0,
+     "issue_ref": "synthetic-control",
+     "snapshot_path": null,
+     "comments_path": null,
+     "timeline_path": null,
+     "timeline_snapshot_id": null,
+     "captured_at": "2026-10-04T21:31:42Z",
+     "issue_snapshot_id": "synthetic-control-snapshot",
+     "comments_snapshot_id": "synthetic-control-comments"
+    },
+    "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+    "contract": {
+     "source_of_truth": "synthetic source of truth",
+     "spec_required_rationale": "synthetic decision rationale with an unresolved decision preserved",
+     "draft_spec_identity": "RIPR-SPEC-draft-synthetic-control",
+     "author": {
+      "role": "contract_author",
+      "config_identity": "synthetic-author-config",
+      "result_identity": "synthetic-author-result",
+      "carries_acceptance": false
+     },
+     "adversary": {
+      "result_identity": "synthetic-adversary-result",
+      "inspected_scope": "synthetic adversary inspected scope",
+      "findings": [
+       "missing failure state: synthetic"
+      ],
+      "none_found": false
+     },
+     "open_decisions": [
+      "synthetic open product decision: pick A or record a stop"
+     ],
+     "root_disposition": "qualified_spec_required",
+     "contract_state": "provisional",
+     "root": {
+      "role": "contract_root",
+      "config_identity": "root-config-unresolved_decision_blocks_implementation-v1",
+      "result_identity": "root-result-unresolved_decision_blocks_implementation-v1",
+      "carries_acceptance": true
+     }
+    },
+    "planning": {
+     "shape_decision": "one_pr",
+     "shape_rationale": "synthetic control rationale",
+     "work_items": [
+      {
+       "id": "wi-control-a",
+       "depends_on": []
+      }
+     ],
+     "acceptance_covered": [
+      "synthetic acceptance row"
+     ],
+     "acceptance_omitted": [],
+     "edit_cages": [
+      "synthetic-edit-cage"
+     ],
+     "conflict_resources": [
+      "synthetic-conflict-resource"
+     ],
+     "proof_commands": [
+      {
+       "command": "cargo test -p xtask synthetic",
+       "denominator": "synthetic denominator"
+      }
+     ],
+     "stop_conditions": [
+      "synthetic open product decision must be resolved by root before implementation"
+     ],
+     "non_goals": [
+      "synthetic non-goal"
+     ],
+     "portfolio_placement": "synthetic-portfolio-label",
+     "root_corrections": [],
+     "re_splits": []
+    },
+    "retrieval_steps": [],
+    "limitations": [
+     "synthetic mechanics control; never enters a real denominator"
+    ],
+    "non_claims": [
+     "claims nothing about any real issue"
+    ],
+    "attempt": {
+     "schema_version": "issue_lifecycle_attempt.v1",
+     "lifecycle_id": "control_unresolved_decision_blocks_implementation",
+     "observation_key": "observation-control_unresolved_decision_blocks_implementation",
+     "synthetic": true,
+     "disposition": "qualified_spec_required",
+     "base_attempts": [
+      {
+       "attempt_id": "attempt-control_unresolved_decision_blocks_implementation",
+       "shared_facts": [
+        "context"
+       ]
+      }
+     ],
+     "issue": {
+      "snapshot_id": "synthetic-control-snapshot",
+      "issue_ref": "synthetic-control",
+      "comments_ref": "synthetic-control-comments",
+      "labels_ref": "gh-issue-labels:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "assignees_ref": null,
+      "milestone_ref": null
+     },
+     "initial": {
+      "information_completeness": "complete",
+      "issue_family": "mechanics"
+     },
+     "context": {
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+      "relevant_prs": [],
+      "portfolio": "ripr-swarm-issue-lifecycle-contract-plan-controls",
+      "selected_work": "synthetic-control",
+      "claim_ids": []
+     },
+     "intake": {
+      "evidence": [
+       {
+        "identity": "synthetic-control-snapshot",
+        "bytes": 1
+       }
+      ],
+      "missing_evidence_questions": []
+     },
+     "contract_decision": {
+      "spec_required": true,
+      "decision_rationale": "synthetic decision rationale with an unresolved decision preserved",
+      "root_disposition": "provisional"
+     },
+     "contract_artifacts": {
+      "proposal": "RIPR-SPEC-draft-synthetic-control",
+      "spec": null,
+      "adr": null,
+      "challenge": "synthetic-adversary-result",
+      "amendments": [],
+      "acceptance": null
+     },
+     "plan": {
+      "plan_id": "plan-synthetic-control",
+      "work_items": [
+       "wi-control-a"
+      ],
+      "dependencies": [],
+      "acceptance_coverage": [
+       "synthetic acceptance row"
+      ]
+     },
+     "claim_events": [],
+     "execution_refs": {
+      "pr": null,
+      "review": null,
+      "checks": [],
+      "verification": null,
+      "merge": null,
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e"
+     },
+     "progress": {
+      "mutation_plan": null,
+      "before_digest": null,
+      "after_digest": null,
+      "suppressed_unchanged": false
+     },
+     "burn_down": {
+      "state": "open",
+      "uncovered_rows": [],
+      "contradicted_rows": [],
+      "deferred_rows": []
+     },
+     "closeout": {
+      "state": "not_started",
+      "reason": null,
+      "remaining_limitations": [],
+      "current_head_verification": null
+     },
+     "limitations": [
+      "synthetic mechanics control; never enters a real denominator"
+     ],
+     "non_claims": [
+      "claims nothing about any real issue"
+     ],
+     "row_digest": "de0bc424c0b64c7ac15498de07892aa5f3d7f4fb67f7d841dd18bb59a9d218df"
+    }
+   }
+  },
+  {
+   "id": "control_narrow_bug_gets_no_spec",
+   "control": "narrow_bug_gets_no_unnecessary_spec",
+   "scenario": "a narrow accepted-contract bug routes directly to one PR with no contract evidence and no contract artifacts",
+   "row": {
+    "id": "control_narrow_bug_gets_no_spec",
+    "category": "narrow_accepted_contract_bug",
+    "snapshot": {
+     "issue_number": 0,
+     "issue_ref": "synthetic-control",
+     "snapshot_path": null,
+     "comments_path": null,
+     "timeline_path": null,
+     "timeline_snapshot_id": null,
+     "captured_at": "2026-10-04T21:31:42Z",
+     "issue_snapshot_id": "synthetic-control-snapshot",
+     "comments_snapshot_id": "synthetic-control-comments"
+    },
+    "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+    "contract": null,
+    "planning": {
+     "shape_decision": "one_pr",
+     "shape_rationale": "synthetic control rationale",
+     "work_items": [
+      {
+       "id": "wi-control-a",
+       "depends_on": []
+      }
+     ],
+     "acceptance_covered": [
+      "synthetic acceptance row"
+     ],
+     "acceptance_omitted": [],
+     "edit_cages": [
+      "synthetic-edit-cage"
+     ],
+     "conflict_resources": [
+      "synthetic-conflict-resource"
+     ],
+     "proof_commands": [
+      {
+       "command": "cargo test -p xtask synthetic",
+       "denominator": "synthetic denominator"
+      }
+     ],
+     "stop_conditions": [
+      "synthetic stop condition"
+     ],
+     "non_goals": [
+      "synthetic non-goal"
+     ],
+     "portfolio_placement": "synthetic-portfolio-label",
+     "root_corrections": [],
+     "re_splits": []
+    },
+    "retrieval_steps": [],
+    "limitations": [
+     "synthetic mechanics control; never enters a real denominator"
+    ],
+    "non_claims": [
+     "claims nothing about any real issue"
+    ],
+    "attempt": {
+     "schema_version": "issue_lifecycle_attempt.v1",
+     "lifecycle_id": "control_narrow_bug_gets_no_spec",
+     "observation_key": "observation-control_narrow_bug_gets_no_spec",
+     "synthetic": true,
+     "disposition": "qualified_one_pr",
+     "base_attempts": [
+      {
+       "attempt_id": "attempt-control_narrow_bug_gets_no_spec",
+       "shared_facts": [
+        "context"
+       ]
+      }
+     ],
+     "issue": {
+      "snapshot_id": "synthetic-control-snapshot",
+      "issue_ref": "synthetic-control",
+      "comments_ref": "synthetic-control-comments",
+      "labels_ref": "gh-issue-labels:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "assignees_ref": null,
+      "milestone_ref": null
+     },
+     "initial": {
+      "information_completeness": "complete",
+      "issue_family": "mechanics"
+     },
+     "context": {
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+      "relevant_prs": [],
+      "portfolio": "ripr-swarm-issue-lifecycle-contract-plan-controls",
+      "selected_work": "synthetic-control",
+      "claim_ids": []
+     },
+     "intake": {
+      "evidence": [
+       {
+        "identity": "synthetic-control-snapshot",
+        "bytes": 1
+       }
+      ],
+      "missing_evidence_questions": []
+     },
+     "contract_decision": {
+      "spec_required": false,
+      "decision_rationale": "synthetic decision rationale",
+      "root_disposition": null
+     },
+     "contract_artifacts": {
+      "proposal": null,
+      "spec": null,
+      "adr": null,
+      "challenge": null,
+      "amendments": [],
+      "acceptance": null
+     },
+     "plan": {
+      "plan_id": "plan-synthetic-control",
+      "work_items": [
+       "wi-control-a"
+      ],
+      "dependencies": [],
+      "acceptance_coverage": [
+       "synthetic acceptance row"
+      ]
+     },
+     "claim_events": [],
+     "execution_refs": {
+      "pr": null,
+      "review": null,
+      "checks": [],
+      "verification": null,
+      "merge": null,
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e"
+     },
+     "progress": {
+      "mutation_plan": null,
+      "before_digest": null,
+      "after_digest": null,
+      "suppressed_unchanged": false
+     },
+     "burn_down": {
+      "state": "open",
+      "uncovered_rows": [],
+      "contradicted_rows": [],
+      "deferred_rows": []
+     },
+     "closeout": {
+      "state": "not_started",
+      "reason": null,
+      "remaining_limitations": [],
+      "current_head_verification": null
+     },
+     "limitations": [
+      "synthetic mechanics control; never enters a real denominator"
+     ],
+     "non_claims": [
+      "claims nothing about any real issue"
+     ],
+     "row_digest": "35548c24de6453c28ac7d86aae9b9bd2b387051a4cca5defe22da219a97f81af"
+    }
+   }
+  },
+  {
+   "id": "control_campaign_rejected_when_slice_suffices",
+   "control": "campaign_rejected_when_one_vertical_slice_suffices",
+   "scenario": "a proposed campaign is rejected because one vertical slice covers every acceptance row coherently",
+   "row": {
+    "id": "control_campaign_rejected_when_slice_suffices",
+    "category": "contract_required",
+    "snapshot": {
+     "issue_number": 0,
+     "issue_ref": "synthetic-control",
+     "snapshot_path": null,
+     "comments_path": null,
+     "timeline_path": null,
+     "timeline_snapshot_id": null,
+     "captured_at": "2026-10-04T21:31:42Z",
+     "issue_snapshot_id": "synthetic-control-snapshot",
+     "comments_snapshot_id": "synthetic-control-comments"
+    },
+    "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+    "contract": {
+     "source_of_truth": "synthetic source of truth",
+     "spec_required_rationale": "synthetic decision rationale",
+     "draft_spec_identity": "RIPR-SPEC-draft-synthetic-control",
+     "author": {
+      "role": "contract_author",
+      "config_identity": "synthetic-author-config",
+      "result_identity": "synthetic-author-result",
+      "carries_acceptance": false
+     },
+     "adversary": {
+      "result_identity": "synthetic-adversary-result",
+      "inspected_scope": "synthetic adversary inspected scope",
+      "findings": [
+       "missing failure state: synthetic"
+      ],
+      "none_found": false
+     },
+     "open_decisions": [],
+     "root_disposition": "qualified_spec_required",
+     "contract_state": "amended",
+     "root": {
+      "role": "contract_root",
+      "config_identity": "root-config-campaign_rejected_when_slice_suffices-v1",
+      "result_identity": "root-result-campaign_rejected_when_slice_suffices-v1",
+      "carries_acceptance": true
+     }
+    },
+    "planning": {
+     "shape_decision": "one_pr",
+     "shape_rationale": "campaign of three PRs was proposed and rejected: one vertical slice covers all acceptance rows with clean edit cages",
+     "work_items": [
+      {
+       "id": "wi-control-a",
+       "depends_on": []
+      }
+     ],
+     "acceptance_covered": [
+      "synthetic acceptance row"
+     ],
+     "acceptance_omitted": [],
+     "edit_cages": [
+      "synthetic-edit-cage"
+     ],
+     "conflict_resources": [
+      "synthetic-conflict-resource"
+     ],
+     "proof_commands": [
+      {
+       "command": "cargo test -p xtask synthetic",
+       "denominator": "synthetic denominator"
+      }
+     ],
+     "stop_conditions": [
+      "synthetic stop condition"
+     ],
+     "non_goals": [
+      "synthetic non-goal"
+     ],
+     "portfolio_placement": "synthetic-portfolio-label",
+     "root_corrections": [
+      "control root correction: restated the root disposition after the adversary pass for control_campaign_rejected_when_slice_suffices"
+     ],
+     "re_splits": []
+    },
+    "retrieval_steps": [],
+    "limitations": [
+     "synthetic mechanics control; never enters a real denominator"
+    ],
+    "non_claims": [
+     "claims nothing about any real issue"
+    ],
+    "attempt": {
+     "schema_version": "issue_lifecycle_attempt.v1",
+     "lifecycle_id": "control_campaign_rejected_when_slice_suffices",
+     "observation_key": "observation-control_campaign_rejected_when_slice_suffices",
+     "synthetic": true,
+     "disposition": "qualified_spec_required",
+     "base_attempts": [
+      {
+       "attempt_id": "attempt-control_campaign_rejected_when_slice_suffices",
+       "shared_facts": [
+        "context"
+       ]
+      }
+     ],
+     "issue": {
+      "snapshot_id": "synthetic-control-snapshot",
+      "issue_ref": "synthetic-control",
+      "comments_ref": "synthetic-control-comments",
+      "labels_ref": "gh-issue-labels:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "assignees_ref": null,
+      "milestone_ref": null
+     },
+     "initial": {
+      "information_completeness": "complete",
+      "issue_family": "mechanics"
+     },
+     "context": {
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+      "relevant_prs": [],
+      "portfolio": "ripr-swarm-issue-lifecycle-contract-plan-controls",
+      "selected_work": "synthetic-control",
+      "claim_ids": []
+     },
+     "intake": {
+      "evidence": [
+       {
+        "identity": "synthetic-control-snapshot",
+        "bytes": 1
+       }
+      ],
+      "missing_evidence_questions": []
+     },
+     "contract_decision": {
+      "spec_required": true,
+      "decision_rationale": "synthetic decision rationale",
+      "root_disposition": "amended"
+     },
+     "contract_artifacts": {
+      "proposal": "RIPR-SPEC-draft-synthetic-control",
+      "spec": null,
+      "adr": null,
+      "challenge": "synthetic-adversary-result",
+      "amendments": [],
+      "acceptance": null
+     },
+     "plan": {
+      "plan_id": "plan-synthetic-control",
+      "work_items": [
+       "wi-control-a"
+      ],
+      "dependencies": [],
+      "acceptance_coverage": [
+       "synthetic acceptance row"
+      ]
+     },
+     "claim_events": [],
+     "execution_refs": {
+      "pr": null,
+      "review": null,
+      "checks": [],
+      "verification": null,
+      "merge": null,
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e"
+     },
+     "progress": {
+      "mutation_plan": null,
+      "before_digest": null,
+      "after_digest": null,
+      "suppressed_unchanged": false
+     },
+     "burn_down": {
+      "state": "open",
+      "uncovered_rows": [],
+      "contradicted_rows": [],
+      "deferred_rows": []
+     },
+     "closeout": {
+      "state": "not_started",
+      "reason": null,
+      "remaining_limitations": [],
+      "current_head_verification": null
+     },
+     "limitations": [
+      "synthetic mechanics control; never enters a real denominator"
+     ],
+     "non_claims": [
+      "claims nothing about any real issue"
+     ],
+     "row_digest": "f193521d9d1e0c8b619ae83e7d0e7b1293012316552e149d05ac1c35550b21bf"
+    }
+   }
+  },
+  {
+   "id": "control_one_pr_rejected_when_incoherent",
+   "control": "one_pr_rejected_when_acceptance_cannot_be_covered_coherently",
+   "scenario": "a proposed single PR is rejected because its acceptance rows span two incompatible edit cages, so the shape becomes a campaign",
+   "row": {
+    "id": "control_one_pr_rejected_when_incoherent",
+    "category": "contract_required",
+    "snapshot": {
+     "issue_number": 0,
+     "issue_ref": "synthetic-control",
+     "snapshot_path": null,
+     "comments_path": null,
+     "timeline_path": null,
+     "timeline_snapshot_id": null,
+     "captured_at": "2026-10-04T21:31:42Z",
+     "issue_snapshot_id": "synthetic-control-snapshot",
+     "comments_snapshot_id": "synthetic-control-comments"
+    },
+    "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+    "contract": {
+     "source_of_truth": "synthetic source of truth",
+     "spec_required_rationale": "synthetic decision rationale",
+     "draft_spec_identity": "RIPR-SPEC-draft-synthetic-control",
+     "author": {
+      "role": "contract_author",
+      "config_identity": "synthetic-author-config",
+      "result_identity": "synthetic-author-result",
+      "carries_acceptance": false
+     },
+     "adversary": {
+      "result_identity": "synthetic-adversary-result",
+      "inspected_scope": "synthetic adversary inspected scope",
+      "findings": [
+       "missing failure state: synthetic"
+      ],
+      "none_found": false
+     },
+     "open_decisions": [],
+     "root_disposition": "qualified_spec_required",
+     "contract_state": "amended",
+     "root": {
+      "role": "contract_root",
+      "config_identity": "root-config-one_pr_rejected_when_incoherent-v1",
+      "result_identity": "root-result-one_pr_rejected_when_incoherent-v1",
+      "carries_acceptance": true
+     }
+    },
+    "planning": {
+     "shape_decision": "campaign",
+     "shape_rationale": "one PR was proposed and rejected: its acceptance rows span two incompatible edit cages, so the work splits into a campaign with explicit dependency edges",
+     "work_items": [
+      {
+       "id": "wi-control-a",
+       "depends_on": []
+      },
+      {
+       "id": "wi-control-b",
+       "depends_on": [
+        "wi-control-a"
+       ]
+      }
+     ],
+     "acceptance_covered": [
+      "synthetic acceptance row"
+     ],
+     "acceptance_omitted": [],
+     "edit_cages": [
+      "synthetic-edit-cage"
+     ],
+     "conflict_resources": [
+      "synthetic-conflict-resource"
+     ],
+     "proof_commands": [
+      {
+       "command": "cargo test -p xtask synthetic",
+       "denominator": "synthetic denominator"
+      }
+     ],
+     "stop_conditions": [
+      "synthetic stop condition"
+     ],
+     "non_goals": [
+      "synthetic non-goal"
+     ],
+     "portfolio_placement": "synthetic-portfolio-label",
+     "root_corrections": [
+      "control root correction: restated the root disposition after the adversary pass for control_one_pr_rejected_when_incoherent"
+     ],
+     "re_splits": []
+    },
+    "retrieval_steps": [],
+    "limitations": [
+     "synthetic mechanics control; never enters a real denominator"
+    ],
+    "non_claims": [
+     "claims nothing about any real issue"
+    ],
+    "attempt": {
+     "schema_version": "issue_lifecycle_attempt.v1",
+     "lifecycle_id": "control_one_pr_rejected_when_incoherent",
+     "observation_key": "observation-control_one_pr_rejected_when_incoherent",
+     "synthetic": true,
+     "disposition": "qualified_spec_required",
+     "base_attempts": [
+      {
+       "attempt_id": "attempt-control_one_pr_rejected_when_incoherent",
+       "shared_facts": [
+        "context"
+       ]
+      }
+     ],
+     "issue": {
+      "snapshot_id": "synthetic-control-snapshot",
+      "issue_ref": "synthetic-control",
+      "comments_ref": "synthetic-control-comments",
+      "labels_ref": "gh-issue-labels:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "assignees_ref": null,
+      "milestone_ref": null
+     },
+     "initial": {
+      "information_completeness": "complete",
+      "issue_family": "mechanics"
+     },
+     "context": {
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+      "relevant_prs": [],
+      "portfolio": "ripr-swarm-issue-lifecycle-contract-plan-controls",
+      "selected_work": "synthetic-control",
+      "claim_ids": []
+     },
+     "intake": {
+      "evidence": [
+       {
+        "identity": "synthetic-control-snapshot",
+        "bytes": 1
+       }
+      ],
+      "missing_evidence_questions": []
+     },
+     "contract_decision": {
+      "spec_required": true,
+      "decision_rationale": "synthetic decision rationale",
+      "root_disposition": "amended"
+     },
+     "contract_artifacts": {
+      "proposal": "RIPR-SPEC-draft-synthetic-control",
+      "spec": null,
+      "adr": null,
+      "challenge": "synthetic-adversary-result",
+      "amendments": [],
+      "acceptance": null
+     },
+     "plan": {
+      "plan_id": "plan-synthetic-control",
+      "work_items": [
+       "wi-control-a",
+       "wi-control-b"
+      ],
+      "dependencies": [
+       "wi-control-b->wi-control-a"
+      ],
+      "acceptance_coverage": [
+       "synthetic acceptance row"
+      ]
+     },
+     "claim_events": [],
+     "execution_refs": {
+      "pr": null,
+      "review": null,
+      "checks": [],
+      "verification": null,
+      "merge": null,
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e"
+     },
+     "progress": {
+      "mutation_plan": null,
+      "before_digest": null,
+      "after_digest": null,
+      "suppressed_unchanged": false
+     },
+     "burn_down": {
+      "state": "open",
+      "uncovered_rows": [],
+      "contradicted_rows": [],
+      "deferred_rows": []
+     },
+     "closeout": {
+      "state": "not_started",
+      "reason": null,
+      "remaining_limitations": [],
+      "current_head_verification": null
+     },
+     "limitations": [
+      "synthetic mechanics control; never enters a real denominator"
+     ],
+     "non_claims": [
+      "claims nothing about any real issue"
+     ],
+     "row_digest": "1593c2183b15070d125d8494d0ea8770be77cfc23ba37ba6e82e1db5c34bf6ed"
+    }
+   }
+  },
+  {
+   "id": "control_spec_contains_behavior_not_queue",
+   "control": "specs_contain_behavior_not_execution_queues",
+   "scenario": "the draft spec identity is a behavior draft (RIPR-SPEC-draft prefix); a queue-shaped draft identity fails the assessment law",
+   "row": {
+    "id": "control_spec_contains_behavior_not_queue",
+    "category": "contract_required",
+    "snapshot": {
+     "issue_number": 0,
+     "issue_ref": "synthetic-control",
+     "snapshot_path": null,
+     "comments_path": null,
+     "timeline_path": null,
+     "timeline_snapshot_id": null,
+     "captured_at": "2026-10-04T21:31:42Z",
+     "issue_snapshot_id": "synthetic-control-snapshot",
+     "comments_snapshot_id": "synthetic-control-comments"
+    },
+    "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+    "contract": {
+     "source_of_truth": "synthetic source of truth",
+     "spec_required_rationale": "synthetic decision rationale",
+     "draft_spec_identity": "RIPR-SPEC-draft-synthetic-control",
+     "author": {
+      "role": "contract_author",
+      "config_identity": "synthetic-author-config",
+      "result_identity": "synthetic-author-result",
+      "carries_acceptance": false
+     },
+     "adversary": {
+      "result_identity": "synthetic-adversary-result",
+      "inspected_scope": "synthetic adversary inspected scope",
+      "findings": [
+       "missing failure state: synthetic"
+      ],
+      "none_found": false
+     },
+     "open_decisions": [],
+     "root_disposition": "qualified_spec_required",
+     "contract_state": "amended",
+     "root": {
+      "role": "contract_root",
+      "config_identity": "root-config-spec_contains_behavior_not_queue-v1",
+      "result_identity": "root-result-spec_contains_behavior_not_queue-v1",
+      "carries_acceptance": true
+     }
+    },
+    "planning": {
+     "shape_decision": "one_pr",
+     "shape_rationale": "synthetic control rationale",
+     "work_items": [
+      {
+       "id": "wi-control-a",
+       "depends_on": []
+      }
+     ],
+     "acceptance_covered": [
+      "synthetic acceptance row"
+     ],
+     "acceptance_omitted": [],
+     "edit_cages": [
+      "synthetic-edit-cage"
+     ],
+     "conflict_resources": [
+      "synthetic-conflict-resource"
+     ],
+     "proof_commands": [
+      {
+       "command": "cargo test -p xtask synthetic",
+       "denominator": "synthetic denominator"
+      }
+     ],
+     "stop_conditions": [
+      "synthetic stop condition"
+     ],
+     "non_goals": [
+      "synthetic non-goal"
+     ],
+     "portfolio_placement": "synthetic-portfolio-label",
+     "root_corrections": [
+      "control root correction: restated the root disposition after the adversary pass for control_spec_contains_behavior_not_queue"
+     ],
+     "re_splits": []
+    },
+    "retrieval_steps": [],
+    "limitations": [
+     "synthetic mechanics control; never enters a real denominator"
+    ],
+    "non_claims": [
+     "claims nothing about any real issue"
+    ],
+    "attempt": {
+     "schema_version": "issue_lifecycle_attempt.v1",
+     "lifecycle_id": "control_spec_contains_behavior_not_queue",
+     "observation_key": "observation-control_spec_contains_behavior_not_queue",
+     "synthetic": true,
+     "disposition": "qualified_spec_required",
+     "base_attempts": [
+      {
+       "attempt_id": "attempt-control_spec_contains_behavior_not_queue",
+       "shared_facts": [
+        "context"
+       ]
+      }
+     ],
+     "issue": {
+      "snapshot_id": "synthetic-control-snapshot",
+      "issue_ref": "synthetic-control",
+      "comments_ref": "synthetic-control-comments",
+      "labels_ref": "gh-issue-labels:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "assignees_ref": null,
+      "milestone_ref": null
+     },
+     "initial": {
+      "information_completeness": "complete",
+      "issue_family": "mechanics"
+     },
+     "context": {
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+      "relevant_prs": [],
+      "portfolio": "ripr-swarm-issue-lifecycle-contract-plan-controls",
+      "selected_work": "synthetic-control",
+      "claim_ids": []
+     },
+     "intake": {
+      "evidence": [
+       {
+        "identity": "synthetic-control-snapshot",
+        "bytes": 1
+       }
+      ],
+      "missing_evidence_questions": []
+     },
+     "contract_decision": {
+      "spec_required": true,
+      "decision_rationale": "synthetic decision rationale",
+      "root_disposition": "amended"
+     },
+     "contract_artifacts": {
+      "proposal": "RIPR-SPEC-draft-synthetic-control",
+      "spec": null,
+      "adr": null,
+      "challenge": "synthetic-adversary-result",
+      "amendments": [],
+      "acceptance": null
+     },
+     "plan": {
+      "plan_id": "plan-synthetic-control",
+      "work_items": [
+       "wi-control-a"
+      ],
+      "dependencies": [],
+      "acceptance_coverage": [
+       "synthetic acceptance row"
+      ]
+     },
+     "claim_events": [],
+     "execution_refs": {
+      "pr": null,
+      "review": null,
+      "checks": [],
+      "verification": null,
+      "merge": null,
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e"
+     },
+     "progress": {
+      "mutation_plan": null,
+      "before_digest": null,
+      "after_digest": null,
+      "suppressed_unchanged": false
+     },
+     "burn_down": {
+      "state": "open",
+      "uncovered_rows": [],
+      "contradicted_rows": [],
+      "deferred_rows": []
+     },
+     "closeout": {
+      "state": "not_started",
+      "reason": null,
+      "remaining_limitations": [],
+      "current_head_verification": null
+     },
+     "limitations": [
+      "synthetic mechanics control; never enters a real denominator"
+     ],
+     "non_claims": [
+      "claims nothing about any real issue"
+     ],
+     "row_digest": "bf4417f4c4ab9c88f1e1c1c9c76b80a2f0089b3451a7d5c70bc550452f3ec83f"
+    }
+   }
+  },
+  {
+   "id": "control_plan_contains_work_order_not_behavior_authority",
+   "control": "plans_contain_work_order_not_new_behavior_authority",
+   "scenario": "the plan carries work items, edges and stop conditions only; a plan that mints a draft spec identity fails the assessment law",
+   "row": {
+    "id": "control_plan_contains_work_order_not_behavior_authority",
+    "category": "contract_required",
+    "snapshot": {
+     "issue_number": 0,
+     "issue_ref": "synthetic-control",
+     "snapshot_path": null,
+     "comments_path": null,
+     "timeline_path": null,
+     "timeline_snapshot_id": null,
+     "captured_at": "2026-10-04T21:31:42Z",
+     "issue_snapshot_id": "synthetic-control-snapshot",
+     "comments_snapshot_id": "synthetic-control-comments"
+    },
+    "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+    "contract": {
+     "source_of_truth": "synthetic source of truth",
+     "spec_required_rationale": "synthetic decision rationale",
+     "draft_spec_identity": "RIPR-SPEC-draft-synthetic-control",
+     "author": {
+      "role": "contract_author",
+      "config_identity": "synthetic-author-config",
+      "result_identity": "synthetic-author-result",
+      "carries_acceptance": false
+     },
+     "adversary": {
+      "result_identity": "synthetic-adversary-result",
+      "inspected_scope": "synthetic adversary inspected scope",
+      "findings": [
+       "missing failure state: synthetic"
+      ],
+      "none_found": false
+     },
+     "open_decisions": [],
+     "root_disposition": "qualified_spec_required",
+     "contract_state": "amended",
+     "root": {
+      "role": "contract_root",
+      "config_identity": "root-config-plan_contains_work_order_not_behavior_authority-v1",
+      "result_identity": "root-result-plan_contains_work_order_not_behavior_authority-v1",
+      "carries_acceptance": true
+     }
+    },
+    "planning": {
+     "shape_decision": "one_pr",
+     "shape_rationale": "synthetic control rationale",
+     "work_items": [
+      {
+       "id": "wi-control-a",
+       "depends_on": []
+      }
+     ],
+     "acceptance_covered": [
+      "synthetic acceptance row"
+     ],
+     "acceptance_omitted": [],
+     "edit_cages": [
+      "synthetic-edit-cage"
+     ],
+     "conflict_resources": [
+      "synthetic-conflict-resource"
+     ],
+     "proof_commands": [
+      {
+       "command": "cargo test -p xtask synthetic",
+       "denominator": "synthetic denominator"
+      }
+     ],
+     "stop_conditions": [
+      "synthetic stop condition"
+     ],
+     "non_goals": [
+      "synthetic non-goal"
+     ],
+     "portfolio_placement": "synthetic-portfolio-label",
+     "root_corrections": [
+      "control root correction: restated the root disposition after the adversary pass for control_plan_contains_work_order_not_behavior_authority"
+     ],
+     "re_splits": []
+    },
+    "retrieval_steps": [],
+    "limitations": [
+     "synthetic mechanics control; never enters a real denominator"
+    ],
+    "non_claims": [
+     "claims nothing about any real issue"
+    ],
+    "attempt": {
+     "schema_version": "issue_lifecycle_attempt.v1",
+     "lifecycle_id": "control_plan_contains_work_order_not_behavior_authority",
+     "observation_key": "observation-control_plan_contains_work_order_not_behavior_authority",
+     "synthetic": true,
+     "disposition": "qualified_spec_required",
+     "base_attempts": [
+      {
+       "attempt_id": "attempt-control_plan_contains_work_order_not_behavior_authority",
+       "shared_facts": [
+        "context"
+       ]
+      }
+     ],
+     "issue": {
+      "snapshot_id": "synthetic-control-snapshot",
+      "issue_ref": "synthetic-control",
+      "comments_ref": "synthetic-control-comments",
+      "labels_ref": "gh-issue-labels:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "assignees_ref": null,
+      "milestone_ref": null
+     },
+     "initial": {
+      "information_completeness": "complete",
+      "issue_family": "mechanics"
+     },
+     "context": {
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+      "relevant_prs": [],
+      "portfolio": "ripr-swarm-issue-lifecycle-contract-plan-controls",
+      "selected_work": "synthetic-control",
+      "claim_ids": []
+     },
+     "intake": {
+      "evidence": [
+       {
+        "identity": "synthetic-control-snapshot",
+        "bytes": 1
+       }
+      ],
+      "missing_evidence_questions": []
+     },
+     "contract_decision": {
+      "spec_required": true,
+      "decision_rationale": "synthetic decision rationale",
+      "root_disposition": "amended"
+     },
+     "contract_artifacts": {
+      "proposal": "RIPR-SPEC-draft-synthetic-control",
+      "spec": null,
+      "adr": null,
+      "challenge": "synthetic-adversary-result",
+      "amendments": [],
+      "acceptance": null
+     },
+     "plan": {
+      "plan_id": "plan-synthetic-control",
+      "work_items": [
+       "wi-control-a"
+      ],
+      "dependencies": [],
+      "acceptance_coverage": [
+       "synthetic acceptance row"
+      ]
+     },
+     "claim_events": [],
+     "execution_refs": {
+      "pr": null,
+      "review": null,
+      "checks": [],
+      "verification": null,
+      "merge": null,
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e"
+     },
+     "progress": {
+      "mutation_plan": null,
+      "before_digest": null,
+      "after_digest": null,
+      "suppressed_unchanged": false
+     },
+     "burn_down": {
+      "state": "open",
+      "uncovered_rows": [],
+      "contradicted_rows": [],
+      "deferred_rows": []
+     },
+     "closeout": {
+      "state": "not_started",
+      "reason": null,
+      "remaining_limitations": [],
+      "current_head_verification": null
+     },
+     "limitations": [
+      "synthetic mechanics control; never enters a real denominator"
+     ],
+     "non_claims": [
+      "claims nothing about any real issue"
+     ],
+     "row_digest": "92209c83604464d043052cbd93c58419adf3895e03463937e37a68ae6c5365e9"
+    }
+   }
+  },
+  {
+   "id": "control_no_tracked_selection_file_changed",
+   "control": "no_tracked_selection_or_current_work_file_changed",
+   "scenario": "portfolio placement is a label; no plan field references a tracked selection or current-work file",
+   "row": {
+    "id": "control_no_tracked_selection_file_changed",
+    "category": "contract_required",
+    "snapshot": {
+     "issue_number": 0,
+     "issue_ref": "synthetic-control",
+     "snapshot_path": null,
+     "comments_path": null,
+     "timeline_path": null,
+     "timeline_snapshot_id": null,
+     "captured_at": "2026-10-04T21:31:42Z",
+     "issue_snapshot_id": "synthetic-control-snapshot",
+     "comments_snapshot_id": "synthetic-control-comments"
+    },
+    "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+    "contract": {
+     "source_of_truth": "synthetic source of truth",
+     "spec_required_rationale": "synthetic decision rationale",
+     "draft_spec_identity": "RIPR-SPEC-draft-synthetic-control",
+     "author": {
+      "role": "contract_author",
+      "config_identity": "synthetic-author-config",
+      "result_identity": "synthetic-author-result",
+      "carries_acceptance": false
+     },
+     "adversary": {
+      "result_identity": "synthetic-adversary-result",
+      "inspected_scope": "synthetic adversary inspected scope",
+      "findings": [
+       "missing failure state: synthetic"
+      ],
+      "none_found": false
+     },
+     "open_decisions": [],
+     "root_disposition": "qualified_spec_required",
+     "contract_state": "amended",
+     "root": {
+      "role": "contract_root",
+      "config_identity": "root-config-no_tracked_selection_file_changed-v1",
+      "result_identity": "root-result-no_tracked_selection_file_changed-v1",
+      "carries_acceptance": true
+     }
+    },
+    "planning": {
+     "shape_decision": "one_pr",
+     "shape_rationale": "synthetic control rationale",
+     "work_items": [
+      {
+       "id": "wi-control-a",
+       "depends_on": []
+      }
+     ],
+     "acceptance_covered": [
+      "synthetic acceptance row"
+     ],
+     "acceptance_omitted": [],
+     "edit_cages": [
+      "synthetic-edit-cage"
+     ],
+     "conflict_resources": [
+      "synthetic-conflict-resource"
+     ],
+     "proof_commands": [
+      {
+       "command": "cargo test -p xtask synthetic",
+       "denominator": "synthetic denominator"
+      }
+     ],
+     "stop_conditions": [
+      "synthetic stop condition"
+     ],
+     "non_goals": [
+      "synthetic non-goal"
+     ],
+     "portfolio_placement": "synthetic-portfolio-label-only",
+     "root_corrections": [
+      "control root correction: restated the root disposition after the adversary pass for control_no_tracked_selection_file_changed"
+     ],
+     "re_splits": []
+    },
+    "retrieval_steps": [],
+    "limitations": [
+     "synthetic mechanics control; never enters a real denominator"
+    ],
+    "non_claims": [
+     "claims nothing about any real issue"
+    ],
+    "attempt": {
+     "schema_version": "issue_lifecycle_attempt.v1",
+     "lifecycle_id": "control_no_tracked_selection_file_changed",
+     "observation_key": "observation-control_no_tracked_selection_file_changed",
+     "synthetic": true,
+     "disposition": "qualified_spec_required",
+     "base_attempts": [
+      {
+       "attempt_id": "attempt-control_no_tracked_selection_file_changed",
+       "shared_facts": [
+        "context"
+       ]
+      }
+     ],
+     "issue": {
+      "snapshot_id": "synthetic-control-snapshot",
+      "issue_ref": "synthetic-control",
+      "comments_ref": "synthetic-control-comments",
+      "labels_ref": "gh-issue-labels:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "assignees_ref": null,
+      "milestone_ref": null
+     },
+     "initial": {
+      "information_completeness": "complete",
+      "issue_family": "mechanics"
+     },
+     "context": {
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+      "relevant_prs": [],
+      "portfolio": "ripr-swarm-issue-lifecycle-contract-plan-controls",
+      "selected_work": "synthetic-control",
+      "claim_ids": []
+     },
+     "intake": {
+      "evidence": [
+       {
+        "identity": "synthetic-control-snapshot",
+        "bytes": 1
+       }
+      ],
+      "missing_evidence_questions": []
+     },
+     "contract_decision": {
+      "spec_required": true,
+      "decision_rationale": "synthetic decision rationale",
+      "root_disposition": "amended"
+     },
+     "contract_artifacts": {
+      "proposal": "RIPR-SPEC-draft-synthetic-control",
+      "spec": null,
+      "adr": null,
+      "challenge": "synthetic-adversary-result",
+      "amendments": [],
+      "acceptance": null
+     },
+     "plan": {
+      "plan_id": "plan-synthetic-control",
+      "work_items": [
+       "wi-control-a"
+      ],
+      "dependencies": [],
+      "acceptance_coverage": [
+       "synthetic acceptance row"
+      ]
+     },
+     "claim_events": [],
+     "execution_refs": {
+      "pr": null,
+      "review": null,
+      "checks": [],
+      "verification": null,
+      "merge": null,
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e"
+     },
+     "progress": {
+      "mutation_plan": null,
+      "before_digest": null,
+      "after_digest": null,
+      "suppressed_unchanged": false
+     },
+     "burn_down": {
+      "state": "open",
+      "uncovered_rows": [],
+      "contradicted_rows": [],
+      "deferred_rows": []
+     },
+     "closeout": {
+      "state": "not_started",
+      "reason": null,
+      "remaining_limitations": [],
+      "current_head_verification": null
+     },
+     "limitations": [
+      "synthetic mechanics control; never enters a real denominator"
+     ],
+     "non_claims": [
+      "claims nothing about any real issue"
+     ],
+     "row_digest": "00f4e8e14f7e7dd8c19eec364da803a24aef7d3e6373edf6caceb575fbe4a246"
+    }
+   }
+  },
+  {
+   "id": "control_cold_start_reconstruction",
+   "control": "cold_start_root_reconstructs_decisions_from_artifacts",
+   "scenario": "the committed corpus alone reconstructs every contract and planning decision without chat or live reads",
+   "row": {
+    "id": "control_cold_start_reconstruction",
+    "category": "contract_required",
+    "snapshot": {
+     "issue_number": 0,
+     "issue_ref": "synthetic-control",
+     "snapshot_path": null,
+     "comments_path": null,
+     "timeline_path": null,
+     "timeline_snapshot_id": null,
+     "captured_at": "2026-10-04T21:31:42Z",
+     "issue_snapshot_id": "synthetic-control-snapshot",
+     "comments_snapshot_id": "synthetic-control-comments"
+    },
+    "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+    "contract": {
+     "source_of_truth": "synthetic source of truth",
+     "spec_required_rationale": "synthetic decision rationale",
+     "draft_spec_identity": "RIPR-SPEC-draft-synthetic-control",
+     "author": {
+      "role": "contract_author",
+      "config_identity": "synthetic-author-config",
+      "result_identity": "synthetic-author-result",
+      "carries_acceptance": false
+     },
+     "adversary": {
+      "result_identity": "synthetic-adversary-result",
+      "inspected_scope": "synthetic adversary inspected scope",
+      "findings": [
+       "missing failure state: synthetic"
+      ],
+      "none_found": false
+     },
+     "open_decisions": [],
+     "root_disposition": "qualified_spec_required",
+     "contract_state": "amended",
+     "root": {
+      "role": "contract_root",
+      "config_identity": "root-config-cold_start_reconstruction-v1",
+      "result_identity": "root-result-cold_start_reconstruction-v1",
+      "carries_acceptance": true
+     }
+    },
+    "planning": {
+     "shape_decision": "one_pr",
+     "shape_rationale": "synthetic control rationale",
+     "work_items": [
+      {
+       "id": "wi-control-a",
+       "depends_on": []
+      }
+     ],
+     "acceptance_covered": [
+      "synthetic acceptance row"
+     ],
+     "acceptance_omitted": [],
+     "edit_cages": [
+      "synthetic-edit-cage"
+     ],
+     "conflict_resources": [
+      "synthetic-conflict-resource"
+     ],
+     "proof_commands": [
+      {
+       "command": "cargo test -p xtask synthetic",
+       "denominator": "synthetic denominator"
+      }
+     ],
+     "stop_conditions": [
+      "synthetic stop condition"
+     ],
+     "non_goals": [
+      "synthetic non-goal"
+     ],
+     "portfolio_placement": "synthetic-portfolio-label",
+     "root_corrections": [
+      "control root correction: restated the root disposition after the adversary pass for control_cold_start_reconstruction"
+     ],
+     "re_splits": []
+    },
+    "retrieval_steps": [],
+    "limitations": [
+     "synthetic mechanics control; never enters a real denominator"
+    ],
+    "non_claims": [
+     "claims nothing about any real issue"
+    ],
+    "attempt": {
+     "schema_version": "issue_lifecycle_attempt.v1",
+     "lifecycle_id": "control_cold_start_reconstruction",
+     "observation_key": "observation-control_cold_start_reconstruction",
+     "synthetic": true,
+     "disposition": "qualified_spec_required",
+     "base_attempts": [
+      {
+       "attempt_id": "attempt-control_cold_start_reconstruction",
+       "shared_facts": [
+        "context"
+       ]
+      }
+     ],
+     "issue": {
+      "snapshot_id": "synthetic-control-snapshot",
+      "issue_ref": "synthetic-control",
+      "comments_ref": "synthetic-control-comments",
+      "labels_ref": "gh-issue-labels:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "assignees_ref": null,
+      "milestone_ref": null
+     },
+     "initial": {
+      "information_completeness": "complete",
+      "issue_family": "mechanics"
+     },
+     "context": {
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+      "relevant_prs": [],
+      "portfolio": "ripr-swarm-issue-lifecycle-contract-plan-controls",
+      "selected_work": "synthetic-control",
+      "claim_ids": []
+     },
+     "intake": {
+      "evidence": [
+       {
+        "identity": "synthetic-control-snapshot",
+        "bytes": 1
+       }
+      ],
+      "missing_evidence_questions": []
+     },
+     "contract_decision": {
+      "spec_required": true,
+      "decision_rationale": "synthetic decision rationale",
+      "root_disposition": "amended"
+     },
+     "contract_artifacts": {
+      "proposal": "RIPR-SPEC-draft-synthetic-control",
+      "spec": null,
+      "adr": null,
+      "challenge": "synthetic-adversary-result",
+      "amendments": [],
+      "acceptance": null
+     },
+     "plan": {
+      "plan_id": "plan-synthetic-control",
+      "work_items": [
+       "wi-control-a"
+      ],
+      "dependencies": [],
+      "acceptance_coverage": [
+       "synthetic acceptance row"
+      ]
+     },
+     "claim_events": [],
+     "execution_refs": {
+      "pr": null,
+      "review": null,
+      "checks": [],
+      "verification": null,
+      "merge": null,
+      "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e"
+     },
+     "progress": {
+      "mutation_plan": null,
+      "before_digest": null,
+      "after_digest": null,
+      "suppressed_unchanged": false
+     },
+     "burn_down": {
+      "state": "open",
+      "uncovered_rows": [],
+      "contradicted_rows": [],
+      "deferred_rows": []
+     },
+     "closeout": {
+      "state": "not_started",
+      "reason": null,
+      "remaining_limitations": [],
+      "current_head_verification": null
+     },
+     "limitations": [
+      "synthetic mechanics control; never enters a real denominator"
+     ],
+     "non_claims": [
+      "claims nothing about any real issue"
+     ],
+     "row_digest": "96d7967a05c73bacfc79f9e20439eff848481eb1505d32d6b273bcaa17b87454"
+    }
+   }
+  }
+ ]
+}

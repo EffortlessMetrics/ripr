@@ -1,0 +1,13 @@
+diff --git a/src/reach.rs b/src/reach.rs
+index 0e86388..ecaa9e1 100644
+--- a/src/reach.rs
++++ b/src/reach.rs
+@@ -40,7 +40,7 @@ fn inner_rate(x: i64) -> i64 {
+ 
+ #[allow(dead_code)]
+ fn inner_bonus(x: i64) -> i64 {
+-    x + 4
++    4 + x
+ }
+ 
+ macro_rules! call_inner {

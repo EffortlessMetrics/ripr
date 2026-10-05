@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index d20a409..c210d87 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,7 +1,7 @@
+ //! Equality checks, one function per test style.
+ 
+ pub fn is_admin(role: &str) -> bool {
+-    role == "admin"
++    "admin" == role
+ }
+ 
+ pub fn is_weekend(day: u8) -> bool {

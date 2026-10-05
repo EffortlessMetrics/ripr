@@ -48,9 +48,70 @@ are scoped or reviewed.
   exact admitted wheel, binding its source, successful run, version and digest.
   Publication uses the registered PyPI trusted publisher without rebuilding;
   qualification alone does not publish a release.
+### Changed
+
+- Predicate same-test pairing no longer treats a boundary literal buried
+  inside an argument expression as a boundary input. `gate(if false { 10 }
+  else { 50 })` and `gate(std::cmp::max(10, 50))` fall back to
+  `same_test_pairing_missing`; a plain literal, a local bound to it, or an
+  infection `==` fact still pairs, including `gate(LIMIT, make_context())`
+  when infection recorded the named constant and
+  `bulk_rate(parcels::BULK_ITEMS)` when the argument is a path-qualified
+  constant (#6668).
+
+- CI: ub-review selects RIPR's companion configuration and Rust repository
+  identity, and requests resolved-candidate receipts under the same PR-specific
+  artifact name used for upload. Review remains advisory; artifact retrieval
+  requires the existing token's Actions access and exact-revision reuse checks
+  still apply (#6337).
+
+- MCP wire names unified on `canonical_id` (same spelling the evidence
+  documents emit): tool inputs `ripr_get_gap`, `ripr_prepare_repair`, and
+  `ripr_get_repair_card` take `canonical_id` instead of `gap_id`, and the
+  resource templates are `ripr://gap/{canonical_id}` and
+  `ripr://repair-card/{canonical_id}`. Clients re-reading `tools/list` and
+  `resources/templates/list` adapt automatically; in-flight callers passing `gap_id`
+  get `invalid params` (#5209).
+- Probe-shape kinds are a closed 8-variant enum instead of one `String`
+  per shape (about 0.5M small allocations on a mid-sized workspace).
+  The wire spelling is unchanged, so cache payloads, goldens, and
+  machine output are byte-identical; unknown kind strings now fail at
+  the decode boundary and the entry takes the corrupt-entry quarantine
+  path (#5415).
+
+- `repo-seams-json` artifacts carry the producer identity envelope
+  `repo-exposure-json` already binds (#6609): producer tool/version,
+  repository head/root, worktree state, versioned input identity (the
+  analysis format is part of it, so seams and exposure artifacts on one tree
+  never share an identity), snapshot identity, and a `content_sha256`
+  commitment over the exact bytes. Additive member;
+  `REPO_SEAMS_SCHEMA_VERSION` stays `0.1` per the #2203/#5474 precedents.
+  Consumers parsing the 3-key shape keep working; consumers that persisted
+  repo-seam inventories can now bind them to the commit they describe.
+
+- `repo-badge-json` / `repo-badge-plus-json` stdout runs persist the
+  canonical report their `public_projection.source_report` names
+  (`target/ripr/reports/repo-ripr-badge.json`,
+  `target/ripr/reports/repo-ripr-plus-badge.json`) inside the analyzed
+  workspace via the atomic output writer, so the provenance pointer resolves
+  after every run (#6610). The pointer previously named a file no stdout run
+  wrote. When the workspace cannot take the write, the projection is emitted
+  with `source_report: null` and resolves to the RIPR-SPEC-0066 `unknown`
+  state instead of claiming an unwritten report.
 
 ### Added
 
+- Bounded repair states its inline-test boundary as permanent scope:
+  repositories whose only tests are inline `#[cfg(test)]` modules in
+  non-test-surface files are out of repair scope
+  (`docs/REPAIR_ATTEMPT.md` Boundary, `ripr agent repair --help`), and
+  the CLI, pilot, and MCP refusals name it so no surface promises what
+  another refuses (#5210).
+- `ripr check --help` now chooses one `--format` per task (eye review,
+  drill-in listing, machine JSON, Actions annotations, code scanning,
+  README badge, PR/CI badge, repo inventory, agent packets) above the
+  full group list, so a newcomer maps their job to a format without
+  re-reading the 22 values (#5211).
 - `ripr check --format json` caps the rendered `findings` array at
   `RIPR_CHECK_FINDINGS_BYTES` emitted bytes (default 1,000,000; `0` removes
   the cap). A bounded document renders the deterministic first-finding prefix
@@ -69,6 +130,64 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Agent receipt recovery commands preserve native Unix roots and relative or
+  absolute workflow verify output paths when pasted from another directory.
+  Custom missing verify inputs still emit no unrelated producer hint (#6684).
+- `ripr swarm ingest` no longer fails the packet's forbidden-edit guard open
+  on path spellings. `SRC/PRICING.py`, absolute or verbatim `\\?\` paths
+  under the root, symlinked-root spellings, drive-relative forms, and
+  `..` segments canonicalize before the comparison — directly named absolute
+  or drive-prefixed entries resolve against the filesystem when they exist,
+  root-relative entries that name an existing file resolve against the
+  selected root (so a symlinked spelling anchors to the file it writes
+  through), and everything else matches lexically case-insensitively — so a
+  forbidden production edit can no longer classify `closed`/`resolved`.
+  Entries that do not resolve inside the root surface as
+  `evidence.edited_files_outside_root` instead of passing silently
+  (#5984). The OUTPUT_SCHEMA ingest example now shows the pinned
+  `forbidden_edit` reason token the binary emits instead of prose (#5986).
+- `ripr swarm queue` no longer emits a runnable refresh route a check-output
+  gap ledger cannot replay. The route carries the typed
+  `refresh_replayable: false` state with an empty `refresh_commands` array —
+  check output records no `--diff` scope, so the old command silently
+  rebuilt the ledger at a different scope inside Git and truncated the
+  recorded check output through its own redirect outside Git — and the
+  blocked reason names the manual rerun-with-same-`--diff` route.
+  `refresh_replayable` is `true` only for producer-validated repo-exposure
+  sources; records and unidentified kinds keep their repo-exposure recovery
+  commands but no longer advertise them as a replay (#5985).
+- Calibration: `cargo xtask mutation-calibration` now imports cargo-mutants
+  JSON through the same product importer as `ripr calibrate cargo-mutants`.
+  A real cargo-mutants 27.1 `mutants.out` (`scenario.Mutant`,
+  `CaughtMutant`/`MissedMutant`/`Timeout`/`Unviable`, merge by mutant name)
+  is no longer read as all-unknown (#5374).
+- Rust analysis: a test-local identifier that contains an error lexeme in
+  operand position (`error_count`, `nonerror`) no longer confirms a changed `?`
+  error path as `exposed`. The operand twin stays `weakly_exposed` with
+  `observation_unverified`, matching the #4748 message twin. Trailing error
+  observer tokens (`Err`, `unwrap_err`, `last_error`, `ParseError`) still
+  confirm. (#5255)
+- Repair attempts preserve literal Unix backslashes in the canonical root
+  stored by the before producer. Newly published manifests reopen in the
+  selected repository while authentic copies in another root remain refused
+  (#5744).
+- Repo-exposure snapshots retain native Unix repository root characters for
+  artifact admission, including literal filename backslashes (#5744).
+- Agent verify preserves native Unix characters in its before/after input
+  paths so receipt admission can reopen the selected snapshots (#5744).
+- CLI/MCP: selected failed or open-gap repair attempts preserve literal Unix
+  backslashes in the restart command's `--root` argument. Such a directory no
+  longer redirects restart advice to the corresponding slash path (#5608).
+- CLI: `ripr doctor --profile source-build` warns when the workspace's
+  `.cargo/config.toml` redirects linker temp variables (`TEMP`, `TMP`,
+  `TMPDIR`) into a workspace-relative directory that does not exist. ripr's
+  own config force-redirects them into `target/` (PR #397), so a fresh
+  `git worktree add` building with an isolated `CARGO_TARGET_DIR` failed
+  MSVC linking with an opaque `LNK1104 ... target\lnk{GUID}.tmp` until the
+  directory was hand-created; the advisory names the redirect and the
+  `mkdir` repair. The redirect stays — it protects full system temp drives —
+  and the constraint is now documented in
+  `docs/agent-context/validation.md` (#5280).
 - Repair attempts: concurrent `ripr agent repair --phase after` invocations
   against one attempt no longer lose a verdict to a last-writer-wins
   manifest replace. Manifest commits serialize on a short-held exclusive
@@ -161,12 +280,21 @@ are scoped or reviewed.
   so the run silently used built-in defaults while a directory or non-UTF-8
   `ripr.toml` already failed loudly.
 
+- Config: workspace status and Python repair config-profile detection treat a
+  dangling `ripr.toml` symlink as present (the same fact `load_for_root`
+  already returns), never as built-in defaults (#5404).
 - The workflow from `ripr init --ci github` now explains a failed install.
   When no prebuilt binary fits the runner and the runner has no `cargo`, the
   Install ripr step fails with the cause and the fix (install Rust or add a
   toolchain step) instead of a bare `cargo: command not found`. When ripr was
   never installed, the advisory summary says so and points at that step's log
   instead of rendering nothing.
+- `ripr zero status` no longer reports `achieved` from a content-free or
+  partial baseline debt delta. Missing or partial counts, items that
+  contradict zero counts, and partial-scope, findings-bounded, or otherwise
+  incomplete producer runs now report `unknown` (or keep `not_yet` when
+  visible debt remains) with the reason carried in warnings, and a failed
+  gate decision blocks every readiness promotion (#5251).
 
 
 - `ripr first-pr` and `ripr reports gap-ledger` exit 2 and write nothing when
@@ -269,9 +397,29 @@ are scoped or reviewed.
   this verdict" section: each examined test with the assertion it was judged
   by, what a test would need to change the verdict, and what each stop reason
   means (#5356). No verdict changes.
+- MCP: transport protocol errors (oversize frame, undecodable request) now
+  carry an explicit `"id": null` per JSON-RPC instead of omitting the id;
+  `ripr_workspace_status` goes through the shared response bound with a
+  typed `result_too_large` refusal; the writer backstop admits
+  exactly-at-bound frames like the semantic layers; the refresh
+  limitations text no longer claims a cancelled attempt is never
+  committed; and superseded-attempt tombstones are capped so long
+  sessions stay bounded (#5254 items 2, 3, 4, 5, 7).
+- LSP: `ripr lsp` exits 2 when the `exit` notification arrives without a
+  prior `shutdown` request, per LSP §exit. `shutdown` then `exit` still
+  exits 0, as do stdin EOF and malformed-frame termination (#5249).
+
+- `ripr explain` and `ripr context` explain `file:line` syntax after a malformed
+  location misses and retain the scoped listing command for recovery. Finding
+  IDs remain opaque; selection and exit status are unchanged (#5581, #5252).
 
 ### Changed
 
+- The install route is now timed as its own scoreboard metric,
+  `first_run.install_seconds` with a rise rule that needs a committed baseline sample and a nightly first-run ingest before it can fail anything (#5311, #5983). The README, quickstart
+  and install-channel notes state the measured source-build time of a 0.11
+  development build (about 11 minutes against about 2 for 0.10.0) and that no
+  prebuilt 0.11 archive exists until 0.11.0 is published.
 - Performance: cold `ripr pilot` parses each production file once for
   new-test placement instead of twice per seam, and a run that passes the
   default 30s deadline keeps going instead of restarting. On a 4-core Linux
@@ -478,6 +626,16 @@ are scoped or reviewed.
   actionable and 0 of 14 false exposed. For a changed `let`, the projection can
   follow ripr's retarget to the predicate that uses it (RIPR-SPEC-0157); no
   current case exercises it (RIPR-SPEC-0219).
+- Verdict corpus: 47 more authored cases fill test shapes that other RIPR
+  specs define and no corpus case exercised: assertions that never run
+  (uncalled closure, `if false`, unpolled async, `cfg(any())`), guarded
+  Result matches, `matches!` and `return Err` oracles, self-computed
+  expected values, named-constant and split-test boundaries, macro and
+  helper-chain reach, scanner and recursive helpers, cross-crate tests,
+  same-name owners, fail-closed sinks, and a `#[cfg(test)]` helper (the
+  corpus's first silent verdict). Two changed-`let` cases exercise the
+  retarget projection. Authored rates now read 23 of 36 false actionable
+  and 4 of 34 false exposed; upstream rates are unchanged (RIPR-SPEC-0219).
 - `ripr agent stub --at FILE:LINE` (or `--seam-id ID`) turns a Rust gap
   into a test that compiles and fails at its own labelled `todo!()` until
   you write the expected value; `--write` places it in the existing inline
@@ -486,6 +644,16 @@ are scoped or reviewed.
   invented. `ripr check` prints the command under "Write a test for it:"
   for Rust predicate, return-value, error-path and match-arm gaps, and
   unsupported shapes refuse with a typed reason (#5355, #5357).
+- Integration-file stubs from `ripr agent stub --write` keep a crate-root
+  `pub const` comparison as a derived input, rebase `crate::` parameter
+  types to the library crate name, and compile under the printed
+  `cargo test --manifest-path … --test <stem>` command until they stop at
+  the labelled `ripr:` todo. Crate-root `pub const` items are matched from
+  the clean parse, not brace counting, so nested-module constants stay
+  fill-ins even when a string or comment holds `}`. Private, `pub(crate)`,
+  `#[cfg(test)]`, and other cfg-gated constants stay fill-ins because
+  feature and target activation is not established statically; `self::`
+  and `super::` parameter paths still refuse (#5453).
 
 
 - Verdict corpus: 2 atuin cases (90f590b9) that the mutation spot-check

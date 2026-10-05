@@ -92,7 +92,7 @@ mod tests {
             file: path.clone(),
             start_line: 1,
             end_line: 20,
-            body: body.to_owned(),
+            body: body.into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),

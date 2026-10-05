@@ -14,12 +14,14 @@ use std::collections::BTreeMap;
 const TEST_EFFICIENCY_REPORT_RELATIVE: &str = "target/ripr/reports/test-efficiency.json";
 
 /// Repo-relative report path the public `ripr` badge projection names as its
-/// source (RIPR-SPEC-0066 `source_report`). The repo-badge pipeline writes
-/// the canonical-actionable-gap projection into this artifact.
+/// source (RIPR-SPEC-0066 `source_report`). The repo-badge render persists
+/// the canonical-actionable-gap projection at this path inside the analyzed
+/// workspace (#6610), so the pointer the artifact carries always resolves.
 const REPO_RIPR_BADGE_SOURCE_REPORT: &str = "target/ripr/reports/repo-ripr-badge.json";
 
 /// Repo-relative report path the public `ripr+` badge projection names as its
-/// source (RIPR-SPEC-0066 `source_report`).
+/// source (RIPR-SPEC-0066 `source_report`). Persisted by the producing
+/// native repo-badge-plus render, like the `ripr` badge path (#6610).
 const REPO_RIPR_PLUS_BADGE_SOURCE_REPORT: &str = "target/ripr/reports/repo-ripr-plus-badge.json";
 
 pub(crate) fn render_check_with_config(
@@ -42,8 +44,12 @@ pub(crate) fn render_check_with_config_and_progress(
     progress: Option<&dyn AnalysisProgressSink>,
 ) -> Result<String, String> {
     match format {
-        OutputFormat::Human => Ok(human::render_bounded_with_config(output, config)),
-        OutputFormat::HumanFull => Ok(human::render_full_with_config(output, config)),
+        OutputFormat::Human => Ok(human::terminal_safe(human::render_bounded_with_config(
+            output, config,
+        ))),
+        OutputFormat::HumanFull => Ok(human::terminal_safe(human::render_full_with_config(
+            output, config,
+        ))),
         OutputFormat::Json => {
             // Fail-closed budget resolution (#5203): an unparseable
             // `RIPR_CHECK_FINDINGS_BYTES` aborts the run, never rendering.
@@ -62,34 +68,78 @@ pub(crate) fn render_check_with_config_and_progress(
             let summary = ripr_summary_with_suppressions(output, config)?;
             Ok(badge::render_native_json(&summary))
         }
-        OutputFormat::RepoBadgeJson => {
-            let mut summary = ripr_repo_canonical_actionable_summary(output, config)?;
-            badge::attach_public_projection(&mut summary, REPO_RIPR_BADGE_SOURCE_REPORT);
-            Ok(badge::render_native_json(&summary))
-        }
+        OutputFormat::RepoBadgeJson => repo_inventory_with_progress(
+            progress,
+            || ripr_repo_canonical_actionable_summary(output, config),
+            |(mut summary, limit_info)| {
+                Ok(render_native_badge_with_persisted_source_report(
+                    &mut summary,
+                    &output.root,
+                    REPO_RIPR_BADGE_SOURCE_REPORT,
+                    |summary, source| {
+                        attach_repo_badge_projection(summary, limit_info.as_ref(), source)
+                    },
+                ))
+            },
+        ),
         OutputFormat::BadgeShields => {
             let summary = ripr_summary_with_suppressions(output, config)?;
             Ok(badge::render_shields_json(&summary))
         }
-        OutputFormat::RepoBadgeShields => {
-            let mut summary = ripr_repo_canonical_actionable_summary(output, config)?;
-            badge::attach_public_projection(&mut summary, REPO_RIPR_BADGE_SOURCE_REPORT);
-            Ok(badge::render_shields_json(&summary))
-        }
+        OutputFormat::RepoBadgeShields => repo_inventory_with_progress(
+            progress,
+            || ripr_repo_canonical_actionable_summary(output, config),
+            |(mut summary, limit_info)| {
+                // Shields output carries exactly four fields and no
+                // `source_report` member, so the pointer needs no persisted
+                // artifact here; the count state is the fresh run's.
+                attach_repo_badge_projection(
+                    &mut summary,
+                    limit_info.as_ref(),
+                    Some(REPO_RIPR_BADGE_SOURCE_REPORT),
+                );
+                Ok(badge::render_shields_json(&summary))
+            },
+        ),
         OutputFormat::BadgePlusJson | OutputFormat::RepoBadgePlusJson => {
-            let mut summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
-            maybe_attach_repo_plus_projection(&mut summary, output, format);
+            let (mut summary, limit_info) =
+                ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
+            maybe_attach_repo_plus_projection(&mut summary, output, format, limit_info.as_ref());
+            if format.is_repo_scope() && summary.projection.is_some() {
+                return Ok(render_native_badge_with_persisted_source_report(
+                    &mut summary,
+                    &output.root,
+                    REPO_RIPR_PLUS_BADGE_SOURCE_REPORT,
+                    |summary, source| {
+                        maybe_attach_repo_plus_projection_with_source(
+                            summary,
+                            output,
+                            limit_info.as_ref(),
+                            source,
+                        )
+                    },
+                ));
+            }
             Ok(badge::render_native_json(&summary))
         }
         OutputFormat::BadgePlusShields | OutputFormat::RepoBadgePlusShields => {
-            let mut summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
-            maybe_attach_repo_plus_projection(&mut summary, output, format);
+            let (mut summary, limit_info) =
+                ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
+            maybe_attach_repo_plus_projection(&mut summary, output, format, limit_info.as_ref());
             Ok(badge::render_shields_json(&summary))
         }
         OutputFormat::RepoSeamsJson => repo_inventory_with_progress(
             progress,
             || analysis::inventory_seams_at_with_config(&output.root, config),
-            |seams| Ok(repo_seams::render_repo_seams_json(&seams)),
+            |seams| {
+                let context = crate::agent::artifact::RepoExposureArtifactContext::for_repo_seams(
+                    output.root.clone(),
+                    output.mode.as_str().to_string(),
+                    output.base.clone(),
+                    config,
+                )?;
+                repo_seams::render_repo_seams_json_with_context(&seams, &context)
+            },
         ),
         OutputFormat::RepoSeamsMd => repo_inventory_with_progress(
             progress,
@@ -174,7 +224,10 @@ pub(crate) fn render_check_with_config_and_progress(
                 let (causal_projection, causal_projection_warning) =
                     CausalDeltaArtifact::load_optional(&output.root);
                 if let Some(warning) = causal_projection_warning {
-                    eprintln!("ripr agent packets: {warning}");
+                    eprintln!(
+                        "{}",
+                        human::terminal_safe(format!("ripr agent packets: {warning}"))
+                    );
                 }
                 Ok(
                     agent_seam_packets::render_agent_seam_packets_json_with_causal_and_outcome(
@@ -222,11 +275,11 @@ pub(crate) fn render_check_with_config_and_navigation_and_progress(
     progress: Option<&dyn AnalysisProgressSink>,
 ) -> Result<String, String> {
     match format {
-        OutputFormat::Human => Ok(human::render_bounded_with_config_and_navigation(
-            output, config, drill_in,
+        OutputFormat::Human => Ok(human::terminal_safe(
+            human::render_bounded_with_config_and_navigation(output, config, drill_in),
         )),
-        OutputFormat::HumanFull => Ok(human::render_full_with_config_and_navigation(
-            output, config, drill_in,
+        OutputFormat::HumanFull => Ok(human::terminal_safe(
+            human::render_full_with_config_and_navigation(output, config, drill_in),
         )),
         _ => render_check_with_config_and_progress(output, format, config, progress),
     }
@@ -357,10 +410,46 @@ fn maybe_attach_repo_plus_projection(
     summary: &mut badge::BadgeSummary,
     output: &CheckOutput,
     format: &OutputFormat,
+    limit_info: Option<&analysis::SeamLimitInfo>,
 ) {
-    let report_present = output.root.join(TEST_EFFICIENCY_REPORT_RELATIVE).exists();
-    if format.is_repo_scope() && report_present {
-        badge::attach_public_projection(summary, REPO_RIPR_PLUS_BADGE_SOURCE_REPORT);
+    if format.is_repo_scope() && output.root.join(TEST_EFFICIENCY_REPORT_RELATIVE).exists() {
+        maybe_attach_repo_plus_projection_with_source(
+            summary,
+            output,
+            limit_info,
+            Some(REPO_RIPR_PLUS_BADGE_SOURCE_REPORT),
+        );
+    }
+}
+
+/// `maybe_attach_repo_plus_projection` with the caller-resolved
+/// `source_report` (#6610): the native repo-badge-plus render reattaches with
+/// `None` when the named report could not be persisted.
+fn maybe_attach_repo_plus_projection_with_source(
+    summary: &mut badge::BadgeSummary,
+    output: &CheckOutput,
+    limit_info: Option<&analysis::SeamLimitInfo>,
+    source_report: Option<&str>,
+) {
+    if !output.root.join(TEST_EFFICIENCY_REPORT_RELATIVE).exists() {
+        return;
+    }
+    match limit_info {
+        Some(limit) => badge::attach_public_projection_with_optional_source(
+            summary,
+            source_report,
+            "limited_seam_cap",
+            Some(format!(
+                "seam limit applied: analyzed {} of {} seams; unscanned seams are not counted",
+                limit.analyzed, limit.total
+            )),
+        ),
+        None => match source_report {
+            Some(source) => badge::attach_public_projection(summary, source),
+            None => {
+                badge::attach_public_projection_with_optional_source(summary, None, "full", None)
+            }
+        },
     }
 }
 
@@ -382,36 +471,131 @@ fn ripr_summary_with_suppressions(
     ))
 }
 
+/// The repo badge's `canonical_actionable_gap` basis derives from the same
+/// full classified seam inventory `repo-exposure-json` renders (#5261). The
+/// compact classified walk zeroes the related-test and observed-value
+/// evidence payload and approximates activation for several seam kinds, so
+/// evidence records projected from it reclassify actionable gaps as
+/// `unknown` and the badge rendered a clean `0 actionable` beside an
+/// actionable repo-exposure record on the same tree. Agreement with
+/// repo-exposure outranks the compact walk's cost saving: a wrong clean
+/// signal on the public projection is the same harm as a wrong repair
+/// signal on the other side, and the full classified inventory is the
+/// cache-backed walk the audit-path disclosure already names.
 fn ripr_repo_canonical_actionable_summary(
     output: &CheckOutput,
     config: &RiprConfig,
-) -> Result<badge::BadgeSummary, String> {
-    let classified =
-        analysis::inventory_compact_classified_seams_at_with_config(&output.root, config)?;
+) -> Result<(badge::BadgeSummary, Option<analysis::SeamLimitInfo>), String> {
+    let report = analysis::inventory_classified_seams_report_at_with_config(&output.root, config)?;
     let policy = badge::BadgePolicy {
         suppressions_path: config.suppressions().display_path(),
         ..badge::BadgePolicy::default()
     };
-    Ok(badge::ripr_canonical_actionable_gap_badge_summary(
-        &classified,
-        policy,
-    ))
+    let summary = badge::ripr_canonical_actionable_gap_badge_summary(&report.classified, policy);
+    // A seam-capped inventory must not project its partial count as a clean
+    // full-run badge (review round 1, #5261): the limit travels with the
+    // summary so the public projection resolves to the limited state.
+    Ok((summary, report.limit_info))
+}
+
+/// The seam-native repo badge's public projection, honoring the producing
+/// walk's completeness: a capped inventory projects `limited` (with the cap
+/// named) instead of a count that would read as a full-scan result. The
+/// caller resolves `source_report` (#6610): the canonical report path when
+/// this run persists it, `None` (projection fails closed to `unknown`) when
+/// it could not.
+fn attach_repo_badge_projection(
+    summary: &mut badge::BadgeSummary,
+    limit_info: Option<&analysis::SeamLimitInfo>,
+    source_report: Option<&str>,
+) {
+    match limit_info {
+        Some(limit) => badge::attach_public_projection_with_optional_source(
+            summary,
+            source_report,
+            "limited_seam_cap",
+            Some(format!(
+                "seam limit applied: analyzed {} of {} seams; unscanned seams are not counted",
+                limit.analyzed, limit.total
+            )),
+        ),
+        None => match source_report {
+            Some(source) => badge::attach_public_projection(summary, source),
+            None => {
+                badge::attach_public_projection_with_optional_source(summary, None, "full", None)
+            }
+        },
+    }
+}
+
+/// Renders the native repo badge and makes its `public_projection.source_report`
+/// pointer real (#6610): the exact rendered bytes are persisted at the
+/// canonical repo-relative report path inside the analyzed workspace, so the
+/// provenance the artifact claims always resolves — including when a CI
+/// pipeline redirects stdout elsewhere. When the workspace cannot be
+/// written, the projection is reattached with no source and the artifact
+/// fails closed to the RIPR-SPEC-0066 `unknown` state instead of naming a
+/// report the run did not produce.
+fn render_native_badge_with_persisted_source_report(
+    summary: &mut badge::BadgeSummary,
+    root: &std::path::Path,
+    source_report: &str,
+    attach: impl Fn(&mut badge::BadgeSummary, Option<&str>),
+) -> String {
+    attach(summary, Some(source_report));
+    let rendered = badge::render_native_json(summary);
+    if write_workspace_report(root, source_report, &rendered) {
+        return rendered;
+    }
+    attach(summary, None);
+    badge::render_native_json(summary)
+}
+
+/// Persists `text` at `relative` (root-relative, forward slashes) inside the
+/// analyzed workspace, creating parent directories. `false` when the write
+/// fails; the caller decides the honest degraded rendering.
+fn write_workspace_report(root: &std::path::Path, relative: &str, text: &str) -> bool {
+    let path = root.join(relative);
+    let Some(parent) = path.parent() else {
+        return false;
+    };
+    if let Err(err) = std::fs::create_dir_all(parent) {
+        eprintln!(
+            "ripr: could not create report directory {}: {err}",
+            parent.display()
+        );
+        return false;
+    }
+    // The house atomic writer (review on #6788): a failed or interrupted
+    // write leaves the previous report untouched, and a destination that is
+    // not a regular file (for example a symlinked report leaf) is refused
+    // rather than written through — the degraded projection then discloses
+    // `unknown` instead of claiming the unrefreshed file.
+    if let Err(err) = crate::output::file_write::write(&path, text.as_bytes()) {
+        eprintln!("ripr: could not persist report {}: {err}", path.display());
+        return false;
+    }
+    true
 }
 
 fn ripr_plus_summary_from_disk(
     output: &CheckOutput,
     repo_scope: bool,
     config: &RiprConfig,
-) -> Result<badge::BadgeSummary, String> {
+) -> Result<(badge::BadgeSummary, Option<analysis::SeamLimitInfo>), String> {
     let report_path = output.root.join(TEST_EFFICIENCY_REPORT_RELATIVE);
     if !report_path.exists() {
         let warning = format!(
             "missing {}; provide test-efficiency JSON before requesting a measured ripr+ badge; see docs/BADGE_ADOPTION.md",
             report_path.display()
         );
-        eprintln!("ripr: {warning}; rendering neutral ripr+ badge");
-        return Ok(missing_test_efficiency_badge_summary(
-            repo_scope, config, warning,
+        eprintln!(
+            "{}",
+            human::terminal_safe(format!("ripr: {warning}; rendering neutral ripr+ badge"))
+        );
+        return Ok((
+            missing_test_efficiency_badge_summary(repo_scope, config, warning),
+            None,
         ));
     }
     let text = std::fs::read_to_string(&report_path)
@@ -438,20 +622,24 @@ fn ripr_plus_summary_from_disk(
         ..badge::BadgePolicy::default()
     };
     if repo_scope {
-        let exposure = ripr_repo_canonical_actionable_summary(output, config)?;
-        Ok(badge::ripr_plus_canonical_actionable_gap_badge_summary(
+        let (exposure, limit_info) = ripr_repo_canonical_actionable_summary(output, config)?;
+        let summary = badge::ripr_plus_canonical_actionable_gap_badge_summary(
             exposure,
             test_efficiency,
             policy,
-        ))
+        );
+        Ok((summary, limit_info))
     } else {
-        Ok(badge::ripr_plus_badge_summary_with_suppressions(
-            output,
-            test_efficiency,
-            &suppressions,
-            &today,
-            policy,
-            scope,
+        Ok((
+            badge::ripr_plus_badge_summary_with_suppressions(
+                output,
+                test_efficiency,
+                &suppressions,
+                &today,
+                policy,
+                scope,
+            ),
+            None,
         ))
     }
 }
@@ -730,6 +918,294 @@ mod tests {
 
         assert!(native.contains("\"kind\""));
         assert!(shields.contains("\"schemaVersion\": 1"));
+        Ok(())
+    }
+
+    /// #5261: the repo badge's `canonical_actionable_gap` count must agree
+    /// with `repo-exposure-json` on the same tree. The compact classified
+    /// walk this badge used to consume drops the related-test and
+    /// observed-value payload and approximates activation for several seam
+    /// kinds, so actionable gaps reclassified as `unknown` rendered a clean
+    /// `0 actionable` beside an actionable exposure record. A workspace
+    /// whose only tests reach the boundary but never exercise it pins the
+    /// agreement: both surfaces must count the same canonical actionable
+    /// gaps, and a zero badge beside a nonzero exposure count fails.
+    #[test]
+    fn repo_badge_actionable_count_agrees_with_repo_exposure_on_the_same_tree() -> Result<(), String>
+    {
+        let root = temp_root("ripr-render-badge-agreement")?;
+        std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
+        std::fs::create_dir_all(root.join("tests"))
+            .map_err(|err| format!("create tests dir: {err}"))?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]
+name=\"ripr-badge-agreement\"
+version=\"0.1.0\"
+edition=\"2021\"
+",
+        )
+        .map_err(|err| format!("write Cargo.toml: {err}"))?;
+        std::fs::write(
+            root.join("src/lib.rs"),
+            "pub fn over_threshold(amount: i32, threshold: i32) -> bool {
+    amount >= threshold
+}
+
+pub fn discounted_total(amount: i32, threshold: i32) -> i32 {
+    if amount >= threshold {
+        amount - 10
+    } else {
+        amount
+    }
+}
+",
+        )
+        .map_err(|err| format!("write lib.rs: {err}"))?;
+        std::fs::write(
+            root.join("tests/pricing.rs"),
+            "use ripr_badge_agreement::{discounted_total, over_threshold};
+
+#[test]
+fn below_threshold_has_no_discount() {
+    assert_eq!(discounted_total(50, 100), 50);
+}
+
+#[test]
+fn happy_path_passes() {
+    assert!(over_threshold(5, 3));
+}
+",
+        )
+        .map_err(|err| format!("write tests/pricing.rs: {err}"))?;
+
+        let mut output = check_output_with(Vec::new());
+        output.root = root.clone();
+        let config = RiprConfig::default();
+
+        let exposure = render_check_with_config(&output, &OutputFormat::RepoExposureJson, &config)?;
+        let exposure_value: serde_json::Value = serde_json::from_str(&exposure)
+            .map_err(|err| format!("repo-exposure JSON should parse: {err}"))?;
+        let exposure_actionable: Vec<String> = exposure_value["seams"]
+            .as_array()
+            .ok_or_else(|| "repo-exposure JSON should carry a seams array".to_string())?
+            .iter()
+            .filter(|seam| {
+                let item = &seam["evidence_record"]["canonical_item"];
+                item["gap_state"] == "actionable"
+                    && !item["repair_route"].is_null()
+                    && !item["verify_command"].is_null()
+            })
+            .filter_map(|seam| {
+                seam["evidence_record"]["canonical_item"]["canonical_gap_id"]
+                    .as_str()
+                    .map(str::to_string)
+            })
+            .collect();
+
+        let badge = render_check_with_config(&output, &OutputFormat::RepoBadgeJson, &config)?;
+        let badge_value: serde_json::Value = serde_json::from_str(&badge)
+            .map_err(|err| format!("repo-badge JSON should parse: {err}"))?;
+        let badge_count = badge_value["counts"]["unsuppressed_exposure_gaps"]
+            .as_u64()
+            .ok_or_else(|| "badge should carry unsuppressed_exposure_gaps".to_string())?;
+
+        assert!(
+            !exposure_actionable.is_empty(),
+            "fixture must produce at least one actionable canonical gap with a complete              repair route on the exposure path, or the agreement proves nothing"
+        );
+        assert_eq!(
+            badge_count as usize,
+            exposure_actionable.len(),
+            "badge actionable count {badge_count} must equal the repo-exposure canonical              actionable gap count {} on the same tree",
+            exposure_actionable.len()
+        );
+
+        remove_temp_root(&root)?;
+        Ok(())
+    }
+
+    use super::REPO_RIPR_BADGE_SOURCE_REPORT;
+    use super::attach_repo_badge_projection;
+    use super::render_native_badge_with_persisted_source_report;
+    use crate::output::badge;
+
+    /// #5263 review: a seam-capped classified inventory must not project a
+    /// partial count as a clean full-run badge. The public projection
+    /// resolves to the `limited` state with the cap named, and the badge
+    /// message can no longer read `0 actionable` for a truncated scan.
+    #[test]
+    fn repo_badge_projects_limited_when_the_seam_cap_truncates_the_scan() -> Result<(), String> {
+        let classified: Vec<crate::analysis::ClassifiedSeam> = Vec::new();
+        let mut summary = badge::ripr_canonical_actionable_gap_badge_summary(
+            &classified,
+            badge::BadgePolicy::default(),
+        );
+        let limit = crate::analysis::SeamLimitInfo {
+            analyzed: 500,
+            total: 501,
+            source: crate::analysis::SeamLimitSource::Default,
+        };
+        attach_repo_badge_projection(
+            &mut summary,
+            Some(&limit),
+            Some(REPO_RIPR_BADGE_SOURCE_REPORT),
+        );
+        let projection = summary
+            .projection
+            .as_ref()
+            .ok_or("the limited run must still carry a public projection")?;
+        assert_eq!(
+            projection.state.as_str(),
+            "limited",
+            "{:?}",
+            projection.state
+        );
+        assert_eq!(summary.message, "limited", "{}", summary.message);
+        assert_eq!(
+            projection.run_status, "limited_seam_cap",
+            "{}",
+            projection.run_status
+        );
+        assert!(
+            projection
+                .limited_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("analyzed 500 of 501 seams")),
+            "the limited reason must name the cap: {:?}",
+            projection.limited_reason
+        );
+        Ok(())
+    }
+
+    /// #6610: the repo badge's `public_projection.source_report` names
+    /// `target/ripr/reports/repo-ripr-badge.json`, so the producing stdout
+    /// run must persist that artifact inside the analyzed workspace. A bare
+    /// stdout run that named the file without writing it made every
+    /// dereferencing consumer hit ENOENT with no way to tell "stale" from
+    /// "never written".
+    #[test]
+    fn repo_badge_stdout_run_persists_the_source_report_it_names() -> Result<(), String> {
+        let output = check_output_with_temp_seam_workspace(Vec::new())?;
+
+        let rendered = render_check_with_config(
+            &output,
+            &OutputFormat::RepoBadgeJson,
+            &RiprConfig::default(),
+        )?;
+
+        let report_path = output.root.join("target/ripr/reports/repo-ripr-badge.json");
+        let persisted = std::fs::read_to_string(&report_path)
+            .map_err(|err| format!("the named source report must exist: {err}"))?;
+        assert_eq!(
+            persisted, rendered,
+            "the persisted source report must be the exact rendered bytes"
+        );
+
+        remove_temp_root(&output.root)?;
+        Ok(())
+    }
+
+    /// #6610: when the analyzed workspace cannot take the named report (here
+    /// `target` is a regular file, so the report directory cannot be created),
+    /// the projection must not claim it. The fail-closed machinery resolves
+    /// `source_report: null` to the `unknown` state (RIPR-SPEC-0066
+    /// reject-list) instead of an actionable count whose provenance pointer
+    /// does not resolve.
+    #[test]
+    fn repo_badge_projection_degrades_to_unknown_when_the_report_cannot_be_persisted()
+    -> Result<(), String> {
+        let output = check_output_with_temp_seam_workspace(Vec::new())?;
+        // A regular file at `target` blocks `create_dir_all(target/ripr/reports)`.
+        std::fs::write(output.root.join("target"), b"not a directory")
+            .map_err(|err| format!("write target sentinel: {err}"))?;
+
+        let rendered = render_check_with_config(
+            &output,
+            &OutputFormat::RepoBadgeJson,
+            &RiprConfig::default(),
+        )?;
+
+        assert!(
+            rendered.contains("\"source_report\": null"),
+            "an unpersistable pointer must degrade to null: {rendered}"
+        );
+        assert!(
+            rendered.contains("\"state\": \"unknown\""),
+            "a missing source report resolves to the unknown state: {rendered}"
+        );
+        assert!(
+            rendered.contains("\"actionable_count\": null"),
+            "the unknown state never carries a count: {rendered}"
+        );
+        assert!(
+            !rendered.contains("repo-ripr-badge.json"),
+            "no report path may be claimed when none was written: {rendered}"
+        );
+
+        let _ = std::fs::remove_file(output.root.join("target"));
+        remove_temp_root(&output.root)?;
+        Ok(())
+    }
+
+    /// #6610: the repo-scoped `ripr+` badge names
+    /// `target/ripr/reports/repo-ripr-plus-badge.json`; the producing native
+    /// run persists it the same way.
+    #[test]
+    fn repo_badge_plus_stdout_run_persists_the_source_report_it_names() -> Result<(), String> {
+        let output = check_output_with_temp_report_workspace(Vec::new())?;
+
+        let rendered = render_check_with_config(
+            &output,
+            &OutputFormat::RepoBadgePlusJson,
+            &RiprConfig::default(),
+        )?;
+
+        assert!(rendered.contains("\"public_projection\""), "{rendered}");
+        let report_path = output
+            .root
+            .join("target/ripr/reports/repo-ripr-plus-badge.json");
+        let persisted = std::fs::read_to_string(&report_path)
+            .map_err(|err| format!("the named ripr+ source report must exist: {err}"))?;
+        assert_eq!(persisted, rendered, "persisted bytes must equal stdout");
+
+        remove_temp_root(&output.root)?;
+        Ok(())
+    }
+
+    /// #6610: the persisted native badge helper keeps its pointer claim only
+    /// when the write succeeded; a failed write flips the same summary to the
+    /// unknown state without re-deriving the walk.
+    #[test]
+    fn persisted_source_report_helper_degrades_on_write_failure() -> Result<(), String> {
+        let mut summary =
+            badge::ripr_canonical_actionable_gap_badge_summary(&[], badge::BadgePolicy::default());
+        let blocker = std::env::temp_dir().join(format!(
+            "ripr-badge-source-blocker-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::write(&blocker, b"not a directory")
+            .map_err(|err| format!("write blocker file: {err}"))?;
+
+        let rendered = render_native_badge_with_persisted_source_report(
+            &mut summary,
+            &blocker,
+            "reports/repo-ripr-badge.json",
+            |summary, source| {
+                attach_repo_badge_projection(summary, None, source);
+            },
+        );
+
+        assert!(
+            rendered.contains("\"source_report\": null"),
+            "write failure must degrade to a null pointer: {rendered}"
+        );
+        assert!(rendered.contains("\"state\": \"unknown\""), "{rendered}");
+        let _ = std::fs::remove_file(&blocker);
         Ok(())
     }
 
@@ -1111,6 +1587,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             untracked_working_tree_source_paths: Vec::new(),
+            unlinked_python_tests: None,
             suppression: None,
             analysis_outcome: None,
             partial_scope: None,

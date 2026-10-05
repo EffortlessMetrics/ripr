@@ -6,7 +6,7 @@
 //! and the warm check reuses that same cache.
 
 use super::{Config, CorpusEntry, Options, RunContext, Sample, SampleOutcome};
-use crate::run::{MeasuredOutput, capture_output_measured};
+use crate::run::{MeasuredOutput, capture_bytes_in_dir_with_timeout, capture_output_measured};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::fs;
@@ -413,7 +413,7 @@ pub(crate) fn contradiction_outcome(
     }
 }
 
-fn prepare_checkout(entry: &CorpusEntry, options: &Options) -> Result<PathBuf, String> {
+pub(crate) fn prepare_checkout(entry: &CorpusEntry, options: &Options) -> Result<PathBuf, String> {
     let dir = options.corpus_dir.join(&entry.id);
     if !dir.join(".git").exists() {
         if !options.clone {
@@ -436,6 +436,7 @@ fn prepare_checkout(entry: &CorpusEntry, options: &Options) -> Result<PathBuf, S
         )?;
     }
     let dir = fs::canonicalize(&dir).map_err(|err| format!("{}: {err}", dir.display()))?;
+    verify_own_checkout(&dir)?;
     let head = git(Some(&dir), &["rev-parse", "HEAD"])?;
     if head.trim() != entry.sha {
         let checkout = git(Some(&dir), &["checkout", "--quiet", "--detach", &entry.sha]);
@@ -464,16 +465,64 @@ fn prepare_checkout(entry: &CorpusEntry, options: &Options) -> Result<PathBuf, S
     Ok(dir)
 }
 
-fn git(cwd: Option<&Path>, args: &[&str]) -> Result<String, String> {
+/// Refuse a corpus directory that is not the root of its own repository.
+/// A `.git` left empty or partial (an interrupted clone, or a CI cache that
+/// restored `target/` without the object store) makes git walk up to the
+/// enclosing repository, and the pin checkout below would then detach the
+/// caller's own working tree.
+pub(crate) fn verify_own_checkout(dir: &Path) -> Result<(), String> {
+    let output = git(Some(dir), &["rev-parse", "--show-toplevel"])?;
+    // Strip only git's line ending; a directory name may end in spaces.
+    let printed = output.trim_end_matches(['\n', '\r']);
+    let toplevel = fs::canonicalize(printed).map_err(|err| format!("{printed}: {err}"))?;
+    if toplevel == dir {
+        Ok(())
+    } else {
+        Err(format!(
+            "{} is not its own git checkout (git resolves it to {}); delete it and rerun with --clone",
+            dir.display(),
+            toplevel.display()
+        ))
+    }
+}
+
+/// Repository-location overrides a caller can leave in the environment (a git
+/// hook sets `GIT_DIR`, for one). Corpus commands must resolve the corpus
+/// checkout itself, never the caller's repository.
+const GIT_ENV_REMOVE: [&str; 7] = [
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_NAMESPACE",
+];
+
+pub(crate) fn git(cwd: Option<&Path>, args: &[&str]) -> Result<String, String> {
     let owned: Vec<String> = args.iter().map(|arg| (*arg).to_string()).collect();
-    let measured = capture_output_measured("git", &owned, cwd, &[], GIT_TIMEOUT, "git")?;
-    if exited_zero(&measured) {
-        Ok(measured.output.stdout)
+    let output = capture_bytes_in_dir_with_timeout(
+        Path::new("git"),
+        &owned,
+        cwd.unwrap_or_else(|| Path::new(".")),
+        &[],
+        &GIT_ENV_REMOVE,
+        GIT_TIMEOUT,
+        "git",
+    )?;
+    if output.timed_out {
+        Err(format!(
+            "git {} timed out after {} s",
+            args.join(" "),
+            GIT_TIMEOUT.as_secs()
+        ))
+    } else if output.status.is_some_and(|status| status.success()) {
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     } else {
         Err(format!(
             "git {} failed: {}",
             args.join(" "),
-            measured.output.stderr.trim()
+            String::from_utf8_lossy(&output.stderr).trim()
         ))
     }
 }
@@ -1345,9 +1394,46 @@ pub(crate) fn runner_class() -> String {
     } else {
         "local".to_string()
     };
-    format!(
+    let class = format!(
         "{host}-{}-{}-{cpus}cpu",
         std::env::consts::OS,
         std::env::consts::ARCH
-    )
+    );
+    // Hosted runners with the same vCPU count run on more than one CPU
+    // model, and wall time moved ~1.7x between them on identical code
+    // (#6726). Keying on the model leaves those pairs uncompared instead
+    // of failing the gate on hardware.
+    match fs::read_to_string("/proc/cpuinfo")
+        .ok()
+        .and_then(|cpuinfo| cpu_model_slug(&cpuinfo))
+    {
+        Some(model) => format!("{class}-{model}"),
+        None => class,
+    }
+}
+
+/// The first `model name` in `/proc/cpuinfo` (on Arm, the `CPU implementer`
+/// and `CPU part` codes) as a lowercase dash-separated slug, or `None` when
+/// neither is present.
+pub(crate) fn cpu_model_slug(cpuinfo: &str) -> Option<String> {
+    let field = |name: &str| {
+        cpuinfo.lines().find_map(|line| {
+            let (key, value) = line.split_once(':')?;
+            let value = value.trim();
+            (key.trim() == name && !value.is_empty()).then_some(value)
+        })
+    };
+    // Arm kernels print no `model name`; the implementer and part codes
+    // identify the core design instead.
+    let model = match field("model name") {
+        Some(model) => model.to_string(),
+        None => format!("arm-{}-{}", field("CPU implementer")?, field("CPU part")?),
+    };
+    let slug = model
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|part| !part.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>()
+        .join("-");
+    (!slug.is_empty()).then_some(slug)
 }

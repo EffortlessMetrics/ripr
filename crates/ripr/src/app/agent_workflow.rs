@@ -4,7 +4,7 @@ use crate::agent::loop_commands::{
     WORKFLOW_COMMANDS_MARKDOWN_ARTIFACT, WORKFLOW_MANIFEST_ARTIFACT, agent_brief_command,
     agent_packet_command, agent_receipt_command, agent_seam_packets_command, agent_start_command,
     agent_verify_command, bound_root, check_analysis_outcome_command, check_repo_exposure_command,
-    display_path, workflow_artifact_path,
+    display_path, root_path_display, workflow_artifact_path,
 };
 use crate::app::Mode;
 use crate::app::agent_status::artifact_required_by_active_loop;
@@ -99,7 +99,7 @@ pub(crate) fn build_agent_workflow_manifest(
     agent_brief_json: &str,
 ) -> Result<AgentWorkflowManifest, String> {
     let root_display = display_path(root_argument);
-    let out_display = display_path(out_dir);
+    let out_display = root_path_display(out_dir);
     let paths = AgentWorkflowPaths::new(out_dir);
     let seam = workflow_seam_from_brief(agent_brief_json, seam_id)?;
     // #3999: copy/paste commands bind the selected root once, here; the
@@ -152,7 +152,7 @@ struct AgentWorkflowPaths {
 impl AgentWorkflowPaths {
     fn new(out_dir: &Path) -> Self {
         Self {
-            out_dir: display_path(out_dir),
+            out_dir: root_path_display(out_dir),
             workflow_manifest: workflow_artifact_path_with_default(
                 out_dir,
                 "workflow.json",

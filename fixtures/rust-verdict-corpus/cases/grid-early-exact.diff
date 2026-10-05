@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 3e0c325..46d3f3d 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,7 +1,7 @@
+ //! Early-return guards, one function per test style.
+ 
+ pub fn average(xs: &[u32]) -> u32 {
+-    if xs.is_empty() {
++    if xs.len() == 0 {
+         return 0;
+     }
+     xs.iter().sum::<u32>() / xs.len() as u32

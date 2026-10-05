@@ -419,7 +419,7 @@ mod tests {
             file: PathBuf::from("src/frag_50%.rs"),
             start_line: 1,
             end_line: 2,
-            body: "fn f() {}".to_string(),
+            body: "fn f() {}".into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),

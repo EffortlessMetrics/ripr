@@ -128,7 +128,7 @@ resolve through the default directory. An explicit store outside
 `target/ripr` is an expected operational write; stores already under
 `target/ripr` stay covered by that subtree.
 
-The exact filenames follow the command-owned source artifacts. `attempt.json` identifies them by semantic role and binds each retained file by path, byte count, and SHA-256 digest. After-phase `agent_receipt` / `agent_verify` files are recorded in `terminal_artifacts` and are excluded from the before commitment.
+The exact filenames follow the command-owned source artifacts. `attempt.json` identifies them by semantic role and binds each retained file by path, byte count, and SHA-256 digest. After-phase `agent_receipt` / `agent_verify` files are recorded in `terminal_artifacts` and are excluded from the before commitment. Attempt identity alone does not bind the verdict: every read that can report `finished` (CLI status, `--attempt` status, and the MCP receipt/attempt documents) re-validates the receipt against its verify document — schema, verify digest linkage, the retained before content commitment, and the seam movement, lifecycle state, and guidance kind the verify document records. A pair that fails any of those checks reads `unconfirmed`/`unavailable` with the reason, never `finished`. Pending retention additionally requires the verify document to pass the same canonical receipt-issuance validation the after phase applies before it promotes the pair.
 
 Repository-global files under `target/ripr/workflow/` and `target/ripr/reports/agent-receipt.json` remain compatibility projections for existing cockpit and review consumers. They are not repair-attempt identity, and they are not the sole surviving copy of a finished attempt's result.
 
@@ -297,3 +297,39 @@ RIPR does not select “the latest” attempt, reconstruct an attempt from mutab
 ## Boundary
 
 A repair attempt prepares and verifies evidence. RIPR does not author or apply the focused test edit, call an external model provider, run mutation testing, prove test adequacy or correctness, authorize merge, or turn static evidence into runtime proof.
+
+### Inline-only repositories are out of repair scope (#5210)
+
+Bounded repair authorizes whole files only, and only files matching the
+test-surface path convention (`tests`/`test` components, `*_test` and
+`*_tests` Rust/Python names, `test_*.py`, TypeScript test files): a
+production file that matches the convention is eligible as a whole-file
+target, and inline `#[cfg(test)]` modules in a file that does not match
+never qualify it. A repository whose only tests are inline in
+non-test-surface files can never start a bounded repair, on any surface.
+This is a permanent scope boundary, not a missing feature queued behind
+other work: the repair workflow consumes only file-level cage authority
+(#3163) and does not integrate the existing inline-module region cage
+(`edit_cage/inline_test_region`, RIPR-SPEC-0181). Refusals stay loud and
+typed on every surface; no surface promises what another refuses:
+
+- CLI: `ripr agent repair --phase before` refuses with `has no test file
+  ripr can route a repair to` and names the packet field below;
+- MCP: `ripr_prepare_repair` returns `repair_packet_ready: false` with
+  ineligibility `fix_site_not_test_surface` once the earlier gates
+  (candidate actionability, discriminator, static limits, established
+  fix site) pass, and creates nothing; earlier gates keep their own
+  refusal reasons;
+- pilot: the summary ranks seams for inspection by hand with no repair
+  start, and the focused-test line names the missing test target;
+- packet: `recommended_test.file` is `"not_applicable"` when no target
+  was proposed; an inline-module proposal instead names the production
+  file with target kind `NewInlineTestModule` and a demoted
+  inspection-only task. Both states carry an empty
+  `allowed_edit_surface` with the seam's production file under
+  `forbidden_files`.
+
+To gain a repair target, add the focused test as a separate test-surface
+file (a `tests/` path or `*_test.rs` name) in the crate that owns the
+seam, then rerun pilot. Until then, inspect the ranked seams by hand:
+they are still worth reading, just not repairable through RIPR.

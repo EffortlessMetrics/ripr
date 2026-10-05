@@ -44,7 +44,7 @@ use super::{
 };
 use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
-use crate::analysis::cancellation::{AnalysisAbortKind, is_cancellation_error};
+use crate::analysis::cancellation::AnalysisAbortKind;
 use crate::config::{
     CONFIG_FILE_NAME, LspDiagnosticProfile, PYTHON_PROJECT_MARKERS, PYTHON_SOURCE_DIR_MARKERS,
     is_detectable_python_source_name, is_python_excluded_dir_everywhere,
@@ -545,24 +545,28 @@ impl Backend {
             tokio::spawn(async move { drain_stage_reports(&bridge, &tracker, generation).await })
         };
         let bridge_for_blocking = Arc::clone(&stage_bridge);
-        let diagnostics_result = tokio::task::spawn_blocking(move || {
-            let _execution = match execution_gate.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
-            cancellation
-                .checkpoint()
-                .map_err(|error| error.to_string())?;
-            super::diagnostics::workspace_diagnostics_with_config_and_cancellation(
-                &analysis_root,
-                &config,
-                defer_seam_inventory,
-                &cancellation,
-                &open_rust_index_paths,
-                Some(bridge_for_blocking.as_ref() as &dyn crate::app::AnalysisProgressSink),
-            )
-        })
-        .await;
+        // One long-lived thread runs every refresh so its allocations stay
+        // in one malloc arena (see `analysis_thread`).
+        let analysis_thread = self.refresh_scheduler.analysis_thread();
+        let diagnostics_result = analysis_thread
+            .run(move || {
+                let _execution = match execution_gate.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                cancellation
+                    .checkpoint()
+                    .map_err(|error| error.to_string())?;
+                super::diagnostics::workspace_diagnostics_with_config_and_cancellation(
+                    &analysis_root,
+                    &config,
+                    defer_seam_inventory,
+                    &cancellation,
+                    &open_rust_index_paths,
+                    Some(bridge_for_blocking.as_ref() as &dyn crate::app::AnalysisProgressSink),
+                )
+            })
+            .await;
         drop(deadline_timer);
         // The producer has returned: finish the bridge and let the drain
         // task forward everything queued. The drain is bounded: a stalled
@@ -593,7 +597,8 @@ impl Backend {
                 diagnostics
             }
             Ok(Err(err)) => {
-                if self.refresh_request_is_current(request) && !is_cancellation_error(&err) {
+                let cancelled = analysis_error_was_cancellation(&request.cancellation);
+                if self.refresh_request_is_current(request) && !cancelled {
                     self.report_refresh_failure_after(
                         request,
                         err,
@@ -603,7 +608,7 @@ impl Backend {
                     .await;
                     return RefreshAttemptOutcome::Failed;
                 }
-                if !is_cancellation_error(&err) {
+                if !cancelled {
                     self.client
                         .log_message(
                             MessageType::WARNING,
@@ -4219,6 +4224,18 @@ fn bounded_failure_message(message: &str) -> String {
     // (#1997): the implementation lives in the component-outcome module so
     // health failures and component outcomes are governed identically.
     super::component_outcome::bounded_message(message)
+}
+
+/// #4860: whether a refresh analysis error is the attempt's cancellation.
+/// The attempt's token, not the error text, says whether the work stopped
+/// because a checkpoint handed it an abort. A wrapped cancellation is still a
+/// cancellation; an ordinary failure that reads like one is still a failure.
+/// The observed abort is sticky: a later unrelated failure in the same attempt
+/// is named by the abort that already stopped the work.
+fn analysis_error_was_cancellation(
+    cancellation: &crate::analysis::cancellation::AnalysisCancellationToken,
+) -> bool {
+    cancellation.observed_abort().is_some()
 }
 
 fn cancellation_outcome(request: &RefreshRequest) -> RefreshAttemptOutcome {
@@ -11423,5 +11440,41 @@ mod list_actionable_items_tests {
             error.message
         );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod analysis_error_cancellation_tests {
+    use super::analysis_error_was_cancellation;
+    use crate::analysis::cancellation::{AnalysisAbortKind, AnalysisCancellationToken};
+
+    #[test]
+    fn refresh_error_is_a_cancellation_only_when_the_token_handed_the_abort_to_the_work() {
+        // #4860: the backend's decision reads the attempt's token, never the
+        // error text. A live token is a failure whatever the error says.
+        let live = AnalysisCancellationToken::new();
+        assert!(!analysis_error_was_cancellation(&live));
+
+        // A recorded deadline that no checkpoint handed to the work is not the
+        // attempt's outcome: the work failed on its own first.
+        let unobserved = AnalysisCancellationToken::new();
+        assert!(unobserved.cancel(AnalysisAbortKind::DeadlineExceeded));
+        assert!(!analysis_error_was_cancellation(&unobserved));
+
+        // Once a checkpoint hands the deadline to the work, the (possibly
+        // wrapped) error is that abort for every kind.
+        for kind in [
+            AnalysisAbortKind::DeadlineExceeded,
+            AnalysisAbortKind::Superseded,
+            AnalysisAbortKind::Cancelled,
+        ] {
+            let token = AnalysisCancellationToken::new();
+            assert!(token.cancel(kind));
+            assert!(token.checkpoint().is_err());
+            assert!(
+                analysis_error_was_cancellation(&token),
+                "{kind:?} observed at a checkpoint must classify as cancellation"
+            );
+        }
     }
 }

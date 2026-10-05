@@ -55,7 +55,28 @@ mod lexical_test_grip;
 /// real headroom for module splits while still failing closed on genuinely
 /// oversized external scopes; constrained operators retain the
 /// `RIPR_MAX_DIFF_INDEX_FILES` override.
-const DIFF_INDEX_FILE_LIMIT: usize = 1200;
+///
+/// Raised from 1200 to 10,000 once the dependent-scope narrowing (#5320)
+/// moved the speed bound to [`DIFF_NARROW_INDEX_FILES`]. This guard now only
+/// protects memory: measured diff runs cost about 0.1 to 0.35 MB per indexed
+/// file (wasm-bindgen's 1,781-file `web-sys` selection 183 MB, bevy deep
+/// 1,927 files 700 MB, a synthetic 16,000-file crate 493 MB), so 10,000 files
+/// stays within a 7 GB hosted runner at the measured worst rate.
+const DIFF_INDEX_FILE_LIMIT: usize = 10_000;
+
+/// Default size above which a Draft/Fast selection narrows its dependent
+/// packages (`RIPR_DIFF_DEPENDENT_SCOPE=auto`) and at which the on-demand
+/// reach widening stops. It bounds time, not memory: on nushell a full
+/// 1,838-file selection takes about 4x as long as the narrowed one with the
+/// same findings. A selection that stays above it after narrowing (a changed
+/// package that alone is larger) runs anyway, up to the hard
+/// [`DIFF_INDEX_FILE_LIMIT`] guard.
+const DIFF_NARROW_INDEX_FILES: usize = 1200;
+
+/// Env override for [`DIFF_NARROW_INDEX_FILES`]. The effective value never
+/// exceeds the effective `RIPR_MAX_DIFF_INDEX_FILES` limit, so lowering the
+/// hard limit keeps narrowing below it exactly as before.
+const DIFF_NARROW_INDEX_FILES_ENV: &str = "RIPR_DIFF_NARROW_INDEX_FILES";
 
 /// Hard analysis-cost guard for the repo-scoped path (#2109): the diff path
 /// caps its working set at [`DIFF_INDEX_FILE_LIMIT`], and the repo path now
@@ -108,8 +129,71 @@ const NO_TESTS_INFECTION_SUMMARY: &str =
 const NO_STATICALLY_REACHABLE_TEST_PATH_INFECTION_SUMMARY: &str =
     "No statically reachable test path was found, so activation/infection cannot be estimated";
 
+/// The `diff_scope_oversized` refusal for an index of `files` Rust files.
+fn diff_scope_oversized_error(files: usize, scope_limit: usize) -> String {
+    format!(
+        "diff_scope_oversized: {files} indexed Rust files exceed the \
+         {DIFF_INDEX_FILE_LIMIT_ENV} limit ({scope_limit}); analysis was not run to \
+         protect runner memory. Repair route: reduce the diff scope, run a narrower \
+         mode, or raise the limit via {DIFF_INDEX_FILE_LIMIT_ENV}=<number>."
+    )
+}
+
 fn diff_index_file_limit() -> Result<usize, String> {
-    diff_index_file_limit_from_env(std::env::var(DIFF_INDEX_FILE_LIMIT_ENV))
+    diff_index_file_limit_from_env(diff_limit_env(DIFF_INDEX_FILE_LIMIT_ENV))
+}
+
+fn diff_narrow_index_files(hard_limit: usize) -> Result<usize, String> {
+    diff_narrow_index_files_from_env(diff_limit_env(DIFF_NARROW_INDEX_FILES_ENV), hard_limit)
+}
+
+#[cfg(test)]
+std::thread_local! {
+    // Thread-owned so parallel tests never see each other's limits.
+    static FORCED_DIFF_LIMIT_ENV: std::cell::RefCell<Vec<(&'static str, String)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// The diff limit env var `name`, or a value a test forced on this thread.
+fn diff_limit_env(name: &'static str) -> Result<String, std::env::VarError> {
+    #[cfg(test)]
+    {
+        let forced = FORCED_DIFF_LIMIT_ENV.with(|forced| {
+            forced
+                .borrow()
+                .iter()
+                .find(|(forced_name, _)| *forced_name == name)
+                .map(|(_, value)| value.clone())
+        });
+        if let Some(value) = forced {
+            return Ok(value);
+        }
+    }
+    std::env::var(name)
+}
+
+/// Run `work` with the diff limit env vars in `values` forced on this
+/// thread, so a test drives the real lookups without touching the process
+/// environment.
+#[cfg(test)]
+fn with_forced_diff_limit_env<T>(values: &[(&'static str, &str)], work: impl FnOnce() -> T) -> T {
+    FORCED_DIFF_LIMIT_ENV.with(|forced| {
+        *forced.borrow_mut() = values
+            .iter()
+            .map(|(name, value)| (*name, (*value).to_string()))
+            .collect();
+    });
+    let result = work();
+    FORCED_DIFF_LIMIT_ENV.with(|forced| forced.borrow_mut().clear());
+    result
+}
+
+fn diff_narrow_index_files_from_env(
+    value: Result<String, std::env::VarError>,
+    hard_limit: usize,
+) -> Result<usize, String> {
+    positive_limit_from_env(DIFF_NARROW_INDEX_FILES_ENV, DIFF_NARROW_INDEX_FILES, value)
+        .map(|narrow| narrow.min(hard_limit))
 }
 
 /// Admit only Git-tracked open paths. Discovery excludes symlinks and
@@ -1257,7 +1341,7 @@ impl RustAdapter {
                     "uninspected_files_lower_bound": scope.uninspected_files_lower_bound, "uninspected_changed_lines_lower_bound": scope.uninspected_changed_lines_lower_bound,
                     "stop_reason": format!("{:?}", scope.stop_reason), "diff_identity": scope.diff_identity, "partition_identity": scope.partition_identity,
                     "budget_disclosures": scope.budget_disclosures,
-                    "paths_identity": crate::analysis::source_calibration::paths_identity(scope.selected_files.iter().map(|path| std::path::Path::new(path)))})
+                    "paths_identity": crate::analysis::source_calibration::paths_identity(scope.selected_files.iter().map(std::path::Path::new))})
                     }
                     None => {
                         serde_json::json!({"partial": false, "uninspected_files_lower_bound": 0, "uninspected_changed_lines_lower_bound": 0,
@@ -1413,6 +1497,7 @@ impl RustAdapter {
         if crate::analysis::source_calibration::active() {
             crate::analysis::source_calibration::limit(DIFF_INDEX_FILE_LIMIT_ENV, scope_limit);
         }
+        let narrow_limit = diff_narrow_index_files(scope_limit)?;
         // Open saved Rust documents are index-only inputs. They do not seed
         // changed-file probes, package expansion, or findings. Admit only
         // discovered, analyzable files, then apply the ordinary index budget.
@@ -1442,7 +1527,7 @@ impl RustAdapter {
         let scope_mode = dependent_scope::DependentScopeMode::from_env()?;
         if !dependent_package_roots.is_empty()
             && full_selection < analyzable_rust_files.len()
-            && scope_mode.narrows(full_selection, scope_limit)
+            && scope_mode.narrows(full_selection, narrow_limit)
         {
             let seeded_changed_files = analyzable_changed_files
                 .iter()
@@ -1466,6 +1551,11 @@ impl RustAdapter {
                     &core_roots,
                     &manifest_dir_prefixes,
                 );
+                // Narrowing keeps the changed packages whole, so a core over
+                // the hard limit is refused before its index is built.
+                if core_files.len() > scope_limit {
+                    return Err(diff_scope_oversized_error(core_files.len(), scope_limit));
+                }
                 if core_files.len() < index_files.len() {
                     #[cfg(test)]
                     if crate::analysis::source_calibration::active() {
@@ -1518,13 +1608,7 @@ impl RustAdapter {
             );
         }
         if index_files.len() > scope_limit {
-            return Err(format!(
-                "diff_scope_oversized: {} indexed Rust files exceed the \
-                 {DIFF_INDEX_FILE_LIMIT_ENV} limit ({scope_limit}); analysis was not run to \
-                 protect runner memory. Repair route: reduce the diff scope, run a narrower \
-                 mode, or raise the limit via {DIFF_INDEX_FILE_LIMIT_ENV}=<number>.",
-                index_files.len()
-            ));
+            return Err(diff_scope_oversized_error(index_files.len(), scope_limit));
         }
         // Load files into memory and use the content-addressed per-file fact
         // cache. This avoids re-parsing unchanged files with ra_ap_syntax on
@@ -1562,7 +1646,7 @@ impl RustAdapter {
                 ..Default::default()
             });
         }
-        let cached = rust_index::build_index_from_loaded_files_with_cache_and_test_harnesses(
+        let cached = rust_index::build_analysis_index_from_loaded_files(
             &options.root,
             &loaded_files,
             &options.test_harnesses,
@@ -1753,7 +1837,7 @@ impl RustAdapter {
                 let reach = match dependent_scope.as_mut() {
                     Some(scope) if needs_no_static_path_limit(&finding) => {
                         match owner_name_from_id(&probe.owner, &probe.location.file) {
-                            Some(owner) => scope.reach_index(&owner, &index, scope_limit)?,
+                            Some(owner) => scope.reach_index(&owner, &index, narrow_limit)?,
                             None => dependent_scope::ReachIndex::Main,
                         }
                     }
@@ -2164,7 +2248,7 @@ impl RustAdapter {
                 Ok((file.clone(), bytes))
             })
             .collect::<Result<Vec<_>, String>>()?;
-        let cached = rust_index::build_index_from_loaded_files_with_cache_and_test_harnesses(
+        let cached = rust_index::build_analysis_index_from_loaded_files(
             &options.root,
             &loaded_rust_files,
             &options.test_harnesses,
@@ -2335,20 +2419,22 @@ fn calibration_partition_and_open_dedup_use_real_owners() -> Result<(), String> 
 #[cfg(test)]
 mod tests {
     use super::{
-        DIFF_CHANGED_RUST_LINE_LIMIT, DIFF_INDEX_FILE_LIMIT, GeneratedRustSources,
+        DIFF_CHANGED_RUST_LINE_LIMIT, DIFF_INDEX_FILE_LIMIT, DIFF_INDEX_FILE_LIMIT_ENV,
+        DIFF_NARROW_INDEX_FILES, DIFF_NARROW_INDEX_FILES_ENV, GeneratedRustSources,
         PARTIAL_DIFF_FILE_BUDGET_DEFAULT, PARTIAL_DIFF_FILE_BUDGET_ENV,
         PARTIAL_DIFF_LANGUAGE_TIER_VERSION, PARTIAL_DIFF_LINE_BUDGET_DEFAULT,
         PARTIAL_DIFF_LINE_BUDGET_ENV, PARTIAL_DIFF_SELECTION_VERSION, PartialDiffBudgets,
         PartialDiffScope, PartialDiffStopReason, REPO_INDEX_FILE_LIMIT, REPO_INDEX_FILE_LIMIT_ENV,
         RustAdapter, apply_probe_and_oracle_limits, changed_rust_line_count, dependent_scope,
         diff_changed_rust_line_limit_from_env, diff_identity_from_changed_files,
-        diff_index_file_limit_from_env, enforce_changed_rust_line_limit,
-        enforce_repo_index_file_limit, is_binary_source_path, is_cargo_binary_invocation,
-        is_generated_rust_file, is_generated_rust_file_with_patterns,
-        limitations_for_absent_changed_files, partial_diff_budgets_from_env,
-        partition_canonical_form, replace_witnessed_no_path_infection_summary,
-        repo_index_file_limit_from_env, select_partial_diff_partition,
-        select_partial_diff_partition_with_identity, selection_with_open_files, sha256_hex,
+        diff_index_file_limit_from_env, diff_narrow_index_files_from_env,
+        enforce_changed_rust_line_limit, enforce_repo_index_file_limit, is_binary_source_path,
+        is_cargo_binary_invocation, is_diff_scope_oversized, is_generated_rust_file,
+        is_generated_rust_file_with_patterns, limitations_for_absent_changed_files,
+        partial_diff_budgets_from_env, partition_canonical_form,
+        replace_witnessed_no_path_infection_summary, repo_index_file_limit_from_env,
+        select_partial_diff_partition, select_partial_diff_partition_with_identity,
+        selection_with_open_files, sha256_hex, with_forced_diff_limit_env,
     };
     use crate::analysis::cancellation;
     use crate::analysis::diff::{ChangedFile, ChangedLine};
@@ -3335,6 +3421,86 @@ mod tests {
         Ok(())
     }
 
+    /// The narrowing threshold, not the memory guard, decides when Auto
+    /// narrows and how far reach widening searches, and both values arrive
+    /// through the real env lookups. A threshold of 2 under a generous
+    /// guard narrows and names the 2-file threshold; the same threshold
+    /// under a 1-file guard is clamped and the run is refused.
+    #[test]
+    fn auto_narrows_at_the_threshold_and_refuses_at_the_guard() -> Result<(), String> {
+        use dependent_scope::DependentScopeMode;
+        let root = temp_root("dependent-scope-narrow-threshold")?;
+        write_dependent_scope_workspace(&root, UNRELATED_E_SOURCE)?;
+
+        let (findings, main, _) = with_forced_diff_limit_env(
+            &[
+                (DIFF_INDEX_FILE_LIMIT_ENV, "100"),
+                (DIFF_NARROW_INDEX_FILES_ENV, "2"),
+            ],
+            || scoped_findings(&root, DependentScopeMode::Auto),
+        )?;
+        let main = slash_paths(&main.ok_or("auto must narrow over the threshold")?);
+        assert_eq!(main, ["a/src/lib.rs", "b/src/lib.rs"], "main index");
+        assert!(
+            findings.contains("over the 2-file narrowing threshold"),
+            "reach search must stop at the narrowing threshold: {findings}"
+        );
+
+        let (unforced, unforced_main, _) =
+            with_forced_diff_limit_env(&[(DIFF_INDEX_FILE_LIMIT_ENV, "100")], || {
+                scoped_findings(&root, DependentScopeMode::Auto)
+            })?;
+        assert!(
+            unforced_main.is_none(),
+            "control: the default threshold keeps the full selection"
+        );
+        assert!(!unforced.contains("narrowing threshold"), "{unforced}");
+
+        let refused = with_forced_diff_limit_env(
+            &[
+                (DIFF_INDEX_FILE_LIMIT_ENV, "1"),
+                (DIFF_NARROW_INDEX_FILES_ENV, "2"),
+            ],
+            || scoped_findings(&root, DependentScopeMode::Auto),
+        );
+        match refused {
+            Err(error) => assert!(is_diff_scope_oversized(&error), "{error}"),
+            Ok(_) => return Err("a 1-file guard must refuse the run".to_string()),
+        }
+        Ok(())
+    }
+
+    /// A changed package over the memory guard is refused before narrowing
+    /// builds its core index: narrowing keeps the changed packages whole, so
+    /// no admission can make them fit.
+    #[test]
+    fn auto_refuses_a_core_over_the_guard_before_building_it() -> Result<(), String> {
+        use dependent_scope::DependentScopeMode;
+        let root = temp_root("dependent-scope-core-over-guard")?;
+        write_dependent_scope_workspace(&root, UNRELATED_E_SOURCE)?;
+        write(
+            &root.join("a/src/extra.rs"),
+            "pub fn extra() -> u8 {\n    2\n}\n",
+        )?;
+
+        let refused = with_forced_diff_limit_env(&[(DIFF_INDEX_FILE_LIMIT_ENV, "1")], || {
+            scoped_findings(&root, DependentScopeMode::Auto)
+        });
+        match refused {
+            Err(error) => assert!(
+                is_diff_scope_oversized(&error) && error.starts_with("diff_scope_oversized: 2 "),
+                "{error}"
+            ),
+            Ok(_) => return Err("a two-file core must not fit a 1-file guard".to_string()),
+        }
+        assert_eq!(
+            dependent_scope::observed_main_files(),
+            None,
+            "the refusal must come before dependent admission runs"
+        );
+        Ok(())
+    }
+
     /// #5320: an owner whose caller closure exceeds the limit names the
     /// unsearched reach only when the main index finds no witness itself,
     /// and (#5450) the closure stops before parsing past the limit. A
@@ -4148,14 +4314,45 @@ fn absent_delimiter_boundary_returns_head() {
 
     #[test]
     fn diff_index_file_limit_defaults_when_unset() {
-        // Independent decision pin: the guard-raise set the measured default
-        // to 1200 (repo growth evidence); a revert of the constant must fail
-        // here rather than silently re-hide under the 800 default.
-        assert_eq!(DIFF_INDEX_FILE_LIMIT, 1200);
+        // Independent decision pin: the memory guard is 10,000 files and the
+        // time-bounding narrowing threshold stays at the measured 1200. A
+        // revert that folds them back together must fail here.
+        assert_eq!(DIFF_INDEX_FILE_LIMIT, 10_000);
+        assert_eq!(DIFF_NARROW_INDEX_FILES, 1200);
         assert_eq!(
             diff_index_file_limit_from_env(Err(VarError::NotPresent)),
             Ok(DIFF_INDEX_FILE_LIMIT)
         );
+        assert_eq!(
+            diff_narrow_index_files_from_env(Err(VarError::NotPresent), DIFF_INDEX_FILE_LIMIT),
+            Ok(DIFF_NARROW_INDEX_FILES)
+        );
+    }
+
+    #[test]
+    fn diff_narrow_index_files_never_exceeds_the_hard_limit() {
+        // A lowered hard limit keeps narrowing at or below it, as before
+        // the split; a raised threshold is honoured up to the hard limit.
+        assert_eq!(
+            diff_narrow_index_files_from_env(Err(VarError::NotPresent), 40),
+            Ok(40)
+        );
+        assert_eq!(
+            diff_narrow_index_files_from_env(Ok("3000".to_string()), 2000),
+            Ok(2000)
+        );
+        assert_eq!(
+            diff_narrow_index_files_from_env(Ok(" 300 ".to_string()), 2000),
+            Ok(300)
+        );
+        for bad in ["0", "lots"] {
+            let result = diff_narrow_index_files_from_env(Ok(bad.to_string()), 2000);
+            assert!(
+                matches!(&result, Err(err) if err.contains(DIFF_NARROW_INDEX_FILES_ENV)
+                    && err.contains("positive integer")),
+                "{bad:?} must be rejected by name, got {result:?}"
+            );
+        }
     }
 
     #[test]
@@ -5245,7 +5442,7 @@ fn absent_delimiter_boundary_returns_head() {
             file: PathBuf::from("tests/cli.rs"),
             start_line: 12,
             end_line: 18,
-            body: r#"Command::new(env!("CARGO_BIN_EXE_worker")).output().unwrap();"#.to_string(),
+            body: r#"Command::new(env!("CARGO_BIN_EXE_worker")).output().unwrap();"#.into(),
             calls: Vec::new(),
             assertions: Vec::new(),
             literals: Vec::new(),
@@ -7088,7 +7285,7 @@ fn absent_delimiter_boundary_returns_head() {
             file: PathBuf::from("src/lib.rs"),
             start_line: 1,
             end_line: 5,
-            body: "pub fn exported_fn(raw: &str) -> Result<(), Box<dyn std::error::Error>> { try_parse(raw).map_err(Into::into) }".to_string(),
+            body: "pub fn exported_fn(raw: &str) -> Result<(), Box<dyn std::error::Error>> { try_parse(raw).map_err(Into::into) }".into(),
             calls: vec![],
             returns: vec![],
             literals: vec![],

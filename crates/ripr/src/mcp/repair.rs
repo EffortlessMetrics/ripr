@@ -49,6 +49,12 @@ pub(crate) const CODE_ATTEMPT_INVALID: &str = "attempt_invalid";
 const ATTEMPT_ID_PREFIX: &str = "repair-attempt-";
 const ATTEMPT_ID_HEX_LEN: usize = 24;
 
+/// Cap on `superseded_attempts` tombstones (#5254 item 7). Eviction is
+/// oldest-first via the session's insertion-order queue, so recent
+/// supersedes keep their typed `superseded` reads; a tombstone older than
+/// the cap degrades to `attempt_not_found` for MCP-only ids (#6291).
+const MAX_SUPERSEDED_TOMBSTONES: usize = 64;
+
 /// The product repair transaction's shared non-claims, verbatim from the
 /// durable manifest authority; MCP repeats them on every prepared packet so
 /// no surface can read preparation as completion.
@@ -633,16 +639,16 @@ impl WorkspaceSession {
     /// field and never a misleading transaction.
     pub(crate) fn prepare_repair(
         &mut self,
-        gap_id: &str,
+        canonical_id: &str,
         requested: Option<&str>,
         root_identity: Option<&str>,
     ) -> Result<Value, AttemptFailure> {
         let snapshot = self.active_snapshot(requested)?;
         let snapshot_id = snapshot.snapshot_id.clone();
-        let Some(item) = snapshot.item(gap_id) else {
+        let Some(item) = snapshot.item(canonical_id) else {
             return Err(AttemptFailure::new(
                 CODE_ITEM_NOT_FOUND,
-                format!("no canonical item {gap_id} exists in the current snapshot"),
+                format!("no canonical item {canonical_id} exists in the current snapshot"),
                 "list the current canonical ids with ripr_list_gaps, then retry",
             ));
         };
@@ -776,9 +782,27 @@ impl WorkspaceSession {
         });
         self.repairs.insert(attempt_id, transaction);
         for (id, old_snapshot) in evicted {
-            self.superseded_attempts.insert(id, old_snapshot);
+            self.insert_superseded_tombstone(id, old_snapshot);
         }
         Ok(packet)
+    }
+
+    /// Records one evicted transaction's tombstone, keeping the map bounded
+    /// so long sessions cannot grow it without limit (#5254 item 7).
+    /// Eviction is oldest-first: the queue holds keys in insertion order,
+    /// so a recent supersede is never the one dropped (#6291).
+    fn insert_superseded_tombstone(&mut self, attempt_id: String, snapshot_id: String) {
+        if self.superseded_attempts.contains_key(&attempt_id) {
+            self.superseded_order.retain(|id| id != &attempt_id);
+        }
+        self.superseded_order.push_back(attempt_id.clone());
+        self.superseded_attempts.insert(attempt_id, snapshot_id);
+        while self.superseded_attempts.len() > MAX_SUPERSEDED_TOMBSTONES {
+            let Some(oldest) = self.superseded_order.pop_front() else {
+                break;
+            };
+            self.superseded_attempts.remove(&oldest);
+        }
     }
 
     /// `ripr_get_repair_attempt` / `ripr://repair-attempt/{attempt_id}`:
@@ -941,6 +965,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             untracked_working_tree_source_paths: Vec::new(),
+            unlinked_python_tests: None,
             suppression: None,
             partial_scope: None,
         })
@@ -959,7 +984,120 @@ mod tests {
             last_failure: None,
             repairs: std::collections::BTreeMap::new(),
             superseded_attempts: std::collections::BTreeMap::new(),
+            superseded_order: std::collections::VecDeque::new(),
         })
+    }
+
+    #[test]
+    fn superseded_tombstones_stay_capped_for_long_sessions() -> Result<(), String> {
+        // Tombstone eviction needs no snapshot: build the session shell
+        // directly instead of a findings-bearing fixture.
+        let mut session = WorkspaceSession {
+            in_flight: false,
+            last_good: None,
+            last_failure: None,
+            repairs: std::collections::BTreeMap::new(),
+            superseded_attempts: std::collections::BTreeMap::new(),
+            superseded_order: std::collections::VecDeque::new(),
+        };
+        for index in 0..MAX_SUPERSEDED_TOMBSTONES + 10 {
+            session.insert_superseded_tombstone(
+                format!("repair-attempt-{index:04}"),
+                "snapshot-old".to_string(),
+            );
+        }
+        if session.superseded_attempts.len() != MAX_SUPERSEDED_TOMBSTONES {
+            return Err(format!(
+                "tombstone map grew past its cap: {}",
+                session.superseded_attempts.len()
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn tombstone_eviction_drops_oldest_first_and_reads_fail_closed() -> Result<(), String> {
+        // Past the cap, the oldest tombstones go first (#6291): a recent
+        // supersede keeps its typed reads, while an evicted MCP-only id
+        // reads attempt_not_found on both the attempt and receipt routes.
+        // Ids sort reverse to insertion order on purpose, so digest order
+        // cannot masquerade as age order.
+        let mut session = WorkspaceSession {
+            in_flight: false,
+            last_good: None,
+            last_failure: None,
+            repairs: std::collections::BTreeMap::new(),
+            superseded_attempts: std::collections::BTreeMap::new(),
+            superseded_order: std::collections::VecDeque::new(),
+        };
+        let total = MAX_SUPERSEDED_TOMBSTONES + 10;
+        for index in 0..total {
+            session.insert_superseded_tombstone(
+                format!("repair-attempt-{:04}", total - index),
+                "snapshot-old".to_string(),
+            );
+        }
+        let oldest_evicted = format!("repair-attempt-{total:04}");
+        let newest_kept = "repair-attempt-0001".to_string();
+        if session.superseded_attempts.contains_key(&oldest_evicted) {
+            return Err("the oldest tombstone must be evicted first".to_string());
+        }
+        if !session.superseded_attempts.contains_key(&newest_kept) {
+            return Err("the newest tombstone must survive the cap".to_string());
+        }
+        match session.repair_attempt_document(&oldest_evicted, None, None) {
+            Err(failure) if failure.code == CODE_ATTEMPT_NOT_FOUND => {}
+            Err(failure) => {
+                return Err(format!(
+                    "evicted attempt must read attempt_not_found, got: {}",
+                    failure.code
+                ));
+            }
+            Ok(value) => {
+                return Err(format!("evicted attempt must not read a document: {value}"));
+            }
+        }
+        match session.receipt_status_document(&oldest_evicted, None, None) {
+            Err(failure) if failure.code == CODE_ATTEMPT_NOT_FOUND => {}
+            Err(failure) => {
+                return Err(format!(
+                    "evicted receipt must read attempt_not_found, got: {}",
+                    failure.code
+                ));
+            }
+            Ok(value) => {
+                return Err(format!("evicted receipt must not read a document: {value}"));
+            }
+        }
+        match session.repair_attempt_document(&newest_kept, None, None) {
+            Err(failure) if failure.code == "superseded" => {}
+            Err(failure) => {
+                return Err(format!(
+                    "newest tombstone must stay superseded, got: {}",
+                    failure.code
+                ));
+            }
+            Ok(value) => {
+                return Err(format!(
+                    "superseded attempt must not read a document: {value}"
+                ));
+            }
+        }
+        match session.receipt_status_document(&newest_kept, None, None) {
+            Err(failure) if failure.code == "superseded" => {}
+            Err(failure) => {
+                return Err(format!(
+                    "newest receipt must stay superseded, got: {}",
+                    failure.code
+                ));
+            }
+            Ok(value) => {
+                return Err(format!(
+                    "superseded receipt must not read a document: {value}"
+                ));
+            }
+        }
+        Ok(())
     }
 
     fn unique_test_dir(name: &str) -> Result<PathBuf, String> {
@@ -1500,19 +1638,22 @@ mod tests {
             .map_err(|error| format!("write fixture {}: {error}", path.display()))
     }
 
-    fn receipt_fixture_snapshot(class: &str) -> Result<String, String> {
+    fn receipt_fixture_snapshot(root: &Path, class: &str) -> Result<String, String> {
         // Static evidence inputs, not an analyzer run. Production comparison
         // and rendering below determine movement and every receipt status.
-        serde_json::to_string_pretty(&json!({
-            "seams": [{
-                "seam_id": RECEIPT_FIXTURE_SEAM,
-                "kind": "predicate_boundary",
-                "file": "src/lib.rs",
-                "line": 1,
-                "grip_class": class,
-            }]
-        }))
-        .map_err(|error| format!("serialize fixture snapshot: {error}"))
+        // The envelope is evidence-grade: terminal readers bind the verify
+        // document to the retained before snapshot's validated content
+        // digest, so bare seam rows no longer qualify.
+        crate::testing::verify_fixture::mint_repo_exposure_snapshot(
+            root,
+            json!([crate::testing::verify_fixture::snapshot_seam(
+                RECEIPT_FIXTURE_SEAM,
+                "predicate_boundary",
+                "src/lib.rs",
+                1,
+                class,
+            )]),
+        )
     }
 
     fn receipt_fixture_analysis(
@@ -1598,10 +1739,6 @@ mod tests {
             AgentReceiptArtifactProvenance, AgentReceiptProvenance, AgentReceiptReading,
             render_agent_receipt_value_json,
         };
-        use crate::output::outcome::{
-            AgentVerifyArtifactBinding, render_agent_verify_json_with_currentness,
-            targeted_test_outcome_report_from_json,
-        };
         use crate::testing::fixture_git::fixture_git_ok;
 
         std::fs::create_dir_all(root).map_err(|error| format!("create fixture root: {error}"))?;
@@ -1620,8 +1757,7 @@ mod tests {
         let baseline_path = workflow.join("baseline.receipt-fixture.json");
         let verify_path = workflow.join("verify.receipt-fixture.json");
         let receipt_path = root.join("target/ripr/reports/agent-receipt.json");
-        let before = receipt_fixture_snapshot(case.before)?;
-        let after = receipt_fixture_snapshot(case.after)?;
+        let before = receipt_fixture_snapshot(root, case.before)?;
         write_receipt_fixture(&before_path, before.as_bytes())?;
         let packet = serde_json::to_string_pretty(&json!({
             "seam_id": RECEIPT_FIXTURE_SEAM,
@@ -1665,22 +1801,18 @@ mod tests {
                 .path,
         );
         write_receipt_fixture(&root.join("tests/target.rs"), b"#[test]\nfn focused() {}\n")?;
+        // The after snapshot is minted at a descendant HEAD so the pair has
+        // lineage: the verify document below is the canonical render the
+        // retained readers recompute, and the committed focused test is the
+        // ordinary descendant-commit finish.
+        fixture_git_ok(root, &["add", "tests/target.rs"])?;
+        fixture_git_ok(root, &["commit", "--no-gpg-sign", "-m", "focused test"])?;
+        let after = receipt_fixture_snapshot(root, case.after)?;
         write_receipt_fixture(&after_path, after.as_bytes())?;
-        let report = targeted_test_outcome_report_from_json(
-            &before,
-            &after,
-            retained_before_path.display().to_string(),
-            after_path.display().to_string(),
-        )?;
-        let verify = render_agent_verify_json_with_currentness(
-            &report,
-            None,
-            &AgentVerifyArtifactBinding {
-                before_content_sha256: crate::agent::provenance::sha256_file(
-                    &retained_before_path,
-                )?,
-                after_content_sha256: crate::agent::provenance::sha256_file(&after_path)?,
-            },
+        let verify = crate::testing::verify_fixture::mint_canonical_verify(
+            root,
+            &retained_before_path,
+            &after_path,
         )?;
         write_receipt_fixture(&verify_path, verify.as_bytes())?;
         finish_repair_attempt(
@@ -1929,6 +2061,387 @@ mod tests {
     #[test]
     fn complete_unchanged_receipt_preserves_unchanged_status() -> Result<(), String> {
         assert_receipt_case("complete_unchanged")
+    }
+
+    /// Begin and compliantly finish one forgery-fixture attempt, returning the
+    /// finished manifest. The parity cases above use the full producer path;
+    /// these compact fixtures mint pairs through `verify_fixture` and forge
+    /// them below.
+    fn begin_and_finish_forgery_attempt(
+        root: &Path,
+    ) -> Result<crate::app::repair_attempt::RepairAttemptManifest, String> {
+        use crate::app::repair_attempt::{
+            BeforeArtifactSource, BeginRepairAttemptOptions, begin_repair_attempt_with,
+            edit_cage_policy_from_packet, find_manifest_artifact_by_role, finish_repair_attempt,
+            load_repair_attempt_manifest, write_edit_cage_baseline,
+        };
+        use crate::edit_cage::HeadMovement;
+        use crate::testing::fixture_git::fixture_git_ok;
+
+        std::fs::create_dir_all(root).map_err(|error| format!("create fixture root: {error}"))?;
+        fixture_git_ok(root, &["init"])?;
+        fixture_git_ok(root, &["config", "user.email", "ripr-test@example.invalid"])?;
+        fixture_git_ok(root, &["config", "user.name", "RIPR Test"])?;
+        write_receipt_fixture(&root.join(".gitignore"), b"/target/\n")?;
+        write_receipt_fixture(&root.join("src/lib.rs"), b"pub fn value() -> u8 { 0 }\n")?;
+        fixture_git_ok(root, &["add", "."])?;
+        fixture_git_ok(root, &["commit", "--no-gpg-sign", "-m", "forgery fixture"])?;
+        let workflow = root.join("target/ripr/workflow");
+        let before_path = workflow.join("before.forgery.json");
+        let packet_path = workflow.join("packet.forgery.json");
+        let baseline_path = workflow.join("baseline.forgery.json");
+        write_receipt_fixture(
+            &before_path,
+            receipt_fixture_snapshot(root, "weakly_gripped")?.as_bytes(),
+        )?;
+        let packet = serde_json::to_string_pretty(&json!({
+            "seam_id": RECEIPT_FIXTURE_SEAM,
+            "allowed_edit_surface": ["tests/target.rs"],
+            "forbidden_files": [],
+        }))
+        .map_err(|error| format!("serialize fixture packet: {error}"))?;
+        write_receipt_fixture(&packet_path, packet.as_bytes())?;
+        let policy = edit_cage_policy_from_packet(&packet, RECEIPT_FIXTURE_SEAM)?;
+        write_edit_cage_baseline(root, &baseline_path, &policy)?;
+        let prepared = begin_repair_attempt_with(BeginRepairAttemptOptions {
+            root,
+            root_argument: root,
+            seam_id: RECEIPT_FIXTURE_SEAM,
+            sources: &[
+                BeforeArtifactSource {
+                    role: "before_snapshot",
+                    path: &before_path,
+                },
+                BeforeArtifactSource {
+                    role: "agent_packet",
+                    path: &packet_path,
+                },
+                BeforeArtifactSource {
+                    role: "edit_cage_baseline",
+                    path: &baseline_path,
+                },
+            ],
+            expected_repository_head: None,
+            next_command_suffix: None,
+            store: None,
+        })?;
+        let packet_path = root.join(
+            &find_manifest_artifact_by_role(&prepared.manifest, "agent_packet")
+                .ok_or_else(|| "prepared fixture omitted its packet".to_string())?
+                .path,
+        );
+        write_receipt_fixture(&root.join("tests/target.rs"), b"#[test]\nfn focused() {}\n")?;
+        finish_repair_attempt(
+            root,
+            &prepared.manifest.repair_attempt_id,
+            &packet_path,
+            HeadMovement::AdmitDescendantCommits,
+        )?;
+        let finished = load_repair_attempt_manifest(root, &prepared.manifest.repair_attempt_id)?;
+        if finished.state != RepairAttemptState::ReadyToFinish {
+            return Err("forgery fixture did not finish compliantly".to_string());
+        }
+        Ok(finished)
+    }
+
+    /// Retain a receipt/verify pair through the production path and return the
+    /// reloaded manifest.
+    fn retain_forgery_pair(
+        root: &Path,
+        manifest: &crate::app::repair_attempt::RepairAttemptManifest,
+        receipt_bytes: &[u8],
+        verify_bytes: &[u8],
+    ) -> Result<crate::app::repair_attempt::RepairAttemptManifest, String> {
+        use crate::app::repair_attempt::{
+            BeforeArtifactSource, TERMINAL_RECEIPT_ROLE, TERMINAL_VERIFY_ROLE,
+            load_repair_attempt_manifest, retain_terminal_evidence,
+        };
+
+        let receipt_path = root.join("target/ripr/reports/agent-receipt.json");
+        let verify_path = root.join("target/ripr/workflow/agent-verify.json");
+        write_receipt_fixture(&receipt_path, receipt_bytes)?;
+        write_receipt_fixture(&verify_path, verify_bytes)?;
+        retain_terminal_evidence(
+            root,
+            &manifest.repair_attempt_id,
+            &[
+                BeforeArtifactSource {
+                    role: TERMINAL_RECEIPT_ROLE,
+                    path: &receipt_path,
+                },
+                BeforeArtifactSource {
+                    role: TERMINAL_VERIFY_ROLE,
+                    path: &verify_path,
+                },
+            ],
+        )?;
+        load_repair_attempt_manifest(root, &manifest.repair_attempt_id)
+    }
+
+    /// Rewrite one retained terminal artifact's bytes and rebind its manifest
+    /// entry (bytes + sha256), as a forgery that also holds the manifest
+    /// would. Returns the reloaded manifest.
+    fn rebind_forgery_artifact(
+        root: &Path,
+        manifest: &crate::app::repair_attempt::RepairAttemptManifest,
+        role: &str,
+        bytes: &[u8],
+    ) -> Result<crate::app::repair_attempt::RepairAttemptManifest, String> {
+        use crate::app::repair_attempt::{
+            REPAIR_ATTEMPT_DIRECTORY, find_terminal_artifact_by_role, load_repair_attempt_manifest,
+        };
+
+        let artifact = find_terminal_artifact_by_role(manifest, role)
+            .ok_or_else(|| format!("retained pair has no {role}"))?;
+        write_receipt_fixture(&root.join(&artifact.path), bytes)?;
+        let manifest_path = root
+            .join(REPAIR_ATTEMPT_DIRECTORY)
+            .join(manifest.repair_attempt_id.as_str())
+            .join("attempt.json");
+        let manifest_raw =
+            std::fs::read_to_string(&manifest_path).map_err(|error| error.to_string())?;
+        let mut manifest_value: Value =
+            serde_json::from_str(&manifest_raw).map_err(|error| error.to_string())?;
+        let entry = manifest_value["terminal_artifacts"]
+            .as_array_mut()
+            .ok_or("manifest lost terminal_artifacts")?
+            .iter_mut()
+            .find(|artifact| artifact["role"] == role)
+            .ok_or_else(|| format!("manifest lost its {role} entry"))?;
+        entry["sha256"] = Value::String(format!("sha256:{}", sha256_hex(bytes)));
+        entry["bytes"] =
+            Value::from(u64::try_from(bytes.len()).map_err(|error| error.to_string())?);
+        write_receipt_fixture(
+            &manifest_path,
+            &serde_json::to_vec_pretty(&manifest_value).map_err(|error| error.to_string())?,
+        )?;
+        load_repair_attempt_manifest(root, &manifest.repair_attempt_id)
+    }
+
+    fn forgery_cli_disposition(root: &Path, attempt_id: &str) -> Result<String, String> {
+        let report = crate::app::agent_status::build_agent_status_report_from(root, root, None);
+        report
+            .repair_attempts
+            .iter()
+            .find(|attempt| attempt.attempt_id == attempt_id)
+            .map(|attempt| attempt.disposition.to_string())
+            .ok_or_else(|| "CLI status lost the forged attempt".to_string())
+    }
+
+    fn forgery_mcp_status(root: &Path, attempt_id: &str) -> Result<String, String> {
+        let document = WorkspaceSession::default()
+            .receipt_status_document(attempt_id, Some(root), None)
+            .map_err(|failure| failure.detail)?;
+        document["status"]
+            .as_str()
+            .map(str::to_string)
+            .ok_or_else(|| "MCP receipt status is not a string".to_string())
+    }
+
+    /// Repair-5 MCP parity: a status-flipped retained receipt reads
+    /// non-improved over MCP (`invalid`) as well as CLI (`unconfirmed`).
+    #[test]
+    fn mcp_status_flip_forgery_never_claims_improvement() -> Result<(), String> {
+        use crate::testing::verify_fixture::mint_bound_receipt_pair;
+
+        let root = unique_test_dir("mcp-status-flip")?;
+        let result = (|| -> Result<(), String> {
+            let finished = begin_and_finish_forgery_attempt(&root)?;
+            let (receipt_bytes, verify_bytes) =
+                mint_bound_receipt_pair(&root, &finished, "improved")?;
+            let retained = retain_forgery_pair(&root, &finished, &receipt_bytes, &verify_bytes)?;
+            let mut forged: Value =
+                serde_json::from_slice(&receipt_bytes).map_err(|error| error.to_string())?;
+            forged["analysis_outcome_status"] = Value::String("incomplete".to_string());
+            // Status still says advisory: the projection disagrees.
+            let mut forged_bytes =
+                serde_json::to_vec_pretty(&forged).map_err(|error| error.to_string())?;
+            forged_bytes.push(b'\n');
+            let forged_manifest = rebind_forgery_artifact(
+                &root,
+                &retained,
+                crate::app::repair_attempt::TERMINAL_RECEIPT_ROLE,
+                &forged_bytes,
+            )?;
+            let id = forged_manifest.repair_attempt_id.as_str();
+            let cli = forgery_cli_disposition(&root, id)?;
+            if cli != "unconfirmed" {
+                return Err(format!(
+                    "status flip must read unconfirmed over CLI, got {cli}"
+                ));
+            }
+            let mcp = forgery_mcp_status(&root, id)?;
+            if mcp == "improved" {
+                return Err("status flip must never claim improvement over MCP".to_string());
+            }
+            if mcp != "invalid" {
+                return Err(format!("status flip must read invalid over MCP, got {mcp}"));
+            }
+            Ok(())
+        })();
+        let cleanup = crate::testing::fixture_git::remove_fixture_tree(&root);
+        result.and(cleanup)
+    }
+
+    /// Repair-6/7 MCP parity: a never-promoted jointly rewritten
+    /// projection with present snapshots reads non-improved over MCP
+    /// while CLI reads it unconfirmed. Retained reads are validator-only
+    /// by design; admission is enforced at the promotion boundary. The
+    /// lineage commit below advances HEAD past the evidence head, so MCP
+    /// degrades the pending base to `stale`; the never-`improved` pin is
+    /// the security property either way.
+    #[test]
+    fn mcp_joint_forgery_with_present_snapshots_is_stale() -> Result<(), String> {
+        use crate::testing::fixture_git::fixture_git_ok;
+        use crate::testing::verify_fixture::{
+            mint_bound_receipt, mint_canonical_verify, mint_repo_exposure_snapshot, snapshot_seam,
+        };
+
+        let root = unique_test_dir("mcp-joint-forgery")?;
+        let result = (|| -> Result<(), String> {
+            let finished = begin_and_finish_forgery_attempt(&root)?;
+            fixture_git_ok(&root, &["add", "tests/target.rs"])?;
+            fixture_git_ok(&root, &["commit", "--no-gpg-sign", "-m", "focused test"])?;
+            let after_path = root.join("target/ripr/workflow/after.forgery.json");
+            let after = mint_repo_exposure_snapshot(
+                &root,
+                json!([snapshot_seam(
+                    RECEIPT_FIXTURE_SEAM,
+                    "predicate_boundary",
+                    "src/lib.rs",
+                    1,
+                    "weakly_gripped",
+                )]),
+            )?;
+            write_receipt_fixture(&after_path, after.as_bytes())?;
+            let retained_before = root.join(
+                &find_manifest_artifact_by_role(&finished, "before_snapshot")
+                    .ok_or_else(|| "fixture lost retained before".to_string())?
+                    .path,
+            );
+            let verify = mint_canonical_verify(&root, &retained_before, &after_path)?;
+            let verify_bytes = verify.into_bytes();
+            let digest = format!("sha256:{}", sha256_hex(&verify_bytes));
+            let receipt_bytes = mint_bound_receipt(&finished, "unchanged", &digest)?;
+            // Joint rewrite: the verify seam change and every receipt verdict
+            // field move to improved together, with the digest rebound. The
+            // attempt stays unretained: the forged projection lands in the
+            // compatibility files as a never-promoted pending pair.
+            let mut forged_verify: Value =
+                serde_json::from_slice(&verify_bytes).map_err(|error| error.to_string())?;
+            let unchanged = forged_verify["unchanged_seams"]
+                .as_array_mut()
+                .ok_or("retained verify lost unchanged_seams")?
+                .pop()
+                .ok_or("retained verify lost its seam row")?;
+            let mut improved_row = unchanged;
+            improved_row["change"] = Value::String("improved".to_string());
+            forged_verify["changed_seams"]
+                .as_array_mut()
+                .ok_or("retained verify lost changed_seams")?
+                .push(improved_row);
+            forged_verify["summary"]["unchanged"] = json!(0);
+            forged_verify["summary"]["improved"] = json!(1);
+            let mut forged_verify_bytes =
+                serde_json::to_vec_pretty(&forged_verify).map_err(|error| error.to_string())?;
+            forged_verify_bytes.push(b'\n');
+            let mut forged_receipt: Value =
+                serde_json::from_slice(&receipt_bytes).map_err(|error| error.to_string())?;
+            forged_receipt["seam"]["change"] = Value::String("improved".to_string());
+            forged_receipt["provenance"]["movement"] = Value::String("improved".to_string());
+            forged_receipt["summary"]["receipt_state"] =
+                Value::String("receipt_movement_improved".to_string());
+            forged_receipt["summary"]["next_action"]["kind"] =
+                Value::String("improved".to_string());
+            forged_receipt["provenance"]["verify_artifact"]["sha256"] =
+                Value::String(format!("sha256:{}", sha256_hex(&forged_verify_bytes)));
+            let mut forged_receipt_bytes =
+                serde_json::to_vec_pretty(&forged_receipt).map_err(|error| error.to_string())?;
+            forged_receipt_bytes.push(b'\n');
+            write_receipt_fixture(
+                &root.join("target/ripr/reports/agent-receipt.json"),
+                &forged_receipt_bytes,
+            )?;
+            write_receipt_fixture(
+                &root.join("target/ripr/workflow/agent-verify.json"),
+                &forged_verify_bytes,
+            )?;
+            let id = finished.repair_attempt_id.as_str();
+            let cli = forgery_cli_disposition(&root, id)?;
+            if cli != "unconfirmed" {
+                return Err(format!(
+                    "joint forgery must read unconfirmed over CLI, got {cli}"
+                ));
+            }
+            let mcp = forgery_mcp_status(&root, id)?;
+            if mcp == "improved" {
+                return Err("joint forgery must never claim improvement over MCP".to_string());
+            }
+            if mcp != "stale" {
+                return Err(format!("joint forgery must read stale over MCP, got {mcp}"));
+            }
+            Ok(())
+        })();
+        let cleanup = crate::testing::fixture_git::remove_fixture_tree(&root);
+        result.and(cleanup)
+    }
+
+    /// Repair-6(i) MCP parity: a never-promoted legacy projection reads
+    /// non-improved over MCP (`verification_pending`: no retained receipt
+    /// to project) while CLI reads it unconfirmed.
+    #[test]
+    fn mcp_legacy_noncanonical_pair_stays_non_improved() -> Result<(), String> {
+        use crate::testing::verify_fixture::{
+            mint_bound_receipt_pair, mint_repo_exposure_snapshot, snapshot_seam,
+        };
+
+        let root = unique_test_dir("mcp-legacy-noncanonical")?;
+        let result = (|| -> Result<(), String> {
+            let finished = begin_and_finish_forgery_attempt(&root)?;
+            let (receipt_bytes, verify_bytes) =
+                mint_bound_receipt_pair(&root, &finished, "improved")?;
+            write_receipt_fixture(
+                &root.join("target/ripr/reports/agent-receipt.json"),
+                &receipt_bytes,
+            )?;
+            write_receipt_fixture(
+                &root.join("target/ripr/workflow/agent-verify.json"),
+                &verify_bytes,
+            )?;
+            let after = mint_repo_exposure_snapshot(
+                &root,
+                json!([snapshot_seam(
+                    RECEIPT_FIXTURE_SEAM,
+                    "predicate_boundary",
+                    "src/lib.rs",
+                    1,
+                    "strongly_gripped",
+                )]),
+            )?;
+            write_receipt_fixture(
+                &root.join("target/ripr/workflow/after.json"),
+                after.as_bytes(),
+            )?;
+            let id = finished.repair_attempt_id.as_str();
+            let cli = forgery_cli_disposition(&root, id)?;
+            if cli != "unconfirmed" {
+                return Err(format!(
+                    "non-canonical legacy pair must read unconfirmed over CLI, got {cli}"
+                ));
+            }
+            let mcp = forgery_mcp_status(&root, id)?;
+            if mcp == "improved" {
+                return Err("legacy pair must never claim improvement over MCP".to_string());
+            }
+            if mcp != "verification_pending" {
+                return Err(format!(
+                    "legacy pair must read verification_pending over MCP, got {mcp}"
+                ));
+            }
+            Ok(())
+        })();
+        let cleanup = crate::testing::fixture_git::remove_fixture_tree(&root);
+        result.and(cleanup)
     }
 
     #[test]
