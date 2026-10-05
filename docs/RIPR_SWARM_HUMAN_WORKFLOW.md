@@ -25,19 +25,101 @@ The published `ripr` binary carries two advisory, JSON-only swarm commands that
 external schedulers can call without the repository's `xtask` automation:
 
 ```bash
-ripr swarm queue --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json --language python --top 10
+ripr swarm queue --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json --language rust --top 10
 ripr swarm ingest --root . --result target/ripr/workflow/agent-result.json
 ```
+
+`--language` defaults to `python`. That default is a valid queue invocation, not
+a reachable assignable route.
 
 `swarm queue` ranks GapRecord-backed packets that are already eligible for
 `ripr agent packet --gap-ledger ... --gap-id ...` and groups them by conflict
 group. Only candidates with `queue_state = queued` and
 `staleness_status = current` are assignable; the rest stay visible in
-`blocked_review`. `swarm ingest` classifies one agent result as `closed`,
+`blocked_review`.
+
+A packet is assignable only when the gap-decision ledger is derived from a
+canonical repo-exposure artifact on a **clean** checkout:
+
+```bash
+mkdir -p target/ripr/reports
+ripr check --root . --format repo-exposure-json > target/ripr/reports/repo-exposure.json
+ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --root . --out target/ripr/reports/gap-decision-ledger.json
+ripr swarm queue --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json --language rust --top 10
+```
+
+Today that path produces assignable packets for **Rust** only. Repo-scoped
+seams — and therefore GapRecords from `--repo-exposure` — are not rendered for
+Python or TypeScript; those formats emit `python_diff_first` /
+`typescript_diff_first` and `seams: []`. A dirty worktree on the Rust route
+yields `blocked_stale` (`repo-exposure source or selected checkout has tracked
+worktree changes`). See [Language adapter preview](LANGUAGE_ADAPTER_PREVIEW.md).
+The queue envelope and currentness rules are in
+[OUTPUT_SCHEMA.md](OUTPUT_SCHEMA.md); its abbreviated example uses the default
+`--language python` and is not a reachable assignable path.
+
+The other binary-native ledger route,
+`ripr reports gap-ledger --check-output ...`, is how Python and TypeScript diffs
+enter the ledger. Those records have no live snapshot authority: `swarm queue`
+and `ripr agent packet --gap-ledger` keep them in `blocked_review` /
+`status = "blocked"` with `staleness_status = "not_evaluated"`. Regenerating the
+same `--check-output` ledger does not make them assignable. That fail-closed
+classification is intentional; this workflow does not invent a non-Rust
+assignable queue.
+
+`swarm ingest` classifies one agent result as `closed`,
 `partially_improved`, `verify_failed`, `edited_forbidden_file`,
 `stopped_by_agent`, `stale_packet`, or `uncertain`, and never treats missing
 verify evidence as success. Neither command runs tests, edits files, or writes
-receipts. The `cargo xtask ripr-swarm` commands below are this repository's own
+receipts.
+
+`--result` is an **input** artifact, not the ingest output envelope. The
+canonical shape is pinned by
+[`fixtures/first_successful_pr/python-preview-gap/inputs/agent-results/closed.json`](../fixtures/first_successful_pr/python-preview-gap/inputs/agent-results/closed.json):
+
+```json
+{
+  "packet": {
+    "gap_id": "gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+    "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+    "allowed_files": ["tests/test_pricing.py"],
+    "forbidden_files": ["app/pricing.py"],
+    "staleness_status": "not_evaluated"
+  },
+  "attempt": {
+    "status": "completed",
+    "edited_files": ["tests/test_pricing.py"],
+    "verify": {
+      "status": "passed",
+      "exit_code": 0
+    }
+  },
+  "receipt": {
+    "path": ".ripr/receipts/python-threshold.json",
+    "provenance": {
+      "movement": "resolved",
+      "before_artifact": { "sha256": "..." },
+      "after_artifact": { "sha256": "..." }
+    }
+  }
+}
+```
+
+This fixture is the ingest input shape, not an assignable queue packet.
+`packet.staleness_status = "not_evaluated"` would keep the gap in
+`blocked_review` if queued. Ingest still classifies this example `closed`
+from passing verify plus `resolved` receipt movement; that advisory
+classification does not grant assignment authority. Ingest only treats
+`staleness_status` as `stale_packet` when the value is `stale` or
+`stale_packet`.
+
+Missing `attempt.verify` (or equivalent verify evidence) classifies as
+`uncertain`. Closure also needs recognized receipt movement such as `resolved`
+or `closed`, plus both before/after sha256 values. The ingest **output** envelope
+(`report: "swarm-ingest"`) is documented under `ripr swarm ingest` in
+[OUTPUT_SCHEMA.md](OUTPUT_SCHEMA.md).
+
+The `cargo xtask ripr-swarm` commands below are this repository's own
 automation around the same loop.
 
 ## Inputs
