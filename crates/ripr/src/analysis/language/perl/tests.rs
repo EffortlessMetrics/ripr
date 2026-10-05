@@ -4242,3 +4242,123 @@ fn perl_actionability_blocked_packet_explains_no_row() -> Result<(), String> {
     );
     Ok(())
 }
+
+/// #5421: the Perl adapter reads only the packet the caller supplied, so a
+/// packet declared partial qualifies the run even when the diff touches no
+/// Perl file and the packet yields no finding. The preview gate that drops an
+/// unrelated workspace scan's refusal must not drop this one.
+#[test]
+fn supplied_partial_packet_is_disclosed_on_a_rust_only_diff() -> Result<(), String> {
+    let limitations = partial_packet_outcome_limitations(
+        "rust-only",
+        "diff --git a/src/lib.rs b/src/lib.rs\n--- /dev/null\n+++ b/src/lib.rs\n@@ -0,0 +1 @@\n+pub fn discount(amount: u32) -> u32 {\n",
+    )?;
+    assert!(
+        limitations
+            .iter()
+            .any(|(_, detail)| detail.contains("packet partial")),
+        "a supplied partial Perl packet must stay disclosed on a Rust-only diff: {limitations:?}"
+    );
+    Ok(())
+}
+
+/// #5421 review: the kept packet limitation says nothing about the diff, so a
+/// non-empty diff with no parseable change is still reported as malformed.
+#[test]
+fn supplied_partial_packet_does_not_hide_a_malformed_diff() -> Result<(), String> {
+    let limitations =
+        partial_packet_outcome_limitations("malformed", "this is not a unified diff\n")?;
+    let kinds: Vec<&str> = limitations.iter().map(|(kind, _)| kind.as_str()).collect();
+    assert!(kinds.contains(&"malformed_diff"), "{limitations:?}");
+    assert!(
+        limitations
+            .iter()
+            .any(|(_, detail)| detail.contains("packet partial")),
+        "{limitations:?}"
+    );
+    Ok(())
+}
+
+/// Runs `check` with Perl enabled and a supplied, finding-free partial packet
+/// over `diff_text`; returns each outcome limitation as `(kind, detail)`.
+fn partial_packet_outcome_limitations(
+    name: &str,
+    diff_text: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| format!("system time: {error}"))?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "ripr-perl-partial-{name}-{}-{stamp}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(root.join("src")).map_err(|error| format!("create src: {error}"))?;
+    let proof = (|| -> Result<Vec<(String, String)>, String> {
+        let write = |path: &std::path::Path, text: &str| {
+            std::fs::write(path, text).map_err(|error| format!("write {}: {error}", path.display()))
+        };
+        write(
+            &root.join("src/lib.rs"),
+            "pub fn discount(amount: u32) -> u32 {\n    if amount > 10 { amount - 1 } else { amount }\n}\n",
+        )?;
+        let packet = r#"{
+  "schema_version": "ripr-perl-facts-v1",
+  "packet_id": "perl-facts:repo:partial-empty",
+  "packet_status": "partial",
+  "packet_fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "producer": {"name": "perl-lsp", "version": "0.0.0", "capabilities": ["syntax"]},
+  "root": {"repo_relative": ".", "vcs_head": "abc", "path_style": "repo_relative"},
+  "input": {"base": "origin/main", "head": "HEAD", "diff_id": null, "requested_fact_classes": []},
+  "files": [], "owners": [], "changes": [], "tests": [], "oracles": [],
+  "relations": [], "dynamic_boundaries": [], "verify_commands": [],
+  "limitations": [], "provenance": []
+}"#;
+        let facts = root.join("facts.json");
+        write(&facts, &bless_fingerprint(packet))?;
+        let diff = root.join("change.diff");
+        write(&diff, diff_text)?;
+        let config =
+            crate::config::tests_only_parse("[languages]\nenabled = [\"rust\", \"perl\"]\n")?;
+        let output = crate::app::check_workspace_with_config(
+            crate::CheckInput {
+                root: root.clone(),
+                base: None,
+                diff_file: Some(diff),
+                mode: crate::Mode::Draft,
+                format: crate::OutputFormat::Json,
+                include_unchanged_tests: false,
+                perl_facts_path: Some(facts),
+                suppression_policy: None,
+                git_timeout: None,
+                git_candidate: None,
+            },
+            &config,
+        )?;
+        let json = crate::render_check(&output, &crate::OutputFormat::Json)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|error| format!("parse: {error}"))?;
+        let limitations = value
+            .pointer("/analysis_outcome/outcome/limitations")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| format!("missing limitations: {json}"))?;
+        Ok(limitations
+            .iter()
+            .map(|entry| {
+                let text = |key: &str| {
+                    entry
+                        .get(key)
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned()
+                };
+                (text("kind"), text("bounded_detail"))
+            })
+            .collect())
+    })();
+    let cleanup = std::fs::remove_dir_all(&root)
+        .map_err(|error| format!("remove {}: {error}", root.display()));
+    let limitations = proof?;
+    cleanup?;
+    Ok(limitations)
+}
