@@ -25,7 +25,10 @@ BUILD = ("cargo", "build", "--locked", "-p", "xtask", "--message-format=json-ren
 OBSERVE = ("ci-budget", "--hard-enforcement-readiness")
 REPORT = ROOT / "target/ripr/reports/native-calibration-observer-artifact.json"
 # Measure the existing extent without a copy; retention separately needs admission.
-RETENTION_CAP = 256 * 1024 * 1024
+LEGACY_RETENTION_CAP = 256 * 1024 * 1024
+# Parent's explicit image-only admission: no trial/resource/time/profile increase.
+RETENTION_CAP = 272 * 1024 * 1024
+RETENTION_METADATA_HEADROOM = 196608
 CAPTURE_CAP = 8 * 1024 * 1024
 RECEIPT_CAP = 64 * 1024
 UNTIL = 0.0
@@ -258,26 +261,91 @@ def extent_controls():
             raise RuntimeError("metadata guard falsely accepted")
 
 
-def require_retention_admission(identity):
+def space_snapshot(base):
+    info = os.stat(base, follow_symlinks=False)
+    space = os.statvfs(base)
+    for value in (info.st_dev, space.f_bavail, space.f_frsize):
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise RuntimeError("observer retention filesystem observations unavailable")
+    if space.f_frsize == 0:
+        raise RuntimeError("observer retention filesystem fragment size unavailable")
+    return {"device": info.st_dev, "available_bytes": space.f_bavail * space.f_frsize,
+            "available_blocks": space.f_bavail, "fragment_size": space.f_frsize}
+
+
+def require_retention_admission(identity, allocated_bytes, space, ceiling=RETENTION_CAP):
     count = identity.get("bytes")
     if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
         raise RuntimeError("retention requires a positive actual image size")
-    if count > RETENTION_CAP:
-        raise RuntimeError(f"observer retention requires parent admission: actual_bytes={count}; admitted_bytes={RETENTION_CAP}")
+    if count > ceiling:
+        raise RuntimeError(f"observer retention requires parent admission: actual_bytes={count}; admitted_bytes={ceiling}")
+    if not isinstance(allocated_bytes, int) or isinstance(allocated_bytes, bool) or allocated_bytes < 0:
+        raise RuntimeError("observer image allocated bytes unavailable")
+    if allocated_bytes > ceiling:
+        raise RuntimeError(f"observer allocated image requires parent admission: allocated_bytes={allocated_bytes}; admitted_bytes={ceiling}")
+    available = space.get("available_bytes")
+    image_device, target_device = identity.get("device"), space.get("device")
+    for value in (available, image_device, target_device):
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise RuntimeError("observer retention free-space/device observations unavailable")
+    if target_device != image_device:
+        raise RuntimeError("observer retention is not on the same filesystem; no copy fallback")
+    required = max(count, allocated_bytes) + RETENTION_METADATA_HEADROOM
+    if available < required:
+        raise RuntimeError(f"insufficient observer retention headroom: available_bytes={available}; required_bytes={required}")
+    return {"admitted_extent_bytes": ceiling, "allocated_bytes": allocated_bytes,
+            "available_bytes": available, "required_headroom_bytes": required,
+            "filesystem_device": target_device}
 
 
 def retention_controls():
-    require_retention_admission({"bytes": RETENTION_CAP})
-    for count, expected in ((RETENTION_CAP + 1, "requires parent admission"),
-                            (0, "positive actual image size"),
-                            (True, "positive actual image size")):
+    def check(count, allocation=None, available=None, device=7, ceiling=RETENTION_CAP):
+        allocation = count if allocation is None else allocation
+        available = max(count, allocation) + RETENTION_METADATA_HEADROOM if available is None else available
+        return require_retention_admission({"bytes": count, "device": 7}, allocation,
+                                           {"device": device, "available_bytes": available}, ceiling)
+    check(LEGACY_RETENTION_CAP, ceiling=LEGACY_RETENTION_CAP)
+    check(RETENTION_CAP)
+    # Preserve the genuine original 256MiB refusal as an explicit legacy control.
+    for args, expected in (
+            ({"count": LEGACY_RETENTION_CAP + 1, "ceiling": LEGACY_RETENTION_CAP}, "requires parent admission"),
+            ({"count": 269988936, "allocation": 268689408, "ceiling": LEGACY_RETENTION_CAP}, "actual_bytes=269988936"),
+            ({"count": RETENTION_CAP + 1}, "requires parent admission"),
+            ({"count": 1, "allocation": RETENTION_CAP + 1}, "allocated image requires parent admission"),
+            ({"count": RETENTION_CAP, "available": RETENTION_CAP + RETENTION_METADATA_HEADROOM - 1}, "insufficient"),
+            ({"count": 1, "available": -1}, "observations unavailable"),
+            ({"count": 1, "device": 8}, "not on the same filesystem"),
+            ({"count": 0}, "positive actual image size"),
+            ({"count": True}, "positive actual image size"),
+            ({"count": 1, "allocation": -1}, "allocated bytes unavailable")):
         try:
-            require_retention_admission({"bytes": count})
+            check(**args)
         except RuntimeError as error:
             if expected not in str(error):
-                raise RuntimeError("retention cap control produced a wrong refusal") from error
+                raise RuntimeError("retention resource control produced a wrong refusal") from error
         else:
-            raise RuntimeError("retention admission falsely accepted")
+            raise RuntimeError("retention resource admission falsely accepted")
+
+
+def print_measurement(admitted, identity, original_stat, space, phase):
+    measurement = {"schema": "native_observer_image_measurement.2", "phase": phase,
+                   "head": admitted["head"], "tree": admitted["tree"],
+                   "build_argv": list(BUILD), "image": identity,
+                   "original_st_blocks": original_stat.st_blocks,
+                   "pinned_existing_allocation_forecast_bytes": original_stat.st_blocks * 512,
+                   "hard_link_added_image_data_forecast_bytes": 0,
+                   "receipt_directory_logical_forecast_bytes": RETENTION_METADATA_HEADROOM,
+                   "retention_admitted_extent_bytes": RETENTION_CAP,
+                   "legacy_retention_extent_bytes": LEGACY_RETENTION_CAP,
+                   "filesystem": space,
+                   "required_free_headroom_forecast_bytes": max(identity["bytes"], original_stat.st_blocks * 512) + RETENTION_METADATA_HEADROOM,
+                   "retention_state": "NOT_ATTEMPTED", "observation": "NOT_RUN", "full_trial": "NOT_RUN",
+                   "hard_provider": "NOT_ESTABLISHED",
+                   "zero_copy_semantics": "No data copy at link creation; a permitted link pins existing blocks until cleanup."}
+    text = json.dumps(measurement, sort_keys=True, separators=(",", ":"))
+    if len(text.encode("utf-8")) > 4096:
+        raise RuntimeError("existing image measurement exceeds diagnostic byte ceiling")
+    print("RIPR NATIVE OBSERVER IMAGE MEASUREMENT " + text, flush=True)
 
 
 def publish(receipt):
@@ -306,23 +374,21 @@ def prepare():
                                         ("device", "inode", "bytes", "mtime_ns", "mode")}:
         raise RuntimeError("Cargo image changed before retention measurement")
     same_source(admitted)
-    measurement = {"schema": "native_observer_image_measurement.1",
-                   "head": admitted["head"], "tree": admitted["tree"],
-                   "build_argv": list(BUILD), "image": identity,
-                   "original_st_blocks": original_stat.st_blocks,
-                   "pinned_existing_allocation_forecast_bytes": original_stat.st_blocks * 512,
-                   "hard_link_added_image_data_forecast_bytes": 0,
-                   "receipt_directory_logical_forecast_bytes": 2 * RECEIPT_CAP + 65536,
-                   "retention_admitted_extent_bytes": RETENTION_CAP,
-                   "retention_state": "NOT_ATTEMPTED", "observation": "NOT_RUN", "full_trial": "NOT_RUN",
-                   "hard_provider": "NOT_ESTABLISHED",
-                   "zero_copy_semantics": "No data copy at link creation; a permitted link pins existing blocks until cleanup."}
-    text = json.dumps(measurement, sort_keys=True, separators=(",", ":"))
-    if len(text.encode("utf-8")) > 4096:
-        raise RuntimeError("existing image measurement exceeds diagnostic byte ceiling")
-    print("RIPR NATIVE OBSERVER IMAGE MEASUREMENT " + text, flush=True)
-    require_retention_admission(identity)
-    directory = Path(tempfile.mkdtemp(prefix="ripr-native-observer-", dir=runner_temp()))
+    base = runner_temp()
+    space = space_snapshot(base)
+    print_measurement(admitted, identity, original_stat, space, "initial")
+    require_retention_admission(identity, original_stat.st_blocks * 512, space)
+    # Re-admit exact source, bytes and current space before creating retention.
+    same_source(admitted)
+    if image_hash(original) != identity:
+        raise RuntimeError("Cargo image changed before fresh retention admission")
+    fresh_stat = os.stat(original, follow_symlinks=False)
+    if image_identity(fresh_stat) != image_identity(original_stat) or fresh_stat.st_blocks != original_stat.st_blocks:
+        raise RuntimeError("Cargo image allocation or identity changed before retention")
+    fresh_space = space_snapshot(base)
+    print_measurement(admitted, identity, fresh_stat, fresh_space, "before_link")
+    retention = require_retention_admission(identity, fresh_stat.st_blocks * 512, fresh_space)
+    directory = Path(tempfile.mkdtemp(prefix="ripr-native-observer-", dir=base))
     image = directory / "xtask"
     try:
         os.link(original, image, follow_symlinks=False)
@@ -340,12 +406,14 @@ def prepare():
                "artifact_root": str(directory), "image": identity,
                "physical_retention": {"method": "exclusive_hard_link", "added_image_data_bytes": 0,
                     "admitted_extent_bytes": RETENTION_CAP,
+                    "legacy_extent_bytes": LEGACY_RETENTION_CAP,
+                    "resource_admission": retention,
                     "original_extent_bytes": identity["bytes"],
                     "pinned_existing_allocation_bytes": linked_stat.st_blocks * 512,
                     "source_mode_unchanged": linked_stat.st_mode == original_stat.st_mode,
                     "ctime_nlink_note": "Other-name link/unlink metadata may change; bytes/inode/extent/mtime remain bound.",
                     "snapshot_semantics": "NOT_IMMUTABLE; in-place modification refuses at sampled boundaries",
-                    "metadata_logical_forecast_bytes": 2 * RECEIPT_CAP + 65536},
+                    "metadata_logical_forecast_bytes": RETENTION_METADATA_HEADROOM},
                "cargo_artifact": artifact, "build_argv": list(BUILD),
                "build_elapsed_seconds": time.monotonic() - started,
                "runner_observation": {key: os.environ.get(key) for key in
