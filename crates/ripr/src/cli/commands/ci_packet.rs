@@ -188,7 +188,7 @@ impl Default for CiSettings {
 }
 
 impl CiSettings {
-    fn from_env() -> Result<Self, String> {
+    pub(super) fn from_env() -> Result<Self, String> {
         let var = |name: &str| std::env::var(name).unwrap_or_default();
         let event_path = var("GITHUB_EVENT_PATH");
         let event = if event_path.is_empty() {

@@ -24,65 +24,30 @@ use advisory_summary::ADVISORY_SUMMARY_STEP;
 /// blank line before it.
 const TEMPLATE_HEAD: &str = r#"name: RIPR
 
+# Each setting and step is explained in docs/CI.md in the ripr repository.
 on:
   pull_request:
-    # `labeled` and `unlabeled` re-run the gate when a waiver label such as
-    # `ripr-waive` is added or removed, since labels are read from the event.
-    # Any label change re-runs the job; the concurrency group below cancels
-    # the superseded run.
     types: [opened, synchronize, reopened, labeled, unlabeled]
   workflow_dispatch:
 
 permissions:
   contents: read
-  # Used only when RIPR_COMMENT_MODE is `inline`, to post review comments.
-  # With the default `off`, nothing writes to the pull request. Set this to
-  # `read` if you keep RIPR_COMMENT_MODE at `off`.
-  pull-requests: write
-  # Used only to upload SARIF to code scanning while RIPR_UPLOAD_SARIF is
-  # "true" (the default). Remove this line and set RIPR_UPLOAD_SARIF to
-  # "false" if the repository does not use code scanning.
-  security-events: write
+  pull-requests: write # inline comments only (RIPR_COMMENT_MODE=inline)
+  security-events: write # SARIF upload only (RIPR_UPLOAD_SARIF=true)
 
 env:
-  # Upload SARIF to GitHub Security tab when true. Disable with
-  # RIPR_UPLOAD_SARIF=false if your repo does not use code scanning.
   RIPR_UPLOAD_SARIF: "true"
-  # Gate authority for this workflow. Configure as a GitHub Actions
-  # repository variable (Settings > Secrets and variables > Actions >
-  # Variables). Empty (default) = advisory only, the job never fails.
-  # Allowed values:
-  #   visible-only     gate runs and prints, but does not block the job
-  #   acknowledgeable  gate runs; PR author can acknowledge to merge
-  #   baseline-check   gate fails if exposure is worse than the baseline
-  #   calibrated-gate  gate fails only on new, high-confidence,
-  #                    policy-eligible gaps; needs baseline and
-  #                    calibration inputs
-  # See docs/CALIBRATED_GATE_POLICY.md for the full policy.
+  # Repository variables. RIPR_GATE_MODE: empty (advisory), visible-only,
+  # acknowledgeable, baseline-check or calibrated-gate.
   RIPR_GATE_MODE: ${{ vars.RIPR_GATE_MODE || '' }}
-  # Optional path to a reviewed baseline ledger file, such as
-  # .ripr/gate-baseline.json, that baseline-check and calibrated-gate
-  # compare current evidence against. Empty by default.
   RIPR_GATE_BASELINE: ${{ vars.RIPR_GATE_BASELINE || '' }}
-  # PR review-comment publishing. Configure as a repository variable.
-  # Allowed values:
-  #   off     (default) no PR comments; findings only in artifacts
-  #   plan    compute and publish a comment plan; do not post inline
-  #   inline  publish inline review comments on changed lines (needs
-  #           pull-requests: write, which this workflow grants)
+  # RIPR_COMMENT_MODE: off, plan or inline.
   RIPR_COMMENT_MODE: ${{ vars.RIPR_COMMENT_MODE || 'off' }}
 
-# Every run step is bash (arrays, mktemp, [ -f ]). Pin the shell so the
-# steps still parse if a job is moved to windows-latest, whose default run
-# shell is PowerShell.
 defaults:
   run:
     shell: bash
 
-# One run per PR: a newer push cancels the older run. Only the newest head's
-# placements are valid, and two overlapping runs would each snapshot the
-# existing inline comments before either publishes, then both create the
-# same cards.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -91,52 +56,21 @@ jobs:
   ripr:
     name: RIPR advisory reports
     runs-on: ubuntu-latest
-    # The whole job is advisory (continue-on-error) unless RIPR_GATE_MODE
-    # is set to a blocking value. With the default empty/visible-only mode
-    # a failure here never fails the PR — set RIPR_GATE_MODE to opt in to
-    # blocking behaviour. See docs/CALIBRATED_GATE_POLICY.md.
+    # Advisory unless RIPR_GATE_MODE names a blocking mode.
     continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}
     steps:
-      # Analyze the PR head, not the default `refs/pull/N/merge` commit.
-      # Review comments and `::warning` annotations are placed on the PR
-      # head's lines; when the base branch has moved lines in a changed
-      # file, merge-commit line numbers point at the wrong line, and GitHub
-      # rejects the whole review when a line falls outside the PR diff.
-      # upload-sarif detects the head checkout and reports it as
-      # refs/pull/N/head. A manual run keeps the dispatched commit.
-      # No step pushes or fetches after checkout, so the job token is not
-      # left in .git/config where PR-controlled code (build scripts run by
-      # `cargo`, analyzed sources) could read it.
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }} # the PR head, where comments are placed
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: false # leaves no token in .git/config
 
-      # Every RIPR input under target/ripr and target/ci must come from this
-      # run. The gate, ledger, and policy steps read several files there only
-      # when present (sarif-policy, agent-verify, agent-receipt, calibration,
-      # coverage), and nothing in this workflow writes some of them, so a
-      # pull request could commit forged copies (`git add -f`). Remove both
-      # directories before the first RIPR step; steps you add later that
-      # write there still work. ripr's analysis cache lives outside the
-      # checkout (RIPR_CACHE_DIR, below), so this never discards it.
       - name: Remove checked-in RIPR artifacts
-        run: rm -rf target/ripr target/ci
+        run: rm -rf target/ripr target/ci # a pull request must not supply its own RIPR inputs
 
 @RIPR_PIN_FIRST_LINE@
-      # that version's commands and flags; an unpinned install takes the
-      # newest release, whose CLI may not match. To upgrade, install the
-      # newer ripr and compare `ripr init --ci github --force --dry-run`
-      # with this file.
-      #
-      # Downloads that release's prebuilt binary from GitHub Releases and
-      # checks it against the release's published SHA-256: seconds, where
-      # compiling ripr takes minutes. With no prebuilt binary for this
-      # runner (Windows, or a download failure), it falls back to
-      # `cargo install`, which needs Rust on the runner; without cargo the
-      # step fails and says how to fix it. A checksum mismatch fails the step
-      # instead. The summary step reads this step's outcome by its id.
+      # its commands. Downloads the prebuilt release and checks its SHA-256;
+      # with none for this runner, `cargo install` (needs Rust).
       - name: Install ripr
         id: install
         run: |
@@ -150,46 +84,30 @@ jobs:
           esac
           asset="ripr-server-v$version-$target.tar.gz"
           url="https://github.com/EffortlessMetrics/ripr/releases/download/v$version/$asset"
-          bin_dir="$RUNNER_TEMP/ripr-bin"
-          mkdir -p "$bin_dir"
-          if [ -n "$target" ] &&
-            curl -fsSL --retry 3 -o "$RUNNER_TEMP/$asset" "$url" &&
-            curl -fsSL --retry 3 -o "$RUNNER_TEMP/$asset.sha256" "$url.sha256"; then
-            expected="$(awk 'NR == 1 { print $1 }' "$RUNNER_TEMP/$asset.sha256")"
-            actual="$( { sha256sum "$RUNNER_TEMP/$asset" 2>/dev/null || shasum -a 256 "$RUNNER_TEMP/$asset"; } | awk '{ print $1 }')"
+          cd "$RUNNER_TEMP" && mkdir -p ripr-bin
+          if [ -n "$target" ] && curl -fsSL --retry 3 -O "$url" && curl -fsSL --retry 3 -O "$url.sha256"; then
+            expected="$(awk 'NR == 1 { print $1 }' "$asset.sha256")"
+            actual="$( { sha256sum "$asset" 2>/dev/null || shasum -a 256 "$asset"; } | awk '{ print $1 }')"
             if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
-              echo "::error::$asset does not match its published SHA-256 (expected ${expected:-nothing}, got $actual)"
-              exit 1
+              echo "::error::$asset does not match its published SHA-256 (expected ${expected:-nothing}, got $actual)"; exit 1
             fi
-            tar -xzf "$RUNNER_TEMP/$asset" -C "$bin_dir"
-            echo "$bin_dir" >> "$GITHUB_PATH"
+            tar -xzf "$asset" -C ripr-bin; echo "$RUNNER_TEMP/ripr-bin" >> "$GITHUB_PATH"
           else
-            why="no prebuilt ripr $version for $RUNNER_OS-$RUNNER_ARCH"
-            if [ -n "$target" ]; then why="downloading $url failed"; fi
+            why="no prebuilt ripr $version for $RUNNER_OS-$RUNNER_ARCH"; [ -z "$target" ] || why="downloading $url failed"
             if ! command -v cargo >/dev/null 2>&1; then
-              echo "::error::Cannot install ripr: $why, and this runner has no cargo to build it. Install Rust on the runner (https://rustup.rs) or add a Rust toolchain step before Install ripr."
-              exit 1
+              echo "::error::Cannot install ripr: $why, and this runner has no cargo to build it. Install Rust on the runner (https://rustup.rs) or add a Rust toolchain step before Install ripr."; exit 1
             fi
             echo "::notice::$why; building it with cargo install"
             cargo install ripr --version @RIPR_VERSION@ --locked
           fi
-          PATH="$bin_dir:$PATH" ripr --version
+          PATH="$RUNNER_TEMP/ripr-bin:$PATH" ripr --version
           echo "RIPR_CACHE_DIR=$RUNNER_TEMP/ripr-cache" >> "$GITHUB_ENV"
 
-      # Restores ripr's analysis cache, so a new push to a pull request
-      # reuses the facts of files it did not change. Entries are keyed on
-      # file contents, configuration, and the ripr version: an entry that no
-      # longer matches is a miss, never stale evidence. GitHub scopes a
-      # cache a pull request saves to that pull request, and the cache lives
-      # outside the checkout, so a pull request cannot commit one. Pinned to
-      # a commit SHA: this job holds a token with write scopes.
-      # actions/cache v6.1.0 = 55cc8345863c7cc4c66a329aec7e433d2d1c52a9.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; reuses unchanged files' analysis
         with:
           path: ${{ runner.temp }}/ripr-cache
           key: ripr-cache-@RIPR_VERSION@-${{ runner.os }}-${{ github.event.pull_request.head.sha || github.sha }}
-          restore-keys: |
-            ripr-cache-@RIPR_VERSION@-${{ runner.os }}-
+          restore-keys: ripr-cache-@RIPR_VERSION@-${{ runner.os }}-
 
       - name: Capture existing RIPR inline comments
         if: always() && github.event_name == 'pull_request' && env.RIPR_COMMENT_MODE != 'off'
@@ -197,50 +115,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p target/ripr/review
           gh api --paginate --slurp "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments" \
-            > target/ripr/review/existing-comments.raw.json
-          jq '{
-            schema_version: "0.1",
-            tool: "ripr",
-            kind: "pr_inline_comment_existing_comments",
-            comments: [
-              .[]?[]?
-              # Only comments this workflow posted: it publishes with
-              # github.token, whose author is github-actions[bot]. Anyone can
-              # write the marker; a marked comment from another author must
-              # not suppress a RIPR card or be PATCHed by this job.
-              | select(.user.login == "github-actions[bot]" and .user.type == "Bot")
-              | select((.body // "") | contains("<!-- ripr:dedupe="))
-              | (.body // "") as $body
-              | {
-                  comment_id: .id,
-                  dedupe_key: ($body | capture("<!-- ripr:dedupe=(?<key>.*?)(?: presentation=[^ ]+)? -->").key),
-                  path: .path,
-                  line: (.line // .original_line),
-                  side: (.side // "RIGHT"),
-                  body: (
-                    if ($body | contains(" presentation=compact-v1 -->")) then
-                      (($body | [capture("<details><summary>Full RIPR repair card</summary>\n\n(?<card>.*)\n\n</details>"; "m").card][0]) // "__ripr_compact_presentation_unreadable__")
-                    else
-                      "__ripr_legacy_presentation__"
-                    end
-                  ),
-                  outdated: (.position == null and .line == null)
-                }
-            ]
-          }' target/ripr/review/existing-comments.raw.json \
-            > target/ripr/review/existing-comments.json
+            | ripr pr-comments existing --root . --raw -
 
-      # One command runs the RIPR steps in order: the pilot packet, the
-      # agent-loop start, the PR diff capture and guidance, the inline
-      # comment plan, SARIF and badge renders, the gate when RIPR_GATE_MODE
-      # is set, the policy and PR ledgers, start-here, the report index, and
-      # changed-line annotations. Each step prints as a log group, and an
-      # advisory step's failure is logged without stopping the rest. The
-      # command fails when the diff capture or the gate fails, or when a gate
-      # input fails under a blocking RIPR_GATE_MODE. It reads no token; the
-      # comment steps around it hold that. `ripr help reports` has the details.
       - name: Run RIPR
         run: ripr reports ci-packet --root .
 
@@ -250,103 +127,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          plan=target/ripr/review/comment-publish-plan.json
-          if ! jq -e '.summary.safe_to_publish == true' "$plan" >/dev/null; then
-            echo "RIPR inline comments were not published because the publish plan is not safe."
-            # Messages can quote repository paths; fold CR/LF so a path
-            # cannot start a new line that GitHub reads as a workflow command.
-            jq -r '.blocked[]? | "- \(.blocked_reason): \(.message)" | gsub("[\r\n]"; " ")' "$plan" || true
-            exit 0
-          fi
-
-          publishable="$(mktemp)"
-          jq '
-            def captured($regex; $flags): [capture($regex; $flags).value][0] // null;
-            def code_span_line($label): captured("\n" + $label + ":\n(?<value>(?<fence>`+)[^`\n](?:[^\n]*[^`\n])?\\k<fence>)(?:\n|$)"; "");
-            def compact_body:
-              .body as $full
-              | ($full | captured("^### ripr gap: (?<value>[^\n]+)"; "") // "repairable gap") as $gap
-              | ($full | captured("\nRepair:\n(?<value>[^\n]+)"; "") // "Follow the bounded repair route in the RIPR artifact.") as $repair
-              | ($full | code_span_line("Start the repair")) as $start
-              | ($full | code_span_line("Verify") // "`ripr agent verify`") as $verify
-              | (if $start then "Start the repair: \($start)" else "Verify: \($verify)" end) as $next
-              | "**ripr: \($gap)** — \($repair)\n\n\($next)\n\n<details><summary>Full RIPR repair card</summary>\n\n\($full)\n\n</details>\n\n<!-- ripr:dedupe=\(.dedupe_key) presentation=compact-v1 -->";
-            [
-              .operations[]?
-              | select(.safe_to_publish == true)
-              | select(.operation == "create" or .operation == "update" or .operation == "keep")
-              | . + {published_body: compact_body}
-            ]
-          ' "$plan" > "$publishable"
-
-          review_body="$(jq -r '
-            (.summary.publishable // 0) as $inline
-            | ((.summary.summary_only // 0) + ([.skipped[]? | select(.skip_reason == "inline_comment_cap_reached" or .skip_reason == "comment_body_too_large")] | length)) as $additional
-            | (.summary.suppressed // 0) as $suppressed
-            | (if $inline == 1 then "" else "s" end) as $inline_suffix
-            | (if $additional == 1 then "" else "s" end) as $additional_suffix
-            | (if $suppressed == 1 then "" else "s" end) as $suppressed_suffix
-            | "RIPR surfaced \($inline) line-placed recommendation\($inline_suffix)."
-              + (if $additional > 0 then "\n\n\($additional) additional recommendation\($additional_suffix) remain in the generated `target/ripr/review/comments.json` and `target/ripr/review/comments.md` artifacts." else "" end)
-              + (if $suppressed > 0 then "\n\n\($suppressed) suppressed recommendation\($suppressed_suffix) remain visible there with reasons." else "" end)
-              + "\n\nAdvisory static evidence only; gate authority remains separate."
-          ' "$plan")"
-
-          create_count="$(jq '[.[] | select(.operation == "create")] | length' "$publishable")"
-          update_count="$(jq '[.[] | select(.operation == "update")] | length' "$publishable")"
-          additional_count="$(jq '(.summary.summary_only // 0) + ([.skipped[]? | select(.skip_reason == "inline_comment_cap_reached" or .skip_reason == "comment_body_too_large")] | length)' "$plan")"
-          suppressed_count="$(jq '.summary.suppressed // 0' "$plan")"
-
-          jq -c '.[] | select(.operation == "update")' "$publishable" \
-            | while IFS= read -r operation; do
-                comment_id="$(jq -r '.existing_comment_id' <<< "$operation")"
-                dedupe_key="$(jq -r '.dedupe_key | tostring | gsub("[\r\n]"; " ")' <<< "$operation")"
-                body="$(jq -r '.published_body' <<< "$operation")"
-                payload="$(mktemp)"
-                jq -n --arg body "$body" '{body: $body}' > "$payload"
-                gh api --method PATCH "repos/${{ github.repository }}/pulls/comments/$comment_id" --input "$payload" >/dev/null
-                echo "Updated RIPR inline comment: $dedupe_key"
-              done
-
-          review_required=false
-          if [ "$create_count" -gt 0 ] || { [ "$update_count" -gt 0 ] && { [ "$additional_count" -gt 0 ] || [ "$suppressed_count" -gt 0 ]; }; }; then
-            review_required=true
-          fi
-          if [ "$review_required" = true ]; then
-            payload="$(mktemp)"
-            jq -n \
-              --arg body "$review_body" \
-              --arg commit_id "${{ github.event.pull_request.head.sha }}" \
-              --argjson create_count "$create_count" \
-              --slurpfile operations "$publishable" \
-              '({
-                body: $body,
-                event: "COMMENT",
-                commit_id: $commit_id
-              } + if $create_count > 0 then {
-                comments: [
-                  $operations[0][]
-                  | select(.operation == "create")
-                  | {
-                      path: .placement.path,
-                      line: .placement.line,
-                      side: (.placement.side // "RIGHT"),
-                      body: .published_body
-                    }
-                ]
-              } else {} end)' > "$payload"
-            gh api --method POST "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" --input "$payload" >/dev/null
-            if [ "$create_count" -gt 0 ]; then
-              echo "Created one RIPR review with $create_count inline comment(s)."
-            else
-              echo "Created one RIPR review summary after $update_count inline comment update(s)."
-            fi
-          fi
-
-          jq -r '.[] | select(.operation == "keep") | .dedupe_key | tostring | gsub("[\r\n]"; " ")' "$publishable" \
-            | while IFS= read -r dedupe_key; do
-                echo "RIPR inline comment already current: $dedupe_key"
-              done
+          ripr pr-comments requests --root . --pull-request "${{ github.event.pull_request.number }}" --head-sha "${{ github.event.pull_request.head.sha }}"
+          while IFS=$'\t' read -r method endpoint request message; do
+            gh api --method "$method" "repos/${{ github.repository }}/$endpoint" --input "$request" </dev/null >/dev/null
+            echo "$message"
+          done < target/ripr/review/publish/requests.tsv
 
 "#;
 
@@ -358,21 +143,14 @@ const TEMPLATE_TAIL: &str = r#"      - name: Upload RIPR report artifacts
         with:
           name: ripr-reports
           path: |
-            target/ripr/pilot
-            target/ripr/agent
-            target/ripr/workflow
-            target/ripr/reports
-            target/ripr/review
+            target/ripr
             target/ci
           if-no-files-found: ignore
           retention-days: 14
 
       - name: Upload RIPR diff findings
         if: always() && env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request' && hashFiles('target/ripr/reports/ripr-findings.sarif') != ''
-        # Upload infra is not analysis authority (#2009 review): a CodeQL
-        # flake must not fail a gate the analysis passed. Renders (the
-        # analysis) stay gate-conditional; uploads stay advisory.
-        continue-on-error: true
+        continue-on-error: true # a code-scanning outage must not fail the gate (#2009)
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: target/ripr/reports/ripr-findings.sarif
@@ -453,7 +231,7 @@ fn install_pin_first_line(generator_version: &str, pinned: &str) -> String {
         RELEASED_PIN_FIRST_LINE.to_string()
     } else {
         format!(
-            "      # Pinned to released ripr {pinned}: the generating ripr ({generator_version}) is unreleased."
+            "      # Pinned to released ripr {pinned} ({generator_version} is unreleased). The steps below use"
         )
     }
 }
@@ -560,13 +338,16 @@ mod template_pin_tests {
     /// shell with `ripr reports ci-summary`. #5208 replaced the pin-comment
     /// first line with the `@RIPR_PIN_FIRST_LINE@` placeholder (the only
     /// template-bytes change on top of #5236; see the diff), merged with the
-    /// #5428 ci-packet step replacement, and re-measured the hash below.
+    /// #5428 ci-packet step replacement. #5409 moved the comment JSON work
+    /// into `ripr pr-comments existing|requests`, the summary flags into the
+    /// workflow env, and the setting docs into docs/CI.md (385 → 150 rendered
+    /// lines), and re-measured the hash below.
     /// The unrendered template is the stable identity:
     /// rendering additionally substitutes the install version, the pin
     /// first line, and artifact paths, which the `generated_workflow_*` and
     /// `install_version_*` tests pin at the rendered level.
     const TEMPLATE_SHA256: &str =
-        "5c7deac5ccfe5b7c29a127108eb536d19f77f14d6905a62e26c88ca4c9eff44b";
+        "1126e0e4b728332ff969abb54c422f65ef238e87d8aa0bfa104a8247e5de91b8";
 
     #[test]
     fn template_matches_the_pinned_bytes() {
@@ -702,7 +483,7 @@ mod install_version_tests {
         );
         assert!(
             workflow.contains(&format!(
-                "      # Pinned to released ripr {LATEST_RELEASED_VERSION}: the generating ripr ({future}) is unreleased.\n"
+                "      # Pinned to released ripr {LATEST_RELEASED_VERSION} ({future} is unreleased). The steps below use\n"
             )),
             "missing honest comment"
         );

@@ -1204,11 +1204,12 @@ See [PR inline comment publisher workflow](PR_INLINE_COMMENT_PUBLISHER_WORKFLOW.
 for rollout guidance, publish-plan review, fork and permission behavior,
 dedupe/upsert expectations, and rollback.
 
-The generated workflow also captures existing RIPR inline-comment metadata,
-checks the publish plan's `safe_to_publish` result, and only calls GitHub for
-safe create/update operations in explicit `inline` mode. Read those steps in
-the output of `ripr init --ci github --dry-run`; this page does not keep a copy
-because a copy drifts from what the command writes.
+The generated workflow also captures existing RIPR inline-comment metadata
+(`ripr pr-comments existing`), turns the publish plan into GitHub API requests
+(`ripr pr-comments requests`, which writes none unless the plan is safe to
+publish), and only calls GitHub for them in explicit `inline` mode. Read those
+steps in the output of `ripr init --ci github --dry-run`; this page does not
+keep a copy because a copy drifts from what the command writes.
 
 One step is kept here because a test holds it byte-equal to the template: the
 step that runs the analysis and report steps with one command. The token-holding
@@ -1225,6 +1226,103 @@ failure rules, and `--step NAME` reruns one step locally.
         run: ripr reports ci-packet --root .
 ```
 
+#### Generated workflow settings and steps
+
+The generated file keeps one-line comments and points here for the reasons
+behind each setting (#5409). Each entry below is what the file used to say
+inline.
+
+Repository variables (Settings > Secrets and variables > Actions > Variables)
+configure the workflow, so changing a mode never means editing the file:
+
+- `RIPR_GATE_MODE` is the gate authority. Empty (the default) is advisory only
+  and the job never fails. `visible-only` runs the gate and prints its result
+  without blocking the job. `acknowledgeable` runs the gate and lets the PR
+  author acknowledge a finding to merge. `baseline-check` fails when exposure
+  is worse than the baseline. `calibrated-gate` fails only on new,
+  high-confidence, policy-eligible gaps and needs baseline and calibration
+  inputs. See [calibrated gate policy](CALIBRATED_GATE_POLICY.md).
+- `RIPR_GATE_BASELINE` is an optional path to a reviewed baseline ledger file,
+  such as `.ripr/gate-baseline.json`, that `baseline-check` and
+  `calibrated-gate` compare current evidence against. Empty by default.
+- `RIPR_COMMENT_MODE` controls PR review comments. `off` (the default) posts
+  nothing and leaves findings in artifacts; `plan` computes and uploads a
+  comment plan without posting; `inline` publishes inline review comments on
+  changed lines.
+- `RIPR_UPLOAD_SARIF` is set in the file, not as a variable. `"true"` uploads
+  SARIF to the Security tab; set `"false"` if the repository does not use code
+  scanning.
+
+Permissions and job settings:
+
+- `pull-requests: write` is used only when `RIPR_COMMENT_MODE` is `inline`.
+  With `off`, nothing writes to the pull request; set it to `read` if you keep
+  comments off.
+- `security-events: write` is used only for the SARIF upload. Remove it and set
+  `RIPR_UPLOAD_SARIF` to `"false"` if the repository does not use code
+  scanning.
+- `labeled` and `unlabeled` re-run the gate when a waiver label such as
+  `ripr-waive` is added or removed, since the gate reads labels from the event.
+  Any label change re-runs the job, and the concurrency group cancels the
+  superseded run.
+- Every run step is bash (`$'\t'` in the publish loop), so `defaults.run.shell`
+  pins bash; the steps still parse if the job moves to `windows-latest`, whose
+  default shell is PowerShell.
+- One run per pull request: a newer push cancels the older run. Only the
+  newest head's placements are valid, and two overlapping runs would each
+  snapshot the existing inline comments before either publishes, then both
+  create the same cards.
+- The job is `continue-on-error` unless `RIPR_GATE_MODE` names a blocking mode,
+  so with the default empty or `visible-only` mode a failure never fails the
+  PR.
+
+Steps:
+
+- **Checkout** analyzes the PR head, not GitHub's `refs/pull/N/merge` commit.
+  Review comments and `::warning` annotations are placed on the PR head's
+  lines; when the base branch has moved lines in a changed file, merge-commit
+  line numbers point at the wrong line, and GitHub rejects the whole review when
+  a line falls outside the PR diff. `upload-sarif` detects the head checkout and
+  reports it as `refs/pull/N/head`. A manual run keeps the dispatched commit.
+  `persist-credentials: false` leaves no token in `.git/config`, where
+  PR-controlled code (build scripts, analyzed sources) could read it; no step
+  pushes or fetches after checkout.
+- **Remove checked-in RIPR artifacts** deletes `target/ripr` and `target/ci`
+  before the first RIPR step. The gate, ledger, and policy steps read several
+  files there only when present (sarif-policy, agent-verify, agent-receipt,
+  calibration, coverage), and nothing in the workflow writes some of them, so a
+  pull request could commit forged copies (`git add -f`). Steps you add later
+  that write there still work. ripr's analysis cache lives outside the
+  checkout, so the cleanup never discards it.
+- **Install ripr** pins the version whose commands the steps use; an unpinned
+  install takes the newest release, whose CLI may not match. It downloads that
+  release's prebuilt binary and checks it against the published SHA-256, falls
+  back to `cargo install` where there is no prebuilt binary, and fails with the
+  fix when the runner has no cargo. The summary step reads this step's outcome
+  by its id.
+- **actions/cache** restores ripr's analysis cache. Entries are keyed on file
+  contents, configuration, and the ripr version, so an entry that no longer
+  matches is a miss, never stale evidence. GitHub scopes a cache a pull request
+  saves to that pull request, and the cache lives outside the checkout, so a
+  pull request cannot commit one. The action is pinned to a commit SHA because
+  the job holds a token with write scopes.
+- **Capture existing RIPR inline comments** pipes the pull request's review
+  comments into `ripr pr-comments existing`, which keeps only comments the
+  workflow posted (author `github-actions[bot]`, type `Bot`) that carry a
+  `ripr:dedupe` marker. Anyone can write the marker; a marked comment from
+  another author must not suppress a RIPR card or be PATCHed by this job.
+- **Run RIPR** is the one command above. It reads no token; the comment steps
+  around it hold that.
+- **Publish RIPR inline comments** runs `ripr pr-comments requests`, which turns
+  the publish plan into an ordered list of GitHub API requests (updates first,
+  then one review for new cards), and the step sends each one with `gh api`.
+  ripr writes no request when the plan is not safe to publish, and folds CR/LF
+  in every message it prints so a repository path cannot start a line GitHub
+  reads as a workflow command.
+- **Upload RIPR diff findings** stays `continue-on-error`: upload infrastructure
+  is not analysis authority (#2009), so a code-scanning outage must not fail a
+  gate the analysis passed.
+
 For a first rollout, treat code-scanning annotations as review guidance. Do not
 make the job blocking until the repository has reviewed its initial SARIF
 baseline, tuned `ripr.toml`, and decided which configured-warning results should
@@ -1232,10 +1330,8 @@ fail CI. The `cargo xtask sarif-policy` baseline modes shown above are
 repo-local automation today; a public package-level policy command is a future
 adoption surface.
 
-The generated workflow always uploads `target/ripr/pilot`,
-`target/ripr/workflow`, `target/ripr/agent`, `target/ripr/reports`,
-`target/ripr/review`, and `target/ci` as a `ripr-reports` artifact when files
-exist. When `RIPR_GATE_BASELINE` is set and gate evaluation writes
+The generated workflow always uploads `target/ripr` and `target/ci` as a
+`ripr-reports` artifact when files exist. When `RIPR_GATE_BASELINE` is set and gate evaluation writes
 `target/ripr/reports/gate-decision.json`, the workflow also runs
 `ripr baseline diff`, then `ripr zero status`, and includes:
 

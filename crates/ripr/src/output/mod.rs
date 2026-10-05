@@ -50,6 +50,7 @@ pub(crate) mod policy_preview_promotion;
 pub(crate) mod policy_promotion;
 pub(crate) mod policy_readiness;
 pub(crate) mod pr_evidence_ledger;
+pub(crate) mod pr_inline_comment_github;
 pub(crate) mod pr_inline_comment_publish_plan;
 pub(crate) mod pr_review_front_panel;
 pub(crate) mod preview_actionability;

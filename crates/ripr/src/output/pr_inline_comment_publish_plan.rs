@@ -732,7 +732,8 @@ fn add_comment_item_plan(
 }
 
 /// Upper bound, in UTF-8 bytes, of the body the generated workflow publishes
-/// for `body`. Its `compact_body` jq wraps the full plan body with a bold line
+/// for `body`. `output::pr_inline_comment_github::compact_body` (once the
+/// workflow's jq, #5409) wraps the full plan body with a bold line
 /// built from the gap title, the first Repair line, and the start or verify
 /// line (disjoint parts of `body`, so at most `body` again), plus fixed text
 /// and the dedupe key.

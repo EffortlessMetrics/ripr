@@ -454,8 +454,8 @@ mod tests {
             "the workflow must pin bash for every job:\n{workflow}"
         );
         assert!(
-            workflow.contains("<<< \"$operation\""),
-            "bash-only syntax (a here-string) the pin protects"
+            workflow.contains("IFS=$'\\t'"),
+            "bash-only syntax (ANSI-C quoting) the pin protects"
         );
     }
 
@@ -548,9 +548,9 @@ mod tests {
             "macOS-ARM64) target=aarch64-apple-darwin ;;",
             r#"asset="ripr-server-v$version-$target.tar.gz""#,
             r#"url="https://github.com/EffortlessMetrics/ripr/releases/download/v$version/$asset""#,
-            r#"curl -fsSL --retry 3 -o "$RUNNER_TEMP/$asset.sha256" "$url.sha256"; then"#,
+            r#"curl -fsSL --retry 3 -O "$url.sha256"; then"#,
             r#"if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then"#,
-            r#"echo "$bin_dir" >> "$GITHUB_PATH""#,
+            r#"echo "$RUNNER_TEMP/ripr-bin" >> "$GITHUB_PATH""#,
         ] {
             assert!(install.contains(needle), "install step missing {needle}");
         }

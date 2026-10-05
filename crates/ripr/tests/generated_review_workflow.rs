@@ -30,29 +30,79 @@ fn generated_workflow_batches_compact_review_comments() -> Result<(), Box<dyn Er
     );
 
     let workflow = fs::read_to_string(root.join(".github/workflows/ripr.yml"))?;
-    let review_endpoint = "gh api --method POST \"repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews\"";
-    let legacy_create_endpoint = "gh api --method POST \"repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments\"";
-    let update_endpoint =
-        "gh api --method PATCH \"repos/${{ github.repository }}/pulls/comments/$comment_id\"";
-    assert_eq!(workflow.matches(review_endpoint).count(), 1);
-    assert!(!workflow.contains(legacy_create_endpoint));
-    assert!(workflow.contains(update_endpoint));
-    assert!(workflow.contains("event: \"COMMENT\""));
-    assert!(workflow.contains("comments: ["));
-    assert!(workflow.contains("<details><summary>Full RIPR repair card</summary>"));
-    assert!(workflow.contains("presentation=compact-v1"));
-    // #3906: a card that carries the repair start leads the compact comment
-    // with it; only cards without one fall back to the Verify line.
-    assert!(workflow.contains(r#"($full | code_span_line("Start the repair")) as $start"#));
-    assert!(workflow.contains(
-        r#"(if $start then "Start the repair: \($start)" else "Verify: \($verify)" end) as $next"#
+    // #5409: ripr builds the requests; the step replays them with `gh api`
+    // against the repository only, and never builds a body in shell.
+    let publish = workflow_step_block(&workflow, "Publish RIPR inline comments")
+        .ok_or("missing publish step")?;
+    assert!(publish.contains(
+        "ripr pr-comments requests --root . --pull-request \"${{ github.event.pull_request.number }}\" --head-sha \"${{ github.event.pull_request.head.sha }}\""
     ));
-    assert!(workflow.contains("__ripr_legacy_presentation__"));
-    assert!(workflow.contains("__ripr_compact_presentation_unreadable__"));
-    assert!(workflow.contains("additional recommendation"));
-    assert!(workflow.contains("target/ripr/review/comments.json"));
-    assert!(workflow.contains("target/ripr/review/comments.md"));
-    assert!(workflow.contains("Created one RIPR review with $create_count inline comment(s)."));
+    assert!(publish.contains(
+        "gh api --method \"$method\" \"repos/${{ github.repository }}/$endpoint\" --input \"$request\" </dev/null >/dev/null"
+    ));
+    assert!(!workflow.contains("jq "));
+
+    let update_body = "### ripr gap: stale\n\nRepair:\nAdd one.\n\nVerify:\n`ripr agent verify`";
+    let plan = serde_json::json!({
+        "summary": {"safe_to_publish": true, "publishable": 3, "summary_only": 0, "suppressed": 0},
+        "operations": [
+            {"operation": "create", "safe_to_publish": true, "dedupe_key": "ripr:a",
+             "placement": {"path": "src/lib.rs", "line": 1}, "body": "### ripr gap: a\n\nRepair:\nAdd a.\n"},
+            {"operation": "update", "safe_to_publish": true, "dedupe_key": "ripr:b",
+             "existing_comment_id": 77, "body": update_body},
+            {"operation": "create", "safe_to_publish": true, "dedupe_key": "ripr:c",
+             "placement": {"path": "src/lib.rs", "line": 9, "side": "RIGHT"}, "body": "### ripr gap: c\n"}
+        ]
+    });
+    let (requests, stdout) = run_pr_comments_requests(&root, &plan)?;
+    let calls: Vec<(&str, &str)> = requests
+        .iter()
+        .map(|request| (request.method.as_str(), request.endpoint.as_str()))
+        .collect();
+    // Updates go first, then exactly one review creates every new card; the
+    // legacy one-comment-per-call endpoint is never used.
+    assert_eq!(
+        calls,
+        vec![("PATCH", "pulls/comments/77"), ("POST", "pulls/42/reviews")]
+    );
+    let review = &requests[1].payload;
+    assert_eq!(review["event"], "COMMENT");
+    assert_eq!(review["commit_id"], "0123abcd");
+    assert_eq!(review["comments"].as_array().map(Vec::len), Some(2));
+    let created = review["comments"][0]["body"].as_str().unwrap_or_default();
+    assert!(
+        created.contains("<details><summary>Full RIPR repair card</summary>"),
+        "{created}"
+    );
+    assert!(
+        created.ends_with("<!-- ripr:dedupe=ripr:a presentation=compact-v1 -->"),
+        "{created}"
+    );
+    assert!(
+        requests[0].payload["body"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("**ripr: stale** — Add one.\n\nVerify: `ripr agent verify`")
+    );
+    assert_eq!(
+        requests[1].message,
+        "Created one RIPR review with 2 inline comment(s)."
+    );
+    assert_eq!(requests[0].message, "Updated RIPR inline comment: ripr:b");
+    assert!(stdout.is_empty(), "{stdout}");
+
+    // An unsafe plan writes no request at all and says why.
+    let unsafe_plan = serde_json::json!({
+        "summary": {"safe_to_publish": false},
+        "operations": plan["operations"].clone(),
+        "blocked": [{"blocked_reason": "missing_write_permission", "message": "read-only token"}]
+    });
+    let (requests, stdout) = run_pr_comments_requests(&root, &unsafe_plan)?;
+    assert!(requests.is_empty(), "{requests:?}");
+    assert!(
+        stdout.contains("- missing_write_permission: read-only token"),
+        "{stdout}"
+    );
 
     fs::remove_dir_all(root)?;
     Ok(())
@@ -1366,7 +1416,13 @@ fn generated_workflow_places_findings_on_pr_head_lines_when_base_moved()
     let checkout_ref = checkout
         .lines()
         .find_map(|line| line.trim().strip_prefix("ref:"))
-        .map(str::trim);
+        // A trailing YAML comment is not part of the value.
+        .map(|value| {
+            value
+                .split_once(" # ")
+                .map_or(value, |(value, _)| value)
+                .trim()
+        });
     let checkout_sha = match checkout_ref {
         None => merge_sha.clone(),
         Some("${{ github.event.pull_request.head.sha || github.sha }}") => head_sha.clone(),
@@ -2595,13 +2651,12 @@ fn generated_capture_step_runs_end_to_end() -> Result<(), Box<dyn Error>> {
 #[cfg(unix)]
 #[test]
 fn generated_existing_comment_capture_reads_keys_with_spaces() -> Result<(), Box<dyn Error>> {
-    let tools = run_sh(
-        "command -v bash >/dev/null && command -v jq >/dev/null",
-        std::env::temp_dir().as_path(),
-    )?;
-    if !tools.status.success() {
+    if !run_sh("command -v bash >/dev/null", std::env::temp_dir().as_path())?
+        .status
+        .success()
+    {
         eprintln!(
-            "skipping generated_existing_comment_capture_reads_keys_with_spaces: bash or jq missing"
+            "skipping generated_existing_comment_capture_reads_keys_with_spaces: bash missing"
         );
         return Ok(());
     }
@@ -2654,15 +2709,28 @@ fn generated_existing_comment_capture_reads_keys_with_spaces() -> Result<(), Box
         json_string(forged_user_body),
         json_string(forged_bot_body)
     );
-    fs::create_dir_all(root.join("target/ripr/review"))?;
-    fs::write(
-        root.join("target/ripr/review/existing-comments.raw.json"),
-        raw,
-    )?;
+    // A stand-in `gh` prints the pages, so the step runs as written: its
+    // output piped into the ripr under test.
+    let bin = root.join("stand-in-bin");
+    fs::create_dir_all(&bin)?;
+    fs::write(root.join("pages.json"), &raw)?;
+    fs::write(bin.join("gh"), "#!/bin/sh\ncat \"$PAGES\"\n")?;
+    let ripr_dir = std::path::Path::new(env!("CARGO_BIN_EXE_ripr"))
+        .parent()
+        .ok_or("ripr binary has no directory")?;
+    let script = format!(
+        "chmod +x '{bin}/gh'\nexport PAGES='{pages}' PATH='{bin}:{ripr}':\"$PATH\"\n{script}",
+        bin = bin.display(),
+        pages = root.join("pages.json").display(),
+        ripr = ripr_dir.display(),
+    );
 
     let run = run_sh(&script, &root)?;
     let captured = fs::read_to_string(root.join("target/ripr/review/existing-comments.json"));
+    // The step keeps the raw pages beside the normalized file for the upload.
+    let raw_copy = fs::read_to_string(root.join("target/ripr/review/existing-comments.raw.json"));
     let _ = fs::remove_dir_all(&root);
+    assert_eq!(raw_copy.ok().as_deref(), Some(raw.as_str()));
     assert!(
         run.status.success(),
         "capture script failed: {}",
@@ -2756,29 +2824,24 @@ fn generated_cleanup_step_removes_checked_in_ripr_artifacts() -> Result<(), Box<
     Ok(())
 }
 
-/// The capture step's `run:` body after its `gh api` fetch, which the test
-/// replaces with a fixture page file.
+/// The capture step's `run:` body with its GitHub expressions filled in.
 #[cfg(unix)]
 fn existing_comment_capture_script(workflow: &str) -> Result<String, String> {
-    let marker = "- name: Capture existing RIPR inline comments";
-    let start = workflow
-        .find(marker)
+    let block = workflow_step_block(workflow, "Capture existing RIPR inline comments")
         .ok_or("missing existing-comment step")?;
-    let rest = &workflow[start..];
     let run_marker = "\n        run: |\n";
-    let run_at = rest
-        .find(run_marker)
+    let body = block
+        .split_once(run_marker)
+        .map(|(_, body)| body)
         .ok_or("missing existing-comment run")?;
-    let body = &rest[run_at + run_marker.len()..];
-    let end = body
-        .find("\n      - name:")
-        .ok_or("existing-comment step does not end")?;
-    let body = &body[..end];
-    let fetch_end = "> target/ripr/review/existing-comments.raw.json\n";
-    let jq_at = body
-        .find(fetch_end)
-        .ok_or("existing-comment step does not fetch into the raw file")?;
-    Ok(body[jq_at + fetch_end.len()..].trim_end().to_string())
+    if !body.contains("ripr pr-comments existing --root . --raw -") {
+        return Err(format!(
+            "the capture step no longer pipes into ripr:\n{body}"
+        ));
+    }
+    Ok(body
+        .replace("${{ github.repository }}", "ripr-test/pricing")
+        .replace("${{ github.event.pull_request.number }}", "1"))
 }
 
 /// #4089: the generated annotation step must keep path and message bytes.
@@ -2937,115 +3000,69 @@ fn generated_annotation_script_preserves_path_and_message_bytes() -> Result<(), 
     Ok(())
 }
 
-/// #4468: the generated publish step's `compact_body` jq must lift the
+/// #4468: the publish requests' compact body (once the step's jq, now
+/// `ripr pr-comments requests`, #5409) must lift the
 /// Start/Verify code span whatever its fence length. A command holding a
 /// backtick is rendered with a longer fence (`output::markdown::code_span`);
 /// the old single-backtick pattern missed it and fell back to a default
 /// verify line. A body skipped as `comment_body_too_large` must count as an
 /// additional recommendation in the review summary.
-#[cfg(unix)]
 #[test]
 fn generated_compact_body_lifts_code_spans_of_any_fence_length() -> Result<(), Box<dyn Error>> {
-    let tools = run_sh(
-        "command -v bash >/dev/null && command -v jq >/dev/null",
-        std::env::temp_dir().as_path(),
-    )?;
-    if !tools.status.success() {
-        eprintln!(
-            "skipping generated_compact_body_lifts_code_spans_of_any_fence_length: bash or jq missing"
-        );
-        return Ok(());
-    }
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let root = std::env::temp_dir().join(format!(
         "ripr-compact-body-fence-{}-{nonce}",
         std::process::id()
     ));
     fs::create_dir_all(&root)?;
-    let output = run_ripr_init(&root)?;
-    if !output.status.success() {
-        let _ = fs::remove_dir_all(&root);
-        return Err("ripr init failed".into());
-    }
-    let workflow = fs::read_to_string(root.join(".github/workflows/ripr.yml"))?;
-    let compact = jq_program_between(
-        &workflow,
-        "publishable=\"$(mktemp)\"\n          jq '",
-        "' \"$plan\" > \"$publishable\"",
-    )?;
-    let summary = jq_program_between(&workflow, "review_body=\"$(jq -r '", "' \"$plan\")\"")?;
-    let additional = jq_program_between(&workflow, "additional_count=\"$(jq '", "' \"$plan\")\"")?;
-
     let verify_body = "### ripr gap: missing boundary assertion\n\nChanged behavior:\n``a` b``\n\nWhy this matters:\nw\n\nRepair:\nAdd one.\n\nVerify:\n`` ripr agent verify `x` ``";
     let start_body = "### ripr gap: weak oracle\n\nWhy this matters:\nw\n\nRepair:\nAdd one.\n\nStart the repair:\n```ripr agent repair ``x`` --phase before```\n\nIt prints the `--attempt ... --phase after` command that verifies the new test.";
     let plain_body = "### ripr gap: weak oracle\n\nWhy this matters:\nw\n\nRepair:\nAdd one.\n\nVerify:\n`ripr agent verify`";
     let operation = |key: &str, body: &str| {
-        format!(
-            r#"{{"operation":"create","safe_to_publish":true,"dedupe_key":{},"placement":{{"path":"src/lib.rs","line":1}},"body":{}}}"#,
-            json_string(key),
-            json_string(body)
-        )
+        serde_json::json!({"operation": "create", "safe_to_publish": true, "dedupe_key": key,
+            "placement": {"path": "src/lib.rs", "line": 1}, "body": body})
     };
-    let plan = format!(
-        r#"{{"summary":{{"publishable":3,"summary_only":0,"suppressed":0}},"operations":[{},{},{}],"skipped":[{{"skip_reason":"comment_body_too_large"}},{{"skip_reason":"inline_comment_cap_reached"}}]}}"#,
-        operation("ripr:verify", verify_body),
-        operation("ripr:start", start_body),
-        operation("ripr:plain", plain_body)
-    );
-    let plan_path = root.join("plan.json");
-    fs::write(&plan_path, plan)?;
-    for (name, program) in [
-        ("compact.jq", &compact),
-        ("summary.jq", &summary),
-        ("additional.jq", &additional),
-    ] {
-        fs::write(root.join(name), program)?;
-    }
-    let ran = run_sh(
-        "jq -c '.[] | .published_body' -r < <(jq -f compact.jq plan.json) && echo '---' && jq -r -f summary.jq plan.json && echo '---' && jq -f additional.jq plan.json",
-        &root,
-    )?;
-    let stdout = String::from_utf8_lossy(&ran.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&ran.stderr).to_string();
+    let plan = serde_json::json!({
+        "summary": {"safe_to_publish": true, "publishable": 3, "summary_only": 0, "suppressed": 0},
+        "operations": [
+            operation("ripr:verify", verify_body),
+            operation("ripr:start", start_body),
+            operation("ripr:plain", plain_body)
+        ],
+        "skipped": [{"skip_reason": "comment_body_too_large"}, {"skip_reason": "inline_comment_cap_reached"}]
+    });
+    let ran = run_pr_comments_requests(&root, &plan);
     let _ = fs::remove_dir_all(&root);
-    assert!(ran.status.success(), "jq failed: {stderr}\n{stdout}");
-
+    let (requests, _) = ran?;
+    let [review] = &requests[..] else {
+        return Err(format!("expected one review request, got {requests:?}").into());
+    };
+    let bodies: Vec<&str> = review.payload["comments"]
+        .as_array()
+        .map(|comments| {
+            comments
+                .iter()
+                .map(|comment| comment["body"].as_str().unwrap_or_default())
+                .collect()
+        })
+        .unwrap_or_default();
+    // The expectations are the retired jq program's outputs, unchanged.
+    let starts = [
+        "**ripr: missing boundary assertion** — Add one.\n\nVerify: `` ripr agent verify `x` ``\n\n<details>",
+        "**ripr: weak oracle** — Add one.\n\nStart the repair: ```ripr agent repair ``x`` --phase before```\n\n<details>",
+        // Ordinary single-backtick spans keep their previous compact form.
+        "**ripr: weak oracle** — Add one.\n\nVerify: `ripr agent verify`\n\n<details>",
+    ];
+    assert_eq!(bodies.len(), starts.len(), "{bodies:?}");
+    for (body, start) in bodies.iter().zip(starts) {
+        assert!(body.starts_with(start), "{body}");
+    }
+    let summary = review.payload["body"].as_str().unwrap_or_default();
     assert!(
-        stdout.contains("**ripr: missing boundary assertion** — Add one.\n\nVerify: `` ripr agent verify `x` ``\n\n<details>"),
-        "{stdout}"
+        summary.contains("2 additional recommendations remain"),
+        "{summary}"
     );
-    assert!(
-        stdout.contains("**ripr: weak oracle** — Add one.\n\nStart the repair: ```ripr agent repair ``x`` --phase before```\n\n<details>"),
-        "{stdout}"
-    );
-    // Ordinary single-backtick spans keep their previous compact form.
-    assert!(
-        stdout.contains(
-            "**ripr: weak oracle** — Add one.\n\nVerify: `ripr agent verify`\n\n<details>"
-        ),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("2 additional recommendations remain"),
-        "{stdout}"
-    );
-    assert!(stdout.trim_end().ends_with("---\n2"), "{stdout}");
     Ok(())
-}
-
-/// Text of one inline jq program in the generated workflow, between the
-/// shell text that opens and closes its single-quoted argument.
-#[cfg(unix)]
-fn jq_program_between(workflow: &str, open: &str, close: &str) -> Result<String, String> {
-    let start = workflow
-        .find(open)
-        .ok_or_else(|| format!("missing jq program opening {open:?}"))?
-        + open.len();
-    let rest = &workflow[start..];
-    let end = rest
-        .find(close)
-        .ok_or_else(|| format!("missing jq program closing {close:?}"))?;
-    Ok(rest[..end].to_string())
 }
 
 /// The CI summary's PR review summary and Recommended next test blocks,
@@ -3433,6 +3450,162 @@ fn generated_workflow_explains_a_failed_install() -> Result<(), Box<dyn Error>> 
 
     fs::remove_dir_all(base)?;
     Ok(())
+}
+
+/// The publish step's loop sends every request ripr wrote, in order, even
+/// when `gh` reads standard input: the loop's own stdin is the manifest, so
+/// a `gh` that drained it would silently skip every later request.
+#[cfg(unix)]
+#[test]
+fn generated_publish_step_sends_every_request_in_order() -> Result<(), Box<dyn Error>> {
+    if !run_sh("command -v bash >/dev/null", std::env::temp_dir().as_path())?
+        .status
+        .success()
+    {
+        eprintln!("skipping generated_publish_step_sends_every_request_in_order: bash missing");
+        return Ok(());
+    }
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    let root =
+        std::env::temp_dir().join(format!("ripr-publish-loop-{}-{nonce}", std::process::id()));
+    fs::create_dir_all(&root)?;
+    let result = (|| -> Result<(String, String), Box<dyn Error>> {
+        let init = run_ripr_init(&root)?;
+        if !init.status.success() {
+            return Err("ripr init failed".into());
+        }
+        let workflow = fs::read_to_string(root.join(".github/workflows/ripr.yml"))?;
+        let block = workflow_step_block(&workflow, "Publish RIPR inline comments")
+            .ok_or("missing publish step")?;
+        let body = block
+            .split_once("\n        run: |\n")
+            .map(|(_, body)| body)
+            .ok_or("publish step has no run block")?
+            .replace("${{ github.repository }}", "ripr-test/pricing")
+            .replace("${{ github.event.pull_request.number }}", "42")
+            .replace("${{ github.event.pull_request.head.sha }}", "0123abcd");
+        let plan = serde_json::json!({
+            "summary": {"safe_to_publish": true, "publishable": 2},
+            "operations": [
+                {"operation": "update", "safe_to_publish": true, "dedupe_key": "ripr:b",
+                 "existing_comment_id": 77, "body": "card b"},
+                {"operation": "create", "safe_to_publish": true, "dedupe_key": "ripr:a",
+                 "placement": {"path": "src/lib.rs", "line": 1}, "body": "card a"}
+            ]
+        });
+        fs::create_dir_all(root.join("target/ripr/review"))?;
+        fs::write(
+            root.join("target/ripr/review/comment-publish-plan.json"),
+            plan.to_string(),
+        )?;
+        // A stand-in `gh` that logs its arguments and drains stdin, as a
+        // real one waiting on input would.
+        let bin = root.join("stand-in-bin");
+        fs::create_dir_all(&bin)?;
+        let log = root.join("gh.log");
+        fs::write(
+            bin.join("gh"),
+            format!(
+                "#!/bin/sh\necho \"$*\" >> '{}'\ncat >/dev/null\n",
+                log.display()
+            ),
+        )?;
+        let ripr_dir = std::path::Path::new(env!("CARGO_BIN_EXE_ripr"))
+            .parent()
+            .ok_or("ripr binary has no directory")?;
+        let script = format!(
+            "chmod +x '{bin}/gh'\nexport PATH='{bin}:{ripr}':\"$PATH\"\n{body}",
+            bin = bin.display(),
+            ripr = ripr_dir.display(),
+        );
+        let run = run_sh(&script, &root)?;
+        if !run.status.success() {
+            return Err(format!(
+                "publish step failed: {}",
+                String::from_utf8_lossy(&run.stderr)
+            )
+            .into());
+        }
+        Ok((
+            fs::read_to_string(&log)?,
+            String::from_utf8_lossy(&run.stdout).to_string(),
+        ))
+    })();
+    let _ = fs::remove_dir_all(&root);
+    let (log, stdout) = result?;
+    let calls: Vec<&str> = log.lines().collect();
+    assert_eq!(
+        calls,
+        vec![
+            "api --method PATCH repos/ripr-test/pricing/pulls/comments/77 --input target/ripr/review/publish/01-patch.json",
+            "api --method POST repos/ripr-test/pricing/pulls/42/reviews --input target/ripr/review/publish/02-post.json",
+        ]
+    );
+    assert_eq!(
+        stdout,
+        "Updated RIPR inline comment: ripr:b\nCreated one RIPR review with 1 inline comment(s).\n"
+    );
+    Ok(())
+}
+
+/// One request `ripr pr-comments requests` wrote, as the publish step
+/// replays it.
+#[derive(Debug)]
+struct PublishRequest {
+    method: String,
+    endpoint: String,
+    payload: serde_json::Value,
+    message: String,
+}
+
+/// Runs `ripr pr-comments requests` on `plan` for pull request 42 at head
+/// `0123abcd`, and reads back its manifest and request files.
+fn run_pr_comments_requests(
+    root: &std::path::Path,
+    plan: &serde_json::Value,
+) -> Result<(Vec<PublishRequest>, String), Box<dyn Error>> {
+    fs::create_dir_all(root.join("target/ripr/review"))?;
+    fs::write(
+        root.join("target/ripr/review/comment-publish-plan.json"),
+        plan.to_string(),
+    )?;
+    let output = Command::new(env!("CARGO_BIN_EXE_ripr"))
+        .args([
+            "pr-comments",
+            "requests",
+            "--root",
+            ".",
+            "--pull-request",
+            "42",
+            "--head-sha",
+            "0123abcd",
+        ])
+        .current_dir(root)
+        .output()?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    if !output.status.success() {
+        return Err(format!(
+            "ripr pr-comments requests failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    let manifest = fs::read_to_string(root.join("target/ripr/review/publish/requests.tsv"))?;
+    let mut requests = Vec::new();
+    for line in manifest.lines() {
+        let fields: Vec<&str> = line.split('\t').collect();
+        let [method, endpoint, file, message] = fields[..] else {
+            return Err(format!("manifest line is not four tab-separated fields: {line:?}").into());
+        };
+        let payload = serde_json::from_str(&fs::read_to_string(root.join(file))?)?;
+        requests.push(PublishRequest {
+            method: method.to_string(),
+            endpoint: endpoint.to_string(),
+            payload,
+            message: message.to_string(),
+        });
+    }
+    Ok((requests, stdout))
 }
 
 fn run_ripr_init(root: &std::path::Path) -> Result<std::process::Output, Box<dyn Error>> {

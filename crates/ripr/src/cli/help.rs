@@ -85,7 +85,9 @@ const REGISTERED_COMMAND_PATHS: &[&str] = &[
     "policy readiness",
     "policy suppression-health",
     "policy waiver-aging",
+    "pr-comments existing",
     "pr-comments plan",
+    "pr-comments requests",
     "pr-evidence",
     "pr-ledger record",
     "pr-review front-panel",
@@ -157,7 +159,7 @@ pub(super) fn help_text_for(command: &str) -> Option<&'static str> {
         | "policy readiness"
         | "policy suppression-health"
         | "policy waiver-aging" => POLICY_HELP,
-        "pr-comments plan" => PR_COMMENTS_HELP,
+        "pr-comments plan" | "pr-comments existing" | "pr-comments requests" => PR_COMMENTS_HELP,
         "pr-evidence" => PR_EVIDENCE_HELP,
         "pr-ledger record" => PR_LEDGER_HELP,
         "pr-review front-panel" => PR_REVIEW_HELP,
@@ -1011,6 +1013,7 @@ mod tests {
     const CLI_COMMANDS_RS: &str = include_str!("commands.rs");
     const CHECK_PARSER_RS: &str = include_str!("commands/check.rs");
     const CI_PACKET_PARSER_RS: &str = include_str!("commands/ci_packet.rs");
+    const PR_COMMENTS_GITHUB_PARSER_RS: &str = include_str!("commands/pr_comments_github.rs");
     const CI_SUMMARY_PARSER_RS: &str = include_str!("commands/ci_summary.rs");
     const REVIEW_COMMENTS_PARSER_RS: &str = include_str!("commands/review_comments.rs");
     const CONTEXT_PARSER_RS: &str = include_str!("commands/context.rs");
@@ -1220,9 +1223,19 @@ mod tests {
             &["parse_policy_waiver_aging_options"],
         ),
         (
+            "pr-comments existing",
+            PR_COMMENTS_GITHUB_PARSER_RS,
+            &["parse_pr_comments_existing_options"],
+        ),
+        (
             "pr-comments plan",
             CLI_COMMANDS_RS,
             &["parse_pr_comments_plan_options"],
+        ),
+        (
+            "pr-comments requests",
+            PR_COMMENTS_GITHUB_PARSER_RS,
+            &["parse_pr_comments_requests_options"],
         ),
         (
             "pr-evidence",
@@ -1262,7 +1275,7 @@ mod tests {
         (
             "reports ci-summary",
             CI_SUMMARY_PARSER_RS,
-            &["parse_ci_summary_options"],
+            &["parse_ci_summary_options_with"],
         ),
         (
             "reports gap-ledger",

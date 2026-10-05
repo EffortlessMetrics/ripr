@@ -11697,11 +11697,11 @@ fn init_ci_github_dry_run_prints_config_and_workflow_without_writing() -> Result
     assert!(stdout.contains("continue-on-error: true"));
     assert!(stdout.contains("RIPR_UPLOAD_SARIF"));
     assert!(stdout.contains("actions/upload-artifact@v7"));
-    assert!(stdout.contains("target/ripr/agent"));
-    assert!(stdout.contains("target/ripr/workflow"));
-    assert!(stdout.contains("target/ripr/review"));
+    // #5409: one upload path covers every RIPR report directory.
+    assert!(stdout.contains("            target/ripr\n            target/ci\n"));
+    assert!(stdout.contains("target/ripr/review/publish/requests.tsv"));
     assert!(stdout.contains("RIPR advisory summary"));
-    assert!(stdout.contains("target/ripr/review/existing-comments.json"));
+    assert!(stdout.contains("ripr pr-comments existing --root . --raw -"));
     // #4696: the analysis steps run inside one packet command.
     assert!(stdout.contains("run: ripr reports ci-packet --root ."));
     // #3906: CI writes only the before side of the repair loop.

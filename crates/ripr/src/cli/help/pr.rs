@@ -55,6 +55,27 @@ create/update/keep/delete/skip/blocked operations for a later explicit
 publisher, but it never posts comments, calls GitHub, edits source, generates
 tests, runs mutation testing, changes gate authority, or makes CI blocking by
 default.
+
+Usage: ripr pr-comments existing [--root PATH] [--raw PATH] [--out PATH]
+
+Existing options:
+  --raw PATH                  `gh api --paginate --slurp` pages of the pull request's review comments. `-` reads standard input and keeps a copy there. Defaults to target/ripr/review/existing-comments.raw.json.
+  --out PATH                  Existing-comment metadata for `--existing-comments`. Defaults to target/ripr/review/existing-comments.json.
+
+Usage: ripr pr-comments requests --pull-request N --head-sha SHA [--root PATH] [--plan PATH] [--out-dir PATH]
+
+Requests options:
+  --pull-request N            Pull request the review is posted on.
+  --head-sha SHA              Head commit the review comments are placed on.
+  --plan PATH                 Publish plan. Defaults to target/ripr/review/comment-publish-plan.json.
+  --out-dir PATH              Request directory relative to --root, its earlier request files are replaced; absolute paths, `..` and symlinked directories are refused. Defaults to target/ripr/review/publish.
+
+`existing` keeps only marked comments that github-actions[bot] posted.
+`requests` writes one JSON payload per call and requests.tsv, one line per
+call in order: method, endpoint after repos/OWNER/REPO/, payload file, and the
+message to print once the call succeeds. An unsafe plan writes no requests
+and prints why. Neither command calls GitHub or reads a token; the generated
+workflow's comment steps hold GH_TOKEN and run `gh api`.
 "#;
 pub(super) const PR_REVIEW_HELP: &str = r#"Compose the first-screen PR review summary from existing review artifacts.
 
