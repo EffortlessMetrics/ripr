@@ -11,7 +11,7 @@ fn check_findings_byte_budget_bounds_array_with_disclosed_totals() -> Result<(),
         std::fs::create_dir_all(fixture.join("src")).map_err(|error| error.to_string())?;
         std::fs::write(
             fixture.join("Cargo.toml"),
-            "[package]\nname = \"findings_byte_budget\"\nversion = \"0.0.0\"\nedition = \"2021\"\n",
+            "[package]\nname = \"findings_byte_budget\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[workspace]\n",
         )
         .map_err(|error| error.to_string())?;
         std::fs::write(

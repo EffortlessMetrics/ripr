@@ -11,7 +11,7 @@ fn direct_owner_related_total_survives_packing_in_json_and_human() -> Result<(),
             let fixture = root.join(format!("count-{count}"));
             std::fs::create_dir_all(fixture.join("src")).map_err(|error| error.to_string())?;
             std::fs::write(fixture.join("Cargo.toml"),
-                "[package]\nname = \"related_count_control\"\nversion = \"0.0.0\"\nedition = \"2021\"\n")
+                "[package]\nname = \"related_count_control\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[workspace]\n")
                 .map_err(|error| error.to_string())?;
             let mut source = "pub fn record_mark(values: &mut Vec<u32>) {\n    values.push(1);\n}\n#[cfg(test)]\nmod tests {\nuse super::record_mark;\n".to_string();
             for index in 0..count {

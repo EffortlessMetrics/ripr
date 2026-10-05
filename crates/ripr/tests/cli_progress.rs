@@ -7,28 +7,73 @@ fn ripr() -> Command {
     Command::new(env!("CARGO_BIN_EXE_ripr"))
 }
 
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+/// Exact tracked sample bytes in a fixture-owned workspace. The diff's
+/// repository-relative paths stay unchanged, so this is real sample analysis.
+struct OwnedProgressSample {
+    root: PathBuf,
 }
 
-fn sample_diff() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/sample/example.diff")
+impl OwnedProgressSample {
+    fn new(tag: &str) -> Result<Self, String> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let root = std::env::temp_dir().join(format!(
+            "ripr-cli-progress-sample-{tag}-{}-{stamp}",
+            std::process::id()
+        ));
+        // Acquire this exact directory; never adopt an existing fixture root.
+        std::fs::create_dir(&root)
+            .map_err(|error| format!("create owned progress sample: {error}"))?;
+        let fixture = Self { root };
+        std::fs::write(fixture.root.join("Cargo.toml"), "[workspace]\n")
+            .map_err(|error| format!("write sample workspace boundary: {error}"))?;
+        let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/sample");
+        let destination = fixture.root.join("crates/ripr/examples/sample");
+        for relative in ["example.diff", "src/lib.rs", "tests/pricing.rs"] {
+            let target = destination.join(relative);
+            let parent = target.parent().ok_or("sample target has no parent")?;
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("create sample parent: {error}"))?;
+            std::fs::copy(source.join(relative), &target)
+                .map_err(|error| format!("copy exact sample {relative}: {error}"))?;
+        }
+        Ok(fixture)
+    }
+
+    fn root_arg(&self) -> String {
+        self.root.display().to_string()
+    }
+
+    fn diff_arg(&self) -> String {
+        self.root
+            .join("crates/ripr/examples/sample/example.diff")
+            .display()
+            .to_string()
+    }
+
+    fn sample_root_arg(&self) -> String {
+        self.root
+            .join("crates/ripr/examples/sample")
+            .display()
+            .to_string()
+    }
 }
 
-fn sample_root() -> String {
-    workspace_root().display().to_string()
+impl Drop for OwnedProgressSample {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
 }
 
-fn sample_diff_arg() -> String {
-    sample_diff().display().to_string()
-}
-
-fn run_check(extra: &[&str]) -> Result<Output, String> {
-    let root = sample_root();
-    let diff = sample_diff_arg();
+fn run_check(fixture: &OwnedProgressSample, extra: &[&str]) -> Result<Output, String> {
+    let root = fixture.root_arg();
+    let diff = fixture.diff_arg();
     let mut args = vec!["check", "--root", root.as_str(), "--diff", diff.as_str()];
     args.extend_from_slice(extra);
     ripr()
+        .current_dir(&fixture.root)
         .args(&args)
         .output()
         .map_err(|error| format!("run ripr {args:?}: {error}"))
@@ -44,16 +89,11 @@ fn stdout_has_progress_record(stdout: &str) -> bool {
         .any(|line| line.trim_start().starts_with("ripr progress:"))
 }
 
-fn sample_crate_root() -> String {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("examples/sample")
-        .display()
-        .to_string()
-}
-
 #[test]
 fn check_json_stdout_parses_while_progress_stays_on_stderr() -> Result<(), String> {
-    let output = run_check(&["--format", "json"])?;
+    let fixture =
+        OwnedProgressSample::new("check_json_stdout_parses_while_progress_stays_on_stderr")?;
+    let output = run_check(&fixture, &["--format", "json"])?;
     assert!(
         output.status.success(),
         "check json failed: {}",
@@ -62,6 +102,13 @@ fn check_json_stdout_parses_while_progress_stays_on_stderr() -> Result<(), Strin
     let parsed: serde_json::Value = serde_json::from_slice(&output.stdout)
         .map_err(|error| format!("stdout is not JSON: {error}"))?;
     assert_eq!(parsed["schema_version"], "0.2");
+    assert!(
+        !parsed["findings"]
+            .as_array()
+            .ok_or("sample findings missing")?
+            .is_empty(),
+        "owned sample diff must exercise actual analysis"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = stderr_text(&output);
     assert!(
@@ -98,8 +145,11 @@ fn check_json_stdout_parses_while_progress_stays_on_stderr() -> Result<(), Strin
 
 #[test]
 fn check_quiet_keeps_json_stdout_byte_identical_and_drops_progress() -> Result<(), String> {
-    let loud = run_check(&["--format", "json"])?;
-    let quiet = run_check(&["--format", "json", "--quiet"])?;
+    let fixture = OwnedProgressSample::new(
+        "check_quiet_keeps_json_stdout_byte_identical_and_drops_progress",
+    )?;
+    let loud = run_check(&fixture, &["--format", "json"])?;
+    let quiet = run_check(&fixture, &["--format", "json", "--quiet"])?;
     assert!(loud.status.success(), "{}", stderr_text(&loud));
     assert!(quiet.status.success(), "{}", stderr_text(&quiet));
     assert_eq!(
@@ -120,8 +170,9 @@ fn check_quiet_keeps_json_stdout_byte_identical_and_drops_progress() -> Result<(
 
 #[test]
 fn check_sarif_stdout_is_unchanged_by_progress() -> Result<(), String> {
-    let loud = run_check(&["--format", "sarif"])?;
-    let quiet = run_check(&["--format", "sarif", "--quiet"])?;
+    let fixture = OwnedProgressSample::new("check_sarif_stdout_is_unchanged_by_progress")?;
+    let loud = run_check(&fixture, &["--format", "sarif"])?;
+    let quiet = run_check(&fixture, &["--format", "sarif", "--quiet"])?;
     assert!(loud.status.success(), "{}", stderr_text(&loud));
     assert!(quiet.status.success(), "{}", stderr_text(&quiet));
     assert_eq!(loud.stdout, quiet.stdout);
@@ -134,10 +185,13 @@ fn check_sarif_stdout_is_unchanged_by_progress() -> Result<(), String> {
 
 #[test]
 fn check_progress_failure_emits_failed_not_completed() -> Result<(), String> {
-    let root = sample_root();
-    let missing = workspace_root().join("target/ripr/absent-progress.diff");
+    let fixture = OwnedProgressSample::new("check_progress_failure_emits_failed_not_completed")?;
+    let root = fixture.root_arg();
+    let missing = fixture.root.join("absent-progress.diff");
+    assert!(!missing.exists());
     let missing_arg = missing.display().to_string();
     let output = ripr()
+        .current_dir(&fixture.root)
         .args([
             "check",
             "--root",
@@ -196,8 +250,9 @@ fn check_markdown_stdout_is_unchanged_by_progress() -> Result<(), String> {
 }
 
 fn machine_format_stdout_is_unchanged(format: &str) -> Result<(), String> {
-    let loud = run_check(&["--format", format])?;
-    let quiet = run_check(&["--format", format, "--quiet"])?;
+    let fixture = OwnedProgressSample::new("machine_format_stdout_is_unchanged")?;
+    let loud = run_check(&fixture, &["--format", format])?;
+    let quiet = run_check(&fixture, &["--format", format, "--quiet"])?;
     assert!(loud.status.success(), "{}", stderr_text(&loud));
     assert!(quiet.status.success(), "{}", stderr_text(&quiet));
     assert_eq!(loud.stdout, quiet.stdout);
@@ -212,8 +267,10 @@ fn check_worktree_projects_worktree_scope_on_stderr() -> Result<(), String> {
     // Analyze the sample crate rather than this repository. A worktree scan of
     // ripr itself is slow, and its JSON findings can mention `ripr progress:`
     // as source text.
-    let root = sample_crate_root();
+    let fixture = OwnedProgressSample::new("worktree")?;
+    let root = fixture.sample_root_arg();
     let output = ripr()
+        .current_dir(&fixture.root)
         .args([
             "check",
             "--root",
@@ -261,10 +318,13 @@ fn check_worktree_projects_worktree_scope_on_stderr() -> Result<(), String> {
 
 #[test]
 fn check_quiet_failure_keeps_errors_and_drops_progress() -> Result<(), String> {
-    let root = sample_root();
-    let missing = workspace_root().join("target/ripr/absent-progress.diff");
+    let fixture = OwnedProgressSample::new("check_quiet_failure_keeps_errors_and_drops_progress")?;
+    let root = fixture.root_arg();
+    let missing = fixture.root.join("absent-progress.diff");
+    assert!(!missing.exists());
     let missing_arg = missing.display().to_string();
     let output = ripr()
+        .current_dir(&fixture.root)
         .args([
             "check",
             "--root",
@@ -295,10 +355,14 @@ fn check_quiet_failure_keeps_errors_and_drops_progress() -> Result<(), String> {
 
 #[test]
 fn check_unwritable_artifact_projects_failed_not_completed() -> Result<(), String> {
-    let dir = workspace_root().join("target/ripr/progress-artifact-dir");
+    let fixture = OwnedProgressSample::new("artifact-directory")?;
+    let dir = fixture.root.join("progress-artifact-dir");
     std::fs::create_dir_all(&dir).map_err(|error| format!("create artifact dir: {error}"))?;
     let dir_arg = dir.display().to_string();
-    let output = run_check(&["--format", "json", "--write-artifact", dir_arg.as_str()])?;
+    let output = run_check(
+        &fixture,
+        &["--format", "json", "--write-artifact", dir_arg.as_str()],
+    )?;
     assert!(
         !output.status.success(),
         "writing an artifact onto a directory must fail the command: {}",

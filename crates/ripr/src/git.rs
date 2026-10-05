@@ -1877,9 +1877,11 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
                     }
                 });
                 match zero {
-                    Err(error)
-                        if error.is_git_invocation_timeout()
-                            && error.to_string().contains("0ms") => {}
+                    Err(CoreError::GitInvocationTimeout {
+                        operation,
+                        timeout_ms: 0,
+                        spawned: false,
+                    }) if operation == "zero-timeout-precedence" => {}
                     Err(error) => return Err(format!("zero-timeout priority changed: {error}")),
                     Ok(_) => return Err("zero timeout spawned or returned output".to_string()),
                 }

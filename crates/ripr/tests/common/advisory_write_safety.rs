@@ -41,7 +41,7 @@ fn case(surface: &str) -> Result<Case, Box<dyn std::error::Error>> {
             std::fs::create_dir_all(root.join("src"))?;
             std::fs::write(
                 root.join("Cargo.toml"),
-                "[package]\nname = \"pilot_fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+                "[package]\nname = \"pilot_fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n",
             )?;
             std::fs::write(
                 root.join("src/lib.rs"),

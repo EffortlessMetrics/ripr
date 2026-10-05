@@ -1623,6 +1623,9 @@ fn isolated_installed_binary_version_contract_is_side_effect_free() -> Result<()
         let installed_binary = bin_dir.join(if cfg!(windows) { "ripr.exe" } else { "ripr" });
         std::fs::copy(source_binary, &installed_binary)?;
 
+        // Keep implicit-root probes inside this owned installation prefix.
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\n")?;
+
         let config_path = root.join("ripr.toml");
         std::fs::write(&config_path, "this is not valid TOML\n")?;
         let config_before = std::fs::read(&config_path)?;
@@ -1970,7 +1973,29 @@ fn check_repo_formats_do_not_claim_the_unchanged_tests_index_tradeoff() -> Resul
 #[test]
 fn check_from_a_subcrate_discloses_workspace_root_and_honors_explicit_root() -> Result<(), String> {
     let bin = env!("CARGO_BIN_EXE_ripr");
-    let subcrate = workspace_root().join("crates/ripr");
+    let owned_root = unique_temp_workspace("implicit-subcrate-root");
+    std::fs::create_dir(&owned_root)
+        .map_err(|error| format!("create owned subcrate fixture: {error}"))?;
+    let isolated = IsolatedFixtureWorkspace(owned_root);
+    let subcrate = isolated.path().join("crates/fixture-member");
+    std::fs::create_dir_all(subcrate.join("src"))
+        .map_err(|error| format!("create fixture member: {error}"))?;
+    std::fs::write(
+        isolated.path().join("Cargo.toml"),
+        "[workspace]\nmembers = [\"crates/fixture-member\"]\nresolver = \"3\"\n",
+    )
+    .map_err(|error| format!("write owned workspace: {error}"))?;
+    std::fs::write(
+        subcrate.join("Cargo.toml"),
+        "[package]\nname = \"implicit_root_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|error| format!("write owned member manifest: {error}"))?;
+    std::fs::write(
+        subcrate.join("src/lib.rs"),
+        "pub fn fixture_value() -> u32 { 1 }\n",
+    )
+    .map_err(|error| format!("write member source: {error}"))?;
+    init_git_fixture_repo(isolated.path()).map_err(|error| format!("init owned Git: {error}"))?;
     let implicit = run_command(
         bin,
         Some(&subcrate),
@@ -1978,7 +2003,8 @@ fn check_from_a_subcrate_discloses_workspace_root_and_honors_explicit_root() -> 
     )
     .map_err(|error| format!("run implicit-root check: {error}"))?;
     assert_success(&implicit);
-    let expected_root = workspace_root()
+    let expected_root = isolated
+        .path()
         .canonicalize()
         .map_err(|error| format!("canonicalize workspace root: {error}"))?;
     let expected_disclosure = format!(
@@ -1991,7 +2017,7 @@ fn check_from_a_subcrate_discloses_workspace_root_and_honors_explicit_root() -> 
         String::from_utf8_lossy(&implicit.stderr)
     );
 
-    let root = workspace_root().display().to_string();
+    let root = isolated.path().display().to_string();
     let explicit = run_command(
         bin,
         Some(&subcrate),
@@ -10289,6 +10315,10 @@ fn doctor_discloses_missing_verification_tools_but_still_checks_manifest() -> Re
     let workspace = unique_temp_workspace("doctor-rust-no-toolchain");
     let path = doctor_path_without_rust_toolchain(&workspace)?;
 
+    // Own the parent boundary; the sources-only child must still lack a manifest.
+    std::fs::write(workspace.join("Cargo.toml"), "[workspace]\n")
+        .map_err(|error| format!("write doctor fixture boundary: {error}"))?;
+
     let with_manifest = workspace.join("with-manifest");
     std::fs::create_dir_all(with_manifest.join("src"))
         .map_err(|error| format!("create rust root: {error}"))?;
@@ -10349,6 +10379,7 @@ fn doctor_discloses_missing_verification_tools_but_still_checks_manifest() -> Re
         .map_err(|error| format!("create sources root: {error}"))?;
     std::fs::write(sources_only.join("src/lib.rs"), "pub fn f() {}\n")
         .map_err(|error| format!("write lib.rs: {error}"))?;
+    assert!(!sources_only.join("Cargo.toml").exists());
     let output = run_doctor_with_path(&sources_only, &path, false)?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let sources_result = if output.status.success() || !stdout.contains("! no Cargo.toml found") {
@@ -10497,7 +10528,7 @@ fn doctor_reports_perl_preview_section_when_perl_markers_present() -> Result<(),
     // Cargo.toml check, which is unrelated to the Perl preview).
     std::fs::write(
         root.join("Cargo.toml"),
-        "[package]\nname = \"mixed-perl\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        "[package]\nname = \"mixed-perl\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n",
     )
     .map_err(|err| err.to_string())?;
     std::fs::write(
@@ -10598,7 +10629,7 @@ fn perl_doctor_workspace_with_exporter_stub(
     std::fs::create_dir_all(root.join("lib")).map_err(|err| err.to_string())?;
     std::fs::write(
         root.join("Cargo.toml"),
-        "[package]\nname = \"mixed-perl\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        "[package]\nname = \"mixed-perl\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n",
     )
     .map_err(|err| err.to_string())?;
     std::fs::write(root.join("Makefile.PL"), "use ExtUtils::MakeMaker;\n")
@@ -12542,7 +12573,7 @@ fn pilot_says_so_when_the_top_seam_has_no_repair_command() -> Result<(), String>
     std::fs::create_dir_all(&src).map_err(|e| format!("create src: {e}"))?;
     std::fs::write(
         root.join("Cargo.toml"),
-        "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n",
     )
     .map_err(|e| format!("write manifest: {e}"))?;
     std::fs::write(
@@ -13325,7 +13356,7 @@ fn multi_seam_gap_workspace() -> Result<PathBuf, String> {
         .map_err(|err| format!("create multi-gap test directory: {err}"))?;
     std::fs::write(
         root.join("Cargo.toml"),
-        "[package]\nname = \"rerun_multi_gap_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        "[package]\nname = \"rerun_multi_gap_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n",
     )
     .map_err(|err| format!("write multi-gap Cargo.toml: {err}"))?;
     std::fs::write(
