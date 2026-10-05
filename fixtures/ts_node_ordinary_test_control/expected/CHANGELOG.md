@@ -24,3 +24,16 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — ts_node_ordinary_test_control (3)
+
+Reason:
+RIPR-SPEC-0140: adopt intended config_identity hash from #6777 missed by its re-bless sweep (#6818)
+
+Command:
+`cargo xtask goldens bless ts_node_ordinary_test_control --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
