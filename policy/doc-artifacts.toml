@@ -1230,6 +1230,13 @@ owner = "product-analysis"
 standalone_reason = "Issue #5411 records the seam side of the unknown-not-a-gap rule: a repo seam with no related test reads reach opaque, and classifies opaque instead of ungripped, when a bounded transitive or macro witness or trait dispatch from a type test-reached code names leaves the no-reach negative unestablished. The ripr check side is #5416; crediting the reach is #5334."
 
 [[artifact]]
+id = "RIPR-SPEC-0232"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0232-issue-lifecycle-contract-plan-pilot.md"
+status = "proposed"
+owner = "test-infra"
+standalone_reason = "Issue #4931 runs the read-only contract/plan decision-boundary pilot (ISSUE-D3) as the second real-corpus consumer of the frozen RIPR-SPEC-0218 attempt contract, extending the sibling intake pilot (RIPR-SPEC-0223): exactly two REAL captured issue snapshots (#6225 architecture-sensitive versioned distribution-schema change requiring a draft spec, and #6180 narrow accepted-contract badge-label residual) traverse the contract/plan decision boundary with distinct author, adversary and root fixture identities — the contract case retains source-of-truth identity, spec-required rationale, RIPR-SPEC-draft behavior-draft identity, author role/config/result carrying no acceptance state, adversary inspected scope with missing failure/limited findings or bounded none_found, preserved open decisions, the root disposition in the closed fifteen-value vocabulary and an amended contract state landing at qualified_spec_required, while the narrow case routes directly to one PR with zero contract artifacts; both rows retain planning evidence (shape decision with recorded rejection rationale, work items with resolving dependency edges, acceptance rows covered or explicitly omitted with reasons, edit cages, semantic conflict resources, proof commands with denominators, stop conditions, non-goals, portfolio placement without a tracked selection/current-work mutation, root corrections and re-splits); the author can never accept its own contract, unresolved decisions stop the plan, campaigns and incoherent one-PR plans are rejected on the record, specs carry behavior rather than queues, plans carry work order rather than new behavior authority, fabricated retrieval bytes and drifted snapshots fail closed, cold-start reconstruction is byte-identical, and results flow through the unchanged #4929 counting law and scorecard without a parallel report; ten synthetic mechanics controls stay outside the two real rows, claiming decision-boundary traversal for two exact issues only — no implementation, no plan execution and no parent acceptance."
+[[artifact]]
 id = "RIPR-SPEC-0231"
 kind = "spec"
 path = "docs/specs/RIPR-SPEC-0231-rust-oracle-kind-admission.md"

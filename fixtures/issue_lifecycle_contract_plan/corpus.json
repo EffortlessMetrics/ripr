@@ -1,0 +1,533 @@
+{
+ "schema_version": "issue_lifecycle_contract_plan_corpus.v1",
+ "captured_at": "2026-10-04T21:31:42Z",
+ "base_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+ "rows": [
+  {
+   "id": "contract-plan-6225-distribution-build-contract",
+   "category": "contract_required",
+   "snapshot": {
+    "issue_number": 6225,
+    "issue_ref": "EffortlessMetrics/ripr-swarm#6225",
+    "snapshot_path": "snapshots/issue-6225.json",
+    "comments_path": "snapshots/issue-6225-comments.json",
+    "timeline_path": "snapshots/issue-6225-timeline.json",
+    "timeline_snapshot_id": "gh-issue-timeline:sha256:7d2cbb61070465dd7fb8ac3ff4cbb9b3d76ad86b28479d657e1af3b98bd29e31",
+    "captured_at": "2026-10-04T21:31:42Z",
+    "issue_snapshot_id": "gh-issue-snapshot:sha256:066661f971916370b86380a053cd0a0ac943d21447f5c5c326a5cb5434ed33b2",
+    "comments_snapshot_id": "gh-issue-comments:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+   },
+   "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+   "contract": {
+    "source_of_truth": "policy/distribution.toml schema 1.0 + crates/ripr/Cargo.toml [features].default + xtask/src/policy/distribution/contract.rs",
+    "spec_required_rationale": "issue #6225 changes the versioned public policy schema (policy/distribution.toml schema 1.0 with deny_unknown_fields) and splits three conflated facts (crate available features, release payload selection, ordinary cargo-install defaults); a versioned schema migration plus the owning typed contract must be drafted and independently challenged before any implementation",
+    "draft_spec_identity": "RIPR-SPEC-draft-distribution-build-contract-v2",
+    "author": {
+     "role": "contract_author",
+     "config_identity": "contract-author-config-distribution-v1",
+     "result_identity": "draft-result-6225-author-v1",
+     "carries_acceptance": false
+    },
+    "adversary": {
+     "result_identity": "challenge-result-6225-adversary-v1",
+     "inspected_scope": "draft spec sections behavior, migration from schema 1.0 and discriminating controls 1-9; producer and consumer surfaces in xtask/src/policy/distribution and the release payload builders",
+     "findings": [
+      "missing failure state: discriminating control 7 (Cargo default features move without updating the ordinary-install contract) had no negative test row in the author draft",
+      "limited state: the draft left the channel claim boundary unspecified for the npm payload consumer"
+     ],
+     "none_found": false
+    },
+    "open_decisions": [
+     "exact schema field names for the five required concepts (the issue reserves them to the implementation)",
+     "migration shape: dual-write during transition versus one explicit xtask migration step",
+     "where effective-feature derivation lives: contract parse time versus producer receipt time"
+    ],
+    "root_disposition": "qualified_spec_required",
+    "contract_state": "amended",
+    "root": {
+     "role": "contract_root",
+     "config_identity": "root-config-6225-distribution-build-contract-v1",
+     "result_identity": "root-result-6225-distribution-build-contract-v1",
+     "carries_acceptance": true
+    }
+   },
+   "planning": {
+    "shape_decision": "one_pr",
+    "shape_rationale": "a campaign was considered and rejected: the six acceptance rows partition cleanly into one vertical slice (the typed contract with migration and validation) while consumer-adoption rows are explicitly owned by follow-on go-dist issues, so one PR covers acceptance coherently",
+    "work_items": [
+     {
+      "id": "wi-6225-schema-v2",
+      "depends_on": []
+     },
+     {
+      "id": "wi-6225-migration-1-0",
+      "depends_on": [
+       "wi-6225-schema-v2"
+      ]
+     },
+     {
+      "id": "wi-6225-effective-feature-derivation",
+      "depends_on": [
+       "wi-6225-schema-v2"
+      ]
+     },
+     {
+      "id": "wi-6225-negative-controls",
+      "depends_on": [
+       "wi-6225-effective-feature-derivation"
+      ]
+     },
+     {
+      "id": "wi-6225-release-producer-binding",
+      "depends_on": [
+       "wi-6225-schema-v2"
+      ]
+     }
+    ],
+    "acceptance_covered": [
+     "issue #6225: one versioned typed contract separately represents crate defaults, release build selection and ordinary Cargo-install features",
+     "issue #6225: effective selected features are derived and compared with actual compiler-artifact evidence",
+     "issue #6225: existing current-default release behavior remains accepted",
+     "issue #6225: non-default selection no longer requires a false Cargo-default claim",
+     "issue #6225: distribution policy, unit and negative tests plus check-release-targets pass",
+     "issue #6225: docs explain the distinction without making a Go or support-tier claim"
+    ],
+    "acceptance_omitted": [
+     "issue #6225: archive, wheel and npm builders consume the same typed selection: owned by follow-on consumer issues in campaign EffortlessMetrics/ripr-swarm#5519; this plan only exposes the typed selection state"
+    ],
+    "edit_cages": [
+     "policy/distribution.toml",
+     "xtask/src/policy/distribution/",
+     "crates/ripr/Cargo.toml [features] table (read-only validation target)",
+     "docs/ release distribution section"
+    ],
+    "conflict_resources": [
+     "campaign issue #5519 and its go-dist children (#6227, #6229, #6230) touch the release builders; semantic conflict resource, landing order must be coordinated",
+     "movement of parent #5519 invalidates this plan row"
+    ],
+    "proof_commands": [
+     {
+      "command": "cargo test -p xtask policy::distribution",
+      "denominator": "every distribution policy unit and negative test, including one row per discriminating control 1-9"
+     },
+     {
+      "command": "cargo xtask check-release-targets",
+      "denominator": "all release target validations over the migrated schema"
+     },
+     {
+      "command": "cargo xtask check-file-policy",
+      "denominator": "policy file surface unchanged outside the distribution contract"
+     },
+     {
+      "command": "git diff --check",
+      "denominator": "zero whitespace errors in the PR diff"
+     }
+    ],
+    "stop_conditions": [
+     "any discriminating control 1-9 fails its negative case",
+     "the migrated contract does not preserve the current three-feature default build meaning",
+     "a second source of truth for feature lists appears outside the typed contract",
+     "a named open decision is guessed instead of recorded"
+    ],
+    "non_goals": [
+     "no lang-go selection in the PR",
+     "no Cargo default change",
+     "no analyzer or parser work",
+     "no package build, installed journey, release or publication"
+    ],
+    "portfolio_placement": "campaign EffortlessMetrics/ripr-swarm#5519 lane distribution-contract-v2 (portfolio label only; no tracked selection or current-work file is written)",
+    "root_corrections": [
+     "root amended the draft per the adversary findings: added the missing control-7 negative row and the npm channel claim boundary"
+    ],
+    "re_splits": []
+   },
+   "retrieval_steps": [
+    {
+     "step": "issue snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/6225",
+     "bytes": {
+      "measured": 9044
+     }
+    },
+    {
+     "step": "comments snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/6225/comments",
+     "bytes": {
+      "measured": 2
+     }
+    },
+    {
+     "step": "timeline snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/6225/timeline",
+     "bytes": {
+      "measured": 125038
+     }
+    },
+    {
+     "step": "open PR sweep",
+     "command": "gh pr list --search \"6225 in title,body\" --state all",
+     "bytes": {
+      "measured": 0
+     }
+    }
+   ],
+   "limitations": [
+    "pilot-time row only: no implementation, PR or verification is claimed",
+    "consumer adoption (archive, wheel and npm builders) is owned by follow-on go-dist issues, not this plan"
+   ],
+   "non_claims": [
+    "claims no Go or support-tier selection (issue non-goal)",
+    "claims no field-name finality: exact schema field names stay with the implementation"
+   ],
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "contract-plan-6225-distribution-build-contract",
+    "observation_key": "observation-contract-plan-6225-distribution-build-contract",
+    "synthetic": false,
+    "disposition": "qualified_spec_required",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-contract-plan-6225-distribution-build-contract",
+      "shared_facts": [
+       "context"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "gh-issue-snapshot:sha256:066661f971916370b86380a053cd0a0ac943d21447f5c5c326a5cb5434ed33b2",
+     "issue_ref": "EffortlessMetrics/ripr-swarm#6225",
+     "comments_ref": "gh-issue-comments:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "labels_ref": "gh-issue-labels:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "public_schema_change"
+    },
+    "context": {
+     "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+     "relevant_prs": [],
+     "portfolio": "ripr-swarm-issue-lifecycle-contract-plan-pilot",
+     "selected_work": "EffortlessMetrics/ripr-swarm#6225",
+     "claim_ids": []
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "gh-issue-snapshot:sha256:066661f971916370b86380a053cd0a0ac943d21447f5c5c326a5cb5434ed33b2",
+       "bytes": 9044
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": true,
+     "decision_rationale": "issue #6225 changes the versioned public policy schema (policy/distribution.toml schema 1.0 with deny_unknown_fields) and splits three conflated facts (crate available features, release payload selection, ordinary cargo-install defaults); a versioned schema migration plus the owning typed contract must be drafted and independently challenged before any implementation",
+     "root_disposition": "amended"
+    },
+    "contract_artifacts": {
+     "proposal": "RIPR-SPEC-draft-distribution-build-contract-v2",
+     "spec": null,
+     "adr": null,
+     "challenge": "challenge-result-6225-adversary-v1",
+     "amendments": [
+      "amendment-6225-adversary-control-7-negative-row",
+      "amendment-6225-adversary-npm-channel-claim-boundary"
+     ],
+     "acceptance": null
+    },
+    "plan": {
+     "plan_id": "plan-6225-distribution-build-contract-v2",
+     "work_items": [
+      "wi-6225-schema-v2",
+      "wi-6225-migration-1-0",
+      "wi-6225-effective-feature-derivation",
+      "wi-6225-negative-controls",
+      "wi-6225-release-producer-binding"
+     ],
+     "dependencies": [
+      "wi-6225-migration-1-0->wi-6225-schema-v2",
+      "wi-6225-effective-feature-derivation->wi-6225-schema-v2",
+      "wi-6225-negative-controls->wi-6225-effective-feature-derivation",
+      "wi-6225-release-producer-binding->wi-6225-schema-v2"
+     ],
+     "acceptance_coverage": [
+      "issue #6225: one versioned typed contract separately represents crate defaults, release build selection and ordinary Cargo-install features",
+      "issue #6225: effective selected features are derived and compared with actual compiler-artifact evidence",
+      "issue #6225: existing current-default release behavior remains accepted",
+      "issue #6225: non-default selection no longer requires a false Cargo-default claim",
+      "issue #6225: distribution policy, unit and negative tests plus check-release-targets pass",
+      "issue #6225: docs explain the distinction without making a Go or support-tier claim"
+     ]
+    },
+    "claim_events": [],
+    "execution_refs": {
+     "pr": null,
+     "review": null,
+     "checks": [],
+     "verification": null,
+     "merge": null,
+     "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "open",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "not_started",
+     "reason": null,
+     "remaining_limitations": [],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "pilot-time row only: no implementation, PR or verification is claimed",
+     "consumer adoption (archive, wheel and npm builders) is owned by follow-on go-dist issues, not this plan"
+    ],
+    "non_claims": [
+     "claims no Go or support-tier selection (issue non-goal)",
+     "claims no field-name finality: exact schema field names stay with the implementation"
+    ],
+    "row_digest": "32b8d29cc6a3402c967d0d421c1d673115dc7326b1a83149648eb960d0b97ea5"
+   }
+  },
+  {
+   "id": "contract-plan-6180-badge-group-readme-label",
+   "category": "narrow_accepted_contract_bug",
+   "snapshot": {
+    "issue_number": 6180,
+    "issue_ref": "EffortlessMetrics/ripr-swarm#6180",
+    "snapshot_path": "snapshots/issue-6180.json",
+    "comments_path": "snapshots/issue-6180-comments.json",
+    "timeline_path": "snapshots/issue-6180-timeline.json",
+    "timeline_snapshot_id": "gh-issue-timeline:sha256:77d4c1dd0899f16f747b693609d32a4f204e1c098fe2680a0059c38371a11976",
+    "captured_at": "2026-10-04T21:31:42Z",
+    "issue_snapshot_id": "gh-issue-snapshot:sha256:a22d8b03e94e19fad5376a443c5b2d3bbd8f133e72cc73592c3c7c7b3c5bde67",
+    "comments_snapshot_id": "gh-issue-comments:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+   },
+   "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+   "contract": null,
+   "planning": {
+    "shape_decision": "one_pr",
+    "shape_rationale": "all three acceptance rows sit inside the rendered check help string surface plus two doc files; one bounded PR covers them coherently and no campaign decomposition adds anything",
+    "work_items": [
+     {
+      "id": "wi-6180-rename-badge-group-label",
+      "depends_on": []
+     },
+     {
+      "id": "wi-6180-extend-chooser-negative-needle",
+      "depends_on": [
+       "wi-6180-rename-badge-group-label"
+      ]
+     },
+     {
+      "id": "wi-6180-sync-docs-badge-contracts",
+      "depends_on": [
+       "wi-6180-rename-badge-group-label"
+      ]
+     }
+    ],
+    "acceptance_covered": [
+     "issue #6180: ripr check --help names exactly one README badge path (repo ledger) with no competing for-README label on the diff-scoped group",
+     "issue #6180: chooser pin extended or accompanied by a negative needle so the old label cannot return silently",
+     "issue #6180: docs/CONFIGURATION.md and docs/BADGE_ADOPTION.md badge contracts still agree with the rendered labels"
+    ],
+    "acceptance_omitted": [],
+    "edit_cages": [
+     "crates/ripr/src/cli/ check help rendering (badge format group label)",
+     "xtask/src/ check help needle test",
+     "docs/CONFIGURATION.md",
+     "docs/BADGE_ADOPTION.md"
+    ],
+    "conflict_resources": [
+     "no open PR touches the check help badge labels at capture; any future help-rendering lane is a semantic conflict resource",
+     "movement of merged direction PR #5743 invalidates this row"
+    ],
+    "proof_commands": [
+     {
+      "command": "cargo test -p ripr check_help",
+      "denominator": "every check help rendering test including the extended negative needle"
+     },
+     {
+      "command": "cargo test -p xtask check_help_chooses_one_format_per_task",
+      "denominator": "the chooser pin and its new negative needle"
+     },
+     {
+      "command": "cargo xtask check-doc-index",
+      "denominator": "docs index references still resolve"
+     },
+     {
+      "command": "git diff --check",
+      "denominator": "zero whitespace errors in the PR diff"
+     }
+    ],
+    "stop_conditions": [
+     "the negative needle still matches the old for-README label",
+     "docs/CONFIGURATION.md or docs/BADGE_ADOPTION.md disagree with the rendered labels",
+     "the rename touches format, analysis or output content"
+    ],
+    "non_goals": [
+     "no format, analysis or output-content change",
+     "no change to the chooser mapping itself"
+    ],
+    "portfolio_placement": "residual lane ux-check-help follow-up to merged #5743 (portfolio label only; no tracked selection or current-work file is written)",
+    "root_corrections": [],
+    "re_splits": []
+   },
+   "retrieval_steps": [
+    {
+     "step": "issue snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/6180",
+     "bytes": {
+      "measured": 4007
+     }
+    },
+    {
+     "step": "comments snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/6180/comments",
+     "bytes": {
+      "measured": 2
+     }
+    },
+    {
+     "step": "timeline snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/6180/timeline",
+     "bytes": {
+      "measured": 12523
+     }
+    },
+    {
+     "step": "open PR sweep",
+     "command": "gh pr list --search \"6180 in title,body\" --state all",
+     "bytes": {
+      "measured": 0
+     }
+    }
+   ],
+   "limitations": [
+    "pilot-time row only: no implementation, PR or verification is claimed"
+   ],
+   "non_claims": [
+    "claims no format, analysis or output-content change (issue scope)",
+    "claims no verdict on other check help groups"
+   ],
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "contract-plan-6180-badge-group-readme-label",
+    "observation_key": "observation-contract-plan-6180-badge-group-readme-label",
+    "synthetic": false,
+    "disposition": "qualified_one_pr",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-contract-plan-6180-badge-group-readme-label",
+      "shared_facts": [
+       "context"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "gh-issue-snapshot:sha256:a22d8b03e94e19fad5376a443c5b2d3bbd8f133e72cc73592c3c7c7b3c5bde67",
+     "issue_ref": "EffortlessMetrics/ripr-swarm#6180",
+     "comments_ref": "gh-issue-comments:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "labels_ref": "gh-issue-labels:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "narrow_bug"
+    },
+    "context": {
+     "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+     "relevant_prs": [],
+     "portfolio": "ripr-swarm-issue-lifecycle-contract-plan-pilot",
+     "selected_work": "EffortlessMetrics/ripr-swarm#6180",
+     "claim_ids": []
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "gh-issue-snapshot:sha256:a22d8b03e94e19fad5376a443c5b2d3bbd8f133e72cc73592c3c7c7b3c5bde67",
+       "bytes": 4007
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "the accepted badge direction (#5211 direction B via merged #5743) already governs which badge family serves README versus PR/CI status; issue #6180 is a verified residual label rename inside that accepted contract, so no proposal, spec or ADR decision is required",
+     "root_disposition": null
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": null
+    },
+    "plan": {
+     "plan_id": "plan-6180-badge-group-label-residual",
+     "work_items": [
+      "wi-6180-rename-badge-group-label",
+      "wi-6180-extend-chooser-negative-needle",
+      "wi-6180-sync-docs-badge-contracts"
+     ],
+     "dependencies": [
+      "wi-6180-extend-chooser-negative-needle->wi-6180-rename-badge-group-label",
+      "wi-6180-sync-docs-badge-contracts->wi-6180-rename-badge-group-label"
+     ],
+     "acceptance_coverage": [
+      "issue #6180: ripr check --help names exactly one README badge path (repo ledger) with no competing for-README label on the diff-scoped group",
+      "issue #6180: chooser pin extended or accompanied by a negative needle so the old label cannot return silently",
+      "issue #6180: docs/CONFIGURATION.md and docs/BADGE_ADOPTION.md badge contracts still agree with the rendered labels"
+     ]
+    },
+    "claim_events": [],
+    "execution_refs": {
+     "pr": null,
+     "review": null,
+     "checks": [],
+     "verification": null,
+     "merge": null,
+     "current_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "open",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "not_started",
+     "reason": null,
+     "remaining_limitations": [],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "pilot-time row only: no implementation, PR or verification is claimed"
+    ],
+    "non_claims": [
+     "claims no format, analysis or output-content change (issue scope)",
+     "claims no verdict on other check help groups"
+    ],
+    "row_digest": "4576a8ac2fe278115c03c660ff8cf24e822539997aaa8392b5cd2c4d08b4ea13"
+   }
+  }
+ ]
+}

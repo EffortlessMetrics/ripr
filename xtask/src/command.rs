@@ -35,6 +35,7 @@ pub(crate) enum XtaskCommand {
     OrchestrationScorecard(Vec<String>),
     IssueLifecycleScorecard(Vec<String>),
     IssueLifecycleIntakeScorecard(Vec<String>),
+    IssueLifecycleContractPlanScorecard(Vec<String>),
     RustJudgedPanel(Vec<String>),
     CheckRustJudgedPanel,
     CheckReleaseChallengeSelection,
@@ -212,6 +213,9 @@ impl XtaskCommand {
             "orchestration-scorecard" => Self::OrchestrationScorecard(rest),
             "issue-lifecycle-scorecard" => Self::IssueLifecycleScorecard(rest),
             "issue-lifecycle-intake-scorecard" => Self::IssueLifecycleIntakeScorecard(rest),
+            "issue-lifecycle-contract-plan-scorecard" => {
+                Self::IssueLifecycleContractPlanScorecard(rest)
+            }
             "rust-judged-panel" => Self::RustJudgedPanel(rest),
             "check-rust-judged-panel" => Self::CheckRustJudgedPanel,
             "check-release-challenge-selection" => Self::CheckReleaseChallengeSelection,
@@ -426,6 +430,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "orchestration-scorecard [--captured <corpus.json>]",
         "issue-lifecycle-scorecard [--captured <corpus.json>]",
         "issue-lifecycle-intake-scorecard [--corpus <dir>]",
+        "issue-lifecycle-contract-plan-scorecard [--corpus <dir>]",
         "rust-judged-panel check",
         "rust-judged-panel replay [--out target/ripr/<path>]",
         "rust-judged-panel packet [--host-current target/ripr/<path>/current.json]",
@@ -867,6 +872,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             false,
             false,
             "Runs the committed read-only intake pilot corpus (#4930) fail-closed (six real rows, closed categories, provenance, snapshot digest bindings, packet byte law, synthetic-only controls) and projects the embedded attempts through the unchanged issue-lifecycle counting law and scorecard, so intake results flow through #4929 without a parallel intake report.",
+        ),
+        command_entry(
+            "issue-lifecycle-contract-plan-scorecard",
+            "report_only",
+            "target/ripr/reports/issue-lifecycle-scorecard.{md,json}",
+            false,
+            false,
+            "Runs the committed read-only contract/plan decision-boundary pilot corpus (#4931) fail-closed (two real rows over the contract_required and narrow_accepted_contract_bug categories, author/adversary/root role separation, draft-spec and work-order laws, provenance, snapshot digest bindings, synthetic-only mechanics controls) and projects the embedded attempts through the unchanged issue-lifecycle counting law and scorecard, so contract/plan results flow through #4929 without a parallel report.",
         ),
         command_entry(
             "rust-judged-panel check",

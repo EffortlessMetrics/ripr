@@ -1,0 +1,19 @@
+{
+ "schema_version": "issue_lifecycle_contract_plan_provenance.v1",
+ "repository": "EffortlessMetrics/ripr-swarm",
+ "captured_at": "2026-10-04T21:31:42Z",
+ "base_main": "c23c6ba24eb719f1ad3990e6d921a6888b69607e",
+ "capture_method": "read-only gh api capture (issue, comments, timeline); zero GitHub mutation",
+ "rows": [
+  {
+   "issue": 6225,
+   "category": "contract_required",
+   "justification": "migrating the versioned public policy schema (policy/distribution.toml 1.0) and splitting crate defaults from release selection is an unresolved architecture/schema decision: the issue reserves exact field names to a draft spec that must be authored, adversary-challenged and root-dispositioned before implementation"
+  },
+  {
+   "issue": 6180,
+   "category": "narrow_accepted_contract_bug",
+   "justification": "verified residual label rename inside the already-accepted badge direction (#5211 direction B via merged #5743); exact acceptance, no open question, no spec artifact needed, routes directly to one PR"
+  }
+ ]
+}

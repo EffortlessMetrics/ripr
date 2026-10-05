@@ -12580,3 +12580,40 @@ outputs = [
 metrics = [
   "rust_oracle_strength_overstated",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0232"
+name = "Issue lifecycle contract/plan decision-boundary pilot over two real issue snapshots"
+spec = "docs/specs/RIPR-SPEC-0232-issue-lifecycle-contract-plan-pilot.md"
+tests = [
+  "xtask/src/issue_lifecycle_contract_plan.rs::tests::issue_lifecycle_contract_plan_pilot_committed_corpus_loads_with_two_categories",
+  "xtask/src/issue_lifecycle_contract_plan.rs::tests::issue_lifecycle_contract_plan_pilot_contract_case_runs_author_adversary_and_root",
+  "xtask/src/issue_lifecycle_contract_plan.rs::tests::issue_lifecycle_contract_plan_pilot_narrow_case_routes_directly_to_one_pr",
+  "xtask/src/issue_lifecycle_contract_plan.rs::tests::issue_lifecycle_contract_plan_pilot_adversary_findings_and_bounded_none_found_exclusive",
+  "xtask/src/issue_lifecycle_contract_plan.rs::tests::issue_lifecycle_contract_plan_pilot_author_cannot_accept_own_contract",
+  "xtask/src/issue_lifecycle_contract_plan.rs::tests::issue_lifecycle_contract_plan_pilot_unresolved_decision_blocks_implementation",
+  "xtask/src/issue_lifecycle_contract_plan.rs::tests::issue_lifecycle_contract_plan_pilot_campaign_and_one_pr_shapes_rejected_when_incoherent",
+  "xtask/src/issue_lifecycle_contract_plan.rs::tests::issue_lifecycle_contract_plan_pilot_specs_behavior_and_plans_work_order_laws",
+  "xtask/src/issue_lifecycle_contract_plan.rs::tests::issue_lifecycle_contract_plan_pilot_no_tracked_selection_file_changed",
+  "xtask/src/issue_lifecycle_contract_plan.rs::tests::issue_lifecycle_contract_plan_pilot_cold_start_root_reconstructs_decisions_without_chat",
+  "xtask/src/issue_lifecycle_contract_plan.rs::tests::issue_lifecycle_contract_plan_pilot_fabricated_retrieval_bytes_fail_closed",
+  "xtask/src/issue_lifecycle_contract_plan.rs::tests::issue_lifecycle_contract_plan_pilot_root_disposition_downgrade_rejected",
+  "xtask/src/issue_lifecycle_contract_plan.rs::tests::issue_lifecycle_contract_plan_pilot_extra_provenance_row_rejected",
+  "xtask/src/issue_lifecycle_contract_plan.rs::tests::issue_lifecycle_contract_plan_pilot_empty_control_corpus_rejected",
+  "xtask/src/issue_lifecycle_contract_plan.rs::tests::issue_lifecycle_contract_plan_pilot_missing_required_control_rejected",
+  "xtask/src/issue_lifecycle_contract_plan.rs::tests::issue_lifecycle_contract_plan_pilot_author_and_adversary_results_must_be_distinct",
+  "xtask/src/issue_lifecycle_contract_plan.rs::tests::issue_lifecycle_contract_plan_pilot_planning_drift_from_embedded_attempt_rejected",
+  "xtask/src/issue_lifecycle_contract_plan.rs::tests::issue_lifecycle_contract_plan_pilot_provenance_captured_at_mismatch_rejected",
+]
+fixtures = [
+  "fixtures/issue_lifecycle_contract_plan",
+]
+code = [
+  "xtask/src/issue_lifecycle_contract_plan.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0232-issue-lifecycle-contract-plan-pilot.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+]
