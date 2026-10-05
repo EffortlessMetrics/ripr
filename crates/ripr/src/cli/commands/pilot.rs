@@ -181,6 +181,7 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
             artifacts: &artifacts,
             python_first_use: None,
             language_routes: None,
+            seam_limit: None,
         };
         write_pilot_file(
             &artifacts.pilot_summary_json,
@@ -214,6 +215,17 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     );
     let pilot_budget_info = analysis::apply_pilot_seam_budget(&mut classified)?;
     let pilot_budget_truncated = pilot_budget_info.is_some();
+    // The summary's disclosure counts from the outermost population: when
+    // both caps fired, the pilot budget's total is the already-capped
+    // inventory, which would hide the seams the inventory limit dropped.
+    let summary_limit = match (&pilot_budget_info, &inventory_limit_info) {
+        (Some(budget), Some(inventory)) => Some(analysis::SeamLimitInfo {
+            analyzed: budget.analyzed,
+            total: inventory.total,
+            source: budget.source.clone(),
+        }),
+        (budget, inventory) => budget.clone().or_else(|| inventory.clone()),
+    };
     let limit_info = pilot_budget_info.or(inventory_limit_info);
     let (causal_projection, causal_projection_warning) =
         crate::app::causal_projection::CausalDeltaArtifact::load_optional(&input.root);
@@ -244,6 +256,7 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
         artifacts: &artifacts,
         python_first_use: python_first_use.as_ref(),
         language_routes: Some(&language_routes),
+        seam_limit: summary_limit.as_ref(),
     };
 
     let ts_guidance = output::render::detect_ts_full_repo_guidance_pub(&input.root, &classified);

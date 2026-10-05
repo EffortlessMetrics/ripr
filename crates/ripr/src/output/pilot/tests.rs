@@ -84,6 +84,7 @@ fn pilot_context(artifacts: &PilotArtifacts) -> PilotSummaryContext<'_> {
         artifacts,
         python_first_use: None,
         language_routes: None,
+        seam_limit: None,
     }
 }
 
@@ -161,6 +162,7 @@ fn pilot_context_with_python<'a>(
         artifacts,
         python_first_use: Some(python_first_use),
         language_routes: None,
+        seam_limit: None,
     }
 }
 
@@ -385,6 +387,50 @@ fn pilot_summary_md_names_unlisted_seams_on_an_owners_first_pick_only() {
 }
 
 #[test]
+fn pilot_summary_md_marks_owner_counts_as_lower_bounds_after_a_seam_limit() {
+    // #6602: a seam limit dropped classified seams before ranking, so a
+    // function may have more seams than the kept slice shows.
+    let entries = [
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 10),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 11),
+        classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 12),
+    ];
+    let limit = crate::analysis::SeamLimitInfo {
+        analyzed: 3,
+        total: 7,
+        source: crate::analysis::SeamLimitSource::Default,
+    };
+    let artifacts = pilot_artifacts();
+    let mut context = pilot_context(&artifacts);
+    context.max_seams = 1;
+    context.seam_limit = Some(&limit);
+    let md = render_pilot_summary_md(&entries, context);
+
+    assert!(
+        md.contains("- Seam limit reached: ranked the first 3 of 7 seams; Rust seam counts below cover those only\n- Actionable seams: at least 3, showing up to 1\n\n"),
+        "{md}"
+    );
+    assert!(
+        md.contains(
+            "   - Also in this function: at least 2 more actionable seams not listed here\n"
+        ),
+        "{md}"
+    );
+
+    context.seam_limit = None;
+    let md = render_pilot_summary_md(&entries, context);
+    assert!(!md.contains("Seam limit reached"), "{md}");
+    assert!(
+        md.contains("- Actionable seams: 3 total, showing up to 1\n"),
+        "{md}"
+    );
+    assert!(
+        md.contains("   - Also in this function: 2 more actionable seams not listed here\n"),
+        "{md}"
+    );
+}
+
+#[test]
 fn pilot_summary_md_counts_an_owners_unlisted_seams_once() {
     let entries = [
         classified_in_owner(SeamGripClass::WeaklyGripped, "src/a.rs", "a::clone", 10),
@@ -474,6 +520,7 @@ fn pilot_summary_json_contains_config_state_artifacts_and_next_commands() {
         artifacts: &artifacts,
         python_first_use: None,
         language_routes: None,
+        seam_limit: None,
     };
 
     let json = crate::testing::cwd_placeholder::project_cwd_text(&render_pilot_summary_json(
@@ -694,6 +741,7 @@ fn timeout_summary_json_is_partial_and_points_to_retry() {
         artifacts: &artifacts,
         python_first_use: None,
         language_routes: None,
+        seam_limit: None,
     };
 
     let json = render_pilot_timeout_summary_json(context);
@@ -728,6 +776,7 @@ fn pilot_context_without_config<'a>(artifacts: &'a PilotArtifacts) -> PilotSumma
         artifacts,
         python_first_use: None,
         language_routes: None,
+        seam_limit: None,
     }
 }
 
@@ -1350,6 +1399,7 @@ fn pilot_terminal_route_label_has_one_shape_for_every_language() {
 
     let context = PilotSummaryContext {
         language_routes: Some(&routes),
+        seam_limit: None,
         ..pilot_context(&artifacts)
     };
     let terminal = render_pilot_terminal(&[], context);
@@ -1383,6 +1433,7 @@ fn pilot_names_unanalyzed_languages_instead_of_an_empty_complete_ranking() -> Re
     assert_eq!(go_only.state, PilotLanguageRoutesState::UnanalyzedOnly);
     let context = PilotSummaryContext {
         language_routes: Some(&go_only),
+        seam_limit: None,
         ..pilot_context(&artifacts)
     };
     let terminal = render_pilot_terminal(&[], context);
@@ -1431,6 +1482,7 @@ fn pilot_names_unanalyzed_languages_instead_of_an_empty_complete_ranking() -> Re
         &[],
         PilotSummaryContext {
             language_routes: Some(&with_rust),
+            seam_limit: None,
             ..pilot_context(&artifacts)
         },
     );
@@ -1453,6 +1505,7 @@ fn pilot_names_unanalyzed_languages_instead_of_an_empty_complete_ranking() -> Re
         &[],
         PilotSummaryContext {
             language_routes: Some(&plain),
+            seam_limit: None,
             ..pilot_context(&artifacts)
         },
     );
@@ -1484,6 +1537,7 @@ fn pilot_names_rust_exclusion_instead_of_silently_ranking_nothing() -> Result<()
     assert_eq!(excluded.rust_exclusion(), Some(3));
     let context = PilotSummaryContext {
         language_routes: Some(&excluded),
+        seam_limit: None,
         ..pilot_context(&artifacts)
     };
     let terminal = render_pilot_terminal(&[], context);
@@ -1524,6 +1578,7 @@ fn pilot_names_rust_exclusion_instead_of_silently_ranking_nothing() -> Result<()
         &[],
         PilotSummaryContext {
             language_routes: Some(&plain),
+            seam_limit: None,
             ..pilot_context(&artifacts)
         },
     );
@@ -1560,6 +1615,7 @@ fn pilot_renderers_show_language_routes_only_without_rust_seams() -> Result<(), 
         PilotLanguageRoutes::from_discovered(root, true, &[LanguageId::Rust], &files);
     let with_routes = PilotSummaryContext {
         language_routes: Some(&supplementary),
+        seam_limit: None,
         ..pilot_context(&artifacts)
     };
     assert_eq!(
@@ -1581,6 +1637,7 @@ fn pilot_renderers_show_language_routes_only_without_rust_seams() -> Result<(), 
     let required = PilotLanguageRoutes::from_discovered(root, false, &[LanguageId::Rust], &files);
     let context = PilotSummaryContext {
         language_routes: Some(&required),
+        seam_limit: None,
         ..pilot_context(&artifacts)
     };
     let terminal = render_pilot_terminal(&[], context);
@@ -1648,6 +1705,7 @@ fn pilot_renderers_show_language_routes_only_without_rust_seams() -> Result<(), 
         );
         let context = PilotSummaryContext {
             language_routes: Some(&perl_only),
+            seam_limit: None,
             ..pilot_context(&artifacts)
         };
         let terminal = render_pilot_terminal(&[], context);

@@ -15411,7 +15411,11 @@ Field contract:
   before any function's second, so adjacent seams of one function cannot fill
   the list; a function already ranked in a higher class counts as having its
   first. `pilot-summary.md` names how many actionable seams each listed
-  function has beyond the ones shown, among the seams pilot analyzed.
+  function has beyond the ones shown, among the seams pilot analyzed. When a
+  seam limit cut the classified seams before ranking, the summary adds a
+  "Seam limit reached" line naming the outermost seam total (the inventory
+  total when both the inventory limit and the pilot budget cut), the
+  "Actionable seams" line reads "at least N", and these counts read "at least N".
 - `top_actionable_seams[].targeted_test_brief` — human-readable work order
   derived from the same fields as the agent seam packet. Placeholders are
   intentional; RIPR does not invent expected values.
