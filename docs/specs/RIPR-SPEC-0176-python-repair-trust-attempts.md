@@ -496,6 +496,11 @@ no lifecycle state at all.
   tree, stale command packet, receipt immutability, rollback proof with head
   pin and worktree preservation, the latest-apply verification boundary).
   Listed in `.ripr/traceability.toml` under this spec.
+- `crates/ripr/src/app/python_repair_binding.rs::tests::dangling_ripr_toml_symlink_is_subject_config_not_defaults`
+  and
+  `crates/ripr/src/app/python_repair_verification.rs::python_repair_verification_semantics::dangling_ripr_toml_symlink_is_subject_config_not_defaults`
+  — a dangling `ripr.toml` is the subject config profile, not built-in
+  defaults.
 - `xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics`
   — the verification-receipt validator test module (the issue's example
   execution/movement pairs, every execution state, disposition agreement,

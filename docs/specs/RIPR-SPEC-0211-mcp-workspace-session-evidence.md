@@ -228,6 +228,8 @@ official SDK transport:
 
 - `crates/ripr/src/mcp/workspace.rs::tests` — session lifecycle, typed
   failures, identity portability, boundedness, last-known-good retention.
+- `crates/ripr/src/workspace_status.rs::tests::dangling_ripr_toml_symlink_is_present_not_built_in_defaults`
+  — a dangling `ripr.toml` is present, not built-in defaults.
 - `crates/ripr/src/mcp/gaps.rs::tests` — canonical item projection and the
   readiness block this slice pinned (the readiness evaluation itself is
   owned with RIPR-SPEC-0214).

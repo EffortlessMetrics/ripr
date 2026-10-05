@@ -134,6 +134,15 @@ slash-split rewrite dropped Windows drive-relative and rooted identities.
 Paths remain the limitation-path rule: they are identities, not prose. Do not
 add a second filesystem authority in a renderer or `lsp/diagnostics.rs`.
 
+## 2026-10-04: `Path::is_file()` is not `ripr.toml` presence (#5404)
+
+`Path::is_file()` follows symlinks. After `load_for_root` started treating a
+dangling `ripr.toml` as present-but-unreadable, workspace status and the two
+Python repair config-profile checks still used `is_file()`, so they reported
+built-in defaults. Use `config_present_at_root` / `config_entry_present`
+(`symlink_metadata`) at every presence site. Keep a dangling-link control per
+site that must not say defaults while `load_for_root` names `ripr.toml`.
+
 ## 2026-10-03: record-count sharding is not a byte bound (#4999)
 
 `RIPR_REPO_SEAM_CACHE_LIMIT` / `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS` cap

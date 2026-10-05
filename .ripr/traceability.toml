@@ -728,6 +728,9 @@ name = "repository configuration"
 spec = "docs/specs/RIPR-SPEC-0007-repository-configuration.md"
 tests = [
   "crates/ripr/src/config.rs::tests::missing_config_uses_behavior_preserving_defaults",
+  "crates/ripr/src/workspace_status.rs::tests::dangling_ripr_toml_symlink_is_present_not_built_in_defaults",
+  "crates/ripr/src/app/python_repair_binding.rs::tests::dangling_ripr_toml_symlink_is_subject_config_not_defaults",
+  "crates/ripr/src/app/python_repair_verification.rs::python_repair_verification_semantics::dangling_ripr_toml_symlink_is_subject_config_not_defaults",
   "xtask/src/tests.rs::public_docs_state_python_marker_auto_when_no_ripr_toml",
   "xtask/src/tests.rs::python_marker_auto_docs_accept_required_phrases",
   "xtask/src/tests.rs::python_marker_auto_docs_reject_opt_in_python_lumping",
@@ -789,6 +792,9 @@ tests = [
 fixtures = []
 code = [
   "crates/ripr/src/config.rs",
+  "crates/ripr/src/workspace_status.rs",
+  "crates/ripr/src/app/python_repair_binding.rs",
+  "crates/ripr/src/app/python_repair_verification.rs",
   "crates/ripr/src/app.rs",
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/output/doctor.rs",
@@ -10165,6 +10171,8 @@ tests = [
   "crates/ripr/tests/python_repair_attempt.rs::tampered_retained_binding_fails_closed",
   "crates/ripr/tests/python_repair_attempt.rs::distinct_prepared_attempts_bind_their_exact_packet_inputs",
   "crates/ripr/src/app/python_repair_binding.rs::tests::identical_record_inputs_serialize_identically",
+  "crates/ripr/src/app/python_repair_binding.rs::tests::dangling_ripr_toml_symlink_is_subject_config_not_defaults",
+  "crates/ripr/src/app/python_repair_verification.rs::python_repair_verification_semantics::dangling_ripr_toml_symlink_is_subject_config_not_defaults",
   "crates/ripr/tests/python_repair_attempt.rs::driver_claims_no_verification_movement_or_closure",
   "crates/ripr/tests/python_repair_attempt.rs::states_remain_distinct_across_one_repository",
   "crates/ripr/tests/python_repair_attempt.rs::verification_phase_records_execution_and_movement_separately",
@@ -11855,6 +11863,7 @@ name = "MCP workspace session evidence"
 spec = "docs/specs/RIPR-SPEC-0211-mcp-workspace-session-evidence.md"
 tests = [
   "crates/ripr/src/mcp/workspace.rs::tests::complete_zero_and_incomplete_zero_stay_distinct",
+  "crates/ripr/src/workspace_status.rs::tests::dangling_ripr_toml_symlink_is_present_not_built_in_defaults",
   "crates/ripr/src/mcp/workspace.rs::tests::unsupported_input_never_becomes_a_snapshot",
   "crates/ripr/src/mcp/workspace.rs::tests::list_get_snapshot_before_any_refresh_fail_closed",
   "crates/ripr/src/mcp/workspace.rs::tests::in_flight_session_reports_analysis_in_flight",

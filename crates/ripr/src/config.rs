@@ -150,11 +150,17 @@ enabled = ["rust"]
 "#;
 
 /// Whether a `ripr.toml` entry exists at `path`, without following links.
-/// `Path::exists` follows them, so a dangling or self-referencing symlink read
-/// as "no config" and the run silently used defaults. The entry is present;
-/// reading it reports the real failure.
-fn config_entry_present(path: &Path) -> bool {
+/// `Path::exists` and `Path::is_file` follow them, so a dangling or
+/// self-referencing symlink read as "no config" and consumers silently used
+/// built-in defaults. The entry is present; reading it reports the real failure.
+pub(crate) fn config_entry_present(path: &Path) -> bool {
     std::fs::symlink_metadata(path).is_ok()
+}
+
+/// Whether the analyzed root has a `ripr.toml` directory entry. Presence uses
+/// [`config_entry_present`]: a dangling link is present, not absent.
+pub(crate) fn config_present_at_root(root: &Path) -> bool {
+    config_entry_present(&root.join(CONFIG_FILE_NAME))
 }
 
 fn discover_config_path(root: &Path) -> Option<PathBuf> {
