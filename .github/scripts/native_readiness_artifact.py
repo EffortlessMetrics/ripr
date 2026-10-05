@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Retain one Cargo-reported xtask image; observe read-only without rebuilding."""
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
 SELF = ".github/scripts/native_readiness_artifact.py"
@@ -22,7 +24,7 @@ ENV = dict(os.environ, GIT_NO_LAZY_FETCH="1", GIT_OPTIONAL_LOCKS="0")
 BUILD = ("cargo", "build", "--locked", "-p", "xtask", "--message-format=json-render-diagnostics")
 OBSERVE = ("ci-budget", "--hard-enforcement-readiness")
 REPORT = ROOT / "target/ripr/reports/native-calibration-observer-artifact.json"
-IMAGE_CAP = 256 * 1024 * 1024
+# Hash only the initially observed existing image extent; retain no data copy.
 CAPTURE_CAP = 8 * 1024 * 1024
 RECEIPT_CAP = 64 * 1024
 UNTIL = 0.0
@@ -143,7 +145,8 @@ def require_digest(actual, expected):
 
 
 def controls():
-    """Same artifact selector and digest guard; no compiler or image execution."""
+    """Pure selector/digest/extent/inode guards; no compiler or image execution."""
+    extent_controls()
     row = {"reason": "compiler-artifact", "target": {"name": "xtask", "kind": ["bin"],
            "src_path": str(ROOT / "xtask/src/main.rs")}, "manifest_path": str(ROOT / "xtask/Cargo.toml"),
            "profile": {"test": False}, "features": [], "executable": "/unused/control"}
@@ -173,24 +176,84 @@ def runner_temp():
     return base.resolve()
 
 
-def image_hash(path):
-    if path.is_symlink() or not stat.S_ISREG(path.stat().st_mode):
-        raise RuntimeError("retained executable is not a regular file")
+def image_identity(info):
+    # ctime/nlink are intentionally not cross-step identity: adding/removing
+    # OTHER hard-link names changes them without changing this image.
+    return {"device": info.st_dev, "inode": info.st_ino, "bytes": info.st_size,
+            "mtime_ns": info.st_mtime_ns, "mode": info.st_mode}
+
+
+def require_stable_read(before, after):
+    if image_identity(before) != image_identity(after) or before.st_ctime_ns != after.st_ctime_ns:
+        raise RuntimeError("observer image metadata changed during digest read")
+
+
+def digest_extent(stream, extent):
+    if not isinstance(extent, int) or isinstance(extent, bool) or extent <= 0:
+        raise RuntimeError("observer image extent must be a positive observed size")
     result = hashlib.sha256()
     count = 0
-    with path.open("rb") as stream:
-        before = os.fstat(stream.fileno())
-        while chunk := stream.read(min(65536, IMAGE_CAP - count + 1)):
-            count += len(chunk)
-            if count > IMAGE_CAP:
-                raise RuntimeError("observer image byte ceiling exceeded")
-            result.update(chunk)
-        after = os.fstat(stream.fileno())
-    if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns) != \
-            (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns) \
-            or count != before.st_size or count == 0:
-        raise RuntimeError("observer image changed during digest read or is empty")
+    while count < extent:
+        if time.monotonic() >= UNTIL:
+            raise RuntimeError("observer image hash deadline reached")
+        chunk = stream.read(min(65536, extent - count))
+        if not chunk:
+            raise RuntimeError("observer image ended before observed extent")
+        count += len(chunk)
+        if count > extent:
+            raise RuntimeError("observer image exceeded observed extent")
+        result.update(chunk)
+    if stream.read(1):
+        raise RuntimeError("observer image grew beyond observed extent")
     return {"bytes": count, "sha256": result.hexdigest()}
+
+
+def image_hash(path):
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(descriptor, "rb") as stream:
+        before = os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode):
+            raise RuntimeError("retained executable is not a regular file")
+        result = digest_extent(stream, before.st_size)
+        after = os.fstat(stream.fileno())
+    require_stable_read(before, after)
+    result.update(image_identity(before))
+    return result
+
+
+def extent_controls():
+    # Virtual metadata may exceed the former arbitrary 256MiB ceiling
+    # without allocating that extent; real digest controls use six bytes.
+    before = SimpleNamespace(st_dev=7, st_ino=19, st_size=268435457,
+                             st_mtime_ns=23, st_ctime_ns=31, st_nlink=1, st_mode=0o100755)
+    linked = SimpleNamespace(**vars(before))
+    linked.st_ctime_ns = 41
+    linked.st_nlink = 2
+    if image_identity(before) != image_identity(linked):
+        raise RuntimeError("harmless link metadata changed pinned identity")
+    if digest_extent(io.BytesIO(b"owned!"), 6) != {"bytes": 6, "sha256": sha(b"owned!")}:
+        raise RuntimeError("observed-extent digest positive control failed")
+    for data, extent, expected in ((b"owned!", 0, "positive observed size"),
+                                  (b"owned!", 7, "ended before"),
+                                  (b"owned!", 5, "grew beyond")):
+        try:
+            digest_extent(io.BytesIO(data), extent)
+        except RuntimeError as error:
+            if expected not in str(error):
+                raise RuntimeError("extent control produced a wrong refusal") from error
+        else:
+            raise RuntimeError("extent guard falsely accepted")
+    require_stable_read(before, SimpleNamespace(**vars(before)))
+    for field in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns", "st_mode"):
+        drift = SimpleNamespace(**vars(before))
+        setattr(drift, field, getattr(drift, field) + 1)
+        try:
+            require_stable_read(before, drift)
+        except RuntimeError as error:
+            if "metadata changed during" not in str(error):
+                raise RuntimeError("metadata control produced a wrong refusal") from error
+        else:
+            raise RuntimeError("metadata guard falsely accepted")
 
 
 def publish(receipt):
@@ -216,24 +279,36 @@ def prepare():
     identity = image_hash(original)
     directory = Path(tempfile.mkdtemp(prefix="ripr-native-observer-", dir=runner_temp()))
     image = directory / "xtask"
-    with original.open("rb") as incoming, image.open("xb") as outgoing:
-        count = 0
-        while chunk := incoming.read(min(65536, IMAGE_CAP - count + 1)):
-            count += len(chunk)
-            if count > IMAGE_CAP:
-                raise RuntimeError("observer copy byte ceiling exceeded")
-            outgoing.write(chunk)
-    image.chmod(0o500)
+    original_stat = os.stat(original, follow_symlinks=False)
+    if image_identity(original_stat) != {key: identity[key] for key in
+                                        ("device", "inode", "bytes", "mtime_ns", "mode")}:
+        raise RuntimeError("Cargo image changed before hard-link retention")
+    try:
+        os.link(original, image, follow_symlinks=False)
+    except OSError as error:
+        raise RuntimeError("exclusive same-filesystem observer hard link unavailable; no copy fallback") from error
+    # Exclusive os.link does not overwrite or copy data, chmod, strip or rebuild.
+    # It pins existing blocks; it is not an immutable snapshot of in-place writes.
     if image_hash(image) != identity or image_hash(original) != identity:
-        raise RuntimeError("copied image differs from Cargo artifact")
+        raise RuntimeError("hard-linked image differs from Cargo artifact")
+    linked_stat = os.stat(image, follow_symlinks=False)
+    if linked_stat.st_blocks != original_stat.st_blocks or linked_stat.st_mode != original_stat.st_mode:
+        raise RuntimeError("hard-link retention changed existing image allocation or mode")
     same_source(admitted)
     receipt = {"schema": "native_observer_artifact.1", "source": admitted,
                "artifact_root": str(directory), "image": identity,
+               "physical_retention": {"method": "exclusive_hard_link", "added_image_data_bytes": 0,
+                    "original_extent_bytes": identity["bytes"],
+                    "pinned_existing_allocation_bytes": linked_stat.st_blocks * 512,
+                    "source_mode_unchanged": linked_stat.st_mode == original_stat.st_mode,
+                    "ctime_nlink_note": "Other-name link/unlink metadata may change; bytes/inode/extent/mtime remain bound.",
+                    "snapshot_semantics": "NOT_IMMUTABLE; in-place modification refuses at sampled boundaries",
+                    "metadata_logical_forecast_bytes": 2 * RECEIPT_CAP + 65536},
                "cargo_artifact": artifact, "build_argv": list(BUILD),
                "build_elapsed_seconds": time.monotonic() - started,
                "runner_observation": {key: os.environ.get(key) for key in
                     ("RUNNER_OS", "RUNNER_ARCH", "RUNNER_NAME", "ImageOS", "ImageVersion", "GITHUB_SHA")},
-               "controls": "selector_and_digest_only_passed",
+               "controls": "pure_selector_digest_extent_inode_passed",
                "observation": "NOT_RUN", "full_trial": "NOT_RUN", "hard_provider": "NOT_ESTABLISHED"}
     data = publish(receipt)
     (directory / "producer.json").write_bytes(data)
