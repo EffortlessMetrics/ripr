@@ -74,12 +74,17 @@ document should branch on `exit`, not on free-text `stop_states`.
   example `verification_rejected_policy` or `verification_wrong_root`) and
   rendered the typed refusal JSON on stdout; `ripr agent repair --phase
   after` refused with a named cause after selecting its attempt — a diverged
-  HEAD, drifted analysis inputs, a no-movement verify refusal, or a replaced
-  trust-binding manifest — with the cause named on stderr, the refusal
-  recorded on the attempt, and, with `--json`, one JSON document on stdout
+  HEAD, drifted analysis inputs, a no-movement verify refusal, a replaced
+  trust-binding manifest, or a receipt refused on trusted-surface grounds
+  (tracked content differs from the attempt's before-phase head outside the
+  allowed test surface; the recovery narration names the commit-first route,
+  #5262) — with the cause named on stderr, the refusal recorded on the
+  attempt (the trusted-surface refusal is recorded beside the finished
+  attempt's after verdict), and, with `--json`, one JSON document on stdout
   (the `repair_after_refusal` document naming the cause and recovery when the
   refusal came before the verify render, otherwise the bare agent verify
-  document). Without `--json` stdout stays empty on a refusal and stderr
+  document — the trusted-surface refusal always fires after the verify
+  render). Without `--json` stdout stays empty on a refusal and stderr
   carries the cause and recovery. Operational errors after attempt selection (an unreadable
   retained packet or manifest, a failed artifact write) still exit `2`.
 - **Typed verify refusal**: standalone `ripr agent verify` refused the pair

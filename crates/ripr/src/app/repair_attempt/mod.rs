@@ -1924,6 +1924,60 @@ pub(crate) fn record_repair_attempt_after_refusal_from(
     read_repair_attempt_manifest_at(&store, &manifest_path).map(|_| ())
 }
 
+/// Records why the receipt of an already finished attempt refused, beside the
+/// committed after verdict (#5262). The after phase's trusted-surface refusal
+/// fires only after `finish_repair_attempt` has committed the verdict, so the
+/// resumable authority above refuses the write by design; the narration the
+/// after phase printed must still reach `agent status`, which reads this
+/// record for a finished attempt whose receipt is missing. The caller asserts
+/// the refusal was observed after this attempt's durable finish, and the
+/// locked commit keeps that assertion honest: the write is refused when the
+/// attempt carries no after verdict (that observation belongs to the
+/// resumable authority) and when the after verdict moved between the read and
+/// the locked commit (a concurrent finish would supersede the observation
+/// this refusal describes). Only `last_after_refusal` moves; state, verdict,
+/// and bindings are re-validated and byte-preserved.
+pub(crate) fn record_repair_attempt_terminal_receipt_refusal_from(
+    root: &Path,
+    store: Option<&Path>,
+    attempt_id: &RepairAttemptId,
+    reason: &str,
+) -> Result<(), String> {
+    let (store, manifest_path, base_bytes, base_manifest) =
+        open_attempt_with_bytes(root, store, attempt_id)?;
+    let root = store.canonical_root().to_path_buf();
+    let after = base_manifest.after.clone().ok_or_else(|| {
+        format!(
+            "repair attempt {} has no after verdict; record the refusal with the resumable authority instead",
+            attempt_id.as_str()
+        )
+    })?;
+    let reason = bounded_refusal_reason(reason);
+    if reason.is_empty() {
+        return Err("an after-phase refusal needs a non-empty reason".to_string());
+    }
+    let mut manifest = base_manifest;
+    manifest.last_after_refusal = Some(RepairAttemptAfterRefusal {
+        reason,
+        repository_head: crate::agent::artifact::current_git_head(&root).ok(),
+        recorded_unix_ms: current_unix_ms()?,
+    });
+    validate_manifest(&manifest)?;
+    let mut bytes = serde_json::to_vec_pretty(&manifest)
+        .map_err(|error| format!("serialize repair attempt refusal failed: {error}"))?;
+    bytes.push(b'\n');
+    commit_manifest_locked(&manifest_path, attempt_id, &base_bytes, &bytes, |current| {
+        if current.after.as_ref() != Some(&after) {
+            return Err(format!(
+                "repair attempt {} moved while its receipt refusal was recorded",
+                attempt_id.as_str()
+            ));
+        }
+        Ok(())
+    })?;
+    read_repair_attempt_manifest_at(&store, &manifest_path).map(|_| ())
+}
+
 /// Upper bound on a recorded after-phase refusal message.
 const REPAIR_ATTEMPT_REFUSAL_MAX_BYTES: usize = 4096;
 
@@ -2803,6 +2857,35 @@ fn validate_trusted_head_surface(
     observed_changes: &[String],
     before_head: &str,
 ) -> Result<(), String> {
+    match trusted_head_surface_violations(root, policy, observed_changes, before_head)?.as_slice() {
+        [] => Ok(()),
+        [path, ..] => Err(format!(
+            "repair receipt observed repository path {TRUSTED_SURFACE_REFUSAL_TAIL}: {path}"
+        )),
+    }
+}
+
+/// The stable tail of the receipt's trusted-surface admission refusal. The
+/// after phase matches it to narrate the commit-first recovery when the
+/// refusal still fires mid-loop, so the shared vocabulary cannot drift
+/// between the refusing validator and its narration (#5262).
+pub(crate) const TRUSTED_SURFACE_REFUSAL_TAIL: &str = "outside trusted edit surface";
+
+/// The repository paths a receipt would refuse for this head: tracked paths
+/// that differ from `head` and untracked paths the attempt observably wrote,
+/// filtered to the paths outside the attempt's allowed edit surface. An empty
+/// list means the surface is trusted; the list is evidence for the caller's
+/// refusal, not a failure by itself. The receipt admits only when the list is
+/// empty, and the before phase runs the same inventory over the freshly read
+/// HEAD to refuse a dirty production premise before any attempt exists
+/// (#5262), where a dirty allowed-surface test file stays allowed because the
+/// loop expects the focused test edit.
+pub(crate) fn trusted_head_surface_violations(
+    root: &Path,
+    policy: &EditCagePolicy,
+    observed_changes: &[String],
+    head: &str,
+) -> Result<Vec<String>, String> {
     let tracked = git_paths(
         root,
         &[
@@ -2811,7 +2894,7 @@ fn validate_trusted_head_surface(
             "--no-ext-diff",
             "--name-only",
             "-z",
-            before_head,
+            head,
             "--",
         ],
     )?;
@@ -2823,14 +2906,11 @@ fn validate_trusted_head_surface(
     let written_untracked = untracked
         .into_iter()
         .filter(|path| observed.contains(path.as_str()));
-    for path in tracked.into_iter().chain(written_untracked) {
-        if !policy.allows_path(&path) {
-            return Err(format!(
-                "repair receipt observed repository path outside trusted edit surface: {path}"
-            ));
-        }
-    }
-    Ok(())
+    Ok(tracked
+        .into_iter()
+        .chain(written_untracked)
+        .filter(|path| !policy.allows_path(path))
+        .collect())
 }
 
 /// Cooperative deadline for the trusted-surface git inventory (#2303, #4363).
@@ -3922,6 +4002,135 @@ mod tests {
                     "a committed production change must block the receipt: {other:?}"
                 )),
             }
+        })();
+        let _ = std::fs::remove_dir_all(&root);
+        result
+    }
+
+    /// The surface inventory's boundary is the allowed edit surface, not
+    /// worktree cleanliness (#5262): a dirty focused test file inside the
+    /// allowed surface is the loop's expected mid-loop edit and is not a
+    /// violation, while the same inventory refuses dirty production content
+    /// outside it. The before-phase premise gate shares this function, so the
+    /// production-vs-test boundary is pinned at the shared owner.
+    #[test]
+    fn trusted_surface_violations_allow_a_dirty_test_file_and_name_production_only()
+    -> Result<(), String> {
+        let root = test_repo_root("trusted-surface-boundary")?;
+        let result = (|| -> Result<(), String> {
+            std::fs::create_dir_all(root.join("tests"))
+                .map_err(|error| format!("create tests dir: {error}"))?;
+            std::fs::write(root.join("tests/target.rs"), "#[test]\nfn focused() {}\n")
+                .map_err(|error| format!("write test: {error}"))?;
+            run_git(&root, &["add", "tests/target.rs"])?;
+            run_git(&root, &["commit", "--no-gpg-sign", "-qm", "focused test"])?;
+            let packet = serde_json::json!({
+                "seam_id": "seam:sample",
+                "allowed_edit_surface": ["tests/target.rs"],
+                "forbidden_files": []
+            });
+            let policy = edit_cage_policy_from_packet(
+                &serde_json::to_string(&packet).map_err(|error| error.to_string())?,
+                "seam:sample",
+            )?;
+            let head = crate::agent::artifact::current_git_head(&root)?;
+
+            // A tracked, committed, then dirtied allowed-surface test file is
+            // a tracked difference from HEAD that the surface allows.
+            std::fs::write(root.join("tests/target.rs"), "#[test]\nfn stronger() {}\n")
+                .map_err(|error| format!("edit test: {error}"))?;
+            let violations = trusted_head_surface_violations(&root, &policy, &[], &head)?;
+            if !violations.is_empty() {
+                return Err(format!(
+                    "a dirty allowed-surface test file must not violate the surface: {violations:?}"
+                ));
+            }
+
+            // The same dirty test edit plus a tracked, worktree-modified
+            // production file violates exactly the production path: the
+            // issue's premise is a committed file modified but not
+            // recommitted, which untracked content alone would not exercise.
+            std::fs::write(root.join("src.rs"), "pub fn base() {}\n")
+                .map_err(|error| format!("write production file: {error}"))?;
+            run_git(&root, &["add", "src.rs"])?;
+            run_git(&root, &["commit", "--no-gpg-sign", "-qm", "production"])?;
+            std::fs::write(root.join("src.rs"), "pub fn drift() {}\n")
+                .map_err(|error| format!("modify production file: {error}"))?;
+            let head = crate::agent::artifact::current_git_head(&root)?;
+            let violations = trusted_head_surface_violations(&root, &policy, &[], &head)?;
+            if violations != vec!["src.rs".to_string()] {
+                return Err(format!(
+                    "dirty production content must be the only violation: {violations:?}"
+                ));
+            }
+            Ok(())
+        })();
+        let _ = std::fs::remove_dir_all(&root);
+        result
+    }
+
+    /// The terminal receipt-refusal authority records the narration beside a
+    /// committed after verdict (#5262 review): the late trusted-surface
+    /// refusal fires only after `finish_repair_attempt`, so the resumable
+    /// authority refuses it by design and the recovery route would otherwise
+    /// never reach `agent status`. Pins that the record lands, that state and
+    /// the after verdict are untouched, and that the resumable authority
+    /// stays guarded for this attempt.
+    #[test]
+    fn terminal_receipt_refusal_records_beside_the_after_verdict() -> Result<(), String> {
+        let root = test_repo_root("terminal-receipt-refusal")?;
+        let result = (|| -> Result<(), String> {
+            let prepared = prepare_sample_attempt(&root, "seam:sample", "a")?;
+            let finished = finish_sample_attempt(&root, &prepared)?;
+            let attempt_id = &finished.repair_attempt_id;
+            let reason = "repair receipt observed repository path outside trusted edit surface: src.rs. to recover: commit the production change, then start a new attempt.";
+
+            record_repair_attempt_terminal_receipt_refusal_from(&root, None, attempt_id, reason)?;
+            let manifest = load_repair_attempt_manifest(&root, attempt_id)?;
+            let refusal = manifest.last_after_refusal.as_ref().ok_or_else(|| {
+                "the terminal receipt refusal was not recorded on the manifest".to_string()
+            })?;
+            if !refusal.reason.contains("to recover:") {
+                return Err(format!(
+                    "recorded refusal lost the recovery route: {refusal:?}"
+                ));
+            }
+            if manifest.after.is_none() || manifest.state != RepairAttemptState::ReadyToFinish {
+                return Err(format!(
+                    "the terminal record moved the attempt's finish: state {:?}, after present {}",
+                    manifest.state,
+                    manifest.after.is_some()
+                ));
+            }
+
+            // The resumable authority stays guarded beside the committed
+            // verdict: only the trusted-surface family routes to the terminal
+            // writer.
+            match record_repair_attempt_after_refusal_from(&root, None, attempt_id, "resumable") {
+                Err(error) if error.contains("already has an after verdict") => {}
+                other => {
+                    return Err(format!(
+                        "resumable refusal authority must stay guarded: {other:?}"
+                    ));
+                }
+            }
+            // The terminal authority refuses an attempt that never finished:
+            // its observation belongs to the resumable authority.
+            let awaiting = prepare_sample_attempt(&root, "seam:sample", "b")?;
+            match record_repair_attempt_terminal_receipt_refusal_from(
+                &root,
+                None,
+                &awaiting.manifest.repair_attempt_id,
+                reason,
+            ) {
+                Err(error) if error.contains("no after verdict") => {}
+                other => {
+                    return Err(format!(
+                        "terminal authority must refuse an attempt without a verdict: {other:?}"
+                    ));
+                }
+            }
+            Ok(())
         })();
         let _ = std::fs::remove_dir_all(&root);
         result

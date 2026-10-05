@@ -466,6 +466,219 @@ fn b6_out_of_surface_edit_fails_closed() -> Result<(), String> {
     Ok(())
 }
 
+/// A dirty production premise refuses the before phase itself (#5262). The
+/// loop pins the repository at its before phase, so an uncommitted
+/// production change used to pass the edit cage silently and only refuse the
+/// receipt after the whole attempt was consumed. Now the before phase names
+/// the paths and the commit-first recovery, and no attempt or workflow
+/// artifact exists. The boundary is production content, not worktree
+/// cleanliness: a dirty focused test file inside the allowed surface still
+/// starts and completes the loop, because the loop expects the test edit.
+#[test]
+fn b6_dirty_production_premise_refuses_the_before_phase_and_a_dirty_test_still_runs()
+-> Result<(), String> {
+    let root = unique_temp_workspace("agentic-b6-dirty-premise");
+    fs::create_dir_all(&root).map_err(|error| format!("create {}: {error}", root.display()))?;
+    let _owned = Fixture(root.clone());
+    init_fixture_repo(&root)?;
+    let root_arg = root.display().to_string();
+
+    // Uncommitted production change before the loop starts.
+    edit_out_of_surface(&root)?;
+    let seam_id = discover_seam_id(&root, &root_arg)?;
+    let before = run_ripr(
+        &root,
+        &[
+            "agent",
+            "repair",
+            "--json",
+            "--root",
+            &root_arg,
+            "--seam-id",
+            &seam_id,
+            "--phase",
+            "before",
+        ],
+    )?;
+    assert_exit_code(&before, 2, "dirty-premise before-phase")?;
+    let text = combined_output(&before);
+    for fragment in [
+        "repair attempt cannot start",
+        "src/lib.rs",
+        "to recover:",
+        "git commit -- src/lib.rs",
+        "No workflow was prepared and no repair attempt was started.",
+    ] {
+        if !text.contains(fragment) {
+            return Err(format!(
+                "dirty-premise refusal must name `{fragment}`:\n{text}"
+            ));
+        }
+    }
+    let attempts = root.join("target/ripr/repair-attempts");
+    let published = if attempts.is_dir() {
+        fs::read_dir(&attempts)
+            .map_err(|error| format!("read {}: {error}", attempts.display()))?
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("repair-attempt-")
+            })
+            .count()
+    } else {
+        0
+    };
+    if published != 0 {
+        return Err(format!(
+            "a dirty-premise refusal published {published} attempt directories"
+        ));
+    }
+    if root.join("target/ripr/workflow").exists() {
+        return Err("a dirty-premise refusal wrote workflow artifacts".to_string());
+    }
+
+    // The recovery the refusal names: commit the production change, and the
+    // same seam starts.
+    fixture_git_ok(&root, &["add", "src/lib.rs"])
+        .map_err(|error| format!("git add src/lib.rs: {error}"))?;
+    fixture_git_ok(
+        &root,
+        &[
+            "-c",
+            "user.name=RIPR test",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-qm",
+            "committed production premise",
+        ],
+    )
+    .map_err(|error| format!("git commit src/lib.rs: {error}"))?;
+    let committed = run_ripr(
+        &root,
+        &[
+            "agent",
+            "repair",
+            "--json",
+            "--root",
+            &root_arg,
+            "--seam-id",
+            &seam_id,
+            "--phase",
+            "before",
+        ],
+    )?;
+    if !committed.status.success() {
+        return Err(format!(
+            "before phase must start once the production premise is committed:\n{}",
+            combined_output(&committed)
+        ));
+    }
+    let attempt_id = parse_stdout_json(&committed)?
+        .pointer("/repair_attempt/attempt_id")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| {
+            format!(
+                "committed-premise before-phase stdout is missing repair_attempt.attempt_id:\n{}",
+                String::from_utf8_lossy(&committed.stdout)
+            )
+        })?;
+
+    // Boundary control on the same loop: a dirty focused test file inside
+    // the allowed surface does not refuse the before phase. The dirty edit
+    // adds an unrelated passing test so the seam's gap still exists and the
+    // packet still renders (a gap-closing test would make the seam
+    // strongly_gripped and refuse a fresh before phase at the packet gate,
+    // which is the gap rule, not the premise rule). The loop starts, and
+    // closing the gap mid-loop completes the after phase compliantly.
+    append_test_fn(
+        &root,
+        "unrelated_smoke_still_passes",
+        "assert_eq!(discounted_total(10, 100), 10);",
+    )?;
+    let dirty_test_before = run_ripr(
+        &root,
+        &[
+            "agent",
+            "repair",
+            "--json",
+            "--root",
+            &root_arg,
+            "--seam-id",
+            &seam_id,
+            "--phase",
+            "before",
+        ],
+    )?;
+    if !dirty_test_before.status.success() {
+        return Err(format!(
+            "a dirty focused test file must not refuse the before phase:\n{}",
+            combined_output(&dirty_test_before)
+        ));
+    }
+    let test_attempt_id = parse_stdout_json(&dirty_test_before)?
+        .pointer("/repair_attempt/attempt_id")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| {
+            format!(
+                "dirty-test before-phase stdout is missing repair_attempt.attempt_id:\n{}",
+                String::from_utf8_lossy(&dirty_test_before.stdout)
+            )
+        })?;
+    // The mid-loop edit closes the gap with the equality test. It must not
+    // duplicate an existing fn name: repeated `add_in_surface_test` appends
+    // the same fn twice and would fail compilation instead of proving the
+    // boundary.
+    append_test_fn(
+        &root,
+        "equality_boundary_discounts_closes_the_gap",
+        "assert_eq!(discounted_total(100, 100), 90);",
+    )?;
+    let after = run_ripr(
+        &root,
+        &[
+            "agent",
+            "repair",
+            "--json",
+            "--root",
+            &root_arg,
+            "--attempt",
+            &test_attempt_id,
+            "--phase",
+            "after",
+        ],
+    )?;
+    if !after.status.success() {
+        return Err(format!(
+            "the loop must complete when only the allowed test surface was dirty and edited:\n{}",
+            combined_output(&after)
+        ));
+    }
+    let status = verdict_status(&root, &test_attempt_id)?;
+    if status != "compliant" {
+        return Err(format!(
+            "dirty-test-premise loop verdict is {status}, want compliant"
+        ));
+    }
+    if attempt_id.is_empty() {
+        return Err("committed-premise attempt id was empty".to_string());
+    }
+    Ok(())
+}
+
+/// Appends one distinct `#[test]` fn to the fixture's focused test file.
+fn append_test_fn(root: &Path, name: &str, body: &str) -> Result<(), String> {
+    let path = root.join("tests/pricing.rs");
+    let mut tests =
+        fs::read_to_string(&path).map_err(|error| format!("read {}: {error}", path.display()))?;
+    tests.push_str(&format!("#[test]\nfn {name}() {{\n    {body}\n}}\n"));
+    fs::write(&path, tests).map_err(|error| format!("write {}: {error}", path.display()))
+}
+
 /// Production reread: a finished attempt's receipt must not replay after the
 /// snapshot moves. Production has no `superseded` cage token; the expected-value
 /// oracles are the CLI refusals `tampered or stale` and `already finished`.
