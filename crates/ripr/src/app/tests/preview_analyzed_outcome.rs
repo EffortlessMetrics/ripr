@@ -398,7 +398,7 @@ fn mixed_typescript_diff_counts_only_accepted_files_and_discloses_the_skipped() 
 /// degrade the outcome; the same refusal must still surface when the diff
 /// does touch Python.
 #[cfg(feature = "lang-python")]
-fn limitation_kinds_for_diff(name: &str, changed: &[&str]) -> Result<Vec<String>, String> {
+fn python_refusal_limitation_kinds(name: &str, changed: &[&str]) -> Result<Vec<String>, String> {
     let nested = format!("x = {}1{}\n", "(".repeat(200), ")".repeat(200));
     limitation_kinds_for_preview_diff(name, "python", ("fixture.py", &nested), changed)
 }
@@ -472,13 +472,13 @@ fn limitation_kinds_for_preview_diff(
 #[cfg(feature = "lang-python")]
 #[test]
 fn unrelated_python_refusal_does_not_degrade_a_rust_only_diff() -> Result<(), String> {
-    let rust_only = limitation_kinds_for_diff("python-refusal-rust-only", &["src/lib.rs"])?;
+    let rust_only = python_refusal_limitation_kinds("python-refusal-rust-only", &["src/lib.rs"])?;
     assert!(
         rust_only.is_empty(),
         "a Python file the diff does not touch must not add limitations: {rust_only:?}"
     );
     let touches_python =
-        limitation_kinds_for_diff("python-refusal-touched", &["src/lib.rs", "fixture.py"])?;
+        python_refusal_limitation_kinds("python-refusal-touched", &["src/lib.rs", "fixture.py"])?;
     assert!(
         touches_python
             .iter()

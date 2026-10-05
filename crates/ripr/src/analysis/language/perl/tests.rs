@@ -4279,30 +4279,40 @@ fn supplied_partial_packet_does_not_hide_a_malformed_diff() -> Result<(), String
     Ok(())
 }
 
-/// Runs `check` with Perl enabled and a supplied, finding-free partial packet
-/// over `diff_text`; returns each outcome limitation as `(kind, detail)`.
-fn partial_packet_outcome_limitations(
-    name: &str,
-    diff_text: &str,
-) -> Result<Vec<(String, String)>, String> {
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|error| format!("system time: {error}"))?
-        .as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "ripr-perl-partial-{name}-{}-{stamp}",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(root.join("src")).map_err(|error| format!("create src: {error}"))?;
-    let proof = (|| -> Result<Vec<(String, String)>, String> {
-        let write = |path: &std::path::Path, text: &str| {
-            std::fs::write(path, text).map_err(|error| format!("write {}: {error}", path.display()))
-        };
-        write(
-            &root.join("src/lib.rs"),
-            "pub fn discount(amount: u32) -> u32 {\n    if amount > 10 { amount - 1 } else { amount }\n}\n",
-        )?;
-        let packet = r#"{
+/// #6703: a supplied partial packet that does produce a finding takes the
+/// pipeline's finding-producing branch. Its packet limitation is still
+/// supplied evidence, so a non-empty diff with no parseable change must still
+/// be reported as malformed rather than hidden behind the Perl finding.
+#[test]
+fn supplied_partial_packet_with_findings_does_not_hide_a_malformed_diff() -> Result<(), String> {
+    let packet = EXACT_RETURN_PACKET.replacen(
+        r#""packet_status": "complete""#,
+        r#""packet_status": "partial""#,
+        1,
+    );
+    assert_ne!(packet, EXACT_RETURN_PACKET);
+    let (limitations, finding_count) = partial_packet_outcome(
+        "malformed-with-findings",
+        "this is not a unified diff for lib/My/App.pm\n",
+        &packet,
+    )?;
+    assert!(
+        finding_count > 0,
+        "the partial packet must project a `.pm` finding so the finding-producing branch runs"
+    );
+    let kinds: Vec<&str> = limitations.iter().map(|(kind, _)| kind.as_str()).collect();
+    assert!(kinds.contains(&"malformed_diff"), "{limitations:?}");
+    assert!(
+        limitations
+            .iter()
+            .any(|(_, detail)| detail.contains("packet partial")),
+        "{limitations:?}"
+    );
+    Ok(())
+}
+
+/// A partial, finding-free Perl fact packet: it changes and tests nothing.
+const PARTIAL_EMPTY_PACKET: &str = r#"{
   "schema_version": "ripr-perl-facts-v1",
   "packet_id": "perl-facts:repo:partial-empty",
   "packet_status": "partial",
@@ -4314,6 +4324,48 @@ fn partial_packet_outcome_limitations(
   "relations": [], "dynamic_boundaries": [], "verify_commands": [],
   "limitations": [], "provenance": []
 }"#;
+
+/// Runs `check` with Perl enabled and a supplied, finding-free partial packet
+/// over `diff_text`; returns each outcome limitation as `(kind, detail)`.
+fn partial_packet_outcome_limitations(
+    name: &str,
+    diff_text: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let (limitations, finding_count) =
+        partial_packet_outcome(name, diff_text, PARTIAL_EMPTY_PACKET)?;
+    if finding_count != 0 {
+        return Err(format!(
+            "the empty partial packet projected {finding_count} Perl findings"
+        ));
+    }
+    Ok(limitations)
+}
+
+/// Runs `check` with Perl enabled and the supplied `packet` over `diff_text`;
+/// returns each outcome limitation as `(kind, detail)` and the count of
+/// findings at a `.pm` path (the packet's own findings).
+fn partial_packet_outcome(
+    name: &str,
+    diff_text: &str,
+    packet: &str,
+) -> Result<(Vec<(String, String)>, usize), String> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| format!("system time: {error}"))?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "ripr-perl-partial-{name}-{}-{stamp}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(root.join("src")).map_err(|error| format!("create src: {error}"))?;
+    let proof = (|| -> Result<(Vec<(String, String)>, usize), String> {
+        let write = |path: &std::path::Path, text: &str| {
+            std::fs::write(path, text).map_err(|error| format!("write {}: {error}", path.display()))
+        };
+        write(
+            &root.join("src/lib.rs"),
+            "pub fn discount(amount: u32) -> u32 {\n    if amount > 10 { amount - 1 } else { amount }\n}\n",
+        )?;
         let facts = root.join("facts.json");
         write(&facts, &bless_fingerprint(packet))?;
         let diff = root.join("change.diff");
@@ -4342,7 +4394,19 @@ fn partial_packet_outcome_limitations(
             .pointer("/analysis_outcome/outcome/limitations")
             .and_then(serde_json::Value::as_array)
             .ok_or_else(|| format!("missing limitations: {json}"))?;
-        Ok(limitations
+        let finding_count = output
+            .findings
+            .iter()
+            .filter(|finding| {
+                finding
+                    .probe
+                    .location
+                    .file
+                    .extension()
+                    .is_some_and(|ext| ext == "pm")
+            })
+            .count();
+        let limitations = limitations
             .iter()
             .map(|entry| {
                 let text = |key: &str| {
@@ -4354,7 +4418,8 @@ fn partial_packet_outcome_limitations(
                 };
                 (text("kind"), text("bounded_detail"))
             })
-            .collect())
+            .collect();
+        Ok((limitations, finding_count))
     })();
     let cleanup = std::fs::remove_dir_all(&root)
         .map_err(|error| format!("remove {}: {error}", root.display()));

@@ -782,7 +782,9 @@ fn run_pipeline_for_diff_text(
                 // adapter never scans the workspace: it only reads the fact
                 // packet the caller supplied, so a limitation it reports (a
                 // packet declared partial) concerns that explicit evidence
-                // and is always kept (#5421).
+                // and is always kept (#5421). It is counted as supplied
+                // evidence whichever branch keeps it, so a Perl finding cannot
+                // hide a malformed diff (#6703).
                 let reads_only_supplied_evidence = matches!(language, LanguageId::Perl);
                 let adapter_language = match language {
                     LanguageId::JavaScript => LanguageId::TypeScript,
@@ -791,10 +793,10 @@ fn run_pipeline_for_diff_text(
                 let diff_touches_language = preview_changed_files
                     .iter()
                     .any(|file| route(&file.path) == Some(adapter_language));
-                if diff_touches_language || produced_findings {
-                    limitations.extend(result.limitations);
-                } else if reads_only_supplied_evidence {
+                if reads_only_supplied_evidence {
                     supplied_evidence_limitations += result.limitations.len();
+                    limitations.extend(result.limitations);
+                } else if diff_touches_language || produced_findings {
                     limitations.extend(result.limitations);
                 }
                 if result.changed_files_by_language.is_empty() {
