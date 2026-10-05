@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index ce6a28e..ebc5cb6 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -9,7 +9,7 @@ pub fn area(width: u32, height: u32) -> u32 {
+ }
+ 
+ pub fn order_cost(unit: u64, qty: u64) -> u64 {
+-    unit * qty
++    qty * unit
+ }
+ 
+ pub fn with_tip(bill: u64, tip: u64) -> u64 {

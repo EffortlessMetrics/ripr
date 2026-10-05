@@ -1,101 +1,101 @@
 {
   "schema_version": "ripr_verdict_corpus_report.v1",
   "spec": "RIPR-SPEC-0219",
-  "corpus_version": "2026-10-04.7",
-  "cases_total": 147,
+  "corpus_version": "2026-10-04.8",
+  "cases_total": 203,
   "by_truth": {
-    "discriminated": 72,
-    "not_discriminated": 53,
-    "partially_discriminated": 22
+    "discriminated": 106,
+    "not_discriminated": 63,
+    "partially_discriminated": 34
   },
   "by_outcome": {
-    "abstained": 44,
-    "false_actionable": 42,
+    "abstained": 58,
+    "false_actionable": 66,
     "false_exposed": 6,
-    "ideal": 55
+    "ideal": 73
   },
   "by_observed_verdict": {
-    "credited": 14,
-    "gap": 89,
-    "limited": 43,
+    "credited": 17,
+    "gap": 128,
+    "limited": 57,
     "silent": 1
   },
   "false_verdict_rate": {
-    "numerator": 48,
-    "denominator": 147,
-    "rate": "0.3265"
+    "numerator": 72,
+    "denominator": 203,
+    "rate": "0.3547"
   },
   "false_actionable_rate": {
-    "numerator": 42,
-    "denominator": 72,
-    "rate": "0.5833"
+    "numerator": 66,
+    "denominator": 106,
+    "rate": "0.6226"
   },
   "false_exposed_rate": {
     "numerator": 6,
-    "denominator": 75,
-    "rate": "0.0800"
+    "denominator": 97,
+    "rate": "0.0619"
   },
   "false_silent_rate": {
     "numerator": 0,
-    "denominator": 75,
+    "denominator": 97,
     "rate": "0.0000"
   },
   "ideal_rate": {
-    "numerator": 55,
-    "denominator": 147,
-    "rate": "0.3741"
+    "numerator": 73,
+    "denominator": 203,
+    "rate": "0.3596"
   },
   "abstention_rate": {
-    "numerator": 44,
-    "denominator": 147,
-    "rate": "0.2993"
+    "numerator": 58,
+    "denominator": 203,
+    "rate": "0.2857"
   },
   "contradiction_rate": {
     "numerator": 2,
-    "denominator": 198,
-    "rate": "0.0101"
+    "denominator": 278,
+    "rate": "0.0072"
   },
   "contradictions_by_code": {
     "no_static_path_with_related_tests": 2
   },
   "by_origin": {
     "authored": {
-      "cases_total": 113,
+      "cases_total": 169,
       "by_observed_verdict": {
-        "credited": 14,
-        "gap": 74,
-        "limited": 24,
+        "credited": 17,
+        "gap": 113,
+        "limited": 38,
         "silent": 1
       },
       "false_verdict_rate": {
-        "numerator": 38,
-        "denominator": 113,
-        "rate": "0.3363"
+        "numerator": 62,
+        "denominator": 169,
+        "rate": "0.3669"
       },
       "false_actionable_rate": {
-        "numerator": 32,
-        "denominator": 52,
-        "rate": "0.6154"
+        "numerator": 56,
+        "denominator": 86,
+        "rate": "0.6512"
       },
       "false_exposed_rate": {
         "numerator": 6,
-        "denominator": 61,
-        "rate": "0.0984"
+        "denominator": 83,
+        "rate": "0.0723"
       },
       "false_silent_rate": {
         "numerator": 0,
-        "denominator": 61,
+        "denominator": 83,
         "rate": "0.0000"
       },
       "ideal_rate": {
-        "numerator": 50,
-        "denominator": 113,
-        "rate": "0.4425"
+        "numerator": 68,
+        "denominator": 169,
+        "rate": "0.4024"
       },
       "abstention_rate": {
-        "numerator": 25,
-        "denominator": 113,
-        "rate": "0.2212"
+        "numerator": 39,
+        "denominator": 169,
+        "rate": "0.2308"
       }
     },
     "upstream": {
@@ -2939,6 +2939,1080 @@
       "anchor": "src/lib.rs:24",
       "behavior_family": "question_mark_propagation",
       "test_shape": "is_err_on_earlier_err",
+      "hard_case": false,
+      "truth": "not_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-boundary-exact",
+      "subject_id": "authored-grid-boundary",
+      "origin": "authored",
+      "anchor": "src/lib.rs:4",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "exact_pin_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-boundary-table",
+      "subject_id": "authored-grid-boundary",
+      "origin": "authored",
+      "anchor": "src/lib.rs:8",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "table_driven_loop",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-boundary-property",
+      "subject_id": "authored-grid-boundary",
+      "origin": "authored",
+      "anchor": "src/lib.rs:12",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "property_invariant_loop",
+      "hard_case": false,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-boundary-helper",
+      "subject_id": "authored-grid-boundary",
+      "origin": "authored",
+      "anchor": "src/lib.rs:16",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "helper_wrapped_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-boundary-none",
+      "subject_id": "authored-grid-boundary",
+      "origin": "authored",
+      "anchor": "src/lib.rs:20",
+      "behavior_family": "predicate_boundary",
+      "test_shape": "smoke_call_no_assert",
+      "hard_case": false,
+      "truth": "not_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-equality-exact",
+      "subject_id": "authored-grid-equality",
+      "origin": "authored",
+      "anchor": "src/lib.rs:4",
+      "behavior_family": "predicate_equality",
+      "test_shape": "exact_pin_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-equality-table",
+      "subject_id": "authored-grid-equality",
+      "origin": "authored",
+      "anchor": "src/lib.rs:8",
+      "behavior_family": "predicate_equality",
+      "test_shape": "table_driven_loop",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-equality-property",
+      "subject_id": "authored-grid-equality",
+      "origin": "authored",
+      "anchor": "src/lib.rs:12",
+      "behavior_family": "predicate_equality",
+      "test_shape": "property_invariant_loop",
+      "hard_case": false,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "limited",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "infection_unknown",
+        "propagation_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-equality-helper",
+      "subject_id": "authored-grid-equality",
+      "origin": "authored",
+      "anchor": "src/lib.rs:16",
+      "behavior_family": "predicate_equality",
+      "test_shape": "helper_wrapped_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-equality-none",
+      "subject_id": "authored-grid-equality",
+      "origin": "authored",
+      "anchor": "src/lib.rs:20",
+      "behavior_family": "predicate_equality",
+      "test_shape": "smoke_call_no_assert",
+      "hard_case": false,
+      "truth": "not_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-arith-exact",
+      "subject_id": "authored-grid-arith",
+      "origin": "authored",
+      "anchor": "src/lib.rs:4",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "exact_pin_assert",
+      "hard_case": false,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "credited",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-arith-table",
+      "subject_id": "authored-grid-arith",
+      "origin": "authored",
+      "anchor": "src/lib.rs:8",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "table_driven_loop",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-arith-property",
+      "subject_id": "authored-grid-arith",
+      "origin": "authored",
+      "anchor": "src/lib.rs:12",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "property_invariant_loop",
+      "hard_case": false,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-arith-helper",
+      "subject_id": "authored-grid-arith",
+      "origin": "authored",
+      "anchor": "src/lib.rs:16",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "helper_wrapped_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-arith-none",
+      "subject_id": "authored-grid-arith",
+      "origin": "authored",
+      "anchor": "src/lib.rs:20",
+      "behavior_family": "return_value_arithmetic",
+      "test_shape": "smoke_call_no_assert",
+      "hard_case": false,
+      "truth": "not_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-bool-exact",
+      "subject_id": "authored-grid-bool",
+      "origin": "authored",
+      "anchor": "src/lib.rs:4",
+      "behavior_family": "predicate_boolean",
+      "test_shape": "exact_pin_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "limited",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "infection_unknown",
+        "propagation_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-bool-table",
+      "subject_id": "authored-grid-bool",
+      "origin": "authored",
+      "anchor": "src/lib.rs:8",
+      "behavior_family": "predicate_boolean",
+      "test_shape": "table_driven_loop",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "limited",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "infection_unknown",
+        "propagation_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-bool-property",
+      "subject_id": "authored-grid-bool",
+      "origin": "authored",
+      "anchor": "src/lib.rs:12",
+      "behavior_family": "predicate_boolean",
+      "test_shape": "property_invariant_loop",
+      "hard_case": true,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "limited",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "infection_unknown",
+        "propagation_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-bool-helper",
+      "subject_id": "authored-grid-bool",
+      "origin": "authored",
+      "anchor": "src/lib.rs:16",
+      "behavior_family": "predicate_boolean",
+      "test_shape": "helper_wrapped_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "propagation_unknown",
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-bool-none",
+      "subject_id": "authored-grid-bool",
+      "origin": "authored",
+      "anchor": "src/lib.rs:20",
+      "behavior_family": "predicate_boolean",
+      "test_shape": "smoke_call_no_assert",
+      "hard_case": true,
+      "truth": "not_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "limited",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "infection_unknown",
+        "propagation_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-returns-exact",
+      "subject_id": "authored-grid-returns",
+      "origin": "authored",
+      "anchor": "src/lib.rs:4",
+      "behavior_family": "return_value",
+      "test_shape": "exact_pin_assert",
+      "hard_case": false,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "credited",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-returns-table",
+      "subject_id": "authored-grid-returns",
+      "origin": "authored",
+      "anchor": "src/lib.rs:8",
+      "behavior_family": "return_value",
+      "test_shape": "table_driven_loop",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-returns-property",
+      "subject_id": "authored-grid-returns",
+      "origin": "authored",
+      "anchor": "src/lib.rs:12",
+      "behavior_family": "return_value",
+      "test_shape": "property_invariant_loop",
+      "hard_case": false,
+      "truth": "not_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-returns-helper",
+      "subject_id": "authored-grid-returns",
+      "origin": "authored",
+      "anchor": "src/lib.rs:16",
+      "behavior_family": "return_value",
+      "test_shape": "helper_wrapped_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-returns-none",
+      "subject_id": "authored-grid-returns",
+      "origin": "authored",
+      "anchor": "src/lib.rs:20",
+      "behavior_family": "return_value",
+      "test_shape": "smoke_call_no_assert",
+      "hard_case": false,
+      "truth": "not_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-delete-exact",
+      "subject_id": "authored-grid-delete",
+      "origin": "authored",
+      "anchor": "src/lib.rs:14",
+      "behavior_family": "side_effect_field_write",
+      "test_shape": "exact_pin_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "limited",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "static_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-delete-table",
+      "subject_id": "authored-grid-delete",
+      "origin": "authored",
+      "anchor": "src/lib.rs:18",
+      "behavior_family": "side_effect_field_write",
+      "test_shape": "table_driven_loop",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "limited",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "static_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-delete-property",
+      "subject_id": "authored-grid-delete",
+      "origin": "authored",
+      "anchor": "src/lib.rs:22",
+      "behavior_family": "side_effect_field_write",
+      "test_shape": "property_invariant_loop",
+      "hard_case": true,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "limited",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "static_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-delete-helper",
+      "subject_id": "authored-grid-delete",
+      "origin": "authored",
+      "anchor": "src/lib.rs:26",
+      "behavior_family": "side_effect_field_write",
+      "test_shape": "helper_wrapped_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "limited",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "static_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-delete-none",
+      "subject_id": "authored-grid-delete",
+      "origin": "authored",
+      "anchor": "src/lib.rs:30",
+      "behavior_family": "side_effect_field_write",
+      "test_shape": "smoke_call_no_assert",
+      "hard_case": true,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "limited",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "static_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-match-exact",
+      "subject_id": "authored-grid-match",
+      "origin": "authored",
+      "anchor": "src/lib.rs:6",
+      "behavior_family": "match_arm",
+      "test_shape": "exact_pin_assert",
+      "hard_case": false,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "credited",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-match-table",
+      "subject_id": "authored-grid-match",
+      "origin": "authored",
+      "anchor": "src/lib.rs:14",
+      "behavior_family": "match_arm",
+      "test_shape": "table_driven_loop",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-match-property",
+      "subject_id": "authored-grid-match",
+      "origin": "authored",
+      "anchor": "src/lib.rs:23",
+      "behavior_family": "match_arm",
+      "test_shape": "property_invariant_loop",
+      "hard_case": false,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-match-helper",
+      "subject_id": "authored-grid-match",
+      "origin": "authored",
+      "anchor": "src/lib.rs:31",
+      "behavior_family": "match_arm",
+      "test_shape": "helper_wrapped_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-match-none",
+      "subject_id": "authored-grid-match",
+      "origin": "authored",
+      "anchor": "src/lib.rs:39",
+      "behavior_family": "match_arm",
+      "test_shape": "smoke_call_no_assert",
+      "hard_case": false,
+      "truth": "not_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-match-guard",
+      "subject_id": "authored-grid-match",
+      "origin": "authored",
+      "anchor": "src/lib.rs:46",
+      "behavior_family": "match_arm_guard",
+      "test_shape": "exact_pin_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "exposed",
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-loop-exact",
+      "subject_id": "authored-grid-loop",
+      "origin": "authored",
+      "anchor": "src/lib.rs:6",
+      "behavior_family": "loop_accumulator",
+      "test_shape": "exact_pin_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "limited",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "static_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-loop-table",
+      "subject_id": "authored-grid-loop",
+      "origin": "authored",
+      "anchor": "src/lib.rs:14",
+      "behavior_family": "loop_accumulator",
+      "test_shape": "table_driven_loop",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-loop-property",
+      "subject_id": "authored-grid-loop",
+      "origin": "authored",
+      "anchor": "src/lib.rs:22",
+      "behavior_family": "loop_accumulator",
+      "test_shape": "property_invariant_loop",
+      "hard_case": true,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "limited",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "static_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-loop-helper",
+      "subject_id": "authored-grid-loop",
+      "origin": "authored",
+      "anchor": "src/lib.rs:30",
+      "behavior_family": "loop_accumulator",
+      "test_shape": "helper_wrapped_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "limited",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "static_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-loop-none",
+      "subject_id": "authored-grid-loop",
+      "origin": "authored",
+      "anchor": "src/lib.rs:38",
+      "behavior_family": "loop_accumulator",
+      "test_shape": "smoke_call_no_assert",
+      "hard_case": true,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "limited",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "static_unknown"
+      ],
+      "outcome": "abstained",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-early-exact",
+      "subject_id": "authored-grid-early",
+      "origin": "authored",
+      "anchor": "src/lib.rs:4",
+      "behavior_family": "early_return_guard",
+      "test_shape": "exact_pin_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-early-table",
+      "subject_id": "authored-grid-early",
+      "origin": "authored",
+      "anchor": "src/lib.rs:11",
+      "behavior_family": "early_return_guard",
+      "test_shape": "table_driven_loop",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-early-property",
+      "subject_id": "authored-grid-early",
+      "origin": "authored",
+      "anchor": "src/lib.rs:18",
+      "behavior_family": "early_return_guard",
+      "test_shape": "property_invariant_loop",
+      "hard_case": false,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-early-helper",
+      "subject_id": "authored-grid-early",
+      "origin": "authored",
+      "anchor": "src/lib.rs:25",
+      "behavior_family": "early_return_guard",
+      "test_shape": "helper_wrapped_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-early-none",
+      "subject_id": "authored-grid-early",
+      "origin": "authored",
+      "anchor": "src/lib.rs:32",
+      "behavior_family": "early_return_guard",
+      "test_shape": "smoke_call_no_assert",
+      "hard_case": false,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-try-exact",
+      "subject_id": "authored-grid-try",
+      "origin": "authored",
+      "anchor": "src/lib.rs:6",
+      "behavior_family": "error_propagation_question_mark",
+      "test_shape": "exact_pin_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-try-table",
+      "subject_id": "authored-grid-try",
+      "origin": "authored",
+      "anchor": "src/lib.rs:11",
+      "behavior_family": "error_propagation_question_mark",
+      "test_shape": "table_driven_loop",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-try-property",
+      "subject_id": "authored-grid-try",
+      "origin": "authored",
+      "anchor": "src/lib.rs:16",
+      "behavior_family": "error_propagation_question_mark",
+      "test_shape": "property_invariant_loop",
+      "hard_case": false,
+      "truth": "not_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-try-helper",
+      "subject_id": "authored-grid-try",
+      "origin": "authored",
+      "anchor": "src/lib.rs:21",
+      "behavior_family": "error_propagation_question_mark",
+      "test_shape": "helper_wrapped_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-try-none",
+      "subject_id": "authored-grid-try",
+      "origin": "authored",
+      "anchor": "src/lib.rs:26",
+      "behavior_family": "error_propagation_question_mark",
+      "test_shape": "smoke_call_no_assert",
+      "hard_case": false,
+      "truth": "not_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-iter-exact",
+      "subject_id": "authored-grid-iter",
+      "origin": "authored",
+      "anchor": "src/lib.rs:4",
+      "behavior_family": "closure_in_iterator_adaptor",
+      "test_shape": "exact_pin_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "propagation_unknown",
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-iter-table",
+      "subject_id": "authored-grid-iter",
+      "origin": "authored",
+      "anchor": "src/lib.rs:8",
+      "behavior_family": "closure_in_iterator_adaptor",
+      "test_shape": "table_driven_loop",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-iter-property",
+      "subject_id": "authored-grid-iter",
+      "origin": "authored",
+      "anchor": "src/lib.rs:12",
+      "behavior_family": "closure_in_iterator_adaptor",
+      "test_shape": "property_invariant_loop",
+      "hard_case": false,
+      "truth": "partially_discriminated",
+      "ideal_verdict": "gap",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "propagation_unknown",
+        "weakly_exposed"
+      ],
+      "outcome": "ideal",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-iter-helper",
+      "subject_id": "authored-grid-iter",
+      "origin": "authored",
+      "anchor": "src/lib.rs:16",
+      "behavior_family": "closure_in_iterator_adaptor",
+      "test_shape": "helper_wrapped_assert",
+      "hard_case": true,
+      "truth": "discriminated",
+      "ideal_verdict": "credited",
+      "observed_verdict": "gap",
+      "followed_retarget": false,
+      "changed_since_labeling": false,
+      "observed_classifications": [
+        "propagation_unknown",
+        "weakly_exposed"
+      ],
+      "outcome": "false_actionable",
+      "contradictions": []
+    },
+    {
+      "case_id": "grid-iter-none",
+      "subject_id": "authored-grid-iter",
+      "origin": "authored",
+      "anchor": "src/lib.rs:20",
+      "behavior_family": "closure_in_iterator_adaptor",
+      "test_shape": "smoke_call_no_assert",
       "hard_case": false,
       "truth": "not_discriminated",
       "ideal_verdict": "gap",

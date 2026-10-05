@@ -1,0 +1,68 @@
+//! Boolean logic, one function per test style.
+
+pub fn can_ship(paid: bool, in_stock: bool) -> bool {
+    paid && in_stock
+}
+
+pub fn needs_review(flagged: bool, large: bool) -> bool {
+    flagged || large
+}
+
+pub fn can_enter(has_ticket: bool, banned: bool) -> bool {
+    has_ticket && !banned
+}
+
+pub fn is_visible(hidden: bool) -> bool {
+    !hidden
+}
+
+pub fn should_retry(timed_out: bool, attempts_left: bool) -> bool {
+    timed_out && attempts_left
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ships_only_when_paid_and_in_stock() {
+        assert!(can_ship(true, true));
+        assert!(!can_ship(true, false));
+        assert!(!can_ship(false, true));
+    }
+
+    #[test]
+    fn review_table() {
+        let cases = [
+            (false, false, false),
+            (true, false, true),
+            (false, true, true),
+            (true, true, true),
+        ];
+        for (flagged, large, want) in cases {
+            assert_eq!(needs_review(flagged, large), want, "{flagged} {large}");
+        }
+    }
+
+    #[test]
+    fn no_ticket_never_enters() {
+        for banned in [true, false] {
+            assert!(!can_enter(false, banned), "banned {banned}");
+        }
+    }
+
+    fn check_visible(hidden: bool, want: bool) {
+        assert_eq!(is_visible(hidden), want);
+    }
+
+    #[test]
+    fn hidden_items_are_not_visible() {
+        check_visible(true, false);
+        check_visible(false, true);
+    }
+
+    #[test]
+    fn retry_smoke() {
+        let _ = should_retry(true, false);
+    }
+}

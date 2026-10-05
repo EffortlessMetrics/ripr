@@ -1,0 +1,70 @@
+//! `?` error propagation, one function per test style.
+
+use std::num::ParseIntError;
+
+pub fn parse_port(text: &str) -> Result<u16, ParseIntError> {
+    let port = text.trim().parse::<u16>()?;
+    Ok(port)
+}
+
+pub fn parse_percent(text: &str) -> Result<u8, ParseIntError> {
+    let value = text.trim_end_matches('%').parse::<u8>()?;
+    Ok(value)
+}
+
+pub fn parse_count(text: &str) -> Result<u32, ParseIntError> {
+    let count = text.parse::<u32>()?;
+    Ok(count)
+}
+
+pub fn parse_year(text: &str) -> Result<i32, ParseIntError> {
+    let year = text.parse::<i32>()?;
+    Ok(year)
+}
+
+pub fn parse_retries(text: &str) -> Result<u8, ParseIntError> {
+    let retries = text.parse::<u8>()?;
+    Ok(retries)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn port_parses_and_rejects_words() {
+        assert_eq!(parse_port(" 8080 "), Ok(8080));
+        assert!(parse_port("http").is_err());
+    }
+
+    #[test]
+    fn percent_table() {
+        let cases = [("50%", Some(50)), ("7", Some(7)), ("lots", None)];
+        for (text, want) in cases {
+            assert_eq!(parse_percent(text).ok(), want, "{text}");
+        }
+    }
+
+    #[test]
+    fn counts_round_trip() {
+        for n in [0u32, 1, 42, 65_535, u32::MAX] {
+            assert_eq!(parse_count(&n.to_string()), Ok(n));
+        }
+    }
+
+    fn check_year(text: &str, want: Option<i32>) {
+        assert_eq!(parse_year(text).ok(), want, "{text}");
+    }
+
+    #[test]
+    fn years_parse() {
+        check_year("1969", Some(1969));
+        check_year("MCMLXIX", None);
+    }
+
+    #[test]
+    fn retries_smoke() {
+        let _ = parse_retries("3");
+        let _ = parse_retries("many");
+    }
+}

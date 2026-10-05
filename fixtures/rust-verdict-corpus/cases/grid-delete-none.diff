@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0465730..38877c3 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -27,7 +27,7 @@ impl Stats {
+     }
+ 
+     pub fn record_eviction(&mut self) {
+-        self.evictions = self.evictions + 1;
++        self.evictions += 1;
+     }
+ }
+ 

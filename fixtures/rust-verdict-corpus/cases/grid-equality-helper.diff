@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index d20a409..3c24473 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -13,7 +13,7 @@ pub fn same_currency(a: &str, b: &str) -> bool {
+ }
+ 
+ pub fn is_origin(x: i32, y: i32) -> bool {
+-    x == 0 && y == 0
++    y == 0 && x == 0
+ }
+ 
+ pub fn is_default_port(port: u16) -> bool {

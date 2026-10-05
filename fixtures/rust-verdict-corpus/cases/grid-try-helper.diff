@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 8e555ab..81620df 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -18,7 +18,7 @@ pub fn parse_count(text: &str) -> Result<u32, ParseIntError> {
+ }
+ 
+ pub fn parse_year(text: &str) -> Result<i32, ParseIntError> {
+-    let year = text.parse::<i32>()?;
++    let year: i32 = text.parse()?;
+     Ok(year)
+ }
+ 

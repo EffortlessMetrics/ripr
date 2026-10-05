@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 8e555ab..9e2f67f 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -3,7 +3,7 @@
+ use std::num::ParseIntError;
+ 
+ pub fn parse_port(text: &str) -> Result<u16, ParseIntError> {
+-    let port = text.trim().parse::<u16>()?;
++    let port: u16 = text.trim().parse()?;
+     Ok(port)
+ }
+ 

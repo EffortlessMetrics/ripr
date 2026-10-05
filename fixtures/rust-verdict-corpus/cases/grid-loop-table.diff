@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 391be2d..71644f4 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -11,7 +11,7 @@ pub fn total_weight(items: &[u32]) -> u32 {
+ pub fn word_count(lines: &[&str]) -> usize {
+     let mut count = 0;
+     for line in lines {
+-        count = count + line.split_whitespace().count();
++        count += line.split_whitespace().count();
+     }
+     count
+ }

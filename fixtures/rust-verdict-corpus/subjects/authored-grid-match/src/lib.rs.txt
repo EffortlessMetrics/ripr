@@ -1,0 +1,98 @@
+//! Match arms, one function per test style.
+
+pub fn shipping_zone(country: &str) -> u32 {
+    match country {
+        "US" => 1,
+        "CA" | "MX" => 2,
+        _ => 3,
+    }
+}
+
+pub fn http_class(status: u16) -> &'static str {
+    match status / 100 {
+        2 => "success",
+        3 => "redirect",
+        4 => "client error",
+        _ => "other",
+    }
+}
+
+pub fn postage_zone(country: &str) -> u32 {
+    match country {
+        "UK" => 1,
+        "FR" | "DE" => 2,
+        _ => 3,
+    }
+}
+
+pub fn suit_color(suit: char) -> &'static str {
+    match suit {
+        'H' | 'D' => "red",
+        'C' | 'S' => "black",
+        _ => "unknown",
+    }
+}
+
+pub fn priority(label: &str) -> u8 {
+    match label {
+        "urgent" => 0,
+        "high" => 1,
+        _ => 5,
+    }
+}
+
+pub fn sign(n: i64) -> i8 {
+    match n {
+        n if n < 0 => -1,
+        0 => 0,
+        _ => 1,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canada_is_zone_two() {
+        assert_eq!(shipping_zone("CA"), 2);
+        assert_eq!(shipping_zone("MX"), 2);
+    }
+
+    #[test]
+    fn http_class_table() {
+        let cases = [(200, "success"), (301, "redirect"), (404, "client error"), (500, "other")];
+        for (status, want) in cases {
+            assert_eq!(http_class(status), want, "{status}");
+        }
+    }
+
+    #[test]
+    fn neighbours_cost_less_than_overseas() {
+        for country in ["FR", "DE"] {
+            assert!(postage_zone(country) < postage_zone("JP"), "{country}");
+        }
+    }
+
+    fn check_color(suit: char, want: &str) {
+        assert_eq!(suit_color(suit), want);
+    }
+
+    #[test]
+    fn suits_have_colors() {
+        check_color('H', "red");
+        check_color('S', "black");
+    }
+
+    #[test]
+    fn priority_smoke() {
+        let _ = priority("high");
+    }
+
+    #[test]
+    fn signs_of_three_values() {
+        assert_eq!(sign(-5), -1);
+        assert_eq!(sign(0), 0);
+        assert_eq!(sign(9), 1);
+    }
+}

@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index e475799..b4dd0e5 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -13,7 +13,7 @@ pub fn can_enter(has_ticket: bool, banned: bool) -> bool {
+ }
+ 
+ pub fn is_visible(hidden: bool) -> bool {
+-    !hidden
++    false == hidden
+ }
+ 
+ pub fn should_retry(timed_out: bool, attempts_left: bool) -> bool {

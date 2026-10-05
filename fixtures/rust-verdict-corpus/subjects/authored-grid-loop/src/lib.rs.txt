@@ -1,0 +1,84 @@
+//! Loop accumulators, one function per test style.
+
+pub fn total_weight(items: &[u32]) -> u32 {
+    let mut sum = 0;
+    for w in items {
+        sum = sum + w;
+    }
+    sum
+}
+
+pub fn word_count(lines: &[&str]) -> usize {
+    let mut count = 0;
+    for line in lines {
+        count = count + line.split_whitespace().count();
+    }
+    count
+}
+
+pub fn running_balance(deposits: &[u64]) -> u64 {
+    let mut balance = 0;
+    for d in deposits {
+        balance = balance + d;
+    }
+    balance
+}
+
+pub fn score(rolls: &[u32]) -> u32 {
+    let mut points = 0;
+    for r in rolls {
+        points = points + r;
+    }
+    points
+}
+
+pub fn bytes_sent(packets: &[usize]) -> usize {
+    let mut sent = 0;
+    for p in packets {
+        sent = sent + p;
+    }
+    sent
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn three_parcels_weigh_twelve() {
+        assert_eq!(total_weight(&[3, 4, 5]), 12);
+    }
+
+    #[test]
+    fn word_count_table() {
+        let cases: [(&[&str], usize); 3] = [(&[], 0), (&["a b"], 2), (&["one", "two three"], 3)];
+        for (lines, want) in cases {
+            assert_eq!(word_count(lines), want, "{lines:?}");
+        }
+    }
+
+    #[test]
+    fn deposits_never_lower_the_balance() {
+        let mut deposits = Vec::new();
+        for d in 1..10 {
+            let before = running_balance(&deposits);
+            deposits.push(d);
+            assert!(running_balance(&deposits) >= before, "after {d}");
+        }
+    }
+
+    fn check_score(rolls: &[u32], want: u32) {
+        assert_eq!(score(rolls), want);
+    }
+
+    #[test]
+    fn rolls_add_up() {
+        check_score(&[6, 6, 1], 13);
+        check_score(&[], 0);
+    }
+
+    #[test]
+    fn bytes_sent_smoke() {
+        let _ = bytes_sent(&[512, 1024]);
+    }
+}

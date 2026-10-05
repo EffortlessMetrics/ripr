@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 3e0c325..745c148 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -22,7 +22,7 @@ pub fn mean_latency(samples: &[u64]) -> u64 {
+ }
+ 
+ pub fn discount(total: u64) -> u64 {
+-    if total < 100 {
++    if 100 > total {
+         return 0;
+     }
+     total / 10

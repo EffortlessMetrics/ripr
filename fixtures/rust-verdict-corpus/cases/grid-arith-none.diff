@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index ce6a28e..6d68bdd 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -17,7 +17,7 @@ pub fn with_tip(bill: u64, tip: u64) -> u64 {
+ }
+ 
+ pub fn seconds(minutes: u64) -> u64 {
+-    minutes * 60
++    60 * minutes
+ }
+ 
+ #[cfg(test)]

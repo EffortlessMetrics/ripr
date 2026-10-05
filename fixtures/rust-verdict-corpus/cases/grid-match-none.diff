@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 37775de..6e231fd 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -36,7 +36,7 @@ pub fn suit_color(suit: char) -> &'static str {
+ pub fn priority(label: &str) -> u8 {
+     match label {
+         "urgent" => 0,
+-        "high" => 1,
++        "high" => 1_u8,
+         _ => 5,
+     }
+ }
