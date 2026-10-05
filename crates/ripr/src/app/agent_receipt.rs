@@ -8,10 +8,50 @@ pub(crate) struct ValidatedAgentReceiptVerify {
     pub(crate) verify: serde_json::Value,
 }
 
+/// The canonical agent-verify render for the named snapshots, recomputed
+/// through the production authorities. Stored-receipt readers compare a
+/// retained verify document against this render instead of reimplementing
+/// the comparison; issuance compares exact bytes (see
+/// [`validate_agent_receipt_verify_json`]).
+pub(crate) struct CanonicalAgentReceiptVerify {
+    pub(crate) input_paths: output::agent_receipt::AgentReceiptInputPaths,
+    pub(crate) canonical_json: String,
+    pub(crate) verify: serde_json::Value,
+}
+
 pub(crate) fn validate_agent_receipt_verify_json(
     root: &Path,
     verify_json: &str,
 ) -> Result<ValidatedAgentReceiptVerify, String> {
+    let canonical = canonical_agent_receipt_verify_render(root, verify_json)?;
+    // Fail-closed on bytes, not on parsed values: the supplied document must be
+    // the exact canonical rendering (up to trailing newlines), so hand-authored
+    // JSON with identical values but different key order or spacing is rejected.
+    let supplied = verify_json.trim_end_matches('\n');
+    let canonical_body = canonical.canonical_json.trim_end_matches('\n');
+    if supplied != canonical_body {
+        return Err(receipt_verify_input_error(
+            "not_canonical",
+            "agent receipt verify JSON is not canonical output from ripr agent verify; rerun agent verify from the bound artifacts",
+        ));
+    }
+
+    Ok(ValidatedAgentReceiptVerify {
+        input_paths: canonical.input_paths,
+        verify: canonical.verify,
+    })
+}
+
+/// Recompute the canonical agent-verify render for the snapshots the supplied
+/// document names, running every production authority issuance runs: schema
+/// identity, snapshot paths, artifact validation, comparability, lineage,
+/// movement, outcome comparison, and canonical rendering bound to the
+/// validated content digests. Any failure is the same typed rejection
+/// issuance reports; only the final byte comparison stays with the caller.
+pub(crate) fn canonical_agent_receipt_verify_render(
+    root: &Path,
+    verify_json: &str,
+) -> Result<CanonicalAgentReceiptVerify, String> {
     let verify: serde_json::Value = serde_json::from_str(verify_json).map_err(|err| {
         receipt_verify_input_error("malformed", format!("verify JSON is not valid JSON: {err}"))
     })?;
@@ -112,17 +152,7 @@ pub(crate) fn validate_agent_receipt_verify_json(
         &binding,
     )
     .map_err(|err| receipt_verify_input_error("canonical_render", err))?;
-    // Fail-closed on bytes, not on parsed values: the supplied document must be
-    // the exact canonical rendering (up to trailing newlines), so hand-authored
-    // JSON with identical values but different key order or spacing is rejected.
-    let supplied = verify_json.trim_end_matches('\n');
     let canonical_body = canonical.trim_end_matches('\n');
-    if supplied != canonical_body {
-        return Err(receipt_verify_input_error(
-            "not_canonical",
-            "agent receipt verify JSON is not canonical output from ripr agent verify; rerun agent verify from the bound artifacts",
-        ));
-    }
     let verify: serde_json::Value = serde_json::from_str(canonical_body).map_err(|err| {
         receipt_verify_input_error(
             "canonical_render",
@@ -130,8 +160,9 @@ pub(crate) fn validate_agent_receipt_verify_json(
         )
     })?;
 
-    Ok(ValidatedAgentReceiptVerify {
+    Ok(CanonicalAgentReceiptVerify {
         input_paths,
+        canonical_json: canonical,
         verify,
     })
 }

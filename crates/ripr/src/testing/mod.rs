@@ -10,3 +10,4 @@ pub(crate) mod fixture_git;
 pub(crate) mod fixture_workspace;
 pub(crate) mod rebless;
 pub(crate) mod unwritable_output;
+pub(crate) mod verify_fixture;

@@ -995,6 +995,17 @@ fn governed_commitment_span(raw: &str) -> Result<(usize, usize), ContentCommitme
     }
 }
 
+/// Recompute the governed content commitment of artifact bytes without any
+/// repository access. Terminal-receipt readers bind a verify document to the
+/// retained before snapshot through this alone: the retained bytes are
+/// already commitment-anchored, so binding needs the recomputed digest, not
+/// full artifact validation (which requires git liveness and would make
+/// issued receipts unreadable at an unknown HEAD). The typed rejection stays
+/// private; callers get the same rendered reasons validation reports.
+pub(crate) fn recompute_content_commitment(raw: &str) -> Result<String, String> {
+    content_sha256_with_placeholder(raw).map_err(|error| error.to_string())
+}
+
 fn content_sha256_with_placeholder(raw: &str) -> Result<String, ContentCommitmentRejection> {
     let (value_start, value_end) = governed_commitment_span(raw)?;
     let declared = &raw[value_start..value_end];

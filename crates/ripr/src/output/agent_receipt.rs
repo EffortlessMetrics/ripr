@@ -97,6 +97,31 @@ impl AgentReceiptReading {
     }
 }
 
+/// The verdict fields a receipt issued from one verify document for one seam
+/// must carry: the seam's recorded change plus the lifecycle state and
+/// guidance kind the renderer derives from it. Readers bind a stored
+/// receipt's verdict to its verify document through this expectation instead
+/// of trusting the receipt's verdict strings on their own (#5256).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ExpectedReceiptVerdict {
+    pub(crate) change: String,
+    pub(crate) receipt_state: String,
+    pub(crate) guidance_kind: String,
+}
+
+pub(crate) fn expected_receipt_verdict(
+    verify: &Value,
+    seam_id: &str,
+) -> Result<ExpectedReceiptVerdict, String> {
+    let seam = find_receipt_seam(verify, seam_id)?;
+    let guidance = receipt_guidance(&seam.change);
+    Ok(ExpectedReceiptVerdict {
+        receipt_state: receipt_lifecycle_state_from_movement(Some(seam.change.as_str())),
+        guidance_kind: guidance.kind.to_string(),
+        change: seam.change,
+    })
+}
+
 pub(crate) use crate::app::analysis_outcome_artifact::AnalysisOutcomeUnavailableStatus as AgentReceiptUnavailableStatus;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -106,6 +131,48 @@ pub(crate) enum AgentReceiptAnalysisOutcome {
         status: AgentReceiptUnavailableStatus,
         reason: String,
     },
+}
+
+/// The one owner of the receipt `status` vocabulary: only a complete, valid
+/// producer analysis outcome is `advisory` evidence. Both the renderer and
+/// the stored-receipt validator derive the status through this mapping, so a
+/// flipped `/status` cannot survive the receipt's own recorded projection.
+pub(crate) fn agent_receipt_status_for_outcome(
+    analysis_outcome: &AgentReceiptAnalysisOutcome,
+) -> &'static str {
+    match analysis_outcome {
+        AgentReceiptAnalysisOutcome::Present(outcome) if outcome.kind.is_complete() => {
+            AGENT_RECEIPT_STATUS_ADVISORY
+        }
+        AgentReceiptAnalysisOutcome::Present(_) => "incomplete",
+        AgentReceiptAnalysisOutcome::Unavailable {
+            status: AgentReceiptUnavailableStatus::Missing,
+            ..
+        } => "incomplete",
+        AgentReceiptAnalysisOutcome::Unavailable { .. } => "invalid",
+    }
+}
+
+/// The status a stored receipt must carry for its recorded
+/// `analysis_outcome_status` projection. This inverts
+/// [`agent_receipt_status_for_outcome`] through the projection vocabulary
+/// (`analysis_outcome_projection` / `unavailable_analysis_outcome_projection`):
+/// `complete` is the only advisory arm; `incomplete` and `missing` render
+/// `incomplete`; `invalid` renders `invalid`. A missing or unknown projection
+/// maps to no status: the producer always records one of the four tokens, so
+/// anything else is not an issued receipt. (A present-but-unserializable
+/// outcome would project `invalid` while rendering `incomplete`, but
+/// serializing a validated outcome cannot fail, so no producer output takes
+/// that corner.)
+pub(crate) fn expected_agent_receipt_status_for_projection(
+    analysis_outcome_status: Option<&str>,
+) -> Option<&'static str> {
+    match analysis_outcome_status {
+        Some("complete") => Some(AGENT_RECEIPT_STATUS_ADVISORY),
+        Some("incomplete" | "missing") => Some("incomplete"),
+        Some("invalid") => Some("invalid"),
+        _ => None,
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -200,17 +267,7 @@ pub(crate) fn render_agent_receipt_value_json(
             unavailable_analysis_outcome_projection(*status, reason)
         }
     };
-    let status = match &analysis_outcome {
-        AgentReceiptAnalysisOutcome::Present(outcome) if outcome.kind.is_complete() => {
-            AGENT_RECEIPT_STATUS_ADVISORY
-        }
-        AgentReceiptAnalysisOutcome::Present(_) => "incomplete",
-        AgentReceiptAnalysisOutcome::Unavailable {
-            status: AgentReceiptUnavailableStatus::Missing,
-            ..
-        } => "incomplete",
-        AgentReceiptAnalysisOutcome::Unavailable { .. } => "invalid",
-    };
+    let status = agent_receipt_status_for_outcome(&analysis_outcome);
     let (next_recommendation, recommended_action) = receipt_next_step(
         status,
         analysis_projection.status,
