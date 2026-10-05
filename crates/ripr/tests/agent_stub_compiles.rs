@@ -1,4 +1,5 @@
 //! #5355 / #5453: `ripr agent stub --write` must leave the user's crate compiling.
+//! #6712: scratch crates under `temp_dir()` must create that redirected root first.
 //! Each ready inline stub is written into a fresh copy of one fixture crate,
 //! the file is compiled with rustc as a test crate, and the stub's test must
 //! run and stop at its own `ripr:` `todo!()`. Integration-file stubs take a
@@ -570,21 +571,46 @@ struct Scratch {
     cleanup_attempted: bool,
 }
 
+fn io_error_at(action: &str, path: &Path, error: std::io::Error) -> String {
+    format!("{action} {}: {error}", path.display())
+}
+
+/// `.cargo/config.toml` force-redirects `TMPDIR` to `<workspace>/target`.
+/// That directory is gitignored and absent in a fresh worktree whose build
+/// output lives in another `CARGO_TARGET_DIR`.
+fn ensure_scratch_parent(parent: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(parent)
+        .map_err(|error| io_error_at("create scratch parent", parent, error))
+}
+
+fn create_exclusive_dir(path: &Path) -> Result<(), String> {
+    std::fs::create_dir(path).map_err(|error| io_error_at("create exclusive scratch", path, error))
+}
+
 impl Scratch {
     fn new() -> Result<Self, String> {
         static NEXT: AtomicU64 = AtomicU64::new(0);
-        let directory = std::env::temp_dir().join(format!(
-            "ripr-agent-stub-compiles-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
+        Self::create(
+            std::env::temp_dir(),
+            &format!(
+                "ripr-agent-stub-compiles-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ),
+        )
+    }
+
+    fn create(parent: impl AsRef<Path>, name: &str) -> Result<Self, String> {
+        let parent = parent.as_ref();
+        ensure_scratch_parent(parent)?;
+        let directory = parent.join(name);
         // Own the directory exclusively; never adopt a preexisting one.
-        std::fs::create_dir(&directory).map_err(|error| error.to_string())?;
+        create_exclusive_dir(&directory)?;
         let scratch = Self {
             directory,
             cleanup_attempted: false,
         };
-        std::fs::create_dir(scratch.directory.join("src")).map_err(|error| error.to_string())?;
+        create_exclusive_dir(&scratch.directory.join("src"))?;
         Ok(scratch)
     }
 
@@ -609,6 +635,129 @@ impl Drop for Scratch {
         }
         let _ = std::fs::remove_dir_all(&self.directory);
     }
+}
+
+fn unused_scratch_probe(label: &str) -> PathBuf {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    std::env::temp_dir().join(format!(
+        "ripr-agent-stub-temp-root-{label}-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ))
+}
+
+struct RemovePath(PathBuf);
+
+impl Drop for RemovePath {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+#[test]
+fn scratch_creates_a_missing_temp_parent() -> Result<(), String> {
+    let root = unused_scratch_probe("missing");
+    let _cleanup = RemovePath(root.clone());
+    let parent = root.join("nested");
+    assert!(
+        !parent.exists(),
+        "discriminator requires an absent parent: {}",
+        parent.display()
+    );
+    let scratch = Scratch::create(&parent, "scratch")?;
+    assert!(
+        parent.is_dir(),
+        "create_dir_all must materialize {}: missing parent is the #6712 repro",
+        parent.display()
+    );
+    assert_eq!(scratch.directory, parent.join("scratch"));
+    assert!(scratch.directory.join("src").is_dir());
+    scratch.cleanup()
+}
+
+#[test]
+fn scratch_reuses_an_existing_temp_parent() -> Result<(), String> {
+    let parent = unused_scratch_probe("existing");
+    let _cleanup = RemovePath(parent.clone());
+    ensure_scratch_parent(&parent)?;
+    let scratch = Scratch::create(&parent, "scratch")?;
+    assert_eq!(scratch.directory, parent.join("scratch"));
+    assert!(scratch.directory.join("src").is_dir());
+    scratch.cleanup()
+}
+
+#[test]
+fn scratch_refuses_to_adopt_a_preexisting_directory() -> Result<(), String> {
+    let parent = unused_scratch_probe("exclusive");
+    let _cleanup = RemovePath(parent.clone());
+    let first = Scratch::create(&parent, "scratch")?;
+    let error = match Scratch::create(&parent, "scratch") {
+        Ok(unexpected) => {
+            let path = unexpected.directory.display().to_string();
+            unexpected.cleanup()?;
+            return Err(format!("must not adopt a preexisting scratch at {path}"));
+        }
+        Err(error) => error,
+    };
+    assert!(
+        error.contains(&first.directory.display().to_string()),
+        "exclusive-create error must name the path, got {error}"
+    );
+    first.cleanup()
+}
+
+#[test]
+fn scratch_names_the_path_when_the_temp_parent_is_a_file() -> Result<(), String> {
+    let parent = unused_scratch_probe("file");
+    let _cleanup = RemovePath(parent.clone());
+    if let Some(temp_root) = parent.parent() {
+        ensure_scratch_parent(temp_root)?;
+    }
+    std::fs::write(&parent, b"not a directory").map_err(|error| {
+        io_error_at("write file standing in for scratch parent", &parent, error)
+    })?;
+    let error = match Scratch::create(&parent, "scratch") {
+        Ok(unexpected) => {
+            unexpected.cleanup()?;
+            return Err(format!(
+                "a file cannot be a scratch parent: {}",
+                parent.display()
+            ));
+        }
+        Err(error) => error,
+    };
+    assert!(
+        error.contains(&parent.display().to_string()),
+        "parent-is-file error must name the path, got {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn exclusive_scratch_dir_error_names_the_path_when_parent_is_missing() -> Result<(), String> {
+    let parent = unused_scratch_probe("enoent");
+    let child = parent.join("child");
+    assert!(
+        !parent.exists(),
+        "discriminator requires an absent parent: {}",
+        parent.display()
+    );
+    let error = match create_exclusive_dir(&child) {
+        Ok(()) => {
+            let _ = std::fs::remove_dir_all(&parent);
+            return Err(format!(
+                "create_dir cannot invent a missing parent: {}",
+                child.display()
+            ));
+        }
+        Err(error) => error,
+    };
+    assert!(
+        error.contains(&child.display().to_string()),
+        "bare ENOENT hid the missing path; got {error}"
+    );
+    Ok(())
 }
 
 const STREAM_LIMIT: u64 = 256 * 1024;

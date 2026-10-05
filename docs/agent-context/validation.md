@@ -57,6 +57,12 @@ mkdir <worktree>/target
 `ripr doctor --profile source-build` warns when this redirect is present and
 the workspace-local directory is absent (#5280).
 
+The same missing `target/` directory makes `std::env::temp_dir()` point at a
+path that does not exist. Tests that create scratch crates under `temp_dir()`
+must `create_dir_all` that root before an exclusive `create_dir` of the child;
+a bare `create_dir` fails with ENOENT and names no path (`agent_stub_compiles`,
+#6712).
+
 ## Owned background work
 
 Bind a background command to its task/session handle, candidate identity and
