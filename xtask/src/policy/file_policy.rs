@@ -122,7 +122,8 @@ fn validate_test_covered_by(
         let warmup = spawns.len() == 2;
         let mut listed = None;
         for (index, spawn) in spawns.into_iter().enumerate() {
-            if index == 0 && warmup && !warmed.insert(spawn.args.join("\u{1f}")) {
+            let warmup_key = (index == 0 && warmup).then(|| successful_warmup_key(&spawn.args));
+            if warmup_key.as_ref().is_some_and(|key| warmed.contains(key)) {
                 continue;
             }
             let phase = observation.as_ref().and_then(|observation| {
@@ -148,6 +149,9 @@ fn validate_test_covered_by(
             };
             if output.timed_out || !output.status.is_some_and(|status| status.success()) {
                 return Ok(enumeration_result(output, spawn.timeout));
+            }
+            if let Some(key) = warmup_key {
+                record_successful_warmup(&mut warmed, key, &output);
             }
             listed = Some(output);
         }
@@ -199,6 +203,71 @@ fn enumeration_spawns(args: &[String]) -> Vec<CoveredBySpawn> {
     }
 }
 
+/// Invocation-local compilation identity, never a cached test enumeration.
+/// Known syntax retains every scope/flag token and TESTNAME presence while
+/// ignoring only its value. Unknown syntax retains the original complete argv.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct WarmupKey {
+    argv: Vec<String>,
+    testname_present: Option<bool>,
+}
+fn successful_warmup_key(args: &[String]) -> WarmupKey {
+    let exact = || WarmupKey {
+        argv: args.to_vec(),
+        testname_present: None,
+    };
+    if args.first().map(String::as_str) != Some("test")
+        || args.last().map(String::as_str) != Some("--no-run")
+    {
+        return exact();
+    }
+    let mut argv = vec!["test".to_string()];
+    let mut testname = false;
+    let mut index = 1;
+    while index < args.len() {
+        let argument = &args[index];
+        match argument.as_str() {
+            "-p" | "--package" | "--bin" | "--test" => {
+                let Some(value) = args
+                    .get(index + 1)
+                    .filter(|value| !value.is_empty() && !value.starts_with('-'))
+                else {
+                    return exact();
+                };
+                argv.push(argument.clone());
+                argv.push(value.clone());
+                index += 2;
+            }
+            "--locked" | "--offline" => {
+                argv.push(argument.clone());
+                index += 1;
+            }
+            "--no-run" if index == args.len() - 1 => {
+                argv.push(argument.clone());
+                index += 1;
+            }
+            _ if argument.is_empty() || argument.starts_with('-') || testname => return exact(),
+            _ => {
+                testname = true;
+                index += 1;
+            }
+        }
+    }
+    WarmupKey {
+        argv,
+        testname_present: Some(testname),
+    }
+}
+fn record_successful_warmup(
+    warmed: &mut BTreeSet<WarmupKey>,
+    key: WarmupKey,
+    output: &TimedOutput,
+) {
+    if !output.timed_out && output.status.is_some_and(|status| status.success()) {
+        warmed.insert(key);
+    }
+}
+
 fn enumeration_args(command: &str) -> Vec<String> {
     let words = command.split_whitespace().skip(2);
     let mut args = vec!["test".to_string()];
@@ -228,7 +297,8 @@ pub(crate) fn diagnostic_plan(
             .enumerate()
         {
             let warmup = spawn.description == "test-valued covered_by build";
-            if spawn_index == 0 && warmup && !warmed.insert(spawn.args.join("\u{1f}")) {
+            // Plan only the success path; an actual failed warmup returns before any reuse.
+            if spawn_index == 0 && warmup && !warmed.insert(successful_warmup_key(&spawn.args)) {
                 continue;
             }
             let kind = match spawn.description {
@@ -390,6 +460,233 @@ mod tests {
     use super::validate_test_covered_by_with;
     use crate::run::TimedOutput;
     use crate::{FilePolicyHost, FilePolicyTestCommand, is_cargo_test_command};
+
+    const FROZEN_WARMUP_SELECTORS: &str = r#"[[107,["test","-p","xtask","repository_language_policy_admits_real_mixed_language_producer"]],[348,["test","-p","xtask","implementation_slices_validate_and_coexist"]],[357,["test","-p","xtask","committed_spec_review_receipts_validate"]],[411,["test","-p","xtask","--locked","--offline","rust_judged_panel::rolling_observation"]],[411,["test","-p","xtask","--locked","--offline","rust_judged_panel::calibration"]],[411,["test","-p","xtask","--locked","--offline","rust_analysis_feedback"]],[420,["test","-p","xtask","rust_judged_panel::subject"]],[429,["test","-p","xtask","--locked","--offline","rust_judged_panel::packet::tests"]],[661,["test","-p","xtask","--bin","xtask","dx_scoreboard"]],[697,["test","-p","xtask","--bin","xtask","pilot_ranking"]],[706,["test","-p","xtask","--bin","xtask","pilot_ranking"]],[733,["test","-p","ripr","--test","causal_delta_fixture"]],[742,["test","-p","xtask","--bin","xtask","source_promotion_workflow"]],[751,["test","-p","xtask","source_promotion_control"]],[764,["test","-p","xtask","--locked","--offline","portable_consumer"]],[764,["test","-p","ripr","--locked","--offline","--test","portable_consumer_packet"]],[893,["test","-p","xtask","public_proof"]],[903,["test","-p","xtask","public_proof"]],[913,["test","-p","xtask","public_proof"]],[923,["test","-p","xtask","public_proof"]],[932,["test","-p","xtask","public_proof"]],[941,["test","-p","xtask","public_proof"]],[950,["test","-p","xtask","public_proof"]]]"#;
+
+    #[test]
+    fn test_covered_by_successful_warmup_reuse_preserves_scope_and_runtime_lists()
+    -> Result<(), String> {
+        let words = |values: &[&str]| {
+            values
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect::<Vec<_>>()
+        };
+        let original = words(&["test", "-p", "xtask", "first_filter", "--no-run"]);
+        let other = words(&["test", "-p", "xtask", "second_filter", "--no-run"]);
+        let key = super::successful_warmup_key(&original);
+        if key != super::successful_warmup_key(&other)
+            || key.testname_present != Some(true)
+            || original != words(&["test", "-p", "xtask", "first_filter", "--no-run"])
+        {
+            return Err("warmup key changed original argv or retained only filter value".into());
+        }
+        for different in [
+            words(&["test", "-p", "xtask", "--no-run"]),
+            words(&["test", "-p", "ripr", "first_filter", "--no-run"]),
+            words(&["test", "--package", "xtask", "first_filter", "--no-run"]),
+            words(&[
+                "test",
+                "-p",
+                "xtask",
+                "--bin",
+                "xtask",
+                "first_filter",
+                "--no-run",
+            ]),
+            words(&[
+                "test",
+                "-p",
+                "xtask",
+                "--test",
+                "integration",
+                "first_filter",
+                "--no-run",
+            ]),
+            words(&[
+                "test",
+                "-p",
+                "xtask",
+                "--locked",
+                "first_filter",
+                "--no-run",
+            ]),
+            words(&[
+                "test",
+                "-p",
+                "xtask",
+                "--offline",
+                "first_filter",
+                "--no-run",
+            ]),
+            words(&[
+                "test",
+                "-p",
+                "xtask",
+                "--features",
+                "feature_one",
+                "first_filter",
+                "--no-run",
+            ]),
+            words(&[
+                "test",
+                "-p",
+                "xtask",
+                "--target",
+                "x86_64-unknown-linux-gnu",
+                "first_filter",
+                "--no-run",
+            ]),
+            words(&[
+                "test",
+                "-p",
+                "xtask",
+                "--profile",
+                "release",
+                "first_filter",
+                "--no-run",
+            ]),
+        ] {
+            if key == super::successful_warmup_key(&different) {
+                return Err(format!(
+                    "different compile scope or TESTNAME presence reused:{different:?}"
+                ));
+            }
+        }
+        for unknown in [
+            words(&[
+                "test",
+                "-p",
+                "xtask",
+                "--features",
+                "feature_one",
+                "first_filter",
+                "--no-run",
+            ]),
+            words(&[
+                "test",
+                "-p",
+                "xtask",
+                "--future-option",
+                "first_filter",
+                "--no-run",
+            ]),
+            words(&[
+                "test",
+                "-p",
+                "xtask",
+                "first_filter",
+                "second_filter",
+                "--no-run",
+            ]),
+            words(&["test", "-p", "--no-run"]),
+            words(&["test", "--package=xtask", "first_filter", "--no-run"]),
+            words(&["test", "-p", "xtask", "first_filter", "--", "--no-run"]),
+        ] {
+            let unknown_key = super::successful_warmup_key(&unknown);
+            if unknown_key.argv != unknown || unknown_key.testname_present.is_some() {
+                return Err(
+                    "unsupported syntax was normalized instead of using exact original argv".into(),
+                );
+            }
+            let mut changed = unknown.clone();
+            changed.insert(changed.len() - 1, "another_filter".into());
+            if unknown_key == super::successful_warmup_key(&changed) {
+                return Err("opaque syntax enabled cross-filter warmup reuse".into());
+            }
+        }
+        let mut warmed = std::collections::BTreeSet::new();
+        for failed in [
+            timed_output(Some(status(1)), "original_stdout", "original_stderr", false),
+            timed_output(None, "original_stdout", "original_stderr", false),
+            timed_output(Some(status(0)), "original_stdout", "original_stderr", true),
+        ] {
+            super::record_successful_warmup(&mut warmed, key.clone(), &failed);
+            if !warmed.is_empty() {
+                return Err("failed/unavailable/timed-out warmup entered successful cache".into());
+            }
+        }
+        let succeeded = timed_output(Some(status(0)), "original_stdout", "original_stderr", false);
+        super::record_successful_warmup(&mut warmed, key, &succeeded);
+        if !warmed.contains(&super::successful_warmup_key(&other))
+            || succeeded.stdout != "original_stdout"
+            || succeeded.stderr != "original_stderr"
+        {
+            return Err("successful reuse or untouched producer streams lost".into());
+        }
+
+        let rows: Vec<(usize, Vec<String>)> =
+            serde_json::from_str(FROZEN_WARMUP_SELECTORS).map_err(|error| error.to_string())?;
+        let commands = rows
+            .iter()
+            .map(|(line, args)| common(*line, &format!("cargo {}", args.join(" "))))
+            .collect::<Vec<_>>();
+        let mut actual_lists = Vec::new();
+        let observations = super::validate_test_covered_by_with(
+            "frozen-policy.toml",
+            &commands,
+            FilePolicyHost::Unix,
+            |args| {
+                actual_lists.push(args.to_vec());
+                Ok((
+                    true,
+                    format!("owned_case_{}: test\n", actual_lists.len()),
+                    String::new(),
+                ))
+            },
+        )?;
+        if observations.len() != 23
+            || actual_lists.len() != 23
+            || super::diagnostic_plan(&commands, FilePolicyHost::Unix).is_none()
+        {
+            return Err("actual selector/list route or bounded diagnostic plan lost".into());
+        }
+        let mut warmed = std::collections::BTreeSet::new();
+        let mut warmups = Vec::new();
+        let mut lists = Vec::new();
+        for args in &actual_lists {
+            let spawns = super::enumeration_spawns(args);
+            if spawns.len() != 2 {
+                return Err("original non-doc compile/list route changed".into());
+            }
+            for (index, spawn) in spawns.into_iter().enumerate() {
+                if index == 0 {
+                    let key = super::successful_warmup_key(&spawn.args);
+                    if warmed.contains(&key) {
+                        continue;
+                    }
+                    warmups.push(spawn.args.clone());
+                    super::record_successful_warmup(
+                        &mut warmed,
+                        key,
+                        &timed_output(Some(status(0)), "", "", false),
+                    );
+                } else {
+                    lists.push(spawn.args);
+                }
+            }
+        }
+        let expected_first_original = [0, 3, 8, 11, 15]
+            .into_iter()
+            .map(|index| {
+                super::build_args_before_list(&actual_lists[index])
+                    .ok_or("original first warmup missing")
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if warmups != expected_first_original
+            || warmups.len() != 5
+            || lists != actual_lists
+            || lists.len() != 23
+        {
+            return Err("first original warmup argv, five compile scopes or all23 original filtered lists lost".into());
+        }
+        for (index, args) in actual_lists.iter().enumerate() {
+            if args != &super::enumeration_args(&commands[index].command) {
+                return Err("actual per-row enumeration argv was changed".into());
+            }
+        }
+        Ok(())
+    }
 
     fn common(line: usize, command: &str) -> FilePolicyTestCommand {
         FilePolicyTestCommand {

@@ -350,7 +350,7 @@ fn sample_value(sequence: usize, pid: u32, elapsed: &str, bytes: &[u8]) -> Optio
             bytes.len(),
             bounded.len() < bytes.len() || text.len() < String::from_utf8_lossy(bounded).len()
         ]);
-        if serde_json::to_string(&value).ok()?.len() + CHILD_PREFIX.len() + 1 <= SAMPLE_CAP {
+        if serde_json::to_string(&value).ok()?.len() + CHILD_PREFIX.len() < SAMPLE_CAP {
             return Some(value);
         }
         text.pop()?;
@@ -831,10 +831,10 @@ fn decode_compact(
                 || row.len() != 7
                 || !valid
                 || raw.len() + CHILD_PREFIX.len() + 1 > SAMPLE_CAP
-                || !row
+                || row
                     .get(3)
                     .and_then(Value::as_str)
-                    .is_some_and(|v| v.parse::<u128>().is_ok())
+                    .is_none_or(|v| v.parse::<u128>().is_err())
                 || !row.get(4).is_some_and(Value::is_string)
                 || !row
                     .get(5)
