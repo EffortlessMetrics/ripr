@@ -2490,20 +2490,173 @@ mod tests {
             .join(file)
     }
 
-    fn assert_json_fixture(case: &str, value: &Value) -> Result<(), String> {
+    fn verify_renderer_review_input(
+        value: &Value,
+        expected_seams: &[ClassifiedSeam],
+    ) -> Result<(), String> {
+        let projection = value
+            .get("review_input")
+            .ok_or("renderer omitted public review_input")?;
+        if projection["schema_version"] != REVIEW_INPUT_SCHEMA_VERSION
+            || projection["root"] != value["root"]
+        {
+            return Err("renderer projection schema or root differs from its document".to_string());
+        }
+        let findings = projection["findings"]
+            .as_array()
+            .ok_or("renderer projection findings must be an array")?;
+        if projection["reviewed_count"].as_u64() != Some(expected_seams.len() as u64)
+            || findings.len() != expected_seams.len()
+        {
+            return Err("renderer projection count differs from selected input seams".to_string());
+        }
+        let config = RiprConfig::default();
+        for (finding, expected) in findings.iter().zip(expected_seams) {
+            if finding["stable_id"] != expected.seam.id().as_str()
+                || finding["file"] != display_path(expected.seam.file())
+                || finding["line"].as_u64() != Some(expected.seam.display_line() as u64)
+                || finding["finding_class"] != expected.class.as_str()
+                || finding["severity"] != config.severity().for_seam(expected.class).as_str()
+                || finding["summary"] != "changed seam line"
+            {
+                return Err(
+                    "renderer projection differs from supplied seam identity or classification"
+                        .to_string(),
+                );
+            }
+            let evidence_bytes = serde_json::to_vec(&expected.evidence)
+                .map_err(|error| format!("serialize expected evidence: {error}"))?;
+            if finding["evidence_digest"] != format!("sha256:{:x}", Sha256::digest(evidence_bytes))
+            {
+                return Err(
+                    "renderer projection evidence digest differs from supplied seam evidence"
+                        .to_string(),
+                );
+            }
+            match expected.evidence.related_tests.first() {
+                Some(test)
+                    if finding["related_test"]["name"] == test.test_name
+                        && finding["related_test"]["file"] == display_path(&test.file)
+                        && finding["related_test"]["line"].as_u64() == Some(test.line as u64) => {}
+                None if finding["related_test"].is_null() => {}
+                _ => {
+                    return Err(
+                        "renderer projection related test differs from supplied evidence"
+                            .to_string(),
+                    );
+                }
+            }
+        }
+        let findings_bytes = serde_json::to_vec(&projection["findings"])
+            .map_err(|error| format!("serialize actual projection findings: {error}"))?;
+        if projection["projection_sha256"] != format!("sha256:{:x}", Sha256::digest(findings_bytes))
+        {
+            return Err(
+                "renderer projection digest does not commit its actual findings".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    fn assert_json_fixture(
+        case: &str,
+        value: &Value,
+        expected_seams: &[ClassifiedSeam],
+        diagnostic_bytes: &mut usize,
+    ) -> Result<(), String> {
         let rendered = format!(
             "{}\n",
             serde_json::to_string_pretty(value)
                 .map_err(|err| format!("render {case} JSON fixture: {err}"))?
         );
-        assert_text_fixture(case, "comments.json", &rendered)
+        // Both checks execute so a projection failure cannot hide the genuine
+        // normalized producer bytes needed to diagnose the golden comparison.
+        let projection = verify_renderer_review_input(value, expected_seams)
+            .map_err(|error| format!("{case}/comments.json projection: {error}"));
+        let comparison = assert_text_fixture(case, "comments.json", &rendered, diagnostic_bytes);
+        projection.and(comparison)
     }
 
-    fn assert_markdown_fixture(case: &str, rendered: &str) -> Result<(), String> {
-        assert_text_fixture(case, "comments.md", &format!("{rendered}\n"))
+    fn assert_markdown_fixture(
+        case: &str,
+        rendered: &str,
+        diagnostic_bytes: &mut usize,
+    ) -> Result<(), String> {
+        assert_text_fixture(
+            case,
+            "comments.md",
+            &format!("{rendered}\n"),
+            diagnostic_bytes,
+        )
     }
 
-    fn assert_text_fixture(case: &str, file: &str, rendered: &str) -> Result<(), String> {
+    fn fixture_actual_diagnostic_lines(
+        case: &str,
+        file: &str,
+        normalized: &str,
+        expected: &str,
+    ) -> Result<Vec<String>, String> {
+        const CHUNK_BYTES: usize = 4096;
+        let mut chunks = Vec::new();
+        let mut start = 0;
+        while start < normalized.len() {
+            let mut end = (start + CHUNK_BYTES).min(normalized.len());
+            while !normalized.is_char_boundary(end) {
+                end -= 1;
+            }
+            chunks.push(&normalized[start..end]);
+            start = end;
+        }
+        let metadata = json!({
+            "case": case, "file": file,
+            "normalization": "project_cwd_text; final newline retained",
+            "expected_sha256": format!("sha256:{:x}", Sha256::digest(expected.as_bytes())),
+            "actual_sha256": format!("sha256:{:x}", Sha256::digest(normalized.as_bytes())),
+            "actual_bytes": normalized.len(), "chunks": chunks.len(),
+        });
+        let mut lines = vec![format!("PR_GUIDANCE_ACTUAL_BEGIN {metadata}")];
+        for (index, chunk) in chunks.iter().enumerate() {
+            let encoded = serde_json::to_string(chunk)
+                .map_err(|error| format!("encode actual fixture chunk: {error}"))?;
+            lines.push(format!(
+                "PR_GUIDANCE_ACTUAL_CHUNK {case}/{file} {index} {encoded}"
+            ));
+        }
+        lines.push(format!("PR_GUIDANCE_ACTUAL_END {case}/{file}"));
+        Ok(lines)
+    }
+
+    fn capture_fixture_actual(
+        case: &str,
+        file: &str,
+        normalized: &str,
+        expected: &str,
+        diagnostic_bytes: &mut usize,
+    ) -> Result<(), String> {
+        const MAX_DIAGNOSTIC_BYTES: usize = 256 * 1024;
+        let lines = fixture_actual_diagnostic_lines(case, file, normalized, expected)?;
+        let bytes = lines.iter().map(|line| line.len() + 1).sum::<usize>();
+        let total = diagnostic_bytes
+            .checked_add(bytes)
+            .ok_or("PR guidance diagnostic byte count overflow")?;
+        if total > MAX_DIAGNOSTIC_BYTES {
+            return Err(format!(
+                "PR guidance actual capture exceeds {MAX_DIAGNOSTIC_BYTES} byte cap for {case}/{file}"
+            ));
+        }
+        *diagnostic_bytes = total;
+        for line in lines {
+            eprintln!("{line}");
+        }
+        Ok(())
+    }
+
+    fn assert_text_fixture(
+        case: &str,
+        file: &str,
+        rendered: &str,
+        diagnostic_bytes: &mut usize,
+    ) -> Result<(), String> {
         let path = pr_guidance_fixture(case, file);
         // Issue #3872: command redirects anchor at the resolved --root, so
         // the machine prefix projects to `<cwd>/` before comparing AND
@@ -2519,10 +2672,12 @@ mod tests {
         }
         let expected = fs::read_to_string(&path)
             .map_err(|err| format!("read fixture {}: {err}", path.display()))?;
-        assert_eq!(
-            expected, normalized,
-            "PR guidance fixture drift for {case}/{file}"
-        );
+        if expected != normalized {
+            capture_fixture_actual(case, file, &normalized, &expected, diagnostic_bytes)?;
+            return Err(format!(
+                "PR guidance fixture drift for {case}/{file}; actual normalized bytes captured"
+            ));
+        }
         Ok(())
     }
 
@@ -2697,6 +2852,174 @@ mod tests {
         Ok(())
     }
 
+    fn expect_renderer_projection_error(
+        value: &Value,
+        seams: &[ClassifiedSeam],
+        expected: &str,
+    ) -> Result<(), String> {
+        match verify_renderer_review_input(value, seams) {
+            Ok(()) => Err(format!(
+                "renderer accepted invalid projection; expected {expected}"
+            )),
+            Err(error) if error.contains(expected) => Ok(()),
+            Err(error) => Err(format!(
+                "renderer projection failed for {error}; expected {expected}"
+            )),
+        }
+    }
+
+    #[test]
+    fn renderer_projection_controls_reject_omission_and_tampering() -> Result<(), String> {
+        let seams = [classified(88)];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let actual = render_value(&working_set, &seams)?;
+        verify_renderer_review_input(&actual, &seams)?;
+
+        let mut omitted = actual.clone();
+        omitted
+            .as_object_mut()
+            .ok_or("rendered document must be an object")?
+            .remove("review_input");
+        expect_renderer_projection_error(&omitted, &seams, "omitted public review_input")?;
+
+        let mut wrong_count = actual.clone();
+        wrong_count["review_input"]["reviewed_count"] = json!(0);
+        expect_renderer_projection_error(&wrong_count, &seams, "count differs")?;
+
+        let mut wrong_owner = actual.clone();
+        wrong_owner["review_input"]["findings"][0]["stable_id"] = json!("different-owner");
+        let findings_bytes = serde_json::to_vec(&wrong_owner["review_input"]["findings"])
+            .map_err(|error| format!("serialize wrong-owner findings: {error}"))?;
+        wrong_owner["review_input"]["projection_sha256"] =
+            json!(format!("sha256:{:x}", Sha256::digest(findings_bytes)));
+        expect_renderer_projection_error(&wrong_owner, &seams, "seam identity or classification")?;
+
+        let mut wrong_digest = actual.clone();
+        wrong_digest["review_input"]["projection_sha256"] = json!("sha256:wrong");
+        expect_renderer_projection_error(&wrong_digest, &seams, "digest does not commit")?;
+
+        let mut changed_payload = actual;
+        changed_payload["review_input"]["findings"][0]["summary"] = json!("altered summary");
+        expect_renderer_projection_error(
+            &changed_payload,
+            &seams,
+            "seam identity or classification",
+        )?;
+
+        let empty = render_value_with_selection(&working_set, &selection(&[]))?;
+        verify_renderer_review_input(&empty, &[])?;
+        expect_renderer_projection_error(&empty, &seams, "count differs")?;
+        Ok(())
+    }
+
+    #[test]
+    fn fixture_actual_capture_preserves_utf8_order_and_refuses_byte_cap() -> Result<(), String> {
+        let seams = [classified(88)];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let mut unicode_selection = selection(&seams);
+        unicode_selection.top_seams[0].why_now.evidence = "界".to_string();
+        let baseline = render_value_with_selection(&working_set, &unicode_selection)?;
+        let baseline_text = project_cwd_text(&format!(
+            "{}\n",
+            serde_json::to_string_pretty(&baseline)
+                .map_err(|error| format!("render Unicode baseline: {error}"))?
+        ));
+        let offset = baseline_text
+            .find('界')
+            .ok_or("real renderer must retain Unicode selection evidence")?;
+        let padding = (4095 + 4096 - offset % 4096) % 4096;
+        unicode_selection.top_seams[0].why_now.evidence = format!("{}界", "x".repeat(padding));
+        let actual = render_value_with_selection(&working_set, &unicode_selection)?;
+        let normalized = project_cwd_text(&format!(
+            "{}\n",
+            serde_json::to_string_pretty(&actual)
+                .map_err(|error| format!("render actual Unicode fixture: {error}"))?
+        ));
+        let lines = fixture_actual_diagnostic_lines(
+            "utf8-control",
+            "comments.json",
+            &normalized,
+            "previous bytes",
+        )?;
+        let reconstruct = |lines: &[String]| -> Result<String, String> {
+            let begin = lines
+                .first()
+                .and_then(|line| line.strip_prefix("PR_GUIDANCE_ACTUAL_BEGIN "))
+                .ok_or("missing actual capture header")?;
+            let metadata: Value = serde_json::from_str(begin)
+                .map_err(|error| format!("parse capture header: {error}"))?;
+            let count = metadata["chunks"].as_u64().ok_or("missing chunk count")? as usize;
+            if lines.len() != count + 2
+                || lines.last().map(String::as_str)
+                    != Some("PR_GUIDANCE_ACTUAL_END utf8-control/comments.json")
+            {
+                return Err("actual capture line denominator differs".to_string());
+            }
+            let mut reconstructed = String::new();
+            for (expected_index, line) in lines.iter().skip(1).take(count).enumerate() {
+                let payload = line
+                    .strip_prefix("PR_GUIDANCE_ACTUAL_CHUNK utf8-control/comments.json ")
+                    .ok_or("wrong actual chunk subject")?;
+                let (index, encoded) = payload
+                    .split_once(' ')
+                    .ok_or("missing actual chunk index")?;
+                let index: usize = index
+                    .parse()
+                    .map_err(|error| format!("parse actual chunk index: {error}"))?;
+                if index != expected_index {
+                    return Err("actual chunk index differs from capture order".to_string());
+                }
+                let chunk: String = serde_json::from_str(encoded)
+                    .map_err(|error| format!("parse actual UTF8 chunk: {error}"))?;
+                if chunk.len() > 4096 {
+                    return Err("actual chunk exceeds byte bound".to_string());
+                }
+                reconstructed.push_str(&chunk);
+            }
+            if metadata["actual_bytes"].as_u64() != Some(reconstructed.len() as u64)
+                || metadata["actual_sha256"]
+                    != format!("sha256:{:x}", Sha256::digest(reconstructed.as_bytes()))
+            {
+                return Err("actual reconstructed bytes differ from capture commitment".to_string());
+            }
+            Ok(reconstructed)
+        };
+        assert_eq!(reconstruct(&lines)?, normalized);
+        assert!(normalized.contains('界'));
+        assert_eq!(
+            normalized
+                .find('界')
+                .ok_or("Unicode capture control omitted its marker")?
+                % 4096,
+            4095
+        );
+        let mut reordered = lines.clone();
+        reordered.swap(1, 2);
+        match reconstruct(&reordered) {
+            Ok(_) => return Err("reordered capture must not verify".to_string()),
+            Err(error) => assert!(error.contains("chunk index differs"), "{error}"),
+        }
+        let mut exhausted = 256 * 1024;
+        match capture_fixture_actual(
+            "utf8-control",
+            "comments.json",
+            &normalized,
+            "previous bytes",
+            &mut exhausted,
+        ) {
+            Ok(()) => return Err("exhausted actual capture budget must fail".to_string()),
+            Err(error) => assert!(error.contains("byte cap"), "{error}"),
+        }
+        assert_eq!(exhausted, 256 * 1024);
+        Ok(())
+    }
+
     #[test]
     fn review_input_projection_is_compact_and_fails_closed_at_byte_limit() -> Result<(), String> {
         let mut entry = classified(88);
@@ -2719,6 +3042,15 @@ mod tests {
             Err(error) => error,
         };
         assert!(error.contains("byte limit"), "{error}");
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let rendered_error = match render_value_with_selection(&working_set, &oversized_selection) {
+            Ok(_) => return Err("oversized real renderer input must fail closed".to_string()),
+            Err(error) => error,
+        };
+        assert!(rendered_error.contains("byte limit"), "{rendered_error}");
         Ok(())
     }
 
@@ -4249,6 +4581,8 @@ mod tests {
 
     #[test]
     fn review_comments_pr_guidance_fixtures_pin_required_cases() -> Result<(), String> {
+        let mut comparisons = Vec::new();
+        let mut diagnostic_bytes = 0;
         let exact_seams = [classified(88)];
         assert_eq!(
             missing_records_for(&exact_seams[0])[0].value,
@@ -4258,8 +4592,17 @@ mod tests {
             "main",
             vec![AgentBriefLine::new("src/pricing.rs", 88)],
         );
-        assert_json_fixture("exact-line", &render_value(&exact, &exact_seams)?)?;
-        assert_markdown_fixture("exact-line", &render_markdown(&exact, &exact_seams))?;
+        comparisons.push(assert_json_fixture(
+            "exact-line",
+            &render_value(&exact, &exact_seams)?,
+            &exact_seams,
+            &mut diagnostic_bytes,
+        ));
+        comparisons.push(assert_markdown_fixture(
+            "exact-line",
+            &render_markdown(&exact, &exact_seams),
+            &mut diagnostic_bytes,
+        ));
 
         let owner = AgentBriefResolvedWorkingSet::base(
             "main",
@@ -4270,11 +4613,17 @@ mod tests {
             70,
             "pricing::discounted_total",
         )]);
-        assert_json_fixture("owner-function-line", &render_value(&owner, &exact_seams)?)?;
-        assert_markdown_fixture(
+        comparisons.push(assert_json_fixture(
+            "owner-function-line",
+            &render_value(&owner, &exact_seams)?,
+            &exact_seams,
+            &mut diagnostic_bytes,
+        ));
+        comparisons.push(assert_markdown_fixture(
             "owner-function-line",
             &render_markdown(&owner, &exact_seams),
-        )?;
+            &mut diagnostic_bytes,
+        ));
 
         // Line 92 sits inside `pricing::discounted_total`'s span (enclosing
         // owner evidence); line 60 does not. Only 92 is a safe placement.
@@ -4290,15 +4639,30 @@ mod tests {
             92,
             "pricing::discounted_total",
         )]);
-        assert_json_fixture("same-file-line", &render_value(&same_file, &exact_seams)?)?;
-        assert_markdown_fixture("same-file-line", &render_markdown(&same_file, &exact_seams))?;
+        comparisons.push(assert_json_fixture(
+            "same-file-line",
+            &render_value(&same_file, &exact_seams)?,
+            &exact_seams,
+            &mut diagnostic_bytes,
+        ));
+        comparisons.push(assert_markdown_fixture(
+            "same-file-line",
+            &render_markdown(&same_file, &exact_seams),
+            &mut diagnostic_bytes,
+        ));
 
         let summary_only = AgentBriefResolvedWorkingSet::files(vec![PathBuf::from("src/other.rs")]);
-        assert_json_fixture("summary-only", &render_value(&summary_only, &exact_seams)?)?;
-        assert_markdown_fixture(
+        comparisons.push(assert_json_fixture(
+            "summary-only",
+            &render_value(&summary_only, &exact_seams)?,
+            &exact_seams,
+            &mut diagnostic_bytes,
+        ));
+        comparisons.push(assert_markdown_fixture(
             "summary-only",
             &render_markdown(&summary_only, &exact_seams),
-        )?;
+            &mut diagnostic_bytes,
+        ));
 
         let capped_seams = (1..=12)
             .map(|index| classified(index * 10))
@@ -4308,8 +4672,17 @@ mod tests {
             .map(|seam| AgentBriefLine::new("src/pricing.rs", seam.seam.display_line()))
             .collect::<Vec<_>>();
         let capped = AgentBriefResolvedWorkingSet::base("main", capped_lines);
-        assert_json_fixture("capped", &render_value(&capped, &capped_seams)?)?;
-        assert_markdown_fixture("capped", &render_markdown(&capped, &capped_seams))?;
+        comparisons.push(assert_json_fixture(
+            "capped",
+            &render_value(&capped, &capped_seams)?,
+            &capped_seams,
+            &mut diagnostic_bytes,
+        ));
+        comparisons.push(assert_markdown_fixture(
+            "capped",
+            &render_markdown(&capped, &capped_seams),
+            &mut diagnostic_bytes,
+        ));
 
         let changed_test = AgentBriefResolvedWorkingSet::base(
             "main",
@@ -4318,14 +4691,17 @@ mod tests {
                 AgentBriefLine::new("tests/pricing.rs", 12),
             ],
         );
-        assert_json_fixture(
+        comparisons.push(assert_json_fixture(
             "changed-test-skip",
             &render_value(&changed_test, &exact_seams)?,
-        )?;
-        assert_markdown_fixture(
+            &exact_seams,
+            &mut diagnostic_bytes,
+        ));
+        comparisons.push(assert_markdown_fixture(
             "changed-test-skip",
             &render_markdown(&changed_test, &exact_seams),
-        )?;
+            &mut diagnostic_bytes,
+        ));
 
         let configured_off_selection = AgentBriefSelection {
             requested: 10,
@@ -4338,15 +4714,28 @@ mod tests {
                 exact_seams[0].seam.id().as_str()
             )],
         };
-        assert_json_fixture(
+        comparisons.push(assert_json_fixture(
             "configured-off",
             &render_value_with_selection(&exact, &configured_off_selection)?,
-        )?;
-        assert_markdown_fixture(
+            &[],
+            &mut diagnostic_bytes,
+        ));
+        comparisons.push(assert_markdown_fixture(
             "configured-off",
             &render_markdown_with_selection(&exact, &configured_off_selection),
-        )?;
+            &mut diagnostic_bytes,
+        ));
 
+        let mismatches = comparisons
+            .into_iter()
+            .filter_map(Result::err)
+            .collect::<Vec<_>>();
+        if !mismatches.is_empty() {
+            return Err(format!(
+                "PR guidance fixture comparison failed:\n{}",
+                mismatches.join("\n")
+            ));
+        }
         Ok(())
     }
 

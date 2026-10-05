@@ -526,6 +526,9 @@ fn collect_output_with_optional_deadline_and_limit(
     if timeout.is_some_and(|timeout| timeout.is_zero()) {
         return Err(CoreError::git_invocation_timeout(describe, 0, false));
     }
+    // A recorded abort is authoritative before spawn, even when the child
+    // would exit before the first poll. Keep the zero-timeout preflight above.
+    crate::analysis::cancellation::checkpoint().map_err(CoreError::message)?;
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -1116,6 +1119,9 @@ fn collect_output_with_deadline(
     {
         return Err(CoreError::git_invocation_timeout(describe, 0, false));
     }
+    // Match the bounded collector: an already-aborted request must not spawn
+    // or become a successful fast-exit Git probe.
+    crate::analysis::cancellation::checkpoint().map_err(CoreError::message)?;
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -1211,6 +1217,17 @@ pub(crate) fn poll_child(
     let deadline = timeout.map(|limit| Instant::now() + limit);
     let mut backoff = crate::process_owner::PollBackoff::new();
     loop {
+        // Observe an abort before accepting an already-completed primary.
+        // The owned child may still have descendants, so cancellation always
+        // keeps the same terminate-and-reap and CleanupFailed authority.
+        if let Err(cancelled) = crate::analysis::cancellation::checkpoint() {
+            return terminate_then_classify(
+                describe,
+                "cancellation",
+                ChildWait::Cancelled(cancelled),
+                || child.terminate_tree(),
+            );
+        }
         match child.try_wait() {
             Ok(Some(status)) => {
                 // The primary may exit while a descendant still holds a pipe.
@@ -1223,14 +1240,6 @@ pub(crate) fn poll_child(
                 );
             }
             Ok(None) => {
-                if let Err(cancelled) = crate::analysis::cancellation::checkpoint() {
-                    return terminate_then_classify(
-                        describe,
-                        "cancellation",
-                        ChildWait::Cancelled(cancelled),
-                        || child.terminate_tree(),
-                    );
-                }
                 if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
                     let timeout_ms = timeout.map_or(0, |limit| limit.as_millis());
                     return terminate_then_classify(
@@ -1798,6 +1807,204 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
                 output.status
             )),
         }
+    }
+
+    /// A cancelled request must not spawn, even when the invocation itself
+    /// would fail immediately. The current executable is a file, so using it
+    /// as the working directory is an independent deterministic spawn refusal.
+    #[test]
+    fn cancelled_collectors_refuse_before_spawn_without_losing_zero_timeout() -> Result<(), String>
+    {
+        let unusable_root = std::env::current_exe().map_err(|error| error.to_string())?;
+        if !unusable_root.is_file() {
+            return Err(
+                "current executable must be a file for the invalid-root control".to_string(),
+            );
+        }
+        for kind in [
+            AnalysisAbortKind::Superseded,
+            AnalysisAbortKind::Cancelled,
+            AnalysisAbortKind::DeadlineExceeded,
+        ] {
+            let token = AnalysisCancellationToken::new();
+            if !token.cancel(kind) {
+                return Err("fresh token must record its requested abort".to_string());
+            }
+            for bounded in [false, true] {
+                let result = with_token(&token, || {
+                    let command = git_command(&unusable_root, &["--version"]);
+                    if bounded {
+                        collect_output_with_deadline_and_limit(
+                            command,
+                            Duration::from_secs(5),
+                            1024,
+                            "cancel-before-spawn",
+                        )
+                    } else {
+                        collect_output_with_deadline(
+                            command,
+                            Some(Duration::from_secs(5)),
+                            "cancel-before-spawn",
+                        )
+                    }
+                });
+                let error = match result {
+                    Err(error) => error,
+                    Ok(_) => return Err("cancelled collector returned output".to_string()),
+                };
+                if error.to_string() != format!("analysis cancelled: {kind:?}")
+                    || error.is_git_invocation_timeout()
+                {
+                    return Err(format!(
+                        "recorded abort lost before spawn, bounded={bounded}: {error}"
+                    ));
+                }
+                let zero = with_token(&token, || {
+                    let command = git_command(&unusable_root, &["--version"]);
+                    if bounded {
+                        collect_output_with_deadline_and_limit(
+                            command,
+                            Duration::ZERO,
+                            1024,
+                            "zero-timeout-precedence",
+                        )
+                    } else {
+                        collect_output_with_deadline(
+                            command,
+                            Some(Duration::ZERO),
+                            "zero-timeout-precedence",
+                        )
+                    }
+                });
+                match zero {
+                    Err(error)
+                        if error.is_git_invocation_timeout()
+                            && error.to_string().contains("0ms") => {}
+                    Err(error) => return Err(format!("zero-timeout priority changed: {error}")),
+                    Ok(_) => return Err("zero timeout spawned or returned output".to_string()),
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Complete/reap before installing the aborted token. This deterministically
+    /// exercises the old fast-exit bypass rather than relying on a scheduler race.
+    #[test]
+    fn recorded_abort_wins_over_an_already_reaped_primary() -> Result<(), String> {
+        let root = std::env::temp_dir();
+        for kind in [
+            AnalysisAbortKind::Superseded,
+            AnalysisAbortKind::Cancelled,
+            AnalysisAbortKind::DeadlineExceeded,
+        ] {
+            let mut command = git_command(&root, &["--version"]);
+            command
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+            let mut child = OwnedProcess::spawn(command).map_err(|error| error.to_string())?;
+            let active = AnalysisCancellationToken::new();
+            let complete = with_token(&active, || {
+                poll_child(
+                    &mut child,
+                    Some(Duration::from_secs(5)),
+                    "completed-primary-control",
+                )
+            });
+            match complete {
+                ChildWait::Exited(status) if status.success() => {}
+                other => {
+                    return Err(format!(
+                        "uncancelled fast child failed: {}",
+                        other.summary()
+                    ));
+                }
+            }
+            let token = AnalysisCancellationToken::new();
+            if !token.cancel(kind) {
+                return Err("fresh token must record its requested abort".to_string());
+            }
+            let cancelled = with_token(&token, || {
+                poll_child(
+                    &mut child,
+                    Some(Duration::from_secs(5)),
+                    "already-reaped-primary",
+                )
+            });
+            match cancelled {
+                ChildWait::Cancelled(message)
+                    if message == format!("analysis cancelled: {kind:?}") => {}
+                other => {
+                    return Err(format!(
+                        "completed primary bypassed recorded abort: {}",
+                        other.summary()
+                    ));
+                }
+            }
+            if !matches!(child.try_wait(), Ok(Some(_))) {
+                return Err("cancelled completed-primary route lost reap proof".to_string());
+            }
+        }
+        Ok(())
+    }
+
+    /// Fresh active tokens retain real full/bounded output, while cancellation
+    /// cleanup failure retains its fail-closed primary classification.
+    #[test]
+    fn active_collectors_and_cancelled_cleanup_keep_their_contracts() -> Result<(), String> {
+        let root = std::env::temp_dir();
+        for bounded in [false, true] {
+            let active = AnalysisCancellationToken::new();
+            let output = with_token(&active, || {
+                let command = git_command(&root, &["--version"]);
+                if bounded {
+                    collect_output_with_deadline_and_limit(
+                        command,
+                        Duration::from_secs(5),
+                        1024,
+                        "active-output-control",
+                    )
+                } else {
+                    collect_output_with_deadline(
+                        command,
+                        Some(Duration::from_secs(5)),
+                        "active-output-control",
+                    )
+                }
+            })
+            .map_err(|error| error.to_string())?;
+            if !output.status.success() || !output.stdout.starts_with(b"git version ") {
+                return Err(format!(
+                    "active collector lost genuine output, bounded={bounded}: {output:?}"
+                ));
+            }
+        }
+        for kind in [
+            AnalysisAbortKind::Superseded,
+            AnalysisAbortKind::Cancelled,
+            AnalysisAbortKind::DeadlineExceeded,
+        ] {
+            let message = format!("analysis cancelled: {kind:?}");
+            let failed = terminate_then_classify(
+                "cancelled cleanup control",
+                "cancellation",
+                ChildWait::Cancelled(message.clone()),
+                || Err("refused owned-tree cleanup".to_string()),
+            );
+            match failed {
+                ChildWait::CleanupFailed(error)
+                    if error.contains("refused owned-tree cleanup") && error.contains(&message) => {
+                }
+                other => {
+                    return Err(format!(
+                        "cancelled cleanup failure was downgraded: {}",
+                        other.summary()
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Env flag that makes the re-executed test binary hang instead of

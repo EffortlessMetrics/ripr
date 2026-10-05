@@ -4406,9 +4406,41 @@ fn editor_agent_loop_fixture_outputs_match_expected() -> Result<(), Box<dyn std:
     // the live canonical verify output — never the digest-normalized golden.
     let verify_artifact_path = "target/ripr/test-agent-verify/agent-verify.json";
     std::fs::write(artifact_dir.join("agent-verify.json"), &verify.stdout)?;
-    let analysis_outcome = run_ripr_in_workspace(&[
-        "check", "--root", ".", "--mode", "draft", "--base", "HEAD", "--format", "json",
-    ])?;
+    let check_analysis_outcome = || {
+        run_command(
+            env!("CARGO_BIN_EXE_ripr"),
+            Some(isolated.path()),
+            &[
+                "check", "--root", ".", "--mode", "draft", "--base", "HEAD", "--format", "json",
+            ],
+        )
+    };
+    // Prove that this producer reads the owned fixture rather than the checkout.
+    // The invalid spelling is refused regardless of compiled language features.
+    let analysis_config_path = isolated.path().join("ripr.toml");
+    assert!(
+        std::fs::symlink_metadata(&analysis_config_path)
+            .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound),
+        "owned editor fixture must begin without ripr.toml"
+    );
+    {
+        let mut config = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&analysis_config_path)?;
+        config.write_all(b"[languages]\nenabled = [\"javascript\"]\n")?;
+    }
+    let config_refusal = check_analysis_outcome();
+    // Remove only the file acquired with create_new, including on spawn failure.
+    std::fs::remove_file(&analysis_config_path)?;
+    let config_refusal = config_refusal?;
+    assert_failure(&config_refusal);
+    let refusal_stderr = String::from_utf8_lossy(&config_refusal.stderr);
+    assert!(
+        refusal_stderr.contains("languages.enabled lists unknown language `javascript`"),
+        "owned configuration must be the admission failure: {refusal_stderr}"
+    );
+    let analysis_outcome = check_analysis_outcome()?;
     assert_success(&analysis_outcome);
     std::fs::write(
         artifact_dir.join("analysis-outcome.json"),
