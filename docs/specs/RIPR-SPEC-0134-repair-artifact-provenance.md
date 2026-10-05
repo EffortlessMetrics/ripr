@@ -56,6 +56,10 @@ verifier compares with exact canonical-path equality. The producer preserves
 literal Unix filename characters in that concrete root and in
 verify's before/after artifact paths; Windows retains separator normalization.
 Generic report display text is separate from these admitted filesystem inputs.
+Receipt issuance also preserves the native UTF-8 Unix root and artifact paths
+in its provenance and absolute verify locator, so first-action can reopen the
+authentic evidence. This changes identity serialization, not root-independent
+digests, canonical equality, containment or receipt-currentness admission.
 Root containment and canonical equality remain mandatory, including when an
 authentic artifact is presented through a different checkout with the same HEAD.
 Version 4 (#3906)
@@ -165,6 +169,12 @@ after movement succeeds but discloses `historical_noncurrent`.
   `cli_snapshot_verify_absolute_inputs_retain_literal_unix_root` exercises
   the real snapshot writer, verify renderer and receipt admission with
   absolute and relative inputs; it does not invoke the standalone CLI process.
+- `cli_receipt_first_action_reopens_literal_unix_root_and_refuses_decoy` uses
+  a real committed source diff, complete analysis outcome and same-HEAD
+  `dirty_both` snapshots through actual CLI receipt issuance and first-action
+  admission. A mandatory authentic positive precedes different-root,
+  locator/digest tamper and immutable receipt/verify byte controls. This is
+  private dispatch/consumer evidence, not standalone CLI process execution.
 - CLI smoke tests cover a valid bound pair, a historical comparable pair,
   mixed pair-currentness disclosure (historical-before/current-after,
   current-before/historical-after descendant acceptance, dirty-before,

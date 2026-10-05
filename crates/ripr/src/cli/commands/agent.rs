@@ -18,8 +18,9 @@ use crate::cli::agent::{
     AgentVerifyExecuteOptions, AgentVerifyOptions, parse_agent_args,
 };
 use crate::cli::commands_agent_support::{
-    build_agent_receipt_provenance, read_agent_verify_snapshot, resolve_agent_brief_working_set,
-    validate_agent_receipt_verify_path, validate_agent_verify_snapshot_path,
+    agent_identity_path, build_agent_receipt_provenance, read_agent_verify_snapshot,
+    resolve_agent_brief_working_set, validate_agent_receipt_verify_path,
+    validate_agent_verify_snapshot_path,
 };
 use crate::cli::commands_context::{ensure_command_root, load_root_input_and_config};
 use crate::config::load_for_root;
@@ -369,8 +370,8 @@ fn render_agent_verify(options: &AgentVerifyOptions) -> Result<String, String> {
     let report = output::outcome::targeted_test_outcome_report_from_json(
         &before_json,
         &after_json,
-        agent_verify_input_path(&options.before),
-        agent_verify_input_path(&options.after),
+        agent_identity_path(&options.before),
+        agent_identity_path(&options.after),
     )?;
     // Bind the verify result to the exact artifact bytes it compared (#2922
     // PR B): the validated content commitments ride in canonical output so a
@@ -384,13 +385,6 @@ fn render_agent_verify(options: &AgentVerifyOptions) -> Result<String, String> {
         Some(artifact_currentness),
         &binding,
     )
-}
-
-// These inputs are re-opened by receipt admission. Preserve native filename
-// characters while keeping the report's existing omission of leading `./`.
-fn agent_verify_input_path(path: &Path) -> String {
-    let rendered = crate::agent::loop_commands::root_path_display(path);
-    rendered.strip_prefix("./").unwrap_or(&rendered).to_string()
 }
 
 /// Exact `render_agent_verify` error for drifted analysis inputs.
@@ -535,7 +529,7 @@ fn run_agent_receipt_for_attempt(
     };
     let rendered = output::agent_receipt::render_agent_receipt_value_json(
         &validated.verify,
-        output::outcome::display_path(&options.verify_json),
+        agent_identity_path(&options.verify_json),
         &options.seam_id,
         options.test_changed.as_deref(),
         &options.commands_run,

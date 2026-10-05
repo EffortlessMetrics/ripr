@@ -1148,6 +1148,9 @@ tests = [
   "crates/ripr/tests/cli_smoke.rs::agent_verify_rejects_plausible_uncommitted_json",
   "crates/ripr/src/agent/artifact.rs::tests::legacy_diagnosis_does_not_reclassify_unrelated_or_enveloped_json",
   "crates/ripr/src/app/agent_status.rs::tests::agent_status_reports_missing_artifacts_and_next_commands",
+  "crates/ripr/src/mcp/repair_root_tests.rs::durable_inventory_awaiting_and_missing_commands_retain_literal_unix_root",
+  "crates/ripr/src/mcp/repair_root_tests.rs::durable_inventory_failed_restart_retains_literal_unix_root",
+  "crates/ripr/src/mcp/repair_root_tests.rs::durable_inventory_open_gap_restart_retains_literal_unix_root",
   "crates/ripr/src/app/agent_status.rs::tests::agent_status_recovers_seam_id_from_receipt",
   "crates/ripr/src/app/agent_status.rs::tests::agent_status_recovers_seam_id_from_verify_packet_or_brief",
   "crates/ripr/src/app/agent_status.rs::tests::agent_status_warns_when_verify_or_receipt_look_stale",
@@ -1206,6 +1209,7 @@ tests = [
   "crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixture_pins_missing_artifact",
   "crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixture_pins_stale_artifact",
   "crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixtures_pin_path_arguments",
+  "crates/ripr/src/app/agent_review_summary/root_tests.rs::review_summary_commands_retain_literal_unix_root_and_redirect",
   "crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_reports_missing_receipt_with_next_command",
   "crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_fails_closed_on_incomplete_analysis_outcome",
   "crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_rejects_malformed_analysis_outcome",
@@ -1239,7 +1243,8 @@ fixtures = [
   "fixtures/boundary_gap/expected/llm-work-loop/stale-artifact/review-summary.json",
   "fixtures/boundary_gap/expected/llm-work-loop/configured-off/stderr.txt",
   "fixtures/boundary_gap/expected/llm-work-loop/path-with-spaces/review-summary.json",
-  "fixtures/boundary_gap/expected/llm-work-loop/windows-separators/review-summary.json"
+  "fixtures/boundary_gap/expected/llm-work-loop/windows-separators/review-summary.json",
+  "fixtures/boundary_gap/expected/llm-work-loop/unix-literal-backslash/review-summary.json"
 ]
 code = [
   "crates/ripr/src/agent/loop_commands.rs",
@@ -1248,6 +1253,8 @@ code = [
   "crates/ripr/src/output/markdown.rs",
   "crates/ripr/src/app/agent_status.rs",
   "crates/ripr/src/app/agent_review_summary.rs",
+  "crates/ripr/src/app/agent_review_summary/report.rs",
+  "crates/ripr/src/app/agent_review_summary/artifacts.rs",
   "crates/ripr/src/app/agent_workflow.rs",
   "crates/ripr/src/output/agent_workflow.rs",
   "crates/ripr/src/output/agent_seam_packets.rs",
@@ -1280,7 +1287,8 @@ outputs = [
   "fixtures/boundary_gap/expected/llm-work-loop/stale-artifact/review-summary.json",
   "fixtures/boundary_gap/expected/llm-work-loop/configured-off/stderr.txt",
   "fixtures/boundary_gap/expected/llm-work-loop/path-with-spaces/review-summary.json",
-  "fixtures/boundary_gap/expected/llm-work-loop/windows-separators/review-summary.json"
+  "fixtures/boundary_gap/expected/llm-work-loop/windows-separators/review-summary.json",
+  "fixtures/boundary_gap/expected/llm-work-loop/unix-literal-backslash/review-summary.json"
 ]
 metrics = [
   "agent_loop_status_available",
@@ -1902,6 +1910,7 @@ id = "RIPR-SPEC-0020"
 name = "first useful action report"
 spec = "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md"
 tests = [
+  "crates/ripr/src/cli/commands/agent_root_tests.rs::cli_receipt_first_action_reopens_literal_unix_root_and_refuses_decoy",
   "crates/ripr/tests/cli_smoke.rs::first_useful_action_corpus_pins_routing_cases",
   "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_actionable_fixture",
   "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_unchanged_after_attempt_fixture",
@@ -1948,6 +1957,8 @@ fixtures = [
 ]
 code = [
   "crates/ripr/src/output/first_useful_action.rs",
+  "crates/ripr/src/cli/commands/agent.rs",
+  "crates/ripr/src/cli/commands_agent_support.rs",
   "crates/ripr/src/output/mod.rs",
   "crates/ripr/src/cli/command.rs",
   "crates/ripr/src/cli/commands.rs",
@@ -7894,6 +7905,7 @@ tests = [
   "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_artifact_from_one_root_is_rejected_at_an_equivalent_clone",
   "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_literal_unix_root_is_admitted_only_at_its_producer",
   "crates/ripr/src/cli/commands/agent_root_tests.rs::cli_snapshot_verify_absolute_inputs_retain_literal_unix_root",
+  "crates/ripr/src/cli/commands/agent_root_tests.rs::cli_receipt_first_action_reopens_literal_unix_root_and_refuses_decoy",
   "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_revision_movement_keeps_input_identity_and_moves_snapshot",
   "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_input_identity_tracks_every_semantic_input",
   "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_input_identity_ignores_unconsumed_config_fields",
@@ -7961,6 +7973,7 @@ code = [
   "crates/ripr/src/app/agent_receipt.rs",
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/cli/commands/agent.rs",
+  "crates/ripr/src/cli/commands_agent_support.rs",
   "crates/ripr/src/output/repo_exposure.rs",
   "crates/ripr/src/output/outcome/render_json.rs",
   "xtask/src/reports/release_negative.rs",

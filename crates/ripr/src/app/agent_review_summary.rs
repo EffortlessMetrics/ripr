@@ -9,6 +9,9 @@ mod util;
 pub(crate) use json::render_agent_review_summary_json;
 pub(crate) use markdown::{NO_RECEIPT_BEFORE_REPAIR, render_agent_review_summary_markdown};
 pub(crate) use report::build_agent_review_summary_report;
+#[cfg(all(test, unix))]
+#[path = "agent_review_summary/root_tests.rs"]
+mod root_tests;
 #[cfg(test)]
 mod tests {
     use super::artifacts::{
@@ -558,10 +561,17 @@ mod tests {
         std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
 
         assert_review_summary_matches_fixture(&root, Path::new("repo root"), "path-with-spaces")?;
+        #[cfg(windows)]
         assert_review_summary_matches_fixture(
             &root,
             Path::new("repo\\root"),
             "windows-separators",
+        )?;
+        #[cfg(unix)]
+        assert_review_summary_matches_fixture(
+            &root,
+            Path::new("repo\\root"),
+            "unix-literal-backslash",
         )?;
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())
@@ -978,7 +988,7 @@ mod tests {
             warnings: Vec::new(),
         };
 
-        let legacy = super::artifacts::agent_status_surface(&report(Vec::new()), ".");
+        let legacy = super::artifacts::agent_status_surface(&report(Vec::new()), Path::new("."));
         assert!(
             legacy
                 .summary
@@ -987,7 +997,8 @@ mod tests {
             legacy.summary
         );
 
-        let repair = super::artifacts::agent_status_surface(&report(vec![attempt("a")]), ".");
+        let repair =
+            super::artifacts::agent_status_surface(&report(vec![attempt("a")]), Path::new("."));
         assert!(
             repair
                 .summary

@@ -61,6 +61,14 @@ existing RIPR artifacts
 The report producer must read explicit input paths. It must not search hidden
 state or rerun analysis to fill missing evidence.
 
+Promoted receipt movement must reopen the admitted root and before/after/verify
+artifacts with their recorded native filesystem identity, complete producer
+outcome and eligible currentness. A real same-HEAD `dirty_both` pair can exercise
+this route; the historical-before/current-after pair is not an eligible
+first-action positive. UTF-8 Unix filename backslashes remain literal through
+receipt issuance; foreign-root and locator/digest tampering remain refusals
+(#6313).
+
 ## Required Evidence
 
 The report can consume these inputs:
@@ -367,6 +375,10 @@ Next: refresh RIPR evidence before acting on this recommendation.
   `action_kind = "no_action"`.
 
 ## Test Mapping
+
+- `crates/ripr/src/cli/commands/agent_root_tests.rs::cli_receipt_first_action_reopens_literal_unix_root_and_refuses_decoy`
+  exercises actual eligible receipt issuance, native identity reopening,
+  foreign/tampered refusal and immutable producer evidence.
 
 Follow-up tests should cover:
 

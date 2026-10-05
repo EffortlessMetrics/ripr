@@ -45,6 +45,13 @@ The status report should:
   snapshot or `agent receipt` is older than `agent verify`;
 - keep all language advisory and static.
 
+General inventory continuation and missing-artifact commands bind the selected
+root from its native filesystem spelling. UTF-8 Unix directory names containing
+a literal backslash must select that directory when pasted from another working
+directory, including awaiting/after, failed/open-gap restart and missing-receipt
+commands. Windows retains separator presentation. Report-only display text is
+separate from this command identity (#6313).
+
 The loop command templates are centralized in one internal module before the
 workflow manifest is introduced. That module owns the current workflow artifact
 paths, the editor/CI pilot-agent artifact paths, and the command builders for:
@@ -101,6 +108,14 @@ Receipt provenance records:
 - selected `seam_id`, before class, after class, and movement;
 - explicit static boundary flags.
 
+Receipt `provenance.repo_root`, before/after/verify artifact paths and
+`inputs.agent_verify_json` preserve native UTF-8 Unix filename characters for
+later reopening. Fields that omit one leading `./` keep that omission;
+before/after provenance paths retain their existing leading `./` behavior.
+Canonical root equality, containment, content hashes and currentness admission
+remain mandatory. A different slash-path checkout cannot inherit the receipt's
+authority (#6313).
+
 `ripr agent review-summary --root .` reads existing artifacts and emits a
 compact Markdown packet for PR review. `--json` emits the schema `0.1` JSON
 contract. The command joins agent status, workflow, receipt, operator cockpit,
@@ -117,6 +132,13 @@ The review summary should answer:
 - what command should run next when the loop is incomplete;
 - what the reviewer should inspect;
 - which static limits remain.
+
+The executable status command embedded in a review-summary surface uses the
+native selected root for both its `--root` argument and anchored redirect.
+It shares command authority with the top-level continuation even though the
+report's `root` field and analysis-outcome presentation key retain display
+formatting. Unix literal filename backslashes remain distinct from Windows
+separators (#6313).
 
 ## JSON Shape
 
@@ -598,6 +620,9 @@ it does not execute the command or grant edit authority.
 - `crates/ripr/src/agent/loop_commands.rs::tests::anchored_redirect_target_roots_relative_outputs_at_root`
 - `crates/ripr/src/agent/loop_commands.rs::tests::bound_roots_render_absolute_and_relative_roots_stay_portable`
 - `crates/ripr/src/agent/loop_commands.rs::tests::bound_root_keeps_a_unix_backslash_directory_name`
+- `crates/ripr/src/mcp/repair_root_tests.rs::durable_inventory_awaiting_and_missing_commands_retain_literal_unix_root`
+- `crates/ripr/src/mcp/repair_root_tests.rs::durable_inventory_failed_restart_retains_literal_unix_root`
+- `crates/ripr/src/mcp/repair_root_tests.rs::durable_inventory_open_gap_restart_retains_literal_unix_root`
 - `crates/ripr/src/app/agent_status.rs::tests::pilot_select_command_binds_raw_and_bound_roots_once`
 - `crates/ripr/tests/generated_review_workflow.rs::generated_status_command_runs_from_a_foreign_working_directory`
 - `crates/ripr/src/lsp/tests.rs::agent_loop_command_payloads_stay_root_anchored_for_platform_roots`
@@ -619,6 +644,7 @@ it does not execute the command or grant edit authority.
 - `crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixture_pins_missing_artifact`
 - `crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixture_pins_stale_artifact`
 - `crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixtures_pin_path_arguments`
+- `crates/ripr/src/app/agent_review_summary/root_tests.rs::review_summary_commands_retain_literal_unix_root_and_redirect`
 - `crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_reports_missing_receipt_with_next_command`
 - `crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_markdown_names_review_focus_and_limits`
 - `crates/ripr/src/cli/agent.rs::tests::agent_review_summary_parses_root_json_and_human_default`
@@ -631,6 +657,10 @@ it does not execute the command or grant edit authority.
 - `xtask/src/reports/operator.rs::tests::operator_cockpit_matches_editor_agent_loop_fixture`
 
 ## Implementation Mapping
+
+- `crates/ripr/src/cli/commands_agent_support.rs` shares native CLI identity-path
+  formatting and produces admitted receipt provenance; command dispatch in
+  `crates/ripr/src/cli/commands/agent.rs` reuses it for verify and receipt inputs.
 
 - `crates/ripr/src/app/agent_status.rs` builds and renders the report from
   existing artifact files and the repair-attempt inventory.

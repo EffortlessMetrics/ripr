@@ -100,6 +100,35 @@ fn selected_root_argv(
     Ok(())
 }
 
+fn inventory_root_argv(fixture: &RootFixture, command: &str) -> Result<(), String> {
+    let argv = shell_argv(fixture, command)?;
+    let root_flag = argv
+        .iter()
+        .position(|arg| arg.as_slice() == b"--root")
+        .ok_or_else(|| format!("inventory command omitted --root: {argv:?}"))?;
+    let selected_arg = argv
+        .get(root_flag + 1)
+        .ok_or_else(|| format!("inventory command omitted the root value: {argv:?}"))?;
+    assert_eq!(
+        selected_arg.as_slice(),
+        fixture.root.as_os_str().as_bytes(),
+        "general status command lost the selected Unix root: {command}"
+    );
+    let selected = std::fs::metadata(&*fixture.root).map_err(|e| e.to_string())?;
+    let received = std::fs::metadata(Path::new(std::ffi::OsStr::from_bytes(selected_arg)))
+        .map_err(|e| e.to_string())?;
+    assert_eq!(
+        (received.dev(), received.ino()),
+        (selected.dev(), selected.ino()),
+        "general status command selected a different repository"
+    );
+    assert_eq!(
+        std::fs::read(fixture.decoy.join("identity")).map_err(|e| e.to_string())?,
+        b"different repository"
+    );
+    Ok(())
+}
+
 fn restart_root_parity(fixture: &RootFixture, class: &str) -> Result<(), String> {
     let document = selected_action_parity(
         &fixture.root,
@@ -207,4 +236,106 @@ fn durable_selected_awaiting_literal_unix_root_retains_after_control() -> Result
     selected_root_argv(&fixture, command, "--attempt", fixture.id.as_str(), "after")?;
     assert_eq!(document["command_routes"].as_array().map(Vec::len), Some(2));
     Ok(())
+}
+
+/// #6313: inventory status is a different reader from selected-attempt status.
+/// Its command is observed as foreign-CWD shell argv against real, distinct
+/// directory identities; a matching report string is insufficient.
+#[test]
+fn durable_inventory_awaiting_and_missing_commands_retain_literal_unix_root() -> Result<(), String>
+{
+    let fixture = literal_root_fixture("inventory-awaiting")?;
+    // The old display-only operator resolves to the independently initialized
+    // slash-path repository. This keeps a source-text-only assertion from
+    // masquerading as a filesystem identity check.
+    let wrong_root = crate::agent::loop_commands::bound_root(
+        &crate::agent::loop_commands::display_path(&fixture.root),
+    );
+    let wrong = format!(
+        "ripr agent status --root {}",
+        crate::agent::loop_commands::shell_arg(&wrong_root)
+    );
+    let wrong_argv = shell_argv(&fixture, &wrong)?;
+    assert_eq!(wrong_argv[3], fixture.decoy.as_os_str().as_bytes());
+    let report = crate::app::agent_status::build_agent_status_report(&fixture.root, &fixture.root);
+    assert_eq!(
+        report.repair_attempts.len(),
+        1,
+        "prepared attempt not inventoried"
+    );
+    let next = report
+        .next_command
+        .as_ref()
+        .ok_or("missing awaiting command")?;
+    assert_eq!(next.step, "repair_attempt_after");
+    inventory_root_argv(&fixture, &next.command)?;
+    let missing_receipt = report
+        .missing_commands
+        .iter()
+        .find(|command| command.step == "agent_receipt")
+        .ok_or("missing receipt fallback")?;
+    inventory_root_argv(&fixture, &missing_receipt.command)?;
+    Ok(())
+}
+
+#[test]
+fn durable_inventory_failed_restart_retains_literal_unix_root() -> Result<(), String> {
+    let fixture = literal_root_fixture("inventory-failed")?;
+    write(
+        &fixture.root.join("tests/target.rs"),
+        "#[test]\nfn focused() { assert_eq!(1, 1); }\n",
+    )?;
+    write(&fixture.root.join("outside.rs"), "pub fn forbidden() {}\n")?;
+    let manifest = load_repair_attempt_manifest(&fixture.root, &fixture.id)?;
+    let packet = find_manifest_artifact_by_role(&manifest, "agent_packet")
+        .ok_or_else(|| "missing prepared packet".to_string())?;
+    let after = finish_repair_attempt(
+        &fixture.root,
+        &fixture.id,
+        &fixture.root.join(&packet.path),
+        crate::edit_cage::HeadMovement::AdmitDescendantCommits,
+    )?;
+    assert!(after.current);
+    assert_eq!(
+        after.verdict.status,
+        crate::edit_cage::EditCageVerdictStatus::Violated
+    );
+    let report = crate::app::agent_status::build_agent_status_report(&fixture.root, &fixture.root);
+    assert_eq!(
+        report.repair_attempts.len(),
+        1,
+        "failed attempt not inventoried"
+    );
+    let next = report
+        .next_command
+        .as_ref()
+        .ok_or("missing failed restart")?;
+    assert_eq!(next.step, "repair_attempt_before");
+    inventory_root_argv(&fixture, &next.command)
+}
+
+#[test]
+fn durable_inventory_open_gap_restart_retains_literal_unix_root() -> Result<(), String> {
+    let fixture = literal_root_fixture("inventory-open-gap")?;
+    let packet = finish_without_receipt(&fixture.root, &fixture.id)?;
+    issue_terminal_receipt_with_grip(
+        &fixture.root,
+        &fixture.id,
+        &packet,
+        "weakly_gripped",
+        "unchanged",
+    )?;
+    let report = crate::app::agent_status::build_agent_status_report(&fixture.root, &fixture.root);
+    assert_eq!(
+        report.repair_attempts.len(),
+        1,
+        "limited attempt not inventoried"
+    );
+    assert_eq!(report.repair_attempts[0].disposition, "gap_open");
+    let next = report
+        .next_command
+        .as_ref()
+        .ok_or("missing open-gap restart")?;
+    assert_eq!(next.step, "repair_attempt_before");
+    inventory_root_argv(&fixture, &next.command)
 }
