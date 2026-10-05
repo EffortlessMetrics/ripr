@@ -1,0 +1,45 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_functools_memoization_not_indirection/input
+
+Summary: 2 probe(s), 1 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 2 of 2 finding(s) unsuppressed
+
+Changed file(s) by language: python: 1.
+
+Analysis outcome: findings below (analysis complete; complete_with_findings).
+  Counts: 1 changed file(s), 4 changed line(s), 2 candidate line(s), 2 probe(s), 2 finding(s).
+
+Start here:
+  State: preview language, advisory only (preview_limited)
+  Safe next action: preview-language evidence is advisory; apply the next step below to the suggested test and run its verify command before relying on it.
+  File: src/memo.py:11
+  Language: python
+  Language status: preview
+  Static exposure: weak (weakly_exposed, warning, confidence 0.40)
+  Why weak: a related test reaches this change but does not observe the exact changed value
+  Canonical gap: gap:python:src/memo.py:century_index:return_value:return_value:year%1000
+  Changed behavior: return year % 1000
+  Missing discriminator (1 of 2): Related Python test reaches `century_index` but the strongest extracted oracle is `unknown`; add or strengthen a focused assertion for the returned value.
+  Related test: tests/test_memo.py:8 test_century_index_smoke
+  Suggested test file: tests/test_memo.py
+  Suggested test: test_century_index_smoke
+  Test node: tests/test_memo.py::test_century_index_smoke
+  Verify command: python -m pytest tests/test_memo.py::test_century_index_smoke (high)
+  Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.
+  Evidence: reach yes · infection yes · propagation yes · observation weak · discriminator weak
+    - reach yes: 1 related Python test(s) found for owner `century_index`
+    - infection yes: Changed Python return expression can alter the owner return value: `return year % 1000`
+    - 5 more detail line(s) in --format human-full
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/python_functools_memoization_not_indirection/input --diff fixtures/python_functools_memoization_not_indirection/diff.patch --mode fast probe:src_memo.py:python_preview:7684d8ca
+  ripr context --root fixtures/python_functools_memoization_not_indirection/input --diff fixtures/python_functools_memoization_not_indirection/diff.patch --mode fast --at probe:src_memo.py:python_preview:7684d8ca
+
+Hidden:
+  1 lower-priority finding(s) omitted from default human output (Python preview: 1).
+    - src/memo.py:6 (exposed)
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

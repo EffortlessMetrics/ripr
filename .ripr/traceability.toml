@@ -2796,6 +2796,7 @@ tests = [
   "xtask/src/fixture_contracts/upstream_python.rs::tests::upstream_python_rejects_digest_drift_and_escaping_paths",
   "xtask/src/fixture_contracts/upstream_python.rs::tests::upstream_python_manifest_preserves_relocation_and_refuses_outside_links",
   "crates/ripr/src/analysis/language/python.rs",
+  "crates/ripr/src/analysis/language/python/static_limits.rs",
   "crates/ripr/src/analysis/language/python/tests.rs::classify_click_output_change_as_repairable_cli_gap",
   "crates/ripr/src/analysis/language/python/tests.rs::classify_probe_shape_reads_a_returned_comparison_as_its_boundary",
   "crates/ripr/src/analysis/language/python/tests.rs::classify_exception_match_assertion_as_exposed",
@@ -2895,6 +2896,7 @@ fixtures = [
   "fixtures/python_noop_multiline_docstring_interior",
   "fixtures/python_dynamic_dispatch_limit",
   "fixtures/python_decorator_indirection_limit",
+  "fixtures/python_functools_memoization_not_indirection",
   "fixtures/python_mocked_module_limit",
   "fixtures/python_monkeypatch_module_limit",
   "fixtures/python_opaque_custom_helper_limit",
@@ -2920,6 +2922,7 @@ fixtures = [
 code = [
   "xtask/src/fixture_contracts/upstream_python.rs",
   "crates/ripr/src/analysis/language/python.rs",
+  "crates/ripr/src/analysis/language/python/static_limits.rs",
   "crates/ripr/src/domain/probe.rs",
   "crates/ripr/src/analysis/language/mod.rs",
   "crates/ripr/src/analysis/language/router.rs",

@@ -4697,8 +4697,11 @@ mod tests {
         // `DISCOUNT_THRESHOLD` boundary in
         // `python_same_stem_sibling_owner_not_related`). A returned relational
         // comparison read as a predicate adds one more direct-aligned boundary
-        // card (`python_return_comparison_boundary`).
-        if (direct, no_strong, orthogonal) != (6, 28, 11) {
+        // card (`python_return_comparison_boundary`). #6652: the smoke twin in
+        // `python_functools_memoization_not_indirection` adds one
+        // `no_strong_oracle` repair card; the credited exact twin is `exposed`
+        // and does not carry a card.
+        if (direct, no_strong, orthogonal) != (6, 29, 11) {
             return Err(format!(
                 "corpus inventory drift: direct={direct}, unknown={no_strong}, orthogonal={orthogonal}"
             ));
