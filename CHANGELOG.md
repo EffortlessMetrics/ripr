@@ -39,6 +39,27 @@ are scoped or reviewed.
   machine output are byte-identical; unknown kind strings now fail at
   the decode boundary and the entry takes the corrupt-entry quarantine
   path (#5415).
+
+- `repo-seams-json` artifacts carry the producer identity envelope
+  `repo-exposure-json` already binds (#6609): producer tool/version,
+  repository head/root, worktree state, versioned input identity (the
+  analysis format is part of it, so seams and exposure artifacts on one tree
+  never share an identity), snapshot identity, and a `content_sha256`
+  commitment over the exact bytes. Additive member;
+  `REPO_SEAMS_SCHEMA_VERSION` stays `0.1` per the #2203/#5474 precedents.
+  Consumers parsing the 3-key shape keep working; consumers that persisted
+  repo-seam inventories can now bind them to the commit they describe.
+
+- `repo-badge-json` / `repo-badge-plus-json` stdout runs persist the
+  canonical report their `public_projection.source_report` names
+  (`target/ripr/reports/repo-ripr-badge.json`,
+  `target/ripr/reports/repo-ripr-plus-badge.json`) inside the analyzed
+  workspace via the atomic output writer, so the provenance pointer resolves
+  after every run (#6610). The pointer previously named a file no stdout run
+  wrote. When the workspace cannot take the write, the projection is emitted
+  with `source_report: null` and resolves to the RIPR-SPEC-0066 `unknown`
+  state instead of claiming an unwritten report.
+
 ### Added
 
 - Bounded repair states its inline-test boundary as permanent scope:

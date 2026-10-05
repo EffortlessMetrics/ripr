@@ -259,15 +259,15 @@ pub(crate) fn attach_public_projection(summary: &mut BadgeSummary, source_report
     attach_public_projection_with_run_status(summary, source_report, RUN_STATUS_FULL, None)
 }
 
-/// Projection with the producing run's completeness state (#5263 review): a
-/// seam-capped classified inventory must not project its partial count as a
-/// clean full-run count. A `limited_*` run status resolves to the `limited`
-/// public state (fail-closed precedence keeps it over the count), and any
-/// unrecognized status fails closed to `unknown` rather than claiming a
-/// count.
-pub(crate) fn attach_public_projection_with_run_status(
+/// Projection whose `source_report` may be absent (#6610). A producing run
+/// that could not persist the report it names must not claim it: with
+/// `source_report: None` the fail-closed machinery resolves the state to
+/// `unknown` (RIPR-SPEC-0066 reject-list, pinned by
+/// `missing_source_report_is_unknown`) instead of a count whose provenance
+/// pointer does not resolve.
+pub(crate) fn attach_public_projection_with_optional_source(
     summary: &mut BadgeSummary,
-    source_report: &str,
+    source_report: Option<&str>,
     run_status: &str,
     limited_reason: Option<String>,
 ) {
@@ -286,7 +286,7 @@ pub(crate) fn attach_public_projection_with_run_status(
         generated_at_unix_ms: Some(now),
         now_unix_ms: now,
         max_age_secs: DEFAULT_BADGE_MAX_AGE_SECS,
-        source_report: Some(source_report.to_string()),
+        source_report: source_report.map(str::to_string),
         limited_reason,
     };
     let projection = project_public_badge(&input);
@@ -294,6 +294,26 @@ pub(crate) fn attach_public_projection_with_run_status(
     summary.status = projection.status;
     summary.color = projection.color;
     summary.projection = Some(projection);
+}
+
+/// Projection with the producing run's completeness state (#5263 review): a
+/// seam-capped classified inventory must not project its partial count as a
+/// clean full-run count. A `limited_*` run status resolves to the `limited`
+/// public state (fail-closed precedence keeps it over the count), and any
+/// unrecognized status fails closed to `unknown` rather than claiming a
+/// count.
+pub(crate) fn attach_public_projection_with_run_status(
+    summary: &mut BadgeSummary,
+    source_report: &str,
+    run_status: &str,
+    limited_reason: Option<String>,
+) {
+    attach_public_projection_with_optional_source(
+        summary,
+        Some(source_report),
+        run_status,
+        limited_reason,
+    )
 }
 
 /// Current wall-clock time in unix milliseconds. Boundary helper; the pure

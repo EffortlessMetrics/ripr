@@ -32,6 +32,17 @@ pub(crate) const CONTENT_COMMITMENT_CANONICALIZATION: &str = "raw_json_placehold
 pub(crate) const CONTENT_SHA256_PLACEHOLDER: &str =
     "sha256:0000000000000000000000000000000000000000000000000000000000000000";
 
+/// `analysis.format` / `analysis.command` token of the repo-exposure identity
+/// envelope. The repo-exposure producer command is part of the validated
+/// identity contract (`validate_repo_exposure_artifact`).
+const REPO_EXPOSURE_ANALYSIS_FORMAT: &str = "repo-exposure-json";
+const REPO_EXPOSURE_PRODUCER_COMMAND: &str = "ripr check --format repo-exposure-json";
+
+/// `analysis.format` / `analysis.command` token of the repo seam inventory
+/// identity envelope (#6609).
+const REPO_SEAMS_ANALYSIS_FORMAT: &str = "repo-seams-json";
+const REPO_SEAMS_PRODUCER_COMMAND: &str = "ripr check --format repo-seams-json";
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct RepoExposureArtifactContext {
     pub(crate) root: PathBuf,
@@ -60,6 +71,41 @@ impl RepoExposureArtifactContext {
         base_revision: Option<String>,
         config: &crate::config::RiprConfig,
     ) -> Result<Self, String> {
+        Self::for_analysis_format(
+            root,
+            mode,
+            base_revision,
+            config,
+            REPO_EXPOSURE_ANALYSIS_FORMAT,
+        )
+    }
+
+    /// Build the same portable identity for one repo seam inventory run
+    /// (#6609). The analysis format is part of the canonical identity, so a
+    /// `repo-seams-json` artifact never shares an input identity with a
+    /// `repo-exposure-json` artifact even on the same tree.
+    pub(crate) fn for_repo_seams(
+        root: PathBuf,
+        mode: String,
+        base_revision: Option<String>,
+        config: &crate::config::RiprConfig,
+    ) -> Result<Self, String> {
+        Self::for_analysis_format(
+            root,
+            mode,
+            base_revision,
+            config,
+            REPO_SEAMS_ANALYSIS_FORMAT,
+        )
+    }
+
+    fn for_analysis_format(
+        root: PathBuf,
+        mode: String,
+        base_revision: Option<String>,
+        config: &crate::config::RiprConfig,
+        analysis_format: &str,
+    ) -> Result<Self, String> {
         let canonical_root = canonical_root(&root)?;
         let (manifest_identity, lockfile_identity) =
             crate::analysis::seam_cache::workspace_named_file_identities_relative(
@@ -67,11 +113,12 @@ impl RepoExposureArtifactContext {
                 |lockfiles| git_tracked_lockfiles(&canonical_root, lockfiles),
             );
         let input_canonical = format!(
-            "identity_version={};mode={};profile={};base={:?};format=repo-exposure-json;manifest={:?};lockfile={:?};config={};analyzer={}",
+            "identity_version={};mode={};profile={};base={:?};format={};manifest={:?};lockfile={:?};config={};analyzer={}",
             INPUT_IDENTITY_VERSION,
             mode,
             mode,
             base_revision,
+            analysis_format,
             manifest_identity,
             lockfile_identity,
             crate::config::repo_exposure_config_identity_hash(config),
@@ -161,6 +208,42 @@ pub(crate) fn repo_exposure_artifact_metadata(
     context: &RepoExposureArtifactContext,
     content_sha256: &str,
 ) -> Result<Value, String> {
+    analysis_artifact_metadata(
+        context,
+        "repo_exposure",
+        REPO_EXPOSURE_ANALYSIS_FORMAT,
+        REPO_EXPOSURE_PRODUCER_COMMAND,
+        content_sha256,
+    )
+}
+
+/// Producer-owned identity envelope for a `repo-seams-json` artifact (#6609).
+/// The same shared projection `repo-exposure-json` carries (ADR 0019): the
+/// only differences are the artifact kind and the analysis format/command
+/// tokens, which also move the input identity.
+pub(crate) fn repo_seams_artifact_metadata(
+    context: &RepoExposureArtifactContext,
+    content_sha256: &str,
+) -> Result<Value, String> {
+    analysis_artifact_metadata(
+        context,
+        "repo_seams",
+        REPO_SEAMS_ANALYSIS_FORMAT,
+        REPO_SEAMS_PRODUCER_COMMAND,
+        content_sha256,
+    )
+}
+
+/// The shared producer identity projection (ADR 0019). `analysis.command` and
+/// `analysis.profile` state the producing operation; `content_sha256` commits
+/// the exact rendered bytes via the fixed placeholder canonicalization.
+fn analysis_artifact_metadata(
+    context: &RepoExposureArtifactContext,
+    artifact_kind: &str,
+    analysis_format: &str,
+    producer_command: &str,
+    content_sha256: &str,
+) -> Result<Value, String> {
     let root = canonical_root(&context.root)?;
     let head = git_output(&root, &["rev-parse", "HEAD"])
         .ok()
@@ -178,7 +261,7 @@ pub(crate) fn repo_exposure_artifact_metadata(
         })
         .unwrap_or("unavailable");
     Ok(json!({
-        "kind": "repo_exposure",
+        "kind": artifact_kind,
         "schema_version": ARTIFACT_IDENTITY_SCHEMA_VERSION,
         "canonicalization": CONTENT_COMMITMENT_CANONICALIZATION,
         "producer": {
@@ -190,11 +273,11 @@ pub(crate) fn repo_exposure_artifact_metadata(
             "head": head,
         },
             "analysis": {
-                "format": "repo-exposure-json",
+                "format": analysis_format,
                 "mode": context.mode,
                 "base_revision": context.base_revision,
                 "input_identity": context.input_identity,
-                "command": "ripr check --format repo-exposure-json",
+                "command": producer_command,
                 "profile": context.mode,
                 "worktree": status,
             },
