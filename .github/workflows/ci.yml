@@ -50,7 +50,7 @@ jobs:
         run: python3 .github/scripts/ready_parser_control.py
       - run: cargo nextest run --workspace
       - name: Observe native calibration enforcement readiness
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.native-readiness-artifact.outcome == 'success' }}
         timeout-minutes: 1
         env:
           RIPR_OBSERVER_ARTIFACT_ROOT: ${{ steps.native-readiness-artifact.outputs.artifact-root }}

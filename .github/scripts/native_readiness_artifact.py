@@ -24,7 +24,8 @@ ENV = dict(os.environ, GIT_NO_LAZY_FETCH="1", GIT_OPTIONAL_LOCKS="0")
 BUILD = ("cargo", "build", "--locked", "-p", "xtask", "--message-format=json-render-diagnostics")
 OBSERVE = ("ci-budget", "--hard-enforcement-readiness")
 REPORT = ROOT / "target/ripr/reports/native-calibration-observer-artifact.json"
-# Hash only the initially observed existing image extent; retain no data copy.
+# Measure the existing extent without a copy; retention separately needs admission.
+RETENTION_CAP = 256 * 1024 * 1024
 CAPTURE_CAP = 8 * 1024 * 1024
 RECEIPT_CAP = 64 * 1024
 UNTIL = 0.0
@@ -147,6 +148,7 @@ def require_digest(actual, expected):
 def controls():
     """Pure selector/digest/extent/inode guards; no compiler or image execution."""
     extent_controls()
+    retention_controls()
     row = {"reason": "compiler-artifact", "target": {"name": "xtask", "kind": ["bin"],
            "src_path": str(ROOT / "xtask/src/main.rs")}, "manifest_path": str(ROOT / "xtask/Cargo.toml"),
            "profile": {"test": False}, "features": [], "executable": "/unused/control"}
@@ -222,8 +224,8 @@ def image_hash(path):
 
 
 def extent_controls():
-    # Virtual metadata may exceed the former arbitrary 256MiB ceiling
-    # without allocating that extent; real digest controls use six bytes.
+    # Virtual metadata can describe an oversized existing image without
+    # allocating it; retention_controls refuses pinning above the admitted cap.
     before = SimpleNamespace(st_dev=7, st_ino=19, st_size=268435457,
                              st_mtime_ns=23, st_ctime_ns=31, st_nlink=1, st_mode=0o100755)
     linked = SimpleNamespace(**vars(before))
@@ -256,6 +258,28 @@ def extent_controls():
             raise RuntimeError("metadata guard falsely accepted")
 
 
+def require_retention_admission(identity):
+    count = identity.get("bytes")
+    if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+        raise RuntimeError("retention requires a positive actual image size")
+    if count > RETENTION_CAP:
+        raise RuntimeError(f"observer retention requires parent admission: actual_bytes={count}; admitted_bytes={RETENTION_CAP}")
+
+
+def retention_controls():
+    require_retention_admission({"bytes": RETENTION_CAP})
+    for count, expected in ((RETENTION_CAP + 1, "requires parent admission"),
+                            (0, "positive actual image size"),
+                            (True, "positive actual image size")):
+        try:
+            require_retention_admission({"bytes": count})
+        except RuntimeError as error:
+            if expected not in str(error):
+                raise RuntimeError("retention cap control produced a wrong refusal") from error
+        else:
+            raise RuntimeError("retention admission falsely accepted")
+
+
 def publish(receipt):
     data = (json.dumps(receipt, sort_keys=True, indent=2) + "\n").encode("utf-8")
     if len(data) > RECEIPT_CAP:
@@ -277,12 +301,29 @@ def prepare():
     if not original.is_absolute():
         raise RuntimeError("Cargo executable path must be absolute")
     identity = image_hash(original)
-    directory = Path(tempfile.mkdtemp(prefix="ripr-native-observer-", dir=runner_temp()))
-    image = directory / "xtask"
     original_stat = os.stat(original, follow_symlinks=False)
     if image_identity(original_stat) != {key: identity[key] for key in
                                         ("device", "inode", "bytes", "mtime_ns", "mode")}:
-        raise RuntimeError("Cargo image changed before hard-link retention")
+        raise RuntimeError("Cargo image changed before retention measurement")
+    same_source(admitted)
+    measurement = {"schema": "native_observer_image_measurement.1",
+                   "head": admitted["head"], "tree": admitted["tree"],
+                   "build_argv": list(BUILD), "image": identity,
+                   "original_st_blocks": original_stat.st_blocks,
+                   "pinned_existing_allocation_forecast_bytes": original_stat.st_blocks * 512,
+                   "hard_link_added_image_data_forecast_bytes": 0,
+                   "receipt_directory_logical_forecast_bytes": 2 * RECEIPT_CAP + 65536,
+                   "retention_admitted_extent_bytes": RETENTION_CAP,
+                   "retention_state": "NOT_ATTEMPTED", "observation": "NOT_RUN", "full_trial": "NOT_RUN",
+                   "hard_provider": "NOT_ESTABLISHED",
+                   "zero_copy_semantics": "No data copy at link creation; a permitted link pins existing blocks until cleanup."}
+    text = json.dumps(measurement, sort_keys=True, separators=(",", ":"))
+    if len(text.encode("utf-8")) > 4096:
+        raise RuntimeError("existing image measurement exceeds diagnostic byte ceiling")
+    print("RIPR NATIVE OBSERVER IMAGE MEASUREMENT " + text, flush=True)
+    require_retention_admission(identity)
+    directory = Path(tempfile.mkdtemp(prefix="ripr-native-observer-", dir=runner_temp()))
+    image = directory / "xtask"
     try:
         os.link(original, image, follow_symlinks=False)
     except OSError as error:
@@ -298,6 +339,7 @@ def prepare():
     receipt = {"schema": "native_observer_artifact.1", "source": admitted,
                "artifact_root": str(directory), "image": identity,
                "physical_retention": {"method": "exclusive_hard_link", "added_image_data_bytes": 0,
+                    "admitted_extent_bytes": RETENTION_CAP,
                     "original_extent_bytes": identity["bytes"],
                     "pinned_existing_allocation_bytes": linked_stat.st_blocks * 512,
                     "source_mode_unchanged": linked_stat.st_mode == original_stat.st_mode,
