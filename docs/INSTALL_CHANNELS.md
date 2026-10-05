@@ -19,18 +19,36 @@ publishes, tags or submits anything; each outward step names who must act.
 
 ## Install time by route
 
-Measured on one Linux container with a cold target directory (#5311):
+Measured on one Linux container with a cold target directory (#5311). The
+last two rows were re-measured on a 4-core container in October 2026 from the
+same tree:
 
 | route | seconds |
 | --- | --- |
 | prebuilt 0.10.0 archive (download, checksum, extract) | about 1 |
 | `cargo install ripr --locked` (0.10.0 from crates.io) | 128 |
-| `cargo install --locked --path crates/ripr` (0.11.0 development build) | 640 |
+| `cargo install --locked --path crates/ripr` (0.11.0 development build, workspace profile) | 640 |
+| `cargo build --release --locked -p ripr` in the workspace (same profile, 4 cores) | 751 |
+| `cargo build --release --locked` on the packaged 0.11.0 crate (what `cargo install ripr --locked` builds, 4 cores) | 275 |
 
-The 0.11 figure ran beside light unrelated work, so read it as roughly five
-times 0.10, not an exact ratio. What dominates that compile (new parser
-dependencies or the crate's own size) is not isolated. `cargo xtask first-run
---install-published` times the source route and the scoreboard records it as
+The first three rows did not record a core count and the 640 s figure ran beside
+light unrelated work, so read them as rough, not an exact ratio. The 751 s and 275 s rows came from `cargo build`,
+not `cargo install`, and the packaged-crate row is a local build of the output of
+`cargo package`, not a download from crates.io, which carries no 0.11.0 yet.
+
+What dominates: the `ripr` crate itself, about 700 of 907 CPU-seconds in the
+workspace build (library 462 s, binary 234 s), not its dependencies (about 210
+s, the largest being `rmcp`, `oxc_parser`, `ra_ap_syntax` and
+`rustpython-parser` at 9 to 24 s each). The workspace `[profile.release]` sets
+`lto = true` and `codegen-units = 1`, and the published crate carries no
+`[profile]` section, so a crates.io install compiles with cargo's default release
+profile and takes about 2.7 times as little time as a workspace build (275 s against 751 s) such as the
+git install in the README. As an experiment, thin LTO with 16 codegen units
+built the workspace in 266 s; on a tiny crate `ripr check` took the same 7 ms,
+and on the `ripr` workspace itself, a large Rust workspace, it took about 5% longer (10.5 s against
+10.0 s) with an 11% larger binary. The release profile was not changed, since it
+also builds the prebuilt archives. `cargo xtask first-run --install-published`
+times the source route and the scoreboard records it as
 `first_run.install_seconds`. The metric has a regression rule but no committed
 baseline sample and no nightly ingest yet, so nothing fails on a slower install
 until both exist; the prebuilt route is not timed by the walk.
