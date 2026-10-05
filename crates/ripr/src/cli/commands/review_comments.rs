@@ -1628,15 +1628,19 @@ mod tests {
     #[test]
     fn review_comments_skips_evidence_outside_changed_lines_once_they_fill_the_review_slots()
     -> Result<(), String> {
+        use sha2::{Digest, Sha256};
+
         let root = unique_command_test_dir("review-comments-staged-scope");
         std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
         std::fs::write(
             root.join("Cargo.toml"),
-            "[package]\nname = \"review_comments_staged_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+            "[package]\nname = \"review_comments_staged_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n",
         )
         .map_err(|err| format!("write Cargo.toml: {err}"))?;
-        // Twelve changed one-line predicates fill the ten review slots;
-        // the unchanged thirteenth function is never evaluated.
+        // Twelve changed one-line predicates fill the ten review slots.
+        // Exact owner scope excludes the unchanged thirteenth function before
+        // staging. One admitted immediate caller supplies the residual seam
+        // whose evidence the saturated first stage can honestly skip.
         let changed = (1..=12)
             .map(|n| format!("pub fn changed_{n}(value: i32) -> i32 {{ if value > {n} {{ 1 }} else {{ 0 }} }}\n"))
             .collect::<String>();
@@ -1645,6 +1649,11 @@ mod tests {
             format!("{changed}pub fn untouched(value: i32) -> i32 {{ if value > 99 {{ 1 }} else {{ 0 }} }}\n"),
         )
         .map_err(|err| format!("write src/lib.rs: {err}"))?;
+        std::fs::write(
+            root.join("src/wrapper.rs"),
+            "pub fn unexamined_caller(value: i32) { changed_1(value); }\n",
+        )
+        .map_err(|err| format!("write src/wrapper.rs: {err}"))?;
         let removed = (1..=12)
             .map(|n| format!("-pub fn changed_{n}(value: i32) -> i32 {{ if value >= {n} {{ 1 }} else {{ 0 }} }}\n"))
             .collect::<String>();
@@ -1685,7 +1694,83 @@ mod tests {
             !rendered_json.contains("untouched"),
             "the unchanged function's seam must not be evaluated or rendered"
         );
+        let scope = &value["analysis_scope"];
+        assert_eq!(scope["changed_owner_functions"], 12);
+        assert_eq!(
+            scope["changed_production_files"],
+            serde_json::json!(["src/lib.rs"])
+        );
+        assert_eq!(
+            scope["immediate_caller_files"],
+            serde_json::json!(["src/wrapper.rs"])
+        );
+        assert_eq!(
+            scope["scoped_production_files"],
+            serde_json::json!(["src/lib.rs", "src/wrapper.rs"])
+        );
+        assert_eq!(scope["total_production_files"], 2);
+        assert_eq!(scope["production_files_considered"], 2);
+        assert_eq!(scope["classified_seams_considered"], 12);
         assert_eq!(value["analysis_scope"]["unevaluated_seams"], 1);
+        assert!(
+            !rendered_json.contains("unexamined_caller"),
+            "the admitted caller's residual seam must not be evaluated or rendered after saturation"
+        );
+        let assert_receipt_count =
+            |receipt: &serde_json::Value, expected: usize| -> Result<(), String> {
+                assert_eq!(
+                    receipt["schema_version"],
+                    output::review_comments_receipt::REVIEW_COMMENTS_RECEIPT_SCHEMA_VERSION
+                );
+                assert_eq!(receipt["status"], "complete");
+                assert_eq!(receipt["requested_mode"], app::Mode::Draft.as_str());
+                let phases = receipt["phase_evidence"]
+                    .as_array()
+                    .ok_or("receipt phase_evidence must be an array")?;
+                let canonical = phases
+                    .iter()
+                    .find(|phase| phase["phase"] == "canonical_analysis")
+                    .ok_or("receipt must measure canonical analysis")?;
+                assert_eq!(canonical["subject_count"], expected);
+                assert_eq!(canonical["reused"], false);
+                assert_eq!(canonical["stop_reason"], "complete");
+                Ok(())
+            };
+        let assert_projection =
+            |document: &serde_json::Value, expected: usize| -> Result<(), String> {
+                let projection = &document["review_input"];
+                assert_eq!(
+                    projection["schema_version"],
+                    output::review_comments::REVIEW_INPUT_SCHEMA_VERSION
+                );
+                assert_eq!(projection["reviewed_count"], expected);
+                let findings = projection["findings"]
+                    .as_array()
+                    .ok_or("review_input findings must be an array")?;
+                assert_eq!(findings.len(), expected);
+                assert!(
+                    findings
+                        .iter()
+                        .all(|finding| finding["file"] == "src/lib.rs")
+                );
+                let canonical = serde_json::to_vec(&projection["findings"])
+                    .map_err(|error| format!("serialize review_input findings: {error}"))?;
+                assert_eq!(
+                    projection["projection_sha256"],
+                    format!("sha256:{:x}", Sha256::digest(&canonical))
+                );
+                Ok(())
+            };
+        assert_receipt_count(&value["run_receipt"], 12)?;
+        let receipt_path =
+            output::review_comments_receipt::ReviewCommentsRunReceipt::path_for_output(&out);
+        let receipt: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(&receipt_path)
+                .map_err(|error| format!("read staged receipt: {error}"))?,
+        )
+        .map_err(|error| format!("parse staged receipt: {error}"))?;
+        assert_receipt_count(&receipt, 12)?;
+        assert_projection(&value, returned)?;
         let messages = value["warnings"]
             .as_array()
             .ok_or("warnings must be an array")?
@@ -1703,6 +1788,12 @@ mod tests {
         assert!(
             messages
                 .iter()
+                .any(|message| message.contains("omitted by the brief cap")),
+            "the twelve evaluated predicates must disclose the ten-row retention cap"
+        );
+        assert!(
+            messages
+                .iter()
                 .filter(|message| message.contains("omitted by the brief cap"))
                 .all(|message| message.starts_with("at least ")),
             "a cap count over evaluated seams only is a floor: {messages:?}"
@@ -1710,6 +1801,83 @@ mod tests {
         let rendered_md = std::fs::read_to_string(out.with_extension("md"))
             .map_err(|err| format!("read review comments Markdown: {err}"))?;
         assert!(rendered_md.contains("- scoped seams not evaluated: 1"));
+
+        // With only three changed owners the first stage cannot fill ten slots.
+        // The same admitted caller must be evaluated, although working-set
+        // selection still retains only the three changed-owner findings.
+        let unsaturated_removed = removed
+            .lines()
+            .take(3)
+            .map(|line| format!("{line}\n"))
+            .collect::<String>();
+        let unsaturated_added = added
+            .lines()
+            .take(3)
+            .map(|line| format!("{line}\n"))
+            .collect::<String>();
+        let unsaturated_diff = format!(
+            "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,3 +1,3 @@\n{unsaturated_removed}{unsaturated_added}"
+        );
+        let unsaturated_out = out.with_file_name("unsaturated-comments.json");
+        review_comments_with_diff_loader(
+            &args(&[
+                "--root",
+                &root.display().to_string(),
+                "--base",
+                "HEAD~1",
+                "--head",
+                "HEAD",
+                "--out",
+                &unsaturated_out.display().to_string(),
+            ]),
+            move |_diff_root, _base, _head| Ok(unsaturated_diff.clone()),
+        )?;
+        let unsaturated_json = std::fs::read_to_string(&unsaturated_out)
+            .map_err(|error| format!("read unsaturated comments: {error}"))?;
+        let unsaturated: serde_json::Value = serde_json::from_str(&unsaturated_json)
+            .map_err(|error| format!("parse unsaturated comments: {error}"))?;
+        let unsaturated_scope = &unsaturated["analysis_scope"];
+        assert_eq!(unsaturated_scope["changed_owner_functions"], 3);
+        assert_eq!(
+            unsaturated_scope["immediate_caller_files"],
+            serde_json::json!(["src/wrapper.rs"])
+        );
+        assert_eq!(
+            unsaturated_scope["scoped_production_files"],
+            scope["scoped_production_files"]
+        );
+        assert_eq!(unsaturated_scope["classified_seams_considered"], 4);
+        assert!(unsaturated_scope.get("unevaluated_seams").is_none());
+        assert!(
+            !unsaturated_json.contains("untouched"),
+            "unrelated owner exclusion is independent of first-stage saturation"
+        );
+        let unsaturated_returned = unsaturated["comments"].as_array().map_or(0, Vec::len)
+            + unsaturated["summary_only"].as_array().map_or(0, Vec::len);
+        assert_eq!(unsaturated_returned, 3);
+        assert_projection(&unsaturated, unsaturated_returned)?;
+        assert_receipt_count(&unsaturated["run_receipt"], 4)?;
+        let unsaturated_receipt_path =
+            output::review_comments_receipt::ReviewCommentsRunReceipt::path_for_output(
+                &unsaturated_out,
+            );
+        let unsaturated_receipt: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(&unsaturated_receipt_path)
+                .map_err(|error| format!("read unsaturated receipt: {error}"))?,
+        )
+        .map_err(|error| format!("parse unsaturated receipt: {error}"))?;
+        assert_receipt_count(&unsaturated_receipt, 4)?;
+        let unsaturated_messages = unsaturated["warnings"]
+            .as_array()
+            .ok_or("unsaturated warnings must be an array")?;
+        assert!(unsaturated_messages.iter().all(|warning| {
+            warning["message"].as_str().is_some_and(|message| {
+                !message.contains("not evaluated") && !message.contains("omitted by the brief cap")
+            })
+        }));
+        let unsaturated_md = std::fs::read_to_string(unsaturated_out.with_extension("md"))
+            .map_err(|error| format!("read unsaturated Markdown: {error}"))?;
+        assert!(!unsaturated_md.contains("scoped seams not evaluated"));
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
         Ok(())

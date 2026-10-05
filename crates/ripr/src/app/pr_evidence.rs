@@ -6,13 +6,15 @@
 //! shim until downstream consumers migrate.
 //!
 //! Unlike the xtask, this command does NOT shell out to `cargo run -p ripr --
-//! check ...`. It calls [`crate::check_workspace`] directly and renders the
+//! check ...`. It calls [`crate::app::check_workspace_with_config`] directly and renders the
 //! resulting [`crate::CheckOutput`] as JSON via [`crate::app::render_check_json_unbounded`].
 //! This avoids recompilation and keeps the analysis in-process.
 
-use crate::app::{CheckInput, Mode, OutputFormat, check_workspace};
+use crate::app::{CheckInput, Mode, OutputFormat, check_workspace_with_config};
 use crate::cli::unknown_argument;
-use crate::config::{load_for_root, repo_exposure_config_identity_hash};
+use crate::config::{
+    CheckInputExplicit, apply_to_check_input, load_for_root, repo_exposure_config_identity_hash,
+};
 use crate::output::markdown::{code_span, inline_prose, table_cell_text, table_code_span};
 use crate::review_input::{
     CanonicalFindingIndexV1, REVIEW_INDEX_MAX_BYTES, REVIEW_INDEX_MAX_ENTRIES,
@@ -38,6 +40,7 @@ const PR_CHECK_JSON: &str = "target/ripr/pr/check.json";
 const PR_CHECK_SUBJECT_JSON: &str = "target/ripr/pr/check.subject.json";
 const PR_REVIEW_INPUT_JSON: &str = "target/ripr/pr/review-input.json";
 const PR_DIFF: &str = "target/ripr/pr/pr.diff";
+const PR_CANONICAL_DIFF: &str = "target/ripr/pr/check.diff";
 const REVIEW_INPUT_MAX_BYTES: usize = 128 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -66,7 +69,10 @@ impl Default for PrEvidenceOptions {
 /// Entry point for `ripr pr-evidence`. Generates the PR diff, runs an
 /// in-process RIPR check over that diff, and composes the result into a PR
 /// evidence packet (`repo-exposure.{json,md}`). Writes:
-/// - `target/ripr/pr/pr.diff` (analyzed diff)
+/// - `target/ripr/pr/pr.diff` (three-context PR presentation diff)
+/// - `target/ripr/pr/check.diff` (canonical zero-context analysis input)
+/// - `target/ripr/pr/check.json`, `check.subject.json`, and `review-input.json`
+///   (the check result and exact reusable producer binding)
 /// - `target/ripr/pr/repo-exposure.json` (PR evidence JSON)
 /// - `target/ripr/pr/repo-exposure.md` (PR evidence Markdown)
 ///
@@ -155,7 +161,11 @@ Options:
 Outputs:
   target/ripr/pr/repo-exposure.json  — PR evidence JSON packet
   target/ripr/pr/repo-exposure.md   — PR evidence Markdown panel
-  target/ripr/pr/pr.diff          — analyzed PR diff
+  target/ripr/pr/pr.diff          — three-context PR presentation diff
+  target/ripr/pr/check.diff       — canonical zero-context analysis input
+  target/ripr/pr/check.json       — complete check result
+  target/ripr/pr/check.subject.json — exact producer subject receipt
+  target/ripr/pr/review-input.json — bounded reusable findings projection
 
 This packet is diff-scoped and advisory. It does not post review
 comments, edit source, or change gate semantics.
@@ -229,7 +239,7 @@ fn write_pr_evidence_packet(
         .canonicalize()
         .map_err(|err| format!("resolve review input root failed: {err}"))?;
     let config = load_for_root(&root)?;
-    let canonical_diff = fs::read(repo.join(PR_DIFF))
+    let canonical_diff = fs::read(repo.join(PR_CANONICAL_DIFF))
         .map_err(|err| format!("read canonical diff for check subject binding: {err}"))?;
     let findings = check_value
         .get("findings")
@@ -364,7 +374,7 @@ fn producer_review_input(
         .map_err(|error| format!("serialize review input projection: {error}"))?;
     let projection_bytes = serde_json::to_vec(&findings_value)
         .map_err(|err| format!("serialize producer review input digest: {err}"))?;
-    let canonical_diff = fs::read(repo.join(PR_DIFF))
+    let canonical_diff = fs::read(repo.join(PR_CANONICAL_DIFF))
         .map_err(|err| format!("read canonical diff for review input binding: {err}"))?;
     if projection_bytes.len() > REVIEW_INPUT_MAX_BYTES {
         return Err(format!(
@@ -510,6 +520,21 @@ fn validate_producer_artifacts(repo: &Path, options: &PrEvidenceOptions) -> Resu
         .join(&options.root)
         .canonicalize()
         .map_err(|error| format!("resolve producer evidence root: {error}"))?;
+    let config = load_for_root(&expected_root)?;
+    let mut expected_input = CheckInput {
+        root: expected_root.clone(),
+        ..CheckInput::default()
+    };
+    apply_to_check_input(&mut expected_input, &config, CheckInputExplicit::default());
+    let expected_config = repo_exposure_config_identity_hash(&config);
+    let (canonical_diff_digest, _) = digest_file(&repo.join(PR_CANONICAL_DIFF))
+        .map_err(|error| format!("missing or unreadable {PR_CANONICAL_DIFF}: {error}"))?;
+    let expected_diff = load_canonical_check_diff(repo, options)?;
+    if canonical_diff_digest != format!("sha256:{:x}", Sha256::digest(expected_diff.as_bytes())) {
+        return Err(format!(
+            "{PR_CANONICAL_DIFF} does not match the requested canonical base/head diff"
+        ));
+    }
     let expected_root = canonical_root_identity(&expected_root);
     let expected_base_sha = resolve_revision(repo, &options.base, "commit")?;
     let expected_head_sha = resolve_revision(repo, &options.head, "commit")?;
@@ -535,10 +560,27 @@ fn validate_producer_artifacts(repo: &Path, options: &PrEvidenceOptions) -> Resu
             subject.get("head_tree").and_then(Value::as_str),
             Some(expected_head_tree.as_str()),
         ),
+        (
+            "canonical_diff_sha256",
+            subject.get("canonical_diff_sha256").and_then(Value::as_str),
+            Some(canonical_diff_digest.as_str()),
+        ),
+        (
+            "mode",
+            subject.get("mode").and_then(Value::as_str),
+            Some(expected_input.mode.as_str()),
+        ),
+        (
+            "configuration_fingerprint",
+            subject
+                .get("configuration_fingerprint")
+                .and_then(Value::as_str),
+            Some(expected_config.as_str()),
+        ),
     ] {
         if actual != expected {
             return Err(format!(
-                "{PR_CHECK_SUBJECT_JSON} {field} does not match the requested revision"
+                "{PR_CHECK_SUBJECT_JSON} {field} does not match the requested analysis identity"
             ));
         }
     }
@@ -730,17 +772,32 @@ fn write_diff(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
     // `--no-textconv`, `--no-color`, `--src-prefix=a/`,
     // `--dst-prefix=b/`, and `--inter-hunk-context=0`.
     let diff = crate::analysis::load_pr_evidence_diff_range(repo, &options.base, &options.head)?;
-    write_parented_file(&out, PR_DIFF, diff)
+    write_parented_file(&out, PR_DIFF, diff)?;
+    let canonical = load_canonical_check_diff(repo, options)?;
+    write_parented_file(&repo.join(PR_CANONICAL_DIFF), PR_CANONICAL_DIFF, canonical)
 }
 
-/// Run the RIPR check in-process and return the JSON rendering. This replaces
-/// the xtask's `cargo run -p ripr -- check ...` subprocess with a direct call
-/// to [`crate::check_workspace`], avoiding recompilation. The diff written by
-/// [`write_diff`] is passed via `--diff`, matching the xtask's scope.
+/// Keep the analysis/identity bytes on the same pinned range assembly as
+/// review-comments (zero context, no external diff/textconv, short submodules).
+/// The caller retains the packet diff's existing five-minute full-diff ceiling.
+fn load_canonical_check_diff(repo: &Path, options: &PrEvidenceOptions) -> Result<String, String> {
+    crate::analysis::load_diff_range_with_deadline_core(
+        repo,
+        &options.base,
+        &options.head,
+        Some(Duration::from_mins(5)),
+    )
+    .map_err(|error| error.to_string())
+}
+
+/// Run the RIPR check in-process over the exact zero-context canonical input.
+/// The loaded repository configuration drives both analysis and the producer
+/// identity, matching the ordinary check CLI and review-comments consumer.
 fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, String> {
-    let diff_path = repo.join(PR_DIFF);
+    let diff_path = repo.join(PR_CANONICAL_DIFF);
     let root_path = command_root_path(repo, &options.root);
-    let input = CheckInput {
+    let config = load_for_root(&root_path)?;
+    let mut input = CheckInput {
         root: root_path,
         base: None,
         diff_file: Some(diff_path),
@@ -752,7 +809,8 @@ fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, St
         git_timeout: None,
         git_candidate: None,
     };
-    let output = check_workspace(input)?;
+    apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
+    let output = check_workspace_with_config(input, &config)?;
     // #5203: the internal packet input renders unbounded. Routing counts
     // the full finding set; the external findings-array byte budget must
     // not silently truncate the counts this packet routes from (Codex P1:
@@ -2036,6 +2094,237 @@ mod tests {
         assert!(repo.join(PR_EVIDENCE_MD).exists());
 
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    /// The actual producer must be reusable by the strict consumer, including
+    /// a nondefault effective mode. Wrong inputs cannot become admitted simply
+    /// because nearby JSON or an internally consistent presentation diff exists.
+    #[cfg(feature = "lang-rust")]
+    #[test]
+    fn actual_pr_producer_preserves_config_and_canonical_review_identity() -> Result<(), String> {
+        use crate::testing::fixture_git::fixture_git_ok;
+
+        struct OwnedProducerFixture(PathBuf);
+        impl Drop for OwnedProducerFixture {
+            fn drop(&mut self) {
+                let _ = crate::testing::fixture_git::remove_fixture_tree(&self.0);
+            }
+        }
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_nanos();
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-pr-producer-identity-{}-{stamp}",
+            std::process::id()
+        ));
+        fs::create_dir(&repo).map_err(|error| error.to_string())?;
+        let _fixture = OwnedProducerFixture(repo.clone());
+        fixture_git_ok(
+            &repo,
+            &["-c", "init.templateDir=", "init", "--quiet", "-b", "trunk"],
+        )?;
+        fixture_git_ok(&repo, &["config", "user.name", "RIPR Producer Fixture"])?;
+        fixture_git_ok(
+            &repo,
+            &["config", "user.email", "producer-fixture@example.invalid"],
+        )?;
+        fixture_git_ok(&repo, &["config", "commit.gpgSign", "false"])?;
+        write_repo_file(
+            &repo,
+            "Cargo.toml",
+            "[package]\nname = \"pricing\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )?;
+        let original = "pub const DISCOUNT_THRESHOLD: u64 = 10_000;\n\npub fn discounted_total(amount: u64) -> u64 {\n    if amount > DISCOUNT_THRESHOLD {\n        amount - amount / 10\n    } else {\n        amount\n    }\n}\n";
+        write_repo_file(&repo, "src/lib.rs", original)?;
+        write_repo_file(
+            &repo,
+            "tests/pricing.rs",
+            "use pricing::discounted_total;\n#[test]\nfn below_threshold() { assert_eq!(discounted_total(5_000), 5_000); }\n",
+        )?;
+        fixture_git_ok(&repo, &["add", "-A"])?;
+        fixture_git_ok(&repo, &["commit", "--quiet", "-m", "base"])?;
+        write_repo_file(
+            &repo,
+            "src/lib.rs",
+            &original.replace(
+                "amount > DISCOUNT_THRESHOLD",
+                "amount >= DISCOUNT_THRESHOLD",
+            ),
+        )?;
+        fixture_git_ok(&repo, &["commit", "--quiet", "-a", "-m", "boundary"])?;
+        let options = PrEvidenceOptions {
+            base: "HEAD~1".to_string(),
+            head: "HEAD".to_string(),
+            ..options()
+        };
+        let canonical = crate::analysis::load_diff_range_with_deadline_core(
+            &repo,
+            &options.base,
+            &options.head,
+            Some(Duration::from_mins(1)),
+        )
+        .map_err(|error| error.to_string())?;
+        assert!(canonical.contains("+    if amount >= DISCOUNT_THRESHOLD"));
+        let check_path = repo.join(PR_CHECK_JSON);
+        for mode in ["draft", "fast"] {
+            if mode == "fast" {
+                write_repo_file(
+                    &repo,
+                    "ripr.toml",
+                    "[analysis]\nmode = \"fast\"\n[languages]\nenabled = [\"rust\"]\n",
+                )?;
+            }
+            let config = load_for_root(&repo)?;
+            let mut input = CheckInput {
+                root: repo.clone(),
+                ..CheckInput::default()
+            };
+            apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
+            assert_eq!(input.mode.as_str(), mode);
+            write_pr_evidence(&repo, &options)?;
+            check_pr_evidence(&repo, &options)?;
+            assert_eq!(
+                fs::read(repo.join(PR_CANONICAL_DIFF)).map_err(|e| e.to_string())?,
+                canonical.as_bytes()
+            );
+            let presentation = fs::read(repo.join(PR_DIFF)).map_err(|e| e.to_string())?;
+            assert_ne!(
+                presentation,
+                canonical.as_bytes(),
+                "the fixture must distinguish three-context presentation from canonical analysis input"
+            );
+            let subject_bytes =
+                fs::read(repo.join(PR_CHECK_SUBJECT_JSON)).map_err(|e| e.to_string())?;
+            let subject: Value =
+                serde_json::from_slice(&subject_bytes).map_err(|e| e.to_string())?;
+            let check_bytes = fs::read(&check_path).map_err(|e| e.to_string())?;
+            let check: Value = serde_json::from_slice(&check_bytes).map_err(|e| e.to_string())?;
+            assert_eq!(check["mode"], mode);
+            assert_eq!(subject["mode"], mode);
+            assert_eq!(
+                subject["check_sha256"],
+                json!(format!("sha256:{:x}", Sha256::digest(&check_bytes)))
+            );
+            assert_eq!(
+                subject["canonical_diff_sha256"],
+                json!(format!("sha256:{:x}", Sha256::digest(canonical.as_bytes())))
+            );
+            let admitted = crate::app::review_comments::admit_producer_evidence(
+                &check_path,
+                &input,
+                &config,
+                &options.base,
+                &options.head,
+                &canonical,
+            )
+            .map_err(|error| format!("actual producer was not admitted: {}", error.message))?;
+            assert_eq!(admitted.identity.mode, mode);
+            assert!(admitted.outcome.counts.finding_count > 0);
+            assert!(!admitted.producer_projection.is_empty());
+            assert_eq!(
+                admitted.identity.configuration_fingerprint,
+                repo_exposure_config_identity_hash(&config)
+            );
+
+            // An ordinary redirected check JSON without its subject is not a
+            // producer packet, even when that JSON and review input are real.
+            fs::remove_file(repo.join(PR_CHECK_SUBJECT_JSON)).map_err(|e| e.to_string())?;
+            let missing = crate::app::review_comments::admit_producer_evidence(
+                &check_path,
+                &input,
+                &config,
+                &options.base,
+                &options.head,
+                &canonical,
+            )
+            .err()
+            .ok_or_else(|| "bare check JSON was admitted".to_string())?;
+            assert_eq!(missing.category, "missing_producer");
+            fs::write(repo.join(PR_CHECK_SUBJECT_JSON), &subject_bytes)
+                .map_err(|e| e.to_string())?;
+            let wrong_head = crate::app::review_comments::admit_producer_evidence(
+                &check_path,
+                &input,
+                &config,
+                &options.base,
+                "HEAD~1",
+                &canonical,
+            )
+            .err()
+            .ok_or_else(|| "wrong head was admitted".to_string())?;
+            assert_eq!(wrong_head.category, "producer_identity_mismatch");
+            assert!(wrong_head.message.contains("head_sha"));
+            let wrong_diff = crate::app::review_comments::admit_producer_evidence(
+                &check_path,
+                &input,
+                &config,
+                &options.base,
+                &options.head,
+                std::str::from_utf8(&presentation).map_err(|e| e.to_string())?,
+            )
+            .err()
+            .ok_or_else(|| "presentation diff was admitted as canonical input".to_string())?;
+            assert_eq!(wrong_diff.category, "producer_identity_mismatch");
+            assert!(wrong_diff.message.contains("canonical_diff_sha256"));
+            fs::write(repo.join(PR_CANONICAL_DIFF), &presentation).map_err(|e| e.to_string())?;
+            let invalid_input = check_pr_evidence(&repo, &options).err().ok_or_else(|| {
+                "standalone check accepted the wrong canonical input file".to_string()
+            })?;
+            assert!(invalid_input.contains("requested canonical base/head diff"));
+            fs::write(repo.join(PR_CANONICAL_DIFF), canonical.as_bytes())
+                .map_err(|e| e.to_string())?;
+            check_pr_evidence(&repo, &options)?;
+        }
+        // Same mode, changed configuration fingerprint must fail reuse and
+        // standalone validation; a changed effective mode gets its own refusal.
+        let bound_config = load_for_root(&repo)?;
+        let bound_fingerprint = repo_exposure_config_identity_hash(&bound_config);
+        write_repo_file(
+            &repo,
+            "ripr.toml",
+            "[analysis]\nmode = \"fast\"\n[languages]\nenabled = [\"rust\"]\n[oracles]\nsnapshot_strength = \"strong\"\n",
+        )?;
+        let drift = load_for_root(&repo)?;
+        assert_ne!(
+            repo_exposure_config_identity_hash(&drift),
+            bound_fingerprint
+        );
+        let mut input = CheckInput {
+            root: repo.clone(),
+            ..CheckInput::default()
+        };
+        apply_to_check_input(&mut input, &drift, CheckInputExplicit::default());
+        let stale_config = crate::app::review_comments::admit_producer_evidence(
+            &check_path,
+            &input,
+            &drift,
+            &options.base,
+            &options.head,
+            &canonical,
+        )
+        .err()
+        .ok_or_else(|| "changed configuration was admitted".to_string())?;
+        assert_eq!(stale_config.category, "producer_identity_mismatch");
+        assert!(stale_config.message.contains("configuration_fingerprint"));
+        assert!(
+            check_pr_evidence(&repo, &options)
+                .err()
+                .is_some_and(|e| e.contains("configuration_fingerprint"))
+        );
+        input.mode = Mode::Deep;
+        let wrong_mode = crate::app::review_comments::admit_producer_evidence(
+            &check_path,
+            &input,
+            &drift,
+            &options.base,
+            &options.head,
+            &canonical,
+        )
+        .err()
+        .ok_or_else(|| "wrong mode was admitted".to_string())?;
+        assert_eq!(wrong_mode.category, "producer_mode_mismatch");
         Ok(())
     }
 

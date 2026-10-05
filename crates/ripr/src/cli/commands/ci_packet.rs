@@ -1229,15 +1229,18 @@ impl PacketRun {
         self.mkdir("target/ripr/pr")?;
         self.mkdir("target/ripr/review")?;
         let base = format!("origin/{}", self.settings.base_ref);
-        if let Err(err) = self.ripr_to(
-            &args(&["check", "--root", ".", "--base", &base, "--format", "json"]),
-            "target/ripr/pr/check.json",
-        ) {
-            println!(
-                "RIPR check did not produce a complete result ({}); review-comments will fail closed on the named artifact.",
-                workflow_data(&err)
-            );
-        }
+        // The reusable input is a whole producer packet, not redirected
+        // check JSON. A failed producer stops this gate-critical stage before
+        // review-comments; the stage still owns advisory/blocking disposition.
+        self.ripr(&args(&[
+            "pr-evidence",
+            "--root",
+            ".",
+            "--base",
+            &base,
+            "--head",
+            "HEAD",
+        ]))?;
         self.ripr(&args(&[
             "review-comments",
             "--root",
@@ -2012,7 +2015,7 @@ mod tests {
             "ripr agent packet --root . --seam-id seam-1 --json > target/ripr/workflow/agent-packet.json.partial",
             "ripr reports gap-ledger --root . --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md",
             "capture origin/main...HEAD > target/ripr/reports/pr.diff",
-            "ripr check --root . --base origin/main --format json > target/ripr/pr/check.json",
+            "ripr pr-evidence --root . --base origin/main --head HEAD",
             "ripr review-comments --root . --base origin/main --head HEAD --check-output target/ripr/pr/check.json --out target/ripr/review/comments.json",
             "ripr pr-comments plan --root . --pr-guidance target/ripr/review/comments.json --mode inline --event-name pull_request --pull-request 7 --head-repo owner/repo --base-repo owner/repo --out target/ripr/review/comment-publish-plan.json --out-md target/ripr/review/comment-publish-plan.md --existing-comments target/ripr/review/existing-comments.json --token-available --write-permission",
             "ripr check --root . --diff target/ripr/reports/pr.diff --format sarif > target/ripr/reports/ripr-findings.sarif",
@@ -2120,6 +2123,10 @@ mod tests {
             ..full_packet_settings()
         })?;
         assert!(failed.is_empty(), "{failed:?}");
+        assert_eq!(
+            line(&pr, "ripr pr-evidence "),
+            "ripr pr-evidence --root . --base origin/release --head HEAD"
+        );
         assert!(line(&pr, "ripr review-comments ").contains(" --base origin/release "));
         assert!(line(&pr, "ripr first-pr ").contains(" --base origin/release "));
         assert!(line(&pr, "ripr pr-ledger record ").contains(" --pr-number 7 "));
@@ -2136,6 +2143,7 @@ mod tests {
         })?;
         assert!(failed.is_empty(), "{failed:?}");
         assert!(line(&manual, "ripr first-pr ").contains(" --base origin/trunk "));
+        assert!(!manual.contains("ripr pr-evidence "), "{manual}");
         assert!(!manual.contains("ripr review-comments "), "{manual}");
         assert!(!line(&manual, "ripr policy history ").contains("--pr-number"));
         Ok(())

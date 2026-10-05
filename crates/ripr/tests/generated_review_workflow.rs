@@ -135,8 +135,9 @@ fn generated_workflow_replay_prints_only_runnable_next_steps() -> Result<(), Box
         .collect::<Vec<_>>();
     assert!(
         failed.is_empty(),
-        "workflow steps failed:\n{}",
-        failed.join("\n")
+        "workflow steps failed:\n{}\n{}",
+        failed.join("\n"),
+        replay::run_ripr_diagnostic(&runs)
     );
 
     // No artifact the upload step would ship is an empty or invalid JSON.
@@ -1383,7 +1384,8 @@ fn generated_workflow_places_findings_on_pr_head_lines_when_base_moved()
     ] {
         assert!(
             runs.iter().any(|run| run.name == stage),
-            "`{stage}` did not run"
+            "`{stage}` did not run\n{}",
+            replay::run_ripr_diagnostic(&runs)
         );
     }
     for run in &runs {
@@ -1502,7 +1504,8 @@ fn generated_comment_plan_withholds_write_permission_for_dependabot() -> Result<
         ] {
             assert!(
                 runs.iter().any(|run| run.name == stage),
-                "`{stage}` was skipped"
+                "`{stage}` was skipped\n{}",
+                replay::run_ripr_diagnostic(&runs)
             );
         }
         for run in &runs {
@@ -2074,6 +2077,62 @@ fn far_above_threshold_discounts() {
         }
         stages.extend(open);
         stages
+    }
+
+    /// Show a bounded copy of the outer capture even when an advisory inner
+    /// stage failed but the outer packet returned zero. The existing full
+    /// stdout/stderr capture remains intact; this does not attribute stderr to
+    /// a particular log group or claim cross-stream ordering.
+    pub(super) fn run_ripr_diagnostic(runs: &[StepRun]) -> String {
+        let Some(run) = runs.iter().find(|run| run.name == "Run RIPR") else {
+            return "Run RIPR capture unavailable".to_string();
+        };
+        const EDGE_CHARS: usize = 4096;
+        let body = if run.output.chars().count() <= EDGE_CHARS * 2 {
+            run.output.clone()
+        } else {
+            let head = run.output.chars().take(EDGE_CHARS).collect::<String>();
+            let mut tail = run
+                .output
+                .chars()
+                .rev()
+                .take(EDGE_CHARS)
+                .collect::<Vec<_>>();
+            tail.reverse();
+            format!(
+                "{head}\n[outer Run RIPR diagnostic middle omitted]\n{}",
+                tail.into_iter().collect::<String>()
+            )
+        };
+        format!(
+            "Outer Run RIPR capture (exit {:?}, combined stdout/stderr):\n{body}",
+            run.exit_code
+        )
+    }
+
+    #[test]
+    fn failure_diagnostic_keeps_advisory_child_stderr_and_bounds_utf8() {
+        let child_error = "producer subject receipt check.subject.json is unreadable";
+        let runs = vec![StepRun {
+            name: "Run RIPR".to_string(),
+            exit_code: Some(0),
+            output: format!(
+                "stdout precondition\n{}\n{child_error}",
+                "🦀".repeat(10_000)
+            ),
+        }];
+        let diagnostic = run_ripr_diagnostic(&runs);
+        assert!(diagnostic.contains("exit Some(0)"));
+        assert!(diagnostic.contains("stdout precondition"));
+        assert!(diagnostic.contains(child_error));
+        assert!(diagnostic.contains("diagnostic middle omitted"));
+        assert!(diagnostic.len() < 33 * 1024);
+        let other = vec![StepRun {
+            name: "another step".to_string(),
+            exit_code: Some(1),
+            output: child_error.to_string(),
+        }];
+        assert_eq!(run_ripr_diagnostic(&other), "Run RIPR capture unavailable");
     }
 
     pub(super) fn json_files(dir: &Path) -> TestResult<Vec<PathBuf>> {
