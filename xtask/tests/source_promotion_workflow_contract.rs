@@ -928,6 +928,139 @@ fn green_historical_diagnostics_are_rejected_by_the_real_final_gate() -> Result<
     production_workflow_fixture("positive_synthetic")
 }
 
+// Diagnostics only: this cannot change the initial positive disposition,
+// the 180-second governed command, or the later historical-v1 refusal oracle.
+fn initial_file_policy_failure_output(root: &Path) -> String {
+    use std::io::{Read, Seek, SeekFrom};
+    const LIMIT: usize = 8 * 1024;
+    const PARENT: [&str; 7] = [
+        "workspace",
+        "synthetic-fixture",
+        "fixture-repository",
+        ".git",
+        "source-promotion-admission-fixture",
+        "validation-packet",
+        "commands",
+    ];
+    let mut report = String::new();
+    for stream in ["stdout", "stderr"] {
+        let name = format!("04-check-file-policy.{stream}.log");
+        let read = || -> Result<(u64, Vec<u8>), String> {
+            let mut path = root.to_path_buf();
+            for (index, component) in PARENT.iter().copied().chain([name.as_str()]).enumerate() {
+                path.push(component);
+                let metadata = fs::symlink_metadata(&path)
+                    .map_err(|error| format!("metadata: {:?}", error.kind()))?;
+                if metadata.file_type().is_symlink()
+                    || (index < PARENT.len() && !metadata.is_dir())
+                    || (index == PARENT.len() && !metadata.is_file())
+                {
+                    return Err("unexpected owned diagnostic path type".to_string());
+                }
+            }
+            let mut file =
+                fs::File::open(path).map_err(|error| format!("open: {:?}", error.kind()))?;
+            let total = file
+                .metadata()
+                .map_err(|error| format!("file metadata: {:?}", error.kind()))?
+                .len();
+            file.seek(SeekFrom::Start(total.saturating_sub(LIMIT as u64)))
+                .map_err(|error| format!("seek: {:?}", error.kind()))?;
+            let mut bytes = Vec::with_capacity(LIMIT);
+            file.take(LIMIT as u64)
+                .read_to_end(&mut bytes)
+                .map_err(|error| format!("read: {:?}", error.kind()))?;
+            Ok((total, bytes))
+        };
+        report.push_str(&format!("BEGIN INITIAL {name}\n"));
+        match read() {
+            Ok((total, bytes)) => {
+                let mut text = String::from_utf8_lossy(&bytes).into_owned();
+                let mut end = text.len().min(LIMIT);
+                while !text.is_char_boundary(end) {
+                    end -= 1;
+                }
+                text.truncate(end);
+                report.push_str(&format!(
+                    "state=observed file_bytes={total} tail_bytes={} limit={LIMIT} \
+                     truncated={} tail_sha256={:x}\n{text}\n",
+                    bytes.len(),
+                    total > bytes.len() as u64,
+                    Sha256::digest(&bytes)
+                ));
+            }
+            Err(error) => report.push_str(&format!("state=unavailable reason={error}\n")),
+        }
+        report.push_str(&format!("END INITIAL {name}\n"));
+    }
+    report
+}
+
+#[test]
+fn initial_file_policy_diagnostics_are_bounded_and_exactly_scoped() -> Result<(), String> {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| format!("diagnostic fixture clock: {error}"))?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "ripr-initial-file-policy-diagnostic-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir(&root).map_err(|error| format!("claim diagnostic fixture: {error}"))?;
+    let result = (|| {
+        let logs = root.join(
+            "workspace/synthetic-fixture/fixture-repository/.git/\
+             source-promotion-admission-fixture/validation-packet/commands",
+        );
+        fs::create_dir_all(&logs).map_err(|error| format!("create owned logs: {error}"))?;
+        let bytes = [vec![b'x'; 16 * 1024], b"owned stdout tail".to_vec()].concat();
+        fs::write(logs.join("04-check-file-policy.stdout.log"), &bytes)
+            .map_err(|error| format!("write stdout: {error}"))?;
+        fs::write(
+            logs.join("03-check-workflows.stderr.log"),
+            "UNRELATED_LOG_MUST_NOT_APPEAR",
+        )
+        .map_err(|error| format!("write unrelated log: {error}"))?;
+        let first = initial_file_policy_failure_output(&root);
+        if !first.contains("owned stdout tail")
+            || !first.contains("tail_bytes=8192 limit=8192 truncated=true")
+            || !first.contains("state=unavailable")
+            || first.contains("UNRELATED_LOG_MUST_NOT_APPEAR")
+            || first.len() > 18 * 1024
+        {
+            return Err("initial exact-log bounded/missing control failed".to_string());
+        }
+        fs::write(
+            logs.join("04-check-file-policy.stderr.log"),
+            "owned stderr build witness",
+        )
+        .map_err(|error| format!("write stderr: {error}"))?;
+        let both = initial_file_policy_failure_output(&root);
+        if !both.contains("owned stdout tail")
+            || !both.contains("owned stderr build witness")
+            || both.contains("state=unavailable")
+            || both.contains("UNRELATED_LOG_MUST_NOT_APPEAR")
+            || both.len() > 18 * 1024
+        {
+            return Err("initial exact two-stream control failed".to_string());
+        }
+        fs::remove_file(logs.join("04-check-file-policy.stdout.log"))
+            .map_err(|error| format!("remove owned stdout: {error}"))?;
+        fs::create_dir(logs.join("04-check-file-policy.stdout.log"))
+            .map_err(|error| format!("create wrong-type control: {error}"))?;
+        let wrong = initial_file_policy_failure_output(&root);
+        if !wrong.contains("unexpected owned diagnostic path type")
+            || !wrong.contains("owned stderr build witness")
+        {
+            return Err("wrong-type diagnostic control failed".to_string());
+        }
+        Ok(())
+    })();
+    let cleanup =
+        fs::remove_dir_all(root).map_err(|error| format!("cleanup diagnostic fixture: {error}"));
+    result.and(cleanup)
+}
+
 fn production_workflow_fixture(profile: &str) -> Result<(), String> {
     let xtask = PathBuf::from(env!("CARGO_BIN_EXE_xtask"));
     // Stage a private copy of the xtask binary beside the original. The suite
@@ -1065,8 +1198,9 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
         if profile == "positive_synthetic" {
             if !output.status.success() {
                 return Err(format!(
-                    "positive workflow failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
+                    "positive workflow failed: {}; bounded_initial_file_policy_output={}",
+                    String::from_utf8_lossy(&output.stderr),
+                    initial_file_policy_failure_output(&root)
                 ));
             }
             let finalized = workspace.join("final-workflow-packet");

@@ -5,7 +5,7 @@ use super::super::rust_index::{
 use super::propagation_witness::{
     assertion_observes_direct_collection, direct_collection_mutation_receiver,
 };
-use super::reach::is_proximity_only;
+use super::reach::{invokes_opaque_macro, is_proximity_only};
 use super::rust_string_literals;
 use crate::domain::*;
 
@@ -15,6 +15,10 @@ use crate::domain::*;
 pub(in crate::analysis) struct ReturnOracleAdmission<'a> {
     pub(in crate::analysis) owner_return_pin: &'a dyn Fn(&TestSummary, &OracleFact) -> bool,
     pub(in crate::analysis) assertion_admitted: &'a dyn Fn(&TestSummary, &OracleFact) -> bool,
+    /// Whether a test related only by file or module may run the owner
+    /// (#6297). One that cannot, by any name path, does not confirm a match
+    /// arm while another related test reaches the owner.
+    pub(in crate::analysis) proximity_may_reach_owner: &'a dyn Fn(&TestSummary) -> bool,
 }
 
 #[cfg(test)]
@@ -32,6 +36,7 @@ fn reveal_evidence(
         &ReturnOracleAdmission {
             owner_return_pin: &|_, _| false,
             assertion_admitted: &|_, _| true,
+            proximity_may_reach_owner: &|_| false,
         },
     );
     (observe, discriminate, related)
@@ -90,6 +95,14 @@ pub(in crate::analysis) fn reveal_evidence_with_expression(
             Confidence::Medium,
             "Strongest oracle does not confirm observation of the changed expression; a weaker assertion cannot supply its confirmation (oracle_confirmation_mixed)",
         )
+    } else if analysis.observation_unverified && analysis.proximity_confirmation_withheld {
+        // The generic unconfirmed summary says no assertion text references
+        // the arm, which is false when a same-file test names its variant.
+        StageEvidence::new(
+            StageState::Weak,
+            Confidence::Medium,
+            PROXIMITY_CONFIRMATION_WITHHELD,
+        )
     } else {
         build_discriminate_evidence(
             &analysis.strongest,
@@ -132,6 +145,8 @@ pub(in crate::analysis) fn reveal_evidence_with_expression(
     (observe, discriminate, related, related_tests_total)
 }
 
+const PROXIMITY_CONFIRMATION_WITHHELD: &str = "Discriminator unconfirmed: no assertion in a test that calls or otherwise reaches this function names the changed arm; a test that only shares its file or module, and calls nothing that reaches the function, cannot confirm the arm (observation_unverified)";
+
 struct RevealAssertionAnalysis {
     related: Vec<RelatedTest>,
     strongest: OracleStrength,
@@ -164,6 +179,10 @@ struct RevealAssertionAnalysis {
     /// row-level flags would otherwise allow `exposed`.
     bound_discriminator: bool,
     refused_context: bool,
+    /// True when a test related only by file or module matched an assertion
+    /// but could not confirm a match arm, because another related test reaches
+    /// the owner (#6297).
+    proximity_confirmation_withheld: bool,
     /// True when this probe's family requires a `token_match` to confirm that
     /// an assertion actually references the specific changed sub-expression, and
     /// no such match has fired yet.
@@ -433,6 +452,10 @@ fn analyze_related_assertions(
     // For families that need token confirmation: start pessimistic and clear
     // once a token_match fires.
     let mut observation_unverified = false;
+    // Set when a matched assertion came from a test that cannot confirm a
+    // match arm (#6297), so the unconfirmed summary can say why rather than
+    // claim no assertion names the arm.
+    let mut proximity_confirmation_withheld = false;
     // When any related test is tied to the owner by a call, helper chain,
     // assertion affinity or seam callee, reach comes from that test.
     // Same-file and same-module relations do not count: `reach.rs` treats
@@ -455,11 +478,34 @@ fn analyze_related_assertions(
     let reach_bearing_related = related_tests
         .iter()
         .any(|(_, reason)| !name_only(*reason) && !is_proximity_only(*reason));
+    // A seam callee call runs the seam's callee, not the owner (`reach.rs`
+    // keeps it out of owner reach), so it cannot be the reaching test that
+    // withholds a same-file match-arm confirmation below.
+    let owner_reaching_related = related_tests.iter().any(|(_, reason)| {
+        *reason != RelationReason::SeamCalleeCall
+            && !name_only(*reason)
+            && !is_proximity_only(*reason)
+    });
 
     for (test, reason) in related_tests {
         let relation_reason = Some(*reason);
         let relation_confidence = Some(reason.confidence());
         let credits_oracle = !(reach_bearing_related && name_only(*reason));
+        // #6297: a match arm's variant (`Unit::Fortnight`) names an enum value
+        // that every function handling the enum shares, so unlike a
+        // return-value token it does not tie an assertion to the owner (the
+        // arm's string literals are already scoped to owner calls for the same
+        // reason). When another related test reaches the owner by a call, a
+        // test related only by proximity (same file or module) still credits
+        // strength but cannot confirm the arm. A same-file
+        // `matches!(Unit::from_str(..), Ok(Unit::Fortnight))` confirmed the
+        // `seconds` arm, so the arm's verdict followed edits to a test that
+        // never runs `seconds`.
+        let confirms_observation = !(matches!(probe.family, ProbeFamily::MatchArm)
+            && owner_reaching_related
+            && is_proximity_only(*reason)
+            && !invokes_opaque_macro(&test.body)
+            && !(return_admission.proximity_may_reach_owner)(test));
         let assertions: Vec<_> = test
             .assertions
             .iter()
@@ -549,11 +595,13 @@ fn analyze_related_assertions(
                 });
             } else if matched {
                 let observation_confirmed = !confirm_required
-                    || collection_observer_confirms(&probe.expression, assertion)
-                    || (direct_collection_mutation_receiver(&probe.expression).is_none()
-                        && (has_token_match
-                            || (is_effect_family(&probe.family)
-                                && effect_observer_confirms(assertion))));
+                    || (confirms_observation
+                        && (collection_observer_confirms(&probe.expression, assertion)
+                            || (direct_collection_mutation_receiver(&probe.expression).is_none()
+                                && (has_token_match
+                                    || (is_effect_family(&probe.family)
+                                        && effect_observer_confirms(assertion))))));
+                proximity_confirmation_withheld |= !confirms_observation;
                 if confirm_required {
                     // Observation is confirmed when the assertion specifically
                     // references the changed sub-expression. For value families
@@ -668,6 +716,7 @@ fn analyze_related_assertions(
         refused_context,
         observation_unverified,
         bound_discriminator,
+        proximity_confirmation_withheld,
     }
 }
 
@@ -2877,6 +2926,7 @@ mod tests {
                 &ReturnOracleAdmission {
                     owner_return_pin: &|_, _| false,
                     assertion_admitted: &|_, _| true,
+                    proximity_may_reach_owner: &|_| false,
                 },
             )
             .1
@@ -3234,6 +3284,7 @@ mod tests {
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
                 assertion_admitted: &|_, _| true,
+                proximity_may_reach_owner: &|_| false,
             },
         );
         assert_eq!(total, 9);
@@ -3298,6 +3349,7 @@ mod tests {
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
                 assertion_admitted: &|_, _| true,
+                proximity_may_reach_owner: &|_| false,
             },
         );
         assert_eq!(total, 9, "every examined test is counted");
@@ -5035,6 +5087,7 @@ return Err(\"typed pin\".into());
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
                 assertion_admitted: &|_, _| true,
+                proximity_may_reach_owner: &|_| false,
             },
         );
 
@@ -5084,6 +5137,7 @@ return Err(\"typed pin\".into());
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
                 assertion_admitted: &|_, _| true,
+                proximity_may_reach_owner: &|_| false,
             },
         );
         assert_eq!(
@@ -5104,6 +5158,7 @@ return Err(\"typed pin\".into());
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
                 assertion_admitted: &|_, _| true,
+                proximity_may_reach_owner: &|_| false,
             },
         );
         assert_eq!(
@@ -5143,6 +5198,7 @@ return Err(\"typed pin\".into());
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
                 assertion_admitted: &|_, _| true,
+                proximity_may_reach_owner: &|_| false,
             },
         );
         assert_eq!(
@@ -5184,6 +5240,7 @@ return Err(\"typed pin\".into());
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
                 assertion_admitted: &|_, _| true,
+                proximity_may_reach_owner: &|_| false,
             },
         );
 
@@ -5350,6 +5407,7 @@ return Err(\"typed pin\".into());
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
                 assertion_admitted: &|_, _| true,
+                proximity_may_reach_owner: &|_| false,
             },
         );
         assert_eq!(
@@ -5373,6 +5431,7 @@ return Err(\"typed pin\".into());
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
                 assertion_admitted: &|_, _| true,
+                proximity_may_reach_owner: &|_| false,
             },
         );
         assert_eq!(
@@ -5789,6 +5848,180 @@ return Err(\"typed pin\".into());
         );
     }
 
+    /// #6297: a same-file test that names the arm's variant through another
+    /// function cannot confirm the arm while a test that calls the owner is
+    /// related, so editing that same-file test cannot move the verdict.
+    #[test]
+    fn match_arm_proximity_test_cannot_confirm_beside_reaching_test() {
+        let probe = probe(ProbeFamily::MatchArm, "Unit::Fortnight => 1_209_600,");
+        let reaching = test_with_assertions(
+            "seconds_total",
+            vec![oracle(
+                "assert_eq!(total, 1_814_400);",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let token_matches = |assertion: &str| {
+            test_with_assertions(
+                "from_str_fortnight",
+                vec![oracle(
+                    assertion,
+                    OracleKind::ExactValue,
+                    OracleStrength::Strong,
+                )],
+            )
+        };
+        let naming = token_matches(
+            r#"assert!(matches!(Unit::from_str("fortnight"), Ok(Unit::Fortnight)));"#,
+        );
+        let not_naming = token_matches(
+            r#"assert_eq!(Unit::from_str("fortnight").map(|u| u == Unit::Week), Ok(false));"#,
+        );
+
+        let (_, with_token, _) = reveal_evidence(
+            &probe,
+            &[
+                (&reaching, RelationReason::DirectOwnerCall),
+                (&naming, RelationReason::SameTestFile),
+            ],
+        );
+        let (_, without_token, _) = reveal_evidence(
+            &probe,
+            &[
+                (&reaching, RelationReason::DirectOwnerCall),
+                (&not_naming, RelationReason::SameTestFile),
+            ],
+        );
+
+        assert_eq!(with_token.state, StageState::Weak, "{}", with_token.summary);
+        assert_eq!(with_token.state, without_token.state);
+        assert_eq!(with_token.summary, without_token.summary);
+        // The summary must not claim that no assertion names the arm while the
+        // same-file test names `Unit::Fortnight`; it says why that test cannot
+        // confirm. Without a proximity test the generic summary stays.
+        assert_eq!(with_token.summary, PROXIMITY_CONFIRMATION_WITHHELD);
+        let (_, reaching_only, _) =
+            reveal_evidence(&probe, &[(&reaching, RelationReason::DirectOwnerCall)]);
+        assert_eq!(reaching_only.state, StageState::Weak);
+        assert_ne!(reaching_only.summary, PROXIMITY_CONFIRMATION_WITHHELD);
+
+        // Observation and discrimination have separate authorities. With no
+        // reaching test, proximity still confirms the arm token (#6297), but
+        // SameTestFile alone cannot establish sink identity (public #1746).
+        let admission = ReturnOracleAdmission {
+            owner_return_pin: &|_, _| false,
+            assertion_admitted: &|_, _| true,
+            proximity_may_reach_owner: &|_| false,
+        };
+        let analyze = |related: &[(&TestSummary, RelationReason)],
+                       admission: &ReturnOracleAdmission<'_>| {
+            analyze_related_assertions(
+                &probe,
+                &probe.expression,
+                related,
+                &[],
+                &|_, _| false,
+                &|_, _| false,
+                admission,
+            )
+        };
+        let withheld = analyze(
+            &[
+                (&reaching, RelationReason::DirectOwnerCall),
+                (&naming, RelationReason::SameTestFile),
+            ],
+            &admission,
+        );
+        assert!(withheld.observation_unverified);
+        assert!(withheld.proximity_confirmation_withheld);
+        assert!(!withheld.strongest_observation_confirmed);
+        assert!(!withheld.bound_discriminator);
+        let alone_analysis = analyze(&[(&naming, RelationReason::SameTestFile)], &admission);
+        assert!(!alone_analysis.observation_unverified);
+        assert!(alone_analysis.strongest_observation_confirmed);
+        assert!(!alone_analysis.proximity_confirmation_withheld);
+        assert!(!alone_analysis.strongest_identity);
+        assert!(!alone_analysis.bound_discriminator);
+        let (_, alone, _) = reveal_evidence(&probe, &[(&naming, RelationReason::SameTestFile)]);
+        assert_eq!(alone.state, StageState::Weak, "{}", alone.summary);
+        assert!(alone.summary.contains("identity_unresolved"));
+
+        // A seam callee call runs the callee, not the owner, so it does not
+        // withhold the same-file confirmation either.
+        let (_, beside_seam, _) = reveal_evidence(
+            &probe,
+            &[
+                (&reaching, RelationReason::SeamCalleeCall),
+                (&naming, RelationReason::SameTestFile),
+            ],
+        );
+        let beside_seam_analysis = analyze(
+            &[
+                (&reaching, RelationReason::SeamCalleeCall),
+                (&naming, RelationReason::SameTestFile),
+            ],
+            &admission,
+        );
+        assert!(!beside_seam_analysis.observation_unverified);
+        assert!(beside_seam_analysis.strongest_observation_confirmed);
+        assert!(!beside_seam_analysis.proximity_confirmation_withheld);
+        assert!(!beside_seam_analysis.strongest_identity);
+        assert!(!beside_seam_analysis.bound_discriminator);
+        assert_eq!(
+            beside_seam.state,
+            StageState::Weak,
+            "{}",
+            beside_seam.summary
+        );
+        assert!(beside_seam.summary.contains("identity_unresolved"));
+
+        // Possible wrapper reach preserves confirmation, not entity identity:
+        // the direct test's strength and the neighbor's changed-arm token
+        // cannot combine into one discriminator (public #1748).
+        let may_reach_admission = ReturnOracleAdmission {
+            owner_return_pin: &|_, _| false,
+            assertion_admitted: &|_, _| true,
+            proximity_may_reach_owner: &|test| test.name == "from_str_fortnight",
+        };
+        let (_, may_reach, _, _) = reveal_evidence_with_expression(
+            &probe,
+            &probe.expression,
+            &[
+                (&reaching, RelationReason::DirectOwnerCall),
+                (&naming, RelationReason::SameTestFile),
+            ],
+            &[],
+            &|_, _| false,
+            &|_, _| false,
+            &may_reach_admission,
+        );
+        let may_reach_analysis = analyze(
+            &[
+                (&reaching, RelationReason::DirectOwnerCall),
+                (&naming, RelationReason::SameTestFile),
+            ],
+            &may_reach_admission,
+        );
+        assert!(!may_reach_analysis.observation_unverified);
+        assert!(may_reach_analysis.strongest_observation_confirmed);
+        assert!(!may_reach_analysis.proximity_confirmation_withheld);
+        assert!(may_reach_analysis.strongest_identity);
+        assert!(!may_reach_analysis.bound_discriminator);
+        assert_eq!(may_reach.state, StageState::Weak, "{}", may_reach.summary);
+        assert!(may_reach.summary.contains("specificity_unbound"));
+
+        // A real helper-owner relation on this same naming oracle binds all
+        // three authorities together, retaining the genuine positive case.
+        let helper_analysis = analyze(&[(&naming, RelationReason::HelperOwnerCall)], &admission);
+        assert!(!helper_analysis.observation_unverified);
+        assert!(helper_analysis.strongest_observation_confirmed);
+        assert!(helper_analysis.strongest_identity);
+        assert!(helper_analysis.bound_discriminator);
+        let (_, helper, _) = reveal_evidence(&probe, &[(&naming, RelationReason::HelperOwnerCall)]);
+        assert_eq!(helper.state, StageState::Yes, "{}", helper.summary);
+    }
+
     /// MatchArm: assertion containing the specific VARIANT token confirms the arm.
     #[test]
     fn match_arm_variant_token_match_keeps_discriminate_yes() {
@@ -5959,6 +6192,7 @@ return Err(\"typed pin\".into());
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
                 assertion_admitted: &|_, _| true,
+                proximity_may_reach_owner: &|_| false,
             },
         );
 

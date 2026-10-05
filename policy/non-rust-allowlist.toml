@@ -963,3 +963,12 @@ surface = "ci"
 classification = "test"
 reason = "Bounded hosted-only wrong-parser experiment for the existing Ready event owner; restores exact HEAD source before corrected native controls. No ref/index/settings mutation or analysis trial."
 covered_by = ["python3 .github/scripts/ready_parser_control.py", "cargo xtask check-file-policy"]
+
+[[allow]]
+glob = ".github/scripts/native_readiness_artifact.py"
+kind = "ci_native_observer_artifact"
+owner = "repo-policy"
+surface = "ci"
+classification = "tooling"
+reason = "Runner stdlib Python retains the single Cargo-reported normal xtask image, fences source and bytes, and invokes the read-only observer without a later Cargo rebuild. No hard provider or full trial is admitted."
+covered_by = ["python3 .github/scripts/native_readiness_artifact.py prepare", "python3 .github/scripts/native_readiness_artifact.py observe", "cargo xtask check-file-policy"]

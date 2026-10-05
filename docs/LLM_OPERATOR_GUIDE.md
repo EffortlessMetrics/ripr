@@ -91,8 +91,11 @@ envelope (`schema_version` `0.1`) carrying the verify 0.3 document unchanged
 under `verify` with the status report embedded beside it under
 `agent_status` — so an orchestrator can `JSON.parse` stdout once and every
 stdout document's shape is identifiable from its `schema_version`; narration
-stays on stderr. When the after phase refuses after the verify render, stdout
-is the bare verify 0.3 document alone; a typed refusal before it (diverged
+stays on stderr. When the after phase refuses after the verify render with
+the attempt still receipt-eligible, stdout is the bare verify 0.3 document
+alone; when the edit cage finished the attempt as not receipt-ready, stdout
+is the typed `repair_after_failure` document naming the terminal attempt
+state and the cage verdict (#6033); a typed refusal before it (diverged
 HEAD, drifted analysis inputs, no movement; exit `3`) prints the
 `repair_after_refusal` document with the cause and recovery. For the
 separately authorized `verify` phase of a trust-bound Python attempt, see

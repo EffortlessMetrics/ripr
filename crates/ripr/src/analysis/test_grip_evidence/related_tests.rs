@@ -528,7 +528,8 @@ pub(super) fn find_related_tests_compact<'a>(
     context: &'a CompactGripContext<'_>,
 ) -> Vec<&'a CompactTest<'a>> {
     let mut related = find_related_tests_with_context(seam, context);
-    sort_related_tests_for_seam(seam, context, &mut related);
+    let owner_fn = context.owner_function(seam.file(), seam.display_line());
+    sort_related_tests_for_seam(seam, context, owner_fn, &mut related);
     related
         .into_iter()
         .take(COMPACT_RELATED_TEST_LIMIT)
@@ -550,12 +551,13 @@ pub(super) struct RelatedTestRankKey {
 pub(super) fn sort_related_tests_for_seam(
     seam: &RepoSeam,
     context: &CompactGripContext<'_>,
+    owner_fn: Option<&FunctionSummary>,
     related: &mut [(&CompactTest<'_>, RelationReason)],
 ) {
     let owner = seam_owner_activation(seam, context);
     related.sort_by_cached_key(|entry| {
         let (indexed, reason) = *entry;
-        related_test_rank_key(seam, context, indexed, reason, owner.as_ref())
+        related_test_rank_key(seam, context, indexed, reason, owner.as_ref(), owner_fn)
     });
 }
 
@@ -565,8 +567,9 @@ pub(super) fn related_test_rank_key(
     indexed: &CompactTest<'_>,
     reason: RelationReason,
     owner: Option<&SeamOwnerActivation<'_>>,
+    owner_fn: Option<&FunctionSummary>,
 ) -> RelatedTestRankKey {
-    let (_oracle_kind, oracle_strength) = best_oracle(indexed.test, seam);
+    let (_oracle_kind, oracle_strength, _contradiction) = best_oracle(indexed.test, seam, owner_fn);
     RelatedTestRankKey {
         relation_confidence: reason.confidence().rank(),
         relation_reason: reason.priority(),

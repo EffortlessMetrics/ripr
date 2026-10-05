@@ -775,7 +775,6 @@ pub struct FileFacts {
     pub path: PathBuf,
     pub functions: Vec<FunctionFact>,
     pub tests: Vec<TestFact>,
-    pub calls: Vec<CallFact>,
     pub returns: Vec<ReturnFact>,
     pub literals: Vec<LiteralFact>,
     pub probe_shapes: Vec<ProbeShapeFact>,
@@ -804,6 +803,26 @@ pub struct FileFacts {
     /// cache and bound by its semantic payload digest. Reference-counted so
     /// child [`SourceText`] spans share this allocation (#5415 step 2).
     pub source: Arc<str>,
+}
+
+impl FileFacts {
+    /// File-level calls derived from per-function calls (#5415 step 3):
+    /// every test fn is also present in [`Self::functions`], so functions
+    /// alone reproduce the removed stored set — sorted by (line, name),
+    /// deduped by (line, name, text). Call text is the whole trimmed
+    /// source line, so the file level is effectively (line, name)-unique.
+    /// Test-gated: no production consumer reads the file-level set.
+    #[cfg(test)]
+    pub(crate) fn file_calls(&self) -> Vec<CallFact> {
+        let mut calls: Vec<CallFact> = self
+            .functions
+            .iter()
+            .flat_map(|function| function.calls.iter().cloned())
+            .collect();
+        calls.sort_by(|a, b| a.line.cmp(&b.line).then(a.name.cmp(&b.name)));
+        calls.dedup_by(|a, b| a.line == b.line && a.name == b.name && a.text == b.text);
+        calls
+    }
 }
 
 /// Producer-owned source role for one indexed Rust function (#3531).
@@ -1355,7 +1374,6 @@ pub(crate) struct FileFactsWire {
     pub path: PathBuf,
     pub functions: Vec<FunctionFactWire>,
     pub tests: Vec<TestFactWire>,
-    pub calls: Vec<CallFact>,
     pub returns: Vec<ReturnFact>,
     pub literals: Vec<LiteralFact>,
     pub probe_shapes: Vec<ProbeShapeFactWire>,
@@ -1497,7 +1515,6 @@ impl From<&FileFacts> for FileFactsWire {
                 .iter()
                 .map(|fact| TestFactWire::attached(fact, &facts.source))
                 .collect(),
-            calls: facts.calls.clone(),
             returns: facts.returns.clone(),
             literals: facts.literals.clone(),
             probe_shapes: facts
@@ -1585,7 +1602,6 @@ impl FileFactsWire {
             path: self.path,
             functions,
             tests,
-            calls: self.calls,
             returns: self.returns,
             literals: self.literals,
             probe_shapes,
@@ -1740,7 +1756,7 @@ mod tests {
         assert!(facts.path.as_os_str().is_empty());
         assert!(facts.functions.is_empty());
         assert!(facts.tests.is_empty());
-        assert!(facts.calls.is_empty());
+        assert!(facts.file_calls().is_empty());
         assert!(facts.returns.is_empty());
         assert!(facts.literals.is_empty());
         assert!(facts.probe_shapes.is_empty());
@@ -1892,7 +1908,6 @@ mod tests {
                 impl_context: FunctionImplContext::Unknown,
             }],
             tests: Vec::new(),
-            calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
             probe_shapes: vec![ProbeShapeFact {
@@ -1929,6 +1944,126 @@ mod tests {
             assert!(child.is_some_and(|arc| Arc::ptr_eq(arc, &decoded.source)));
         }
         assert_eq!(decoded, facts);
+        Ok(())
+    }
+
+    /// #5415 step 3: file-level calls are derived from per-function calls,
+    /// never stored — a stored copy would duplicate every per-function
+    /// call in memory and in cache JSON. Per-function calls stay.
+    #[test]
+    fn file_level_calls_are_not_stored_in_cache_json() -> Result<(), serde_json::Error> {
+        let source: Arc<str> = Arc::from("fn a() {\n    helper();\n}\n");
+        let call = CallFact {
+            line: 2,
+            name: "helper".to_string(),
+            text: "helper()".to_string(),
+        };
+        let facts = FileFacts {
+            path: PathBuf::from("src/lib.rs"),
+            functions: vec![FunctionFact {
+                id: SymbolId("src/lib.rs::a".to_string()),
+                name: "a".to_string(),
+                file: PathBuf::from("src/lib.rs"),
+                start_line: 1,
+                end_line: 3,
+                body: SourceText::shared_or_owned(&source, 0, "fn a() {\n    helper();\n}"),
+                calls: vec![call],
+                returns: Vec::new(),
+                literals: Vec::new(),
+                source_role: FunctionSourceRole::Production,
+                attrs: Vec::new(),
+                impl_attrs: Vec::new(),
+                nested_fn_names: Vec::new(),
+                let_bindings: Vec::new(),
+                item: FunctionItemFact::default(),
+                impl_context: FunctionImplContext::Unknown,
+            }],
+            tests: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            probe_shapes: Vec::new(),
+            used_lexical_fallback: false,
+            module_declarations: Vec::new(),
+            unresolved_property_macros: Vec::new(),
+            role_provenance: SourceRoleProvenance::default(),
+            source: Arc::clone(&source),
+        };
+        let wire = serde_json::to_value(&facts)?;
+        assert!(
+            wire.get("calls").is_none(),
+            "file-level calls must be derived, not stored"
+        );
+        assert_eq!(
+            wire["functions"][0]["calls"].as_array().map(Vec::len),
+            Some(1),
+            "per-function calls are the retained authority"
+        );
+        Ok(())
+    }
+
+    /// #5415 step 3: the derived file-level set is pinned explicitly per
+    /// producer — an independent oracle, not a re-implementation of the
+    /// derivation. Each entry below was verified by hand against the
+    /// fixture source: declaration calls, nested-fn overlap collapsing
+    /// under the parser (the lexical scanner skips nested fn lines, so it
+    /// never overlaps), whole-trimmed-line text collapsing same-line
+    /// repeats, and test fns (also present in `functions`) adding no
+    /// second copy.
+    #[test]
+    fn derived_file_calls_match_pinned_producer_sets() -> Result<(), String> {
+        use crate::analysis::syntax::{
+            LexicalRustSyntaxAdapter, RaRustSyntaxAdapter, RustSyntaxAdapter,
+        };
+        const FIXTURE: &str = "\
+fn outer() {
+    helper(1);
+    fn inner() {
+        helper(2);
+    }
+    inner();
+}
+fn helper(n: u32) {
+    helper(n);
+}
+#[test]
+fn checks_helper() {
+    helper(3); helper(4);
+}
+";
+        // (line, name, text) in derived order. Both producers agree on this
+        // fixture; they differ only in per-function totals below.
+        const EXPECTED: [(usize, &str, &str); 9] = [
+            (1, "outer", "fn outer() {"),
+            (2, "helper", "helper(1);"),
+            (3, "inner", "fn inner() {"),
+            (4, "helper", "helper(2);"),
+            (6, "inner", "inner();"),
+            (8, "helper", "fn helper(n: u32) {"),
+            (9, "helper", "helper(n);"),
+            (12, "checks_helper", "fn checks_helper() {"),
+            (13, "helper", "helper(3); helper(4);"),
+        ];
+        let path = PathBuf::from("src/lib.rs");
+        let parser = RaRustSyntaxAdapter.summarize_file(&path, FIXTURE)?;
+        let lexical = LexicalRustSyntaxAdapter.summarize_file(&path, FIXTURE)?;
+        // The parser records the nested fn separately, so two of its 11
+        // per-function calls collapse; the lexical scanner holds 9
+        // disjoint per-function calls.
+        for (producer, facts, per_function_total) in
+            [("parser", &parser, 11), ("lexical", &lexical, 9)]
+        {
+            let per_function: usize = facts.functions.iter().map(|f| f.calls.len()).sum();
+            assert_eq!(
+                per_function, per_function_total,
+                "{producer} per-function shape changed; re-verify the pin"
+            );
+            let derived = facts.file_calls();
+            let simplified: Vec<(usize, &str, &str)> = derived
+                .iter()
+                .map(|call| (call.line, call.name.as_str(), call.text.as_str()))
+                .collect();
+            assert_eq!(simplified, EXPECTED, "{producer} derived set");
+        }
         Ok(())
     }
 
@@ -2051,7 +2186,6 @@ mod tests {
                 impl_context: FunctionImplContext::Unknown,
             }],
             tests: Vec::new(),
-            calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
             probe_shapes: Vec::new(),

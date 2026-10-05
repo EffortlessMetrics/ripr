@@ -499,7 +499,7 @@ owner(3);
         );
         assert!(
             facts
-                .calls
+                .file_calls()
                 .iter()
                 .all(|call| call.name != "hidden" && call.name != "owner")
         );

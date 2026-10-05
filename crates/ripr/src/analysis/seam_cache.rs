@@ -292,9 +292,14 @@ pub(crate) struct CachedSeamLimitInfo {
 /// `weakly_gripped` (#5946). Old entries would keep the weak-grip class.
 /// `1.33`: `assert!(owner(..))` on a bool owner pins its whole result
 /// (RIPR-SPEC-0197); predecessor weak predicate/return readings must miss.
-/// 1.34: composed source/swarm union preserves public guidance, delta,
-/// owner/line and examined-test semantics plus activation and bool-owner pins.
-pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.34";
+/// 1.34 (source parent): public guidance, delta, owner/line and examined-test
+/// semantics plus activation and bool-owner pins.
+/// 1.34 (swarm parent): a statically contradicted exact-value assertion keeps
+/// at most Weak oracle credit and keeps its gap open (#6026).
+/// 1.35: preserve both parent authorities plus match-arm owner reach (#6297).
+/// Both parents used 1.34 for different semantics; invalidate both so old
+/// classifications cannot bypass identity, confirmation or contradiction.
+pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.35";
 /// `0.2` → `0.3`: same semantic transition as the outer cache (#3273 /
 /// #3286) — sharded entries derive from the same facts and cannot bypass
 /// the outer generation bump.
@@ -369,8 +374,11 @@ pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.34";
 /// different semantics; invalidate both plus examined-test miss metadata.
 /// `0.38`: same weak-grip activation transition as full `1.32` (#5946).
 /// `0.39`: same bool-owner pin transition as full `1.33`.
-/// 0.40: same complete source/swarm union as full1.34.
-const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.40";
+/// 0.40: the source parent preserves its complete public/swarm union;
+/// the swarm parent independently adds contradicted exact-value credit.
+/// 0.41: same composed authority and both-parent invalidation as full 1.35,
+/// including match-arm owner reach. Either parent's 0.40 entries must miss.
+const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.41";
 
 /// Compact-classified seam cache schema. This cache stores the same
 /// `ClassifiedSeam` envelope shape as the full repo exposure cache, but
@@ -447,8 +455,11 @@ const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.40";
 /// different semantics; invalidate both plus examined-test miss metadata.
 /// `0.38`: same weak-grip activation transition as full `1.32` (#5946).
 /// `0.39`: same bool-owner pin transition as full `1.33`.
-/// 0.40: same complete source/swarm union as full1.34.
-pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.40";
+/// 0.40: the source parent preserves its complete public/swarm union;
+/// the swarm parent independently adds contradicted exact-value credit.
+/// 0.41: same composed authority and both-parent invalidation as full 1.35,
+/// including match-arm owner reach. Either parent's 0.40 entries must miss.
+pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.41";
 
 /// Compact class-count cache used by repo badge rendering. It keys off
 /// the same workspace state as the full fact cache, but stores only
@@ -582,7 +593,9 @@ pub(crate) const COUNT_CACHE_SCHEMA_VERSION: &str = "0.2";
 /// `1.21`: bodies and shape text are spans into the entry's `source`, not
 /// allocated strings (#5415 step 2). Predecessor payloads carry bare-string
 /// bodies that the span wire rejects, so they must cold-recompute.
-pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "1.21";
+/// `1.22`: file-level `calls` are no longer stored (#5415 step 3); the
+/// wire derives them from per-function calls, ignoring any legacy copy.
+pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "1.22";
 
 /// Keep the best-effort classified-seam cache from turning a successful live
 /// analysis into an unbounded post-analysis stall on large repos. Larger live
@@ -4226,7 +4239,9 @@ mod tests {
         // (#4478); a warm pre-bump hit would read every owner as `Unknown`.
         // 1.20 -> 1.21: bodies and shape text are spans into `source`
         // (#5415 step 2); bare-string predecessor bodies must not replay.
-        assert_eq!(FILE_FACT_CACHE_SCHEMA_VERSION, "1.21");
+        // 1.21 -> 1.22: file-level `calls` are derived, not stored
+        // (#5415 step 3); legacy payloads carry a dead copy.
+        assert_eq!(FILE_FACT_CACHE_SCHEMA_VERSION, "1.22");
         // 1.4 -> 1.5: metadata-sourced harness validation (#3634) flips
         // verdicts for workspaces the manifest emulation approximated.
         // 1.5 -> 1.6: the #3636 reachability authority excludes
@@ -4277,7 +4292,11 @@ mod tests {
         // Fresh composed generation invalidates both parent semantic generations.
         // 1.31 -> 1.32: weak grip requires established activation (#5946).
         // 1.32 -> 1.33: bool-owner `assert!` pins (RIPR-SPEC-0197).
-        assert_eq!(CACHE_SCHEMA_VERSION, "1.34");
+        // 1.33 -> 1.34 (swarm): a statically contradicted exact-value assertion
+        // keeps at most weak oracle credit and keeps the gap open (#6026).
+        // 1.34 -> 1.35: invalidate both distinct parent generations and retain
+        // public identity/single-oracle guards with incoming owner reach.
+        assert_eq!(CACHE_SCHEMA_VERSION, "1.35");
         // 0.12 -> 0.13 through 0.14 / 0.15 / 0.16 / 0.17 / 0.18: same
         // #3731 semantic transition as the outer classified-seam cache,
         // for the sharded and compact envelopes.
@@ -4305,8 +4324,11 @@ mod tests {
         // Fresh composed generation invalidates both parent semantic generations.
         // 0.37 -> 0.38: same weak-grip activation transition as the outer cache.
         // 0.38 -> 0.39: same bool-owner pin transition as the outer cache.
-        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.40");
-        assert_eq!(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.40");
+        // 0.39 -> 0.40 (swarm): same statically-contradicted-exact-value
+        // transition as the outer cache (#6026).
+        // 0.40 -> 0.41: reject either parent's prior composed semantics.
+        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.41");
+        assert_eq!(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.41");
     }
 
     #[test]
@@ -4433,6 +4455,78 @@ mod tests {
     }
 
     #[test]
+    fn file_fact_entry_with_legacy_stored_file_calls_loads_derived() -> Result<(), String> {
+        use crate::analysis::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter};
+        // #5415 step 3: a 1.21-shaped payload (stored file-level `calls`)
+        // placed at a 1.22 entry path must still load, with the stored copy
+        // ignored: derivation from per-function calls is authoritative. The
+        // legacy bytes below contradict the functions on purpose, so a load
+        // that trusted them would surface the phantom call.
+        let scratch = integrity_scratch("legacy-stored-file-calls")?;
+        let cache = RepoFileFactCache::at_dir(scratch.0.clone());
+        let file = Path::new("src/lib.rs");
+        let source = "fn f(x: u32) -> u32 { helper(x) }\nfn helper(y: u32) -> u32 { y }\n";
+        let facts = RaRustSyntaxAdapter.summarize_file(file, source)?;
+        if facts.functions.iter().all(|f| f.calls.is_empty()) {
+            return Err("fixture must produce per-function calls".to_owned());
+        }
+        let expected = facts.file_calls();
+        if expected.is_empty() {
+            return Err("fixture must derive file-level calls".to_owned());
+        }
+        let key = RepoFileFactCacheKey::new(file, source.as_bytes());
+        cache.store_file_facts(&key, &facts)?;
+        if !matches!(cache.load_file_facts(&key), CacheLoad::Hit(_)) {
+            return Err("seeded file facts must warm hit".to_owned());
+        }
+        let entry = cache.entry_path(&key);
+        let bytes = std::fs::read(&entry).map_err(|err| err.to_string())?;
+        let mut envelope: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|err| err.to_string())?;
+        envelope["file_facts"]["calls"] = serde_json::json!([{
+            "line": 999,
+            "name": "phantom",
+            "text": "phantom()",
+        }]);
+        let bytes = serde_json::to_vec(&envelope).map_err(|err| err.to_string())?;
+        std::fs::write(&entry, bytes).map_err(|err| err.to_string())?;
+        match cache.load_file_facts(&key) {
+            CacheLoad::Hit(loaded) if loaded.file_calls() == expected => {}
+            other => {
+                return Err(format!(
+                    "legacy stored calls must load derived from functions, got {other:?}"
+                ));
+            }
+        }
+        // A legacy payload at the current path remains readable only with the
+        // current header. The actual 1.21 generation must miss before reuse.
+        envelope["file_fact_cache_schema_version"] = serde_json::json!("1.21");
+        std::fs::write(
+            &entry,
+            serde_json::to_vec(&envelope).map_err(|err| err.to_string())?,
+        )
+        .map_err(|err| err.to_string())?;
+        match cache.load_file_facts(&key) {
+            CacheLoad::Miss => {}
+            other => {
+                return Err(format!(
+                    "stored-file-calls predecessor generation must miss, got {other:?}"
+                ));
+            }
+        }
+        cache.store_file_facts(&key, &facts)?;
+        match cache.load_file_facts(&key) {
+            CacheLoad::Hit(loaded) if loaded == facts && loaded.file_calls() == expected => {}
+            other => {
+                return Err(format!(
+                    "current derived-call facts must rebuild and warm hit, got {other:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn empty_macro_call_predecessor_from_another_build_misses_and_current_reuses()
     -> Result<(), String> {
         use crate::analysis::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter};
@@ -4470,7 +4564,6 @@ mod tests {
                 call.text = old_line.clone();
             }
         };
-        restore_old_text(&mut favorable.calls);
         for function in &mut favorable.functions {
             restore_old_text(&mut function.calls);
         }
@@ -5359,12 +5452,16 @@ mod tests {
                         ("schema_version", previous_outer),
                         ("schema_version", if compact { "0.38" } else { "1.32" }),
                         ("schema_version", if compact { "0.39" } else { "1.33" }),
+                        // Both source and swarm parents used these values for
+                        // distinct semantics: copied warm entries must miss.
+                        ("schema_version", if compact { "0.40" } else { "1.34" }),
                     ];
                     if sharded {
                         previous_generations.extend([
                             ("sharded_cache_schema_version", "0.21"),
                             ("sharded_cache_schema_version", "0.38"),
                             ("sharded_cache_schema_version", "0.39"),
+                            ("sharded_cache_schema_version", "0.40"),
                         ]);
                     }
                     for (field, previous) in previous_generations {

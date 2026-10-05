@@ -42,8 +42,9 @@ jobs:
       - run: cargo check --workspace --all-targets
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Build native calibration observer driver
+        id: native-readiness-artifact
         if: ${{ !cancelled() }}
-        run: cargo build --locked -p xtask
+        run: python3 .github/scripts/native_readiness_artifact.py prepare
       - name: Prove scoped Ready parser against a wrong implementation
         timeout-minutes: 5
         run: python3 .github/scripts/ready_parser_control.py
@@ -51,7 +52,10 @@ jobs:
       - name: Observe native calibration enforcement readiness
         if: ${{ !cancelled() }}
         timeout-minutes: 1
-        run: cargo run --locked -p xtask -- ci-budget --hard-enforcement-readiness
+        env:
+          RIPR_OBSERVER_ARTIFACT_ROOT: ${{ steps.native-readiness-artifact.outputs.artifact-root }}
+          RIPR_OBSERVER_RECEIPT_SHA256: ${{ steps.native-readiness-artifact.outputs.receipt-sha256 }}
+        run: python3 .github/scripts/native_readiness_artifact.py observe
       # Exercise Perl alongside the product's required/default adapters. A
       # Perl-only no-default build is invalid because RIPR requires lang-rust,
       # and doctor intentionally shares optional Python framework detection.

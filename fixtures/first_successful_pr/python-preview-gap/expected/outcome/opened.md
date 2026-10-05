@@ -5,6 +5,7 @@ Status: advisory
 Inputs:
 - before: `fixtures/first_successful_pr/python-preview-gap/inputs/reports/after-check.json`
 - after: `fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json`
+- repository heads: neither snapshot carries a head SHA, so the receipt cannot confirm the pair came from the same repository
 
 ## Summary
 
@@ -109,6 +110,7 @@ None.
 ### Reviewer may believe
 
 - RIPR compared only the listed static snapshots: fixtures/first_successful_pr/python-preview-gap/inputs/reports/after-check.json and fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json.
+- At least one snapshot does not carry a repository head, so this receipt cannot confirm the pair came from the same repository.
 - No focused-proof signal was visible; this receipt only records before/after static movement.
 - The movement and remaining-weak sections define the static claim boundary for this receipt.
 

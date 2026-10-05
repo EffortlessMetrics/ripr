@@ -745,7 +745,7 @@ pub fn parse(input: &str) -> Result<i32, Error> {
         assert_eq!(file.path, PathBuf::from("src/lib.rs"));
         assert_eq!(file.functions.len(), 1);
         assert_eq!(file.functions[0].name, "parse");
-        assert!(file.calls.iter().any(|call| call.name == "Ok"));
+        assert!(file.file_calls().iter().any(|call| call.name == "Ok"));
         assert!(file.returns.iter().any(|fact| fact.text.contains("Ok(42)")));
         assert!(file.literals.iter().any(|fact| fact.value == "42"));
         assert!(

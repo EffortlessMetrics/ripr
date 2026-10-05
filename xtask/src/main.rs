@@ -24448,6 +24448,17 @@ pub(crate) fn is_non_rust_programming_candidate(path: &str) -> bool {
 }
 
 pub(crate) fn non_rust_programming_retention_reason(path: &str) -> Option<&'static str> {
+    if path == ".github/scripts/native_readiness_artifact.py" {
+        return Some(
+            "Runner standard-library Python retains a Cargo-reported source-bound xtask image outside shared build paths and invokes the read-only readiness observer without rebuilding.",
+        );
+    }
+    if path == ".github/scripts/ready_parser_control.py" {
+        return Some(
+            "Runner standard-library Python performs the approved bounded reversible wrong-parser experiment, checks actual native test statuses, and restores exact source before the corrected controls.",
+        );
+    }
+
     if matches!(
         path,
         ".github/scripts/pypi_admission.py" | ".github/scripts/test_pypi_admission.py"

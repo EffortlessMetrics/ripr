@@ -11,6 +11,8 @@ The page is generated. A unit test that CI requires fails when the page no longe
 | Receipt | Measures | Revision | Detail |
 | --- | --- | --- | --- |
 | `metrics/public-proof/dx-scoreboard.json` | Speed, memory, CI adoption, pasted-command safety, self-contradictions | ripr 0.11.0 (10e5637) | runner `github-hosted-linux-x86_64-4cpu-amd-epyc-7763-64-core-processor` |
+| `metrics/dx-scoreboard/corpus-full-baseline.json` | Corpus lane, used when the scoreboard receipt did not ingest corpus | 10e5637 | runner `github-hosted-linux-x86_64-4cpu-intel-r-xeon-r-platinum-8370c-cpu-2-80ghz` |
+| `metrics/dx-scoreboard/pilot-ranking-baseline.json` | Pilot ranking lane, used when the scoreboard receipt did not ingest ranking | 4f81060 | runner `local-linux-x86_64-4cpu` |
 | `metrics/public-proof/verdict-corpus.json` | Hand-labeled verdict corpus | corpus 2026-10-04.8 | RIPR-SPEC-0219 |
 | `metrics/public-proof/mutation-spot-check.json` | Agreement with real mutation runs | 5 repositories at pinned revisions | cargo-mutants 27.1.0 |
 | `metrics/public-proof/first-run-previous.json` | New-developer walk, earlier release | ripr 0.10.0 | 3 crates |
@@ -21,14 +23,14 @@ The page is generated. A unit test that CI requires fails when the page no longe
 
 ## Scoreboard
 
-53 bars. ripr meets 10, is below the bar on 14, and has not measured 29. Bold values miss their bar. A trend compares against the earlier receipt named in the row; rows with no earlier receipt are first measurements.
+40 bars. ripr meets 14, is below the bar on 21, and has not measured 5. Bold values miss their bar. A comparable trend shows the baseline revision and prior value it compares. A cross-class trend shows the earlier runner class and, when available, its prior value; it does not compare measurements. A measured row with no earlier measurement is a first measurement. Corpus and ranking rows come from those lanes' own baselines when the scoreboard receipt did not ingest them.
 
 | Board | Bar | Now | Target | Status | Trend |
 | --- | --- | --- | --- | --- | --- |
-| Speed and memory | Cold `ripr pilot` to first useful result | **77.6 s** | <= 30.0 s | below the bar | no earlier measurement |
-| Speed and memory | Cold `ripr pilot` peak memory | **1595 MB** | <= 1024 MB | below the bar | no earlier measurement |
-| Speed and memory | Warm `ripr check` on the last commit | **5.1 s** | <= 2.0 s | below the bar | no earlier measurement |
-| Speed and memory | Warm `ripr check` peak memory | **590 MB** | <= 512 MB | below the bar | no earlier measurement |
+| Speed and memory | Cold `ripr pilot` to first useful result | **77.6 s** | <= 30.0 s | below the bar | earlier receipt on another runner class `local-linux-x86_64-4cpu` (was 237.7 s) |
+| Speed and memory | Cold `ripr pilot` peak memory | **1595 MB** | <= 1024 MB | below the bar | earlier receipt on another runner class `local-linux-x86_64-4cpu` (was 3467 MB) |
+| Speed and memory | Warm `ripr check` on the last commit | **5.1 s** | <= 2.0 s | below the bar | earlier receipt on another runner class `local-linux-x86_64-4cpu` (was 11.5 s) |
+| Speed and memory | Warm `ripr check` peak memory | **590 MB** | <= 512 MB | below the bar | earlier receipt on another runner class `local-linux-x86_64-4cpu` (was 1187 MB) |
 | CI adoption | Lines in the workflow `ripr init --ci github` writes | **387 lines** | <= 150 lines | below the bar | -767 lines since c6ccf9d (was 1154 lines) |
 | CI adoption | Generated workflow can only get ripr by compiling it (1 = yes) | no | <= no | meets the bar | unchanged since c6ccf9d (no) |
 | CI adoption | Time for the generated workflow to have ripr on PATH | not measured | <= 30 s | not measured | no earlier measurement |
@@ -54,30 +56,17 @@ The page is generated. A unit test that CI requires fails when the page no longe
 | First run | First-run steps that exit nonzero | 0 steps | <= 0 steps | meets the bar | unchanged from ripr 0.10.0 (0) |
 | First run | First-run steps over their own time, output-length or workflow-size budget | **3 steps** | <= 0 steps | below the bar | unchanged from ripr 0.10.0 (3) |
 | First run | Seconds for the scripted walk on one crate, setup excluded | 3.56 s | <= 10 s | meets the bar | was 0.58 in ripr 0.10.0 |
-| agent | Targets where every answer-key mutant is caught after the agent finishes | not measured | >= 100.0% | not measured | no earlier measurement |
-| agent | Answer-key mutants caught after the agent's fix | not measured | >= 3 mutants | not measured | no earlier measurement |
-| agent | ripr commands the agent ran to close the gap | not measured | <= 10 commands | not measured | no earlier measurement |
-| agent | All agent tool calls to close the gap | not measured | <= 15 steps | not measured | no earlier measurement |
-| agent | Non-exposed verdicts left after every mutant is caught | not measured | <= 0 findings | not measured | no earlier measurement |
-| agent | Re-checks after an edit that returned stale output | not measured | <= 0 cycles | not measured | no earlier measurement |
-| agent | White-box tests written only to satisfy ripr | not measured | <= 0 tests | not measured | no earlier measurement |
-| agent | `ripr agent stub` calls the agent made on `check`'s suggestion | not measured | >= 0 calls | not measured | no earlier measurement |
-| agent | Of those stub calls, ones that produced a stub instead of a refusal | not measured | >= 1 call | not measured | no earlier measurement |
-| agent | Distinct generated stubs that compile and fail at their own ripr todo | not measured | >= 100.0% | not measured | no earlier measurement |
-| agent | Gap locations that get a working stub instead of a named refusal | not measured | >= 50.0% | not measured | no earlier measurement |
-| agent | Gap locations refused because the stub needs an observer ripr cannot name | not measured | <= 0 locations | not measured | no earlier measurement |
-| agent | One `ripr agent stub` call on a corpus repository | not measured | <= 10 s | not measured | no earlier measurement |
-| corpus | Pinned repository whose diff-scoped `ripr check` did not reach `analyzed` | not measured | <= 0 repos | not measured | no earlier measurement |
-| corpus | Diff-scoped `ripr check` on a pinned real change | not measured | <= 5.0 s | not measured | no earlier measurement |
-| ranking | Pilot's top 5 picks per crate where a mutant at the seam, its line or its function was missed (of picks a label can judge) | not measured | >= 60.0% | not measured | no earlier measurement |
-| ranking | Pilot's top 10 picks per crate where a mutant at the seam, its line or its function was missed (of picks a label can judge) | not measured | >= 60.0% | not measured | no earlier measurement |
-| ranking | Pilot's top 10 picks a labeled mutant can judge (precision can rise by making picks unjudgeable) | not measured | >= 80.0% | not measured | no earlier measurement |
-| ranking | Pilot's top 10 picks that land in a function no higher pick named | not measured | >= 90.0% | not measured | no earlier measurement |
-| ranking | Picks in pilot's top 10 across the pinned crates (precision and shares can rise by ranking fewer seams) | not measured | >= 50 picks | not measured | no earlier measurement |
-| ranking | Pilot's top 5 picks per crate a missed mutant confirms (pooled count) | not measured | >= 12 picks | not measured | no earlier measurement |
-| ranking | Pilot's top 5 picks per crate where every judging mutant was caught (pooled count) | not measured | <= 8 picks | not measured | no earlier measurement |
-| ranking | Pilot's top 10 picks per crate a missed mutant confirms (pooled count) | not measured | >= 24 picks | not measured | no earlier measurement |
-| ranking | Pilot's top 10 picks per crate where every judging mutant was caught (pooled count) | not measured | <= 16 picks | not measured | no earlier measurement |
+| corpus | Pinned repository whose diff-scoped `ripr check` did not reach `analyzed` | 0 repos | <= 0 repos | meets the bar | -1 repo since adf4e63 (was 1 repo) |
+| corpus | Diff-scoped `ripr check` on a pinned real change | 3.5 s | <= 5.0 s | meets the bar | earlier receipt on another runner class `local-linux-x86_64-4cpu` (was 13.2 s) |
+| ranking | Pilot's top 5 picks per crate where a mutant at the seam, its line or its function was missed (of picks a label can judge) | **36.8%** | >= 60.0% | below the bar | no earlier measurement |
+| ranking | Pilot's top 10 picks per crate where a mutant at the seam, its line or its function was missed (of picks a label can judge) | **37.1%** | >= 60.0% | below the bar | no earlier measurement |
+| ranking | Pilot's top 10 picks a labeled mutant can judge (precision can rise by making picks unjudgeable) | **70.0%** | >= 80.0% | below the bar | no earlier measurement |
+| ranking | Pilot's top 10 picks that land in a function no higher pick named | 100.0% | >= 90.0% | meets the bar | no earlier measurement |
+| ranking | Picks in pilot's top 10 across the pinned crates (precision and shares can rise by ranking fewer seams) | 50 picks | >= 50 picks | meets the bar | no earlier measurement |
+| ranking | Pilot's top 5 picks per crate a missed mutant confirms (pooled count) | **7 picks** | >= 12 picks | below the bar | no earlier measurement |
+| ranking | Pilot's top 5 picks per crate where every judging mutant was caught (pooled count) | **12 picks** | <= 8 picks | below the bar | no earlier measurement |
+| ranking | Pilot's top 10 picks per crate a missed mutant confirms (pooled count) | **13 picks** | >= 24 picks | below the bar | no earlier measurement |
+| ranking | Pilot's top 10 picks per crate where every judging mutant was caught (pooled count) | **22 picks** | <= 16 picks | below the bar | no earlier measurement |
 
 Not measured, and why:
 
@@ -86,30 +75,6 @@ Not measured, and why:
 - `trust.judged_panel_false_actionable`: metrics/rust-judged-behavior-panel/calibration-scorecard.json candidates.false_actionable: denominator is 0, no eligible cases yet
 - `first_run.time_to_first_useful_result_s`: no --ingest file supplied for `ingest:first-run`
 - `first_run.install_seconds`: no --ingest file supplied for `ingest:first-run`
-- `agent.fix_success_rate`: no --ingest file supplied for `ingest:agent-as-user`
-- `agent.answer_key_mutants_caught`: no --ingest file supplied for `ingest:agent-as-user`
-- `agent.ripr_commands_to_fix`: no --ingest file supplied for `ingest:agent-as-user`
-- `agent.tool_steps_to_fix`: no --ingest file supplied for `ingest:agent-as-user`
-- `agent.false_weak_findings_after_fix`: no --ingest file supplied for `ingest:agent-as-user`
-- `agent.stale_recheck_cycles`: no --ingest file supplied for `ingest:agent-as-user`
-- `agent.white_box_tests_to_satisfy_ripr`: no --ingest file supplied for `ingest:agent-as-user`
-- `agent.stub_calls`: no --ingest file supplied for `ingest:agent-as-user`
-- `agent.stub_calls_producing_stub`: no --ingest file supplied for `ingest:agent-as-user`
-- `agent.stub_compile_rate`: no --ingest file supplied for `ingest:agent-stub`
-- `agent.stub_coverage`: no --ingest file supplied for `ingest:agent-stub`
-- `agent.stub_observer_required_refusals`: no --ingest file supplied for `ingest:agent-stub`
-- `agent.stub_seconds`: no --ingest file supplied for `ingest:agent-stub`
-- `corpus.not_analyzed`: no --ingest file supplied for `ingest:rust-corpus-smoke`
-- `corpus.check_ms`: no --ingest file supplied for `ingest:rust-corpus-smoke`
-- `ranking.pilot_precision_top5`: no --ingest file supplied for `ingest:pilot-ranking`
-- `ranking.pilot_precision_top10`: no --ingest file supplied for `ingest:pilot-ranking`
-- `ranking.pilot_scored_share_top10`: no --ingest file supplied for `ingest:pilot-ranking`
-- `ranking.pilot_distinct_function_share_top10`: no --ingest file supplied for `ingest:pilot-ranking`
-- `ranking.pilot_picks_top10`: no --ingest file supplied for `ingest:pilot-ranking`
-- `ranking.pilot_confirmed_top5`: no --ingest file supplied for `ingest:pilot-ranking`
-- `ranking.pilot_refuted_top5`: no --ingest file supplied for `ingest:pilot-ranking`
-- `ranking.pilot_confirmed_top10`: no --ingest file supplied for `ingest:pilot-ranking`
-- `ranking.pilot_refuted_top10`: no --ingest file supplied for `ingest:pilot-ranking`
 
 ## Where ripr falls short
 
@@ -501,4 +466,4 @@ cargo xtask public-proof --refresh-receipts  # re-copy canonical outputs, then r
 cargo xtask public-proof --check             # fail if this page is stale
 ```
 
-Receipts live in `metrics/public-proof/`. `dx-scoreboard.json`, `verdict-corpus.json` and `corpus-manifest.json` are verbatim copies of `metrics/dx-scoreboard/baseline.json`, `fixtures/rust-verdict-corpus/expected/report.json` and `benchmarks/rust_corpus/manifest.json`; `--check` fails when a source moves ahead of its copy, and `--refresh-receipts` re-copies them. The mutation, first-run, agent and install receipts have no in-repo source to compare against: they are committed copies of harness output from the revisions named in their sections, and `--check` cannot detect a hand edit to them. The mutation spot-check has no command in this repository yet.
+Receipts live in `metrics/public-proof/`. `dx-scoreboard.json`, `verdict-corpus.json` and `corpus-manifest.json` are verbatim copies of `metrics/dx-scoreboard/baseline.json`, `fixtures/rust-verdict-corpus/expected/report.json` and `benchmarks/rust_corpus/manifest.json`; `--check` fails when a source moves ahead of its copy, and `--refresh-receipts` re-copies them. Corpus and ranking scoreboard rows are read from `metrics/dx-scoreboard/corpus-full-baseline.json` (falling back to `corpus-fast-baseline.json`) and `metrics/dx-scoreboard/pilot-ranking-baseline.json` when the copied scoreboard receipt did not ingest those boards. The mutation, first-run, agent and install receipts have no in-repo source to compare against: they are committed copies of harness output from the revisions named in their sections, and `--check` cannot detect a hand edit to them. The mutation spot-check has no command in this repository yet.

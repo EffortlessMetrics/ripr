@@ -56,6 +56,7 @@ map is:
 | `ripr agent repair --phase before --json` success stdout | `schema_version` | `0.5` |
 | `ripr agent repair --phase after --json` success stdout | `schema_version` | `0.1` |
 | `ripr agent repair --phase after --json` refusal stdout (`repair_after_refusal`) | `schema_version` | `0.2` |
+| `ripr agent repair --phase after --json` failure stdout (`repair_after_failure`; #6033) | `schema_version` | `0.4` |
 | `ripr agent status` | `schema_version` | `0.1` |
 | `ripr agent status --attempt <id>` (`agent_attempt_status`; RIPR-SPEC-0217, #4798) | `schema_version` | `0.1` |
 | `ripr agent review-summary` | `schema_version` | `0.1` |
@@ -7001,7 +7002,10 @@ JSON shape:
   "status": "advisory",
   "inputs": {
     "before": "target/ripr/before.json",
-    "after": "target/ripr/after.json"
+    "after": "target/ripr/after.json",
+    "before_repository_head": "a93399797445cddd0dcbb4673061ccc07e78e975",
+    "after_repository_head": "a93399797445cddd0dcbb4673061ccc07e78e975",
+    "head_match": true
   },
   "before": {
     "seams_total": 15,
@@ -7125,6 +7129,17 @@ JSON shape:
   }
 }
 ```
+
+`inputs.before_repository_head` and `inputs.after_repository_head` carry the
+repository head each compared snapshot reports (`artifact.repository.head`):
+`null` when an artifact carries no head (the `ripr pilot` snapshot shape).
+`inputs.head_match` is `true` when both artifacts carry a full head SHA and
+the heads are equal, `false` when both are present and differ, and `null`
+when the pair cannot be confirmed either way — `null` means "cannot
+confirm", never "confirmed equal". A `false` cross-head pair also carries the
+mismatch into the markdown receipt's Inputs head line and the review
+receipt's `reviewer_may_believe` section, so a JSON-consuming driver sees
+the mismatch in-band instead of only on stderr (#6031).
 
 For check-output snapshots, `seam_id` is the canonical gap ID. A Python or
 TypeScript preview gap that moves from `weakly_exposed` to `exposed` is rendered as
@@ -7469,7 +7484,39 @@ Field contract:
   the attempt joins into `last_after_refusal.reason`. Operational failures after
   attempt selection exit `2`; stdout is empty when the failure precedes the
   verify render, and is the bare verify 0.3 document when it follows it (for
-  example a failed receipt publication).
+  example a failed receipt publication with the attempt still
+  receipt-eligible).
+
+  One post-verify failure shape is typed instead (#6033): when the edit cage
+  finished the attempt as not receipt-ready (verdict `violated` or
+  `incomparable`, or the head moved so the attempt is `stale`), the phase
+  prints the `repair_after_failure` document (`schema_version` `0.4`) rather
+  than the success-shaped verify document — `status: "advisory"` with a
+  gap-closed movement summary beside a terminal attempt is a green repair
+  story a stdout-only driver cannot trust:
+
+  ```json
+  {
+    "schema_version": "0.4",
+    "kind": "repair_after_failure",
+    "attempt_id": "<repair-attempt-id>",
+    "attempt_state": "failed",
+    "edit_cage_verdict": "violated",
+    "error": "repair attempt `<id>` is not receipt-ready: state `failed`, current true, verdict `violated`",
+    "narration": ["<named cause>", "<recovery>"]
+  }
+  ```
+
+  `attempt_state` uses the repair-attempt manifest's state vocabulary
+  (`failed`, `incomparable`, `stale`); `edit_cage_verdict` uses the
+  manifest's verdict vocabulary (`violated`, `incomparable`). The exit code
+  for this path stays `2` — the attempt is terminal and the recovery is a
+  new attempt. The refused phase also withdraws the shared workflow
+  artifacts it wrote (`after.repo-exposure.json`, `agent-verify.json`,
+  `analysis-outcome.json` under `target/ripr/workflow/`) when they did not
+  exist before the phase ran, so `ripr agent status` does not present them
+  as current loop artifacts beside the terminal attempt; artifacts an
+  earlier phase or attempt wrote stay untouched.
 
 ## Agent Verify Execute
 
@@ -17544,7 +17591,7 @@ targeted-rerun receipt shape:
     "direct_call_names": ["discounted_total"]
   },
   "cache": {
-    "schema_version": "1.21",
+    "schema_version": "1.22",
     "reuse_state": "reused_file_facts",
     "file_fact_status": "hits_2_misses_0_corrupt_0_store_errors_0",
     "hits": 2,
@@ -17555,7 +17602,7 @@ targeted-rerun receipt shape:
     "recomputation_reasons": ["selected_test_scope_recomputed"],
     "invalidation_status": "not_available",
     "input_fingerprint": {
-      "schema_version": "1.34",
+      "schema_version": "1.35",
       "analyzer_version": "0.11.0-alpha.2+0123456789abcdef0123456789abcdef01234567",
       "workspace_root_hash": "…",
       "files_content_hash": "…",

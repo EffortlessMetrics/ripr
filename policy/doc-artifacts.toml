@@ -1261,6 +1261,14 @@ owner = "product-analysis"
 standalone_reason = "Makes the Rust oracle kind and strength precedence chain normative and narrows what each step admits, so assert_ne!, guarded Err(e) patterns, wildcard-only patterns, substring identifier matches and inequality helper names stop reading as strong or effect oracles (#5513)."
 
 [[artifact]]
+id = "RIPR-SPEC-0237"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0237-statically-contradicted-exact-value-oracle.md"
+status = "proposed"
+owner = "product-analysis"
+standalone_reason = "Issue #6026 records the oracle-credit bound: a related test whose equality assertion statically contradicts the seam owner's constant fold keeps at most weak oracle strength, keeps the seam's gap open, and names the contradiction in the evidence summary, while a not-evaluable owner retains today's credit and its limitation honestly."
+
+[[artifact]]
 id = "RIPR-SPEC-0221"
 kind = "spec"
 path = "docs/specs/RIPR-SPEC-0221-agent-surface-benchmark.md"

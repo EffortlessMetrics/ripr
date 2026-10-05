@@ -194,6 +194,23 @@ pub(super) fn reviewer_may_believe(report: &TargetedTestOutcomeReport) -> Vec<St
         "RIPR compared only the listed static snapshots: {} and {}.",
         report.before_path, report.after_path
     )];
+    // #6031: the snapshot pair's head provenance belongs in the receipt, not
+    // only on stderr. State exactly what the heads can and cannot confirm.
+    match report.heads.head_match() {
+        Some(true) => items.push(format!(
+            "Both snapshots report repository head {}, so the pair is from the same commit.",
+            report.heads.before_repository_head.as_deref().unwrap_or_default()
+        )),
+        Some(false) => items.push(format!(
+            "The snapshots report different repository heads (before {}, after {}), so reported movement may include changes other than the one being measured.",
+            report.heads.before_repository_head.as_deref().unwrap_or_default(),
+            report.heads.after_repository_head.as_deref().unwrap_or_default()
+        )),
+        None => items.push(
+            "At least one snapshot does not carry a repository head, so this receipt cannot confirm the pair came from the same repository."
+                .to_string(),
+        ),
+    }
     let has_focused_proof_signal = report
         .moved
         .iter()

@@ -3715,7 +3715,6 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
             path: file.clone(),
             functions: vec![function],
             tests: vec![test.clone()],
-            calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
             probe_shapes: Vec::new(),
@@ -16984,6 +16983,164 @@ fn trait_method_reached_only_by_delegation_is_opaque_not_ungripped() -> Result<(
         reach.summary
     );
     assert_eq!(class, SeamGripClass::Opaque);
+    Ok(())
+}
+
+// --- #6026: a boundary assert whose expected value contradicts static
+// evaluation must not close the gap ---
+
+/// The issue #6026 crate shape: an `amount_cents >= discount_threshold_cents`
+/// boundary whose discounted arm folds (`5_000 * 70 / 100`).
+const WRONGVAL_OWNER_SRC: &str = r#"
+pub fn discounted_total(amount_cents: u64, discount_threshold_cents: u64) -> u64 {
+    if amount_cents >= discount_threshold_cents {
+        amount_cents * 70 / 100
+    } else {
+        amount_cents
+    }
+}
+"#;
+
+fn wrongval_seam_evidence(
+    test_source: &str,
+) -> Result<(TestGripEvidence, RepoSeam, FixtureIndex), String> {
+    let prod = PathBuf::from("src/main.rs");
+    let tests = PathBuf::from("tests/main_tests.rs");
+    let index = index_from_files(&[(prod, WRONGVAL_OWNER_SRC), (tests, test_source)])?;
+    let seams = inventory_seams_from_index(&[PathBuf::from("src/main.rs")], &index);
+    let predicate = seams
+        .iter()
+        .find(|seam| seam.kind() == SeamKind::PredicateBoundary)
+        .ok_or_else(|| "expected predicate boundary seam".to_string())?
+        .clone();
+    let evidence = evidence_for_seam(&predicate, &index);
+    Ok((evidence, predicate, index))
+}
+
+/// The issue's exact wrongval scenario: the test follows the repair packet's
+/// `exact_return_value` recipe but computes the expected literal wrong —
+/// `5_000` is the value the `>=` -> `>` flip would produce, while the owner
+/// folds to `3_500` at that input. The statically-evaluably-false assert is
+/// a discriminator pointing the wrong way: it fails at baseline and would
+/// pass under the mutation. It must not grade the seam's discrimination up,
+/// must not close the gap, and the receipt must name the contradiction
+/// instead of reporting an empty weak/unknown section.
+#[test]
+fn wrongval_boundary_assert_does_not_close_the_gap() -> Result<(), String> {
+    let (evidence, seam, _index) = wrongval_seam_evidence(
+        r#"
+#[test]
+fn boundary_asserts_flipped_value() {
+    assert_eq!(discounted_total(5_000, 5_000), 5_000);
+}
+"#,
+    )?;
+    if evidence.discriminate.state == StageState::Yes {
+        return Err(format!(
+            "a statically-contradicted assert must not grade discrimination Yes: {}",
+            evidence.discriminate.summary
+        ));
+    }
+    let class = crate::analysis::seam_classification::classify_seam(&seam, &evidence);
+    if class == SeamGripClass::StronglyGripped {
+        return Err("the wrongval assert must not close the gap into strongly_gripped".to_string());
+    }
+    assert!(
+        evidence
+            .discriminate
+            .summary
+            .contains("contradicts static evaluation"),
+        "the stage summary must name the contradiction: {}",
+        evidence.discriminate.summary
+    );
+    let related = evidence
+        .related_tests
+        .iter()
+        .find(|test| test.test_name == "boundary_asserts_flipped_value")
+        .ok_or_else(|| "the wrongval test must stay related to the seam".to_string())?;
+    assert_eq!(related.oracle_strength, OracleStrength::Weak);
+    assert!(
+        related
+            .evidence_summary
+            .contains("contradicts static evaluation")
+            && related.evidence_summary.contains("5_000")
+            && related.evidence_summary.contains("3500"),
+        "the related-test summary must state the contradiction: {}",
+        related.evidence_summary
+    );
+    Ok(())
+}
+
+/// The control: the identical scenario with the correct boundary literal
+/// (`3_500`) still credits the strong oracle and closes the gap.
+#[test]
+fn correct_boundary_literal_still_closes_the_gap() -> Result<(), String> {
+    let (evidence, seam, _index) = wrongval_seam_evidence(
+        r#"
+#[test]
+fn boundary_asserts_true_value() {
+    assert_eq!(discounted_total(5_000, 5_000), 3_500);
+}
+"#,
+    )?;
+    if evidence.discriminate.state != StageState::Yes {
+        return Err(format!(
+            "the correct boundary assert must still discriminate: {}",
+            evidence.discriminate.summary
+        ));
+    }
+    let class = crate::analysis::seam_classification::classify_seam(&seam, &evidence);
+    if class != SeamGripClass::StronglyGripped {
+        return Err(format!(
+            "the correct assert must close the gap, got {class:?}"
+        ));
+    }
+    let related = evidence
+        .related_tests
+        .iter()
+        .find(|test| test.test_name == "boundary_asserts_true_value")
+        .ok_or_else(|| "the control test must stay related".to_string())?;
+    assert_eq!(related.oracle_strength, OracleStrength::Strong);
+    assert_eq!(related.evidence_summary, "exact value assertion");
+    Ok(())
+}
+
+/// The limitation stays honest in the other direction: when the owner is not
+/// statically evaluable, the wrong-valued assert keeps today's credit and
+/// the gap closes. No fabrication either way.
+#[test]
+fn non_evaluable_owner_keeps_the_prior_credit() -> Result<(), String> {
+    let prod = PathBuf::from("src/main.rs");
+    let prod_src = r#"
+pub fn discounted_total(amount_cents: u64, discount_threshold_cents: u64) -> u64 {
+    if amount_cents >= discount_threshold_cents {
+        discount_factor(amount_cents)
+    } else {
+        amount_cents
+    }
+}
+fn discount_factor(amount_cents: u64) -> u64 { amount_cents * 70 / 100 }
+"#;
+    let tests = PathBuf::from("tests/main_tests.rs");
+    let tests_src = r#"
+#[test]
+fn boundary_asserts_flipped_value() {
+    assert_eq!(discounted_total(5_000, 5_000), 5_000);
+}
+"#;
+    let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+    let seams = inventory_seams_from_index(&[PathBuf::from("src/main.rs")], &index);
+    let predicate = seams
+        .iter()
+        .find(|seam| seam.kind() == SeamKind::PredicateBoundary)
+        .ok_or_else(|| "expected predicate boundary seam".to_string())?;
+    let evidence = evidence_for_seam(predicate, &index);
+    if evidence.discriminate.state != StageState::Yes {
+        return Err(format!(
+            "a non-evaluable owner keeps the prior oracle credit: {}",
+            evidence.discriminate.summary
+        ));
+    }
     Ok(())
 }
 
