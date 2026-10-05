@@ -76,8 +76,11 @@ developer who disagreed had to re-derive the analysis.
 - One prose owner, `output::related_test_miss`, renders the reason. The human
   digest appends it in parentheses after the related test; human-full prints
   `misses: <why>; checked <assertion>`; JSON, the context packet and MCP gap
-  documents carry `miss` and `why`; LSP hover prints it, and diagnostics add up
-  to three related-information rows that open the examined test.
+  documents carry `miss` and `why`; LSP hover prints it in the same row split
+  as human-full (a matched row keeps its oracle strength and kind, only an
+  unmatched row uses `<label>: ...; checked ...`, and a row with no recorded
+  oracle shows only the reason), and diagnostics add up to three
+  related-information rows that open the examined test.
 - `output::related_test_miss::related_test_miss_label` owns the word before
   the reason: `unconfirmed` for `observation_unconfirmed`, `misses` otherwise.
   Human-full, `ripr explain`, LSP hover and LSP related information use it;

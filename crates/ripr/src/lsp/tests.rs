@@ -21856,3 +21856,67 @@ fn framed_lsp_zero_git_timeout_commits_limited_once_and_recovers() -> Result<(),
         Ok(())
     })
 }
+
+/// #5927: hover splits related-test rows the way human output does. A
+/// matched row that still misses keeps its oracle kind and strength and adds
+/// the reason; only an unmatched row uses the `misses ...; checked` form.
+#[test]
+fn hover_keeps_oracle_kind_on_a_matched_row_that_still_misses() -> Result<(), String> {
+    use crate::domain::RelatedTestMiss;
+    let mut finding = sample_finding();
+    let related = |name: &str, line: usize, miss: RelatedTestMiss| RelatedTest {
+        name: name.to_string(),
+        file: PathBuf::from("src/lib.rs"),
+        line,
+        oracle: Some("assert!(matches!(value, _));".to_string()),
+        oracle_kind: OracleKind::RelationalCheck,
+        oracle_strength: OracleStrength::Weak,
+        relation_reason: None,
+        relation_confidence: None,
+        miss: Some(miss),
+    };
+    let mut no_assertion = related("calls_only", 30, RelatedTestMiss::NoAssertion);
+    no_assertion.oracle = None;
+    no_assertion.oracle_kind = OracleKind::Unknown;
+    no_assertion.oracle_strength = OracleStrength::None;
+    finding.related_tests = vec![
+        related("observes_score", 8, RelatedTestMiss::WeakAssertion),
+        related(
+            "asserts_elsewhere",
+            20,
+            RelatedTestMiss::AssertionNotObserving,
+        ),
+        no_assertion,
+    ];
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let HoverContents::Markup(markup) =
+        super::hover::finding_hover_response(&finding, &diagnostic).contents
+    else {
+        return Err("expected hover markdown".to_string());
+    };
+    let row = |name: &str| {
+        markup
+            .value
+            .lines()
+            .find(|line| line.starts_with("- `src/lib.rs") && line.contains(name))
+            .map(str::to_string)
+            .ok_or_else(|| format!("missing {name} related-test row in:\n{}", markup.value))
+    };
+    assert_eq!(
+        row("observes_score")?,
+        "- `src/lib.rs:8` `observes_score` \u{2014} weak relational_check oracle: \
+         assert!(matches!(value, _)); misses: assertion too weak to tell the old \
+         behavior from the new"
+    );
+    assert_eq!(
+        row("asserts_elsewhere")?,
+        "- `src/lib.rs:20` `asserts_elsewhere` misses: asserts, but not on the \
+         changed value; checked `assert!(matches!(value, _))`"
+    );
+    // A row with no recorded oracle must not be graded as one.
+    assert_eq!(
+        row("calls_only")?,
+        "- `src/lib.rs:30` `calls_only` misses: has no assertion"
+    );
+    Ok(())
+}

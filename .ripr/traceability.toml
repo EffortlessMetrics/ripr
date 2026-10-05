@@ -12170,6 +12170,7 @@ tests = [
   "crates/ripr/src/analysis/language/perl/tests.rs::perl_advisory_row_with_strong_oracle_keeps_no_miss",
   "crates/ripr/src/analysis/language/perl/tests.rs::perl_actionability_blocked_packet_explains_no_row",
   "crates/ripr/src/output/human/explain.rs::tests::an_unconfirmed_observation_is_not_labelled_a_miss",
+  "crates/ripr/src/lsp/tests.rs::hover_keeps_oracle_kind_on_a_matched_row_that_still_misses",
 ]
 code = [
   "crates/ripr/src/domain/probe.rs",
@@ -12178,6 +12179,7 @@ code = [
   "crates/ripr/src/analysis/language/perl/mod.rs",
   "crates/ripr/src/output/related_test_miss.rs",
   "crates/ripr/src/output/human/explain.rs",
+  "crates/ripr/src/lsp/hover.rs",
 ]
 outputs = []
 metrics = [
