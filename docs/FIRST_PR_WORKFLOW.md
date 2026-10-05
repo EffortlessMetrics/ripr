@@ -36,6 +36,13 @@ doctor cannot render a lossless rooted command, it asks for an alias instead of
 printing a lossy replacement-character path.
 That recovery is also the first action when no packet has been generated.
 
+When Git preflight needs recovery, `start-here.md` keeps the reason and shows
+the executable recovery steps separately. Use the labeled PowerShell form
+when it follows a step; otherwise the step runs unchanged in Bash and
+PowerShell, unless its PowerShell form is explicitly unavailable. The
+missing-base fetch step names the selected repository with `git -C`, so it
+also works from another directory. Run that step before the rerun step.
+
 ## 1. Pick One PR
 
 Start with a normal PR where a reviewer can understand the intended behavior

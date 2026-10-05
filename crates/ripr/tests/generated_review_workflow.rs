@@ -1171,9 +1171,14 @@ fn generated_first_pr_preflight_recovery_commands_quote_root_and_refs() -> Resul
                 "origin/--upload-pack=touch injected-marker",
             ] {
                 for (at, _) in text.match_indices(hostile) {
-                    let quoted = at > 0
+                    // Quoted as its own argument, or inside a quoted argument such
+                    // as the fetch refspec `'+refs/heads/<branch>:refs/remotes/...'`.
+                    let adjacent = at > 0
                         && text[..at].ends_with('\'')
                         && text[at + hostile.len()..].starts_with('\'');
+                    let inside_quotes = text[..at].matches('\'').count() % 2 == 1
+                        && text[at + hostile.len()..].contains('\'');
+                    let quoted = adjacent || inside_quotes;
                     let in_prose =
                         text[..at].ends_with('`') && text[at + hostile.len()..].starts_with('`');
                     assert!(quoted || in_prose, "{label}: unquoted ref in `{text}`");

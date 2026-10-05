@@ -362,6 +362,8 @@ fn extract_text(
 ) -> Vec<Printed> {
     let mut found: Vec<Printed> = Vec::new();
     let mut fence: Option<String> = None;
+    // A `(PowerShell):` label alone on its line is followed by the form.
+    let mut form_on_next_line = false;
     for line in text.lines() {
         let trimmed = line.trim_start();
         if let Some(info) = trimmed.strip_prefix("```") {
@@ -395,6 +397,14 @@ fn extract_text(
             }
             continue;
         }
+        if std::mem::take(&mut form_on_next_line) {
+            if let (Some(form), Some(previous)) =
+                (code_spans(line).into_iter().next(), found.last_mut())
+            {
+                previous.powershell = Some(form);
+            }
+            continue;
+        }
         let powershell = line.contains("(PowerShell)");
         if powershell {
             // The PowerShell form need not start with `ripr`: the redirecting
@@ -403,6 +413,7 @@ fn extract_text(
                 .split_once("(PowerShell)")
                 .map(|(_, rest)| rest.trim_start_matches([':', ' ']).trim())
                 .unwrap_or_default();
+            form_on_next_line = rest.is_empty();
             let form = Some(
                 rest.strip_prefix('`')
                     .and_then(|inner| inner.strip_suffix('`'))
@@ -431,6 +442,7 @@ fn extract_text(
         let starts = line.matches("`ripr ").count() + line.matches("`git ").count();
         if starts == 1
             && let Some(at) = line.find("`ripr ").or_else(|| line.find("`git "))
+            && !line[..at].ends_with('`')
             && let Some(end) = line.rfind('`')
             && end > at
         {
@@ -856,75 +868,39 @@ struct KnownGap {
     source: &'static str,
     /// Prefix of the command as printed for Bash.
     command: &'static str,
-    /// The shells that fail. A PowerShell gap is a command printed with no
-    /// PowerShell form that PowerShell cannot parse; the row applies only
-    /// while that is the case.
-    shells: GapShells,
     /// Prefixes of the problems this gap explains. Any other problem on the
     /// same command is a new failure, so the ledger cannot hide it.
     explains: &'static [&'static str],
     reason: &'static str,
 }
 
-/// What a PowerShell parse of a Bash-only command with a hostile root looks
-/// like: a parse error, a command that never ran, or a split argument.
-const POWERSHELL_SPLIT: &[&str] = &[
-    "shell error",
-    "reached the program",
-    "argument ",
-    "--root ",
-    "argv differs",
-];
 /// A drill-in that repeats a typed relative root names another repository.
 const WRONG_ROOT: &[&str] = &["--root ", "argument "];
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum GapShells {
-    PowershellWithoutForm,
-    Every,
-}
-
 const KNOWN_GAPS: &[KnownGap] = &[
-    KnownGap {
-        source: "start-here.md",
-        command: "ripr first-pr --root",
-        shells: GapShells::PowershellWithoutForm,
-        explains: POWERSHELL_SPLIT,
-        reason: "the missing-base recovery sentence embeds a Bash command with no PowerShell form",
-    },
     KnownGap {
         source: "relative-root:check",
         command: "ripr explain --root",
-        shells: GapShells::Every,
         explains: WRONG_ROOT,
         reason: "the `check` drill-in repeats a typed relative --root, so pasting from another directory targets another repository",
     },
     KnownGap {
         source: "relative-root:check",
         command: "ripr agent stub --root",
-        shells: GapShells::Every,
         explains: WRONG_ROOT,
         reason: "the `check` drill-in repeats a typed relative --root, so pasting from another directory targets another repository",
     },
     KnownGap {
         source: "relative-root:check",
         command: "ripr context --root",
-        shells: GapShells::Every,
         explains: WRONG_ROOT,
         reason: "the `check` drill-in repeats a typed relative --root, so pasting from another directory targets another repository",
     },
 ];
 
-fn known_gap(printed: &Printed, shell: Shell) -> Option<usize> {
+fn known_gap(printed: &Printed) -> Option<usize> {
     KNOWN_GAPS.iter().position(|gap| {
-        printed.source.contains(gap.source)
-            && printed.bash.starts_with(gap.command)
-            && match gap.shells {
-                GapShells::PowershellWithoutForm => {
-                    shell.is_powershell() && printed.powershell.is_none()
-                }
-                GapShells::Every => true,
-            }
+        printed.source.contains(gap.source) && printed.bash.starts_with(gap.command)
     })
 }
 
@@ -1155,21 +1131,7 @@ fn printed_commands_paste_unchanged_in_every_shell_from_a_foreign_directory() ->
                 })
             })
             .collect();
-        // PowerShell runs a batch in one process, so a canary cannot be traced
-        // to its command. Known-gap cases get a batch of their own, and only
-        // that batch may leave a canary behind.
-        let (gap_cases, other_cases): (Vec<Case>, Vec<Case>) = if shell.is_powershell() {
-            cases.into_iter().partition(|case| {
-                // Only a command printed with no PowerShell form may run
-                // its tail; a wrong-root gap must still leave no canary.
-                known_gap(&commands[case.id], shell).is_some_and(|index| {
-                    matches!(KNOWN_GAPS[index].shells, GapShells::PowershellWithoutForm)
-                })
-            })
-        } else {
-            (Vec::new(), cases)
-        };
-        for (cases, excused) in [(other_cases, false), (gap_cases, true)] {
+        {
             if cases.is_empty() {
                 continue;
             }
@@ -1226,7 +1188,7 @@ fn printed_commands_paste_unchanged_in_every_shell_from_a_foreign_directory() ->
                 if case_problems.is_empty() {
                     continue;
                 }
-                match known_gap(printed, shell) {
+                match known_gap(printed) {
                     Some(index) => {
                         let gap = &KNOWN_GAPS[index];
                         let (explained, unexplained): (Vec<&String>, Vec<&String>) =
@@ -1257,15 +1219,8 @@ fn printed_commands_paste_unchanged_in_every_shell_from_a_foreign_directory() ->
                 }
             }
             for hit in canary_hits(&fixture) {
-                // A Bash command with no PowerShell form that PowerShell splits at
-                // a `;` in the path runs its tail, which is the injection the
-                // known PowerShell gaps allow. Those cases run in their own
-                // batch, and only that one effect is excused: any other file
-                // (FILECANARY, the tail marker, a stray redirect target) is a
-                // new failure even when the command also hits the listed gap.
-                if !(excused && hit.ends_with("gained \"ROOTCANARY\"")) {
-                    problems.push(format!("[{}] {hit}", shell.name()));
-                }
+                // No listed gap leaves a file behind, so any hit is a new failure.
+                problems.push(format!("[{}] {hit}", shell.name()));
                 // Clear it so one injection is reported against the shell that ran
                 // it, not every shell after.
                 for dir in [&fixture.foreign, &fixture.base, &fixture.root] {
@@ -1284,11 +1239,7 @@ fn printed_commands_paste_unchanged_in_every_shell_from_a_foreign_directory() ->
         }
     }
     for (gap, hits) in KNOWN_GAPS.iter().zip(&gap_hits) {
-        let applies = match gap.shells {
-            GapShells::PowershellWithoutForm => ran.iter().any(|shell| shell.is_powershell()),
-            GapShells::Every => true,
-        };
-        if applies && *hits == 0 {
+        if *hits == 0 {
             problems.push(format!(
                 "known gap no longer reproduces; delete its row: {} / `{}` ({})",
                 gap.source, gap.command, gap.reason

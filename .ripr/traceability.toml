@@ -4462,6 +4462,13 @@ id = "RIPR-SPEC-0051"
 name = "First successful PR UX"
 spec = "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md"
 tests = [
+  "crates/ripr/src/output/first_pr.rs::tests::preflight_recovery_commands_pair_shell_forms_for_apostrophe_root_and_refs",
+  "crates/ripr/src/output/first_pr.rs::tests::preflight_diff_failure_carries_the_same_shell_recovery_steps",
+  "crates/ripr/src/output/first_pr/validation.rs::tests::preflight_accepts_well_formed_recovery_commands",
+  "crates/ripr/src/output/first_pr/validation.rs::tests::preflight_rejects_malformed_recovery_commands",
+  "crates/ripr/src/output/first_pr/validation.rs::tests::preflight_rejects_non_string_recovery_guidance",
+  "crates/ripr/src/output/first_pr/rendering.rs::tests::preflight_recovery_preserves_markdown_backticks_and_discloses_unsupported_forms",
+  "crates/ripr/src/output/first_pr/rendering.rs::tests::preflight_recovery_keeps_legacy_and_withholds_multiline_commands",
   "crates/ripr/src/output/markdown.rs::tests::rooted_bash_accepts_literal_argument_equals_without_powershell_translation",
   "crates/ripr/src/output/markdown.rs::tests::rooted_bash_withholds_unbounded_or_malformed_commands",
   "crates/ripr/src/output/markdown.rs::tests::rooted_bash_executes_from_selected_directory_preserving_arguments_and_status",
