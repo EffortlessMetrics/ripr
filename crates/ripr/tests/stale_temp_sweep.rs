@@ -16,6 +16,15 @@ const TEST_RS: &str =
 const MANIFEST: &str = "[package]\nname = \"fx\"\nversion = \"0.0.0\"\nedition = \"2021\"\n";
 const DIFF: &str = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,3 +1,3 @@\n pub fn discount(price: u32, qty: u32) -> u32 {\n-    if qty >= 10 { price * qty * 9 / 10 } else { price * qty }\n+    if qty >= 12 { price * qty * 9 / 10 } else { price * qty }\n }\n";
 
+/// Drop only the exact base directory acquired exclusively by this test.
+struct OwnedSweepWorkspace(PathBuf);
+
+impl Drop for OwnedSweepWorkspace {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
 fn run_check(root: &Path, diff: &Path, cache: &Path) -> Result<(), String> {
     let output = Command::new(env!("CARGO_BIN_EXE_ripr"))
         .args(["check", "--root"])
@@ -67,6 +76,9 @@ fn next_run_removes_an_old_stranded_temp_file_and_keeps_a_young_one() -> Result<
         .map(|elapsed| elapsed.as_nanos())
         .unwrap_or(0);
     let base = std::env::temp_dir().join(format!("ripr-stale-temp-{}-{nonce}", std::process::id()));
+    fs::create_dir(&base).map_err(|error| format!("acquire sweep fixture: {error}"))?;
+    let owned = OwnedSweepWorkspace(base);
+    let base = &owned.0;
     let root = base.join("fx");
     let cache = base.join("cache");
     fs::create_dir_all(root.join("src")).map_err(|error| error.to_string())?;
@@ -76,6 +88,45 @@ fn next_run_removes_an_old_stranded_temp_file_and_keeps_a_young_one() -> Result<
     fs::write(root.join("tests/discount.rs"), TEST_RS).map_err(|error| error.to_string())?;
     let diff = base.join("change.diff");
     fs::write(&diff, DIFF).map_err(|error| error.to_string())?;
+
+    // A package manifest alone retains ancestor discovery. Pin that contract
+    // with a typed-valid parent config independent of compiled preview features.
+    let parent_config = base.join("ripr.toml");
+    fs::write(&parent_config, "[languages]\nenabled = []\n").map_err(|error| error.to_string())?;
+    let inherited = ripr::config::load_for_root(&root)?;
+    let parent_source = fs::canonicalize(&parent_config).map_err(|error| error.to_string())?;
+    assert_eq!(
+        inherited.source_path.as_ref(),
+        Some(&parent_source),
+        "an unbounded package fixture must retain real parent-config discovery"
+    );
+    assert!(
+        inherited.languages.enabled.is_empty(),
+        "the discovery contrast must successfully load its typed empty language list"
+    );
+
+    // Make the package its own genuine workspace before invoking the binary.
+    // Preserve the original package literal and stop lookup before parent config.
+    fs::write(
+        root.join("Cargo.toml"),
+        format!("{MANIFEST}\n[workspace]\n"),
+    )
+    .map_err(|error| error.to_string())?;
+    let config = ripr::config::load_for_root(&root)?;
+    assert!(
+        config.source_path.is_none(),
+        "the sweep fixture must use built-in defaults without inherited config"
+    );
+    assert_eq!(
+        config
+            .languages
+            .enabled
+            .iter()
+            .map(|id| id.as_str())
+            .collect::<Vec<_>>(),
+        ["rust"],
+        "the cache-write stimulus requires the fixture's built-in Rust scope"
+    );
 
     run_check(&root, &diff, &cache)?;
     let entry_dir = first_cache_entry_dir(&cache)
@@ -100,7 +151,6 @@ fn next_run_removes_an_old_stranded_temp_file_and_keeps_a_young_one() -> Result<
 
     let old_survived = old.exists();
     let young_survived = young.exists();
-    let _ = fs::remove_dir_all(&base);
     assert!(
         !old_survived,
         "an hour-old stranded temp file must be swept"

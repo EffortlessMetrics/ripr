@@ -26,7 +26,7 @@ pub fn classify_changed_line(text: &str) -> Vec<ProbeFamily> {
     if has_call_shape(text) {
         out.push(ProbeFamily::CallDeletion);
     }
-    if has_field_shape(text) {
+    if has_field_shape(text, &masked) {
         out.push(ProbeFamily::FieldConstruction);
     }
     if text.starts_with("match ") || has_match_arm_arrow(&masked) {
@@ -81,6 +81,12 @@ fn classify_constant_declaration(text: &str) -> Vec<ProbeFamily> {
 /// bracketed `=` never split. Falls back to the whole line when no
 /// top-level `=` exists (same as matching the full line).
 fn initializer_span(masked: &str) -> &str {
+    binding_initializer_span(masked).unwrap_or(masked)
+}
+
+/// Reuse the same top-level assignment owner for a local binding. Absence of
+/// an initializer is explicit; its type annotation is never a runtime field.
+fn binding_initializer_span(masked: &str) -> Option<&str> {
     let bytes = masked.as_bytes();
     let mut depth = 0usize;
     let mut index = 0usize;
@@ -93,13 +99,13 @@ fn initializer_span(masked: &str) -> &str {
                 && bytes.get(index + 1) != Some(&b'>')
                 && (index == 0 || !matches!(bytes[index - 1], b'=' | b'!' | b'>' | b'<')) =>
             {
-                return &masked[index + 1..];
+                return Some(&masked[index + 1..]);
             }
             _ => {}
         }
         index += 1;
     }
-    masked
+    None
 }
 
 /// Whether a masked line carries a match-arm `=>`. An arrow counts when no
@@ -578,12 +584,31 @@ fn call_prefix_is_named(text: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn has_field_shape(text: &str) -> bool {
-    !is_constant_declaration(text)
-        && !is_tuple_type_declaration(text)
-        && text.contains(':')
-        && !text.contains("::")
-        && !is_function_signature(text)
+fn has_field_shape(text: &str, masked: &str) -> bool {
+    if is_constant_declaration(text)
+        || is_tuple_type_declaration(text)
+        || is_function_signature(text)
+    {
+        return false;
+    }
+    // A local binding's annotation colon declares a type, not a struct field.
+    // Inspect only its real initializer, retaining genuine RHS record fields.
+    // The shared discard predicate also recognizes Rust's exact whitespace
+    // around a wildcard; an identifier beginning with let is not the keyword.
+    let head = masked.trim_start();
+    let field_text = if super::super::classify::is_wildcard_discard_binding(head)
+        || head
+            .strip_prefix("let")
+            .is_some_and(|rest| rest.starts_with(char::is_whitespace))
+    {
+        let Some(initializer) = binding_initializer_span(masked) else {
+            return false;
+        };
+        initializer
+    } else {
+        text
+    };
+    field_text.contains(':') && !field_text.contains("::")
 }
 
 fn is_function_signature(text: &str) -> bool {
@@ -653,6 +678,64 @@ fn is_constant_declaration(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_type_annotation_colons_do_not_mint_field_probes() {
+        for text in [
+            "let _ : u32 = compute_fee(amount * 9);",
+            "let _: u32 = compute_fee(amount * 9);",
+            "let\t_: u32 = compute_fee(amount * 9);",
+            "let\u{200E}_: u32 = compute_fee(amount * 9);",
+            "let result: u32 = compute_fee(amount * 9);",
+            "let result: (u32, u32) = pair();",
+            "let result: u32;",
+            "let result: &str = \"label: value\";",
+            "let result /* field: value */: u32 = compute_fee(amount * 9);",
+        ] {
+            let families = classify_changed_line(text);
+            assert!(
+                !families.contains(&ProbeFamily::FieldConstruction),
+                "binding annotation/literal/comment must not mint a field: {text}: {families:?}"
+            );
+        }
+        for text in [
+            "let _ : u32 = compute_fee(amount * 9);",
+            "let _: u32 = compute_fee(amount * 9);",
+        ] {
+            assert_eq!(
+                classify_changed_line(text),
+                vec![ProbeFamily::StaticUnknown],
+                "an ineligible initializer call must keep the honest unknown fallback"
+            );
+        }
+    }
+
+    #[test]
+    fn local_binding_initializers_keep_genuine_record_field_probes() {
+        for text in [
+            "field: value,",
+            "letter: value,",
+            "let result: Record = Record { field: value };",
+            "let _: Record = Record { field: value };",
+            "let result = Record { field: value };",
+            "let result: crate::Record = Record { field: value };",
+        ] {
+            assert!(
+                classify_changed_line(text).contains(&ProbeFamily::FieldConstruction),
+                "real RHS field must survive annotation slicing: {text}"
+            );
+        }
+        assert!(
+            !classify_changed_line("let result = module::Record { field: value };")
+                .contains(&ProbeFamily::FieldConstruction),
+            "existing qualified-expression exclusion stays in the lexical fallback"
+        );
+        assert_eq!(
+            classify_changed_line("compute_fee(amount * 9);"),
+            vec![ProbeFamily::CallDeletion],
+            "ordinary standalone call classification stays unchanged"
+        );
+    }
 
     #[test]
     fn restricted_visibility_parens_are_not_a_call() {

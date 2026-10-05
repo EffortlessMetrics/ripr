@@ -2443,25 +2443,7 @@ fn github_workflow_check(binary: &Path) -> ReleaseReadinessCheck {
     }
     match run_command_path(binary, &["init", "--ci", "github", "--dry-run"]) {
         Ok(result) if result.success => {
-            let required = [
-                "continue-on-error: true",
-                // #4696: the analysis steps run inside `ripr reports
-                // ci-packet`; `ci_packet_steps_missing` below checks the
-                // installed binary still declares them.
-                "run: ripr reports ci-packet --root .",
-                // #5375: the first-run summary text moved out of the YAML
-                // into `ripr reports ci-summary` (#5236). The workflow must
-                // call it; `ci_summary_first_run_missing` below checks the
-                // installed binary's empty-state output carries the text.
-                "ripr reports ci-summary",
-                "$GITHUB_STEP_SUMMARY",
-                "target/ripr/pilot",
-                "target/ripr/workflow",
-                "target/ripr/reports",
-                "RIPR_UPLOAD_SARIF",
-                "actions/upload-artifact",
-            ];
-            let mut missing = missing_required_needles(&result.stdout, &required);
+            let mut missing = github_workflow_yaml_missing(&result.stdout);
             missing.extend(ci_summary_first_run_missing(binary));
             missing.extend(ci_packet_steps_missing(binary));
             if missing.is_empty() {
@@ -2505,6 +2487,80 @@ fn github_workflow_check(binary: &Path) -> ReleaseReadinessCheck {
             vec![err],
         ),
     }
+}
+
+/// The generated template uploads the whole report tree. Check the actual
+/// ripr job's named artifact step, so a cleanup command, SARIF path, comment,
+/// or another step cannot stand in for a recursive artifact upload root.
+fn github_workflow_yaml_missing(text: &str) -> Vec<String> {
+    let required = [
+        "continue-on-error: true",
+        "run: ripr reports ci-packet --root .",
+        "ripr reports ci-summary",
+        "$GITHUB_STEP_SUMMARY",
+        "target/ripr/reports",
+        "RIPR_UPLOAD_SARIF",
+        "actions/upload-artifact",
+    ];
+    let mut missing = missing_required_needles(text, &required);
+    let (mut in_jobs, mut in_ripr, mut in_steps) = (false, false, false);
+    let (mut upload_step, mut in_with, mut in_path) = (false, false, false);
+    let (mut upload_action, mut ripr_root, mut ci_root) = (false, false, false);
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let indent = line.len() - line.trim_start().len();
+        match indent {
+            0 => {
+                in_jobs = trimmed == "jobs:";
+                in_ripr = false;
+                in_steps = false;
+            }
+            2 if in_jobs => {
+                in_ripr = trimmed == "ripr:";
+                in_steps = false;
+            }
+            4 if in_ripr => in_steps = trimmed == "steps:",
+            6 if in_steps && trimmed.starts_with("- ") => {
+                if upload_step {
+                    break;
+                }
+                upload_step = trimmed == "- name: Upload RIPR report artifacts";
+                in_with = false;
+                in_path = false;
+            }
+            8 if in_steps && upload_step => {
+                if let Some(reference) = trimmed.strip_prefix("uses: actions/upload-artifact@") {
+                    upload_action =
+                        !reference.trim().is_empty() && !reference.trim_start().starts_with('#');
+                }
+                in_with = trimmed == "with:";
+                in_path = false;
+            }
+            10 if in_steps && upload_step && in_with => in_path = trimmed == "path: |",
+            12 if in_steps && upload_step && in_with && in_path => match trimmed {
+                "target/ripr" => ripr_root = true,
+                "target/ci" => ci_root = true,
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+    for (present, expected) in [
+        (
+            upload_action,
+            "report artifact upload action in jobs.ripr.steps",
+        ),
+        (ripr_root, "report artifact upload path: target/ripr"),
+        (ci_root, "report artifact upload path: target/ci"),
+    ] {
+        if !present {
+            missing.push(expected.to_string());
+        }
+    }
+    missing
 }
 
 /// Text the generated workflow's summary step must print on a first run,
@@ -3229,6 +3285,99 @@ mod tests {
     use std::fs;
     use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn current_init_workflow_template() -> Result<String, String> {
+        fn section<'a>(source: &'a str, declaration: &str) -> Result<&'a str, String> {
+            source
+                .split_once(declaration)
+                .and_then(|(_, body)| body.split_once("\"#;"))
+                .map(|(body, _)| body)
+                .ok_or_else(|| format!("missing current template section {declaration}"))
+        }
+        let source = include_str!("../../../crates/ripr/src/cli/commands/init_workflow.rs");
+        let summary =
+            include_str!("../../../crates/ripr/src/cli/commands/init_workflow/advisory_summary.rs");
+        Ok(format!(
+            "{}{}{}",
+            section(source, "const TEMPLATE_HEAD: &str = r#\"")?,
+            section(
+                summary,
+                "pub(super) const ADVISORY_SUMMARY_STEP: &str = r#\""
+            )?,
+            section(source, "const TEMPLATE_TAIL: &str = r#\"")?
+        ))
+    }
+
+    #[test]
+    fn workflow_defaults_accept_the_current_recursive_upload_template() -> Result<(), String> {
+        let workflow = current_init_workflow_template()?;
+        assert_eq!(
+            super::github_workflow_yaml_missing(&workflow),
+            Vec::<String>::new()
+        );
+        assert!(!workflow.contains("target/ripr/pilot"));
+        assert!(!workflow.contains("target/ripr/workflow"));
+        assert!(workflow.contains("run: ripr reports ci-packet --root ."));
+        assert!(workflow.contains("ripr reports ci-summary"));
+        Ok(())
+    }
+
+    #[test]
+    fn workflow_defaults_require_real_upload_roots_in_the_owned_path_block() -> Result<(), String> {
+        let workflow = current_init_workflow_template()?;
+        let ripr_line = "            target/ripr\n";
+        let ci_line = "            target/ci\n";
+        assert_eq!(workflow.matches(ripr_line).count(), 1);
+        assert_eq!(workflow.matches(ci_line).count(), 1);
+        for replacement in [
+            "",
+            "            # target/ripr\n",
+            "            target/ripr/reports\n",
+            "            target/ripr-other\n",
+        ] {
+            let missing_root = workflow.replacen(ripr_line, replacement, 1);
+            // Cleanup and SARIF still mention the report tree; neither is an upload root.
+            assert!(missing_root.contains("rm -rf target/ripr target/ci"));
+            assert!(missing_root.contains("target/ripr/reports"));
+            assert!(
+                super::github_workflow_yaml_missing(&missing_root)
+                    .contains(&"report artifact upload path: target/ripr".to_string())
+            );
+        }
+        let missing_ci = workflow.replacen(ci_line, "", 1);
+        assert!(
+            super::github_workflow_yaml_missing(&missing_ci)
+                .contains(&"report artifact upload path: target/ci".to_string())
+        );
+        for (before, after) in [
+            ("  ripr:\n", "  other-job:\n"),
+            (
+                "      - name: Upload RIPR report artifacts\n",
+                "      - name: Other step\n",
+            ),
+            (
+                "        uses: actions/upload-artifact@v7\n",
+                "        uses: other/action@v7\n",
+            ),
+            (
+                "        uses: actions/upload-artifact@v7\n",
+                "  other-job:\n    steps:\n      - name: Other step\n        uses: actions/upload-artifact@v7\n",
+            ),
+            ("          path: |\n", "          other: |\n"),
+            (
+                "        with:\n          name: ripr-reports\n",
+                "        env:\n          name: ripr-reports\n",
+            ),
+        ] {
+            assert_eq!(workflow.matches(before).count(), 1, "{before}");
+            let wrong_scope = workflow.replacen(before, after, 1);
+            assert!(
+                !super::github_workflow_yaml_missing(&wrong_scope).is_empty(),
+                "{before}"
+            );
+        }
+        Ok(())
+    }
 
     #[test]
     fn packaged_crate_extraction_rejects_entry_outside_package_root() -> Result<(), String> {

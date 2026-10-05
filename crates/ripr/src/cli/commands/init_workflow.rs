@@ -413,23 +413,104 @@ mod install_version_tests {
         }
     }
 
-    /// The constant must parse, and must never lead the package version: a
-    /// constant ahead of the package would self-pin unreleased generators
-    /// and silently defeat #5208. It travels with the package version in
-    /// the release commit (see docs/RELEASE.md Post-Publish); the equality
-    /// case is the published generator self-pinning, not a violation.
+    /// Compare a stable release with Cargo's admitted numeric core. A release
+    /// equal to a prerelease core still leads that prerelease; this helper does
+    /// not admit prerelease strings into the production stable-pin parser.
+    fn release_is_not_ahead_of_cargo_package(
+        released: &str,
+        package_release: &str,
+        package_has_prerelease: bool,
+    ) -> Option<bool> {
+        let released = parse_release_version(released)?;
+        let package = parse_release_version(package_release)?;
+        Some(released < package || (released == package && !package_has_prerelease))
+    }
+
+    #[test]
+    fn release_ordering_distinguishes_stable_and_prerelease_packages() {
+        for (released, package, prerelease, expected) in [
+            ("0.10.0", "0.10.0", false, true),
+            ("0.10.0", "0.10.0", true, false),
+            ("0.10.0", "0.11.0", true, true),
+            ("0.10.0", "0.11.0", false, true),
+            ("0.10.0", "0.9.0", true, false),
+            ("0.10.0", "0.9.0", false, false),
+        ] {
+            assert_eq!(
+                release_is_not_ahead_of_cargo_package(released, package, prerelease),
+                Some(expected),
+                "released={released} package={package} prerelease={prerelease}"
+            );
+        }
+        for invalid in [
+            "",
+            "garbage",
+            "0.10",
+            "v0.10.0",
+            "0.10.0-alpha.2",
+            "1.2.3.4",
+        ] {
+            assert_eq!(
+                release_is_not_ahead_of_cargo_package(invalid, "0.11.0", true),
+                None,
+                "invalid release {invalid:?}"
+            );
+            assert_eq!(
+                release_is_not_ahead_of_cargo_package("0.10.0", invalid, true),
+                None,
+                "invalid numeric package core {invalid:?}"
+            );
+        }
+    }
+
+    /// The constant cannot lead Cargo's admitted package identity. Equality is
+    /// valid for a stable package, while the same-core prerelease remains below
+    /// the stable release. Cargo owns the core and prerelease components.
     #[test]
     fn latest_released_constant_is_ordered_behind_the_package() -> Result<(), String> {
-        let latest = parse_release_version(LATEST_RELEASED_VERSION)
-            .ok_or_else(|| "LATEST_RELEASED_VERSION must parse".to_string())?;
-        let package = parse_release_version(env!("CARGO_PKG_VERSION"))
-            .ok_or_else(|| "CARGO_PKG_VERSION must parse".to_string())?;
+        let package_release = concat!(
+            env!("CARGO_PKG_VERSION_MAJOR"),
+            ".",
+            env!("CARGO_PKG_VERSION_MINOR"),
+            ".",
+            env!("CARGO_PKG_VERSION_PATCH")
+        );
+        let ordered = release_is_not_ahead_of_cargo_package(
+            LATEST_RELEASED_VERSION,
+            package_release,
+            !env!("CARGO_PKG_VERSION_PRE").is_empty(),
+        )
+        .ok_or_else(|| "release constant and Cargo numeric package core must parse".to_string())?;
         assert!(
-            latest <= package,
+            ordered,
             "LATEST_RELEASED_VERSION ({LATEST_RELEASED_VERSION}) leads the package ({})",
             env!("CARGO_PKG_VERSION")
         );
         Ok(())
+    }
+
+    #[test]
+    fn prerelease_rendering_retains_only_the_released_install_pin() {
+        for version in ["0.11.0-alpha.2", "0.10.0-alpha.2", "0.9.0-alpha.2"] {
+            assert_eq!(parse_release_version(version), None, "{version}");
+            assert_eq!(
+                workflow_install_version(version),
+                LATEST_RELEASED_VERSION,
+                "{version}"
+            );
+            let workflow = generated_workflow_for_version(version);
+            assert!(workflow.contains(&format!("          version={LATEST_RELEASED_VERSION}\n")));
+            assert!(workflow.contains(&format!(
+                "cargo install ripr --version {LATEST_RELEASED_VERSION} --locked"
+            )));
+            assert!(workflow.contains(&format!(
+                "      # Pinned to released ripr {LATEST_RELEASED_VERSION} ({version} is unreleased). The steps below use\n"
+            )));
+            assert!(!workflow.contains(&format!("          version={version}\n")));
+            assert!(
+                !workflow.contains(&format!("cargo install ripr --version {version} --locked"))
+            );
+        }
     }
 
     /// Released rendering keeps the historical pin comment first line and

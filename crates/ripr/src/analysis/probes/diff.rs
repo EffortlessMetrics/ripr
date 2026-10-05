@@ -1245,58 +1245,142 @@ mod tests {
         Ok(())
     }
 
+    /// These facts deliberately exercise the admitted SideEffect contract.
+    /// CallDeletion additionally requires a standalone source position; the
+    /// separate eligibility control below preserves that owning parser gate.
     #[test]
     fn probes_for_file_preserves_wildcard_discard_head() -> Result<(), String> {
-        for kind in [ProbeShapeKind::SideEffect, ProbeShapeKind::CallDeletion] {
-            for changed_text in [
-                "let _ = compute_fee(amount * 9);",
-                "let _ : u32 = compute_fee(amount * 9);",
-                "let _= compute_fee(amount * 9);",
-            ] {
-                let path = PathBuf::from("src/lib.rs");
-                let changed = ChangedFile {
-                    path: path.clone(),
-                    added_lines: vec![ChangedLine {
-                        line: 4,
-                        new_side_line: 4,
-                        text: changed_text.to_string(),
-                    }],
-                    removed_lines: vec![],
-                };
-                let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
-                    files: BTreeMap::from([(
-                        path.clone(),
-                        FileFacts {
-                            path,
-                            probe_shapes: vec![ProbeShapeFact {
-                                start_line: 4,
-                                end_line: 4,
-                                start_byte: 40,
-                                kind,
-                                text: "compute_fee(amount * 9)".into(),
-                            }],
-                            ..FileFacts::default()
-                        },
-                    )]),
-                    ..crate::analysis::facts::OwnedRustIndex::default()
-                });
+        for changed_text in [
+            "let _ = compute_fee(amount * 9);",
+            "let _ : u32 = compute_fee(amount * 9);",
+            "let _= compute_fee(amount * 9);",
+        ] {
+            let (changed, index) =
+                indexed_call_shape_fixture(changed_text, ProbeShapeKind::SideEffect)?;
+            let probes = probes_for_file(Path::new("workspace"), &changed, &index);
+            let Some(probe) = probes.first() else {
+                return Err("expected wildcard-discard call probe".to_string());
+            };
+            if probes.len() != 1 || probe.family != ProbeFamily::SideEffect {
+                return Err(format!(
+                    "admitted side-effect shape changed family: {probes:?}"
+                ));
+            }
+            if probe.expression != changed_text {
+                return Err(format!("wildcard discard context was erased: {probe:?}"));
+            }
+            let sinks = crate::analysis::classify::local_flow_sinks(probe, None);
+            if !sinks
+                .first()
+                .is_some_and(|sink| sink.kind == crate::domain::FlowSinkKind::Unknown)
+            {
+                return Err(format!(
+                    "wildcard discard did not produce an unknown sink: {probe:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
 
-                let probes = probes_for_file(Path::new("workspace"), &changed, &index);
-                let Some(probe) = probes.first() else {
-                    return Err("expected wildcard-discard call probe".to_string());
-                };
-                if probe.expression != changed_text {
-                    return Err(format!("wildcard discard context was erased: {probe:?}"));
-                }
-                let sinks = crate::analysis::classify::local_flow_sinks(probe, None);
-                if !sinks
-                    .first()
-                    .is_some_and(|sink| sink.kind == crate::domain::FlowSinkKind::Unknown)
-                {
-                    return Err(format!(
-                        "wildcard discard did not produce an unknown sink: {probe:?}"
-                    ));
-                }
+    fn indexed_call_shape_fixture(
+        changed_text: &str,
+        kind: ProbeShapeKind,
+    ) -> Result<(ChangedFile, RustIndex), String> {
+        let path = PathBuf::from("src/lib.rs");
+        let expression = "compute_fee(amount * 9)";
+        let source = format!("fn demo() {{\n    {changed_text}\n}}\n");
+        let start_byte = source
+            .find(expression)
+            .ok_or("fixture does not contain its indexed call expression")?;
+        let changed = ChangedFile {
+            path: path.clone(),
+            added_lines: vec![ChangedLine {
+                line: 2,
+                new_side_line: 2,
+                text: changed_text.to_string(),
+            }],
+            removed_lines: vec![],
+        };
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
+            files: BTreeMap::from([(
+                path.clone(),
+                FileFacts {
+                    path,
+                    source: source.into(),
+                    probe_shapes: vec![ProbeShapeFact {
+                        start_line: 2,
+                        end_line: 2,
+                        start_byte,
+                        kind,
+                        text: expression.into(),
+                    }],
+                    ..FileFacts::default()
+                },
+            )]),
+            ..crate::analysis::facts::OwnedRustIndex::default()
+        });
+        Ok((changed, index))
+    }
+
+    #[test]
+    fn wildcard_call_deletion_facts_keep_standalone_source_eligibility() -> Result<(), String> {
+        for (changed_text, standalone) in [
+            ("compute_fee(amount * 9);", true),
+            ("let _ = compute_fee(amount * 9);", false),
+            ("let _ : u32 = compute_fee(amount * 9);", false),
+            ("let _= compute_fee(amount * 9);", false),
+            ("let _value = compute_fee(amount * 9);", false),
+        ] {
+            let (changed, index) =
+                indexed_call_shape_fixture(changed_text, ProbeShapeKind::CallDeletion)?;
+            let shapes =
+                parser_probe_shapes_for_changed_line(&index, &changed.path, 2, changed_text);
+            let Some(shape) = shapes.first() else {
+                return Err(format!(
+                    "faithful indexed call shape missing: {changed_text}"
+                ));
+            };
+            if shapes.len() != 1
+                || shape.family != ProbeFamily::CallDeletion
+                || shape.standalone_call != standalone
+            {
+                return Err(format!(
+                    "standalone eligibility changed for {changed_text}: {shapes:?}"
+                ));
+            }
+            let probes = probes_for_file(Path::new("workspace"), &changed, &index);
+            let call_count = probes
+                .iter()
+                .filter(|probe| probe.family == ProbeFamily::CallDeletion)
+                .count();
+            if call_count != usize::from(standalone) {
+                return Err(format!(
+                    "diff synthesis bypassed standalone eligibility for {changed_text}: {probes:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn named_side_effect_binding_does_not_borrow_wildcard_discard_head() -> Result<(), String> {
+        for changed_text in [
+            "let _value = compute_fee(amount * 9);",
+            "let __x = compute_fee(amount * 9);",
+        ] {
+            let (changed, index) =
+                indexed_call_shape_fixture(changed_text, ProbeShapeKind::SideEffect)?;
+            let probes = probes_for_file(Path::new("workspace"), &changed, &index);
+            let Some(probe) = probes.first() else {
+                return Err(format!("named side-effect probe missing: {changed_text}"));
+            };
+            if probes.len() != 1
+                || probe.family != ProbeFamily::SideEffect
+                || probe.expression != "compute_fee(amount * 9)"
+            {
+                return Err(format!(
+                    "named binding acquired wildcard discard context: {probes:?}"
+                ));
             }
         }
         Ok(())
