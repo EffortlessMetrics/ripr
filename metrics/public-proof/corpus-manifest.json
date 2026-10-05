@@ -181,7 +181,9 @@
     "legacy": "Long-lived code with older idioms, large modules, or thin tests; ripr should stay honest and fail closed rather than guess.",
     "common": "Ordinary team or community code of the kind most users have; ripr should be useful here without tuning."
   },
-  "known_gaps": [],
+  "known_gaps": [
+    "no crate whose tests live exclusively in a separate test crate of another repository (html5ever covers only test data from submodules, not test code elsewhere)"
+  ],
   "repos": [
     {
       "id": "serde",
@@ -1556,7 +1558,7 @@
         "custom_test_harness",
         "workspace"
       ],
-      "why": "HTML and XML parser whose tokenizer and tree-builder tests (rcdom's five harness = false targets; nine across the workspace) are generated at run time from the html5lib-tests and xml5lib-tests git submodules. The shallow pinned fetch does not include submodules, so the oracles for most parser behavior live in another repository and are absent.",
+      "why": "HTML and XML parser whose tokenizer and tree-builder tests (rcdom's five harness = false targets; nine across the workspace) are generated at run time from the html5lib-tests and xml5lib-tests git submodules. The shallow pinned fetch does not include submodules, so the oracle data for most parser behavior lives in another repository and is absent.",
       "probe": {
         "rust_files": 77,
         "rust_lines": 25578,

@@ -410,6 +410,10 @@ Across the runs: fix success 100.0%, stale re-check cycles 3, white-box tests wr
 
 34 real repositories are pinned to exact upstream commits (corpus 2026-10-04.5): 15 well-maintained, 9 legacy, 10 ordinary. The class is a judgment recorded per repository, not a measurement. The scoreboards were run on the repositories named in their own sections, which are not all in this manifest at these revisions, so a number above describes only the repositories its section names.
 
+Known gaps in the corpus:
+
+- no crate whose tests live exclusively in a separate test crate of another repository (html5ever covers only test data from submodules, not test code elsewhere)
+
 Repositories the speed scoreboard ran on:
 
 | Repository | Pinned commit | Source | Status |

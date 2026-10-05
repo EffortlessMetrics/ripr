@@ -172,6 +172,16 @@ artifact_families = ["pilot-ranking"]
 description = "Pilot ranking answer key: nightly, on demand, and at draft-to-ready on pilot ranking or seam grading changes; fails only when pooled top-5 or top-10 precision, scored share or function diversity regresses past its margin against the committed baseline, or a pinned crate cannot be fetched."
 
 [[lane]]
+id = "public-proof"
+posture = "advisory"
+workflow = ".github/workflows/public-proof.yml"
+jobs = ["drift"]
+commands = ["cargo xtask public-proof --check"]
+estimated_lem = 5
+artifact_families = []
+description = "Public proof page drift: nightly, on demand, and at draft-to-ready on a scoreboard, corpus, receipt or page change; fails when docs/PUBLIC_PROOF.md differs from its receipts or a receipt differs from its canonical source, and lists the page lines a refresh would change."
+
+[[lane]]
 id = "vscode-compile"
 posture = "required"
 workflow = ".github/workflows/ci.yml"

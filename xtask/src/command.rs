@@ -1855,8 +1855,8 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "argument_dependent",
             "docs/PUBLIC_PROOF.md (written without --check); --refresh-receipts also rewrites metrics/public-proof/dx-scoreboard.json, verdict-corpus.json and corpus-manifest.json from their canonical sources",
             false,
-            false,
-            "Renders the public proof page from the committed receipts under metrics/public-proof/; --check fails when the page differs from its receipts or a receipt has drifted from its canonical in-repo source. The xtask unit test checks only the page against its receipts, so source drift is advisory.",
+            true,
+            "Renders the public proof page from the committed receipts under metrics/public-proof/; --check fails when the page differs from its receipts or a receipt has drifted from its canonical in-repo source. The xtask unit test checks only the page against its receipts, so source drift is advisory: it fails only the Public Proof Drift workflow, a non-required lane that runs --check nightly and on source changes, and a drifted --check lists the page lines a refresh would change.",
         ),
         command_entry(
             "check-evidence-promotion-honesty [--pinned-external] [--clone] [--case <id>] [--checkout-root <path>] [--timeout-secs <n>]",
