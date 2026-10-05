@@ -566,11 +566,49 @@ jobs:
             } >> "${GITHUB_ENV}"
           fi
 
-          resolved="$(env -i HOME="${HOME}" PATH="${consumer_path}" bash -c 'command -v ripr')"
+          printf 'post-install[%s] check=installed-path\n' "${CLIENT}"
+          resolve_status=0
+          resolved="$(env -i HOME="${HOME}" PATH="${consumer_path}" bash -c 'command -v ripr')" \
+            || resolve_status=$?
+          printf 'post-install[%s] installed-path status=%s expected=<%s> actual=<%s>\n' \
+            "${CLIENT}" "${resolve_status}" "${executable}" "${resolved}"
+          # The original assignment under errexit required command resolution to succeed.
+          test "${resolve_status}" -eq 0
           test "${resolved}" = "${executable}"
-          test "$(sha256sum "${resolved}" | awk '{print $1}')" = "${EXPECTED_PAYLOAD_SHA256}"
-          test "$(env -i HOME="${HOME}" PATH="${consumer_path}" ripr --version)" = \
-            "ripr ${RIPR_NATIVE_VERSION}"
+
+          printf 'post-install[%s] check=installed-payload-sha256\n' "${CLIENT}"
+          if installed_payload_sha="$(sha256sum "${resolved}" | awk '{print $1}')"; then
+            digest_status=0
+          else
+            digest_status=$?
+          fi
+          printf 'post-install[%s] installed-payload-sha256 status=%s expected=<%s> actual=<%s>\n' \
+            "${CLIENT}" "${digest_status}" "${EXPECTED_PAYLOAD_SHA256}" "${installed_payload_sha}"
+          test "${installed_payload_sha}" = "${EXPECTED_PAYLOAD_SHA256}"
+
+          printf 'post-install[%s] check=installed-native-version\n' "${CLIENT}"
+          version_stdout="${RUNNER_TEMP}/${CLIENT}-installed-native-version.stdout"
+          version_stderr="${RUNNER_TEMP}/${CLIENT}-installed-native-version.stderr"
+          if env -i HOME="${HOME}" PATH="${consumer_path}" ripr --version \
+            > "${version_stdout}" 2> "${version_stderr}"; then
+            version_status=0
+          else
+            version_status=$?
+          fi
+          installed_native_version="$(cat "${version_stdout}")"
+          printf 'post-install[%s] installed-native-version status=%s expected=<%s> actual=<%s>\n' \
+            "${CLIENT}" "${version_status}" "ripr ${RIPR_NATIVE_VERSION}" "${installed_native_version}"
+          printf 'post-install[%s] installed-native-version stderr follows\n' "${CLIENT}" >&2
+          cat "${version_stderr}" >&2
+          test "${installed_native_version}" = "ripr ${RIPR_NATIVE_VERSION}"
+
+          printf 'post-install[%s] check=planted-executable-not-run path=<%s>\n' \
+            "${CLIENT}" "${planted_marker}"
+          if test -e "${planted_marker}"; then
+            printf 'post-install[%s] planted-marker present\n' "${CLIENT}"
+          else
+            printf 'post-install[%s] planted-marker absent\n' "${CLIENT}"
+          fi
           test ! -e "${planted_marker}"
           {
             echo "CLIENT=${CLIENT}"

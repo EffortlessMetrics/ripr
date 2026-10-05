@@ -4,6 +4,7 @@ mod npm_launcher;
 mod python;
 mod python_guidance;
 mod targets;
+#[path = "../../../../crates/ripr/src/distribution_version.rs"]
 mod version;
 pub(crate) mod wheelhouse;
 mod workflow;

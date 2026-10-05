@@ -7,8 +7,8 @@ use serde_json::{Value, json};
 
 use super::identity::{
     DISTRIBUTION, EXECUTABLE, InstalledPayload, WheelIdentity, parse_wheel_filename,
-    require_matching_consumer_payloads, require_matching_payload, sha256_file,
-    version_only_evidence_is_insufficient,
+    pep440_version, require_matching_consumer_payloads, require_matching_payload,
+    require_native_python_version_pair, sha256_file, version_only_evidence_is_insufficient,
 };
 use super::isolation::{
     require_clean_consumer_path, require_installed_beats_planted, require_project_python_idle,
@@ -47,13 +47,14 @@ pub(crate) fn run_live_pip_and_uv_journey() -> Result<(), String> {
         ));
     }
     let version = env!("CARGO_PKG_VERSION");
+    let python_version = pep440_version(version)?;
     let root = TempRoot::new("live")?;
     let evidence = root.path.join("evidence");
     let wheelhouse = evidence.join("wheelhouse");
     fs::create_dir_all(&wheelhouse).map_err(|error| format!("mkdir wheelhouse: {error}"))?;
 
-    let identity = pack_wheel(&python, &payload, &wheelhouse, version)?;
-    parse_wheel_filename(&identity.filename, version)?;
+    let identity = pack_wheel(&python, &payload, &wheelhouse, &python_version)?;
+    parse_wheel_filename(&identity.filename, &python_version)?;
 
     let fixture_src = workspace_root().join("fixtures/python/basic");
     if !fixture_src.join("diff.patch").is_file() {
@@ -71,8 +72,8 @@ pub(crate) fn run_live_pip_and_uv_journey() -> Result<(), String> {
     let uv = install_with_uv(&python, &root.path, &wheelhouse, &identity)?;
     require_matching_consumer_payloads(&pip.payload, &uv.payload)?;
 
-    exercise_client(&pip, &identity, &fixture, &root.path)?;
-    exercise_client(&uv, &identity, &fixture, &root.path)?;
+    exercise_client(&pip, &identity, &fixture, &root.path, version)?;
+    exercise_client(&uv, &identity, &fixture, &root.path, version)?;
 
     reinstall_and_uninstall(&pip, &uv, &wheelhouse, &identity, &fixture)?;
 
@@ -256,7 +257,9 @@ fn exercise_client(
     identity: &WheelIdentity,
     fixture: &Path,
     root: &Path,
+    native_version: &str,
 ) -> Result<(), String> {
+    require_native_python_version_pair(native_version, &identity.version)?;
     rewrite_project_python(fixture, &client.layout.project_python_sentinel)?;
     let foreign = root.join(format!("{} foreign cwd", client.layout.name));
     fs::create_dir_all(&foreign).map_err(|error| format!("mkdir foreign cwd: {error}"))?;
@@ -315,10 +318,10 @@ fn exercise_client(
     let version_out = run_installed(client, &["--version"], Some(&foreign), &[])?;
     require_success(&version_out, &format!("{} --version", client.layout.name))?;
     let version_text = stdout_text(&version_out);
-    if !version_text.contains(&identity.version) {
+    if !version_text.contains(native_version) {
         return Err(format!(
             "{} --version `{version_text}` does not contain {}",
-            client.layout.name, identity.version
+            client.layout.name, native_version
         ));
     }
     version_only_evidence_is_insufficient(true, true)?;
@@ -560,6 +563,7 @@ fn write_receipt(
         "distribution": DISTRIBUTION,
         "executable": EXECUTABLE,
         "native_version": version,
+        "python_version": identity.version,
         "payload_source": "candidate_binary_wheel",
         "compatibility_state": "unqualified",
         "compatibility_owner": "issue:#4489",

@@ -9,6 +9,12 @@ use sha2::{Digest, Sha256};
 #[cfg(unix)]
 use std::path::Path;
 
+// Reuse the distribution policy's strict native SemVer -> PEP 440 owner.
+// This repository consumer journey does not define a second version mapper.
+#[path = "../../src/distribution_version.rs"]
+mod distribution_version;
+pub(crate) use distribution_version::pep440_version;
+
 pub(crate) const DISTRIBUTION: &str = "ripr-rs";
 #[cfg(unix)]
 pub(crate) const EXECUTABLE: &str = "ripr";
@@ -52,6 +58,11 @@ pub(crate) fn parse_wheel_filename(
     filename: &str,
     expected_version: &str,
 ) -> Result<String, String> {
+    if expected_version.contains('-') || expected_version.contains('_') {
+        return Err(format!(
+            "wheel version `{expected_version}` must use normalized Python distribution identity, not native SemVer or underscore escaping"
+        ));
+    }
     if filename.contains("ripr-") && !filename.starts_with(WHEEL_NORMALIZED_PREFIX) {
         return Err(format!(
             "wheel filename `{filename}` selects the unrelated `ripr` distribution; expected `{WHEEL_NORMALIZED_PREFIX}{expected_version}-*.whl`"
@@ -74,6 +85,19 @@ pub(crate) fn parse_wheel_filename(
         ));
     }
     Ok(tag.to_string())
+}
+
+pub(crate) fn require_native_python_version_pair(
+    native_version: &str,
+    python_version: &str,
+) -> Result<(), String> {
+    let expected = pep440_version(native_version)?;
+    if python_version != expected {
+        return Err(format!(
+            "Python distribution version `{python_version}` does not map from native `{native_version}`; expected `{expected}`"
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) fn require_matching_payload(
@@ -128,6 +152,106 @@ pub(crate) fn require_error<T>(result: Result<T, String>, what: &str) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn canonical_python_versions_bind_native_wheel_identity() -> Result<(), String> {
+        for (native, expected) in [
+            ("0.11.0", "0.11.0"),
+            ("0.11.0-alpha.2", "0.11.0a2"),
+            ("0.11.0-beta.2", "0.11.0b2"),
+            ("0.11.0-rc.1", "0.11.0rc1"),
+        ] {
+            let python = pep440_version(native)?;
+            if python != expected {
+                return Err(format!(
+                    "native `{native}` mapped to `{python}`, not `{expected}`"
+                ));
+            }
+            require_native_python_version_pair(native, &python)?;
+            let filename = format!("ripr_rs-{python}-py3-none-linux_x86_64.whl");
+            let tag = parse_wheel_filename(&filename, &python)?;
+            if tag != "py3-none-linux_x86_64" {
+                return Err(format!("unexpected canonical wheel tag `{tag}`"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn raw_escaped_stale_or_stable_versions_cannot_claim_the_alpha_wheel() -> Result<(), String> {
+        let python = pep440_version("0.11.0-alpha.2")?;
+        for (native, distribution) in [
+            ("0.11.0-alpha.2", "0.11.0a1"),
+            ("0.11.0-alpha.2", "0.11.0"),
+            ("0.11.0-alpha.2", "0.11.0-alpha.2"),
+            ("0.11.0-alpha.1", "0.11.0a2"),
+            ("0.11.0", "0.11.0a2"),
+        ] {
+            let error = require_error(
+                require_native_python_version_pair(native, distribution),
+                "wrong native/Python version pair must fail",
+            )?;
+            if !error.contains("does not map from native") {
+                return Err(format!("unexpected version-pair refusal: {error}"));
+            }
+        }
+        for (filename, expected, message) in [
+            (
+                "ripr_rs-0.11.0-alpha.2-py3-none-linux_x86_64.whl",
+                "0.11.0-alpha.2",
+                "normalized Python",
+            ),
+            (
+                "ripr_rs-0.11.0_alpha.2-py3-none-linux_x86_64.whl",
+                "0.11.0_alpha.2",
+                "normalized Python",
+            ),
+            (
+                "ripr_rs-0.11.0-alpha.2-py3-none-linux_x86_64.whl",
+                python.as_str(),
+                "does not bind version",
+            ),
+            (
+                "ripr_rs-0.11.0_alpha.2-py3-none-linux_x86_64.whl",
+                python.as_str(),
+                "does not bind version",
+            ),
+            (
+                "ripr_rs-0.11.0a1-py3-none-linux_x86_64.whl",
+                python.as_str(),
+                "does not bind version",
+            ),
+            (
+                "ripr_rs-0.11.0-py3-none-linux_x86_64.whl",
+                python.as_str(),
+                "does not bind version",
+            ),
+            (
+                "ripr_rs-0.11.0a2-py3-none-linux_x86_64.whl",
+                "0.11.0a1",
+                "does not bind version",
+            ),
+            (
+                "ripr-0.11.0a2-py3-none-linux_x86_64.whl",
+                python.as_str(),
+                "unrelated `ripr` distribution",
+            ),
+            (
+                "ripr_rs-0.11.0a2-py3-none-any.whl",
+                python.as_str(),
+                "py3-none-any",
+            ),
+        ] {
+            let error = require_error(
+                parse_wheel_filename(filename, expected),
+                "wrong wheel/version identity must be refused",
+            )?;
+            if !error.contains(message) {
+                return Err(format!("unexpected refusal for `{filename}`: {error}"));
+            }
+        }
+        Ok(())
+    }
 
     #[test]
     fn native_wheel_filename_binds_ripr_rs_and_version() -> Result<(), String> {
