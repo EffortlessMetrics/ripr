@@ -42,7 +42,7 @@ pub(super) fn validate_agent_receipt_verify_path(
             return failure;
         }
         let producer = crate::agent::loop_commands::agent_verify_command(
-            &crate::output::outcome::display_path(&root),
+            &crate::agent::loop_commands::root_path_display(&root),
             crate::agent::loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
             crate::agent::loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
             Some(path.to_string_lossy().as_ref()),

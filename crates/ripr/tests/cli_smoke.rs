@@ -26,6 +26,9 @@ mod implicit_git_root;
 #[cfg(feature = "lang-python")]
 #[path = "cli_smoke/python_source_admission.rs"]
 mod python_source_admission;
+#[cfg(unix)]
+#[path = "cli_smoke/receipt_recovery_root.rs"]
+mod receipt_recovery_root;
 #[path = "cli_smoke/related_test_count.rs"]
 mod related_test_count;
 

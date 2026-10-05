@@ -60,6 +60,12 @@ Receipt issuance also preserves the native UTF-8 Unix root and artifact paths
 in its provenance and absolute verify locator, so first-action can reopen the
 authentic evidence. This changes identity serialization, not root-independent
 digests, canonical equality, containment or receipt-currentness admission.
+Missing default workflow verify input still refuses receipt issuance. Its
+recovery command preserves the native canonical root and the selected relative
+or absolute output path, so the next receipt reads the genuine verifier output
+from that repository. Custom missing inputs do not invent a workflow producer;
+successful recovery does not promote missing analysis evidence to complete
+receipt evidence (#6684).
 Root containment and canonical equality remain mandatory, including when an
 authentic artifact is presented through a different checkout with the same HEAD.
 Version 4 (#3906)

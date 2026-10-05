@@ -70,6 +70,9 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Agent receipt recovery commands preserve native Unix roots and relative or
+  absolute workflow verify output paths when pasted from another directory.
+  Custom missing verify inputs still emit no unrelated producer hint (#6684).
 - `ripr swarm ingest` no longer fails the packet's forbidden-edit guard open
   on path spellings. `SRC/PRICING.py`, absolute or verbatim `\\?\` paths
   under the root, symlinked-root spellings, drive-relative forms, and

@@ -52,6 +52,14 @@ directory, including awaiting/after, failed/open-gap restart and missing-receipt
 commands. Windows retains separator presentation. Report-only display text is
 separate from this command identity (#6313).
 
+If receipt issuance cannot find the default workflow verify artifact, its
+producer hint uses the native canonical selected root and preserves the
+requested relative or absolute output locator. Pasting the hint from another
+directory must write the artifact that the refused receipt selected, including
+when a UTF-8 Unix directory name contains a literal backslash. A custom missing
+verify path has no known snapshot pair and emits no workflow producer hint.
+The refusal and receipt evidence boundaries remain unchanged (#6684).
+
 The loop command templates are centralized in one internal module before the
 workflow manifest is introduced. That module owns the current workflow artifact
 paths, the editor/CI pilot-agent artifact paths, and the command builders for:
