@@ -11,6 +11,12 @@ are scoped or reviewed.
 
 ### Changed
 
+- CI: ub-review selects RIPR's companion configuration and Rust repository
+  identity, and requests resolved-candidate receipts under the same PR-specific
+  artifact name used for upload. Review remains advisory; artifact retrieval
+  requires the existing token's Actions access and exact-revision reuse checks
+  still apply (#6337).
+
 - MCP wire names unified on `canonical_id` (same spelling the evidence
   documents emit): tool inputs `ripr_get_gap`, `ripr_prepare_repair`, and
   `ripr_get_repair_card` take `canonical_id` instead of `gap_id`, and the
