@@ -321,6 +321,21 @@ mod tests {
     }
 
     #[test]
+    fn preflight_rejects_whitespace_only_recovery_command_entries() {
+        // `""` is already covered above. Whitespace-only entries are a
+        // distinct mutation of dropping `trim()` in `validate_recovery_fields`.
+        for malformed in [json!(["   "]), json!(["\t"]), json!([" \n "])] {
+            let violations = violations_for(malformed.clone());
+            assert!(
+                violations
+                    .iter()
+                    .any(|violation| violation.contains("recovery_commands")),
+                "{malformed} was accepted: {violations:?}"
+            );
+        }
+    }
+
+    #[test]
     fn preflight_rejects_non_string_recovery_guidance() {
         let mut preflight = preflight_with(json!(["git status"]));
         preflight["recovery_guidance"] = json!(7);

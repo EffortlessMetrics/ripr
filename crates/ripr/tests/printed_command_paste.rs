@@ -305,11 +305,11 @@ fn is_paste_target(text: &str, bare_line: bool, subcommands: &BTreeSet<String>) 
     !bare_line || text.contains(" --")
 }
 
-/// CommonMark inline code spans on one line: a run of N backticks closes at
-/// the next run of exactly N, and one space pad on each side is not content.
-fn code_spans(line: &str) -> Vec<String> {
+/// Character-index half-open ranges of code-span interiors (between the
+/// opening and closing backtick runs, before CommonMark space-pad stripping).
+fn code_span_interiors(line: &str) -> Vec<(usize, usize)> {
     let chars: Vec<char> = line.chars().collect();
-    let mut spans = Vec::new();
+    let mut ranges = Vec::new();
     let mut index = 0;
     while index < chars.len() {
         if chars[index] != '`' {
@@ -338,17 +338,60 @@ fn code_spans(line: &str) -> Vec<String> {
             }
         }
         let Some(close) = close else { continue };
-        let inner: String = chars[index..close].iter().collect();
-        let inner = match (inner.strip_prefix(' '), inner.strip_suffix(' ')) {
-            (Some(_), Some(_)) if inner.trim().len() == inner.len().saturating_sub(2) => {
-                inner[1..inner.len() - 1].to_string()
-            }
-            _ => inner,
-        };
-        spans.push(inner);
+        ranges.push((index, close));
         index = close + width;
     }
-    spans
+    ranges
+}
+
+/// CommonMark inline code spans on one line: a run of N backticks closes at
+/// the next run of exactly N, and one space pad on each side is not content.
+fn code_spans(line: &str) -> Vec<String> {
+    let chars: Vec<char> = line.chars().collect();
+    code_span_interiors(line)
+        .into_iter()
+        .map(|(start, end)| {
+            let inner: String = chars[start..end].iter().collect();
+            match (inner.strip_prefix(' '), inner.strip_suffix(' ')) {
+                (Some(_), Some(_)) if inner.trim().len() == inner.len().saturating_sub(2) => {
+                    inner[1..inner.len() - 1].to_string()
+                }
+                _ => inner,
+            }
+        })
+        .collect()
+}
+
+/// Remainder after a `(PowerShell)` label that sits outside code spans.
+///
+/// A Bash command can mention `(PowerShell):` inside its own span. That text
+/// is not a pairing label and must not steal the previous command's form.
+fn powershell_label_rest(line: &str) -> Option<&str> {
+    const NEEDLE: &str = "(PowerShell)";
+    let interiors = code_span_interiors(line);
+    let chars: Vec<char> = line.chars().collect();
+    let needle: Vec<char> = NEEDLE.chars().collect();
+    let mut index = 0;
+    while index + needle.len() <= chars.len() {
+        if chars[index..index + needle.len()] == needle[..] {
+            let inside = interiors
+                .iter()
+                .any(|&(start, end)| index >= start && index < end);
+            if !inside {
+                let rest_at = index + needle.len();
+                let byte = line
+                    .char_indices()
+                    .nth(rest_at)
+                    .map(|(byte, _)| byte)
+                    .unwrap_or(line.len());
+                return Some(line[byte..].trim_start_matches([':', ' ']).trim());
+            }
+            index += needle.len();
+            continue;
+        }
+        index += 1;
+    }
+    None
 }
 
 /// Commands in plain text or Markdown, with each PowerShell form folded into
@@ -405,14 +448,11 @@ fn extract_text(
             }
             continue;
         }
-        let powershell = line.contains("(PowerShell)");
-        if powershell {
+        if let Some(rest) = powershell_label_rest(line) {
             // The PowerShell form need not start with `ripr`: the redirecting
             // form is a guarded write that calls it mid-expression.
-            let rest = line
-                .split_once("(PowerShell)")
-                .map(|(_, rest)| rest.trim_start_matches([':', ' ']).trim())
-                .unwrap_or_default();
+            // Pair the next line only when this label's rest is empty. An
+            // inline form must not consume the following Bash command.
             form_on_next_line = rest.is_empty();
             let form = Some(
                 rest.strip_prefix('`')
@@ -1271,4 +1311,59 @@ fn printed_commands_paste_unchanged_in_every_shell_from_a_foreign_directory() ->
             commands.len()
         ))
     }
+}
+
+fn paste_subcommands() -> BTreeSet<String> {
+    ["first-pr", "check"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+fn extracted(text: &str) -> Vec<Printed> {
+    extract_text("test.md", text, Origin::Foreign, &paste_subcommands())
+}
+
+#[test]
+fn extract_text_pairs_empty_rest_powershell_label_with_the_next_line() {
+    let found = extracted(
+        "`ripr first-pr --root repo --base HEAD`\n\
+         Recovery step 1 (PowerShell):\n\
+         `Get-Content foo`\n",
+    );
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].bash, "ripr first-pr --root repo --base HEAD");
+    assert_eq!(found[0].powershell.as_deref(), Some("Get-Content foo"));
+}
+
+#[test]
+fn extract_text_empty_rest_guard_does_not_consume_the_next_bash_command() {
+    // Inline form: rest is nonempty, so `form_on_next_line` must stay false.
+    // Mutating that guard to always-true would steal the following Bash span.
+    let found = extracted(
+        "`ripr first-pr --root repo --base HEAD`\n\
+         Recovery step 1 (PowerShell): `Get-Content foo`\n\
+         `ripr check --root repo --diff HEAD`\n",
+    );
+    assert_eq!(found.len(), 2, "{found:?}");
+    assert_eq!(found[0].bash, "ripr first-pr --root repo --base HEAD");
+    assert_eq!(found[0].powershell.as_deref(), Some("Get-Content foo"));
+    assert_eq!(found[1].bash, "ripr check --root repo --diff HEAD");
+    assert_eq!(found[1].powershell, None);
+}
+
+#[test]
+fn extract_text_does_not_pair_powershell_text_inside_a_bash_code_span() {
+    let found = extracted(
+        "`ripr first-pr --root repo --base HEAD`\n\
+         `ripr check --root '(PowerShell):' --diff HEAD`\n",
+    );
+    assert_eq!(found.len(), 2, "{found:?}");
+    assert_eq!(found[0].bash, "ripr first-pr --root repo --base HEAD");
+    assert_eq!(found[0].powershell, None);
+    assert_eq!(
+        found[1].bash,
+        "ripr check --root '(PowerShell):' --diff HEAD"
+    );
+    assert_eq!(found[1].powershell, None);
 }
