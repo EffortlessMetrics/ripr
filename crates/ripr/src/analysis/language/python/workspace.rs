@@ -28,9 +28,23 @@ pub(super) fn collect_workspace_python_files(root: &Path) -> Vec<PathBuf> {
 
 pub(super) fn visit_workspace(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
+        #[cfg(test)]
+        if crate::analysis::source_calibration::active() {
+            crate::analysis::source_calibration::read_attempt("python_discovery_io");
+        }
         return;
     };
-    for entry in entries.flatten() {
+    for entry in entries.filter_map(|entry| {
+        #[cfg(test)]
+        if entry.is_err() && crate::analysis::source_calibration::active() {
+            crate::analysis::source_calibration::read_attempt("python_discovery_io");
+        }
+        entry.ok()
+    }) {
+        #[cfg(test)]
+        if !crate::analysis::source_calibration::continue_walk() {
+            break;
+        }
         let path = entry.path();
         let name = path
             .file_name()
@@ -45,7 +59,13 @@ pub(super) fn visit_workspace(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) {
         }
         let file_type = match entry.file_type() {
             Ok(file_type) => file_type,
-            Err(_) => continue,
+            Err(_) => {
+                #[cfg(test)]
+                if crate::analysis::source_calibration::active() {
+                    crate::analysis::source_calibration::read_attempt("python_discovery_io");
+                }
+                continue;
+            }
         };
         if file_type.is_dir() {
             visit_workspace(root, &path, out);

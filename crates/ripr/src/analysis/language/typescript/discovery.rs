@@ -170,10 +170,26 @@ pub(crate) fn visit_workspace(root: &Path, max_entries: usize) -> WorkspaceScan 
     let mut stack: Vec<PathBuf> = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
+            #[cfg(test)]
+            if crate::analysis::source_calibration::active() {
+                crate::analysis::source_calibration::read_attempt("typescript_discovery_io");
+            }
             continue;
         };
         let mut stop = false;
-        for entry in entries.flatten() {
+        for entry in entries.filter_map(|entry| {
+            #[cfg(test)]
+            if entry.is_err() && crate::analysis::source_calibration::active() {
+                crate::analysis::source_calibration::read_attempt("typescript_discovery_io");
+            }
+            entry.ok()
+        }) {
+            #[cfg(test)]
+            if !crate::analysis::source_calibration::continue_walk() {
+                truncated = true;
+                stop = true;
+                break;
+            }
             visited += 1;
             if visited > max_entries {
                 truncated = true;
@@ -190,7 +206,15 @@ pub(crate) fn visit_workspace(root: &Path, max_entries: usize) -> WorkspaceScan 
             }
             let file_type = match entry.file_type() {
                 Ok(file_type) => file_type,
-                Err(_) => continue,
+                Err(_) => {
+                    #[cfg(test)]
+                    if crate::analysis::source_calibration::active() {
+                        crate::analysis::source_calibration::read_attempt(
+                            "typescript_discovery_io",
+                        );
+                    }
+                    continue;
+                }
             };
             if file_type.is_symlink() {
                 // Symlinks and NTFS junctions are NOT followed (fail-closed:
@@ -229,6 +253,16 @@ pub(crate) fn visit_workspace(root: &Path, max_entries: usize) -> WorkspaceScan 
             break;
         }
     }
+    #[cfg(test)]
+    if crate::analysis::source_calibration::active() {
+        crate::analysis::source_calibration::limit(TS_MAX_WORKSPACE_FILES_ENV, max_entries);
+        crate::analysis::source_calibration::put(
+            "typescript_discovery",
+            serde_json::json!({"directory_entries_visited": visited,
+            "accepted_source_files": out.len(), "truncated": truncated, "skipped_links": skipped_links,
+            "paths_identity": crate::analysis::source_calibration::paths_identity(out.iter().map(std::path::PathBuf::as_path))}),
+        );
+    }
     out.sort();
     WorkspaceScan {
         files: out,
@@ -256,6 +290,30 @@ fn is_special_non_link_file(file_type: &std::fs::FileType) -> bool {
 #[cfg(not(unix))]
 fn is_special_non_link_file(_file_type: &std::fs::FileType) -> bool {
     false
+}
+
+#[cfg(test)]
+#[test]
+fn source_counter_typescript_counts_entries_and_suppressed_directory_io() -> Result<(), String> {
+    let fixture = crate::analysis::source_calibration::OwnedFixture::new()?;
+    fixture.seed("a.ts", b"const a = 1;\n")?;
+    fixture.seed("b.ts", b"const b = 2;\n")?;
+    let (_, report) = crate::analysis::source_calibration::observe(|| {
+        let actual = visit_workspace(&fixture.root, 1);
+        assert!(actual.truncated);
+        Ok(())
+    })?;
+    assert_eq!(
+        report["stages"]["typescript_discovery"]["directory_entries_visited"],
+        2
+    );
+    assert_eq!(report["stages"]["typescript_discovery"]["truncated"], true);
+    let (_, report) = crate::analysis::source_calibration::observe(|| {
+        visit_workspace(&fixture.root.join("Cargo.toml"), 10);
+        Ok(())
+    })?;
+    assert_eq!(report["operation_counts"]["typescript_discovery_io"], 1);
+    Ok(())
 }
 
 #[cfg(test)]

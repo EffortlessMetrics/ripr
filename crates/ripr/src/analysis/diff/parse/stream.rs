@@ -19,6 +19,14 @@ pub(super) fn parse_bounded_lines<'a>(
     limit: usize,
 ) -> Result<ParsedDiff, String> {
     parse_lines(lines, |count| {
+        #[cfg(test)]
+        if crate::analysis::source_calibration::active() {
+            crate::analysis::cancellation::checkpoint()?;
+            crate::analysis::source_calibration::put(
+                "parser_admission",
+                serde_json::json!({"accepted_path_minimum": count, "limit": limit, "refused": count > limit}),
+            );
+        }
         if count <= limit {
             return Ok(());
         }

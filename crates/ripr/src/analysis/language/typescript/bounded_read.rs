@@ -160,6 +160,13 @@ pub(crate) fn read_workspace_sources_capped(
     let mut budget_reported = false;
     let mut consumed = 0u64;
     for relative in files {
+        #[cfg(test)]
+        if crate::analysis::source_calibration::active() {
+            if !crate::analysis::source_calibration::continue_walk() {
+                break;
+            }
+            crate::analysis::source_calibration::read_attempt("typescript");
+        }
         let mut remaining = workspace_budget.saturating_sub(consumed);
         let outcome = match crate::analysis::committed_source::lookup(root, relative) {
             crate::analysis::committed_source::CommittedSourceRead::Worktree => {
@@ -194,6 +201,17 @@ pub(crate) fn read_workspace_sources_capped(
                 }
             },
         }
+    }
+    #[cfg(test)]
+    if crate::analysis::source_calibration::active() {
+        crate::analysis::source_calibration::preview_read(
+            "typescript",
+            &sources,
+            limits.len(),
+            io_failures.len(),
+            file_limit,
+            workspace_budget,
+        );
     }
     CappedWorkspaceSources {
         sources,
@@ -336,6 +354,49 @@ fn open_source_read_no_follow(path: &Path) -> Result<std::fs::File, CappedReadEr
         )));
     }
     Ok(file)
+}
+
+#[cfg(test)]
+#[test]
+fn source_counter_read_caps_keep_actual_attempts_bytes_and_refusals() -> Result<(), String> {
+    let fixture = crate::analysis::source_calibration::OwnedFixture::new()?;
+    fixture.seed("a.ts", b"aaaa")?;
+    fixture.seed("b.ts", b"bb")?;
+    let files = vec![
+        std::path::PathBuf::from("a.ts"),
+        std::path::PathBuf::from("b.ts"),
+    ];
+    for (file_limit, workspace_budget) in [(3, 10), (10, 3)] {
+        let (_, report) = crate::analysis::source_calibration::observe(|| {
+            let actual =
+                read_workspace_sources_capped(&fixture.root, &files, file_limit, workspace_budget);
+            assert_eq!(actual.sources.len(), 1);
+            assert_eq!(
+                actual.sources.get(&files[1]).map(String::as_str),
+                Some("bb")
+            );
+            assert_eq!(actual.limits.len(), 1);
+            assert!(actual.io_failures.is_empty());
+            Ok(())
+        })?;
+        assert_eq!(
+            report["stages"]["typescript_source_read"]["attempted_paths"],
+            2
+        );
+        assert_eq!(
+            report["stages"]["typescript_source_read"]["successful_source_bytes"],
+            2
+        );
+        assert_eq!(
+            report["stages"]["typescript_source_read"]["limit_entries"],
+            1
+        );
+        assert_eq!(
+            report["stages"]["typescript_source_read"]["accepted_files"],
+            1
+        );
+    }
+    Ok(())
 }
 
 #[cfg(test)]

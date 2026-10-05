@@ -657,6 +657,15 @@ fn select_partial_diff_partition_with_identity(
     let total_lines = candidates.iter().fold(0usize, |sum, candidate| {
         sum.saturating_add(candidate.changed_lines)
     });
+    #[cfg(test)]
+    if crate::analysis::source_calibration::active() {
+        crate::analysis::source_calibration::put(
+            "partition_candidates",
+            serde_json::json!({"whole_files": total_files, "whole_changed_lines": total_lines,
+            "enabled_files": candidates.iter().filter(|candidate| candidate.enabled).count(),
+            "enabled_changed_lines": candidates.iter().filter(|candidate| candidate.enabled).map(|candidate| candidate.changed_lines).sum::<usize>()}),
+        );
+    }
     if total_files <= budgets.file_budget && total_lines <= budgets.line_budget {
         return None;
     }
@@ -1202,10 +1211,22 @@ impl RustAdapter {
             .filter(|file| !generated_sources.contains(&file.path))
             .cloned()
             .collect::<Vec<_>>();
-        enforce_changed_rust_line_limit(
-            &analyzable_changed_files,
-            diff_changed_rust_line_limit()?,
-        )?;
+        let changed_line_limit = diff_changed_rust_line_limit()?;
+        #[cfg(test)]
+        if crate::analysis::source_calibration::active() {
+            crate::analysis::source_calibration::limit(
+                DIFF_CHANGED_RUST_LINE_LIMIT_ENV,
+                changed_line_limit,
+            );
+            crate::analysis::source_calibration::put(
+                "rust_eligible",
+                serde_json::json!({"input_files": changed_files.len(), "after_generated_filter": analyzable_changed_files.len(),
+                "excluded_generated_files": changed_files.len().saturating_sub(analyzable_changed_files.len()),
+                "eligible_rust_changed_lines": changed_rust_line_count(&analyzable_changed_files),
+                "paths_identity": crate::analysis::source_calibration::paths_identity(analyzable_changed_files.iter().map(|file| file.path.as_path()))}),
+            );
+        }
+        enforce_changed_rust_line_limit(&analyzable_changed_files, changed_line_limit)?;
         // RIPR-PROP-0019 (#1999): within the hard guards, a diff that exceeds
         // the smaller partial-selection budget is analyzed as a deterministic
         // bounded partition and reported as `limited_partial_scope` instead of
@@ -1218,6 +1239,33 @@ impl RustAdapter {
             &partial_budgets,
             enabled_languages,
         );
+        #[cfg(test)]
+        if crate::analysis::source_calibration::active() {
+            crate::analysis::source_calibration::limit(
+                PARTIAL_DIFF_FILE_BUDGET_ENV,
+                partial_budgets.file_budget,
+            );
+            crate::analysis::source_calibration::limit(
+                PARTIAL_DIFF_LINE_BUDGET_ENV,
+                partial_budgets.line_budget,
+            );
+            crate::analysis::source_calibration::put(
+                "rust_partition",
+                match partial_scope.as_ref() {
+                    Some(scope) => {
+                        serde_json::json!({"partial": true, "selected_files": scope.selected_files.len(), "selected_changed_lines": scope.selected_changed_lines,
+                    "uninspected_files_lower_bound": scope.uninspected_files_lower_bound, "uninspected_changed_lines_lower_bound": scope.uninspected_changed_lines_lower_bound,
+                    "stop_reason": format!("{:?}", scope.stop_reason), "diff_identity": scope.diff_identity, "partition_identity": scope.partition_identity,
+                    "budget_disclosures": scope.budget_disclosures,
+                    "paths_identity": crate::analysis::source_calibration::paths_identity(scope.selected_files.iter().map(|path| std::path::Path::new(path)))})
+                    }
+                    None => {
+                        serde_json::json!({"partial": false, "uninspected_files_lower_bound": 0, "uninspected_changed_lines_lower_bound": 0,
+                    "budget_disclosures": partial_budgets.disclosures})
+                    }
+                },
+            );
+        }
         let changed_rust_paths = analyzable_changed_files
             .iter()
             .filter(|file| self.accepts_path(&file.path))
@@ -1257,6 +1305,26 @@ impl RustAdapter {
             .filter(|path| workspace::seeds_diff_probes(path, &source_role_context))
             .cloned()
             .collect::<std::collections::BTreeSet<_>>();
+        #[cfg(test)]
+        if crate::analysis::source_calibration::active() {
+            crate::analysis::source_calibration::put(
+                "rust_pre_ast",
+                serde_json::json!({"analyzable_workspace_files": analyzable_rust_files.len(),
+                "selected_changed_rust_paths": changed_rust_paths.len(), "layout_seeded_paths": layout_seeded_rust_paths.len(),
+                "source_paths_identity": crate::analysis::source_calibration::paths_identity(analyzable_rust_files.iter().map(std::path::PathBuf::as_path)),
+                "requested_open_paths": options.open_rust_index_paths.len(), "tracked_open_admission": "NOT_REACHED",
+                "source_role_module_graph": "NOT_RUN_AST_REQUIRED", "dependent_admission": "NOT_RUN",
+                "final_index_files": null, "loaded_source_bytes": null, "loaded_source_lines": null, "loaded_open_source_lines": null,
+                "status": "NOT_COMPUTED_CORE_AST_REQUIRED"}),
+            );
+            return Ok(LanguageDiffResult {
+                partial_scope,
+                skipped_files: changed_files
+                    .len()
+                    .saturating_sub(analyzable_changed_files.len()),
+                ..Default::default()
+            });
+        }
         let external_module_packages = workspace::apply_module_graph_evidence(
             &options.root,
             &mut source_role_context,
@@ -1341,6 +1409,10 @@ impl RustAdapter {
         let mut dependent_scope = None;
         let mut withheld_macro_bindings = classify::WithheldMacroBindings::default();
         let scope_limit = diff_index_file_limit()?;
+        #[cfg(test)]
+        if crate::analysis::source_calibration::active() {
+            crate::analysis::source_calibration::limit(DIFF_INDEX_FILE_LIMIT_ENV, scope_limit);
+        }
         // Open saved Rust documents are index-only inputs. They do not seed
         // changed-file probes, package expansion, or findings. Admit only
         // discovered, analyzable files, then apply the ordinary index budget.
@@ -1352,6 +1424,20 @@ impl RustAdapter {
         // With the open files the full selection can already span the
         // workspace, which turns on the workspace-complete admits.
         let full_selection = selection_with_open_files(&index_files, &open_index_files);
+        #[cfg(test)]
+        if crate::analysis::source_calibration::active() {
+            crate::analysis::source_calibration::open_paths(&open_index_files);
+            crate::analysis::source_calibration::put(
+                "rust_full_selection",
+                serde_json::json!({"analyzable_workspace_files": analyzable_rust_files.len(),
+                "changed_rust_paths": changed_rust_paths.len(), "touched_index_files": index_files.len(), "tracked_open_files": open_index_files.len(),
+                "open_overlap": index_files.len().saturating_add(open_index_files.len()).saturating_sub(full_selection),
+                "full_unique_files": full_selection, "include_unchanged_tests": options.include_unchanged_tests,
+                "touched_paths_identity": crate::analysis::source_calibration::paths_identity(index_files.iter().map(std::path::PathBuf::as_path)),
+                "open_paths_identity": crate::analysis::source_calibration::paths_identity(open_index_files.iter().map(std::path::PathBuf::as_path)),
+                "full_union_identity": "NOT_COMPUTED_COUNT_ONLY_OWNER"}),
+            );
+        }
         // Parsed before any guard so an invalid override always names itself.
         let scope_mode = dependent_scope::DependentScopeMode::from_env()?;
         if !dependent_package_roots.is_empty()
@@ -1381,6 +1467,17 @@ impl RustAdapter {
                     &manifest_dir_prefixes,
                 );
                 if core_files.len() < index_files.len() {
+                    #[cfg(test)]
+                    if crate::analysis::source_calibration::active() {
+                        crate::analysis::source_calibration::put(
+                            "dependent_admission",
+                            serde_json::json!({"full_files": index_files.len(), "core_files": core_files.len(),
+                            "full_identity": crate::analysis::source_calibration::paths_identity(index_files.iter().map(std::path::PathBuf::as_path)),
+                            "core_identity": crate::analysis::source_calibration::paths_identity(core_files.iter().map(std::path::PathBuf::as_path)),
+                            "narrowed_main_files": null, "deferred_files": null, "status": "NOT_COMPUTED_CORE_AST_REQUIRED"}),
+                        );
+                        return Err("source_owner_preflight_unavailable: dependent admission requires core AST; native analysis NOT_RUN".to_owned());
+                    }
                     let query = dependent_scope::admission_query(
                         &options.root,
                         &core_files,
@@ -1411,6 +1508,15 @@ impl RustAdapter {
         // Fail closed before the working-set build that can exhaust a
         // constrained runner's memory (#1023): a too-large index is a named
         // limited state with a repair route, not an analysis result.
+        #[cfg(test)]
+        if crate::analysis::source_calibration::active() {
+            crate::analysis::source_calibration::put(
+                "rust_final_index",
+                serde_json::json!({"files": index_files.len(), "limit": scope_limit,
+                "refused": index_files.len() > scope_limit,
+                "paths_identity": crate::analysis::source_calibration::paths_identity(index_files.iter().map(std::path::PathBuf::as_path))}),
+            );
+        }
         if index_files.len() > scope_limit {
             return Err(format!(
                 "diff_scope_oversized: {} indexed Rust files exceed the \
@@ -1448,6 +1554,14 @@ impl RustAdapter {
             })
             .filter_map(Result::transpose)
             .collect::<Result<Vec<_>, String>>()?;
+        #[cfg(test)]
+        if crate::analysis::source_calibration::active() {
+            crate::analysis::source_calibration::rust_loaded(&loaded_files, index_files.len());
+            return Ok(LanguageDiffResult {
+                partial_scope,
+                ..Default::default()
+            });
+        }
         let cached = rust_index::build_index_from_loaded_files_with_cache_and_test_harnesses(
             &options.root,
             &loaded_files,
@@ -2149,6 +2263,73 @@ impl RustAdapter {
             rust_consumed_sources,
         })
     }
+}
+
+#[cfg(test)]
+#[test]
+fn calibration_partition_and_open_dedup_use_real_owners() -> Result<(), String> {
+    let files = crate::analysis::diff::parse_unified_diff(
+        "diff --git a/src/a.rs b/src/a.rs\n--- /dev/null\n+++ b/src/a.rs\n@@ -0,0 +1,2 @@\n+fn a() {\n+}\ndiff --git a/src/b.rs b/src/b.rs\n--- /dev/null\n+++ b/src/b.rs\n@@ -0,0 +1,2 @@\n+fn b() {\n+}\n",
+    );
+    for (file_budget, line_budget, expected) in [
+        (1, 10, PartialDiffStopReason::FileBudget),
+        (10, 3, PartialDiffStopReason::LineBudget),
+    ] {
+        let budgets = PartialDiffBudgets {
+            file_budget,
+            line_budget,
+            disclosures: Vec::new(),
+        };
+        let mut observed = None;
+        let (_, report) = crate::analysis::source_calibration::observe(|| {
+            observed = select_partial_diff_partition_with_identity(
+                &files,
+                &files,
+                &budgets,
+                &[LanguageId::Rust],
+            );
+            Ok(())
+        })?;
+        let scope = observed.ok_or("real owner failed to return forced partial scope")?;
+        assert_eq!(scope.stop_reason, expected);
+        assert_eq!(scope.selected_files.len(), 1);
+        assert_eq!(scope.uninspected_files_lower_bound, 1);
+        assert_eq!(scope.uninspected_changed_lines_lower_bound, 2);
+        assert_eq!(report["stages"]["partition_candidates"]["whole_files"], 2);
+        assert_eq!(
+            report["stages"]["partition_candidates"]["whole_changed_lines"],
+            4
+        );
+    }
+    let index = vec![
+        std::path::PathBuf::from("src/a.rs"),
+        std::path::PathBuf::from("src/b.rs"),
+    ];
+    let open = [
+        std::path::PathBuf::from("src/b.rs"),
+        std::path::PathBuf::from("src/c.rs"),
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(selection_with_open_files(&index, &open), 3);
+    let (_, report) = crate::analysis::source_calibration::observe(|| {
+        crate::analysis::source_calibration::open_paths(&open);
+        crate::analysis::source_calibration::rust_loaded(
+            &[
+                (index[0].clone(), b"a\n".to_vec()),
+                (index[1].clone(), b"b\n".to_vec()),
+                (std::path::PathBuf::from("src/c.rs"), b"c\n".to_vec()),
+            ],
+            3,
+        );
+        Ok(())
+    })?;
+    assert_eq!(report["stages"]["rust_loaded"]["loaded_source_lines"], 3);
+    assert_eq!(
+        report["stages"]["rust_loaded"]["loaded_open_source_lines"],
+        2
+    );
+    Ok(())
 }
 
 #[cfg(test)]

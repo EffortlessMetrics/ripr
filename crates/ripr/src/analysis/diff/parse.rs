@@ -30,6 +30,26 @@ pub(crate) fn parse_unified_diff_bounded_with_metadata(input: &str) -> Result<Pa
 
 /// Parse with an explicit file-count limit. Exposed for testing (#2398).
 #[cfg(test)]
+#[test]
+fn source_counter_parser_refusal_keeps_registered_minimum() -> Result<(), String> {
+    let (result, report) = crate::analysis::source_calibration::observe(|| {
+        parse_unified_diff_with_limit("diff --git a/a.rs b/a.rs\n--- /dev/null\n+++ b/a.rs\n@@ -0,0 +1 @@\n+fn a() {}\ndiff --git a/b.rs b/b.rs\n--- /dev/null\n+++ b/b.rs\n@@ -0,0 +1 @@\n+fn b() {}\n", 1).map(|_| ())
+    })?;
+    assert!(
+        result
+            .as_ref()
+            .err()
+            .is_some_and(|error| error.starts_with("diff_scope_oversized:"))
+    );
+    assert_eq!(
+        report["stages"]["parser_admission"]["accepted_path_minimum"],
+        2
+    );
+    assert_eq!(report["stages"]["parser_admission"]["refused"], true);
+    Ok(())
+}
+
+#[cfg(test)]
 pub(crate) fn parse_unified_diff_with_limit(
     input: &str,
     limit: usize,
@@ -41,6 +61,10 @@ fn parse_unified_diff_with_metadata_and_limit(
     input: &str,
     limit: usize,
 ) -> Result<ParsedDiff, String> {
+    #[cfg(test)]
+    if crate::analysis::source_calibration::active() {
+        crate::analysis::source_calibration::limit(DIFF_FILE_LIMIT_ENV, limit);
+    }
     stream::parse_bounded_lines(input.lines(), limit)
 }
 

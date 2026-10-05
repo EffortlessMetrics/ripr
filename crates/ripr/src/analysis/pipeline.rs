@@ -596,7 +596,27 @@ fn run_pipeline_for_diff_text(
     rust_config: &crate::config::RustLanguageConfig,
     diff_text: &str,
 ) -> Result<AnalysisResult, String> {
+    #[cfg(test)]
+    if super::source_calibration::active() {
+        super::source_calibration::put(
+            "parser_input",
+            serde_json::json!({"input_bytes": diff_text.len(),
+            "input_sha256": super::source_calibration::bytes_identity(diff_text.as_bytes())}),
+        );
+    }
     let parsed_diff = diff::parse_unified_diff_bounded_with_metadata(diff_text)?;
+    #[cfg(test)]
+    if super::source_calibration::active() {
+        super::source_calibration::put(
+            "parsed_diff",
+            serde_json::json!({"accepted_paths": parsed_diff.changed_files.len(),
+            "input_bytes": diff_text.len(), "input_sha256": super::source_calibration::bytes_identity(diff_text.as_bytes()),
+            "deleted_files": parsed_diff.deleted_file_count, "submodules": parsed_diff.submodule_file_count,
+            "renamed_files": parsed_diff.renamed_file_count, "pure_renames": parsed_diff.pure_rename_file_count,
+            "truncated_sections": parsed_diff.truncated_file_sections,
+            "typed_limitations": parsed_diff.limitations.iter().map(|item| format!("{:?}", item.kind)).collect::<Vec<_>>() }),
+        );
+    }
     let changed_files = parsed_diff.changed_files;
     let mut limitations = parsed_diff
         .limitations
@@ -733,6 +753,15 @@ fn run_pipeline_for_diff_text(
         None => &changed_files,
     };
 
+    #[cfg(test)]
+    if super::source_calibration::active() {
+        super::source_calibration::put(
+            "preview_input",
+            serde_json::json!({"paths": preview_changed_files.len(),
+            "paths_identity": super::source_calibration::paths_identity(preview_changed_files.iter().map(|file| file.path.as_path())),
+            "rust_partition_applied": partial_scope.is_some()}),
+        );
+    }
     for language in languages {
         cancellation::checkpoint()?;
         // Non-abort contract (Campaign 31 PR 10, #1403): a preview-language
@@ -798,6 +827,18 @@ fn run_pipeline_for_diff_text(
         }
     }
 
+    #[cfg(test)]
+    if super::source_calibration::active() {
+        super::source_calibration::put(
+            "pipeline_stop",
+            serde_json::json!({"analysis_complete": false,
+            "adapter_errors": language_runs.iter().map(|run| (&run.language, &run.reason)).collect::<Vec<_>>(),
+            "typed_preparation_limitations": limitations.iter().map(|item| serde_json::json!({"kind": format!("{:?}", item.kind),
+                "stage": format!("{:?}", item.producer_stage), "path": item.path, "affected_items": item.affected_items})).collect::<Vec<_>>(),
+            "later_preview_disclosures": "NOT_REACHED" }),
+        );
+        return Err(super::source_calibration::STOP.to_owned());
+    }
     // Detect preview-language files in the diff regardless of whether the
     // adapter is enabled, so an empty result is never silently presented as a
     // clean Rust-grade result for a TypeScript/JavaScript/Python change

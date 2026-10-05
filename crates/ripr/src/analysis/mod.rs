@@ -29,6 +29,8 @@ mod seam_inventory;
 pub(crate) mod seams;
 mod sort;
 #[cfg(test)]
+pub(crate) mod source_calibration;
+#[cfg(test)]
 mod source_role_corpus;
 mod summary;
 mod syntax;

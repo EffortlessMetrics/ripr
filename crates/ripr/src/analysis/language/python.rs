@@ -527,14 +527,35 @@ impl PythonAdapter {
         walk_limits: PythonDiffWalkLimits,
     ) -> Result<LanguageDiffResult, String> {
         let discovered = collect_workspace_python_files(&options.root);
+        #[cfg(test)]
+        let discovered_count = discovered.len();
         let (workspace_files, refused_files) =
             truncate_workspace_files(discovered, walk_limits.max_workspace_files);
+        #[cfg(test)]
+        if crate::analysis::source_calibration::active() {
+            crate::analysis::source_calibration::limit(
+                PYTHON_MAX_WORKSPACE_FILES_ENV,
+                walk_limits.max_workspace_files,
+            );
+            crate::analysis::source_calibration::put(
+                "python_discovery",
+                serde_json::json!({"discovered_source_files": discovered_count,
+                "retained_source_files": workspace_files.len(), "refused_files": refused_files,
+                "paths_identity": crate::analysis::source_calibration::paths_identity(workspace_files.iter().map(std::path::PathBuf::as_path)),
+                "walk_entry_limit": "NONE_IN_EXISTING_OWNER"}),
+            );
+        }
         let workspace_read = read_workspace_sources_capped(
             &options.root,
             &workspace_files,
             walk_limits.max_file_read_bytes,
             walk_limits.max_workspace_read_bytes,
         );
+        #[cfg(test)]
+        if crate::analysis::source_calibration::active() {
+            crate::analysis::cancellation::checkpoint()?;
+            return Ok(LanguageDiffResult::default());
+        }
         let mut all_owners: Vec<PythonOwner> = Vec::new();
         let mut all_tests: Vec<PythonTest> = Vec::new();
         let mut docstring_ranges_by_file: BTreeMap<PathBuf, Vec<RangeInclusive<usize>>> =
@@ -860,6 +881,56 @@ impl PythonAdapter {
 
 #[cfg(test)]
 mod new_declaration_tests;
+
+#[cfg(test)]
+#[test]
+fn source_counter_python_sorted_prefix_keeps_true_refused_count() -> Result<(), String> {
+    let fixture = crate::analysis::source_calibration::OwnedFixture::new()?;
+    fixture.seed("b.py", b"b = 2\n")?;
+    fixture.seed("a.py", b"a = 1\n")?;
+    let options = AnalysisOptions {
+        root: fixture.root.clone(),
+        base: None,
+        diff_file: None,
+        mode: crate::analysis::AnalysisMode::Draft,
+        include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
+        perl_facts_path: None,
+        git_timeout: None,
+        git_candidate: None,
+        production_like_targets: Default::default(),
+        test_harnesses: Vec::new(),
+        resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
+    };
+    let (_, report) = crate::analysis::source_calibration::observe(|| {
+        PythonAdapter::analyze_diff_with_limits(
+            &options,
+            &[],
+            PythonDiffWalkLimits {
+                max_workspace_files: 1,
+                max_file_read_bytes: 100,
+                max_workspace_read_bytes: 100,
+            },
+        )
+        .map(|_| ())
+    })?;
+    assert_eq!(
+        report["stages"]["python_discovery"]["discovered_source_files"],
+        2
+    );
+    assert_eq!(
+        report["stages"]["python_discovery"]["retained_source_files"],
+        1
+    );
+    assert_eq!(report["stages"]["python_discovery"]["refused_files"], 1);
+    assert_eq!(
+        report["stages"]["python_source_read"]["successful_source_bytes"],
+        6
+    );
+    assert_eq!(report["stages"]["python_source_read"]["accepted_files"], 1);
+    Ok(())
+}
 
 #[cfg(test)]
 mod python_tests;

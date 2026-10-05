@@ -228,6 +228,11 @@ impl TypeScriptAdapter {
             file_read_limit,
             workspace_read_budget,
         );
+        #[cfg(test)]
+        if crate::analysis::source_calibration::active() {
+            crate::analysis::cancellation::checkpoint()?;
+            return Ok(LanguageDiffResult::default());
+        }
         let source_cache = workspace_read.sources;
         // Normalized-key view of the cache so Phase 2 can look a changed
         // file's source up regardless of path-separator spelling (the
