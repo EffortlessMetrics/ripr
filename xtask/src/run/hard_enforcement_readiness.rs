@@ -151,7 +151,7 @@ fn decode_mount_field(field: &str) -> Result<String, String> {
             position += 1;
         }
     }
-    String::from_utf8(decoded).map_err(|_| "non-UTF8 mount field".to_string())
+    String::from_utf8(decoded).map_err(|_utf8_error| "non-UTF8 mount field".to_string())
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -409,7 +409,7 @@ fn encode_report(value: &Value) -> Result<String, String> {
         .map_err(|err| format!("finish bounded readiness report: {err}"))?;
     output.storage.truncate(output.position);
     String::from_utf8(output.storage)
-        .map_err(|_| "readiness serializer emitted non-UTF8".to_string())
+        .map_err(|_utf8_error| "readiness serializer emitted non-UTF8".to_string())
 }
 
 pub(crate) fn hard_enforcement_readiness_report() -> Result<String, String> {

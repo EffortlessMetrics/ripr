@@ -45,7 +45,7 @@ jobs:
       - name: Observe native calibration enforcement readiness
         if: ${{ !cancelled() }}
         timeout-minutes: 1
-        run: cargo xtask ci-budget --hard-enforcement-readiness
+        run: cargo run --locked -p xtask -- ci-budget --hard-enforcement-readiness
       # Exercise Perl alongside the product's required/default adapters. A
       # Perl-only no-default build is invalid because RIPR requires lang-rust,
       # and doctor intentionally shares optional Python framework detection.
