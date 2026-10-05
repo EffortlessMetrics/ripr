@@ -62,7 +62,7 @@ map is:
 | `ripr receipt write/check` | `schema_version` | `0.1` |
 | `ripr feedback record/export` | `schema_version` | `0.1` |
 | badge JSON | `schema_version` | `0.8` |
-| `ripr cache status --json` | `schema_version` | `0.1` |
+| `ripr cache status --json` | `schema_version` | `0.2` |
 | `ripr mcp` status tool and resource | `schema_version` | `ripr-mcp-workspace-status-v1` (see [MCP workspace status server](interop/mcp.md)) |
 | `ripr swarm queue --json` | `schema_version` | `0.2` |
 | `ripr help --json` | `schema_version` | `2` |
@@ -288,16 +288,34 @@ PATH, symlinks resolved, or `null`), `path_ripr_is_cargo_build_output`,
 advisory: they never change `status` or the exit code, because a workspace build
 on PATH is a legitimate development setup.
 
-`ripr cache status --json` (schema `0.1`) prints one object with
-`schema_version`, `cache_dir` (the inspected directory), `status`,
-`entry_count` (regular files under the cache, symlinks skipped), and
-`total_size_bytes`. That `schema_version` versions this status report, not
-the on-disk cache layers (those carry their own versions in their directory
-names). `status` is `ok`, `not_found` (no cache directory yet; both counts
-are `0`), `partial` (some directories or entries, including the cache
-directory itself, could not be read, so the counts are lower bounds), or
-`unavailable` (the path is not a directory, is a symlink, or its metadata
-could not be read; both counts are `0`).
+`ripr cache status --json` (schema `0.2`) prints one object with
+`schema_version`, `cache_dir` (the directory as resolved from
+`RIPR_CACHE_DIR` or the workspace default), `real_cache_dir` (the resolved
+real directory when the configured cache path traverses a symlink or
+junction — as its leaf or through an ancestor component — otherwise
+`null`), `via_symlink` (`true` exactly when `real_cache_dir` is present),
+`status`, `entry_count`, `total_size_bytes`, `foreign_entry_count`, and
+`foreign_total_size_bytes`. `entry_count` and `total_size_bytes` cover only
+the recognized ripr cache layers — the recognized top-level layer
+directories, exactly the set `ripr cache clear` removes (schema `0.2`,
+#5987; earlier versions counted every regular file under the cache root). A
+regular file wearing a recognized layer name is disclosed as foreign, not
+owned: the clear planner accepts named layers only as directories and
+removes nothing in that state. Files anywhere else under the cache root —
+foreign layers, stray notes, stale-schema orphans — are disclosed
+separately as `foreign_entry_count` / `foreign_total_size_bytes`; clear
+preserves them. That `schema_version` versions this status report, not the
+on-disk cache layers (those carry their own versions in their directory
+names). `status` is `ok`, `not_found` (no cache directory yet; all four
+counts are `0`), `partial` (some directories or entries, including the
+cache directory itself, could not be read, so the counts are lower bounds),
+or `unavailable` (the inspected path is not a directory, is a broken
+symlink, or its metadata could not be read; all four counts are `0`). A
+cache path that traverses a symlink or junction is resolved to the real
+directory for inspection (#5989), matching the directory `ripr check` reads
+and writes through the alias; `cache clear` keeps its fail-closed symlink
+refusal for the leaf and for symlinked ancestors, and names the real path
+or offending component it protects.
 
 ## Matched intervention-study preregistration
 
@@ -455,6 +473,18 @@ identity agree and the analysis-outcome validator accepts the artifact.
 the typed outcome and its `limitations[]` rather than infer completeness from
 `findings` or `probes`. For `unsupported_input` and
 `partial_with_limitations`, zero findings is explicitly not a clean result.
+
+`identity.config_identity` (#5988) is the fingerprint of the exact
+`ripr.toml` text loaded for the run. It is non-null exactly when a config
+file was actually loaded; a defaults-only run (no config file, or a bound
+`--candidate-tree` subject that must ignore the worktree config) keeps it
+`null`. Any change to the loaded config content therefore moves the identity
+block — the finding-affecting allowlist fields, and equally the mode /
+unchanged-test / enabled-language settings the `--write-artifact` identity
+gate records in separate fields (a narrow finding-affecting hash alone would
+let those finding-changing settings share one block). Two runs whose loaded
+config text differs never share an identity block, even when `input_identity`
+(the diff digest alone) is equal.
 
 `eol_only_churn` (#4952) is a churn-shape disclosure, not an incomplete-analysis
 limitation: a changed file's lines pair identical before/after text at the same

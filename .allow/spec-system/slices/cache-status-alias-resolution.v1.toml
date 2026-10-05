@@ -1,0 +1,66 @@
+schema_version = "2.0"
+id = "ripr.slice.cache-status-alias-resolution.v1"
+generation = 1
+
+source_issue = "issue:5989"
+design_reference = "issue:5989#suggested-direction"
+change_class = "behavior_change"
+
+claim_boundary = """
+`ripr cache status` resolves a cache base that traverses a symlink or
+junction — as its leaf (for example a Windows junction `RIPR_CACHE_DIR`) or
+through an ancestor component (review repair) — to the real directory and
+reports the counts of the cache actually in use, with an additive
+`via_symlink` / `real_cache_dir` disclosure; it no longer reports
+`unavailable` with zero counts for a cache `ripr check` is actively reading
+and writing through the alias. A dangling alias still reports `unavailable`
+honestly. `cache clear` keeps its deliberate fail-closed symlink refusal
+unchanged in behavior (leaf and symlinked ancestors); its leaf refusal
+message now names the resolved real path it protects, so the disclosed route
+(`clear` on the real directory) is actionable, and the ancestor refusal
+already names the alias component. Part of the status report's 0.2 schema
+move. Claims no change to clear's deletion boundary, the analysis cache
+read/write path, or any non-status verb's acceptance of aliases.
+"""
+
+non_goals = [
+  "letting `cache clear` delete through a symlink or junction (fail-closed stays)",
+  "following symlinks encountered inside the cache root during traversal",
+  "changing `ripr doctor`'s cache-size line",
+  "changing the xtask cache-maintenance alias refusals (#4403)",
+]
+
+return_conditions = [
+  "Return to root if status again reports a cache in active use through a junction as unavailable.",
+  "Return to root if clear deletes through an alias or its refusals stop naming the real path or alias component.",
+  "Return to root if a dangling alias stops being reported as unavailable.",
+  "Return to root if an ancestor-alias cache path stops disclosing the resolution.",
+]
+
+owned_seams = [
+  "seam:ripr:cli:cache-status-report",
+  "seam:ripr:cli:cache-clear-refusal-narration",
+]
+
+shared_seams = [
+  "seam:ripr:analysis:cache-status-inspection",
+  "seam:ripr:docs:output-schema",
+]
+
+forbidden_seams = [
+  "seam:ripr:cli:cache-clear-planner",
+  "seam:ripr:analysis:file-facts-cache",
+]
+
+[[requirement_delta]]
+requirement_id = "issue:5989#suggested-direction"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

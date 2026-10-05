@@ -266,6 +266,20 @@ pub(crate) fn check_artifact_config_identity_hash(config: &RiprConfig) -> String
     config_fingerprint(&pairs.join("\n"))
 }
 
+/// The config identity published in the diff-check outcome identity block
+/// (#5988): the fingerprint of the exact `ripr.toml` text loaded for the run,
+/// so any change to the loaded config — finding-affecting allowlist fields,
+/// but also the mode / unchanged-test / enabled-language settings the
+/// check-artifact identity records in separate fields — moves the identity
+/// block agents compare (#6777 review: the finding-affecting allowlist alone
+/// let finding-changing settings share one block). `Some` exactly when a
+/// `ripr.toml` was actually loaded ([`RiprConfig::source_text`] is present);
+/// a defaults-only run — no config file, or a bound Git-candidate subject
+/// that must ignore the worktree config — keeps `null`.
+pub(crate) fn loaded_config_identity(config: &RiprConfig) -> Option<String> {
+    config.source_text().map(config_fingerprint)
+}
+
 /// The exact `ripr.toml` fields the repo-exposure producer (the seam
 /// inventory in `crates/ripr/src/analysis/seam_inventory.rs`) consumes
 /// semantically. Verified against the producer: the seam walker is Rust-only
