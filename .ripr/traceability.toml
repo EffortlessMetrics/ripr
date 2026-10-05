@@ -9931,6 +9931,9 @@ tests = [
   "crates/ripr/src/analysis/language/rust/mod.rs::tests::draft_diff_scope_stays_narrow_without_the_path_dependency_edge",
   "crates/ripr/src/analysis/language/rust/mod.rs::tests::instant_mode_does_not_expand_scope_through_path_dependencies",
   "crates/ripr/src/analysis/language/rust/mod.rs::tests::draft_diff_scope_expands_custom_target_files_to_their_path_dependents",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::auto_narrows_at_the_threshold_and_refuses_at_the_guard",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::auto_refuses_a_core_over_the_guard_before_building_it",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::diff_narrow_index_files_never_exceeds_the_hard_limit",
 ]
 fixtures = []
 code = [

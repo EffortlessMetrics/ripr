@@ -31,9 +31,11 @@ use super::write_text_file;
 const DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS: u64 = 120_000;
 
 /// Default ceiling on the union of analyzable workspace files and changed
-/// owner-attribution inputs. Match the current diff/repo family default
-/// (raised in #4972 after this repository grew beyond 800 files), while
-/// remaining below the 1,600–1,700-file external failure shapes in #3768.
+/// owner-attribution inputs. Match the repo-scope default and the diff
+/// narrowing threshold (raised in #4972 after this repository grew beyond
+/// 800 files) and stay below the 1,600–1,700-file external failure shapes
+/// in #3768. Guidance indexes the whole workspace, so it does not follow
+/// the 10,000-file diff memory guard.
 /// This is input admission, not an RSS bound or evidence that admitted
 /// execution will complete on every runner.
 const REVIEW_GUIDANCE_MAX_INDEX_FILES_DEFAULT: usize = 1200;

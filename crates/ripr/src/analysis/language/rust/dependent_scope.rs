@@ -5,8 +5,11 @@
 //! slice C). On a large workspace that reverse closure is most of the
 //! repository: a two-file change in `bevy_reflect` selected 1,738 of 1,925
 //! files and tripped the `diff_scope_oversized` guard. By default the
-//! narrowing below runs only when that closure would exceed the index limit
-//! (see [`DependentScopeMode::Auto`]).
+//! narrowing below runs only when that closure would exceed the narrowing
+//! threshold (`RIPR_DIFF_NARROW_INDEX_FILES`, see
+//! [`DependentScopeMode::Auto`]). That threshold bounds time; the separate,
+//! higher `RIPR_MAX_DIFF_INDEX_FILES` guard bounds memory, so a narrowed
+//! selection still over the threshold runs instead of refusing.
 //!
 //! The extra packages cannot contribute related tests here. The selection
 //! is never workspace-complete, so the related-test package guard drops
@@ -36,7 +39,7 @@
 //! indexing them. The witness walks run only for `no_static_path` findings;
 //! [`NarrowedScope::reach_index`] widens to the owner's caller levels on
 //! demand, bounded by the walks' own depth, and names an unsearched reach
-//! when that widening would exceed the index limit.
+//! when that widening would exceed the narrowing threshold.
 //!
 //! Every admission test is a lexical superset of the parser fact it stands
 //! for: a call, definition or mention the index records is spelled in the
@@ -50,13 +53,22 @@ use crate::analysis::cancellation;
 use crate::analysis::classify;
 use crate::analysis::consumed_source::ConsumedRustSources;
 use crate::analysis::facts::{FunctionSummary, RustIndex};
+use rayon::prelude::*;
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
+/// Dependent files read and scanned per parallel admission batch, bounding
+/// how many withheld files' bytes are held at once.
+const ADMISSION_BATCH_FILES: usize = 64;
+
+/// Source bytes after which an admission batch stops reading, so a run of
+/// large generated files holds at most this plus one file at once.
+const ADMISSION_BATCH_BYTES: usize = 8 * 1024 * 1024;
+
 /// Env override for the dependent scope. `auto` (also empty or unset)
 /// admits by name only when the whole reverse closure would exceed the
-/// index limit; `named` always admits by name; `full` never does (the
-/// pre-#5320 selection). Anything else fails. `full` and `named` are the
+/// narrowing threshold (`RIPR_DIFF_NARROW_INDEX_FILES`); `named` always
+/// admits by name; `full` never does (the pre-#5320 selection). Anything else fails. `full` and `named` are the
 /// operator escape hatches and the parity-check switches.
 pub(crate) const DEPENDENT_SCOPE_ENV: &str = "RIPR_DIFF_DEPENDENT_SCOPE";
 
@@ -64,7 +76,7 @@ pub(crate) const DEPENDENT_SCOPE_ENV: &str = "RIPR_DIFF_DEPENDENT_SCOPE";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DependentScopeMode {
     /// Admit dependent files by name when the full selection would exceed
-    /// the index limit (the default). Under the limit the full selection
+    /// the narrowing threshold (the default). Under it the full selection
     /// already runs, and narrowing costs more than it saves whenever the
     /// witness closure ends up admitting most dependent files (measured on
     /// rust-analyzer: 17.0s narrowed against 14.0s full, identical output).
@@ -80,8 +92,8 @@ pub(crate) enum DependentScopeMode {
 }
 
 impl DependentScopeMode {
-    /// Whether a run whose full selection holds `selected` files, against
-    /// an index limit of `limit`, narrows.
+    /// Whether a run whose full selection holds `selected` files, against a
+    /// narrowing threshold of `limit`, narrows.
     pub(crate) fn narrows(self, selected: usize, limit: usize) -> bool {
         match self {
             Self::Auto => selected > limit,
@@ -392,7 +404,7 @@ pub(super) fn admission_query(
 }
 
 /// The witness search for this finding's owner would need more files than
-/// the index limit allows. Today's full selection refused the whole run in
+/// the narrowing threshold allows. Today's full selection refused the whole run in
 /// this case; this keeps the run and names the unsearched reach instead of
 /// letting `no_static_path` read as a searched-and-empty result.
 pub(super) fn apply_reach_search_over_limit(
@@ -409,8 +421,9 @@ pub(super) fn apply_reach_search_over_limit(
         .push(crate::domain::StopReason::TransitiveReachUnresolved);
     finding.evidence.push(format!(
         "ripr did not search dependent packages for a test that reaches `{owner}`: its callers \
-         span at least {files} Rust files, over the {limit}-file index limit. A test there may \
-         still observe this change. Raise RIPR_MAX_DIFF_INDEX_FILES to search them."
+         span at least {files} Rust files, over the {limit}-file narrowing threshold. A test there \
+         may still observe this change. Raise RIPR_DIFF_NARROW_INDEX_FILES to search them \
+         (it is capped at RIPR_MAX_DIFF_INDEX_FILES)."
     ));
     finding.evidence.extend([
         format!(
@@ -418,7 +431,7 @@ pub(super) fn apply_reach_search_over_limit(
             crate::domain::LIMITATION_LAST_ESTABLISHED_EDGE_PREFIX
         ),
         format!(
-            "{}callers of `{owner}` -> tests beyond the {limit}-file index limit",
+            "{}callers of `{owner}` -> tests beyond the {limit}-file narrowing threshold",
             crate::domain::LIMITATION_FIRST_UNRESOLVED_EDGE_PREFIX
         ),
         format!(
@@ -470,16 +483,37 @@ struct WithheldTokens {
     macros: Vec<Vec<String>>,
 }
 
+/// One withheld file's lexical facts, scanned off the main thread.
+struct FileTokens {
+    unicode: bool,
+    unique: HashSet<Box<[u8]>>,
+    macros: Vec<String>,
+}
+
+impl FileTokens {
+    fn scan(bytes: &[u8]) -> Self {
+        Self {
+            unicode: !bytes.is_ascii(),
+            unique: identifier_runs(bytes).map(Box::from).collect(),
+            macros: macro_rules_names(bytes),
+        }
+    }
+}
+
 impl WithheldTokens {
+    #[cfg(test)]
     fn insert(&mut self, id: u32, bytes: &[u8]) {
-        if !bytes.is_ascii() {
+        self.insert_scanned(id, FileTokens::scan(bytes));
+    }
+
+    fn insert_scanned(&mut self, id: u32, file: FileTokens) {
+        if file.unicode {
             self.unicode.push(id);
         }
-        let unique = identifier_runs(bytes).collect::<HashSet<_>>();
-        for token in unique {
-            self.postings.entry(token.into()).or_default().push(id);
+        for token in file.unique {
+            self.postings.entry(token).or_default().push(id);
         }
-        self.macros.push(macro_rules_names(bytes));
+        self.macros.push(file.macros);
     }
 
     /// Ids of the files that may spell one of `names`, ascending.
@@ -580,32 +614,66 @@ pub(super) fn admit_dependents(
             admitted.push(file.clone());
         }
     }
-    for file in dependent {
-        cancellation::checkpoint()?;
-        // The bytes decide admission, so they bind the result exactly as
-        // an indexed file's bytes do.
-        let bytes = read_source(root, file)?;
-        consumed.record(file, bytes.as_deref());
-        let Some(bytes) = bytes else {
+    // The admission test reads only fields the loop below never changes,
+    // so each chunk's lexical scans run on the rayon workers; reads,
+    // recording and every order-dependent fold stay sequential, in input
+    // order.
+    let token = cancellation::current_token();
+    let mut next = 0;
+    while next < dependent.len() {
+        let mut loaded = Vec::with_capacity(ADMISSION_BATCH_FILES);
+        let batch_start = next;
+        let mut batch_bytes = 0usize;
+        while next < dependent.len()
+            && next - batch_start < ADMISSION_BATCH_FILES
+            && batch_bytes < ADMISSION_BATCH_BYTES
+        {
+            let file = dependent[next];
+            next += 1;
+            cancellation::checkpoint()?;
+            // The bytes decide admission, so they bind the result exactly as
+            // an indexed file's bytes do.
+            let bytes = read_source(root, file)?;
+            consumed.record(file, bytes.as_deref());
             // No content to index: the full selection skips it too.
-            continue;
-        };
-        let harness_target = test_harnesses
-            .iter()
-            .any(|registration| registration.target == *file);
-        if !core_only && (harness_target || query.admits(&bytes)) {
-            if !query.implemented_traits.is_empty() {
-                query.note_trait_receivers(&String::from_utf8_lossy(&bytes));
+            if let Some(bytes) = bytes {
+                batch_bytes = batch_bytes.saturating_add(bytes.len());
+                loaded.push((file, bytes));
             }
-            admitted.push(file.clone());
-        } else {
-            let id = u32::try_from(withheld.len())
-                .map_err(|err| format!("dependent scope: too many withheld files: {err}"))?;
-            tokens.insert(id, &bytes);
-            withheld.push(file.clone());
-            if !bindings_saturated {
-                bindings_saturated = withheld_macro_bindings
-                    .absorb(&String::from_utf8_lossy(&bytes), &query.package_names);
+        }
+        let scanned: Vec<Result<Option<FileTokens>, String>> = loaded
+            .par_iter()
+            .map(|(file, bytes)| {
+                cancellation::with_optional_token(token.as_ref(), || {
+                    cancellation::checkpoint()?;
+                    let harness_target = test_harnesses
+                        .iter()
+                        .any(|registration| registration.target == **file);
+                    let admit = !core_only && (harness_target || query.admits(bytes));
+                    Ok((!admit).then(|| FileTokens::scan(bytes)))
+                })
+            })
+            .collect();
+        for ((file, bytes), scan) in loaded.iter().zip(scanned) {
+            cancellation::checkpoint()?;
+            match scan? {
+                None => {
+                    if !query.implemented_traits.is_empty() {
+                        query.note_trait_receivers(&String::from_utf8_lossy(bytes));
+                    }
+                    admitted.push((*file).clone());
+                }
+                Some(file_tokens) => {
+                    let id = u32::try_from(withheld.len()).map_err(|err| {
+                        format!("dependent scope: too many withheld files: {err}")
+                    })?;
+                    tokens.insert_scanned(id, file_tokens);
+                    withheld.push((*file).clone());
+                    if !bindings_saturated {
+                        bindings_saturated = withheld_macro_bindings
+                            .absorb(&String::from_utf8_lossy(bytes), &query.package_names);
+                    }
+                }
             }
         }
     }
@@ -991,12 +1059,11 @@ fn build_index(
     consumed: &mut ConsumedRustSources,
 ) -> Result<RustIndex, String> {
     let loaded = load(root, files, consumed)?;
-    let cached =
-        crate::analysis::rust_index::build_index_from_loaded_files_with_cache_and_test_harnesses(
-            root,
-            &loaded,
-            test_harnesses,
-        )?;
+    let cached = crate::analysis::rust_index::build_analysis_index_from_loaded_files(
+        root,
+        &loaded,
+        test_harnesses,
+    )?;
     Ok(cached.index)
 }
 

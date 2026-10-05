@@ -249,15 +249,18 @@ Environment variables:
                                     Default: 2000.
   RIPR_MAX_DIFF_INDEX_FILES         Maximum Rust files loaded into the diff
                                     index before check fails closed as
-                                    diff_scope_oversized. With --json, stdout
-                                    carries a non-consumable limited artifact.
-                                    Under RIPR_DIFF_DEPENDENT_SCOPE=auto a
-                                    Draft/Fast selection over it because of
-                                    dependent packages narrows instead.
-                                    Default: 1200.
+                                    diff_scope_oversized (a memory guard).
+                                    With --json, stdout carries a
+                                    non-consumable limited artifact.
+                                    Default: 10000.
+  RIPR_DIFF_NARROW_INDEX_FILES      Index size above which Draft/Fast
+                                    narrows dependent packages and stops
+                                    widening reach searches. Bounds time,
+                                    never refuses; clamped to
+                                    RIPR_MAX_DIFF_INDEX_FILES. Default: 1200.
   RIPR_DIFF_DEPENDENT_SCOPE         How Draft/Fast indexes packages that
                                     depend on the changed ones: auto (whole
-                                    while under RIPR_MAX_DIFF_INDEX_FILES,
+                                    while under RIPR_DIFF_NARROW_INDEX_FILES,
                                     else named), named (only files that can
                                     change a result), or full. Default: auto.
   RIPR_PARTIAL_DIFF_FILE_BUDGET     Changed-line files analyzed before check

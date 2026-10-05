@@ -8,7 +8,8 @@
 //! file, nor a quiet "clean" result for input ripr could not read is accepted.
 //!
 //! Cases: unusual in-repo file names, option-shaped `--base` values, a
-//! non-UTF-8 source file, symlink loops, an oversized diff, shallow clones,
+//! non-UTF-8 source file, symlink loops, an oversized diff, a package over
+//! the narrowing threshold, shallow clones,
 //! detached HEAD, linked worktrees, submodules, a repository without a usable
 //! base, and user git configuration that changes `git diff` output.
 
@@ -420,6 +421,51 @@ fn oversized_diff_is_refused_with_a_repair_route() -> Result<(), String> {
         || !ran.stderr.contains("RIPR_MAX_DIFF_CHANGED_RUST_LINES")
     {
         return Err(format!("expected oversized-diff refusal\n{}", ran.stderr));
+    }
+    Ok(())
+}
+
+/// A changed package larger than the 1,200-file narrowing threshold runs at
+/// default settings: that threshold bounds time, and only the higher
+/// `RIPR_MAX_DIFF_INDEX_FILES` memory guard refuses. Before the split, the
+/// same 1,200 bounded both and this run was refused. The control lowers the
+/// hard limit back to 1,200 and must refuse, so the fixture really selects
+/// more files than the threshold.
+#[test]
+fn package_over_the_narrowing_threshold_runs_until_the_memory_guard() -> Result<(), String> {
+    let scratch = Scratch::new("narrow")?;
+    let root = scratch.path.join("r");
+    repo(&root, |root| {
+        for i in 0..1_250 {
+            fs::write(
+                root.join(format!("src/m{i}.rs")),
+                format!("pub fn m{i}(a: u32) -> u32 {{ a + {i} }}\n"),
+            )
+            .map_err(|e| format!("write failed: {e}"))?;
+        }
+        // The unchanged modules belong to the base, so only `total` changes.
+        git(root, &["add", "-A"])?;
+        git(root, &["commit", "-q", "-m", "modules"])?;
+        git(root, &["branch", "-f", "main", "HEAD"])?;
+        change_lib(root)
+    })?;
+    let ran = ripr(&root, &["check"], &[])?;
+    assert_found_change(&ran, "package over the narrowing threshold")?;
+    if ran.stderr.contains("diff_scope_oversized") {
+        return Err(format!("the narrowing threshold refused\n{}", ran.stderr));
+    }
+    let refused = ripr(&root, &["check"], &[("RIPR_MAX_DIFF_INDEX_FILES", "1200")])?;
+    assert_sane(&refused, "package over the memory guard")?;
+    if refused.code != Some(2)
+        || !refused.stderr.contains("diff_scope_oversized")
+        || !refused
+            .stderr
+            .contains("RIPR_MAX_DIFF_INDEX_FILES limit (1200)")
+    {
+        return Err(format!(
+            "expected the memory guard to refuse\n{}",
+            refused.stderr
+        ));
     }
     Ok(())
 }
