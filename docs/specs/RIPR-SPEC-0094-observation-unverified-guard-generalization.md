@@ -11,6 +11,7 @@ Linked issues:
 - #1216
 - #4404
 - #4486
+- #6297
 
 Linked PRs:
 
@@ -272,6 +273,44 @@ Proof: `name_only_test_cannot_supply_the_oracle_for_reach_from_another_test`
 and the `proximity_name_oracle_not_credited` fixture, registered in the
 honesty corpus.
 
+## Same-file tests cannot confirm a match arm beside a reaching test (#6297)
+
+A match arm's variant token (`Unit::Fortnight`) names an enum value that every
+function handling the enum shares, so naming it does not tie an assertion to
+the changed owner. When a related test is reach-bearing (as defined above,
+except a seam callee call, which runs the seam's callee rather than the owner),
+a test related only by `same_test_file` or `same_module` still credits its
+oracle strength but cannot confirm a match arm's observation unless it may run
+the owner. It may when its body invokes a macro other than the assertion and
+formatting macros, or when it calls the owner, a production function with a
+name path to the owner within the transitive-reach bound (RIPR-SPEC-0114), or
+a lower-case name with no indexed function (a std or trait method can dispatch
+into the owner). It also may when the owner is, or its name path runs through,
+a trait method Rust calls without naming it (`fmt` behind `format!`, `eq` behind `==`,
+`add`, `index`, `deref`, `next`, `drop` and the like), since such a call leaves
+no call fact. Only a trait impl or trait method of that name counts; a free or
+inherent `fn fmt` or `fn clone` is reached by name only, and an unknown
+container (lexical fallback) counts. Only a test whose calls are all constructors or indexed
+functions with no name path to the owner is withheld. When no related test is
+reach-bearing, same-file and same-module tests confirm as before.
+
+Without this rule a same-file
+`assert!(matches!(Unit::from_str("fortnight"), Ok(Unit::Fortnight)))` made the
+`Unit::Fortnight =>` arm of an unrelated `seconds` function `exposed`, and
+rewriting only that assertion moved the arm to `weakly_exposed`.
+
+The rule is scoped to match arms. A return-value token names the changed
+expression itself, and the #4486 same-file credit stays for other families.
+
+When the arm stays unconfirmed and such a test was withheld, the discriminator
+summary says that a test which only shares the file or module cannot confirm
+the arm, instead of claiming no assertion names it.
+
+Proof: `match_arm_proximity_test_cannot_confirm_beside_reaching_test`, the
+`match_arm_proximity_confirmation_not_credited` fixture, and its control
+`match_arm_proximity_wrapper_confirms` (a same-file test of a public wrapper
+keeps `exposed`), both registered in the honesty corpus.
+
 ## Test Mapping
 
 - `crates/ripr/src/analysis/classify/reveal.rs` unit tests for all new families.
@@ -279,6 +318,10 @@ honesty corpus.
   and `fixtures/oracle_confirmation_mixed`, registered in the honesty corpus.
 - Name-only relations: `name_only_test_cannot_supply_the_oracle_for_reach_from_another_test`
   and `fixtures/proximity_name_oracle_not_credited`, registered in the honesty
+  corpus.
+- Match-arm proximity confirmation: `match_arm_proximity_test_cannot_confirm_beside_reaching_test`,
+  `fixtures/match_arm_proximity_confirmation_not_credited` and its control
+  `fixtures/match_arm_proximity_wrapper_confirms`, registered in the honesty
   corpus.
 - 9 new golden fixtures (see traceability.toml for the full list).
 - `crates/ripr/src/analysis/classifier.rs` — 2 existing tests updated.

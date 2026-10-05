@@ -199,7 +199,7 @@ const TRANSPARENT_TEST_MACROS: &[&str] = &[
 /// True when `body` invokes a macro (`name!(`, `name![`, `name! {`) outside
 /// [`TRANSPARENT_TEST_MACROS`]. Text inside string literals counts too, which
 /// only keeps reach uncertain.
-fn invokes_opaque_macro(body: &str) -> bool {
+pub(super) fn invokes_opaque_macro(body: &str) -> bool {
     let bytes = body.as_bytes();
     bytes.iter().enumerate().any(|(bang, byte)| {
         if *byte != b'!' {
