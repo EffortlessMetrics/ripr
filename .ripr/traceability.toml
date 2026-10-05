@@ -654,6 +654,9 @@ tests = [
   "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_parses_repo_exposure_and_cargo_mutants_json",
   "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_merges_mutants_and_outcomes_by_id",
   "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_reports_are_advisory_and_structured",
+  "crates/ripr/src/output/mutation_calibration.rs::tests::public_parser_exposes_the_same_cargo_mutants_importer",
+  "crates/ripr/src/output/mutation_calibration/outcome_records.rs::tests::parses_cargo_mutants_out_directory_shapes",
+  "crates/ripr/src/output/mutation_calibration/outcome_records.rs::tests::maps_cargo_mutants_timeout_and_unviable_summaries",
   "crates/ripr/src/cli/commands.rs::tests::calibrate_parses_required_inputs_format_and_out",
   "crates/ripr/src/cli/commands.rs::tests::calibrate_command_writes_json_file",
   "crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_prints_markdown_by_default",
@@ -666,6 +669,7 @@ tests = [
   "xtask/src/main.rs::mutation_calibration_merges_mutants_and_outcomes_by_mutant_id",
   "xtask/src/main.rs::mutation_calibration_imports_span_based_mutant_locations",
   "xtask/src/main.rs::mutation_calibration_directory_input_combines_outcomes_and_mutants",
+  "xtask/src/main.rs::mutation_calibration_imports_cargo_mutants_27_1_scenario_mutant_summaries",
   "xtask/src/main.rs::mutation_calibration_joins_by_seam_id_then_file_line",
   "xtask/src/main.rs::mutation_calibration_summarizes_static_runtime_agreement",
   "xtask/src/main.rs::mutation_calibration_reports_ambiguous_file_line_without_selecting_first",
@@ -685,6 +689,8 @@ code = [
   "crates/ripr/src/cli/execute.rs",
   "crates/ripr/src/cli/help.rs",
   "crates/ripr/src/output/mutation_calibration.rs",
+  "crates/ripr/src/output/mutation_calibration/outcome_records.rs",
+  "xtask/src/reports/mutation.rs",
   "xtask/src/main.rs"
 ]
 outputs = [

@@ -55,6 +55,11 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Calibration: `cargo xtask mutation-calibration` now imports cargo-mutants
+  JSON through the same product importer as `ripr calibrate cargo-mutants`.
+  A real cargo-mutants 27.1 `mutants.out` (`scenario.Mutant`,
+  `CaughtMutant`/`MissedMutant`/`Timeout`/`Unviable`, merge by mutant name)
+  is no longer read as all-unknown (#5374).
 - Rust analysis: a test-local identifier that contains an error lexeme in
   operand position (`error_count`, `nonerror`) no longer confirms a changed `?`
   error path as `exposed`. The operand twin stays `weakly_exposed` with

@@ -17,6 +17,46 @@ mod outcome_records;
 
 use outcome_records::parse_mutation_outcomes_json;
 
+/// One imported cargo-mutants outcome. Shared by `ripr calibrate cargo-mutants`
+/// and `cargo xtask mutation-calibration` so those entry points cannot drift.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CargoMutantsOutcomeRecord {
+    pub mutant_id: Option<String>,
+    pub seam_id: Option<String>,
+    pub file: Option<String>,
+    pub line: Option<usize>,
+    pub mutation_operator: String,
+    pub runtime_outcome: String,
+    pub duration: Option<String>,
+    pub test_command: Option<String>,
+}
+
+/// Parse cargo-mutants JSON (a file body or a combined `mutants.out` array)
+/// using the product importer.
+pub fn parse_cargo_mutants_outcomes_json(
+    json: &str,
+) -> Result<Vec<CargoMutantsOutcomeRecord>, String> {
+    Ok(parse_mutation_outcomes_json(json)?
+        .into_iter()
+        .map(CargoMutantsOutcomeRecord::from)
+        .collect())
+}
+
+impl From<MutationOutcomeRecord> for CargoMutantsOutcomeRecord {
+    fn from(record: MutationOutcomeRecord) -> Self {
+        Self {
+            mutant_id: record.mutant_id,
+            seam_id: record.seam_id,
+            file: record.file,
+            line: record.line,
+            mutation_operator: record.mutation_operator,
+            runtime_outcome: record.runtime_outcome,
+            duration: record.duration,
+            test_command: record.test_command,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct StaticSeamRecord {
     seam_id: String,
@@ -979,6 +1019,35 @@ fn md_cell(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn public_parser_exposes_the_same_cargo_mutants_importer() -> Result<(), String> {
+        let json = r#"{
+  "outcomes": [
+    {
+      "scenario": {"Mutant": {
+        "name": "src/lib.rs:8:1: replace answer with 0",
+        "file": "src/lib.rs",
+        "span": {"start": {"line": 8, "column": 1}, "end": {"line": 8, "column": 2}},
+        "replacement": "0",
+        "genre": "FnValue"
+      }},
+      "summary": "CaughtMutant"
+    }
+  ]
+}"#;
+        let internal = parse_mutation_outcomes_json(json)?;
+        let public = parse_cargo_mutants_outcomes_json(json)?;
+        assert_eq!(internal.len(), 1);
+        assert_eq!(public.len(), 1);
+        assert_eq!(public[0].runtime_outcome, "caught");
+        assert_eq!(public[0].mutant_id, internal[0].mutant_id);
+        assert_eq!(public[0].file, internal[0].file);
+        assert_eq!(public[0].line, internal[0].line);
+        assert_eq!(public[0].mutation_operator, internal[0].mutation_operator);
+        assert_eq!(public[0].runtime_outcome, internal[0].runtime_outcome);
+        Ok(())
+    }
 
     #[test]
     fn mutation_calibration_summarizes_static_runtime_agreement() -> Result<(), String> {
