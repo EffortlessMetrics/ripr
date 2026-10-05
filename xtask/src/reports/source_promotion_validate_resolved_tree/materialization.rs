@@ -192,6 +192,11 @@ fn run_required_command_observed(
 ) -> Value {
     let args = vec![command.to_string()];
     let mut checker_pid = None;
+    let parent_context = if phase_diagnostics {
+        crate::policy::phase_diagnostics::ParentContext::for_owned_root(root, source_parent)
+    } else {
+        None
+    };
     let context = format!("source-trusted governance command {command}");
     let envs = [
         ("GIT_NO_REPLACE_OBJECTS", "1"),
@@ -231,6 +236,7 @@ fn run_required_command_observed(
                     &output.stderr,
                     checker_pid,
                     output.stderr_truncated,
+                    parent_context.as_ref(),
                 );
             }
             let _ = output.duration;

@@ -114,8 +114,8 @@ fn validate_test_covered_by(
         .iter()
         .filter(|selector| selector.host.is_none_or(|declared| declared == host));
     let mut ordinal = 0;
-    let observation = Observation::for_checker();
-    validate_test_covered_by_with(path, commands, host, |args| {
+    let observation = Observation::for_checker(|| diagnostic_plan(commands, host));
+    let result = validate_test_covered_by_with(path, commands, host, |args| {
         ordinal += 1;
         let policy_line = selectors.next().map(|selector| selector.line);
         let spawns = enumeration_spawns(args);
@@ -125,17 +125,17 @@ fn validate_test_covered_by(
             if index == 0 && warmup && !warmed.insert(spawn.args.join("\u{1f}")) {
                 continue;
             }
-            if let Some(observation) = &observation {
-                observation.phase(ordinal, policy_line, spawn.description, &spawn.args);
-            }
-            let output = if let Some(observation) = &observation {
+            let phase = observation.as_ref().and_then(|observation| {
+                observation.phase(ordinal, policy_line, spawn.description, &spawn.args)
+            });
+            let output = if let Some(phase) = &phase {
                 capture_output_with_timeout_observed(
                     "cargo",
                     &spawn.args,
                     &[],
                     spawn.timeout,
                     spawn.description,
-                    observation,
+                    phase,
                 )?
             } else {
                 crate::run::capture_output_with_timeout(
@@ -154,7 +154,11 @@ fn validate_test_covered_by(
         let output = listed
             .ok_or_else(|| "test-valued covered_by enumeration produced no spawn".to_string())?;
         Ok(enumeration_result(output, TEST_COVERED_BY_LIST_TIMEOUT))
-    })
+    });
+    if let Some(observation) = &observation {
+        observation.finished(result.is_ok());
+    }
+    result
 }
 
 /// One cargo spawn used to prove a test-valued `covered_by` pointer.
@@ -193,6 +197,61 @@ fn enumeration_spawns(args: &[String]) -> Vec<CoveredBySpawn> {
             description: "test-valued covered_by doc enumeration",
         }]
     }
+}
+
+fn enumeration_args(command: &str) -> Vec<String> {
+    let words = command.split_whitespace().skip(2);
+    let mut args = vec!["test".to_string()];
+    args.extend(words.map(ToString::to_string));
+    args.extend([
+        "--".to_string(),
+        "--list".to_string(),
+        "--format".to_string(),
+        "terse".to_string(),
+    ]);
+    args
+}
+pub(crate) fn diagnostic_plan(
+    commands: &[FilePolicyTestCommand],
+    host: FilePolicyHost,
+) -> Option<super::phase_diagnostics::DiagnosticPlan> {
+    let mut argv = Vec::new();
+    let mut steps = Vec::new();
+    let mut warmed = BTreeSet::new();
+    for (index, selector) in commands
+        .iter()
+        .filter(|v| v.host.is_none_or(|h| h == host))
+        .enumerate()
+    {
+        for (spawn_index, spawn) in enumeration_spawns(&enumeration_args(&selector.command))
+            .into_iter()
+            .enumerate()
+        {
+            let warmup = spawn.description == "test-valued covered_by build";
+            if spawn_index == 0 && warmup && !warmed.insert(spawn.args.join("\u{1f}")) {
+                continue;
+            }
+            let kind = match spawn.description {
+                "test-valued covered_by build" => "b",
+                "test-valued covered_by enumeration" => "l",
+                "test-valued covered_by doc enumeration" => "d",
+                _ => return None,
+            };
+            let argid = if let Some(argid) = argv.iter().position(|v| v == &spawn.args) {
+                argid
+            } else {
+                argv.push(spawn.args);
+                argv.len() - 1
+            };
+            steps.push(super::phase_diagnostics::PlannedPhase {
+                selector: index + 1,
+                line: selector.line,
+                kind,
+                argv: argid,
+            });
+        }
+    }
+    super::phase_diagnostics::DiagnosticPlan::new(host.name(), argv, steps)
 }
 
 /// Build args for `cargo test … --no-run`, or `None` when Cargo rejects
@@ -259,15 +318,7 @@ fn validate_test_covered_by_with(
             });
             continue;
         }
-        let words = command.split_whitespace().skip(2);
-        let mut args = vec!["test".to_string()];
-        args.extend(words.map(ToString::to_string));
-        args.extend([
-            "--".to_string(),
-            "--list".to_string(),
-            "--format".to_string(),
-            "terse".to_string(),
-        ]);
+        let args = enumeration_args(command);
         let (success, stdout, stderr) = enumerate(&args)
             .map_err(|error| format!("{path}:{line} enumerate `{command}`: {error}"))?;
         if stderr.starts_with(COVERED_BY_INSTRUMENT_PREFIX) {
