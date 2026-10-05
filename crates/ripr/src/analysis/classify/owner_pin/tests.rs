@@ -966,3 +966,84 @@ fn a_trait_receiver_pins_only_through_its_one_constructor() {
     );
     assert!(trait_impl_self_type_names(other_meter, "Gauge").is_empty());
 }
+
+const GATE_LIB: &str = "pub fn gate(value: u32) -> bool {\n    10 <= value\n}\n\npub fn level(value: u32) -> u32 {\n    10 + value\n}\n";
+
+fn predicate_probe(owner: &FunctionSummary, expression: &str) -> Probe {
+    Probe {
+        family: ProbeFamily::Predicate,
+        ..return_probe(owner, expression)
+    }
+}
+
+#[test]
+fn a_bare_assert_pins_a_bool_owner_to_true_or_false() {
+    let tests = "use demo::{gate, level};\n\n#[test]\nfn pins() {\n    assert!(gate(10));\n    assert!(!gate(9), \"nine is below\");\n    assert!(gate(10) && gate(11));\n    assert!(gate(10).then_some(1).is_some());\n    assert!(!!gate(10));\n    debug_assert!(gate(10));\n    assert!(level(1) > 0);\n}\n";
+    let index = index(&[(LIB, GATE_LIB), (TESTS, tests)]);
+    let owner = owner(&index, "gate");
+    // The pin is the same for the return value and for a predicate that is
+    // the bool owner's whole tail.
+    for probe in [
+        return_probe(owner, "10 <= value"),
+        predicate_probe(owner, "10 <= value"),
+    ] {
+        let pin = OwnerReturnPin::establish(&probe, owner, &index);
+        assert!(pin.is_some(), "{:?}: a bool tail pins", probe.family);
+        let Some(pin) = pin else { return };
+        // Only a whole call of the owner, optionally negated once: a
+        // conjunction, a chained call, a double negation and another macro
+        // pin nothing about the owner's result.
+        assert_eq!(
+            admitted_texts(&index, &pin),
+            vec![
+                "assert!(gate(10));".to_string(),
+                "assert!(!gate(9), \"nine is below\");".to_string(),
+            ],
+            "{:?}",
+            probe.family
+        );
+    }
+}
+
+#[test]
+fn a_bare_assert_pins_nothing_on_a_non_bool_owner() {
+    let tests = "use demo::level;\n\n#[test]\nfn pins() {\n    assert!(level(1));\n    assert_eq!(level(1), 11);\n}\n";
+    let index = index(&[(LIB, GATE_LIB), (TESTS, tests)]);
+    let owner = owner(&index, "level");
+    // A predicate on a non-bool owner is not its return value.
+    assert!(
+        OwnerReturnPin::establish(&predicate_probe(owner, "10 + value"), owner, &index).is_none()
+    );
+    let pin = OwnerReturnPin::establish(&return_probe(owner, "10 + value"), owner, &index);
+    assert!(pin.is_some());
+    let Some(pin) = pin else { return };
+    assert_eq!(
+        admitted_texts(&index, &pin),
+        vec!["assert_eq!(level(1), 11);".to_string()]
+    );
+}
+
+#[test]
+fn a_bare_assert_keeps_the_owner_binding_defeats() {
+    // A test-local binding of the owner's name takes the call.
+    let tests = "use demo::gate;\n\n#[test]\nfn pins() {\n    let gate = |value: u32| value > 3;\n    assert!(gate(10));\n}\n";
+    let shadowed = index(&[(LIB, GATE_LIB), (TESTS, tests)]);
+    let gate = owner(&shadowed, "gate");
+    let pin = OwnerReturnPin::establish(&predicate_probe(gate, "10 <= value"), gate, &shadowed);
+    assert!(pin.is_some());
+    let Some(pin) = pin else { return };
+    assert!(admitted_texts(&shadowed, &pin).is_empty());
+    // A predicate that is only part of the tail is not the return value.
+    let lib = "pub fn gate(value: u32) -> bool {\n    10 <= value && value < 99\n}\n";
+    let partial = index(&[
+        (LIB, lib),
+        (
+            TESTS,
+            "#[test]\nfn pins() {\n    assert!(demo::gate(10));\n}\n",
+        ),
+    ]);
+    let gate = owner(&partial, "gate");
+    assert!(
+        OwnerReturnPin::establish(&predicate_probe(gate, "10 <= value"), gate, &partial).is_none()
+    );
+}

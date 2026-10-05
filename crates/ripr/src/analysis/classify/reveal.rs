@@ -428,12 +428,24 @@ fn analyze_related_assertions(
             // test-side identity gates live in `owner_pin`; the family and
             // oracle-kind gates are checked first so the closure only runs
             // for return-value exact pins.
-            let owner_pinned = matches!(probe.family, ProbeFamily::ReturnValue)
-                && matches!(
+            //
+            // A bare `assert!` pins a bool owner's return value the same way
+            // (`assert!(f(x))` is `assert_eq!(f(x), true)`), which also
+            // observes a predicate that is that owner's whole tail. Its kind
+            // stays the classifier's `relational_check` (RIPR-SPEC-0231);
+            // only its strength relative to this probe rises.
+            let owner_pinned = match probe.family {
+                ProbeFamily::ReturnValue => matches!(
                     assertion.kind,
-                    OracleKind::ExactValue | OracleKind::WholeObjectEquality
-                )
-                && (return_admission.owner_return_pin)(test, assertion);
+                    OracleKind::ExactValue
+                        | OracleKind::WholeObjectEquality
+                        | OracleKind::RelationalCheck
+                ),
+                ProbeFamily::Predicate => matches!(assertion.kind, OracleKind::RelationalCheck),
+                _ => false,
+            } && (return_admission.owner_return_pin)(test, assertion);
+            let bool_owner_pinned =
+                owner_pinned && matches!(assertion.kind, OracleKind::RelationalCheck);
             let (matched, has_token_match) = assertion_matches_probe_detail_with_literals(
                 &match_context,
                 assertion,
@@ -483,7 +495,11 @@ fn analyze_related_assertions(
                     }
                 }
                 matched_any = true;
-                let relative_strength = probe_relative_oracle_strength(&probe.family, assertion);
+                let relative_strength = if bool_owner_pinned {
+                    OracleStrength::Strong
+                } else {
+                    probe_relative_oracle_strength(&probe.family, assertion)
+                };
                 // Keep strength, kind, and confirmation on one assertion.
                 // An equally strong confirmed oracle wins over an unrelated
                 // one regardless of encounter order; a weaker oracle cannot.

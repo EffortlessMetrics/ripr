@@ -35,12 +35,17 @@ pub(in crate::analysis) fn same_test_pairing_missing_summary() -> String {
 ///
 /// Non-predicate probes are not this gate; the caller must not use a `true`
 /// result to promote a family this function does not judge.
+///
+/// `owner_pinned` is reveal's owner-return pin (RIPR-SPEC-0197): an
+/// `assert!(owner(x))` on a bool owner discriminates its whole result even
+/// though the classifier reads a bare `assert!` as a weak relational check.
 pub(in crate::analysis) fn has_same_test_boundary_oracle_pairing(
     probe: &Probe,
     owner_fn: Option<&FunctionSummary>,
     related_tests: &[&TestSummary],
     activation: &ActivationEvidence,
     assertion_admitted: &dyn Fn(&TestSummary, &OracleFact) -> bool,
+    owner_pinned: &dyn Fn(&TestSummary, &OracleFact) -> bool,
 ) -> bool {
     if !matches!(probe.family, ProbeFamily::Predicate) {
         return false;
@@ -49,7 +54,14 @@ pub(in crate::analysis) fn has_same_test_boundary_oracle_pairing(
         return false;
     };
     related_tests.iter().any(|test| {
-        test_pairs_boundary_input_with_oracle(probe, owner, test, activation, assertion_admitted)
+        test_pairs_boundary_input_with_oracle(
+            probe,
+            owner,
+            test,
+            activation,
+            assertion_admitted,
+            owner_pinned,
+        )
     })
 }
 
@@ -59,14 +71,22 @@ fn test_pairs_boundary_input_with_oracle(
     test: &TestSummary,
     activation: &ActivationEvidence,
     assertion_admitted: &dyn Fn(&TestSummary, &OracleFact) -> bool,
+    owner_pinned: &dyn Fn(&TestSummary, &OracleFact) -> bool,
 ) -> bool {
     let bound_names = boundary_bound_locals(probe, owner, test, activation);
     test.assertions.iter().any(|assertion| {
-        if !assertion_admitted(test, assertion) || !assertion_is_discriminating(assertion) {
+        if !assertion_admitted(test, assertion)
+            || !(assertion_is_discriminating(assertion) || owner_pinned(test, assertion))
+        {
             return false;
         }
-        assertion_observes_boundary_owner_call(probe, owner, test, assertion, activation)
-            || assertion_observes_bound_name(assertion, &bound_names)
+        // Only the asserted operands observe anything: a call or binding
+        // named in a message argument (`assert!(gate(50), "{got}")`) is
+        // formatted, not checked, so it cannot pair with the boundary.
+        let operands = crate::analysis::extract::assertion_oracle_text(&assertion.text)
+            .unwrap_or_else(|| assertion.text.clone());
+        assertion_observes_boundary_owner_call(probe, owner, test, assertion, &operands, activation)
+            || assertion_observes_bound_name(&operands, &bound_names)
     })
 }
 
@@ -85,9 +105,10 @@ fn assertion_observes_boundary_owner_call(
     owner: &FunctionSummary,
     test: &TestSummary,
     assertion: &OracleFact,
+    operands: &str,
     activation: &ActivationEvidence,
 ) -> bool {
-    let subject = assertion_subject(&assertion.text);
+    let subject = assertion_subject(operands);
     let lists = owner_call_argument_lists(&subject, &owner.name);
     if lists
         .iter()
@@ -96,16 +117,21 @@ fn assertion_observes_boundary_owner_call(
         return true;
     }
     // Line-level activation cannot tell two same-name calls apart. Use it
-    // only when the assertion text names the owner once, and only when
-    // each compared argument is a literal, identifier, or path. A
-    // compound compared argument can mint a false activation `==` fact
-    // from a buried scalar (#6668); named constants (`LIMIT`,
-    // `parcels::BULK_ITEMS`) and helper hops keep identifier / path /
-    // literal compared arguments. An extra unrelated compound argument
-    // (`make_context()`) does not block that path when every identifier
-    // operand maps to a parameter. An unresolved operand (`let amount =
-    // raw; amount >= threshold`) fail-closes to the whole argument list.
+    // only when the assertion text names the owner once, inside an operand,
+    // no other owner call shares the line (`let got = gate(10);
+    // assert!(gate(50));`), and each compared argument is a literal,
+    // identifier, or path. A compound compared argument can mint a false
+    // activation `==` fact from a buried scalar (#6668); named constants
+    // (`LIMIT`, `parcels::BULK_ITEMS`) and helper hops keep identifier /
+    // path / literal compared arguments. An extra unrelated compound
+    // argument (`make_context()`) does not block that path when every
+    // identifier operand maps to a parameter. An unresolved operand (`let
+    // amount = raw; amount >= threshold`) fail-closes to the whole argument
+    // list. The call fact keeps the original text so it matches extracted
+    // calls.
     lists.len() == 1
+        && owner_call_count(&assertion.text, &owner.name) == 1
+        && line_owner_call_count(test, assertion.line, &owner.name) <= 1
         && owner_call_arguments_admit_activation_fallback(probe, owner, &lists[0])
         && activation_marks_boundary_call(
             activation,
@@ -117,10 +143,27 @@ fn assertion_observes_boundary_owner_call(
         )
 }
 
-fn assertion_observes_bound_name(assertion: &OracleFact, bound_names: &[String]) -> bool {
-    bound_names
+/// Owner calls the test's call facts record on one line, counting each
+/// distinct fact text once so per-line and per-call extraction agree.
+fn line_owner_call_count(test: &TestSummary, line: usize, name: &str) -> usize {
+    let mut texts = test
+        .calls
         .iter()
-        .any(|name| contains_ident(&assertion.text, name))
+        .filter(|call| call.line == line && call.name == name)
+        .map(|call| call.text.as_str())
+        .collect::<Vec<_>>();
+    texts.sort_unstable();
+    texts.dedup();
+    texts
+        .into_iter()
+        .map(|text| owner_call_count(text, name).max(1))
+        .sum()
+}
+
+fn assertion_observes_bound_name(operands: &str, bound_names: &[String]) -> bool {
+    // A binding named only in a comment or string is not observed.
+    let masked = crate::analysis::extract::mask_comments_and_strings(operands);
+    bound_names.iter().any(|name| contains_ident(&masked, name))
 }
 
 fn boundary_bound_locals(
@@ -258,17 +301,22 @@ fn assertion_subject(text: &str) -> String {
     text.to_string()
 }
 
+/// Owner calls in code only: a spelling inside a comment or string literal
+/// (`/* gate(10) */`, `"gate(10)"`) is not a call. Positions come from the
+/// length-preserving mask; arguments are read from the original text so
+/// string arguments (`classify("word")`) keep their values.
 fn owner_call_argument_lists(text: &str, name: &str) -> Vec<Vec<String>> {
     let needle = format!("{name}(");
+    let masked = crate::analysis::extract::mask_comments_and_strings(text);
     let mut lists = Vec::new();
     let mut from = 0usize;
-    while from < text.len() {
-        let Some(rel) = text.get(from..).and_then(|rest| rest.find(&needle)) else {
+    while from < masked.len() {
+        let Some(rel) = masked.get(from..).and_then(|rest| rest.find(&needle)) else {
             break;
         };
         let abs = from + rel;
         if abs > 0 {
-            let before = text.as_bytes()[abs - 1];
+            let before = masked.as_bytes()[abs - 1];
             if before.is_ascii_alphanumeric() || before == b'_' {
                 from = abs + 1;
                 continue;
@@ -557,7 +605,14 @@ mod tests {
         tests: &[&TestSummary],
         activation: &ActivationEvidence,
     ) -> bool {
-        has_same_test_boundary_oracle_pairing(probe, owner, tests, activation, &|_, _| true)
+        has_same_test_boundary_oracle_pairing(
+            probe,
+            owner,
+            tests,
+            activation,
+            &|_, _| true,
+            &|_, _| false,
+        )
     }
 
     #[test]
@@ -1488,6 +1543,115 @@ mod tests {
                 &ActivationEvidence::default(),
             ),
             "without the activation == fact, classify(\"word\") must not pair against final_label == \"alpha\""
+        );
+    }
+
+    #[test]
+    fn comments_and_strings_in_operands_do_not_pair() {
+        let probe = predicate_probe("input >= 10");
+        let owner = gate_owner();
+        let mut commented = test_summary(
+            "commented",
+            "let got = gate(10);\nassert_eq!(gate(50), true /* got */);",
+            vec![
+                call("gate", "let got = gate(10);"),
+                call("gate", "assert_eq!(gate(50), true /* got */);"),
+            ],
+            vec![exact("assert_eq!(gate(50), true /* got */);")],
+            &["10", "50"],
+        );
+        commented.calls[1].line = 2;
+        commented.assertions[0].line = 2;
+        commented.end_line = 3;
+        assert!(
+            !pairing_with_admitted_oracles(
+                &probe,
+                Some(&owner),
+                &[&commented],
+                &ActivationEvidence::default(),
+            ),
+            "a boundary binding named only in an operand comment must not pair"
+        );
+        let quoted = test_summary(
+            "quoted",
+            "assert_eq!(gate(50), true, \"{}\", \"gate(10)\"); assert_eq!(gate(50) /* gate(10) */, true);",
+            vec![call("gate", "assert_eq!(gate(50) /* gate(10) */, true);")],
+            vec![exact("assert_eq!(gate(50) /* gate(10) */, true);")],
+            &["10", "50"],
+        );
+        assert!(
+            !pairing_with_admitted_oracles(
+                &probe,
+                Some(&owner),
+                &[&quoted],
+                &ActivationEvidence::default(),
+            ),
+            "an owner call spelled inside a comment is not a boundary call"
+        );
+    }
+
+    #[test]
+    fn quoted_owner_text_on_the_line_keeps_the_activation_fallback() {
+        let probe = predicate_probe("input >= 10");
+        let owner = gate_owner();
+        let line = "let note = \"gate(50)\"; assert!(gate(n));";
+        let quoted = test_summary(
+            "quoted",
+            line,
+            vec![call("gate", line)],
+            vec![exact("assert!(gate(n));")],
+            &[],
+        );
+        let activation = ActivationEvidence {
+            observed_values: vec![ValueFact {
+                line: 1,
+                text: String::new(),
+                value: "input == 10".to_string(),
+                context: ValueContext::FunctionArgument,
+            }],
+            missing_discriminators: Vec::new(),
+        };
+        assert!(
+            pairing_with_admitted_oracles(&probe, Some(&owner), &[&quoted], &activation),
+            "a quoted owner spelling is not a second call on the line"
+        );
+    }
+
+    #[test]
+    fn line_activation_does_not_pair_through_another_owner_call_on_the_line() {
+        let probe = predicate_probe("input >= 10");
+        let owner = gate_owner();
+        let line = "let got = gate(10); assert!(gate(50));";
+        let mixed = test_summary(
+            "mixed",
+            line,
+            vec![call("gate", line), call("gate", line)],
+            vec![exact("assert!(gate(50));")],
+            &["10", "50"],
+        );
+        let activation = ActivationEvidence {
+            observed_values: vec![ValueFact {
+                line: 1,
+                text: String::new(),
+                value: "input == 10".to_string(),
+                context: ValueContext::FunctionArgument,
+            }],
+            missing_discriminators: Vec::new(),
+        };
+        assert!(
+            !pairing_with_admitted_oracles(&probe, Some(&owner), &[&mixed], &activation),
+            "a boundary activation from gate(10) must not pair through the far assert!(gate(50)) on its line"
+        );
+        let alone = test_summary(
+            "alone",
+            "assert!(gate(50));",
+            vec![call("gate", "assert!(gate(50));")],
+            vec![exact("assert!(gate(50));")],
+            &["50"],
+        );
+        assert!(
+            pairing_with_admitted_oracles(&probe, Some(&owner), &[&alone], &activation),
+            "a line holding only the asserted owner call keeps the activation fallback"
         );
     }
 

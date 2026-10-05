@@ -102,67 +102,64 @@ impl ClassifiedProbeEvidence {
             .owner_fn
             .map(owner_local_binding_names)
             .unwrap_or_default();
+        // #3731 review (F11): the related test's file source is reachable
+        // here, so the caller computes the same-name-import defeat per test
+        // instead of restructuring the reveal inputs.
+        let import_defeats = |test: &TestSummary, callee: &str| {
+            context.index.files().get(&test.file).is_some_and(|facts| {
+                context.test_file_imports_foreign_callee_name(&test.file, &facts.source, callee)
+            })
+        };
+        // #3731 review (G1): the test's OWN package defining a same-named
+        // function defeats the bare-scrutinee binding the same way a foreign
+        // import does — the bare call in that test may bind the local
+        // definition while the changed owner lives in another package.
+        // Index-backed, not a new lexical scan: package scopes come from the
+        // shared `package_prefix` authority and the same-named definition
+        // from the workspace's indexed functions. Both package scopes must
+        // resolve; an unscopable side (single-crate relative paths, absolute
+        // paths) keeps today's behavior.
+        let cross_package_defeats = |test: &TestSummary, callee: &str| {
+            memoized_file_defeat(&package_defeats_by_file, &test.file, callee, || {
+                let Some(test_package) = package_prefix(&test.file) else {
+                    return false;
+                };
+                let Some(owner_package) = owner_package.as_deref() else {
+                    return false;
+                };
+                if test_package == owner_package {
+                    return false;
+                }
+                context.index.functions().iter().any(|function| {
+                    function.name == callee
+                        && package_prefix(&function.file).as_deref() == Some(test_package.as_str())
+                })
+            })
+        };
+        let owner_pin_admits = |test: &TestSummary, assertion: &OracleFact| {
+            owner_return_pin.as_ref().is_some_and(|pin| {
+                pin.admits(
+                    test,
+                    assertion,
+                    context.index,
+                    &|file, name| {
+                        context.index.files().get(file).is_some_and(|facts| {
+                            context.test_file_imports_foreign_callee_name(file, &facts.source, name)
+                        })
+                    },
+                    pin_syntax,
+                )
+            })
+        };
         let (observe, discriminate, related_tests, matched_total) = reveal_evidence_with_expression(
             context.probe,
             reveal_expression,
             &context.related_tests,
             &owner_locals,
-            // #3731 review (F11): the related test's file source is
-            // reachable here, so the caller computes the same-name-import
-            // defeat per test instead of restructuring the reveal inputs.
-            &|test, callee| {
-                context.index.files().get(&test.file).is_some_and(|facts| {
-                    context.test_file_imports_foreign_callee_name(&test.file, &facts.source, callee)
-                })
-            },
-            // #3731 review (G1): the test's OWN package defining a
-            // same-named function defeats the bare-scrutinee binding the
-            // same way a foreign import does — the bare call in that test
-            // may bind the local definition while the changed owner lives
-            // in another package. Index-backed, not a new lexical scan:
-            // package scopes come from the shared `package_prefix`
-            // authority and the same-named definition from the workspace's
-            // indexed functions. Both package scopes must resolve; an
-            // unscopable side (single-crate relative paths, absolute
-            // paths) keeps today's behavior.
-            &|test, callee| {
-                memoized_file_defeat(&package_defeats_by_file, &test.file, callee, || {
-                    let Some(test_package) = package_prefix(&test.file) else {
-                        return false;
-                    };
-                    let Some(owner_package) = owner_package.as_deref() else {
-                        return false;
-                    };
-                    if test_package == owner_package {
-                        return false;
-                    }
-                    context.index.functions().iter().any(|function| {
-                        function.name == callee
-                            && package_prefix(&function.file).as_deref()
-                                == Some(test_package.as_str())
-                    })
-                })
-            },
+            &import_defeats,
+            &cross_package_defeats,
             &ReturnOracleAdmission {
-                owner_return_pin: &|test, assertion| {
-                    owner_return_pin.as_ref().is_some_and(|pin| {
-                        pin.admits(
-                            test,
-                            assertion,
-                            context.index,
-                            &|file, name| {
-                                context.index.files().get(file).is_some_and(|facts| {
-                                    context.test_file_imports_foreign_callee_name(
-                                        file,
-                                        &facts.source,
-                                        name,
-                                    )
-                                })
-                            },
-                            pin_syntax,
-                        )
-                    })
-                },
+                owner_return_pin: &owner_pin_admits,
                 assertion_admitted: &assertion_admitted,
             },
         );
@@ -185,6 +182,16 @@ impl ClassifiedProbeEvidence {
                 &test_summaries,
                 &activation,
                 &assertion_admitted,
+                // The same owner-pin decision and binding defeats reveal
+                // applied, so pairing cannot credit a pin reveal refused.
+                &|test, assertion| {
+                    matches!(assertion.kind, OracleKind::RelationalCheck)
+                        && context.owner_fn.is_some_and(|owner| {
+                            !import_defeats(test, &owner.name)
+                                && !cross_package_defeats(test, &owner.name)
+                        })
+                        && owner_pin_admits(test, assertion)
+                },
             ) {
             StageEvidence::new(
                 StageState::Weak,

@@ -129,3 +129,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — binding_value_fail_closed (9)
+
+Reason:
+RIPR-SPEC-0197 bool-owner pin: assert!(owner(..)) on a bool owner pins its whole result, so its strength relative to the tail predicate is strong; kind stays relational_check and every class is unchanged
+
+Command:
+`cargo xtask goldens bless binding_value_fail_closed --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

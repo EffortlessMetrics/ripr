@@ -285,7 +285,9 @@ pub(crate) struct CachedSeamLimitInfo {
 /// `1.32`: weak grip requires established activation; a seam whose
 /// activation is unknown classifies `activation_unknown`, not
 /// `weakly_gripped` (#5946). Old entries would keep the weak-grip class.
-pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.32";
+/// `1.33`: `assert!(owner(..))` on a bool owner pins its whole result
+/// (RIPR-SPEC-0197); predecessor weak predicate/return readings must miss.
+pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.33";
 /// `0.2` → `0.3`: same semantic transition as the outer cache (#3273 /
 /// #3286) — sharded entries derive from the same facts and cannot bypass
 /// the outer generation bump.
@@ -354,7 +356,8 @@ pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.32";
 /// `0.36`: same related-test table body as full `1.30`.
 /// `0.37`: same unresolved-reach transition as full `1.31` (#5411).
 /// `0.38`: same weak-grip activation transition as full `1.32` (#5946).
-const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.38";
+/// `0.39`: same bool-owner pin transition as full `1.33`.
+const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.39";
 
 /// Compact-classified seam cache schema. This cache stores the same
 /// `ClassifiedSeam` envelope shape as the full repo exposure cache, but
@@ -425,7 +428,8 @@ const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.38";
 /// `0.36`: same related-test table body as full `1.30`.
 /// `0.37`: same unresolved-reach transition as full `1.31` (#5411).
 /// `0.38`: same weak-grip activation transition as full `1.32` (#5946).
-pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.38";
+/// `0.39`: same bool-owner pin transition as full `1.33`.
+pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.39";
 
 /// Compact class-count cache used by repo badge rendering. It keys off
 /// the same workspace state as the full fact cache, but stores only
@@ -3816,7 +3820,8 @@ mod tests {
         // 1.29 -> 1.30: related-test table body (memory/size, no evidence change).
         // 1.30 -> 1.31: unresolved seam reach reads opaque (#5411).
         // 1.31 -> 1.32: weak grip requires established activation (#5946).
-        assert_eq!(CACHE_SCHEMA_VERSION, "1.32");
+        // 1.32 -> 1.33: bool-owner `assert!` pins (RIPR-SPEC-0197).
+        assert_eq!(CACHE_SCHEMA_VERSION, "1.33");
         // 0.12 -> 0.13 through 0.14 / 0.15 / 0.16 / 0.17 / 0.18: same
         // #3731 semantic transition as the outer classified-seam cache,
         // for the sharded and compact envelopes.
@@ -3842,8 +3847,9 @@ mod tests {
         // 0.35 -> 0.36: same related-test table body as the outer cache.
         // 0.36 -> 0.37: same unresolved-reach transition as the outer cache.
         // 0.37 -> 0.38: same weak-grip activation transition as the outer cache.
-        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.38");
-        assert_eq!(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.38");
+        // 0.38 -> 0.39: same bool-owner pin transition as the outer cache.
+        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.39");
+        assert_eq!(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.39");
     }
 
     #[test]

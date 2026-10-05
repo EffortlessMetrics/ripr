@@ -364,10 +364,14 @@ pub(crate) fn owner_pin_assertions(source: &str, trusted: &[&str]) -> OwnerPinAs
             .descendants()
             .filter_map(ast::MacroCall::cast)
         {
-            if call
-                .path()
-                .is_none_or(|path| path.syntax().text() != "assert_eq")
-            {
+            // `assert!` is collected for the bool-owner pin; the classify
+            // side decides which spelling a pin may use.
+            if call.path().is_none_or(|path| {
+                !matches!(
+                    path.syntax().text().to_string().as_str(),
+                    "assert_eq" | "assert"
+                )
+            }) {
                 continue;
             }
             let range = call.syntax().text_range();
