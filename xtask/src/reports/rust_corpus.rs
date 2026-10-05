@@ -16,7 +16,7 @@
 //! two pinned commits per repo, verifies the checkout's HEAD and first parent
 //! against the pins, and writes an index consumers read for paths.
 
-use crate::run::{capture_output_with_timeout, run, run_output_owned_with_timeout};
+use crate::run::{capture_output_measured, run, run_output_owned_with_timeout};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -692,14 +692,18 @@ fn smoke(manifest: &Manifest, options: &Options) -> Result<(), String> {
             "--format".to_string(),
             "json".to_string(),
         ];
-        let output = match capture_output_with_timeout(
+        // The measured path polls every 10 ms; the plain timeout path polls
+        // every 100 ms, which rounded most sub-second checks to one tick and
+        // hid any change smaller than that in `corpus.check_ms`.
+        let output = match capture_output_measured(
             &ripr_text,
             &args,
+            None,
             &[],
             timeout,
             &format!("rust-corpus smoke ripr check for `{}`", repo.id),
         ) {
-            Ok(output) => output,
+            Ok(measured) => measured.output,
             Err(err) => {
                 eprintln!("rust-corpus smoke: {} spawn_failed: {err}", repo.id);
                 rows.push(json!({

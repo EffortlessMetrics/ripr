@@ -203,13 +203,51 @@ pub(crate) fn dx_scoreboard(args: &[String]) -> Result<(), String> {
     let json_text = serde_json::to_string_pretty(&report)
         .map_err(|err| format!("serialize dx scoreboard: {err}"))?;
     crate::write_report("dx-scoreboard.json", &format!("{json_text}\n"))?;
-    crate::write_report("dx-scoreboard.md", &render_markdown(&report))?;
+    let markdown = render_markdown(&report);
+    crate::write_report("dx-scoreboard.md", &markdown)?;
     println!("Wrote target/ripr/reports/dx-scoreboard.json");
     println!("Wrote target/ripr/reports/dx-scoreboard.md");
+    publish_to_actions(&json_text, &markdown);
     if options.gate && report["gate"]["status"].as_str() == Some("fail") {
         return Err(gate_failure_message(&report));
     }
     Ok(())
+}
+
+/// On GitHub Actions the report also goes to the run summary and, in a
+/// collapsed group, to the job log. Artifacts are not reachable from every
+/// reader, and a hosted-runner baseline is rebuilt from this JSON.
+fn publish_to_actions(json_text: &str, markdown: &str) {
+    let Some(summary) = std::env::var_os("GITHUB_STEP_SUMMARY") else {
+        return;
+    };
+    // A summary write failure must not replace the gate decision; the
+    // reports are already on disk and uploaded.
+    if let Err(err) = append_step_summary(Path::new(&summary), markdown) {
+        eprintln!("dx-scoreboard: step summary not written: {err}");
+    }
+    // Report details carry child stderr; stop-commands keeps any `##[...]`
+    // text in it from being read as a workflow command.
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_nanos());
+    let token = format!("dx-scoreboard-{}-{nanos}", std::process::id());
+    println!("::group::dx-scoreboard.json");
+    println!("::stop-commands::{token}");
+    println!("{json_text}");
+    println!("::{token}::");
+    println!("::endgroup::");
+}
+
+pub(crate) fn append_step_summary(path: &Path, markdown: &str) -> Result<(), String> {
+    use std::io::Write as _;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|err| format!("open step summary {}: {err}", path.display()))?;
+    file.write_all(markdown.as_bytes())
+        .map_err(|err| format!("write step summary {}: {err}", path.display()))
 }
 
 /// A baseline must be an earlier dx-scoreboard report; any other JSON would
