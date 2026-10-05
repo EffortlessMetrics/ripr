@@ -21858,7 +21858,7 @@ fn framed_lsp_zero_git_timeout_commits_limited_once_and_recovers() -> Result<(),
     })
 }
 
-/// #5927: hover splits related-test rows the way human output does. A
+/// #5927: hover shares human output's label and reason for related-test rows. A
 /// matched row that still misses keeps its oracle kind and strength and adds
 /// the reason; only an unmatched row uses the `misses ...; checked` form.
 #[test]
@@ -21888,6 +21888,11 @@ fn hover_keeps_oracle_kind_on_a_matched_row_that_still_misses() -> Result<(), St
             RelatedTestMiss::AssertionNotObserving,
         ),
         no_assertion,
+        related(
+            "observer_unconfirmed",
+            40,
+            RelatedTestMiss::ObservationUnconfirmed,
+        ),
     ];
     let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
     let HoverContents::Markup(markup) =
@@ -21918,6 +21923,14 @@ fn hover_keeps_oracle_kind_on_a_matched_row_that_still_misses() -> Result<(), St
     assert_eq!(
         row("calls_only")?,
         "- `src/lib.rs:30` `calls_only` misses: has no assertion"
+    );
+    // #6702: an unknown observation edge reads `unconfirmed`, not `misses`,
+    // and keeps the oracle it could not confirm.
+    assert_eq!(
+        row("observer_unconfirmed")?,
+        "- `src/lib.rs:40` `observer_unconfirmed` \u{2014} weak relational_check oracle: \
+         assert!(matches!(value, _)); unconfirmed: ripr could not confirm that this \
+         assertion observes the changed behavior"
     );
     Ok(())
 }
