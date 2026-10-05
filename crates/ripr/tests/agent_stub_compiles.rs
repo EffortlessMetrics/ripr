@@ -185,7 +185,7 @@ fn written_stubs_compile_and_stop_at_their_own_todo() -> Result<(), String> {
         let root = scratch.directory.clone();
         std::fs::write(
             root.join("Cargo.toml"),
-            "[package]\nname = \"stub_oracle\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+            "[package]\nname = \"stub_oracle\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n",
         )
         .map_err(|error| error.to_string())?;
         std::fs::write(root.join("src/lib.rs"), FIXTURE).map_err(|error| error.to_string())?;

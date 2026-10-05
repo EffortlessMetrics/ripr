@@ -1904,6 +1904,9 @@ mod tests {
     #[test]
     fn check_repo_exposure_json_streams_output() -> Result<(), String> {
         let root = copy_sample_workspace_to_temp("repo-exposure-json")?;
+        // Own this fixture boundary without creating or replacing ripr.toml.
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\n")
+            .map_err(|error| format!("write owned fixture boundary: {error}"))?;
         let root_arg = root.to_string_lossy().into_owned();
         assert_eq!(
             check(&[
@@ -1925,6 +1928,9 @@ mod tests {
         let diff = root.join("oversized.diff");
         std::fs::create_dir_all(&root)
             .map_err(|err| format!("failed to create oversized diff root: {err}"))?;
+        // Own this fixture boundary without creating or replacing ripr.toml.
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\n")
+            .map_err(|error| format!("write owned fixture boundary: {error}"))?;
         std::fs::write(&diff, oversized_rust_diff(2001))
             .map_err(|err| format!("failed to write oversized diff: {err}"))?;
         let root_arg = root.to_string_lossy().into_owned();

@@ -1456,6 +1456,9 @@ mod tests {
     fn review_comments_returns_diff_loader_errors() -> Result<(), String> {
         let root = unique_command_test_dir("review-comments-diff-error");
         std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        // Own this fixture boundary without creating or replacing ripr.toml.
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\n")
+            .map_err(|error| format!("write owned fixture boundary: {error}"))?;
         let root_arg = root.display().to_string();
         let out = root.join("comments.json");
         let out_arg = out.display().to_string();
@@ -1491,7 +1494,7 @@ mod tests {
         std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
         std::fs::write(
             root.join("Cargo.toml"),
-            "[package]\nname = \"review_comments_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+            "[package]\nname = \"review_comments_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n",
         )
         .map_err(|err| format!("write Cargo.toml: {err}"))?;
         std::fs::write(
@@ -1545,7 +1548,7 @@ mod tests {
         std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
         std::fs::write(
             root.join("Cargo.toml"),
-            "[package]\nname = \"review_comments_scope_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+            "[package]\nname = \"review_comments_scope_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n",
         )
         .map_err(|err| format!("write Cargo.toml: {err}"))?;
         std::fs::write(
@@ -1887,6 +1890,9 @@ mod tests {
     fn review_comments_gap_ledger_writes_repair_cards_without_loading_diff() -> Result<(), String> {
         let root = unique_command_test_dir("review-comments-gap-ledger");
         std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        // Own this fixture boundary without creating or replacing ripr.toml.
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\n")
+            .map_err(|error| format!("write owned fixture boundary: {error}"))?;
         let gap_ledger = root.join("gap-ledger.json");
         let out = root.join("target/ripr/review/comments.json");
         std::fs::write(
@@ -1940,6 +1946,9 @@ mod tests {
     fn review_comments_gap_ledger_reports_read_and_parse_errors() -> Result<(), String> {
         let root = unique_command_test_dir("review-comments-gap-ledger-errors");
         std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        // Own this fixture boundary without creating or replacing ripr.toml.
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\n")
+            .map_err(|error| format!("write owned fixture boundary: {error}"))?;
         let missing_ledger = root.join("missing-gap-ledger.json");
         let out = root.join("target/ripr/review/comments.json");
 
@@ -2125,6 +2134,9 @@ mod tests {
         let path = unique_command_test_dir("review-error-before-expiry");
         std::fs::create_dir(&path).map_err(|error| format!("claim error fixture: {error}"))?;
         let fixture = OwnedDeadlineFixture(path);
+        // Own this fixture boundary without creating or replacing ripr.toml.
+        std::fs::write(fixture.0.join("Cargo.toml"), "[workspace]\n")
+            .map_err(|error| format!("write owned fixture boundary: {error}"))?;
         let out = fixture.0.join("comments.json");
         let calls = Arc::new(AtomicUsize::new(0));
         let owned_calls = Arc::clone(&calls);
@@ -2185,7 +2197,7 @@ mod tests {
             .map_err(|err| format!("create fixture source: {err}"))?;
         std::fs::write(
             root.join("Cargo.toml"),
-            "[package]\nname = \"review_comments_clock_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+            "[package]\nname = \"review_comments_clock_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n",
         )
         .map_err(|err| format!("write fixture manifest: {err}"))?;
         std::fs::write(root.join("src/lib.rs"), "pub fn value() -> i32 { 1 }\n")
@@ -2240,6 +2252,9 @@ mod tests {
     fn review_comments_gap_ledger_records_timeout_at_injected_deadline() -> Result<(), String> {
         let root = unique_command_test_dir("review-comments-clock-gap-ledger");
         std::fs::create_dir_all(&root).map_err(|err| format!("create fixture: {err}"))?;
+        // Own this fixture boundary without creating or replacing ripr.toml.
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\n")
+            .map_err(|error| format!("write owned fixture boundary: {error}"))?;
         let gap_ledger = root.join("gap-ledger.json");
         let out = root.join("target/ripr/review/comments.json");
         std::fs::write(&gap_ledger, r#"{"records":[]}"#)
@@ -2303,7 +2318,7 @@ mod tests {
             .map_err(|err| format!("create fixture src: {err}"))?;
         std::fs::write(
             root.join("Cargo.toml"),
-            "[package]\nname = \"review_ceiling_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+            "[package]\nname = \"review_ceiling_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n",
         )
         .map_err(|err| format!("write fixture manifest: {err}"))?;
         for unit in 1..=3 {
@@ -2832,7 +2847,7 @@ mod tests {
             .map_err(|err| format!("create tests: {err}"))?;
         std::fs::write(
             root.join("Cargo.toml"),
-            "[package]\nname = \"review_comments_absent\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+            "[package]\nname = \"review_comments_absent\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n",
         )
         .map_err(|err| format!("write Cargo.toml: {err}"))?;
         std::fs::write(

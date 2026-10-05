@@ -775,6 +775,9 @@ mod tests {
         use crate::testing::unwritable_output::OutputDirFixture;
 
         let env = OutputDirFixture::unwritable("pilot-ro", "pilot")?;
+        // Own this fixture boundary without creating or replacing ripr.toml.
+        std::fs::write(env.root.join("Cargo.toml"), "[workspace]\n")
+            .map_err(|error| format!("write owned fixture boundary: {error}"))?;
         let root = OutputDirFixture::path_arg(&env.root)?;
         let out = OutputDirFixture::path_arg(&env.target)?;
         let error = match pilot(&args(&["--root", root, "--out", out])) {
@@ -798,6 +801,9 @@ mod tests {
         use crate::testing::unwritable_output::OutputDirFixture;
 
         let env = OutputDirFixture::occupying_file("pilot-file", "pilot")?;
+        // Own this fixture boundary without creating or replacing ripr.toml.
+        std::fs::write(env.root.join("Cargo.toml"), "[workspace]\n")
+            .map_err(|error| format!("write owned fixture boundary: {error}"))?;
         let root = OutputDirFixture::path_arg(&env.root)?;
         let out = OutputDirFixture::path_arg(&env.target)?;
         let error = match pilot(&args(&["--root", root, "--out", out])) {

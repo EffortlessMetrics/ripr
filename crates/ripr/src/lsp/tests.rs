@@ -11116,8 +11116,11 @@ fn a_reload_that_breaks_ripr_toml_is_shown_once_without_source_text() -> Result<
     // summary, never the TOML parser's excerpt of the file.
     run_workspace_folder_transitions_exchange("config reload disclosure did not complete", async {
         let root = unique_lsp_test_root("config-reload-shown")?;
-        std::fs::write(root.path().join("Cargo.toml"), "[package]\nname = \"x\"\n")
-            .map_err(|err| format!("write Cargo.toml failed: {err}"))?;
+        std::fs::write(
+            root.path().join("Cargo.toml"),
+            "[package]\nname = \"x\"\n\n[workspace]\n",
+        )
+        .map_err(|err| format!("write Cargo.toml failed: {err}"))?;
         let uri = file_uri_for_path(root.path())?;
         let config_uri = file_uri_for_path(&root.path().join("ripr.toml"))?;
         let mut client = WorkspaceFolderTransitionsClient::spawn();
