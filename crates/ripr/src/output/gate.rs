@@ -1560,6 +1560,36 @@ pub(crate) fn discloses_incomplete_analysis_outcome(value: &Value) -> bool {
         == Some(false)
 }
 
+/// Whether a gap-ledger document discloses a blocked producer run: the
+/// producer's own `status: "blocked"` verdict carrying failure warnings.
+/// `build_gap_decision_ledger_report` sets `blocked` whenever the record set
+/// is empty, which also covers a genuinely empty zero-gap ledger — those
+/// carry no warnings and stay a complete zero denominator. A blocked ledger
+/// WITH warnings is a failed producer, never a denominator (#6095 review).
+pub(crate) fn discloses_blocked_producer_outcome(value: &Value) -> bool {
+    value.pointer("/status").and_then(Value::as_str) == Some("blocked")
+        && value
+            .pointer("/warnings")
+            .and_then(Value::as_array)
+            .is_some_and(|warnings| !warnings.is_empty())
+}
+
+/// The producer-owned warnings of a blocked ledger. Consumers surface these
+/// verbatim instead of inventing a verdict from a failed producer.
+pub(crate) fn blocked_producer_warnings(value: &Value) -> Vec<String> {
+    value
+        .pointer("/warnings")
+        .and_then(Value::as_array)
+        .map(|warnings| {
+            warnings
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToOwned::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Return the producer-owned typed outcome kind for an incomplete envelope.
 /// Consumers use this only for fail-closed diagnostics.
 pub(crate) fn incomplete_analysis_outcome_kind(value: &Value) -> &str {

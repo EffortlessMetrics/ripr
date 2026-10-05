@@ -204,6 +204,12 @@ are scoped or reviewed.
   toolchain step) instead of a bare `cargo: command not found`. When ripr was
   never installed, the advisory summary says so and points at that step's log
   instead of rendering nothing.
+- `ripr zero status` no longer reports `achieved` from a content-free or
+  partial baseline debt delta. Missing or partial counts, items that
+  contradict zero counts, and partial-scope, findings-bounded, or otherwise
+  incomplete producer runs now report `unknown` (or keep `not_yet` when
+  visible debt remains) with the reason carried in warnings, and a failed
+  gate decision blocks every readiness promotion (#5251).
 
 - `ripr first-pr` and `ripr reports gap-ledger` exit 2 and write nothing when
   `--root` is not a directory or the gap-ledger input cannot be read, instead
