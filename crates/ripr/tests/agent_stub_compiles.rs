@@ -1,8 +1,10 @@
-//! #5355: `ripr agent stub --write` must leave the user's crate compiling.
-//! Each ready stub is written into a fresh copy of one fixture crate, the
-//! file is compiled with rustc as a test crate, and the stub's test must run
-//! and stop at its own `ripr:` `todo!()`. Cases the producer cannot make
-//! compile must be refused with a named reason instead.
+//! #5355 / #5453: `ripr agent stub --write` must leave the user's crate compiling.
+//! Each ready inline stub is written into a fresh copy of one fixture crate,
+//! the file is compiled with rustc as a test crate, and the stub's test must
+//! run and stop at its own `ripr:` `todo!()`. Integration-file stubs take a
+//! cargo-built fixture with an established `tests/` layout, then
+//! `cargo test --test <stem>` from the stub's own `run_command`. Cases the
+//! producer cannot make compile must be refused with a named reason instead.
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -304,13 +306,7 @@ fn written_stubs_compile_and_stop_at_their_own_todo() -> Result<(), String> {
         .map_err(|error| error.to_string())?;
         std::fs::write(root.join("src/lib.rs"), fixture).map_err(|error| error.to_string())?;
 
-        let mut stub = Command::new(env!("CARGO_BIN_EXE_ripr"));
-        stub.args(["agent", "stub", "--root"]).arg(&root).args([
-            "--at",
-            &format!("src/lib.rs:{line}"),
-            "--write",
-            "--json",
-        ]);
+        let stub = ripr_stub_write(&root, &format!("src/lib.rs:{line}"));
         let output = run_bounded(stub, &root, "stub", Duration::from_mins(2))?;
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -418,6 +414,155 @@ fn written_stubs_compile_and_stop_at_their_own_todo() -> Result<(), String> {
         scratch.cleanup()?;
     }
     Ok(())
+}
+
+/// #5453: a producer-admitted `new_integration_file` stub must compile under
+/// the cargo command the CLI prints, including a `crate::` parameter type and
+/// a crate-root `pub const` boundary. rustc-on-lib.rs cannot see this path.
+#[test]
+fn written_integration_stub_compiles_under_cargo_test_and_stops_at_its_own_todo()
+-> Result<(), String> {
+    const SOURCE: &str = r#"pub const LIMIT: u32 = 10;
+
+pub struct Tag;
+
+pub fn price(amount: u32, tag: crate::Tag) -> u32 {
+    let _ = tag;
+    if amount >= LIMIT { amount - 10 } else { amount }
+}
+
+pub mod extra {
+    pub struct Unused;
+}
+"#;
+    let scratch = Scratch::new()?;
+    let root = scratch.directory.clone();
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"stub_integration\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n# Keep this scratch crate out of a parent Cargo workspace.\n[workspace]\n",
+    )
+    .map_err(|error| error.to_string())?;
+    std::fs::write(root.join("src/lib.rs"), SOURCE).map_err(|error| error.to_string())?;
+    std::fs::create_dir(root.join("tests")).map_err(|error| error.to_string())?;
+    std::fs::write(
+        root.join("tests/smoke.rs"),
+        "#[test]\nfn crate_compiles() {}\n",
+    )
+    .map_err(|error| error.to_string())?;
+
+    let line = SOURCE
+        .lines()
+        .position(|text| text.contains("amount >= LIMIT"))
+        .map(|index| index + 1)
+        .ok_or_else(|| "fixture has `amount >= LIMIT`".to_string())?;
+    let stub = ripr_stub_write(&root, &format!("src/lib.rs:{line}"));
+    let output = run_bounded(stub, &root, "stub", Duration::from_mins(2))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    assert!(output.status.success(), "stub: {stdout}{stderr}");
+    let document: serde_json::Value =
+        serde_json::from_str(&stdout).map_err(|error| format!("stub JSON: {error}: {stdout}"))?;
+    assert_eq!(
+        document["placement"]["kind"], "new_integration_file",
+        "precondition: established tests/ layout must route to an integration file: {stdout}"
+    );
+    assert_eq!(document["written"], true, "{stdout}");
+    let derived = document["derived_inputs"]
+        .as_array()
+        .ok_or_else(|| format!("derived_inputs: {stdout}"))?;
+    assert!(
+        derived
+            .iter()
+            .any(|value| value.as_str() == Some("amount = LIMIT")),
+        "public const boundary must be a derived input: {stdout}"
+    );
+    let test_name = document["test_name"]
+        .as_str()
+        .ok_or_else(|| "test_name".to_string())?;
+    let file = document["placement"]["file"]
+        .as_str()
+        .ok_or_else(|| "placement.file".to_string())?;
+    assert_eq!(file, "tests/price.rs", "{stdout}");
+    let written = std::fs::read_to_string(root.join(file)).map_err(|error| error.to_string())?;
+    assert!(written.contains("use stub_integration::*;"), "{written}");
+    assert!(
+        written.contains("let amount: u32 = LIMIT;"),
+        "public const boundary must remain a derived input: {written}"
+    );
+    assert!(
+        written.contains("let tag: stub_integration::Tag = todo!("),
+        "crate:: parameter types must rebase to the crate name: {written}"
+    );
+    assert!(
+        !written.contains("crate::"),
+        "leftover crate:: would name the test crate, not the library: {written}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.join("src/lib.rs")).map_err(|error| error.to_string())?,
+        SOURCE,
+        "an integration write must not touch the owner file"
+    );
+
+    let run = document["run_command"]
+        .as_str()
+        .ok_or_else(|| format!("run_command: {stdout}"))?;
+    assert!(
+        run.contains("--test price") && run.contains(test_name),
+        "{run}"
+    );
+    let cargo = cargo_from_run_command(run, &root)?;
+    let cargo_run = run_bounded(cargo, &root, "cargo-test", Duration::from_mins(2))?;
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&cargo_run.stdout),
+        String::from_utf8_lossy(&cargo_run.stderr)
+    );
+    if cargo_run.status.success() {
+        return Err(format!(
+            "the stub must fail at its labelled todo, but cargo test passed:\n{text}\n{written}"
+        ));
+    }
+    if (text.contains("could not compile") || text.contains("error: "))
+        && !text.contains("not yet implemented: ripr:")
+    {
+        return Err(format!(
+            "the written stub must compile under cargo test:\n{text}\n{written}"
+        ));
+    }
+    if !text.contains("not yet implemented: ripr:") {
+        return Err(format!(
+            "the stub must stop at its own todo: {text}\n{written}"
+        ));
+    }
+    scratch.cleanup()?;
+    Ok(())
+}
+
+fn cargo_from_run_command(run: &str, root: &Path) -> Result<Command, String> {
+    let mut parts = run.split_whitespace();
+    let program = parts
+        .next()
+        .ok_or_else(|| format!("empty run_command: {run}"))?;
+    if program != "cargo" {
+        return Err(format!("run_command must start with cargo, got {run}"));
+    }
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let mut command = Command::new(cargo);
+    command
+        .args(parts)
+        .current_dir(root)
+        .env("CARGO_TARGET_DIR", root.join("target"))
+        .env("CARGO_NET_OFFLINE", "true")
+        .env("CARGO_TERM_COLOR", "never");
+    Ok(command)
+}
+
+fn ripr_stub_write(root: &Path, at: &str) -> Command {
+    let mut stub = Command::new(env!("CARGO_BIN_EXE_ripr"));
+    stub.args(["agent", "stub", "--root"])
+        .arg(root)
+        .args(["--at", at, "--write", "--json"]);
+    stub
 }
 
 struct Scratch {

@@ -25,7 +25,9 @@ use super::syntax::fn_signature::{
     OwnerContainer, OwnerParam, OwnerReceiver, OwnerSignature, field_init_is_returned,
     identifier_offsets, owner_signature_at, single_comparison,
 };
-use super::syntax::{GovernedCfgTestModule, governed_cfg_test_modules};
+use super::syntax::{GovernedCfgTestModule, governed_cfg_test_modules, parse_clean_source_file};
+use ra_ap_syntax::AstNode;
+use ra_ap_syntax::ast::{self, HasName};
 use std::path::{Path, PathBuf};
 
 /// Where the stub text goes.
@@ -528,12 +530,13 @@ fn stub_body(
     let mut derived_inputs = Vec::new();
     let mut boundary = boundary_inputs(seam, signature);
     if matches!(path_scope, PathScope::Integration(_)) {
-        // A `tests/` file sees only the crate's public items; a named
-        // constant may be private, so it stays a fill-in there.
+        // A `tests/` file sees crate-root `pub const` items through
+        // `use crate_name::*;`. Private, `pub(crate)`, nested-module, and
+        // cfg-gated constants stay fill-ins; numeric literals always remain.
         boundary.retain(|(_, value)| {
-            value
-                .trim_start_matches('-')
-                .starts_with(|c: char| c.is_ascii_digit())
+            let ident = value.trim_start_matches('-');
+            ident.starts_with(|c: char| c.is_ascii_digit())
+                || crate_public_const_declared(source, ident)
         });
     }
 
@@ -740,6 +743,58 @@ fn boundary_inputs(seam: &RepoSeam, signature: &OwnerSignature) -> Vec<(String, 
             .unwrap_or_default(),
         _ => Vec::new(),
     }
+}
+
+/// True when `name` is a crate-root `pub const` in `source`. Nested-module,
+/// `pub(crate)`, private, and cfg-gated constants are not established as
+/// visible from a `tests/` file: integration tests compile the library
+/// without `cfg(test)`, and feature/target activation is not known
+/// statically. Parse-backed: braces inside strings and comments cannot
+/// promote a nested item. An unparseable file fails closed (fill-in).
+fn crate_public_const_declared(source: &str, name: &str) -> bool {
+    if name.is_empty()
+        || !name.starts_with(|c: char| c.is_ascii_uppercase())
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+    {
+        return false;
+    }
+    let Some(parse) = parse_clean_source_file(source) else {
+        return false;
+    };
+    parse
+        .tree()
+        .syntax()
+        .children()
+        .filter_map(ast::Const::cast)
+        .any(|constant| {
+            crate_root_pub_visibility(constant.syntax())
+                && !const_has_cfg_gate(&constant)
+                && constant.name().is_some_and(|bound| bound.text() == name)
+        })
+}
+
+fn const_has_cfg_gate(constant: &ast::Const) -> bool {
+    ast::HasAttrs::attrs(constant).any(|attr| {
+        let text = attr
+            .syntax()
+            .text()
+            .to_string()
+            .split_whitespace()
+            .collect::<String>();
+        let body = text
+            .strip_prefix("#![")
+            .or_else(|| text.strip_prefix("#["))
+            .unwrap_or(&text);
+        body.starts_with("cfg(") || body.starts_with("cfg_attr(")
+    })
+}
+
+fn crate_root_pub_visibility(node: &ra_ap_syntax::SyntaxNode) -> bool {
+    node.children()
+        .find_map(ast::Visibility::cast)
+        .is_some_and(|vis| vis.syntax().text() == "pub")
 }
 
 fn boundary_value(operand: &str, ty: &str) -> Option<String> {
