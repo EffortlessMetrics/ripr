@@ -11117,6 +11117,41 @@ fn routed_rust_ready_event_matrix_withholds_draft_and_label_context() {
         routed_rust_ready_event_contract_violations(&cancellation_disabled)
     );
 
+    let uncancellable_fallback = workflow.replace("      !cancelled() &&", "      always() &&");
+    assert_ne!(
+        uncancellable_fallback, workflow,
+        "fixture must actually swap the hosted fallback condition"
+    );
+    assert!(
+        routed_rust_ready_event_contract_violations(&uncancellable_fallback)
+            .iter()
+            .any(|violation| violation.contains("`rust-github`") && violation.contains("always()")),
+        "a job-level always() on an implementation job must fail: it survives Ready-run cancellation: {:?}",
+        routed_rust_ready_event_contract_violations(&uncancellable_fallback)
+    );
+
+    let spaced_uppercase = workflow.replace("      !cancelled() &&", "      Always () &&");
+    assert!(
+        routed_rust_ready_event_contract_violations(&spaced_uppercase)
+            .iter()
+            .any(|violation| violation.contains("`rust-github`")),
+        "expression names are case-insensitive and may carry spaces: {:?}",
+        routed_rust_ready_event_contract_violations(&spaced_uppercase)
+    );
+
+    let step_level_cleanup = workflow.replace(
+        "    uses: ./.github/workflows/rust-gates.yml\n    with:\n      runner-config: '\"ubuntu-latest\"'",
+        "    uses: ./.github/workflows/rust-gates.yml\n    # cleanup may use always()\n    with:\n      runner-config: '\"ubuntu-latest\"'",
+    );
+    assert_ne!(step_level_cleanup, workflow, "fixture must add the comment");
+    assert!(
+        !routed_rust_ready_event_contract_violations(&step_level_cleanup)
+            .iter()
+            .any(|violation| violation.contains("must not use `always()`")),
+        "always() outside the job condition must not be rejected: {:?}",
+        routed_rust_ready_event_contract_violations(&step_level_cleanup)
+    );
+
     let shared_group = workflow.replace(
         "  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}",
         "  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}",

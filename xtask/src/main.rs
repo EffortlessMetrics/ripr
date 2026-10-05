@@ -6028,6 +6028,28 @@ fn routed_rust_ready_event_contract_violations(workflow: &str) -> Vec<String> {
             ".github/workflows/routed-rust.yml must keep `cancel-in-progress: ${{ github.event_name == 'pull_request' }}` so a second Ready transition replaces the prior admission attempt without cancelling push or manual runs (#4986)".to_string(),
         );
     }
+    for job in ROUTED_RUST_IMPLEMENTATION_JOBS {
+        let mut in_job_condition = false;
+        if routed_rust_job_block_any(workflow, job, |line| {
+            // Only the job's own `if:` (and its folded continuation lines)
+            // decides cancellation; step-level `if: always()` cleanup is fine.
+            if line.starts_with("    ") && !line.starts_with("     ") {
+                in_job_condition = line.trim_start().starts_with("if:");
+            } else if !line.starts_with("      ") && !line.trim().is_empty() {
+                in_job_condition = false;
+            }
+            let normalized: String = line
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .collect::<String>()
+                .to_ascii_lowercase();
+            in_job_condition && normalized.contains("always()")
+        }) {
+            violations.push(format!(
+                ".github/workflows/routed-rust.yml implementation job `{job}` must not use `always()` in its job condition; a job-level `always()` survives cancellation, so a second Ready transition queues behind the obsolete head's full gate. Use `!cancelled()` (#6729)"
+            ));
+        }
+    }
     if workflow.contains(ROUTED_RUST_DRAFT_GUARD_SNIPPET) {
         violations.push(
             ".github/workflows/routed-rust.yml must not gate jobs on `github.event.pull_request.draft`; a skipped required job reports success, so job guards cannot distinguish withheld context from proof (#4986)".to_string(),

@@ -163,8 +163,13 @@ jobs:
   rust-github:
     name: Ripr Rust Small on GitHub Hosted
     needs: [route, detect-docs-only, rust-cx43, rust-cpx42, rust-cx53]
+    # Use the not-cancelled status check here, never the unconditional one:
+    # both still run after a skipped or tempfailed self-hosted job, but an
+    # unconditional job also survives cancellation, so a second Ready
+    # transition left the obsolete head's full gate running and queued the
+    # new head's run behind it (#6729).
     if: >-
-      always() &&
+      !cancelled() &&
       needs.detect-docs-only.result == 'success' &&
       needs.detect-docs-only.outputs.docs_only != 'true' &&
       (needs.route.outputs.router_target == 'github' ||
