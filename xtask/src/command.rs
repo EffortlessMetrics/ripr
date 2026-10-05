@@ -1132,7 +1132,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "target/ripr/reports/agentic-bench.{json,md}",
             false,
             false,
-            "Validates benchmarks/agentic/*/manifest.json, verifies every sha256-bound fixture, and writes a ripr-agentic-bench-v1 receipt; fixture readiness only, behavioral verdicts stay with each bench oracle command.",
+            "Validates benchmarks/agentic/*/manifest.json, verifies every sha256-bound fixture, and writes a ripr-agentic-bench-v1 receipt; fixture readiness only, behavioral verdicts stay with each bench oracle command. Fails closed: exits 1 when any bench fails verification while still writing the receipt.",
         ),
         command_entry(
             "seam-inventory-scaling-benchmark [--sizes <n,n,n>] [--samples <n>] [--timeout-ms <n>] [--keep-workspaces]",
