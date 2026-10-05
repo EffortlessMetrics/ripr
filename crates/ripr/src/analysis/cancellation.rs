@@ -1,7 +1,7 @@
 //! Cooperative cancellation for synchronous analysis work.
 //!
-//! LSP refreshes run in `spawn_blocking`, so dropping the async join handle
-//! cannot stop the analysis closure.  This small, dependency-free context
+//! LSP refreshes run on a dedicated analysis thread, so dropping the async
+//! future that awaits a refresh cannot stop the analysis closure.  This small, dependency-free context
 //! lets long-running analysis loops observe that their desired request has
 //! been superseded or cancelled and return before publishing a partial
 //! result.

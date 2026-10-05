@@ -545,24 +545,28 @@ impl Backend {
             tokio::spawn(async move { drain_stage_reports(&bridge, &tracker, generation).await })
         };
         let bridge_for_blocking = Arc::clone(&stage_bridge);
-        let diagnostics_result = tokio::task::spawn_blocking(move || {
-            let _execution = match execution_gate.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
-            cancellation
-                .checkpoint()
-                .map_err(|error| error.to_string())?;
-            super::diagnostics::workspace_diagnostics_with_config_and_cancellation(
-                &analysis_root,
-                &config,
-                defer_seam_inventory,
-                &cancellation,
-                &open_rust_index_paths,
-                Some(bridge_for_blocking.as_ref() as &dyn crate::app::AnalysisProgressSink),
-            )
-        })
-        .await;
+        // One long-lived thread runs every refresh so its allocations stay
+        // in one malloc arena (see `analysis_thread`).
+        let analysis_thread = self.refresh_scheduler.analysis_thread();
+        let diagnostics_result = analysis_thread
+            .run(move || {
+                let _execution = match execution_gate.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                cancellation
+                    .checkpoint()
+                    .map_err(|error| error.to_string())?;
+                super::diagnostics::workspace_diagnostics_with_config_and_cancellation(
+                    &analysis_root,
+                    &config,
+                    defer_seam_inventory,
+                    &cancellation,
+                    &open_rust_index_paths,
+                    Some(bridge_for_blocking.as_ref() as &dyn crate::app::AnalysisProgressSink),
+                )
+            })
+            .await;
         drop(deadline_timer);
         // The producer has returned: finish the bridge and let the drain
         // task forward everything queued. The drain is bounded: a stalled

@@ -1,6 +1,7 @@
 mod action_contract;
 mod actions;
 pub(crate) mod agent_protocol;
+mod analysis_thread;
 mod backend;
 mod capabilities;
 mod client_features;
