@@ -401,7 +401,7 @@ fn observer_predicate_facts_recompute_after_build_miss_and_match_warm() -> TestR
             .files()
             .get(&path)
             .ok_or("cold file facts absent")?;
-        if cold_facts.used_lexical_fallback || cold_facts.source != text {
+        if cold_facts.used_lexical_fallback || cold_facts.source.as_ref() != text {
             return Err("cold facts lost parsed source identity".into());
         }
         let assertions = &cold_facts

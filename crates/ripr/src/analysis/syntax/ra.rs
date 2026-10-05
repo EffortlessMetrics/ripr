@@ -7,6 +7,7 @@ mod property_macros;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use super::super::extract::ShadowAuthority;
 use super::super::extract::extract_pattern_words;
@@ -25,8 +26,8 @@ use super::{
     rust_nesting_refusal,
 };
 use crate::analysis::rust_index::{
-    FunctionFact, OracleFact, ProbeShapeFact, ProbeShapeKind, TestFact, classify_assertion,
-    err_return_guard_oracles, extract_call_facts, extract_identifier_tokens,
+    FunctionFact, OracleFact, ProbeShapeFact, ProbeShapeKind, SourceText, TestFact,
+    classify_assertion, err_return_guard_oracles, extract_call_facts, extract_identifier_tokens,
     extract_line_scanned_oracles, extract_literal_facts, extract_return_facts,
     guarded_result_match_scan_with_shadow_authority, is_unwrap_err_bound_error_assertion,
     unwrap_err_bound_variables,
@@ -377,6 +378,9 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
 
     let source = parse.tree();
     let line_index = LineIndex::new(text);
+    // #5415 step 2: one allocation for the file; bodies and shape snippets
+    // below share spans of it instead of copying substrings.
+    let shared_source: Arc<str> = Arc::from(text);
     let empty_invocations = super::owner_pin::empty_local_macro_invocation_ranges(source.syntax());
     let module_declarations = module_declaration_facts(&source, &line_index);
     let mut functions = Vec::new();
@@ -414,7 +418,8 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
         let calls = extract_call_facts(&call_body, start_line);
         let returns = extract_return_facts(&body, start_line);
         let literals = extract_literal_facts(&body, start_line);
-        let probe_shapes = extract_parser_probe_shapes(&function, text, &line_index);
+        let probe_shapes =
+            extract_parser_probe_shapes(&function, text, &shared_source, &line_index);
         // A plain helper inside an inline `#[cfg(test)]` module is test
         // infrastructure even when it has no `#[test]` attribute. Classify
         // that role at the producer boundary so diff probes, seam inventory,
@@ -451,7 +456,7 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
             file: path_buf.clone(),
             start_line,
             end_line,
-            body: body.clone(),
+            body: SourceText::shared_or_owned(&shared_source, u32::from(fn_start) as usize, &body),
             calls: calls.clone(),
             returns: returns.clone(),
             literals: literals.clone(),
@@ -470,7 +475,11 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
                 file: path_buf.clone(),
                 start_line,
                 end_line,
-                body,
+                body: SourceText::shared_or_owned(
+                    &shared_source,
+                    u32::from(fn_start) as usize,
+                    &body,
+                ),
                 calls,
                 assertions: extract_parser_oracles(&function, text, &line_index),
                 literals,
@@ -520,7 +529,7 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
             &line_index,
         ),
         role_provenance: SourceRoleProvenance::default(),
-        source: text.to_string(),
+        source: shared_source,
     })
 }
 
@@ -1147,10 +1156,11 @@ fn collect_impl_attr_syntax(function: &ast::Fn) -> Vec<String> {
 fn extract_parser_probe_shapes(
     function: &ast::Fn,
     text: &str,
+    source: &Arc<str>,
     line_index: &LineIndex,
 ) -> Vec<ProbeShapeFact> {
     let mut shapes = Vec::new();
-    push_unsafe_boundary_probe_shapes(&mut shapes, function, line_index);
+    push_unsafe_boundary_probe_shapes(&mut shapes, function, source, line_index);
 
     for if_expr in function
         .syntax()
@@ -1162,6 +1172,7 @@ fn extract_parser_probe_shapes(
                 &mut shapes,
                 line_index,
                 text,
+                source,
                 ProbeShapeKind::Predicate,
                 condition.syntax().text_range().start(),
                 condition.syntax().text_range().end(),
@@ -1179,6 +1190,7 @@ fn extract_parser_probe_shapes(
                 &mut shapes,
                 line_index,
                 text,
+                source,
                 ProbeShapeKind::Predicate,
                 condition.syntax().text_range().start(),
                 condition.syntax().text_range().end(),
@@ -1199,6 +1211,7 @@ fn extract_parser_probe_shapes(
                 &mut shapes,
                 line_index,
                 text,
+                source,
                 ProbeShapeKind::Predicate,
                 bin_expr.syntax().text_range().start(),
                 bin_expr.syntax().text_range().end(),
@@ -1216,6 +1229,7 @@ fn extract_parser_probe_shapes(
             &mut shapes,
             line_index,
             text,
+            source,
             ProbeShapeKind::ReturnValue,
             range.start(),
             range.end(),
@@ -1226,6 +1240,7 @@ fn extract_parser_probe_shapes(
                 &mut shapes,
                 line_index,
                 text,
+                source,
                 ProbeShapeKind::ErrorPath,
                 range.start(),
                 range.end(),
@@ -1241,6 +1256,7 @@ fn extract_parser_probe_shapes(
                 &mut shapes,
                 line_index,
                 text,
+                source,
                 ProbeShapeKind::ReturnValue,
                 range.start(),
                 range.end(),
@@ -1250,6 +1266,7 @@ fn extract_parser_probe_shapes(
                     &mut shapes,
                     line_index,
                     text,
+                    source,
                     ProbeShapeKind::ErrorPath,
                     range.start(),
                     range.end(),
@@ -1269,6 +1286,7 @@ fn extract_parser_probe_shapes(
             &mut shapes,
             line_index,
             text,
+            source,
             ProbeShapeKind::CallDeletion,
             range.start(),
             range.end(),
@@ -1278,6 +1296,7 @@ fn extract_parser_probe_shapes(
                 &mut shapes,
                 line_index,
                 text,
+                source,
                 ProbeShapeKind::ReturnValue,
                 range.start(),
                 range.end(),
@@ -1288,6 +1307,7 @@ fn extract_parser_probe_shapes(
                 &mut shapes,
                 line_index,
                 text,
+                source,
                 ProbeShapeKind::ErrorPath,
                 range.start(),
                 range.end(),
@@ -1306,6 +1326,7 @@ fn extract_parser_probe_shapes(
             &mut shapes,
             line_index,
             text,
+            source,
             ProbeShapeKind::CallDeletion,
             range.start(),
             range.end(),
@@ -1319,6 +1340,7 @@ fn extract_parser_probe_shapes(
                 &mut shapes,
                 line_index,
                 text,
+                source,
                 ProbeShapeKind::SideEffect,
                 range.start(),
                 range.end(),
@@ -1336,6 +1358,7 @@ fn extract_parser_probe_shapes(
             &mut shapes,
             line_index,
             text,
+            source,
             ProbeShapeKind::FieldConstruction,
             range.start(),
             range.end(),
@@ -1348,17 +1371,18 @@ fn extract_parser_probe_shapes(
         .filter_map(ast::MatchExpr::cast)
     {
         if let Some(token) = match_expr.match_token() {
+            let snippet = match_expr_probe_text(
+                text,
+                match_expr.expr().map(|expr| expr.syntax().text_range()),
+                match_expr.syntax().text_range(),
+            );
             push_probe_shape_with_text(
                 &mut shapes,
                 line_index,
                 ProbeShapeKind::MatchArm,
                 token.text_range().start(),
                 token.text_range().end(),
-                match_expr_probe_text(
-                    text,
-                    match_expr.expr().map(|expr| expr.syntax().text_range()),
-                    match_expr.syntax().text_range(),
-                ),
+                link_shape_text(source, token.text_range().start(), snippet),
             );
         }
     }
@@ -1369,17 +1393,18 @@ fn extract_parser_probe_shapes(
         .filter_map(ast::MatchArm::cast)
     {
         if let Some(token) = arm.fat_arrow_token() {
+            let snippet = match_arm_probe_text(
+                text,
+                arm.syntax().text_range().start(),
+                token.text_range().start(),
+            );
             push_probe_shape_with_text(
                 &mut shapes,
                 line_index,
                 ProbeShapeKind::MatchArm,
                 token.text_range().start(),
                 token.text_range().end(),
-                match_arm_probe_text(
-                    text,
-                    arm.syntax().text_range().start(),
-                    token.text_range().start(),
-                ),
+                link_shape_text(source, token.text_range().start(), snippet),
             );
         }
     }
@@ -1403,6 +1428,7 @@ fn extract_parser_probe_shapes(
 fn push_unsafe_boundary_probe_shapes(
     shapes: &mut Vec<ProbeShapeFact>,
     function: &ast::Fn,
+    source: &Arc<str>,
     line_index: &LineIndex,
 ) {
     if let Some(unsafe_token) = function.unsafe_token() {
@@ -1416,7 +1442,11 @@ fn push_unsafe_boundary_probe_shapes(
             ProbeShapeKind::UnsafeBoundary,
             unsafe_token.text_range().start(),
             function.syntax().text_range().end(),
-            format!("unsafe fn {name}"),
+            link_shape_text(
+                source,
+                unsafe_token.text_range().start(),
+                format!("unsafe fn {name}"),
+            ),
         );
     }
 
@@ -1434,7 +1464,11 @@ fn push_unsafe_boundary_probe_shapes(
             ProbeShapeKind::UnsafeBoundary,
             unsafe_token.text_range().start(),
             block.syntax().text_range().end(),
-            "unsafe block".to_string(),
+            link_shape_text(
+                source,
+                unsafe_token.text_range().start(),
+                "unsafe block".to_string(),
+            ),
         );
     }
 }
@@ -1443,18 +1477,24 @@ fn push_probe_shape(
     shapes: &mut Vec<ProbeShapeFact>,
     line_index: &LineIndex,
     text: &str,
+    source: &Arc<str>,
     kind: ProbeShapeKind,
     start: TextSize,
     end: TextSize,
 ) {
-    let snippet = slice_text(text, start, end)
-        .trim()
-        .trim_end_matches(';')
-        .to_string();
+    let raw = slice_text(text, start, end);
+    let snippet = raw.trim().trim_end_matches(';').to_string();
     if snippet.is_empty() {
         return;
     }
-    push_probe_shape_with_text(shapes, line_index, kind, start, end, snippet);
+    // Trimming only strips edges, so the snippet still sits verbatim at the
+    // leading-trimmed offset; trailing whitespace and `;` fall outside the
+    // shared window. `shared_or_owned` re-validates and keeps an owned copy
+    // if the span ever disagrees.
+    let leading = raw.len() - raw.trim_start().len();
+    let link_start = (u32::from(start) as usize).saturating_add(leading);
+    let text = SourceText::shared_or_owned(source, link_start, &snippet);
+    push_probe_shape_with_text(shapes, line_index, kind, start, end, text);
 }
 
 fn push_probe_shape_with_text(
@@ -1463,9 +1503,9 @@ fn push_probe_shape_with_text(
     kind: ProbeShapeKind,
     start: TextSize,
     end: TextSize,
-    snippet: String,
+    text: SourceText,
 ) {
-    if snippet.is_empty() {
+    if text.is_empty() {
         return;
     }
     shapes.push(ProbeShapeFact {
@@ -1473,8 +1513,16 @@ fn push_probe_shape_with_text(
         end_line: line_index.line_for_range_end(end),
         start_byte: u32::from(start) as usize,
         kind,
-        text: snippet,
+        text,
     });
+}
+
+/// Link a synthetic or normalized snippet that may not sit verbatim in the
+/// source. Verbatim snippets share the allocation; anything else (match-arm
+/// normalization, `unsafe fn {name}` synthesis) stays owned with identical
+/// text.
+fn link_shape_text(source: &Arc<str>, start: TextSize, snippet: String) -> SourceText {
+    SourceText::shared_or_owned(source, u32::from(start) as usize, &snippet)
 }
 
 fn match_expr_probe_text(
@@ -1827,7 +1875,7 @@ fn owner_changed_nodes(
                 },
                 start_line: function.start_line,
                 end_line: function.end_line,
-                text: function.body.clone(),
+                text: function.body.to_string(),
                 owner: Some(function.id.clone()),
             });
         }
@@ -2258,7 +2306,7 @@ pub fn read_raw(ptr: *const u8) -> u8 {
             .probe_shapes
             .iter()
             .filter(|shape| shape.kind == ProbeShapeKind::UnsafeBoundary)
-            .map(|shape| (shape.text.clone(), shape.start_line, shape.end_line))
+            .map(|shape| (shape.text.to_string(), shape.start_line, shape.end_line))
             .collect::<Vec<_>>();
 
         assert_eq!(
@@ -2339,7 +2387,7 @@ pub fn wrap(value: u64) -> Result<Option<u64>, ()> {
             module_declarations: Vec::new(),
             unresolved_property_macros: Vec::new(),
             role_provenance: Default::default(),
-            source: String::new(),
+            source: String::new().into(),
         };
         let nodes = adapter.changed_nodes(
             crate::analysis::facts::FactSlice::from_slice(&facts.functions),
@@ -3102,6 +3150,54 @@ mod shadow_fact_equivalence_tests {
                 lexical.match_start_lines, parser_backed.match_start_lines,
                 "owned-statement lines must agree for:\n{body}"
             );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parser_bodies_and_verbatim_shapes_share_the_file_allocation() -> Result<(), String> {
+        // #5415 step 2 mechanism pin: parser bodies slice exact spans, so
+        // they must share the file allocation (one 36MB source instead of
+        // ~84MB of substring copies). Synthetic/normalized shape text stays
+        // owned by construction; verbatim shapes share.
+        let text = "fn alpha(x: i32) -> i32 {\n    if x > 0 {\n        x\n    } else {\n        0\n    }\n}\n#[test]\nfn beta() {\n    assert_eq!(alpha(1), 1);\n}\n";
+        let facts = summarize_file_with_parser(Path::new("src/lib.rs"), text)?;
+        assert_eq!(facts.functions.len(), 2);
+        assert_eq!(facts.tests.len(), 1);
+        assert!(
+            !facts.probe_shapes.is_empty(),
+            "needs shapes to pin sharing"
+        );
+        let alpha = facts
+            .functions
+            .iter()
+            .find(|function| function.name == "alpha")
+            .ok_or("missing alpha")?;
+        assert_eq!(
+            alpha.body.as_str(),
+            &text[..text.find("\n#[test]").unwrap_or(text.len())]
+        );
+        for body in facts
+            .functions
+            .iter()
+            .map(|function| &function.body)
+            .chain(facts.tests.iter().map(|test| &test.body))
+        {
+            assert!(
+                body.shared_source()
+                    .is_some_and(|arc| Arc::ptr_eq(arc, &facts.source)),
+                "parser body must share the file allocation: {body:?}"
+            );
+        }
+        assert!(
+            facts.probe_shapes.iter().any(|shape| shape
+                .text
+                .shared_source()
+                .is_some_and(|arc| Arc::ptr_eq(arc, &facts.source))),
+            "at least the verbatim predicate shape must share the allocation"
+        );
+        for shape in &facts.probe_shapes {
+            assert!(!shape.text.is_empty());
         }
         Ok(())
     }

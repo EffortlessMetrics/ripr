@@ -61,8 +61,8 @@ pub(crate) fn probes_for_repo_file_seeded(
             family,
             delta: DeltaKind::Unknown,
             before: None,
-            after: Some(shape.text.clone()),
-            expression: shape.text.clone(),
+            after: Some(shape.text.to_string()),
+            expression: shape.text.to_string(),
             expected_sinks,
             required_oracles,
         };
@@ -113,7 +113,7 @@ mod tests {
                         end_line: 6,
                         body:
                             "fn authenticate() -> Result<(), AuthError> { Err(AuthError::Revoked) }"
-                                .to_string(),
+                                .into(),
                         calls: vec![],
                         returns: vec![],
                         literals: vec![],
@@ -133,7 +133,7 @@ mod tests {
                         end_line: 4,
                         start_byte: 48,
                         kind: ProbeShapeKind::ErrorPath,
-                        text: "Err(AuthError::Revoked)".to_string(),
+                        text: "Err(AuthError::Revoked)".into(),
                     }],
                     ..FileFacts::default()
                 },
@@ -186,7 +186,7 @@ mod tests {
                         file: fragment.clone(),
                         start_line: 1,
                         end_line: 4,
-                        body: "fn clamp(&self, value: i32) -> i32 { value }".to_string(),
+                        body: "fn clamp(&self, value: i32) -> i32 { value }".into(),
                         calls: vec![],
                         returns: vec![],
                         literals: vec![],
@@ -203,7 +203,7 @@ mod tests {
                         end_line: 2,
                         start_byte: 36,
                         kind: ProbeShapeKind::ErrorPath,
-                        text: "value > self.limit".to_string(),
+                        text: "value > self.limit".into(),
                     }],
                     ..FileFacts::default()
                 },

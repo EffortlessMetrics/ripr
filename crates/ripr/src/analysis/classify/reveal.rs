@@ -4218,7 +4218,7 @@ return Err(\"typed pin\".into());
             file: PathBuf::from("tests/value.rs"),
             start_line: 1,
             end_line: 3,
-            body: "score();".to_string(),
+            body: "score();".into(),
             calls: Vec::new(),
             assertions,
             literals: Vec::new(),
@@ -4237,7 +4237,7 @@ return Err(\"typed pin\".into());
         assertions: Vec<OracleFact>,
     ) -> TestSummary {
         TestSummary {
-            body: body.to_string(),
+            body: body.into(),
             ..test_with_assertions(name, assertions)
         }
     }

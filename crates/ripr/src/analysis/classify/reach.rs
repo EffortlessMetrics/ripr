@@ -300,7 +300,7 @@ mod tests {
      {
         let owner = function("tax_total");
         let mut macro_caller = test("vat_boundary_is_checked_by_macro");
-        macro_caller.body = "assert_eq!(macro_tax_case!(100), 120);".to_string();
+        macro_caller.body = "assert_eq!(macro_tax_case!(100), 120);".into();
         let related = vec![(&macro_caller, RelationReason::WeakTokenSubstring)];
 
         let evidence = reach_evidence(&related, Some(&owner), || false);
@@ -450,7 +450,7 @@ mod tests {
             file: PathBuf::from("src/lib.rs"),
             start_line: 1,
             end_line: 3,
-            body: String::new(),
+            body: String::new().into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
@@ -470,7 +470,7 @@ mod tests {
             file: PathBuf::from("tests/pricing.rs"),
             start_line: 1,
             end_line: 3,
-            body: String::new(),
+            body: String::new().into(),
             calls: Vec::new(),
             assertions: Vec::new(),
             literals: Vec::new(),

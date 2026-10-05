@@ -531,7 +531,7 @@ mod tests {
             file: PathBuf::from(file),
             start_line: 1,
             end_line: 3,
-            body: format!("pub fn {name}(input: &str) -> bool {{ true }}"),
+            body: format!("pub fn {name}(input: &str) -> bool {{ true }}").into(),
             calls: calls
                 .iter()
                 .map(|(callee, text)| CallFact {
@@ -716,7 +716,7 @@ mod tests {
     prev
 }
 "
-            .to_string(),
+            .into(),
             start_line: 1,
             ..function("src/lib.rs", "first_char", &[])
         };
@@ -734,7 +734,7 @@ mod tests {
     prev
 }
 "
-            .to_string(),
+            .into(),
             start_line: 1,
             ..function("src/lib.rs", "is_word_start", &[])
         };

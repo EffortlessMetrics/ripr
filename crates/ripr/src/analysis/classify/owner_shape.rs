@@ -371,7 +371,7 @@ mod tests {
             file: PathBuf::from(file),
             start_line: 1,
             end_line: 1,
-            body: body.to_string(),
+            body: body.into(),
             calls: calls
                 .into_iter()
                 .map(|call| CallFact {

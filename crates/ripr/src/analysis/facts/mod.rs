@@ -155,7 +155,7 @@ pub use model::{
     HarnessSubjectClaim, HarnessSubjectFact, LetBindingFact, LiteralFact, ModuleDeclarationFact,
     ModulePathTarget, OracleFact, ProbeShapeFact, ProbeShapeKind, ResolvedIncludeParent,
     ReturnFact, RustIncludeLimitation, RustIndex, SourceRoleProvenance, SourceRoleProvenanceEdge,
-    SourceRoleProvenanceEdgeKind, TestFact, TestSummary, UnresolvedPropertyMacroFact,
+    SourceRoleProvenanceEdgeKind, SourceText, TestFact, TestSummary, UnresolvedPropertyMacroFact,
 };
 // Hot evidence loops hash each indexed file once and validate by digest.
 pub(crate) use model::WorkspaceFileAuthority;

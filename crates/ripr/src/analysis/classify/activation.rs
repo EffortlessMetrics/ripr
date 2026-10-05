@@ -1580,7 +1580,7 @@ fn owner_calls_passing_constant(
                 index
                     .files()
                     .get(&test.file)
-                    .map(|facts| facts.data().source.as_str()),
+                    .map(|facts| facts.data().source.as_ref()),
                 &constant.name,
             )
         })
@@ -2094,7 +2094,7 @@ mod tests {
             file: PathBuf::from("src/lib.rs"),
             start_line: 1,
             end_line: 9,
-            body: "pub fn split_after(input: &str, delim: char) -> &str {\n    let end = input.rfind(delim).map_or(1, |idx| idx);\n    let start = delim.len_utf8();\n    if end == start {\n        &input[..end]\n    } else {\n        input\n    }\n}".to_string(),
+            body: "pub fn split_after(input: &str, delim: char) -> &str {\n    let end = input.rfind(delim).map_or(1, |idx| idx);\n    let start = delim.len_utf8();\n    if end == start {\n        &input[..end]\n    } else {\n        input\n    }\n}".into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
@@ -2111,7 +2111,7 @@ mod tests {
             file: PathBuf::from("tests/split.rs"),
             start_line: 4,
             end_line: 6,
-            body: "split_after(\"ab\", 'x');".to_string(),
+            body: "split_after(\"ab\", 'x');".into(),
             calls: vec![CallFact {
                 name: "split_after".to_string(),
                 line: 5,
@@ -2310,7 +2310,7 @@ mod tests {
             file: PathBuf::from("tests/score.rs"),
             start_line: 10,
             end_line: 10 + body.lines().count(),
-            body: body.to_string(),
+            body: body.into(),
             calls: vec![CallFact {
                 name: "score".to_string(),
                 line: call_line,
@@ -2447,7 +2447,7 @@ mod tests {
         // The owner call's argument is an input; the expected value of an
         // assertion on another function is an oracle value.
         let mut test = test_with_call("score_boundary", "assert!(score(5));");
-        test.body = "assert!(score(5));\nassert_eq!(tax_bps(\"EU\"), 10);".to_string();
+        test.body = "assert!(score(5));\nassert_eq!(tax_bps(\"EU\"), 10);".into();
         test.assertions = vec![oracle_fact(
             "assert_eq!(tax_bps(\"EU\"), 10);",
             OracleKind::ExactValue,
@@ -2569,7 +2569,7 @@ mod tests {
             PathBuf::from("src/lib.rs"),
             crate::analysis::facts::FileFacts {
                 path: PathBuf::from("src/lib.rs"),
-                source: format!("{constant_source}\n{}", owner.body),
+                source: format!("{constant_source}\n{}", owner.body).into(),
                 ..Default::default()
             },
         );
@@ -2577,7 +2577,7 @@ mod tests {
             PathBuf::from("tests/score.rs"),
             crate::analysis::facts::FileFacts {
                 path: PathBuf::from("tests/score.rs"),
-                source: test_file_source.to_string(),
+                source: test_file_source.into(),
                 ..Default::default()
             },
         );
@@ -2800,7 +2800,7 @@ mod tests {
             body: r#"let rows = [(99, 100), (100, 100)];
 let input = Request::builder().amount(100).token("abc").build();
 assert_eq!(input.amount, 100);"#
-                .to_string(),
+                .into(),
             calls: Vec::new(),
             assertions: vec![oracle_fact(
                 "assert_eq!(input.amount, 100);",
@@ -2846,7 +2846,7 @@ assert_eq!(input.amount, 100);"#
             file: PathBuf::from("tests/value.rs"),
             start_line: 10,
             end_line: 12,
-            body: "other(AuthError::Ignored);\nscore(AuthError::RevokedToken);".to_string(),
+            body: "other(AuthError::Ignored);\nscore(AuthError::RevokedToken);".into(),
             calls: vec![
                 CallFact {
                     line: 11,
@@ -2898,7 +2898,7 @@ assert_eq!(input.amount, 100);"#
             file: PathBuf::from("tests/value.rs"),
             start_line: 10,
             end_line: 14,
-            body: body.to_string(),
+            body: body.into(),
             calls,
             assertions: vec![oracle_fact(
                 "assert_eq!(total, 100);",
@@ -3283,7 +3283,7 @@ assert_eq!(input.amount, 100);"#
             file: PathBuf::from("tests/value.rs"),
             start_line: 10,
             end_line: 12,
-            body: "other(1);\nscore(2);".to_string(),
+            body: "other(1);\nscore(2);".into(),
             calls: vec![
                 CallFact {
                     line: 11,
@@ -3413,7 +3413,7 @@ assert_eq!(input.amount, 100);"#
             file: PathBuf::from("src/lib.rs"),
             start_line: 1,
             end_line: 3,
-            body: body.to_string(),
+            body: body.into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
@@ -3433,7 +3433,7 @@ assert_eq!(input.amount, 100);"#
             file: PathBuf::from("tests/score.rs"),
             start_line: 10,
             end_line: 12,
-            body: call.to_string(),
+            body: call.into(),
             calls: vec![CallFact {
                 name: "score".to_string(),
                 line: 11,
@@ -3453,7 +3453,7 @@ assert_eq!(input.amount, 100);"#
             file: PathBuf::from("tests/score.rs"),
             start_line: 10,
             end_line: 12,
-            body: assertion.to_string(),
+            body: assertion.into(),
             calls: Vec::new(),
             assertions: vec![oracle_fact(assertion, kind)],
             literals: Vec::new(),

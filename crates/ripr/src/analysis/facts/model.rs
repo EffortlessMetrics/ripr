@@ -49,7 +49,7 @@ impl WorkspaceRootAuthority {
             root,
             files
                 .iter()
-                .map(|(path, facts)| (path, facts.source.as_str())),
+                .map(|(path, facts)| (path, facts.source.as_ref())),
         )
     }
     pub(crate) fn from_sources<'a>(
@@ -507,7 +507,270 @@ pub struct UnresolvedPropertyMacroFact {
     pub mentioned_identifiers: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+/// Text that shares its file's `source` allocation instead of copying it
+/// (#5415 step 2).
+///
+/// Function/test bodies and probe-shape snippets are usually exact
+/// substrings of the indexed file source; storing each as its own `String`
+/// kept ~84MB of duplicate bytes alive on the #5415 repro. `Shared` values
+/// hold the file's `Arc<str>` plus a byte span, so cloning a fact into the
+/// index arenas shares the allocation instead of duplicating it. `Owned`
+/// covers producer output that is not a verbatim substring:
+/// lexical-fallback bodies with normalized line endings, and
+/// whitespace-collapsed or synthetic shape text.
+///
+/// Equality, debug, display and deref observe the resolved text, so the
+/// representation never changes analysis results. Spans are `u32` to keep
+/// the type `String`-sized; a body past 4GB falls back to `Owned`.
+#[derive(Clone)]
+pub struct SourceText {
+    inner: SourceTextInner,
+}
+
+#[derive(Clone)]
+enum SourceTextInner {
+    Shared {
+        source: Arc<str>,
+        start: u32,
+        len: u32,
+    },
+    Owned(Arc<str>),
+}
+
+impl SourceText {
+    /// Share `source[start..start + text.len()]` when it reproduces `text`
+    /// exactly; otherwise keep an owned copy. Producers pass the span they
+    /// sliced from, so a wrong offset degrades to today's allocation
+    /// instead of corrupting the text.
+    pub fn shared_or_owned(source: &Arc<str>, start: usize, text: &str) -> Self {
+        let end = start.saturating_add(text.len());
+        let span = u32::try_from(start)
+            .ok()
+            .and_then(|start| u32::try_from(text.len()).ok().map(|len| (start, len)));
+        if let (Some((start32, len32)), Some(window)) = (span, source.get(start..end))
+            && window == text
+        {
+            return Self {
+                inner: SourceTextInner::Shared {
+                    source: Arc::clone(source),
+                    start: start32,
+                    len: len32,
+                },
+            };
+        }
+        Self::owned(text)
+    }
+
+    /// Keep an owned copy, for producer output that is not a verbatim
+    /// substring of the file source.
+    pub fn owned(text: impl AsRef<str>) -> Self {
+        Self {
+            inner: SourceTextInner::Owned(Arc::from(text.as_ref())),
+        }
+    }
+
+    /// The resolved text. `Shared` spans are validated against the live
+    /// allocation at construction, and `Arc<str>` contents are immutable,
+    /// so the span always resolves.
+    pub fn as_str(&self) -> &str {
+        match &self.inner {
+            SourceTextInner::Shared { source, start, len } => {
+                let start = *start as usize;
+                source
+                    .get(start..start.saturating_add(*len as usize))
+                    .unwrap_or("")
+            }
+            SourceTextInner::Owned(text) => text,
+        }
+    }
+
+    /// The shared allocation, for mechanism pins that prove children reuse
+    /// the file's `source` instead of copying it. `None` for `Owned` text.
+    #[cfg(test)]
+    pub(crate) fn shared_source(&self) -> Option<&Arc<str>> {
+        match &self.inner {
+            SourceTextInner::Shared { source, .. } => Some(source),
+            SourceTextInner::Owned(_) => None,
+        }
+    }
+}
+
+impl std::ops::Deref for SourceText {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
+impl AsRef<str> for SourceText {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl std::fmt::Debug for SourceText {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(self.as_str(), f)
+    }
+}
+
+impl std::fmt::Display for SourceText {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.as_str(), f)
+    }
+}
+
+impl Default for SourceText {
+    fn default() -> Self {
+        Self::owned("")
+    }
+}
+
+impl PartialEq for SourceText {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl Eq for SourceText {}
+
+impl PartialOrd for SourceText {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SourceText {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.as_str().cmp(other.as_str())
+    }
+}
+
+impl PartialEq<str> for SourceText {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
+impl PartialEq<&str> for SourceText {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
+impl PartialEq<SourceText> for &str {
+    fn eq(&self, other: &SourceText) -> bool {
+        *self == other.as_str()
+    }
+}
+
+impl PartialEq<String> for SourceText {
+    fn eq(&self, other: &String) -> bool {
+        self.as_str() == other
+    }
+}
+
+impl PartialEq<SourceText> for String {
+    fn eq(&self, other: &SourceText) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl From<String> for SourceText {
+    fn from(text: String) -> Self {
+        Self::owned(text)
+    }
+}
+
+impl From<&str> for SourceText {
+    fn from(text: &str) -> Self {
+        Self::owned(text)
+    }
+}
+
+impl From<SourceText> for String {
+    fn from(text: SourceText) -> Self {
+        text.as_str().to_string()
+    }
+}
+
+impl From<&SourceText> for String {
+    fn from(text: &SourceText) -> Self {
+        text.as_str().to_string()
+    }
+}
+
+impl serde::Serialize for SourceText {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // Bare serialization has no parent allocation to resolve a span
+        // against, so it always inlines (detached by definition).
+        WireText::Inline {
+            text: self.as_str().to_string(),
+        }
+        .serialize(serializer)
+    }
+}
+
+/// Cache payload for [`SourceText`]: a span into the entry's `source`, or
+/// inline text for `Owned` values. `SourceText` deliberately has no
+/// `Deserialize`: linking a span needs the parent allocation, so only
+/// [`FileFacts`] deserializes, through [`FileFactsWire`].
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+pub(crate) enum WireText {
+    Span { start: u32, len: u32 },
+    Inline { text: String },
+}
+
+impl WireText {
+    /// Attached encoding for one child of `parent`: a span is emitted
+    /// only when the child provably shares the parent allocation. A
+    /// child from a foreign allocation (reassigned source, arena-backed
+    /// view child from another file) falls back to inline text, so a
+    /// span can never silently resolve to different bytes at decode.
+    pub(crate) fn attached(text: &SourceText, parent: &Arc<str>) -> Self {
+        match &text.inner {
+            SourceTextInner::Shared { source, start, len } if Arc::ptr_eq(source, parent) => {
+                WireText::Span {
+                    start: *start,
+                    len: *len,
+                }
+            }
+            _ => WireText::Inline {
+                text: text.as_str().to_string(),
+            },
+        }
+    }
+}
+
+/// Resolve one wire value against its entry's `source`. A span outside the
+/// allocation or off a char boundary rejects the whole entry (the caller
+/// treats it as a cache miss and re-extracts); spans never invent text.
+fn link_wire_text(wire: WireText, source: &Arc<str>, what: &str) -> Result<SourceText, String> {
+    match wire {
+        WireText::Inline { text } => Ok(SourceText::owned(text)),
+        WireText::Span { start, len } => {
+            let (start_usize, len_usize) = (start as usize, len as usize);
+            match source.get(start_usize..start_usize.saturating_add(len_usize)) {
+                Some(_) => Ok(SourceText {
+                    inner: SourceTextInner::Shared {
+                        source: Arc::clone(source),
+                        start,
+                        len,
+                    },
+                }),
+                None => Err(format!(
+                    "{what} span {start}..{} falls outside its {} source bytes",
+                    start_usize.saturating_add(len_usize),
+                    source.len()
+                )),
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FileFacts {
     pub path: PathBuf,
     pub functions: Vec<FunctionFact>,
@@ -524,11 +787,9 @@ pub struct FileFacts {
     /// an inline module keeps the typed fail-closed status quo (no composed
     /// role) because cross-file resolution through inline nesting is not a
     /// producer here yet. The lexical fallback emits no module declarations.
-    #[serde(default)]
     pub module_declarations: Vec<ModuleDeclarationFact>,
     /// Opaque property blocks from the existing source parse. No expansion or
     /// executable-test authority is inferred from the macro's spelling.
-    #[serde(default)]
     pub unresolved_property_macros: Vec<UnresolvedPropertyMacroFact>,
     /// Source-role provenance for this file occurrence (#3533): the ordered
     /// edge chain from the compilation unit whose declarations and include
@@ -536,13 +797,13 @@ pub struct FileFacts {
     /// that could not be resolved. Composer-owned and recomputed on every
     /// index build — `serde(skip)` keeps composed state out of the on-disk
     /// file-fact cache, which stores pre-composition parse facts only.
-    #[serde(skip)]
     pub role_provenance: SourceRoleProvenance,
     /// Original file source text. Held so `analysis/value-extraction-v2`
     /// can scan for top-level `const`/`static` declarations without
     /// re-reading the file at evidence-build time. Serialized in the file-fact
-    /// cache and bound by its semantic payload digest.
-    pub source: String,
+    /// cache and bound by its semantic payload digest. Reference-counted so
+    /// child [`SourceText`] spans share this allocation (#5415 step 2).
+    pub source: Arc<str>,
 }
 
 /// Producer-owned source role for one indexed Rust function (#3531).
@@ -702,14 +963,14 @@ pub struct FunctionItemFact {
     pub has_body: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FunctionFact {
     pub id: SymbolId,
     pub name: String,
     pub file: PathBuf,
     pub start_line: usize,
     pub end_line: usize,
-    pub body: String,
+    pub body: SourceText,
     pub calls: Vec<CallFact>,
     pub returns: Vec<ReturnFact>,
     pub literals: Vec<LiteralFact>,
@@ -725,7 +986,6 @@ pub struct FunctionFact {
     /// `#[wasm_bindgen]`, `#[napi]`). Kept apart from `attrs` so test and
     /// harness detection still read only the function's own attributes.
     /// Parser-backed only — the lexical fallback leaves this empty.
-    #[serde(default)]
     pub impl_attrs: Vec<String>,
     /// Names of `fn` items nested inside this function's body (#3727 Slice
     /// A), sorted and deduplicated. A nested `fn <callee>` item is hoisted
@@ -733,7 +993,6 @@ pub struct FunctionFact {
     /// `analysis::extract::shadow`). Parser-backed only — the lexical
     /// fallback leaves this empty. Empty on a parser-backed file is a real
     /// "no nested fn" result.
-    #[serde(default)]
     pub nested_fn_names: Vec<String>,
     /// Shadow-shaped binding facts from the `let` statements in this
     /// function's body (#3727 Slice A), one entry per whole-word pattern
@@ -741,15 +1000,12 @@ pub struct FunctionFact {
     /// (`let flag;`) produce no entries, mirroring the lexical scanner's
     /// `;` bound. Parser-backed only — the lexical fallback leaves this
     /// empty.
-    #[serde(default)]
     pub let_bindings: Vec<LetBindingFact>,
     /// Where the item is declared (#4478). Parser-backed only; the lexical
     /// fallback leaves it `Unknown`.
-    #[serde(default)]
     pub item: FunctionItemFact,
     /// Where the definition sits for a type-path call `T::name(` (#4558).
     /// Parser-backed only; the lexical fallback leaves it `Unknown`.
-    #[serde(default)]
     pub impl_context: FunctionImplContext,
 }
 
@@ -783,13 +1039,13 @@ impl FunctionImplContext {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TestFact {
     pub name: String,
     pub file: PathBuf,
     pub start_line: usize,
     pub end_line: usize,
-    pub body: String,
+    pub body: SourceText,
     pub calls: Vec<CallFact>,
     pub assertions: Vec<OracleFact>,
     pub literals: Vec<LiteralFact>,
@@ -802,11 +1058,9 @@ pub struct TestFact {
     /// (#3727 Slice A): nested `fn` item names and `let` binding facts,
     /// both body-relative. Parser-backed only; the lexical fallback leaves
     /// them empty.
-    #[serde(default)]
     pub nested_fn_names: Vec<String>,
     /// Body-relative `let` binding facts, mirroring
     /// `FunctionFact.let_bindings` (#3727 Slice A).
-    #[serde(default)]
     pub let_bindings: Vec<LetBindingFact>,
 }
 
@@ -1030,7 +1284,7 @@ impl ProbeShapeKind {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProbeShapeFact {
     pub start_line: usize,
     pub end_line: usize,
@@ -1039,7 +1293,403 @@ pub struct ProbeShapeFact {
     /// probe shapes at all, so this stays accurate.
     pub start_byte: usize,
     pub kind: ProbeShapeKind,
-    pub text: String,
+    pub text: SourceText,
+}
+
+/// Cache payload mirrors of the fact structs. The wire carries [`WireText`]
+/// spans instead of allocated strings; only [`FileFacts`] crosses the
+/// decode boundary, linking every child to the entry's `source`.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct FunctionFactWire {
+    pub id: SymbolId,
+    pub name: String,
+    pub file: PathBuf,
+    pub start_line: usize,
+    pub end_line: usize,
+    pub body: WireText,
+    pub calls: Vec<CallFact>,
+    pub returns: Vec<ReturnFact>,
+    pub literals: Vec<LiteralFact>,
+    pub source_role: FunctionSourceRole,
+    pub attrs: Vec<String>,
+    #[serde(default)]
+    pub impl_attrs: Vec<String>,
+    #[serde(default)]
+    pub nested_fn_names: Vec<String>,
+    #[serde(default)]
+    pub let_bindings: Vec<LetBindingFact>,
+    #[serde(default)]
+    pub item: FunctionItemFact,
+    #[serde(default)]
+    pub impl_context: FunctionImplContext,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct TestFactWire {
+    pub name: String,
+    pub file: PathBuf,
+    pub start_line: usize,
+    pub end_line: usize,
+    pub body: WireText,
+    pub calls: Vec<CallFact>,
+    pub assertions: Vec<OracleFact>,
+    pub literals: Vec<LiteralFact>,
+    pub attrs: Vec<String>,
+    #[serde(default)]
+    pub nested_fn_names: Vec<String>,
+    #[serde(default)]
+    pub let_bindings: Vec<LetBindingFact>,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct ProbeShapeFactWire {
+    pub start_line: usize,
+    pub end_line: usize,
+    pub start_byte: usize,
+    pub kind: ProbeShapeKind,
+    pub text: WireText,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct FileFactsWire {
+    pub path: PathBuf,
+    pub functions: Vec<FunctionFactWire>,
+    pub tests: Vec<TestFactWire>,
+    pub calls: Vec<CallFact>,
+    pub returns: Vec<ReturnFact>,
+    pub literals: Vec<LiteralFact>,
+    pub probe_shapes: Vec<ProbeShapeFactWire>,
+    pub used_lexical_fallback: bool,
+    pub module_declarations: Vec<ModuleDeclarationFact>,
+    pub unresolved_property_macros: Vec<UnresolvedPropertyMacroFact>,
+    pub source: String,
+}
+
+impl FunctionFactWire {
+    /// Attached encoding: the body spans only when it shares `parent`
+    /// (see [`WireText::attached`]).
+    pub(crate) fn attached(fact: &FunctionFact, parent: &Arc<str>) -> Self {
+        Self {
+            id: fact.id.clone(),
+            name: fact.name.clone(),
+            file: fact.file.clone(),
+            start_line: fact.start_line,
+            end_line: fact.end_line,
+            body: WireText::attached(&fact.body, parent),
+            calls: fact.calls.clone(),
+            returns: fact.returns.clone(),
+            literals: fact.literals.clone(),
+            source_role: fact.source_role,
+            attrs: fact.attrs.clone(),
+            impl_attrs: fact.impl_attrs.clone(),
+            nested_fn_names: fact.nested_fn_names.clone(),
+            let_bindings: fact.let_bindings.clone(),
+            item: fact.item.clone(),
+            impl_context: fact.impl_context.clone(),
+        }
+    }
+
+    /// Self-contained encoding for detached snapshots (whole-index wire):
+    /// the body resolves to inline text, so the payload decodes without
+    /// its file allocation. Attached children instead use [`Self::attached`]
+    /// through [`FileFacts`].
+    fn detached(fact: &FunctionFact) -> Self {
+        Self {
+            id: fact.id.clone(),
+            name: fact.name.clone(),
+            file: fact.file.clone(),
+            start_line: fact.start_line,
+            end_line: fact.end_line,
+            body: WireText::Inline {
+                text: fact.body.as_str().to_string(),
+            },
+            calls: fact.calls.clone(),
+            returns: fact.returns.clone(),
+            literals: fact.literals.clone(),
+            source_role: fact.source_role,
+            attrs: fact.attrs.clone(),
+            impl_attrs: fact.impl_attrs.clone(),
+            nested_fn_names: fact.nested_fn_names.clone(),
+            let_bindings: fact.let_bindings.clone(),
+            item: fact.item.clone(),
+            impl_context: fact.impl_context.clone(),
+        }
+    }
+}
+
+impl TestFactWire {
+    /// Attached encoding; see [`FunctionFactWire::attached`].
+    pub(crate) fn attached(fact: &TestFact, parent: &Arc<str>) -> Self {
+        Self {
+            name: fact.name.clone(),
+            file: fact.file.clone(),
+            start_line: fact.start_line,
+            end_line: fact.end_line,
+            body: WireText::attached(&fact.body, parent),
+            calls: fact.calls.clone(),
+            assertions: fact.assertions.clone(),
+            literals: fact.literals.clone(),
+            attrs: fact.attrs.clone(),
+            nested_fn_names: fact.nested_fn_names.clone(),
+            let_bindings: fact.let_bindings.clone(),
+        }
+    }
+
+    /// Self-contained encoding for detached snapshots; see
+    /// [`FunctionFactWire::detached`].
+    fn detached(fact: &TestFact) -> Self {
+        Self {
+            name: fact.name.clone(),
+            file: fact.file.clone(),
+            start_line: fact.start_line,
+            end_line: fact.end_line,
+            body: WireText::Inline {
+                text: fact.body.as_str().to_string(),
+            },
+            calls: fact.calls.clone(),
+            assertions: fact.assertions.clone(),
+            literals: fact.literals.clone(),
+            attrs: fact.attrs.clone(),
+            nested_fn_names: fact.nested_fn_names.clone(),
+            let_bindings: fact.let_bindings.clone(),
+        }
+    }
+}
+
+impl ProbeShapeFactWire {
+    /// Attached encoding; see [`FunctionFactWire::attached`].
+    pub(crate) fn attached(fact: &ProbeShapeFact, parent: &Arc<str>) -> Self {
+        Self {
+            start_line: fact.start_line,
+            end_line: fact.end_line,
+            start_byte: fact.start_byte,
+            kind: fact.kind,
+            text: WireText::attached(&fact.text, parent),
+        }
+    }
+
+    /// Self-contained encoding for detached snapshots; see
+    /// [`FunctionFactWire::detached`].
+    fn detached(fact: &ProbeShapeFact) -> Self {
+        Self {
+            start_line: fact.start_line,
+            end_line: fact.end_line,
+            start_byte: fact.start_byte,
+            kind: fact.kind,
+            text: WireText::Inline {
+                text: fact.text.as_str().to_string(),
+            },
+        }
+    }
+}
+
+impl From<&FileFacts> for FileFactsWire {
+    fn from(facts: &FileFacts) -> Self {
+        Self {
+            path: facts.path.clone(),
+            functions: facts
+                .functions
+                .iter()
+                .map(|fact| FunctionFactWire::attached(fact, &facts.source))
+                .collect(),
+            tests: facts
+                .tests
+                .iter()
+                .map(|fact| TestFactWire::attached(fact, &facts.source))
+                .collect(),
+            calls: facts.calls.clone(),
+            returns: facts.returns.clone(),
+            literals: facts.literals.clone(),
+            probe_shapes: facts
+                .probe_shapes
+                .iter()
+                .map(|fact| ProbeShapeFactWire::attached(fact, &facts.source))
+                .collect(),
+            used_lexical_fallback: facts.used_lexical_fallback,
+            module_declarations: facts.module_declarations.clone(),
+            unresolved_property_macros: facts.unresolved_property_macros.clone(),
+            source: facts.source.to_string(),
+        }
+    }
+}
+
+impl FunctionFactWire {
+    fn link(self, source: &Arc<str>) -> Result<FunctionFact, String> {
+        Ok(FunctionFact {
+            id: self.id,
+            name: self.name,
+            file: self.file,
+            start_line: self.start_line,
+            end_line: self.end_line,
+            body: link_wire_text(self.body, source, "function body")?,
+            calls: self.calls,
+            returns: self.returns,
+            literals: self.literals,
+            source_role: self.source_role,
+            attrs: self.attrs,
+            impl_attrs: self.impl_attrs,
+            nested_fn_names: self.nested_fn_names,
+            let_bindings: self.let_bindings,
+            item: self.item,
+            impl_context: self.impl_context,
+        })
+    }
+}
+
+impl TestFactWire {
+    fn link(self, source: &Arc<str>) -> Result<TestFact, String> {
+        Ok(TestFact {
+            name: self.name,
+            file: self.file,
+            start_line: self.start_line,
+            end_line: self.end_line,
+            body: link_wire_text(self.body, source, "test body")?,
+            calls: self.calls,
+            assertions: self.assertions,
+            literals: self.literals,
+            attrs: self.attrs,
+            nested_fn_names: self.nested_fn_names,
+            let_bindings: self.let_bindings,
+        })
+    }
+}
+
+impl ProbeShapeFactWire {
+    fn link(self, source: &Arc<str>) -> Result<ProbeShapeFact, String> {
+        Ok(ProbeShapeFact {
+            start_line: self.start_line,
+            end_line: self.end_line,
+            start_byte: self.start_byte,
+            kind: self.kind,
+            text: link_wire_text(self.text, source, "probe shape text")?,
+        })
+    }
+}
+
+impl FileFactsWire {
+    fn link(self) -> Result<FileFacts, String> {
+        let source: Arc<str> = Arc::from(self.source.as_str());
+        let mut functions = Vec::with_capacity(self.functions.len());
+        for wire in self.functions {
+            functions.push(wire.link(&source)?);
+        }
+        let mut tests = Vec::with_capacity(self.tests.len());
+        for wire in self.tests {
+            tests.push(wire.link(&source)?);
+        }
+        let mut probe_shapes = Vec::with_capacity(self.probe_shapes.len());
+        for wire in self.probe_shapes {
+            probe_shapes.push(wire.link(&source)?);
+        }
+        Ok(FileFacts {
+            path: self.path,
+            functions,
+            tests,
+            calls: self.calls,
+            returns: self.returns,
+            literals: self.literals,
+            probe_shapes,
+            used_lexical_fallback: self.used_lexical_fallback,
+            module_declarations: self.module_declarations,
+            unresolved_property_macros: self.unresolved_property_macros,
+            role_provenance: SourceRoleProvenance::default(),
+            source,
+        })
+    }
+}
+
+impl serde::Serialize for FunctionFact {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        FunctionFactWire::detached(self).serialize(serializer)
+    }
+}
+
+/// Detached decode for whole-index snapshots: inline bodies decode owned,
+/// but a span without its file allocation is rejected instead of guessed.
+/// Attached bodies always decode through [`FileFacts`].
+impl<'de> serde::Deserialize<'de> for FunctionFact {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = FunctionFactWire::deserialize(deserializer)?;
+        let body = match wire.body {
+            WireText::Inline { text } => SourceText::owned(text),
+            WireText::Span { .. } => {
+                return Err(serde::de::Error::custom(
+                    "function body span needs its file source; decode through FileFacts",
+                ));
+            }
+        };
+        Ok(FunctionFact {
+            id: wire.id,
+            name: wire.name,
+            file: wire.file,
+            start_line: wire.start_line,
+            end_line: wire.end_line,
+            body,
+            calls: wire.calls,
+            returns: wire.returns,
+            literals: wire.literals,
+            source_role: wire.source_role,
+            attrs: wire.attrs,
+            impl_attrs: wire.impl_attrs,
+            nested_fn_names: wire.nested_fn_names,
+            let_bindings: wire.let_bindings,
+            item: wire.item,
+            impl_context: wire.impl_context,
+        })
+    }
+}
+
+impl serde::Serialize for TestFact {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        TestFactWire::detached(self).serialize(serializer)
+    }
+}
+
+/// Detached decode for whole-index snapshots; see [`FunctionFact`].
+impl<'de> serde::Deserialize<'de> for TestFact {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = TestFactWire::deserialize(deserializer)?;
+        let body = match wire.body {
+            WireText::Inline { text } => SourceText::owned(text),
+            WireText::Span { .. } => {
+                return Err(serde::de::Error::custom(
+                    "test body span needs its file source; decode through FileFacts",
+                ));
+            }
+        };
+        Ok(TestFact {
+            name: wire.name,
+            file: wire.file,
+            start_line: wire.start_line,
+            end_line: wire.end_line,
+            body,
+            calls: wire.calls,
+            assertions: wire.assertions,
+            literals: wire.literals,
+            attrs: wire.attrs,
+            nested_fn_names: wire.nested_fn_names,
+            let_bindings: wire.let_bindings,
+        })
+    }
+}
+
+impl serde::Serialize for ProbeShapeFact {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        ProbeShapeFactWire::detached(self).serialize(serializer)
+    }
+}
+
+impl serde::Serialize for FileFacts {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        FileFactsWire::from(self).serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for FileFacts {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        FileFactsWire::deserialize(deserializer)
+            .and_then(|wire| wire.link().map_err(serde::de::Error::custom))
+    }
 }
 
 pub type FunctionSummary = FunctionFact;
@@ -1134,7 +1784,7 @@ mod tests {
             end_line: 12,
             start_byte: 256,
             kind: ProbeShapeKind::Predicate,
-            text: "x > 0".to_string(),
+            text: "x > 0".into(),
         };
         assert_eq!(shape.start_line, 10);
         assert_eq!(shape.end_line, 12);
@@ -1165,6 +1815,300 @@ mod tests {
             let decoded: ProbeShapeKind = serde_json::from_value(encoded)?;
             assert_eq!(decoded, kind);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn source_text_is_string_sized() {
+        // #5415 step 2: the sharing wrapper must not bloat the ~0.5M shapes
+        // and facts that carry it; Arc + u32 span + tag fits in 24 bytes.
+        assert_eq!(size_of::<SourceText>(), size_of::<String>());
+    }
+
+    #[test]
+    fn source_text_shares_exact_spans_and_owns_the_rest() {
+        let source: Arc<str> = Arc::from("fn a() {}\nfn b(x: i32) {}\n");
+        // Exact substring at the sliced offset shares the allocation.
+        let shared = SourceText::shared_or_owned(&source, 10, "fn b(x: i32) {}");
+        assert_eq!(shared.as_str(), "fn b(x: i32) {}");
+        assert!(
+            shared
+                .shared_source()
+                .is_some_and(|arc| Arc::ptr_eq(arc, &source))
+        );
+        // A wrong offset degrades to an owned copy with identical text,
+        // never to a corrupt slice.
+        let owned = SourceText::shared_or_owned(&source, 11, "fn b(x: i32) {}");
+        assert_eq!(owned.as_str(), "fn b(x: i32) {}");
+        assert_eq!(owned.shared_source(), None);
+        // Text that is not a substring at all stays owned.
+        let synthetic = SourceText::shared_or_owned(&source, 0, "fn c() {}");
+        assert_eq!(synthetic.as_str(), "fn c() {}");
+        assert_eq!(synthetic.shared_source(), None);
+        // Past-the-end spans stay owned instead of panicking.
+        let past_end = SourceText::shared_or_owned(&source, usize::MAX, "fn b(x: i32) {}");
+        assert_eq!(past_end.as_str(), "fn b(x: i32) {}");
+        assert_eq!(past_end.shared_source(), None);
+    }
+
+    #[test]
+    fn source_text_matches_string_observation() {
+        let text = SourceText::from("x > 0".to_string());
+        let plain = "x > 0".to_string();
+        assert_eq!(format!("{text:?}"), format!("{plain:?}"));
+        assert_eq!(text.to_string(), plain);
+        assert_eq!(text, plain);
+        assert_eq!(plain, text);
+        assert_eq!(text, "x > 0");
+        assert_eq!("x > 0", text);
+        assert!(text.contains(">"));
+        assert_eq!(text.len(), plain.len());
+        assert_eq!(text.cmp(&SourceText::from("y")), std::cmp::Ordering::Less);
+        let stub: &str = &text;
+        assert_eq!(stub, "x > 0");
+    }
+
+    #[test]
+    fn file_facts_wire_roundtrip_links_spans_to_one_allocation() -> Result<(), serde_json::Error> {
+        let source: Arc<str> = Arc::from("fn a() {}\n#[test] fn b() { assert!(true); }\n");
+        let facts = FileFacts {
+            path: PathBuf::from("src/lib.rs"),
+            functions: vec![FunctionFact {
+                id: SymbolId("src/lib.rs::a".to_string()),
+                name: "a".to_string(),
+                file: PathBuf::from("src/lib.rs"),
+                start_line: 1,
+                end_line: 1,
+                body: SourceText::shared_or_owned(&source, 0, "fn a() {}"),
+                calls: Vec::new(),
+                returns: Vec::new(),
+                literals: Vec::new(),
+                source_role: FunctionSourceRole::Production,
+                attrs: Vec::new(),
+                impl_attrs: Vec::new(),
+                nested_fn_names: Vec::new(),
+                let_bindings: Vec::new(),
+                item: FunctionItemFact::default(),
+                impl_context: FunctionImplContext::Unknown,
+            }],
+            tests: Vec::new(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            probe_shapes: vec![ProbeShapeFact {
+                start_line: 2,
+                end_line: 2,
+                start_byte: 27,
+                kind: ProbeShapeKind::Predicate,
+                text: SourceText::shared_or_owned(&source, 27, "assert!(true)"),
+            }],
+            used_lexical_fallback: false,
+            module_declarations: Vec::new(),
+            unresolved_property_macros: Vec::new(),
+            role_provenance: SourceRoleProvenance::default(),
+            source: Arc::clone(&source),
+        };
+        // The wire carries spans, not copied bodies.
+        let wire = serde_json::to_value(&facts)?;
+        assert_eq!(
+            wire["functions"][0]["body"],
+            serde_json::json!({"start": 0, "len": 9})
+        );
+        assert_eq!(
+            wire["probe_shapes"][0]["text"],
+            serde_json::json!({"start": 27, "len": 13})
+        );
+        // Decode links every child to the single source allocation.
+        let decoded: FileFacts = serde_json::from_value(wire)?;
+        assert_eq!(decoded.functions[0].body.as_str(), "fn a() {}");
+        assert_eq!(decoded.probe_shapes[0].text.as_str(), "assert!(true)");
+        for child in [
+            decoded.functions[0].body.shared_source(),
+            decoded.probe_shapes[0].text.shared_source(),
+        ] {
+            assert!(child.is_some_and(|arc| Arc::ptr_eq(arc, &decoded.source)));
+        }
+        assert_eq!(decoded, facts);
+        Ok(())
+    }
+
+    #[test]
+    fn file_facts_wire_rejects_spans_outside_the_source() {
+        let wire = serde_json::json!({
+            "path": "src/lib.rs",
+            "functions": [{
+                "id": "src/lib.rs::a",
+                "name": "a",
+                "file": "src/lib.rs",
+                "start_line": 1,
+                "end_line": 1,
+                "body": {"start": 4, "len": 99},
+                "calls": [],
+                "returns": [],
+                "literals": [],
+                "source_role": "production",
+                "attrs": [],
+            }],
+            "tests": [],
+            "calls": [],
+            "returns": [],
+            "literals": [],
+            "probe_shapes": [],
+            "used_lexical_fallback": false,
+            "module_declarations": [],
+            "unresolved_property_macros": [],
+            "source": "fn a() {}",
+        });
+        let decoded: Result<FileFacts, _> = serde_json::from_value(wire);
+        assert!(decoded.is_err(), "out-of-range span must reject the entry");
+    }
+
+    #[test]
+    fn file_facts_wire_rejects_spans_splitting_a_char() {
+        // "🦀" is 4 bytes; a span ending inside it is not a valid slice.
+        let wire = serde_json::json!({
+            "path": "src/lib.rs",
+            "functions": [],
+            "tests": [],
+            "calls": [],
+            "returns": [],
+            "literals": [],
+            "probe_shapes": [{
+                "start_line": 1,
+                "end_line": 1,
+                "start_byte": 0,
+                "kind": "predicate",
+                "text": {"start": 0, "len": 2},
+            }],
+            "used_lexical_fallback": false,
+            "module_declarations": [],
+            "unresolved_property_macros": [],
+            "source": "🦀();",
+        });
+        let decoded: Result<FileFacts, _> = serde_json::from_value(wire);
+        assert!(decoded.is_err(), "split char must reject the entry");
+    }
+
+    #[test]
+    fn file_facts_wire_rejects_legacy_bare_string_bodies() {
+        // 1.20 payloads carry bodies as bare strings; the span wire must
+        // fail the decode (cache miss + recompute), never misread them.
+        let wire = serde_json::json!({
+            "path": "src/lib.rs",
+            "functions": [{
+                "id": "src/lib.rs::a",
+                "name": "a",
+                "file": "src/lib.rs",
+                "start_line": 1,
+                "end_line": 1,
+                "body": "fn a() {}",
+                "calls": [],
+                "returns": [],
+                "literals": [],
+                "source_role": "production",
+                "attrs": [],
+            }],
+            "tests": [],
+            "calls": [],
+            "returns": [],
+            "literals": [],
+            "probe_shapes": [],
+            "used_lexical_fallback": false,
+            "module_declarations": [],
+            "unresolved_property_macros": [],
+            "source": "fn a() {}",
+        });
+        let decoded: Result<FileFacts, _> = serde_json::from_value(wire);
+        assert!(decoded.is_err(), "legacy string body must not decode");
+    }
+
+    #[test]
+    fn attached_wire_inlines_children_from_a_foreign_allocation() -> Result<(), serde_json::Error> {
+        // A child built against another allocation must never encode a
+        // span: the span would resolve against the wrong `source` at
+        // decode. It inlines its text instead, and the round trip
+        // preserves every byte.
+        let home: Arc<str> = Arc::from("fn a() {}\n");
+        let away: Arc<str> = Arc::from("fn b() {}\n");
+        let mut facts = FileFacts {
+            path: PathBuf::from("src/lib.rs"),
+            functions: vec![FunctionFact {
+                id: SymbolId("src/lib.rs::a".to_string()),
+                name: "a".to_string(),
+                file: PathBuf::from("src/lib.rs"),
+                start_line: 1,
+                end_line: 1,
+                body: SourceText::shared_or_owned(&home, 0, "fn a() {}"),
+                calls: Vec::new(),
+                returns: Vec::new(),
+                literals: Vec::new(),
+                source_role: FunctionSourceRole::Production,
+                attrs: Vec::new(),
+                impl_attrs: Vec::new(),
+                nested_fn_names: Vec::new(),
+                let_bindings: Vec::new(),
+                item: FunctionItemFact::default(),
+                impl_context: FunctionImplContext::Unknown,
+            }],
+            tests: Vec::new(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            probe_shapes: Vec::new(),
+            used_lexical_fallback: false,
+            module_declarations: Vec::new(),
+            unresolved_property_macros: Vec::new(),
+            role_provenance: SourceRoleProvenance::default(),
+            source: Arc::clone(&home),
+        };
+        // Paired children span.
+        let wire = serde_json::to_value(&facts)?;
+        assert_eq!(
+            wire["functions"][0]["body"],
+            serde_json::json!({"start": 0, "len": 9})
+        );
+        // Reassigned source: the foreign child inlines, and the text
+        // survives the round trip instead of resolving to "fn b() {}".
+        facts.source = Arc::clone(&away);
+        let wire = serde_json::to_value(&facts)?;
+        assert_eq!(
+            wire["functions"][0]["body"],
+            serde_json::json!({"text": "fn a() {}"})
+        );
+        let decoded: FileFacts = serde_json::from_value(wire)?;
+        assert_eq!(decoded.functions[0].body.as_str(), "fn a() {}");
+        assert_eq!(decoded.source.as_ref(), "fn b() {}\n");
+        Ok(())
+    }
+
+    #[test]
+    fn detached_fact_decode_accepts_inline_and_rejects_spans() -> Result<(), serde_json::Error> {
+        let inline = serde_json::json!({
+            "name": "b",
+            "file": "src/lib.rs",
+            "start_line": 2,
+            "end_line": 2,
+            "body": {"text": "fn b() {}"},
+            "calls": [],
+            "assertions": [],
+            "literals": [],
+            "attrs": [],
+        });
+        let decoded: TestFact = serde_json::from_value(inline)?;
+        assert_eq!(decoded.body.as_str(), "fn b() {}");
+        let span = serde_json::json!({
+            "name": "b",
+            "file": "src/lib.rs",
+            "start_line": 2,
+            "end_line": 2,
+            "body": {"start": 11, "len": 9},
+            "calls": [],
+            "assertions": [],
+            "literals": [],
+            "attrs": [],
+        });
+        let detached: Result<TestFact, _> = serde_json::from_value(span);
+        assert!(detached.is_err(), "detached span must not resolve");
         Ok(())
     }
 
@@ -1261,7 +2205,7 @@ mod tests {
                     path.clone(),
                     FileFacts {
                         path: path.clone(),
-                        source: (*source).to_string(),
+                        source: (*source).into(),
                         ..FileFacts::default()
                     },
                 )
@@ -1322,7 +2266,7 @@ mod tests {
                     path.clone(),
                     FileFacts {
                         path: path.clone(),
-                        source: (*source).to_string(),
+                        source: (*source).into(),
                         ..FileFacts::default()
                     },
                 )
@@ -1381,7 +2325,7 @@ mod tests {
                     path.clone(),
                     FileFacts {
                         path: path.clone(),
-                        source: (*source).to_string(),
+                        source: (*source).into(),
                         ..FileFacts::default()
                     },
                 )
@@ -1447,7 +2391,7 @@ mod tests {
                     path.clone(),
                     FileFacts {
                         path: path.clone(),
-                        source: (*source).to_string(),
+                        source: (*source).into(),
                         ..FileFacts::default()
                     },
                 )
@@ -1528,7 +2472,7 @@ mod tests {
                     path.clone(),
                     FileFacts {
                         path: path.clone(),
-                        source: (*source).to_string(),
+                        source: (*source).into(),
                         ..FileFacts::default()
                     },
                 )
@@ -1610,7 +2554,7 @@ mod tests {
                     path.clone(),
                     FileFacts {
                         path: path.clone(),
-                        source: (*source).to_string(),
+                        source: (*source).into(),
                         ..FileFacts::default()
                     },
                 )
@@ -1683,7 +2627,7 @@ mod tests {
                     path.clone(),
                     FileFacts {
                         path: path.clone(),
-                        source: (*source).to_string(),
+                        source: (*source).into(),
                         ..FileFacts::default()
                     },
                 )

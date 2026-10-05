@@ -164,9 +164,9 @@ mod tests {
         facts.used_lexical_fallback = true;
         assert!(declaration_shape(&facts, 3, "out: &Path,").is_none());
         facts.used_lexical_fallback = false;
-        facts.source = "struct Path;\nfn project(\n    out: &Path,\n".to_string();
+        facts.source = "struct Path;\nfn project(\n    out: &Path,\n".into();
         assert!(declaration_shape(&facts, 3, "out: &Path,").is_none());
-        facts.source.clear();
+        facts.source = std::sync::Arc::from("");
         assert!(declaration_shape(&facts, 3, "out: &Path,").is_none());
         Ok(())
     }
@@ -275,9 +275,9 @@ mod tests {
         facts.used_lexical_fallback = true;
         assert!(declaration_shape(&facts, 2, "value: u8,").is_none());
         facts.used_lexical_fallback = false;
-        facts.source = "struct Packet {\n    value: u8,\n".to_string();
+        facts.source = "struct Packet {\n    value: u8,\n".into();
         assert!(declaration_shape(&facts, 2, "value: u8,").is_none());
-        facts.source.clear();
+        facts.source = std::sync::Arc::from("");
         assert!(declaration_shape(&facts, 2, "value: u8,").is_none());
         Ok(())
     }

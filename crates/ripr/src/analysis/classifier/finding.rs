@@ -601,7 +601,7 @@ mod tests {
             file: PathBuf::from("tests/errors.rs"),
             start_line: 1,
             end_line: 6,
-            body: body.to_string(),
+            body: body.into(),
             calls: Vec::new(),
             assertions: Vec::new(),
             literals: Vec::new(),

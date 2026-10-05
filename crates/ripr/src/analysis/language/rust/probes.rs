@@ -557,7 +557,7 @@ mod tests {
             file: PathBuf::from("src/lib.rs"),
             start_line: 1,
             end_line: 8,
-            body: body.to_string(),
+            body: body.into(),
             calls: vec![],
             returns: vec![],
             literals: vec![],

@@ -146,7 +146,7 @@ mod tests {
                 file: PathBuf::from("tests/tokens.rs"),
                 start_line: 1,
                 end_line: 4,
-                body: "token_label(\"discount_threshold\");\nassert_eq!(token_label(\"discount_threshold\"), \"token:discount_threshold\");".to_string(),
+                body: "token_label(\"discount_threshold\");\nassert_eq!(token_label(\"discount_threshold\"), \"token:discount_threshold\");".into(),
                 calls: vec![CallFact {
                     line: 1,
                     name: "token_label".to_string(),
@@ -197,7 +197,7 @@ mod tests {
                 file: PathBuf::from("tests/tax.rs"),
                 start_line: 1,
                 end_line: 4,
-                body: "assert_eq!(macro_tax_case!(100), 120);".to_string(),
+                body: "assert_eq!(macro_tax_case!(100), 120);".into(),
                 calls: vec![CallFact {
                     line: 1,
                     name: "macro_tax_case".to_string(),
@@ -285,7 +285,7 @@ mod tests {
     #[test]
     fn given_propagation_unknown_probe_when_classified_then_stop_reason_is_present() {
         let function = FunctionSummary {
-            body: "value".to_string(),
+            body: "value".into(),
             ..function("src/lib.rs", "score")
         };
         let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
@@ -401,7 +401,7 @@ mod tests {
                     path: PathBuf::from("src/lib.rs"),
                     source:
                         "pub fn score(x: i32) -> i32 { x }\npub fn total() -> i32 { score(1) }\n"
-                            .to_string(),
+                            .into(),
                     ..FileFacts::default()
                 },
             )]),
@@ -542,7 +542,7 @@ mod tests {
         let unwrap_only = format!("score(1).{}();", "unwrap");
         let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![FunctionSummary {
-                body: "pub fn score(input: i32) -> Result<i32, Error> { Ok(input) }".to_string(),
+                body: "pub fn score(input: i32) -> Result<i32, Error> { Ok(input) }".into(),
                 ..function("src/lib.rs", "score")
             }],
             tests: vec![test_with_oracle(
@@ -657,7 +657,7 @@ mod tests {
         amount
     }
 }"#
-            .to_string(),
+            .into(),
             start_line: 1,
             end_line: 7,
             ..function("src/lib.rs", "score")
@@ -940,7 +940,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
     fn given_changed_return_binding_when_function_returns_ok_then_flow_sink_is_return_value() {
         let function = FunctionSummary {
             body: "pub fn score(input: i32) -> Result<i32, Error> { let value = input + 1; Ok(value) }"
-                .to_string(),
+                .into(),
             returns: vec![ReturnFact {
                 line: 1,
                 text: "Ok(value)".to_string(),
@@ -986,7 +986,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
     }
     Ok(User)
 }"#
-            .to_string(),
+            .into(),
             start_line: 1,
             end_line: 6,
             returns: vec![
@@ -1052,7 +1052,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
         }
     }
 }"#
-            .to_string(),
+            .into(),
             start_line: 1,
             end_line: 11,
             ..function("src/lib.rs", "quote")
@@ -1098,7 +1098,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
         "ok".to_string()
     }
 }"#
-            .to_string(),
+            .into(),
             start_line: 1,
             end_line: 7,
             ..function("src/lib.rs", "message")
@@ -1144,7 +1144,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
         amount
     }
 }"#
-            .to_string(),
+            .into(),
             start_line: 1,
             end_line: 8,
             ..function("src/lib.rs", "score")
@@ -1189,7 +1189,7 @@ pub fn compute(input: i32) -> Result<i32, CalcError> {
     let adjusted = amount;
     adjusted
 }"#
-            .to_string(),
+            .into(),
             start_line: 1,
             end_line: 7,
             returns: vec![ReturnFact {
@@ -1408,7 +1408,7 @@ fn far_above_threshold_discounts() {
         amount
     }
 }"#
-            .to_string(),
+            .into(),
             start_line: 1,
             end_line: 7,
             ..function("src/lib.rs", "score")
@@ -1454,7 +1454,7 @@ fn far_above_threshold_discounts() {
     }
     Ok("accepted")
 }"#
-            .to_string(),
+            .into(),
             start_line: 1,
             end_line: 6,
             returns: vec![
@@ -1569,7 +1569,7 @@ fn far_above_threshold_discounts() {
     #[test]
     fn given_assertion_shaped_owner_when_classifying_then_guidance_is_reframed_not_reclassified() {
         let mut owner = function("tests/fragments.rs", "assert_paths_are_stable");
-        owner.body = "fn assert_paths_are_stable(spans: &[Span]) {\n    for span in spans {\n        assert!(!span.file.contains('\\\\'));\n        assert_eq!(span.root.as_deref(), Some(\"src\"));\n    }\n}\n".to_string();
+        owner.body = "fn assert_paths_are_stable(spans: &[Span]) {\n    for span in spans {\n        assert!(!span.file.contains('\\\\'));\n        assert_eq!(span.root.as_deref(), Some(\"src\"));\n    }\n}\n".into();
         let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             functions: vec![owner],
             tests: vec![test(
@@ -1640,7 +1640,7 @@ fn far_above_threshold_discounts() {
     fn given_assertion_heavy_owner_with_production_caller_when_classifying_then_guidance_is_standard()
      {
         let mut owner = function("src/lib.rs", "check_invariants");
-        owner.body = "fn check_invariants(value: i32) {\n    assert!(value >= 0);\n    assert_eq!(value % 2, 0);\n}\n".to_string();
+        owner.body = "fn check_invariants(value: i32) {\n    assert!(value >= 0);\n    assert_eq!(value % 2, 0);\n}\n".into();
         let mut production_caller = function("src/lib.rs", "validate");
         production_caller.calls = vec![CallFact {
             line: 2,
@@ -1787,7 +1787,7 @@ fn far_above_threshold_discounts() {
                         end_line: 194,
                         start_byte: 1_024,
                         kind: ProbeShapeKind::CallDeletion,
-                        text: "watchdog_reason(\n    \"run-missing\",\n    receipt,\n)".to_string(),
+                        text: "watchdog_reason(\n    \"run-missing\",\n    receipt,\n)".into(),
                     }],
                     ..FileFacts::default()
                 },
@@ -1848,7 +1848,7 @@ fn far_above_threshold_discounts() {
                         end_line: 194,
                         start_byte: 1_024,
                         kind: ProbeShapeKind::CallDeletion,
-                        text: "watchdog_reason(\n    \"run-missing\",\n    receipt,\n)".to_string(),
+                        text: "watchdog_reason(\n    \"run-missing\",\n    receipt,\n)".into(),
                     }],
                     ..FileFacts::default()
                 },
@@ -1917,7 +1917,7 @@ fn far_above_threshold_discounts() {
                 PathBuf::from("src/lib.rs"),
                 FileFacts {
                     path: PathBuf::from("src/lib.rs"),
-                    source,
+                    source: source.into(),
                     ..FileFacts::default()
                 },
             )]),
@@ -2082,7 +2082,7 @@ fn far_above_threshold_discounts() {
                 PathBuf::from("src/lib.rs"),
                 FileFacts {
                     path: PathBuf::from("src/lib.rs"),
-                    source: "pub fn fragile_fee(w: u32) -> u32 { w }\npub fn calculate() -> u32 { fragile_fee(1) }\n".to_string(),
+                    source: "pub fn fragile_fee(w: u32) -> u32 { w }\npub fn calculate() -> u32 { fragile_fee(1) }\n".into(),
                     ..FileFacts::default()
                 },
             )]),
@@ -2116,7 +2116,7 @@ fn far_above_threshold_discounts() {
             file: PathBuf::from(file),
             start_line: 1,
             end_line: 3,
-            body: format!("pub fn {name}(input: i32) -> i32 {{ input }}"),
+            body: format!("pub fn {name}(input: i32) -> i32 {{ input }}").into(),
             calls: vec![],
             returns: vec![],
             literals: vec![],
@@ -2162,7 +2162,7 @@ fn far_above_threshold_discounts() {
             file: PathBuf::from(file),
             start_line: 1,
             end_line: 4,
-            body,
+            body: body.into(),
             calls: vec![CallFact {
                 line: 1,
                 name: "score".to_string(),

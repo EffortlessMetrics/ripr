@@ -2687,7 +2687,7 @@ mod tests {
                 file: PathBuf::from("tests/ledger_tests.rs"),
                 start_line: 1,
                 end_line: 4,
-                body: "let mut ledger = Ledger::new(100);\nledger.apply(5);".to_string(),
+                body: "let mut ledger = Ledger::new(100);\nledger.apply(5);".into(),
                 // Body-only: the receiver form is what must be credited.
                 calls: Vec::new(),
                 assertions: Vec::new(),
@@ -3141,7 +3141,7 @@ fn crate_c_score_test() {
                 test_file.clone(),
                 FileFacts {
                     path: test_file.clone(),
-                    source: source.to_string(),
+                    source: source.into(),
                     ..FileFacts::default()
                 },
             )]),
@@ -3201,7 +3201,7 @@ fn crate_c_score_test() {
                 test_file.clone(),
                 FileFacts {
                     path: test_file.clone(),
-                    source: source.to_string(),
+                    source: source.into(),
                     ..FileFacts::default()
                 },
             )]),
@@ -4340,7 +4340,7 @@ fn crate_c_score_test() {
             file: PathBuf::from("tests/macro_boundary.rs"),
             start_line: 1,
             end_line: 5,
-            body: "let result = call_inner!(10, 3); assert_eq!(result, 7);".to_string(),
+            body: "let result = call_inner!(10, 3); assert_eq!(result, 7);".into(),
             calls: vec![CallFact {
                 line: 1,
                 name: "call_inner".to_string(),
@@ -4374,7 +4374,7 @@ fn crate_c_score_test() {
             file: PathBuf::from("tests/public_api.rs"),
             start_line: 1,
             end_line: 5,
-            body: "let result = crate_under_test::internal::inner(10, 3);".to_string(),
+            body: "let result = crate_under_test::internal::inner(10, 3);".into(),
             calls: Vec::new(),
             assertions: Vec::new(),
             literals: Vec::new(),
@@ -4567,7 +4567,7 @@ fn crate_c_score_test() {
         index.insert_file_only(
             PathBuf::from(file),
             FileFacts {
-                source: source.to_string(),
+                source: source.into(),
                 ..FileFacts::default()
             },
         );
@@ -4670,7 +4670,7 @@ fn crate_c_score_test() {
             file: PathBuf::from(file),
             start_line: 1,
             end_line: 3,
-            body: String::new(),
+            body: String::new().into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
@@ -4690,7 +4690,7 @@ fn crate_c_score_test() {
             file: PathBuf::from(file),
             start_line: 1,
             end_line: 4,
-            body: body.to_string(),
+            body: body.into(),
             calls: vec![CallFact {
                 line: 1,
                 name: "score".to_string(),
@@ -5437,7 +5437,7 @@ try_parse_summary(raw).map_err(Into::into)"
             file: PathBuf::from(file),
             start_line: 1,
             end_line: 4,
-            body: body.to_string(),
+            body: body.into(),
             calls: vec![CallFact {
                 line: 1,
                 name: call_name.to_string(),
@@ -5504,7 +5504,7 @@ try_parse_summary(raw).map_err(Into::into)"
             file: PathBuf::from(file),
             start_line: 1,
             end_line: 10,
-            body: body.to_string(),
+            body: body.into(),
             calls: Vec::new(),
             assertions,
             literals: Vec::new(),

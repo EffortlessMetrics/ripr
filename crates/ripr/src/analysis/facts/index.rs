@@ -148,7 +148,7 @@ pub struct FileData {
     pub module_declarations: Vec<ModuleDeclarationFact>,
     pub unresolved_property_macros: Vec<UnresolvedPropertyMacroFact>,
     pub role_provenance: SourceRoleProvenance,
-    pub source: String,
+    pub source: std::sync::Arc<str>,
 }
 
 /// A borrowed ordered view; it cannot outlive or retain an index generation.
@@ -305,21 +305,40 @@ impl Deref for FileFactsView<'_> {
 }
 impl serde::Serialize for FileFactsView<'_> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // Attached encoding, identical to `FileFacts`: children keep spans
+        // into `source` when they share its allocation (detached
+        // `FunctionFact` serialization would inline them instead), and
+        // arena children from a foreign allocation inline their text.
+        let functions: Vec<FunctionFactWire> = self
+            .functions
+            .iter()
+            .map(|fact| FunctionFactWire::attached(fact, &self.source))
+            .collect();
+        let tests: Vec<TestFactWire> = self
+            .tests
+            .iter()
+            .map(|fact| TestFactWire::attached(fact, &self.source))
+            .collect();
+        let probe_shapes: Vec<ProbeShapeFactWire> = self
+            .probe_shapes
+            .iter()
+            .map(|fact| ProbeShapeFactWire::attached(fact, &self.source))
+            .collect();
         let mut state = serializer.serialize_struct("FileFacts", 11)?;
         state.serialize_field("path", &self.path)?;
-        state.serialize_field("functions", &self.functions)?;
-        state.serialize_field("tests", &self.tests)?;
+        state.serialize_field("functions", &functions)?;
+        state.serialize_field("tests", &tests)?;
         state.serialize_field("calls", &self.calls)?;
         state.serialize_field("returns", &self.returns)?;
         state.serialize_field("literals", &self.literals)?;
-        state.serialize_field("probe_shapes", &self.probe_shapes)?;
+        state.serialize_field("probe_shapes", &probe_shapes)?;
         state.serialize_field("used_lexical_fallback", &self.used_lexical_fallback)?;
         state.serialize_field("module_declarations", &self.module_declarations)?;
         state.serialize_field(
             "unresolved_property_macros",
             &self.unresolved_property_macros,
         )?;
-        state.serialize_field("source", &self.source)?;
+        state.serialize_field("source", self.source.as_ref())?;
         state.end()
     }
 }

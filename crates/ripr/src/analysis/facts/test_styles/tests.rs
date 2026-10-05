@@ -317,7 +317,7 @@ mod production_gate {
             cfg_function_fact("multiline_helper", 10),
             cfg_function_fact("production_helper", 15),
         ],
-        source: source.to_string(),
+        source: source.into(),
         ..FileFacts::default()
     };
 
@@ -355,7 +355,7 @@ fn cfg_function_fact(name: &str, start_line: usize) -> FunctionFact {
         file: PathBuf::from("src/lib.rs"),
         start_line,
         end_line: start_line,
-        body: String::new(),
+        body: String::new().into(),
         calls: Vec::new(),
         returns: Vec::new(),
         literals: Vec::new(),
@@ -886,9 +886,11 @@ fn borrowed_normalization_matches_owned_reference_with_duplicate_coordinates() -
         .ok_or("pins function")?
         .clone();
     let mut other_body = original.clone();
-    other_body
-        .body
-        .push_str(" /* distinct body at identical coordinates */");
+    other_body.body = format!(
+        "{} /* distinct body at identical coordinates */",
+        other_body.body.as_str()
+    )
+    .into();
     // A prefix-only lookup would incorrectly promote this unmatched body.
     // Keep a distinct role so equality cannot pass merely because the first
     // original function already consumed the sole matching TestFact.
@@ -1054,7 +1056,9 @@ fn equal_function_keys_keep_distinct_local_context_and_legacy_flat_roles() -> Re
     assert_eq!(function.source_role, FunctionSourceRole::CfgTestModule);
     gated.functions = vec![function.clone()];
     let mut plain = gated.clone();
-    plain.source = "\n\nfn helper() -> usize { 7 }\n".to_string();
+    plain.source = "\n\nfn helper() -> usize { 7 }\n".into();
+    // #5415 step 2: the swapped source no longer shares the cloned spans'
+    // allocation, so the attached wire inlines those children (same text).
     let mut actual = RustIndex::default();
     actual.insert_file(PathBuf::from("a-context.rs"), gated, true);
     actual.insert_file(PathBuf::from("z-context.rs"), plain, true);

@@ -43,7 +43,7 @@ mod tests {
             file: PathBuf::from("src/parser_fragment.rs"),
             start_line: 1,
             end_line: 4,
-            body: "fn clamp() -> i32 { 1 }".to_string(),
+            body: "fn clamp() -> i32 { 1 }".into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),

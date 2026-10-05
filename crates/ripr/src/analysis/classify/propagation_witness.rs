@@ -841,7 +841,7 @@ mod tests {
             file: PathBuf::from("src/lib.rs"),
             start_line: 1,
             end_line: 20,
-            body: "fn calculate() { status: amount; }".to_string(),
+            body: "fn calculate() { status: amount; }".into(),
             calls: Vec::new(),
             returns: return_text
                 .map(|text| {

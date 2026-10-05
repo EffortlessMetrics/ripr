@@ -59,7 +59,7 @@ fn union_mutation_visits_shared_flat_only_and_file_only_once() -> Result<(), Str
     let mut visits = 0;
     index.for_each_test_mut(|test| {
         visits += 1;
-        test.body.push_str("// once");
+        test.body = format!("{}// once", test.body.as_str()).into();
     });
     assert_eq!(visits, count);
     for test in index.test_facts.iter() {
@@ -119,7 +119,9 @@ fn whole_index_wire_stays_expanded_and_cloning_does_not_pin_a_generation() -> Re
     );
     let cloned = index.clone();
     assert!(!std::ptr::eq(index.tests().at(0), &cloned.tests()[0]));
-    assert_ne!(
+    // #5415 step 2: bodies share the file allocation, so a clone reuses the
+    // bytes instead of duplicating them (this used to assert the opposite).
+    assert_eq!(
         index.tests()[0].body.as_ptr(),
         cloned.tests()[0].body.as_ptr()
     );

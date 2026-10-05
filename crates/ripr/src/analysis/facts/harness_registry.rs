@@ -75,7 +75,7 @@
 //!   per-subject attribution is exactly what the unknown bucket cannot
 //!   establish.
 
-use super::model::{FunctionFact, FunctionSourceRole, RustIndex, TestFact};
+use super::model::{FunctionFact, FunctionSourceRole, RustIndex, SourceText, TestFact};
 use super::test_styles::normalized_test_attribute_path as normalized_attribute_path;
 use super::{
     HarnessLimitationFact, HarnessSelectorCapability, HarnessSubjectClaim, HarnessSubjectFact,
@@ -441,7 +441,7 @@ fn apply_libtest_mimic_target(
         // inside another macro's token tree). Resolving by ancestors
         // first keeps two functions sharing one source line from picking
         // the wrong scope (#3603 review, My3M).
-        let enclosing_scope: Option<(String, usize)> =
+        let enclosing_scope: Option<(SourceText, usize)> =
             match tokens[position].parent_ancestors().find_map(ast::Fn::cast) {
                 Some(fn_node) => {
                     let fn_start = fn_node
@@ -450,7 +450,7 @@ fn apply_libtest_mimic_target(
                         .unwrap_or_else(|| fn_node.syntax().text_range().start());
                     let fn_end = fn_node.syntax().text_range().end();
                     Some((
-                        slice_text(source, fn_start, fn_end),
+                        SourceText::owned(slice_text(source, fn_start, fn_end)),
                         line_index.line(fn_start),
                     ))
                 }
@@ -539,7 +539,7 @@ fn apply_libtest_mimic_target(
                 file: target.clone(),
                 start_line,
                 end_line,
-                body,
+                body: SourceText::from(body),
                 calls,
                 assertions,
                 literals,
@@ -1677,7 +1677,7 @@ fn apply_registered_attribute(
                 file: target.clone(),
                 start_line: function.start_line,
                 end_line: function.end_line,
-                body: function.body.clone(),
+                body: function.body.to_string(),
                 calls: function.calls.clone(),
                 assertions: test.assertions.clone(),
                 literals: function.literals.clone(),

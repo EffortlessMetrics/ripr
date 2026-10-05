@@ -339,14 +339,14 @@ mod tests {
                             end_line: 3,
                             start_byte: 0,
                             kind: ProbeShapeKind::Predicate,
-                            text: "if amount >= threshold {".to_string(),
+                            text: "if amount >= threshold {".into(),
                         },
                         ProbeShapeFact {
                             start_line: 7,
                             end_line: 7,
                             start_byte: 20,
                             kind: ProbeShapeKind::ErrorPath,
-                            text: "Err(AuthError::Revoked)".to_string(),
+                            text: "Err(AuthError::Revoked)".into(),
                         },
                     ],
                     ..FileFacts::default()
@@ -373,7 +373,7 @@ mod tests {
                         end_line: 3,
                         start_byte: 0,
                         kind: ProbeShapeKind::Predicate,
-                        text: "if amount >= threshold {".to_string(),
+                        text: "if amount >= threshold {".into(),
                     }],
                     ..FileFacts::default()
                 },
@@ -403,28 +403,28 @@ mod tests {
                 path.clone(),
                 FileFacts {
                     path: path.clone(),
-                    source: source.to_string(),
+                    source: source.into(),
                     probe_shapes: vec![
                         ProbeShapeFact {
                             start_line: 1,
                             end_line: 5,
                             start_byte: function_start,
                             kind: ProbeShapeKind::UnsafeBoundary,
-                            text: "unsafe fn read_raw".to_string(),
+                            text: "unsafe fn read_raw".into(),
                         },
                         ProbeShapeFact {
                             start_line: 2,
                             end_line: 4,
                             start_byte: block_start,
                             kind: ProbeShapeKind::UnsafeBoundary,
-                            text: "unsafe block".to_string(),
+                            text: "unsafe block".into(),
                         },
                         ProbeShapeFact {
                             start_line: 3,
                             end_line: 3,
                             start_byte: predicate_start,
                             kind: ProbeShapeKind::Predicate,
-                            text: "value < limit".to_string(),
+                            text: "value < limit".into(),
                         },
                     ],
                     ..FileFacts::default()
@@ -463,13 +463,13 @@ mod tests {
                 path.clone(),
                 FileFacts {
                     path: path.clone(),
-                    source: source.to_string(),
+                    source: source.into(),
                     probe_shapes: vec![ProbeShapeFact {
                         start_line: 1,
                         end_line: 1,
                         start_byte: block_start,
                         kind: ProbeShapeKind::UnsafeBoundary,
-                        text: "unsafe block".to_string(),
+                        text: "unsafe block".into(),
                     }],
                     ..FileFacts::default()
                 },
@@ -499,13 +499,13 @@ mod tests {
                 path.clone(),
                 FileFacts {
                     path: path.clone(),
-                    source: source.to_string(),
+                    source: source.into(),
                     probe_shapes: vec![ProbeShapeFact {
                         start_line: 2,
                         end_line: 2,
                         start_byte: block_start,
                         kind: ProbeShapeKind::UnsafeBoundary,
-                        text: "unsafe block".to_string(),
+                        text: "unsafe block".into(),
                     }],
                     ..FileFacts::default()
                 },
@@ -535,21 +535,21 @@ mod tests {
                 path.clone(),
                 FileFacts {
                     path: path.clone(),
-                    source: source.to_string(),
+                    source: source.into(),
                     probe_shapes: vec![
                         ProbeShapeFact {
                             start_line: 2,
                             end_line: 2,
                             start_byte: first,
                             kind: ProbeShapeKind::CallDeletion,
-                            text: "read()".to_string(),
+                            text: "read()".into(),
                         },
                         ProbeShapeFact {
                             start_line: 3,
                             end_line: 3,
                             start_byte: second,
                             kind: ProbeShapeKind::CallDeletion,
-                            text: "read()".to_string(),
+                            text: "read()".into(),
                         },
                     ],
                     ..FileFacts::default()
@@ -584,16 +584,14 @@ mod tests {
                             end_line: 13,
                             start_byte: 100,
                             kind: ProbeShapeKind::CallDeletion,
-                            text: "watchdog_reason(\n    \"run-missing\",\n    receipt,\n)"
-                                .to_string(),
+                            text: "watchdog_reason(\n    \"run-missing\",\n    receipt,\n)".into(),
                         },
                         ProbeShapeFact {
                             start_line: 10,
                             end_line: 15,
                             start_byte: 90,
                             kind: ProbeShapeKind::CallDeletion,
-                            text: "with_reason(watchdog_reason(\"run-missing\", receipt))"
-                                .to_string(),
+                            text: "with_reason(watchdog_reason(\"run-missing\", receipt))".into(),
                         },
                     ],
                     ..FileFacts::default()

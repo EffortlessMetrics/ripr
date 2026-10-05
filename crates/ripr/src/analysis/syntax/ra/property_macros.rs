@@ -73,7 +73,7 @@ mod tests {
     fn empty_local_macro_calls_preserve_real_call_text_and_original_source() -> Result<(), String> {
         let source = "fn owner(x: i32) -> i32 { x }\r\nmacro_rules! discard_tokens { ($($ignored:tt)*) => {} }\r\n#[test]\r\nfn boundary() {\r\n discard_tokens!(owner(100), \"日本語 🦀\"); assert_eq!(owner(90), 90);\r\n}\r\n";
         let facts = summarize_file_with_parser(Path::new("src/lib.rs"), source)?;
-        assert_eq!(facts.source, source);
+        assert_eq!(facts.source.as_ref(), source);
         assert_eq!(facts.tests.len(), 1);
         assert!(facts.tests[0].body.contains("discard_tokens!(owner(100)"));
         let calls: Vec<_> = facts.tests[0]

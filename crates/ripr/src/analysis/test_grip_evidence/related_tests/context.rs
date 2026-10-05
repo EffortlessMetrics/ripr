@@ -696,7 +696,7 @@ mod candidate_index_tests {
             let Some(test) = tests.first_mut() else {
                 return Err("fixture must contain a parsed test".to_string());
             };
-            test.body = body.to_string();
+            test.body = body.into();
             let mut index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
                 tests,
                 functions: facts.functions.clone(),
@@ -3294,7 +3294,7 @@ mod tests {
                 FileFacts {
                     path: file.clone(),
                     functions: vec![production.clone(), evidence_shadow.clone()],
-                    source: source.to_string(),
+                    source: source.into(),
                     ..FileFacts::default()
                 },
             )]),
@@ -3456,7 +3456,7 @@ mod tests {
             file: file.to_path_buf(),
             start_line,
             end_line: start_line,
-            body: String::new(),
+            body: String::new().into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),

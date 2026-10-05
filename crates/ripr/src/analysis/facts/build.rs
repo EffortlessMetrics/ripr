@@ -111,7 +111,7 @@ fn build_index_with_file_fact_cache(
         index
             .files()
             .iter()
-            .map(|(path, facts)| (path, facts.data().source.as_str())),
+            .map(|(path, facts)| (path, facts.data().source.as_ref())),
     ));
     cancellation::checkpoint()?;
     index.package_names = manifest_package_names(root);
@@ -389,7 +389,7 @@ fn build_index_with_adapters(
         index
             .files()
             .iter()
-            .map(|(path, facts)| (path, facts.data().source.as_str())),
+            .map(|(path, facts)| (path, facts.data().source.as_ref())),
     ));
     cancellation::checkpoint()?;
     index.package_names = manifest_package_names(root);
@@ -798,7 +798,7 @@ pub fn check(x: i32) -> bool {
         ) -> Result<super::super::FileFacts, String> {
             Ok(super::super::FileFacts {
                 path: path.to_path_buf(),
-                source: text.to_string(),
+                source: text.into(),
                 ..super::super::FileFacts::default()
             })
         }
@@ -828,7 +828,7 @@ pub fn check(x: i32) -> bool {
             index
                 .files()
                 .get(&PathBuf::from("src/lib.rs"))
-                .map_or("", |facts| facts.data().source.as_str()),
+                .map_or("", |facts| facts.data().source.as_ref()),
             "pub fn fallback() {}\n"
         );
         assert!(
@@ -1593,7 +1593,7 @@ pub fn check(x: i32) -> bool {
                 }
                 Ok(super::super::FileFacts {
                     path: path.to_path_buf(),
-                    source: text.to_string(),
+                    source: text.into(),
                     ..super::super::FileFacts::default()
                 })
             }
@@ -1765,7 +1765,7 @@ pub fn check(x: i32) -> bool {
                 }
                 Ok(super::super::FileFacts {
                     path: path.to_path_buf(),
-                    source: text.to_string(),
+                    source: text.into(),
                     ..super::super::FileFacts::default()
                 })
             }
