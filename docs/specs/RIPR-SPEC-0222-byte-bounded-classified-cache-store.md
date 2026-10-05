@@ -84,8 +84,8 @@ proving a universal RSS threshold.
   and only files under `g*/` are ever deleted.
 - If one classified seam cannot fit under the configured byte ceiling,
   the store returns `skipped_oversized_record_index_{i}_ceiling_{n}`
-  (`skipped_oversized_metadata_ceiling_{n}` when the metadata around the
-  records is what overflows) and does not claim a populated cache.
+  (`skipped_oversized_metadata_ceiling_{n}` when an entry with no seam
+  records still exceeds the ceiling) and does not claim a populated cache.
   Analysis output stays usable, and one stderr line names the record,
   its encoded size against the ceiling, and the
   `RIPR_CLASSIFIED_SEAM_CACHE_SHARD_BYTES` value that restores warm runs.
@@ -179,6 +179,7 @@ proving a universal RSS threshold.
 - `crates/ripr/src/analysis/seam_cache/store.rs::tests::orphan_generations_are_swept_only_when_old_and_unreferenced`
 - `crates/ripr/src/analysis/seam_cache/store.rs::tests::orphan_sweep_does_nothing_without_a_valid_manifest`
 - `crates/ripr/src/analysis/seam_cache/store.rs::tests::replaced_generation_cleanup_only_deletes_files_inside_generation_directories`
+- `crates/ripr/src/analysis/seam_cache/store.rs::tests::sharded_publication_sweeps_an_old_orphan_generation`
 - `crates/ripr/src/analysis/seam_cache/store.rs::tests::tampered_previous_manifest_never_deletes_the_live_manifest`
 - Existing `crates/ripr/src/analysis/seam_cache.rs` integrity, missing-shard,
   and sharded warm-hit tests

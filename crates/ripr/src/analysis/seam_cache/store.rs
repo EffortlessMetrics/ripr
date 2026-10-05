@@ -1731,6 +1731,11 @@ mod tests {
                 let _ = std::fs::create_dir_all(parent);
             }
             let _ = std::fs::write(&entry, bytes);
+            // The kernel's coarse file clock can land just behind `started_at`; pin it.
+            if let Ok(file) = std::fs::OpenOptions::new().write(true).open(&entry) {
+                let _ = file
+                    .set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(5));
+            }
         }));
         cache
             .store_classified_seams_with_record_and_byte_limits(&key, &seams, None, 2, 1_000_000)?;
@@ -1778,6 +1783,37 @@ mod tests {
         );
         assert_eq!(listed_generation_dirs(&cache, &key)?, live);
         round_trip(&cache, &key, &seams)?;
+        ignore_remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sharded_publication_sweeps_an_old_orphan_generation() -> Result<(), String> {
+        let (dir, cache, key, seams) = sharded_fixture("orphan-wired", 6)?;
+        cache
+            .store_classified_seams_with_record_and_byte_limits(&key, &seams, None, 2, 1_000_000)?;
+        let sharded = cache.sharded_entry_dir(&key);
+        let old = sharded.join("g98-1-0");
+        let young = sharded.join("g99-1-0");
+        for orphan in [&old, &young] {
+            std::fs::create_dir_all(orphan).map_err(|err| err.to_string())?;
+            std::fs::write(orphan.join("shard-00000.json"), b"partial")
+                .map_err(|err| err.to_string())?;
+        }
+        std::fs::File::open(&old)
+            .and_then(|file| {
+                file.set_modified(std::time::SystemTime::now() - std::time::Duration::from_hours(2))
+            })
+            .map_err(|err| err.to_string())?;
+        let next: Vec<_> = (0..6)
+            .map(|i| classified_with_pad(&format!("wired-{i}")))
+            .collect();
+        cache
+            .store_classified_seams_with_record_and_byte_limits(&key, &next, None, 2, 1_000_000)?;
+        assert!(!old.exists(), "publication must sweep an old orphan");
+        assert!(young.exists(), "a young orphan may belong to a live writer");
+        round_trip(&cache, &key, &next)?;
         ignore_remove_dir_all(&dir);
         Ok(())
     }
@@ -1857,7 +1893,16 @@ mod tests {
             .and_then(|end| text[..end].rfind('"'))
             .ok_or_else(|| "fixture manifest must list a first shard".to_string())?;
         let end = text.find(marker).map_or(start, |at| at + marker.len());
-        let tampered = format!("{}\"manifest.json{}", &text[..start], &text[end..]);
+        // A path inside a `g*/` directory passes the deletion-scope guard, so only
+        // the integrity check on the previous manifest can protect this file.
+        let victim = cache
+            .sharded_entry_dir(&key)
+            .join("gzz")
+            .join("victim.json");
+        std::fs::create_dir_all(victim.parent().ok_or("victim parent")?)
+            .map_err(|err| err.to_string())?;
+        std::fs::write(&victim, b"must survive").map_err(|err| err.to_string())?;
+        let tampered = format!("{}\"gzz/victim.json{}", &text[..start], &text[end..]);
         std::fs::write(&manifest, tampered).map_err(|err| err.to_string())?;
         let next: Vec<_> = (0..6)
             .map(|i| classified_with_pad(&format!("after-tamper-{i}")))
@@ -1865,6 +1910,10 @@ mod tests {
         cache
             .store_classified_seams_with_record_and_byte_limits(&key, &next, None, 2, 1_000_000)?;
         assert!(manifest.exists(), "the new manifest must survive");
+        assert!(
+            victim.exists(),
+            "a file named only by a tampered previous manifest must not be deleted"
+        );
         round_trip(&cache, &key, &next)?;
         ignore_remove_dir_all(&dir);
         Ok(())
