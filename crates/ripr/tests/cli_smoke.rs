@@ -1079,9 +1079,35 @@ fn normalize_agent_receipt_fixture(text: &str) -> Result<String, Box<dyn std::er
     Ok(rendered)
 }
 
+/// Frozen boundary-gap oracle for the v4 preimage in agent/artifact.rs.
+/// This is deliberately limited to the pinned manifest, default consumed
+/// configuration, draft/no-base semantics and no tracked Cargo lockfile.
+/// It must not replace the producer's general input discovery authority.
+fn unchanged_fixture_input_identity(
+    manifest: &[u8],
+    config_identity: &str,
+    analyzer_version: &str,
+) -> String {
+    let fingerprint = |bytes: &[u8]| {
+        let mut hash = 0xcbf29ce484222325_u64;
+        for byte in bytes {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+        format!("{hash:016x}")
+    };
+    let named_manifest = format!("Cargo.toml\0{}\n", fingerprint(manifest));
+    let manifest_identity = fingerprint(named_manifest.as_bytes());
+    let canonical = format!(
+        "identity_version=v4;mode=draft;profile=draft;base=None;format=repo-exposure-json;manifest=Some({manifest_identity:?});lockfile=None;config={config_identity};analyzer={analyzer_version}"
+    );
+    format!("input:v4:fnv1a64:{}", fingerprint(canonical.as_bytes()))
+}
+
 fn normalize_unchanged_repo_exposure_producer_fixture(
     mut value: serde_json::Value,
     fixture_root: &Path,
+    historical: &serde_json::Value,
 ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     let canonical_root = fixture_root
         .canonicalize()?
@@ -1094,13 +1120,86 @@ fn normalize_unchanged_repo_exposure_producer_fixture(
     );
     assert_eq!(produced_root, canonical_root);
 
+    let manifest = normalize_newlines(&std::fs::read_to_string(fixture_root.join("Cargo.toml"))?);
+    if manifest.len() != 132
+        || sha256_hex_bytes(manifest.as_bytes())
+            != "sha256:63aa79140de1bf1a4979bd661f74820108f34be1102a2244a843aaddedafe3df"
+    {
+        return Err("unchanged fixture manifest differs from the frozen v4 subject".into());
+    }
+    let tracked = git_stdout(
+        fixture_root,
+        &[
+            "--literal-pathspecs",
+            "ls-files",
+            "-z",
+            "--cached",
+            "--",
+            ".",
+        ],
+    )?;
+    let tracked_manifests = tracked
+        .split('\0')
+        .filter(|path| {
+            Path::new(path)
+                .file_name()
+                .is_some_and(|name| name == "Cargo.toml")
+        })
+        .collect::<Vec<_>>();
+    if tracked_manifests != ["Cargo.toml"]
+        || tracked.split('\0').any(|path| {
+            Path::new(path)
+                .file_name()
+                .is_some_and(|name| name == "Cargo.lock")
+        })
+    {
+        return Err(
+            "unchanged fixture requires only its root manifest and no tracked Cargo lockfile"
+                .into(),
+        );
+    }
+    let config = ripr::config::load_for_root(fixture_root)?;
+    let config_identity = ripr::config::repo_exposure_config_identity_hash(&config);
+    if config.source_path.is_some()
+        || config_identity
+            != ripr::config::repo_exposure_config_identity_hash(&ripr::config::RiprConfig::default())
+    {
+        return Err("unchanged fixture must retain default producer-consumed configuration".into());
+    }
+
+    // Version is analysis meaning, not a field to scrub. Prove both keys
+    // independently before translating the current producer to the frozen
+    // historical fixture. A manifest/config/algorithm/key drift still fails.
+    let historical_version = json_pointer_str(historical, "/artifact/producer/version")?;
+    if historical_version != "0.11.0" {
+        return Err("historical unchanged fixture producer version differs".into());
+    }
+    let historical_identity =
+        unchanged_fixture_input_identity(manifest.as_bytes(), &config_identity, historical_version);
+    if json_pointer_str(historical, "/artifact/analysis/input_identity")? != historical_identity {
+        return Err("historical unchanged fixture input identity differs".into());
+    }
+    if json_pointer_str(&value, "/artifact/producer/version")? != env!("CARGO_PKG_VERSION") {
+        return Err("current unchanged producer version differs from the compiled analyzer".into());
+    }
+    let current_identity = unchanged_fixture_input_identity(
+        manifest.as_bytes(),
+        &config_identity,
+        env!("CARGO_PKG_VERSION"),
+    );
+    if json_pointer_str(&value, "/artifact/analysis/input_identity")? != current_identity {
+        return Err("current unchanged producer input identity differs".into());
+    }
+
     let stable_head = "8a00693e680c8ad5172d5191bbb08484cbd5e300";
     value["artifact"]["repository"]["root"] = serde_json::json!(".");
     value["artifact"]["repository"]["head"] = serde_json::json!(stable_head);
     value["artifact"]["analysis"]["worktree"] = serde_json::json!("dirty");
-    let input_identity = json_pointer_str(&value, "/artifact/analysis/input_identity")?;
-    value["artifact"]["snapshot_identity"] =
-        serde_json::json!(format!("snapshot:{input_identity};revision:{stable_head}"));
+    value["artifact"]["producer"]["version"] = serde_json::json!(historical_version);
+    value["artifact"]["analysis"]["input_identity"] = serde_json::json!(historical_identity);
+    value["artifact"]["snapshot_identity"] = serde_json::json!(format!(
+        "snapshot:{historical_identity};revision:{stable_head}"
+    ));
     let mut raw = serde_json::to_string_pretty(&value)?;
     raw.push('\n');
     serde_json::from_str(&recommit_repo_exposure_json(raw)).map_err(Into::into)
@@ -5500,9 +5599,63 @@ fn first_useful_action_corpus_pins_routing_cases() -> Result<(), Box<dyn std::er
             ])?;
             assert_success(&produced);
             let produced: serde_json::Value = serde_json::from_slice(&produced.stdout)?;
+            let producer_root = isolated.path().join("fixtures/boundary_gap/input");
+            // Exercise the same real-root normalization route with known-wrong
+            // current and historical identities. No identity may be replaced
+            // until both versioned keys have passed the independent oracle.
+            for (historical_control, pointer, replacement, expected_error) in [
+                (
+                    false,
+                    "/artifact/producer/version",
+                    "0.0.0-tampered",
+                    "current unchanged producer version differs from the compiled analyzer",
+                ),
+                (
+                    false,
+                    "/artifact/analysis/input_identity",
+                    "input:v4:fnv1a64:0000000000000000",
+                    "current unchanged producer input identity differs",
+                ),
+                (
+                    true,
+                    "/artifact/producer/version",
+                    "0.0.0-tampered",
+                    "historical unchanged fixture producer version differs",
+                ),
+                (
+                    true,
+                    "/artifact/analysis/input_identity",
+                    "input:v4:fnv1a64:0000000000000000",
+                    "historical unchanged fixture input identity differs",
+                ),
+            ] {
+                let mut control_produced = produced.clone();
+                let mut control_historical = before.clone();
+                let target = if historical_control {
+                    &mut control_historical
+                } else {
+                    &mut control_produced
+                };
+                *target
+                    .pointer_mut(pointer)
+                    .ok_or("identity control field must exist")? = serde_json::json!(replacement);
+                match normalize_unchanged_repo_exposure_producer_fixture(
+                    control_produced,
+                    &producer_root,
+                    &control_historical,
+                ) {
+                    Err(error) => assert_eq!(error.to_string(), expected_error),
+                    Ok(unexpected) => {
+                        return Err(format!(
+                            "wrong versioned identity must be rejected before normalization: {unexpected}"
+                        ).into());
+                    }
+                }
+            }
             let normalized_produced = normalize_unchanged_repo_exposure_producer_fixture(
                 produced,
-                &isolated.path().join("fixtures/boundary_gap/input"),
+                &producer_root,
+                &before,
             )?;
             assert_eq!(
                 before, normalized_produced,
