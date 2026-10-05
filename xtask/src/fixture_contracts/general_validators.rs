@@ -900,6 +900,9 @@ pub(crate) fn validate_python_real_repo_eval_fixture_corpus(
     )) {
         violations.push(error);
     }
+    if let Err(error) = super::native_python::validate_native_case_registration(root) {
+        violations.push(error);
+    }
     Ok(())
 }
 

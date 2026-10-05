@@ -1,0 +1,10 @@
+{
+  "kind": "independent_upstream_behavior_oracle",
+  "authority": "https://github.com/pallets/itsdangerous/issues/126",
+  "fix": "https://github.com/pallets/itsdangerous/commit/c30678d19e37011890e2374cca04f7789e101793",
+  "intended_behavior": "A signature with negative age is rejected with SignatureExpired when max_age is supplied.",
+  "weak_test": "Omitting max_age bypasses the age check; an exact payload assertion is valid but does not discriminate the negative-age defect.",
+  "skipped_test": "Method or class skip registers a subject without running the test body.",
+  "expected_failure_test": "Non-strict xfail suppresses the regression assertion failure; failure detection is not a failing verification command.",
+  "claim_boundary": "Curated native discrimination evidence, not blind adjudication, mutation adequacy, current RIPR output or support promotion."
+}

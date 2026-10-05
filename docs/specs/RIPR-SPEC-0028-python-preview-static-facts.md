@@ -86,6 +86,43 @@ RIPR-SPEC-0026 owner-kind vocabulary explicitly adds a class value.
 
 ## Test and Assertion Facts
 
+Known pytest skip/skipif/xfail marks and unittest controls in runner-honored
+placements retain a related pointer but cannot contribute an oracle or boundary
+input. Function-level unittest skip wraps the function under either runner;
+unittest class skip flags and expected-failure metadata qualify only TestCase
+tests. Those flags do not suppress ordinary pytest assertions. The relation is
+`test_activation_unestablished`. Conditions are not evaluated: even a visible
+false conditional skip remains uncertain within this bounded static contract.
+Imported decorator aliases use the last explicit binding in the declaration-time
+module/class scope, before test-body imports or later imports can shadow them.
+A canonical-looking name explicitly imported from another module is not a
+framework control. Unresolved canonical spellings remain conservative; arbitrary
+assignment rebinding is not evaluated.
+Unaliased dotted imports bind their root (`import unittest.mock` binds
+`unittest`); explicit aliases bind the alias. Method body lookup keeps
+its separate module/global scope; class-local imports are not method globals.
+When no independent eligible test supplies a relation, report
+`decorator_indirection` with the test activation reason and emit no repair
+packet. A separate active test can still supply its own evidence. Module-level
+`pytestmark`, dynamic `skipTest`, custom decorator semantics and imported-base
+activation remain outside this rule.
+
+Oracle admission does not prove the absence of side effects. Expected-failure
+bodies may execute, conditional skips may be inactive, and a pytest-skipped
+function can be called directly by an active test or helper. The existing
+whole-module constant-rebinding veto therefore remains conservative, including
+writes in marked bodies. Independent active assertions retain their own oracle
+identity; resolving their boundary still requires constants unaffected by
+potential writes. Proving nonexecution of body effects requires a separate
+execution-effect model.
+
+Curated upstream `native_cases` in the existing Python real-repo corpus record
+independent behavior/test-understanding controls without implying an analyzer
+run. The ItsDangerous future-age case retains immutable upstream source/license,
+the real defect/fix, original pytest fixture closure, a weak alternate observer,
+skip and expected-failure controls. Native evidence does not establish current
+static classifications, installed journeys, or support-tier promotion.
+
 Test discovery:
 
 - `pytest` test functions with the default `test` name prefix at module level

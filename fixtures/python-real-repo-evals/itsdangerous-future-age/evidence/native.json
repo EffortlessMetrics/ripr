@@ -1,0 +1,1143 @@
+{
+  "kind": "upstream_native_test_understanding",
+  "schema_version": "0.1",
+  "python": "3.14.6",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "environment": {
+    "python": "3.14.6",
+    "implementation": "CPython",
+    "system": "Windows",
+    "pointer_bits": 64,
+    "distributions": {
+      "colorama": "0.4.6",
+      "freezegun": "1.5.5",
+      "iniconfig": "2.3.0",
+      "packaging": "26.3",
+      "pluggy": "1.6.0",
+      "Pygments": "2.21.0",
+      "pytest": "9.1.1",
+      "python-dateutil": "2.9.0.post0",
+      "six": "1.17.0"
+    },
+    "imported_modules": {
+      "pytest": {
+        "version": "9.1.1",
+        "init_sha256": "ee37885c9583f843390684dfb496907f87a0905128e7a3cf4ad227f49ff34c2d"
+      },
+      "freezegun": {
+        "version": "1.5.5",
+        "init_sha256": "53b7efcf9d418f86ce0e8a008276f30e850989b8d418ef7dbb157a0bf67edf04"
+      }
+    }
+  },
+  "fixed": "c30678d19e37011890e2374cca04f7789e101793",
+  "broken": "1a9b8d1f9968eb248bda69f39d373a6330b692ba",
+  "analyzer_execution": "not_established",
+  "rows": [
+    {
+      "implementation": "fixed",
+      "variant": "effective",
+      "exit_code": 0,
+      "registered": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "test_ids": [
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_future_age",
+          "outcome": "pass",
+          "reason": null
+        }
+      ],
+      "production_sha256": "13ef04d25944516cdf406c09e4d6fe52ccc5cb44b4edf6e9c8d2023d8908d52b",
+      "test_sha256": "610f8e8747f8943f9d52c8f79c2a02e76c35857a93f072aeb18411980060254a",
+      "stdout_sha256": "420148db9e0b69209165e34674193ac580cc29b79b121aeba98eef98d79c0cbe",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "junit_sha256": "3754ee8ae8f9236528371bfb135533dae0e5b3fb90aaaef7f087fc7b133b4ddf",
+      "driver_sha256": "22d7ea1cec5f680d336a1bd51abd4a3d0adfa7777bca5024ff3a728ba77db3ff",
+      "requirements_lock_sha256": "cabc3a33df0af6c40b5c34db8ad2cb7767108d1eab9af46b61a3d95c6ddac27e",
+      "command": [
+        "<REPLAY_PYTHON>",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "--junitxml=result.xml",
+        "tests/test_itsdangerous/test_timed.py::TestTimestampSigner::test_future_age"
+      ],
+      "raw_artifacts": "<fixed-effective>/",
+      "executed": 1,
+      "intended_failure": false,
+      "junit_xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites name=\"pytest tests\"><testsuite name=\"pytest\" errors=\"0\" failures=\"0\" skipped=\"0\" tests=\"1\" time=\"0.149\" timestamp=\"2026-10-04T04:05:29.152412-04:00\" hostname=\"DESKTOP-O7TJ92M\"><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_future_age\" time=\"0.058\" /></testsuite></testsuites>",
+      "junit_projection": "decoded XML CRLF normalized to LF; absolute run-root text replaced by [RUN_ROOT]; original raw artifact SHA-256 retained separately"
+    },
+    {
+      "implementation": "fixed",
+      "variant": "weak",
+      "exit_code": 0,
+      "registered": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "test_ids": [
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_future_age",
+          "outcome": "pass",
+          "reason": null
+        }
+      ],
+      "production_sha256": "13ef04d25944516cdf406c09e4d6fe52ccc5cb44b4edf6e9c8d2023d8908d52b",
+      "test_sha256": "ad556f7f505fe2a6ceef6e23ba949bf8edb01a21fc9c651e5148cfc99d96c49c",
+      "stdout_sha256": "420148db9e0b69209165e34674193ac580cc29b79b121aeba98eef98d79c0cbe",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "junit_sha256": "fb026415a9f73cfc1d05f47e5144b80fd5ec55252a6334189f69caca1a9464c8",
+      "driver_sha256": "22d7ea1cec5f680d336a1bd51abd4a3d0adfa7777bca5024ff3a728ba77db3ff",
+      "requirements_lock_sha256": "cabc3a33df0af6c40b5c34db8ad2cb7767108d1eab9af46b61a3d95c6ddac27e",
+      "command": [
+        "<REPLAY_PYTHON>",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "--junitxml=result.xml",
+        "tests/test_itsdangerous/test_timed.py::TestTimestampSigner::test_future_age"
+      ],
+      "raw_artifacts": "<fixed-weak>/",
+      "executed": 1,
+      "intended_failure": false,
+      "junit_xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites name=\"pytest tests\"><testsuite name=\"pytest\" errors=\"0\" failures=\"0\" skipped=\"0\" tests=\"1\" time=\"0.154\" timestamp=\"2026-10-04T04:05:29.803602-04:00\" hostname=\"DESKTOP-O7TJ92M\"><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_future_age\" time=\"0.060\" /></testsuite></testsuites>",
+      "junit_projection": "decoded XML CRLF normalized to LF; absolute run-root text replaced by [RUN_ROOT]; original raw artifact SHA-256 retained separately"
+    },
+    {
+      "implementation": "fixed",
+      "variant": "skip-method",
+      "exit_code": 0,
+      "registered": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 1,
+      "test_ids": [
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_future_age",
+          "outcome": "skipped",
+          "reason": "pytest.skip"
+        }
+      ],
+      "production_sha256": "13ef04d25944516cdf406c09e4d6fe52ccc5cb44b4edf6e9c8d2023d8908d52b",
+      "test_sha256": "5d4baa1d363840b7d9b38e65e97a5f0f024adb5214be358178c5a679549b6bf5",
+      "stdout_sha256": "4a53be25722097bb8e5d3362b07920f1123a68cda93905c60be26b0c3762da71",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "junit_sha256": "57b3af980b8609caaa96f4a49a72b6b1447d20d71bddf06716e322427c5ce6b9",
+      "driver_sha256": "22d7ea1cec5f680d336a1bd51abd4a3d0adfa7777bca5024ff3a728ba77db3ff",
+      "requirements_lock_sha256": "cabc3a33df0af6c40b5c34db8ad2cb7767108d1eab9af46b61a3d95c6ddac27e",
+      "command": [
+        "<REPLAY_PYTHON>",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "--junitxml=result.xml",
+        "tests/test_itsdangerous/test_timed.py::TestTimestampSigner::test_future_age"
+      ],
+      "raw_artifacts": "<fixed-skip-method>/",
+      "executed": 0,
+      "intended_failure": false,
+      "junit_xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites name=\"pytest tests\"><testsuite name=\"pytest\" errors=\"0\" failures=\"0\" skipped=\"1\" tests=\"1\" time=\"0.099\" timestamp=\"2026-10-04T04:05:30.457914-04:00\" hostname=\"DESKTOP-O7TJ92M\"><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_future_age\" time=\"0.000\"><skipped type=\"pytest.skip\" message=\"activation control\">[RUN_ROOT]\\fixed-skip-method\\tests\\test_itsdangerous\\test_timed.py:67: activation control</skipped></testcase></testsuite></testsuites>",
+      "junit_projection": "decoded XML CRLF normalized to LF; absolute run-root text replaced by [RUN_ROOT]; original raw artifact SHA-256 retained separately"
+    },
+    {
+      "implementation": "fixed",
+      "variant": "skip-class",
+      "exit_code": 0,
+      "registered": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 1,
+      "test_ids": [
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_future_age",
+          "outcome": "skipped",
+          "reason": "pytest.skip"
+        }
+      ],
+      "production_sha256": "13ef04d25944516cdf406c09e4d6fe52ccc5cb44b4edf6e9c8d2023d8908d52b",
+      "test_sha256": "4db18dce1e419c6948ff9f0d8834cc2397ebbcece6aeb7ae07c4a7e2188cfe3c",
+      "stdout_sha256": "4a53be25722097bb8e5d3362b07920f1123a68cda93905c60be26b0c3762da71",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "junit_sha256": "60f9dc008c0c017b5027068e4a03fba33371345a54c1436a5fab49915b6efbca",
+      "driver_sha256": "22d7ea1cec5f680d336a1bd51abd4a3d0adfa7777bca5024ff3a728ba77db3ff",
+      "requirements_lock_sha256": "cabc3a33df0af6c40b5c34db8ad2cb7767108d1eab9af46b61a3d95c6ddac27e",
+      "command": [
+        "<REPLAY_PYTHON>",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "--junitxml=result.xml",
+        "tests/test_itsdangerous/test_timed.py::TestTimestampSigner::test_future_age"
+      ],
+      "raw_artifacts": "<fixed-skip-class>/",
+      "executed": 0,
+      "intended_failure": false,
+      "junit_xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites name=\"pytest tests\"><testsuite name=\"pytest\" errors=\"0\" failures=\"0\" skipped=\"1\" tests=\"1\" time=\"0.097\" timestamp=\"2026-10-04T04:05:31.058968-04:00\" hostname=\"DESKTOP-O7TJ92M\"><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_future_age\" time=\"0.000\"><skipped type=\"pytest.skip\" message=\"activation control\">[RUN_ROOT]\\fixed-skip-class\\tests\\test_itsdangerous\\test_timed.py:68: activation control</skipped></testcase></testsuite></testsuites>",
+      "junit_projection": "decoded XML CRLF normalized to LF; absolute run-root text replaced by [RUN_ROOT]; original raw artifact SHA-256 retained separately"
+    },
+    {
+      "implementation": "fixed",
+      "variant": "xfail",
+      "exit_code": 0,
+      "registered": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "test_ids": [
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_future_age",
+          "outcome": "pass",
+          "reason": null
+        }
+      ],
+      "production_sha256": "13ef04d25944516cdf406c09e4d6fe52ccc5cb44b4edf6e9c8d2023d8908d52b",
+      "test_sha256": "9f387c24b872ce47267f301915e6918fe624b90fdb5bd4c3a03a74ff8fc081ee",
+      "stdout_sha256": "1d37ef84644ae7e3fb112296252f31dbc0b3310f301fbd54f07a95d6c32a2433",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "junit_sha256": "4556188a4ba55d7ae61a19ab63b1726eb0a54262bc808ae71cc6524cd34267f5",
+      "driver_sha256": "22d7ea1cec5f680d336a1bd51abd4a3d0adfa7777bca5024ff3a728ba77db3ff",
+      "requirements_lock_sha256": "cabc3a33df0af6c40b5c34db8ad2cb7767108d1eab9af46b61a3d95c6ddac27e",
+      "command": [
+        "<REPLAY_PYTHON>",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "--junitxml=result.xml",
+        "tests/test_itsdangerous/test_timed.py::TestTimestampSigner::test_future_age"
+      ],
+      "raw_artifacts": "<fixed-xfail>/",
+      "executed": 1,
+      "intended_failure": false,
+      "junit_xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites name=\"pytest tests\"><testsuite name=\"pytest\" errors=\"0\" failures=\"0\" skipped=\"0\" tests=\"1\" time=\"0.144\" timestamp=\"2026-10-04T04:05:31.648648-04:00\" hostname=\"DESKTOP-O7TJ92M\"><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_future_age\" time=\"0.055\" /></testsuite></testsuites>",
+      "junit_projection": "decoded XML CRLF normalized to LF; absolute run-root text replaced by [RUN_ROOT]; original raw artifact SHA-256 retained separately"
+    },
+    {
+      "implementation": "fixed",
+      "variant": "neighbors",
+      "exit_code": 0,
+      "registered": 2,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "test_ids": [
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_max_age",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_return_timestamp",
+          "outcome": "pass",
+          "reason": null
+        }
+      ],
+      "production_sha256": "13ef04d25944516cdf406c09e4d6fe52ccc5cb44b4edf6e9c8d2023d8908d52b",
+      "test_sha256": "610f8e8747f8943f9d52c8f79c2a02e76c35857a93f072aeb18411980060254a",
+      "stdout_sha256": "55b877bcf3d12f07f07cdb7ca98a71bb1bf453417d4f675a2b1f6d950196b07d",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "junit_sha256": "0473ce7e81c25c3066adb5de2dfe05bbb3aa4d22ca4267061d5641f719034a43",
+      "driver_sha256": "22d7ea1cec5f680d336a1bd51abd4a3d0adfa7777bca5024ff3a728ba77db3ff",
+      "requirements_lock_sha256": "cabc3a33df0af6c40b5c34db8ad2cb7767108d1eab9af46b61a3d95c6ddac27e",
+      "command": [
+        "<REPLAY_PYTHON>",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "--junitxml=result.xml",
+        "tests/test_itsdangerous/test_timed.py::TestTimestampSigner::test_max_age",
+        "tests/test_itsdangerous/test_timed.py::TestTimestampSigner::test_return_timestamp"
+      ],
+      "raw_artifacts": "<fixed-neighbors>/",
+      "executed": 2,
+      "intended_failure": false,
+      "junit_xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites name=\"pytest tests\"><testsuite name=\"pytest\" errors=\"0\" failures=\"0\" skipped=\"0\" tests=\"2\" time=\"0.151\" timestamp=\"2026-10-04T04:05:32.285724-04:00\" hostname=\"DESKTOP-O7TJ92M\"><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_max_age\" time=\"0.056\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_return_timestamp\" time=\"0.003\" /></testsuite></testsuites>",
+      "junit_projection": "decoded XML CRLF normalized to LF; absolute run-root text replaced by [RUN_ROOT]; original raw artifact SHA-256 retained separately"
+    },
+    {
+      "implementation": "broken",
+      "variant": "effective",
+      "exit_code": 1,
+      "registered": 1,
+      "errors": 0,
+      "failures": 1,
+      "skipped": 0,
+      "test_ids": [
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_future_age",
+          "outcome": "failure",
+          "reason": null
+        }
+      ],
+      "production_sha256": "f0be07c03a26203279dec588d965f6af7a00013afa3ebeb223568990a3c67290",
+      "test_sha256": "610f8e8747f8943f9d52c8f79c2a02e76c35857a93f072aeb18411980060254a",
+      "stdout_sha256": "22f0811d626d04be65a0d6920c27d0f1e0b3563d0757f8320655d88e4d93fa35",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "junit_sha256": "09edfcf6842bb2b4d23bb4c17490f8ef7fc339fb2717c73037b5a2b6d5c3b53d",
+      "driver_sha256": "22d7ea1cec5f680d336a1bd51abd4a3d0adfa7777bca5024ff3a728ba77db3ff",
+      "requirements_lock_sha256": "cabc3a33df0af6c40b5c34db8ad2cb7767108d1eab9af46b61a3d95c6ddac27e",
+      "command": [
+        "<REPLAY_PYTHON>",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "--junitxml=result.xml",
+        "tests/test_itsdangerous/test_timed.py::TestTimestampSigner::test_future_age"
+      ],
+      "raw_artifacts": "<broken-effective>/",
+      "executed": 1,
+      "intended_failure": true,
+      "junit_xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites name=\"pytest tests\"><testsuite name=\"pytest\" errors=\"0\" failures=\"1\" skipped=\"0\" tests=\"1\" time=\"0.221\" timestamp=\"2026-10-04T04:05:32.928802-04:00\" hostname=\"DESKTOP-O7TJ92M\"><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_future_age\" time=\"0.129\"><failure message=\"Failed: DID NOT RAISE SignatureExpired\">self = &lt;test_itsdangerous.test_timed.TestTimestampSigner object at 0x00000248C040EB10&gt;\nsigner = &lt;itsdangerous.timed.TimestampSigner object at 0x00000248C0675BE0&gt;\n\n    def test_future_age(self, signer):\n        signed = signer.sign(\"value\")\n    \n        with freeze_time(\"1971-05-31\"):\n&gt;           with pytest.raises(SignatureExpired):\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE           Failed: DID NOT RAISE SignatureExpired\n\ntests\\test_itsdangerous\\test_timed.py:71: Failed</failure></testcase></testsuite></testsuites>",
+      "junit_projection": "decoded XML CRLF normalized to LF; absolute run-root text replaced by [RUN_ROOT]; original raw artifact SHA-256 retained separately"
+    },
+    {
+      "implementation": "broken",
+      "variant": "weak",
+      "exit_code": 0,
+      "registered": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "test_ids": [
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_future_age",
+          "outcome": "pass",
+          "reason": null
+        }
+      ],
+      "production_sha256": "f0be07c03a26203279dec588d965f6af7a00013afa3ebeb223568990a3c67290",
+      "test_sha256": "ad556f7f505fe2a6ceef6e23ba949bf8edb01a21fc9c651e5148cfc99d96c49c",
+      "stdout_sha256": "420148db9e0b69209165e34674193ac580cc29b79b121aeba98eef98d79c0cbe",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "junit_sha256": "250977c972ee443113848ab3f8605f4265c3c7c0e47823facbfc5d8628026bb2",
+      "driver_sha256": "22d7ea1cec5f680d336a1bd51abd4a3d0adfa7777bca5024ff3a728ba77db3ff",
+      "requirements_lock_sha256": "cabc3a33df0af6c40b5c34db8ad2cb7767108d1eab9af46b61a3d95c6ddac27e",
+      "command": [
+        "<REPLAY_PYTHON>",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "--junitxml=result.xml",
+        "tests/test_itsdangerous/test_timed.py::TestTimestampSigner::test_future_age"
+      ],
+      "raw_artifacts": "<broken-weak>/",
+      "executed": 1,
+      "intended_failure": false,
+      "junit_xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites name=\"pytest tests\"><testsuite name=\"pytest\" errors=\"0\" failures=\"0\" skipped=\"0\" tests=\"1\" time=\"0.151\" timestamp=\"2026-10-04T04:05:33.641077-04:00\" hostname=\"DESKTOP-O7TJ92M\"><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_future_age\" time=\"0.058\" /></testsuite></testsuites>",
+      "junit_projection": "decoded XML CRLF normalized to LF; absolute run-root text replaced by [RUN_ROOT]; original raw artifact SHA-256 retained separately"
+    },
+    {
+      "implementation": "broken",
+      "variant": "skip-method",
+      "exit_code": 0,
+      "registered": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 1,
+      "test_ids": [
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_future_age",
+          "outcome": "skipped",
+          "reason": "pytest.skip"
+        }
+      ],
+      "production_sha256": "f0be07c03a26203279dec588d965f6af7a00013afa3ebeb223568990a3c67290",
+      "test_sha256": "5d4baa1d363840b7d9b38e65e97a5f0f024adb5214be358178c5a679549b6bf5",
+      "stdout_sha256": "fc159e55fdc5d7158fc28e30709ffc47a42fbe5d74bf2aa18407c474496be5f9",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "junit_sha256": "e57aba07d3c3dd2bfdd86735e58c915df3ebab5b4f81dc3653044b4e224f8503",
+      "driver_sha256": "22d7ea1cec5f680d336a1bd51abd4a3d0adfa7777bca5024ff3a728ba77db3ff",
+      "requirements_lock_sha256": "cabc3a33df0af6c40b5c34db8ad2cb7767108d1eab9af46b61a3d95c6ddac27e",
+      "command": [
+        "<REPLAY_PYTHON>",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "--junitxml=result.xml",
+        "tests/test_itsdangerous/test_timed.py::TestTimestampSigner::test_future_age"
+      ],
+      "raw_artifacts": "<broken-skip-method>/",
+      "executed": 0,
+      "intended_failure": false,
+      "junit_xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites name=\"pytest tests\"><testsuite name=\"pytest\" errors=\"0\" failures=\"0\" skipped=\"1\" tests=\"1\" time=\"0.094\" timestamp=\"2026-10-04T04:05:34.282327-04:00\" hostname=\"DESKTOP-O7TJ92M\"><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_future_age\" time=\"0.000\"><skipped type=\"pytest.skip\" message=\"activation control\">[RUN_ROOT]\\broken-skip-method\\tests\\test_itsdangerous\\test_timed.py:67: activation control</skipped></testcase></testsuite></testsuites>",
+      "junit_projection": "decoded XML CRLF normalized to LF; absolute run-root text replaced by [RUN_ROOT]; original raw artifact SHA-256 retained separately"
+    },
+    {
+      "implementation": "broken",
+      "variant": "skip-class",
+      "exit_code": 0,
+      "registered": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 1,
+      "test_ids": [
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_future_age",
+          "outcome": "skipped",
+          "reason": "pytest.skip"
+        }
+      ],
+      "production_sha256": "f0be07c03a26203279dec588d965f6af7a00013afa3ebeb223568990a3c67290",
+      "test_sha256": "4db18dce1e419c6948ff9f0d8834cc2397ebbcece6aeb7ae07c4a7e2188cfe3c",
+      "stdout_sha256": "fc159e55fdc5d7158fc28e30709ffc47a42fbe5d74bf2aa18407c474496be5f9",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "junit_sha256": "1a2cb525c531b9c2345ce021f1143a07e18fe35d2211e62b8a2840c56e7245b4",
+      "driver_sha256": "22d7ea1cec5f680d336a1bd51abd4a3d0adfa7777bca5024ff3a728ba77db3ff",
+      "requirements_lock_sha256": "cabc3a33df0af6c40b5c34db8ad2cb7767108d1eab9af46b61a3d95c6ddac27e",
+      "command": [
+        "<REPLAY_PYTHON>",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "--junitxml=result.xml",
+        "tests/test_itsdangerous/test_timed.py::TestTimestampSigner::test_future_age"
+      ],
+      "raw_artifacts": "<broken-skip-class>/",
+      "executed": 0,
+      "intended_failure": false,
+      "junit_xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites name=\"pytest tests\"><testsuite name=\"pytest\" errors=\"0\" failures=\"0\" skipped=\"1\" tests=\"1\" time=\"0.096\" timestamp=\"2026-10-04T04:05:34.865478-04:00\" hostname=\"DESKTOP-O7TJ92M\"><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_future_age\" time=\"0.000\"><skipped type=\"pytest.skip\" message=\"activation control\">[RUN_ROOT]\\broken-skip-class\\tests\\test_itsdangerous\\test_timed.py:68: activation control</skipped></testcase></testsuite></testsuites>",
+      "junit_projection": "decoded XML CRLF normalized to LF; absolute run-root text replaced by [RUN_ROOT]; original raw artifact SHA-256 retained separately"
+    },
+    {
+      "implementation": "broken",
+      "variant": "xfail",
+      "exit_code": 0,
+      "registered": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 1,
+      "test_ids": [
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_future_age",
+          "outcome": "skipped",
+          "reason": "pytest.xfail"
+        }
+      ],
+      "production_sha256": "f0be07c03a26203279dec588d965f6af7a00013afa3ebeb223568990a3c67290",
+      "test_sha256": "9f387c24b872ce47267f301915e6918fe624b90fdb5bd4c3a03a74ff8fc081ee",
+      "stdout_sha256": "c069a0c634d38a89e2967dce774246662fccc45488a17db7101ab5a9028f84fe",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "junit_sha256": "80215db83b6b1b6d9abc1715713d8d8b29b86ae1ce12eb2a1cb948cae0b187e9",
+      "driver_sha256": "22d7ea1cec5f680d336a1bd51abd4a3d0adfa7777bca5024ff3a728ba77db3ff",
+      "requirements_lock_sha256": "cabc3a33df0af6c40b5c34db8ad2cb7767108d1eab9af46b61a3d95c6ddac27e",
+      "command": [
+        "<REPLAY_PYTHON>",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "--junitxml=result.xml",
+        "tests/test_itsdangerous/test_timed.py::TestTimestampSigner::test_future_age"
+      ],
+      "raw_artifacts": "<broken-xfail>/",
+      "executed": 1,
+      "intended_failure": false,
+      "junit_xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites name=\"pytest tests\"><testsuite name=\"pytest\" errors=\"0\" failures=\"0\" skipped=\"1\" tests=\"1\" time=\"0.221\" timestamp=\"2026-10-04T04:05:35.423829-04:00\" hostname=\"DESKTOP-O7TJ92M\"><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_future_age\" time=\"0.131\"><skipped type=\"pytest.xfail\" message=\"activation control\" /></testcase></testsuite></testsuites>",
+      "junit_projection": "decoded XML CRLF normalized to LF; absolute run-root text replaced by [RUN_ROOT]; original raw artifact SHA-256 retained separately"
+    },
+    {
+      "implementation": "broken",
+      "variant": "neighbors",
+      "exit_code": 0,
+      "registered": 2,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "test_ids": [
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_max_age",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_return_timestamp",
+          "outcome": "pass",
+          "reason": null
+        }
+      ],
+      "production_sha256": "f0be07c03a26203279dec588d965f6af7a00013afa3ebeb223568990a3c67290",
+      "test_sha256": "610f8e8747f8943f9d52c8f79c2a02e76c35857a93f072aeb18411980060254a",
+      "stdout_sha256": "55b877bcf3d12f07f07cdb7ca98a71bb1bf453417d4f675a2b1f6d950196b07d",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "junit_sha256": "de30f30baddfb56b6b6625af937d22a02bddf4ecbc24ae58d3d23fe657ba1c4b",
+      "driver_sha256": "22d7ea1cec5f680d336a1bd51abd4a3d0adfa7777bca5024ff3a728ba77db3ff",
+      "requirements_lock_sha256": "cabc3a33df0af6c40b5c34db8ad2cb7767108d1eab9af46b61a3d95c6ddac27e",
+      "command": [
+        "<REPLAY_PYTHON>",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "--junitxml=result.xml",
+        "tests/test_itsdangerous/test_timed.py::TestTimestampSigner::test_max_age",
+        "tests/test_itsdangerous/test_timed.py::TestTimestampSigner::test_return_timestamp"
+      ],
+      "raw_artifacts": "<broken-neighbors>/",
+      "executed": 2,
+      "intended_failure": false,
+      "junit_xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites name=\"pytest tests\"><testsuite name=\"pytest\" errors=\"0\" failures=\"0\" skipped=\"0\" tests=\"2\" time=\"0.149\" timestamp=\"2026-10-04T04:05:36.136358-04:00\" hostname=\"DESKTOP-O7TJ92M\"><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_max_age\" time=\"0.055\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_return_timestamp\" time=\"0.003\" /></testsuite></testsuites>",
+      "junit_projection": "decoded XML CRLF normalized to LF; absolute run-root text replaced by [RUN_ROOT]; original raw artifact SHA-256 retained separately"
+    },
+    {
+      "implementation": "fixed",
+      "variant": "full-file",
+      "exit_code": 0,
+      "registered": 97,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "test_ids": [
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_serializer[Serializer-None]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_serializer[Serializer-True]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_serializer[Serializer-str]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_serializer[Serializer-text]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_serializer[Serializer-value4]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_serializer[Serializer-value5]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_serializer[serializer_factory1-None]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_serializer[serializer_factory1-True]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_serializer[serializer_factory1-str]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_serializer[serializer_factory1-text]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_serializer[serializer_factory1-value4]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_serializer[serializer_factory1-value5]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_changed_value[Serializer-<lambda>0]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_changed_value[Serializer-<lambda>1]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_changed_value[Serializer-<lambda>2]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_changed_value[Serializer-<lambda>3]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_changed_value[serializer_factory1-<lambda>0]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_changed_value[serializer_factory1-<lambda>1]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_changed_value[serializer_factory1-<lambda>2]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_changed_value[serializer_factory1-<lambda>3]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_bad_signature_exception[Serializer]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_bad_signature_exception[serializer_factory1]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_bad_payload_exception[Serializer]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_bad_payload_exception[serializer_factory1]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_loads_unsafe[Serializer]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_loads_unsafe[serializer_factory1]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_file[Serializer]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_file[serializer_factory1]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_alt_salt[Serializer]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_alt_salt[serializer_factory1]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_signer_cls[Serializer]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_signer_cls[serializer_factory1]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_signer_kwargs[Serializer]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_signer_kwargs[serializer_factory1]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_serializer_kwargs[Serializer]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_serializer_kwargs[serializer_factory1]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_fallback_signers[Serializer]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_fallback_signers[serializer_factory1]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_iter_unsigners[Serializer]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSerializer",
+          "name": "test_iter_unsigners[serializer_factory1]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSigner",
+          "name": "test_signer",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSigner",
+          "name": "test_no_separator",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSigner",
+          "name": "test_broken_signature",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSigner",
+          "name": "test_changed_value",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSigner",
+          "name": "test_invalid_separator",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSigner",
+          "name": "test_key_derivation[concat]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSigner",
+          "name": "test_key_derivation[django-concat]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSigner",
+          "name": "test_key_derivation[hmac]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSigner",
+          "name": "test_key_derivation[none]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSigner",
+          "name": "test_invalid_key_derivation",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSigner",
+          "name": "test_digest_method",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSigner",
+          "name": "test_algorithm[None]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSigner",
+          "name": "test_algorithm[algorithm1]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSigner",
+          "name": "test_algorithm[algorithm2]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestSigner",
+          "name": "test_algorithm[algorithm3]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_signer",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_no_separator",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_broken_signature",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_changed_value",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_invalid_separator",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_key_derivation[concat]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_key_derivation[django-concat]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_key_derivation[hmac]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_key_derivation[none]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_invalid_key_derivation",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_digest_method",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_algorithm[None]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_algorithm[algorithm1]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_algorithm[algorithm2]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_algorithm[algorithm3]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_max_age",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_return_timestamp",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_timestamp_missing",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_malformed_timestamp",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimestampSigner",
+          "name": "test_future_age",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_serializer[None]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_serializer[True]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_serializer[str]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_serializer[text]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_serializer[value4]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_serializer[value5]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_changed_value[<lambda>0]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_changed_value[<lambda>1]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_changed_value[<lambda>2]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_changed_value[<lambda>3]",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_bad_signature_exception",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_bad_payload_exception",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_loads_unsafe",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_file",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_alt_salt",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_signer_cls",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_signer_kwargs",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_serializer_kwargs",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_fallback_signers",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_iter_unsigners",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_max_age",
+          "outcome": "pass",
+          "reason": null
+        },
+        {
+          "classname": "tests.test_itsdangerous.test_timed.TestTimedSerializer",
+          "name": "test_return_payload",
+          "outcome": "pass",
+          "reason": null
+        }
+      ],
+      "production_sha256": "13ef04d25944516cdf406c09e4d6fe52ccc5cb44b4edf6e9c8d2023d8908d52b",
+      "test_sha256": "610f8e8747f8943f9d52c8f79c2a02e76c35857a93f072aeb18411980060254a",
+      "stdout_sha256": "c6ab53c3a0142a468e5ba8b0e5e2c235ac0adf81d39ece51a8721987921bb0fc",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "junit_sha256": "8a079b0aec8ab9cb594b640d8218666e11e7ebc70ad0fc68e1abe72a8d0fd5d4",
+      "driver_sha256": "22d7ea1cec5f680d336a1bd51abd4a3d0adfa7777bca5024ff3a728ba77db3ff",
+      "requirements_lock_sha256": "cabc3a33df0af6c40b5c34db8ad2cb7767108d1eab9af46b61a3d95c6ddac27e",
+      "command": [
+        "<REPLAY_PYTHON>",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "--junitxml=result.xml",
+        "tests/test_itsdangerous/test_timed.py"
+      ],
+      "raw_artifacts": "<fixed-full-file>/",
+      "executed": 97,
+      "intended_failure": false,
+      "junit_xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites name=\"pytest tests\"><testsuite name=\"pytest\" errors=\"0\" failures=\"0\" skipped=\"0\" tests=\"97\" time=\"0.345\" timestamp=\"2026-10-04T04:05:36.775181-04:00\" hostname=\"DESKTOP-O7TJ92M\"><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_serializer[Serializer-None]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_serializer[Serializer-True]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_serializer[Serializer-str]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_serializer[Serializer-text]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_serializer[Serializer-value4]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_serializer[Serializer-value5]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_serializer[serializer_factory1-None]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_serializer[serializer_factory1-True]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_serializer[serializer_factory1-str]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_serializer[serializer_factory1-text]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_serializer[serializer_factory1-value4]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_serializer[serializer_factory1-value5]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_changed_value[Serializer-&lt;lambda&gt;0]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_changed_value[Serializer-&lt;lambda&gt;1]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_changed_value[Serializer-&lt;lambda&gt;2]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_changed_value[Serializer-&lt;lambda&gt;3]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_changed_value[serializer_factory1-&lt;lambda&gt;0]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_changed_value[serializer_factory1-&lt;lambda&gt;1]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_changed_value[serializer_factory1-&lt;lambda&gt;2]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_changed_value[serializer_factory1-&lt;lambda&gt;3]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_bad_signature_exception[Serializer]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_bad_signature_exception[serializer_factory1]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_bad_payload_exception[Serializer]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_bad_payload_exception[serializer_factory1]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_loads_unsafe[Serializer]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_loads_unsafe[serializer_factory1]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_file[Serializer]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_file[serializer_factory1]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_alt_salt[Serializer]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_alt_salt[serializer_factory1]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_signer_cls[Serializer]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_signer_cls[serializer_factory1]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_signer_kwargs[Serializer]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_signer_kwargs[serializer_factory1]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_serializer_kwargs[Serializer]\" time=\"0.000\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_serializer_kwargs[serializer_factory1]\" time=\"0.000\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_fallback_signers[Serializer]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_fallback_signers[serializer_factory1]\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_iter_unsigners[Serializer]\" time=\"0.000\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSerializer\" name=\"test_iter_unsigners[serializer_factory1]\" time=\"0.000\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSigner\" name=\"test_signer\" time=\"0.000\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSigner\" name=\"test_no_separator\" time=\"0.000\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSigner\" name=\"test_broken_signature\" time=\"0.000\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSigner\" name=\"test_changed_value\" time=\"0.001\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSigner\" name=\"test_invalid_separator\" time=\"0.000\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSigner\" name=\"test_key_derivation[concat]\" time=\"0.000\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSigner\" name=\"test_key_derivation[django-concat]\" time=\"0.000\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSigner\" name=\"test_key_derivation[hmac]\" time=\"0.000\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSigner\" name=\"test_key_derivation[none]\" time=\"0.000\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSigner\" name=\"test_invalid_key_derivation\" time=\"0.000\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSigner\" name=\"test_digest_method\" time=\"0.000\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSigner\" name=\"test_algorithm[None]\" time=\"0.000\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSigner\" name=\"test_algorithm[algorithm1]\" time=\"0.000\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSigner\" name=\"test_algorithm[algorithm2]\" time=\"0.000\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestSigner\" name=\"test_algorithm[algorithm3]\" time=\"0.000\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_signer\" time=\"0.056\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_no_separator\" time=\"0.004\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_broken_signature\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_changed_value\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_invalid_separator\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_key_derivation[concat]\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_key_derivation[django-concat]\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_key_derivation[hmac]\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_key_derivation[none]\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_invalid_key_derivation\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_digest_method\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_algorithm[None]\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_algorithm[algorithm1]\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_algorithm[algorithm2]\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_algorithm[algorithm3]\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_max_age\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_return_timestamp\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_timestamp_missing\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_malformed_timestamp\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimestampSigner\" name=\"test_future_age\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_serializer[None]\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_serializer[True]\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_serializer[str]\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_serializer[text]\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_serializer[value4]\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_serializer[value5]\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_changed_value[&lt;lambda&gt;0]\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_changed_value[&lt;lambda&gt;1]\" time=\"0.004\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_changed_value[&lt;lambda&gt;2]\" time=\"0.004\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_changed_value[&lt;lambda&gt;3]\" time=\"0.004\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_bad_signature_exception\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_bad_payload_exception\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_loads_unsafe\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_file\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_alt_salt\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_signer_cls\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_signer_kwargs\" time=\"0.004\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_serializer_kwargs\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_fallback_signers\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_iter_unsigners\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_max_age\" time=\"0.003\" /><testcase classname=\"tests.test_itsdangerous.test_timed.TestTimedSerializer\" name=\"test_return_payload\" time=\"0.003\" /></testsuite></testsuites>",
+      "junit_projection": "decoded XML CRLF normalized to LF; absolute run-root text replaced by [RUN_ROOT]; original raw artifact SHA-256 retained separately"
+    }
+  ],
+  "non_claims": [
+    "historical_runtime",
+    "full_upstream_suite",
+    "installed_ripr",
+    "support_tier_promotion",
+    "population_rates"
+  ],
+  "raw_custody": "Raw stdout/stderr/JUnit files retained in the task-owned native run; no public raw-artifact availability claimed."
+}

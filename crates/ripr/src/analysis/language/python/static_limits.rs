@@ -69,8 +69,32 @@ pub(super) fn static_limit_for_change(
             ),
         });
     }
+    // An independent active relation can still supply its own oracle. The
+    // shared matcher withholds assertions and boundary inputs from controlled
+    // tests, so those tests cannot lend credit to a weaker active relation.
+    if !related_candidates
+        .iter()
+        .any(|candidate| candidate.relation.uses_oracle())
+        && let Some((test, decorator)) = related_candidates.iter().find_map(|candidate| {
+            super::test_activation::activation_control(candidate.test)
+                .map(|decorator| (candidate.test, decorator))
+        })
+    {
+        return Some(PythonStaticLimit {
+            kind: StaticLimitKind::DecoratorIndirection,
+            evidence: format!(
+                "static_limit decorator_indirection: test activation for `{}` is controlled by `{decorator}`",
+                test.qualified_name
+            ),
+            missing: format!(
+                "Static limit `decorator_indirection`: related test `{}` uses `{decorator}`; static evidence does not establish that its body runs and an assertion failure fails verification. Add an independent active test or inspect the activation condition.",
+                test.qualified_name
+            ),
+        });
+    }
     if related_candidates
         .iter()
+        .filter(|candidate| candidate.relation.uses_oracle())
         .any(|candidate| test_has_mocked_module(candidate.test))
     {
         return Some(PythonStaticLimit {

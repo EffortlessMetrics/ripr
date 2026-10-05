@@ -1,7 +1,7 @@
 use super::module_constants::{module_literal_constants, with_module_rebinding};
 use super::owners_tests::{
-    collect_imports_from_statements, collect_owners_from_statements, collect_tests_from_statements,
-    module_owner,
+    TestImportContext, collect_imports_from_statements, collect_owners_from_statements,
+    collect_tests_from_statements, module_owner,
 };
 use super::source_utils::{SourceText, line_for_range_end, line_for_range_start, text_for_range};
 use super::{PythonOwner, PythonTest, expr_full_name};
@@ -282,7 +282,10 @@ pub(super) fn extract_source_facts(file: &Path, source: &str) -> PythonSourceFac
         &module.body,
         None,
         false,
-        &imports,
+        TestImportContext {
+            body: &imports,
+            definition: &[],
+        },
         &mut snapshot.tests,
     );
     with_module_rebinding(source, &module.body, &mut snapshot.tests);

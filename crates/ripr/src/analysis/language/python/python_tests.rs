@@ -1771,6 +1771,7 @@ fn same_stem_related_handles_missing_stems() {
         line: 1,
         body_text: String::new(),
         imports: Vec::new(),
+        activation_controls: Vec::new(),
         decorators: Vec::new(),
         fixtures: Vec::new(),
         parametrized: false,
@@ -2766,6 +2767,7 @@ fn test_has_mocked_module_recognizes_dotted_patch_decorator() {
         imports: Vec::new(),
         // Dotted form like `@mock.patch(...)` must satisfy the
         // `decorator.ends_with(".patch")` branch.
+        activation_controls: Vec::new(),
         decorators: vec!["mock.patch".to_string()],
         fixtures: Vec::new(),
         parametrized: false,
@@ -2782,6 +2784,7 @@ fn test_has_mocked_module_recognizes_dotted_patch_decorator() {
         line: 1,
         body_text: String::new(),
         imports: Vec::new(),
+        activation_controls: Vec::new(),
         decorators: vec!["patch".to_string()],
         fixtures: Vec::new(),
         parametrized: false,
@@ -2798,6 +2801,7 @@ fn test_has_mocked_module_recognizes_dotted_patch_decorator() {
         line: 1,
         body_text: String::new(),
         imports: Vec::new(),
+        activation_controls: Vec::new(),
         decorators: vec!["pytest.mark.skip".to_string()],
         fixtures: Vec::new(),
         parametrized: false,
@@ -3303,6 +3307,7 @@ fn strong_oracle_observes_owner_resolves_import_alias() {
             // owner is tax.py — match its module so the alias is identity-bearing.
             source_module: "tax".to_string(),
         }],
+        activation_controls: Vec::new(),
         decorators: Vec::new(),
         fixtures: Vec::new(),
         parametrized: false,
@@ -3360,6 +3365,7 @@ fn align_strong(oracle: &str) -> RelatedTest {
 /// module is usually `"owner"`.
 fn align_importing_test(imported: &str, module: &str) -> PythonTest {
     PythonTest {
+        activation_controls: Vec::new(),
         constant_rebinding: Default::default(),
         name: "t".to_string(),
         qualified_name: "t".to_string(),
@@ -3414,6 +3420,7 @@ fn sink_alignment_is_alias_when_oracle_uses_import_alias() {
             // align_owner lives in owner.py — match its module for alias identity.
             source_module: "owner".to_string(),
         }],
+        activation_controls: Vec::new(),
         decorators: Vec::new(),
         fixtures: Vec::new(),
         parametrized: false,

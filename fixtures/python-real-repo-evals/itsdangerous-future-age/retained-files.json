@@ -1,0 +1,121 @@
+[
+  {
+    "path": "tests/test_itsdangerous/test_timed.py",
+    "bytes": 3029,
+    "sha256": "610f8e8747f8943f9d52c8f79c2a02e76c35857a93f072aeb18411980060254a",
+    "git_blob": "18de74117d41c06e252453809a2393dc710cb861",
+    "upstream_url": "https://github.com/pallets/itsdangerous/blob/c30678d19e37011890e2374cca04f7789e101793/tests/test_itsdangerous/test_timed.py"
+  },
+  {
+    "path": "tests/test_itsdangerous/test_signer.py",
+    "bytes": 3141,
+    "sha256": "c13a752b11e6f4f90d281f32d57d335ae4ef2ed7141820277460cddbbb934d89",
+    "git_blob": "17599eef3aeb7a41c42370afc59ca1f528c12eee",
+    "upstream_url": "https://github.com/pallets/itsdangerous/blob/c30678d19e37011890e2374cca04f7789e101793/tests/test_itsdangerous/test_signer.py"
+  },
+  {
+    "path": "tests/test_itsdangerous/test_serializer.py",
+    "bytes": 6195,
+    "sha256": "665fcc96606fc69c3279bcbd604beb3856d357507fb3dc1c5ae750f5832be888",
+    "git_blob": "fcd0ab220c9d618dd8457d5ac4d09a50e0d3efd9",
+    "upstream_url": "https://github.com/pallets/itsdangerous/blob/c30678d19e37011890e2374cca04f7789e101793/tests/test_itsdangerous/test_serializer.py"
+  },
+  {
+    "path": "tests/test_itsdangerous/__init__.py",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "git_blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+    "upstream_url": "https://github.com/pallets/itsdangerous/blob/c30678d19e37011890e2374cca04f7789e101793/tests/test_itsdangerous/__init__.py"
+  },
+  {
+    "path": "setup.cfg",
+    "bytes": 1642,
+    "sha256": "9c6460ca0171595eb3c2743a605acdf2b7495719978b5561038927859e70a7a5",
+    "git_blob": "f5af1a1afef82320c74f9eac2e4418a114462290",
+    "upstream_url": "https://github.com/pallets/itsdangerous/blob/c30678d19e37011890e2374cca04f7789e101793/setup.cfg"
+  },
+  {
+    "path": "LICENSE.rst",
+    "bytes": 1475,
+    "sha256": "63af09891b6be8ad1a4252ed43af0f4efba7fc948e228367bed7f3c5ae0b09d7",
+    "git_blob": "7b190ca6712aa09eede3e6de79f68d7fa29072da",
+    "upstream_url": "https://github.com/pallets/itsdangerous/blob/c30678d19e37011890e2374cca04f7789e101793/LICENSE.rst"
+  },
+  {
+    "path": "setup.py",
+    "bytes": 57,
+    "sha256": "8aa2813abd149d4452ece61db88878318dc440e5e7a9b6313d1a2d126b998a4d",
+    "git_blob": "779a2c0c763be8b592a892549e4b37a020bb72dc",
+    "upstream_url": "https://github.com/pallets/itsdangerous/blob/c30678d19e37011890e2374cca04f7789e101793/setup.py"
+  },
+  {
+    "path": "tox.ini",
+    "bytes": 439,
+    "sha256": "6478cdb3b1910b331ae8f8c7b06ea9c1a20f4271a85d30d352cf486a61fcad62",
+    "git_blob": "95386b74a7198e8a87cfee950a5422de073d5533",
+    "upstream_url": "https://github.com/pallets/itsdangerous/blob/c30678d19e37011890e2374cca04f7789e101793/tox.ini"
+  },
+  {
+    "path": "src/itsdangerous/__init__.py",
+    "bytes": 712,
+    "sha256": "09dca301d34d47df8b258f4fbbced55430ae43ca0858e7e4a23c438572a64b28",
+    "git_blob": "1709a9bc44601342b017db0c408670d97f88a781",
+    "upstream_url": "https://github.com/pallets/itsdangerous/blob/c30678d19e37011890e2374cca04f7789e101793/src/itsdangerous/__init__.py"
+  },
+  {
+    "path": "src/itsdangerous/_json.py",
+    "bytes": 423,
+    "sha256": "5943004fb3d2c84be305a36946b1bfb371b60c6380d13ceb037655813a792bd2",
+    "git_blob": "470636fd16de456f81f837fcf33362c3ac7992c9",
+    "upstream_url": "https://github.com/pallets/itsdangerous/blob/c30678d19e37011890e2374cca04f7789e101793/src/itsdangerous/_json.py"
+  },
+  {
+    "path": "src/itsdangerous/encoding.py",
+    "bytes": 1185,
+    "sha256": "3c6192ed5dd7731c8f84665ff7ccee2124f1e504d5481167155d5a7489106ac8",
+    "git_blob": "afcaca49cb7f1edc39884dfe6eb4ac52858ee026",
+    "upstream_url": "https://github.com/pallets/itsdangerous/blob/c30678d19e37011890e2374cca04f7789e101793/src/itsdangerous/encoding.py"
+  },
+  {
+    "path": "src/itsdangerous/exc.py",
+    "bytes": 2829,
+    "sha256": "25307d061d4fdc5856c25b86c0be7f4a6cafd79f944f8f78c7ba0b3f372cdc95",
+    "git_blob": "8c9021db167cb2d8379cd8542bced9a9c48c0368",
+    "upstream_url": "https://github.com/pallets/itsdangerous/blob/c30678d19e37011890e2374cca04f7789e101793/src/itsdangerous/exc.py"
+  },
+  {
+    "path": "src/itsdangerous/jws.py",
+    "bytes": 7776,
+    "sha256": "03ade0da2f0447c31875c7771548b6a5d3d3d58bed74bc0652dbd860c91be22a",
+    "git_blob": "27ee1401eb8ba44d5137508ad0b846f5ea45c4d5",
+    "upstream_url": "https://github.com/pallets/itsdangerous/blob/c30678d19e37011890e2374cca04f7789e101793/src/itsdangerous/jws.py"
+  },
+  {
+    "path": "src/itsdangerous/serializer.py",
+    "bytes": 8624,
+    "sha256": "5549cda3779af4f6b0e1ece42975cba13006d83813d27b86781415d156b5c63a",
+    "git_blob": "72e84a18f1963a04b165b00411962188c42681cb",
+    "upstream_url": "https://github.com/pallets/itsdangerous/blob/c30678d19e37011890e2374cca04f7789e101793/src/itsdangerous/serializer.py"
+  },
+  {
+    "path": "src/itsdangerous/signer.py",
+    "bytes": 6300,
+    "sha256": "3ef671ac4f78263a537c6c2ff804e00c82a37514b635420d38a2964b10890c62",
+    "git_blob": "2dd4c803ed7110a1eb04c085145dc857bd301e30",
+    "upstream_url": "https://github.com/pallets/itsdangerous/blob/c30678d19e37011890e2374cca04f7789e101793/src/itsdangerous/signer.py"
+  },
+  {
+    "path": "src/itsdangerous/timed.py",
+    "bytes": 6222,
+    "sha256": "13ef04d25944516cdf406c09e4d6fe52ccc5cb44b4edf6e9c8d2023d8908d52b",
+    "git_blob": "656bc1656e06a425541f9e9ad522f506e34d9924",
+    "upstream_url": "https://github.com/pallets/itsdangerous/blob/c30678d19e37011890e2374cca04f7789e101793/src/itsdangerous/timed.py"
+  },
+  {
+    "path": "src/itsdangerous/url_safe.py",
+    "bytes": 2219,
+    "sha256": "8b478133d0d4e12767aad41a63a2867a49a74fa5a0254a3bec3a9cce456190a3",
+    "git_blob": "14aa7b9723356ee4ab96e7bb142891512ce7c3a3",
+    "upstream_url": "https://github.com/pallets/itsdangerous/blob/c30678d19e37011890e2374cca04f7789e101793/src/itsdangerous/url_safe.py"
+  }
+]

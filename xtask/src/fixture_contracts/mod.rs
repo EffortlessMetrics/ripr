@@ -21,6 +21,7 @@ mod editor_validators;
 mod gap_validators;
 mod general_validators;
 mod installed_journey;
+mod native_python;
 mod report_validators;
 mod retained_files;
 mod upstream_python;
