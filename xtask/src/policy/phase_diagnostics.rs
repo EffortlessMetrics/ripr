@@ -561,15 +561,15 @@ mod tests {
     fn escaped_rendered_budgets_and_child_text_never_become_spawn_records() -> Result<(), String> {
         let mut budget = Budget::default();
         let mut totals = [0usize; 2];
-        for class in 0..2 {
+        for (class, total) in totals.iter_mut().enumerate() {
             for _ in 0..100 {
                 if let Some(line) = budget.encode(
                     CHILD_PREFIX,
                     &json!({"event":"stderr_tail","tail":"\\\"\n界".repeat(128)}),
                     class,
                 ) {
-                    totals[class] += line.len();
-                    if totals[class] > CLASS_CAP {
+                    *total += line.len();
+                    if *total > CLASS_CAP {
                         return Err("rendered budget exceeded".into());
                     }
                 }
