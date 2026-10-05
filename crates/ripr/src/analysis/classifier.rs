@@ -90,8 +90,8 @@ mod tests {
     use crate::analysis::classify::{recommended_next_step, stop_reasons};
     use crate::analysis::facts::FunctionSourceRole;
     use crate::analysis::rust_index::{
-        CallFact, FileFacts, FunctionSummary, LiteralFact, OracleFact, PROBE_SHAPE_CALL_DELETION,
-        ProbeShapeFact, ReturnFact, TestSummary, extract_identifier_tokens,
+        CallFact, FileFacts, FunctionSummary, LiteralFact, OracleFact, ProbeShapeFact,
+        ProbeShapeKind, ReturnFact, TestSummary, extract_identifier_tokens,
     };
     use std::collections::BTreeMap;
     use std::path::PathBuf;
@@ -1786,7 +1786,7 @@ fn far_above_threshold_discounts() {
                         start_line: 190,
                         end_line: 194,
                         start_byte: 1_024,
-                        kind: PROBE_SHAPE_CALL_DELETION.to_string(),
+                        kind: ProbeShapeKind::CallDeletion,
                         text: "watchdog_reason(\n    \"run-missing\",\n    receipt,\n)".to_string(),
                     }],
                     ..FileFacts::default()
@@ -1847,7 +1847,7 @@ fn far_above_threshold_discounts() {
                         start_line: 190,
                         end_line: 194,
                         start_byte: 1_024,
-                        kind: PROBE_SHAPE_CALL_DELETION.to_string(),
+                        kind: ProbeShapeKind::CallDeletion,
                         text: "watchdog_reason(\n    \"run-missing\",\n    receipt,\n)".to_string(),
                     }],
                     ..FileFacts::default()

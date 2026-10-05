@@ -18,11 +18,7 @@
 
 use super::classify::exact_error_variant;
 use super::generated_rust_corpus::{AnalyzableRustCorpus, discover_analyzable_rust_corpus};
-use super::rust_index::{
-    self, PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_ERROR_PATH, PROBE_SHAPE_FIELD_CONSTRUCTION,
-    PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE, PROBE_SHAPE_RETURN_VALUE,
-    PROBE_SHAPE_SIDE_EFFECT, ProbeShapeFact, RustIndex,
-};
+use super::rust_index::{self, ProbeShapeFact, ProbeShapeKind, RustIndex};
 #[cfg(test)]
 use super::seam_cache::CLASSIFIED_SEAM_CACHE_STORE_LIMIT;
 #[cfg(test)]
@@ -2262,7 +2258,7 @@ fn build_seam_from_shape(
     shape: &ProbeShapeFact,
     owners: &rust_index::FileOwnerLookup<'_>,
 ) -> Option<RepoSeam> {
-    let kind = seam_kind_from_probe_shape(&shape.kind)?;
+    let kind = seam_kind_from_probe_shape(shape.kind)?;
     let owner_fact = owners.owner(shape.start_line)?;
     // Skip shapes whose owner is itself a test function (e.g.,
     // `#[test] fn ...` inside an in-file `#[cfg(test)] mod tests`).
@@ -2290,20 +2286,21 @@ fn build_seam_from_shape(
     ))
 }
 
-fn seam_kind_from_probe_shape(kind: &str) -> Option<SeamKind> {
+fn seam_kind_from_probe_shape(kind: ProbeShapeKind) -> Option<SeamKind> {
     match kind {
-        PROBE_SHAPE_PREDICATE => Some(SeamKind::PredicateBoundary),
-        PROBE_SHAPE_RETURN_VALUE => Some(SeamKind::ReturnValue),
-        PROBE_SHAPE_ERROR_PATH => Some(SeamKind::ErrorVariant),
-        PROBE_SHAPE_FIELD_CONSTRUCTION => Some(SeamKind::FieldConstruction),
-        PROBE_SHAPE_SIDE_EFFECT => Some(SeamKind::SideEffect),
-        PROBE_SHAPE_MATCH_ARM => Some(SeamKind::MatchArm),
+        ProbeShapeKind::Predicate => Some(SeamKind::PredicateBoundary),
+        ProbeShapeKind::ReturnValue => Some(SeamKind::ReturnValue),
+        ProbeShapeKind::ErrorPath => Some(SeamKind::ErrorVariant),
+        ProbeShapeKind::FieldConstruction => Some(SeamKind::FieldConstruction),
+        ProbeShapeKind::SideEffect => Some(SeamKind::SideEffect),
+        ProbeShapeKind::MatchArm => Some(SeamKind::MatchArm),
         // The diff-scoped probe shape "call_deletion" represents the
         // syntax of a call site. In repo scope the same shape is the
         // seam asking "are tests verifying this call happens at all?"
         // — i.e. `SeamKind::CallPresence`.
-        PROBE_SHAPE_CALL_DELETION => Some(SeamKind::CallPresence),
-        _ => None,
+        ProbeShapeKind::CallDeletion => Some(SeamKind::CallPresence),
+        // Unsafe boundaries never become seams; the caller skips them.
+        ProbeShapeKind::UnsafeBoundary => None,
     }
 }
 
@@ -3474,11 +3471,12 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
     }
 
     #[test]
-    fn seam_walker_skips_shapes_with_unrecognized_probe_kind() {
-        // `seam_kind_from_probe_shape` is the single place where new
-        // probe-shape strings become first-class seam kinds. Until a
-        // string is mapped explicitly, the walker must drop the shape
-        // rather than inventing a fallback seam kind.
+    fn seam_walker_skips_unsafe_boundary_shapes() {
+        // `seam_kind_from_probe_shape` maps every known kind explicitly;
+        // unsafe boundaries are dropped rather than given a fallback seam
+        // kind. Unrecognized wire strings cannot reach the walker: they
+        // fail at the decode boundary (see
+        // probe_shape_kind_rejects_unknown_wire_strings_at_decode).
         let path = PathBuf::from("src/lib.rs");
         let owner = FunctionFact {
             id: SymbolId(format!("{}::owner", path.display())),
@@ -3509,7 +3507,7 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
                     start_line: 2,
                     end_line: 2,
                     start_byte: 16,
-                    kind: "shape_kind_that_is_not_recognized".to_string(),
+                    kind: ProbeShapeKind::UnsafeBoundary,
                     text: "owner_body".to_string(),
                 }],
                 ..FileFacts::default()
@@ -3520,7 +3518,7 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
         let kinds = seams.iter().map(|s| s.kind().as_str()).collect::<Vec<_>>();
         assert!(
             seams.is_empty(),
-            "expected no seams for unrecognized probe-shape kind, got kinds {kinds:?}"
+            "expected no seams for unsafe-boundary shapes, got kinds {kinds:?}"
         );
     }
 
@@ -3561,7 +3559,7 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
                     start_line: 11,
                     end_line: 11,
                     start_byte: 120,
-                    kind: PROBE_SHAPE_PREDICATE.to_string(),
+                    kind: ProbeShapeKind::Predicate,
                     text: "x >= 0".to_string(),
                 }],
                 ..FileFacts::default()

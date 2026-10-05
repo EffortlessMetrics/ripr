@@ -9814,7 +9814,7 @@ code = [
   "crates/ripr/src/analysis/syntax/ra.rs",
   "crates/ripr/src/analysis/probes/classify.rs",
   "crates/ripr/src/analysis/probes/family.rs",
-  "crates/ripr/src/analysis/extract/probe_shapes.rs",
+  "crates/ripr/src/analysis/facts/model.rs",
 ]
 outputs = []
 metrics = [

@@ -10,12 +10,10 @@ use std::path::{Path, PathBuf};
 #[cfg(test)]
 pub(crate) use super::extract::contains_macro_invocation;
 pub(crate) use super::extract::{
-    OracleTextShape, PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_ERROR_PATH,
-    PROBE_SHAPE_FIELD_CONSTRUCTION, PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE,
-    PROBE_SHAPE_RETURN_VALUE, PROBE_SHAPE_SIDE_EFFECT, classify_assertion,
-    err_return_guard_oracles, extract_assertions, extract_call_facts, extract_identifier_tokens,
-    extract_line_scanned_oracles, extract_literal_facts, extract_literals, extract_return_facts,
-    guarded_result_match_scan_with_shadow_authority, has_oracle_text_shape, is_known_probe_shape,
+    OracleTextShape, classify_assertion, err_return_guard_oracles, extract_assertions,
+    extract_call_facts, extract_identifier_tokens, extract_line_scanned_oracles,
+    extract_literal_facts, extract_literals, extract_return_facts,
+    guarded_result_match_scan_with_shadow_authority, has_oracle_text_shape,
     is_unwrap_err_bound_error_assertion, unwrap_err_bound_variables,
 };
 use super::facts::ModulePathTarget;
@@ -24,8 +22,8 @@ pub(crate) use super::facts::validated_file_wide_harness_targets;
 #[cfg(test)]
 pub use super::facts::{CallFact, FileFacts, LiteralFact, ReturnFact};
 pub use super::facts::{
-    FileFactsView, FunctionFact, FunctionSummary, OracleFact, ProbeShapeFact, RustIndex, TestFact,
-    TestSummary, build_index, build_index_with_test_harnesses,
+    FileFactsView, FunctionFact, FunctionSummary, OracleFact, ProbeShapeFact, ProbeShapeKind,
+    RustIndex, TestFact, TestSummary, build_index, build_index_with_test_harnesses,
 };
 #[cfg(test)]
 use super::syntax::LexicalRustSyntaxAdapter;
@@ -750,7 +748,7 @@ pub fn parse(input: &str) -> Result<i32, Error> {
         assert!(
             file.probe_shapes
                 .iter()
-                .any(|shape| shape.kind == PROBE_SHAPE_RETURN_VALUE)
+                .any(|shape| shape.kind == ProbeShapeKind::ReturnValue)
         );
     }
 
@@ -942,21 +940,21 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
         let kinds = facts
             .probe_shapes
             .iter()
-            .map(|shape| shape.kind.as_str())
+            .map(|shape| shape.kind)
             .collect::<Vec<_>>();
 
-        assert!(kinds.contains(&PROBE_SHAPE_PREDICATE));
-        assert!(kinds.contains(&PROBE_SHAPE_RETURN_VALUE));
-        assert!(kinds.contains(&PROBE_SHAPE_ERROR_PATH));
-        assert!(kinds.contains(&PROBE_SHAPE_CALL_DELETION));
-        assert!(kinds.contains(&PROBE_SHAPE_FIELD_CONSTRUCTION));
-        assert!(kinds.contains(&PROBE_SHAPE_SIDE_EFFECT));
-        assert!(kinds.contains(&PROBE_SHAPE_MATCH_ARM));
+        assert!(kinds.contains(&ProbeShapeKind::Predicate));
+        assert!(kinds.contains(&ProbeShapeKind::ReturnValue));
+        assert!(kinds.contains(&ProbeShapeKind::ErrorPath));
+        assert!(kinds.contains(&ProbeShapeKind::CallDeletion));
+        assert!(kinds.contains(&ProbeShapeKind::FieldConstruction));
+        assert!(kinds.contains(&ProbeShapeKind::SideEffect));
+        assert!(kinds.contains(&ProbeShapeKind::MatchArm));
 
         let match_shapes = facts
             .probe_shapes
             .iter()
-            .filter(|shape| shape.kind == PROBE_SHAPE_MATCH_ARM)
+            .filter(|shape| shape.kind == ProbeShapeKind::MatchArm)
             .map(|shape| shape.text.as_str())
             .collect::<Vec<_>>();
         assert!(match_shapes.contains(&"match amount"));

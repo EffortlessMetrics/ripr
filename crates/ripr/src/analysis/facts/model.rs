@@ -939,6 +939,42 @@ pub struct LiteralFact {
     pub value: String,
 }
 
+/// Closed probe-shape vocabulary (#5415 step 1).
+///
+/// `kind` used to be a `String` per shape: about 0.5M small allocations on a
+/// mid-sized workspace for 8 distinct values. The enum serializes as exactly
+/// the same strings, so cache payloads, goldens and machine output are
+/// byte-identical; unknown strings now fail at the decode boundary and take
+/// the corrupt-entry quarantine path instead of reaching analysis.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProbeShapeKind {
+    Predicate,
+    ReturnValue,
+    ErrorPath,
+    CallDeletion,
+    FieldConstruction,
+    SideEffect,
+    MatchArm,
+    UnsafeBoundary,
+}
+
+impl ProbeShapeKind {
+    /// Wire spelling shared by the cache payload, goldens and machine output.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Predicate => "predicate",
+            Self::ReturnValue => "return_value",
+            Self::ErrorPath => "error_path",
+            Self::CallDeletion => "call_deletion",
+            Self::FieldConstruction => "field_construction",
+            Self::SideEffect => "side_effect",
+            Self::MatchArm => "match_arm",
+            Self::UnsafeBoundary => "unsafe_boundary",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProbeShapeFact {
     pub start_line: usize,
@@ -947,7 +983,7 @@ pub struct ProbeShapeFact {
     /// by the parser-backed summarizer; the lexical fallback emits no
     /// probe shapes at all, so this stays accurate.
     pub start_byte: usize,
-    pub kind: String,
+    pub kind: ProbeShapeKind,
     pub text: String,
 }
 
@@ -958,6 +994,7 @@ pub type TestSummary = TestFact;
 mod tests {
     use super::*;
     use std::io::ErrorKind;
+    use std::mem::size_of;
 
     #[test]
     fn rust_index_default_has_empty_fact_sets() {
@@ -1041,14 +1078,70 @@ mod tests {
             start_line: 10,
             end_line: 12,
             start_byte: 256,
-            kind: "predicate".to_string(),
+            kind: ProbeShapeKind::Predicate,
             text: "x > 0".to_string(),
         };
         assert_eq!(shape.start_line, 10);
         assert_eq!(shape.end_line, 12);
         assert_eq!(shape.start_byte, 256);
-        assert_eq!(shape.kind, "predicate");
+        assert_eq!(shape.kind, ProbeShapeKind::Predicate);
         assert_eq!(shape.text, "x > 0");
+    }
+
+    #[test]
+    fn probe_shape_kind_serde_keeps_the_historical_wire_strings() -> Result<(), serde_json::Error> {
+        // #5415 step 1: the in-memory type changed, the bytes did not. Every
+        // variant must round-trip through exactly its historical string, or
+        // cache payloads and goldens drift.
+        let cases = [
+            (ProbeShapeKind::Predicate, "predicate"),
+            (ProbeShapeKind::ReturnValue, "return_value"),
+            (ProbeShapeKind::ErrorPath, "error_path"),
+            (ProbeShapeKind::CallDeletion, "call_deletion"),
+            (ProbeShapeKind::FieldConstruction, "field_construction"),
+            (ProbeShapeKind::SideEffect, "side_effect"),
+            (ProbeShapeKind::MatchArm, "match_arm"),
+            (ProbeShapeKind::UnsafeBoundary, "unsafe_boundary"),
+        ];
+        for (kind, wire) in cases {
+            assert_eq!(kind.as_str(), wire);
+            let encoded = serde_json::to_value(kind)?;
+            assert_eq!(encoded, serde_json::json!(wire));
+            let decoded: ProbeShapeKind = serde_json::from_value(encoded)?;
+            assert_eq!(decoded, kind);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn probe_shape_kind_rejects_unknown_wire_strings_at_decode() {
+        // Unknown kinds used to decode into a String and map to None in
+        // family_for_probe_shape. Now they fail at the decode boundary and
+        // the cache entry takes the corrupt-entry quarantine path. Cases
+        // carried over from the retired is_known_probe_shape exactness test.
+        for unknown in [
+            "",
+            "opaque_shape",
+            "not_return_value",
+            "return_value_extra",
+            "predicate ",
+            "side-effect",
+            "MATCH_ARM",
+        ] {
+            let decoded: Result<ProbeShapeKind, _> =
+                serde_json::from_value(serde_json::Value::String(unknown.to_string()));
+            assert!(decoded.is_err(), "expected `{unknown}` to stay unknown");
+        }
+    }
+
+    #[test]
+    fn probe_shape_fact_retains_no_per_shape_kind_allocation() {
+        // #5415 step 1 pin: kind is one discriminant byte, not a String
+        // plus heap. The struct must be strictly smaller than the old
+        // String-kind layout (56 vs 72 bytes on 64-bit). Text stays owned;
+        // that is step 2.
+        assert_eq!(size_of::<ProbeShapeKind>(), 1);
+        assert!(size_of::<ProbeShapeFact>() < size_of::<usize>() * 3 + size_of::<String>() * 2);
     }
 
     #[test]

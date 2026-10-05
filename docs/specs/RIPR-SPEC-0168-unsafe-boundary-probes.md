@@ -93,8 +93,8 @@ construction, so the classifier cannot promote reach plus an oracle into
   `unsafe_boundary` probe-shape facts (#3516).
 - `crates/ripr/src/analysis/probes/classify.rs` — changed-line projection and
   boundary ownership guard.
-- `crates/ripr/src/analysis/extract/probe_shapes.rs` — the
-  `unsafe_boundary` probe shape constant.
+- `crates/ripr/src/analysis/facts/model.rs` — the
+  `unsafe_boundary` variant of the closed `ProbeShapeKind` vocabulary (#5415).
 
 ## Metrics
 

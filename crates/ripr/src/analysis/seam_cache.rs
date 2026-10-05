@@ -3765,6 +3765,49 @@ mod tests {
     }
 
     #[test]
+    fn file_fact_entry_with_unknown_probe_shape_kind_loads_corrupt_ignored() -> Result<(), String> {
+        use crate::analysis::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter};
+        // #5415 step 1: unknown kind strings fail at the decode boundary.
+        // This pins the full cache-load path, not just enum deserialization:
+        // the entry quarantines with a decode reason and a re-stored valid
+        // entry serves the same key again.
+        let scratch = integrity_scratch("unknown-probe-shape-kind")?;
+        let cache = RepoFileFactCache::at_dir(scratch.0.clone());
+        let file = Path::new("src/lib.rs");
+        let source = "fn f(x: u32) -> u32 { if x > 0 { x } else { 0 } }\n";
+        let facts = RaRustSyntaxAdapter.summarize_file(file, source)?;
+        if facts.probe_shapes.is_empty() {
+            return Err("predicate fixture must decode at least one probe shape".to_owned());
+        }
+        let key = RepoFileFactCacheKey::new(file, source.as_bytes());
+        cache.store_file_facts(&key, &facts)?;
+        if !matches!(cache.load_file_facts(&key), CacheLoad::Hit(_)) {
+            return Err("seeded file facts must warm hit".to_owned());
+        }
+        let entry = cache.entry_path(&key);
+        let bytes = std::fs::read(&entry).map_err(|err| err.to_string())?;
+        let mut envelope: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|err| err.to_string())?;
+        envelope["file_facts"]["probe_shapes"][0]["kind"] =
+            serde_json::Value::String("future_shape".to_string());
+        let bytes = serde_json::to_vec(&envelope).map_err(|err| err.to_string())?;
+        std::fs::write(&entry, bytes).map_err(|err| err.to_string())?;
+        match cache.load_file_facts(&key) {
+            CacheLoad::CorruptIgnored { reason } if reason.contains("decode file facts") => {}
+            other => {
+                return Err(format!(
+                    "unknown probe-shape kind must quarantine at decode, got {other:?}"
+                ));
+            }
+        }
+        cache.store_file_facts(&key, &facts)?;
+        if !matches!(cache.load_file_facts(&key), CacheLoad::Hit(_)) {
+            return Err("re-stored valid facts must serve the quarantined key".to_owned());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn empty_macro_call_predecessor_from_another_build_misses_and_current_reuses()
     -> Result<(), String> {
         use crate::analysis::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter};

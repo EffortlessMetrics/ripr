@@ -24,6 +24,12 @@ are scoped or reviewed.
   `ripr://repair-card/{canonical_id}`. Clients re-reading `tools/list` and
   `resources/templates/list` adapt automatically; in-flight callers passing `gap_id`
   get `invalid params` (#5209).
+- Probe-shape kinds are a closed 8-variant enum instead of one `String`
+  per shape (about 0.5M small allocations on a mid-sized workspace).
+  The wire spelling is unchanged, so cache payloads, goldens, and
+  machine output are byte-identical; unknown kind strings now fail at
+  the decode boundary and the entry takes the corrupt-entry quarantine
+  path (#5415).
 ### Added
 
 - Bounded repair states its inline-test boundary as permanent scope:
