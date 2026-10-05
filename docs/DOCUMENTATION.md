@@ -210,6 +210,7 @@ Current reference docs:
 - [Policy allowlists](POLICY_ALLOWLISTS.md)
 - [Preview promotion criteria](policy/PREVIEW_PROMOTION_CRITERIA.md)
 - [Changelog policy](CHANGELOG_POLICY.md)
+- [Merge flow for swarm PRs](MERGE_FLOW.md)
 - [Capability matrix](CAPABILITY_MATRIX.md)
 - [Presentation text evidence](specs/RIPR-SPEC-0043-presentation-text-evidence.md)
 - [Finding-to-gap alignment](specs/RIPR-SPEC-0045-finding-to-gap-alignment.md)

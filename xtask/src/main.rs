@@ -19252,6 +19252,7 @@ fn is_docs_path(path: &str) -> bool {
         || path == "AGENTS.md"
         || path == "CONTRIBUTING.md"
         || path == "CHANGELOG.md"
+        || path.starts_with("changelog.d/")
         || path.starts_with("docs/")
         || is_plan_path(path)
 }
@@ -20928,6 +20929,7 @@ fn detected_surface_rows(changes: &[ChangedPath]) -> Vec<(&'static str, Vec<Stri
             "Docs",
             paths_matching(changes, |path| {
                 path.starts_with("docs/")
+                    || path.starts_with("changelog.d/")
                     || is_plan_path(path)
                     || matches!(
                         path,
@@ -21001,6 +21003,7 @@ fn public_contract_rows(changes: &[ChangedPath]) -> Vec<(&'static str, Vec<Strin
             "Docs",
             paths_matching(changes, |path| {
                 path.starts_with("docs/")
+                    || path.starts_with("changelog.d/")
                     || is_plan_path(path)
                     || matches!(
                         path,
@@ -21084,6 +21087,7 @@ fn is_evidence_path(path: &str) -> bool {
         || is_policy_path(path)
         || is_plan_path(path)
         || path.starts_with("docs/")
+        || path.starts_with("changelog.d/")
         || path.starts_with("metrics/")
         || matches!(
             path,

@@ -11935,6 +11935,20 @@ fn pr_summary_lists_top_level_plans_as_docs_evidence() {
 }
 
 #[test]
+fn pr_summary_lists_changelog_fragments_as_docs_evidence() {
+    let changes = vec![ChangedPath {
+        path: "changelog.d/6000-cli-fix.md".to_string(),
+        statuses: BTreeSet::from(["A".to_string()]),
+    }];
+
+    let body = pr_summary_body(&changes);
+
+    assert!(body.contains("- `changelog.d/6000-cli-fix.md (A)`"));
+    assert!(body.contains("Evidence/support delta:"));
+    assert!(body.contains("Docs:"));
+}
+
+#[test]
 fn pr_actionable_front_panel_leads_with_typed_repair_delta() {
     let changes = vec![ChangedPath {
         path: "src/pricing.rs".to_string(),

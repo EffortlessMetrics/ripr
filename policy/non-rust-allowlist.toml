@@ -56,6 +56,15 @@ reason = "Repository changelog."
 covered_by = ["cargo xtask check-doc-index"]
 
 [[allow]]
+glob = "changelog.d/**"
+kind = "documentation"
+owner = "docs"
+surface = "docs"
+classification = "docs"
+reason = "Per-PR changelog fragments folded into CHANGELOG.md at the release cut."
+covered_by = ["cargo xtask markdown-links", "cargo xtask check-static-language"]
+
+[[allow]]
 glob = "CONTRIBUTING.md"
 kind = "documentation"
 owner = "docs"
