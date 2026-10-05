@@ -1993,3 +1993,109 @@ fn the_step_summary_keeps_earlier_steps_and_gains_the_scoreboard() -> Result<(),
     assert_eq!(text, "earlier step\n# DX scoreboard\n");
     Ok(())
 }
+
+#[test]
+fn the_runner_class_cpu_model_is_the_first_model_name_as_a_slug() {
+    let cpuinfo = "processor\t: 0\nvendor_id\t: AuthenticAMD\nmodel name\t: AMD EPYC 7763 64-Core Processor\n\nprocessor\t: 1\nmodel name\t: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz\n";
+    assert_eq!(
+        super::measure::cpu_model_slug(cpuinfo).as_deref(),
+        Some("amd-epyc-7763-64-core-processor")
+    );
+    assert_eq!(
+        super::measure::cpu_model_slug(
+            "model name\t: Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz\n"
+        )
+        .as_deref(),
+        Some("intel-r-xeon-r-platinum-8370c-cpu-2-80ghz")
+    );
+    assert_eq!(super::measure::cpu_model_slug("processor\t: 0\n"), None);
+    assert_eq!(super::measure::cpu_model_slug("model name\t:  \n"), None);
+    assert_eq!(
+        super::measure::cpu_model_slug(
+            "processor\t: 0\nBogoMIPS\t: 50.00\nCPU implementer\t: 0x41\nCPU part\t: 0xd0c\n"
+        )
+        .as_deref(),
+        Some("arm-0x41-0xd0c")
+    );
+    assert_eq!(
+        super::measure::cpu_model_slug("CPU implementer\t: 0x41\n"),
+        None
+    );
+}
+
+#[test]
+fn a_corpus_dir_with_a_broken_git_dir_is_refused_instead_of_resolving_to_the_parent_repo()
+-> Result<(), String> {
+    // An empty `.git` makes git fall through to the enclosing repository,
+    // here the `parent` repo the test creates, and the pin checkout would
+    // then detach that repo's own working tree.
+    let root = std::env::temp_dir().join(format!("ripr-dx-own-checkout-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let parent = root.join("parent");
+    let corpus = parent.join("corpus");
+    fs::create_dir_all(corpus.join("serde").join(".git")).map_err(|err| err.to_string())?;
+    let git = |args: &[&str]| super::measure::git(Some(&parent), args);
+    git(&["init", "--quiet"])?;
+    git(&[
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "commit",
+        "--quiet",
+        "--allow-empty",
+        "-m",
+        "a",
+    ])?;
+    let parent_head = git(&["rev-parse", "HEAD"])?;
+    git(&[
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "commit",
+        "--quiet",
+        "--allow-empty",
+        "-m",
+        "b",
+    ])?;
+    let parent_tip = git(&["symbolic-ref", "HEAD"])?;
+    let options = parse_options(&["--corpus-dir".to_string(), corpus.display().to_string()])?;
+    let entry = CorpusEntry {
+        id: "serde".to_string(),
+        url: String::new(),
+        // A pin the parent repo can check out, so only the guard stops it.
+        sha: parent_head.trim().to_string(),
+        base_sha: None,
+        note: String::new(),
+        heavy: false,
+    };
+
+    let refused = super::measure::prepare_checkout(&entry, &options);
+    let tip_after = git(&["symbolic-ref", "HEAD"]);
+    let accepted = super::measure::verify_own_checkout(
+        &fs::canonicalize(&parent).map_err(|err| err.to_string())?,
+    );
+    let _ = fs::remove_dir_all(&root);
+
+    let err = refused.err().ok_or("a broken .git must be refused")?;
+    assert!(err.contains("is not its own git checkout"), "{err}");
+    assert_eq!(
+        tip_after?, parent_tip,
+        "the parent repo must stay on its branch"
+    );
+    accepted
+}
+
+#[test]
+fn a_checkout_whose_directory_name_ends_in_a_space_is_its_own_checkout() -> Result<(), String> {
+    let root = std::env::temp_dir().join(format!("ripr-dx-spaced-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let dir = root.join("demo ");
+    fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+    super::measure::git(Some(&dir), &["init", "--quiet"])?;
+    let dir = fs::canonicalize(&dir).map_err(|err| err.to_string())?;
+    let verdict = super::measure::verify_own_checkout(&dir);
+    let _ = fs::remove_dir_all(&root);
+    verdict
+}

@@ -46,11 +46,13 @@ jobs:
       - name: Build ripr
         run: cargo build --release -p ripr --bin ripr
 
+      # The corpus lives outside target/ because rust-cache saves target/ and
+      # restores the checkouts without a usable .git (#6726).
       - name: Fetch the pinned corpus
-        run: cargo xtask rust-corpus fetch --allow-network --tier "$TIER"
+        run: cargo xtask rust-corpus fetch --allow-network --tier "$TIER" --root "$RUNNER_TEMP/rust-corpus"
 
       - name: Run ripr check on each pinned change
-        run: cargo xtask rust-corpus smoke --tier "$TIER" --ripr target/release/ripr
+        run: cargo xtask rust-corpus smoke --tier "$TIER" --ripr target/release/ripr --root "$RUNNER_TEMP/rust-corpus"
 
       - name: Compare with the baseline
         run: >-

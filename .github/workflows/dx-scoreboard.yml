@@ -38,9 +38,11 @@ jobs:
 
       # Ingested metrics (first-run walk, mutation spot-check, agent-as-user)
       # have no receipt here, so the gate cannot compare them; the report
-      # lists them under "Not compared with the baseline".
+      # lists them under "Not compared with the baseline". The corpus lives
+      # outside target/ because rust-cache saves target/ and restores the
+      # checkouts without a usable .git (#6726).
       - name: Measure developer-experience scoreboards
-        run: cargo xtask dx-scoreboard --clone --include-heavy --baseline metrics/dx-scoreboard/baseline.json --gate
+        run: cargo xtask dx-scoreboard --clone --include-heavy --corpus-dir "$RUNNER_TEMP/dx-scoreboard-corpus" --baseline metrics/dx-scoreboard/baseline.json --gate
 
       - name: Upload scoreboard report
         if: always()

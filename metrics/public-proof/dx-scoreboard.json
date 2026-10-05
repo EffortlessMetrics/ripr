@@ -1,5 +1,5 @@
 {
-  "analyzer_version": "ripr 0.11.0 (c6ccf9d3f73a45ee586c298f45dfb5b537a51826)",
+  "analyzer_version": "ripr 0.11.0 (10e56371911a4e6ef8020fbcd7e5f2692fc9b7f1)",
   "binary": "target/release/ripr",
   "boards": [
     {
@@ -39,17 +39,23 @@
       "counts": {
         "below_target": 4,
         "failed": 0,
-        "meets_target": 1,
-        "not_measured": 2,
+        "meets_target": 4,
+        "not_measured": 5,
         "regressed": 0
       },
       "id": "trust",
       "metrics": [
         "trust.false_clean_on_bad_input",
+        "trust.hostile_repo_failures",
         "trust.self_contradictions",
         "trust.false_verdict_rate",
+        "trust.verdict_corpus_false_actionable",
+        "trust.verdict_corpus_abstention",
+        "trust.verdict_corpus_false_silent",
+        "trust.verdict_corpus_false_exposed",
         "trust.discriminator_claim_agreement",
         "trust.gap_claim_agreement",
+        "trust.pilot_top_recommendation_precision",
         "trust.mutation_join_coverage",
         "trust.judged_panel_false_actionable"
       ],
@@ -72,22 +78,86 @@
     },
     {
       "counts": {
-        "below_target": 3,
+        "below_target": 0,
         "failed": 0,
-        "meets_target": 2,
-        "not_measured": 1,
+        "meets_target": 0,
+        "not_measured": 7,
         "regressed": 0
       },
       "id": "first_run",
       "metrics": [
         "first_run.time_to_first_useful_result_s",
+        "first_run.install_seconds",
         "first_run.unknown_verdicts",
         "first_run.friction_events",
         "first_run.failed_steps",
         "first_run.over_budget_steps",
         "first_run.walk_secs"
       ],
-      "status": "gaps"
+      "status": "not_measured"
+    },
+    {
+      "counts": {
+        "below_target": 0,
+        "failed": 0,
+        "meets_target": 0,
+        "not_measured": 13,
+        "regressed": 0
+      },
+      "id": "agent",
+      "metrics": [
+        "agent.fix_success_rate",
+        "agent.answer_key_mutants_caught",
+        "agent.ripr_commands_to_fix",
+        "agent.tool_steps_to_fix",
+        "agent.false_weak_findings_after_fix",
+        "agent.stale_recheck_cycles",
+        "agent.white_box_tests_to_satisfy_ripr",
+        "agent.stub_calls",
+        "agent.stub_calls_producing_stub",
+        "agent.stub_compile_rate",
+        "agent.stub_coverage",
+        "agent.stub_observer_required_refusals",
+        "agent.stub_seconds"
+      ],
+      "status": "not_measured"
+    },
+    {
+      "counts": {
+        "below_target": 0,
+        "failed": 0,
+        "meets_target": 0,
+        "not_measured": 2,
+        "regressed": 0
+      },
+      "id": "corpus",
+      "metrics": [
+        "corpus.not_analyzed",
+        "corpus.check_ms"
+      ],
+      "status": "not_measured"
+    },
+    {
+      "counts": {
+        "below_target": 0,
+        "failed": 0,
+        "meets_target": 0,
+        "not_measured": 9,
+        "regressed": 0
+      },
+      "id": "ranking",
+      "metrics": [
+        "ranking.pilot_precision_top5",
+        "ranking.pilot_precision_top10",
+        "ranking.pilot_scored_share_top10",
+        "ranking.pilot_distinct_function_share_top10",
+        "ranking.pilot_picks_top10",
+        "ranking.pilot_confirmed_top5",
+        "ranking.pilot_refuted_top5",
+        "ranking.pilot_confirmed_top10",
+        "ranking.pilot_refuted_top10"
+      ],
+      "status": "not_measured"
     }
   ],
   "claim_boundary": "Numbers hold for the recorded revision, binary, runner class and pinned corpus only. Targets are proposed bars, not product guarantees. Wall-time and memory metrics are compared only against a baseline from the same runner class; peak memory is sampled from /proc every 10 ms on Linux and is a lower bound. Static verdict metrics do not claim runtime mutation outcomes.",
@@ -119,7 +189,7 @@
   ],
   "corpus_version": null,
   "gate": {
-    "baseline_revision": "a7a089e1c51dfa51a1727eeefe7e561aaecd7abc",
+    "baseline_revision": "c6ccf9d3f73a45ee586c298f45dfb5b537a51826",
     "baseline_runner_class": "local-linux-x86_64-4cpu",
     "enabled": true,
     "failed_instruments": [],
@@ -128,25 +198,95 @@
       {
         "change": {
           "baseline": [
-            "ingested from first-run: first_run.v1 receipt for ripr 0.11.0 (a7a089e1c51dfa51a1727eeefe7e561aaecd7abc), 3 case(s); no install step timed"
-          ],
-          "current": [
             "ingested from first-run: verdicts: semver-1.0.23=infection_unknown, fastrand-2.3.0=infection_unknown, bytesize-1.3.0=infection_unknown"
-          ]
+          ],
+          "baseline_values": [
+            3.0
+          ],
+          "current": [],
+          "current_values": []
         },
         "metric": "first_run.unknown_verdicts"
       }
     ],
-    "status": "pass"
+    "status": "pass",
+    "uncompared": [
+      {
+        "metric": "speed.cold_pilot_ms",
+        "reason": "runner class differs (baseline `local-linux-x86_64-4cpu`, current `github-hosted-linux-x86_64-4cpu-amd-epyc-7763-64-core-processor`)"
+      },
+      {
+        "metric": "speed.cold_pilot_peak_rss_mb",
+        "reason": "runner class differs (baseline `local-linux-x86_64-4cpu`, current `github-hosted-linux-x86_64-4cpu-amd-epyc-7763-64-core-processor`)"
+      },
+      {
+        "metric": "speed.warm_check_ms",
+        "reason": "runner class differs (baseline `local-linux-x86_64-4cpu`, current `github-hosted-linux-x86_64-4cpu-amd-epyc-7763-64-core-processor`)"
+      },
+      {
+        "metric": "speed.warm_check_peak_rss_mb",
+        "reason": "runner class differs (baseline `local-linux-x86_64-4cpu`, current `github-hosted-linux-x86_64-4cpu-amd-epyc-7763-64-core-processor`)"
+      },
+      {
+        "metric": "trust.hostile_repo_failures",
+        "reason": "metric absent from baseline"
+      },
+      {
+        "metric": "trust.false_verdict_rate",
+        "reason": "baseline or current value is missing"
+      },
+      {
+        "metric": "trust.verdict_corpus_false_actionable",
+        "reason": "metric absent from baseline"
+      },
+      {
+        "metric": "trust.verdict_corpus_abstention",
+        "reason": "metric absent from baseline"
+      },
+      {
+        "metric": "trust.verdict_corpus_false_silent",
+        "reason": "metric absent from baseline"
+      },
+      {
+        "metric": "trust.verdict_corpus_false_exposed",
+        "reason": "metric absent from baseline"
+      },
+      {
+        "metric": "trust.discriminator_claim_agreement",
+        "reason": "baseline or current value is missing"
+      },
+      {
+        "metric": "trust.gap_claim_agreement",
+        "reason": "baseline or current value is missing"
+      },
+      {
+        "metric": "trust.mutation_join_coverage",
+        "reason": "baseline or current value is missing"
+      },
+      {
+        "metric": "first_run.friction_events",
+        "reason": "baseline or current value is missing"
+      },
+      {
+        "metric": "first_run.failed_steps",
+        "reason": "baseline or current value is missing"
+      },
+      {
+        "metric": "first_run.over_budget_steps",
+        "reason": "baseline or current value is missing"
+      },
+      {
+        "metric": "first_run.walk_secs",
+        "reason": "runner class differs (baseline `local-linux-x86_64-4cpu`, current `github-hosted-linux-x86_64-4cpu-amd-epyc-7763-64-core-processor`)"
+      }
+    ]
   },
   "metrics": [
     {
       "baseline": {
-        "allowed_worsening": 56384.9499,
-        "comparable": true,
-        "delta": 12157.3109,
-        "regressed": false,
-        "value": 225539.7997
+        "comparable": false,
+        "reason": "runner class differs (baseline `local-linux-x86_64-4cpu`, current `github-hosted-linux-x86_64-4cpu-amd-epyc-7763-64-core-processor`)",
+        "value": 237697.1106
       },
       "board": "speed",
       "direction": "lower_is_better",
@@ -158,26 +298,26 @@
         {
           "detail": "exit 0, pilot status `complete`",
           "repo": "serde",
-          "status": "below_target",
-          "value": 70319.0868
+          "status": "meets_target",
+          "value": 1394.6809
         },
         {
           "detail": "exit 0, pilot status `complete`",
           "repo": "ripgrep",
-          "status": "below_target",
-          "value": 80380.9674
+          "status": "meets_target",
+          "value": 10798.3441
         },
         {
           "detail": "exit 0, pilot status `complete`",
           "repo": "regex",
-          "status": "below_target",
-          "value": 100071.5922
+          "status": "meets_target",
+          "value": 17202.4441
         },
         {
           "detail": "exit 0, pilot status `complete`",
           "repo": "ripr-swarm",
           "status": "below_target",
-          "value": 237697.1106
+          "value": 77565.7261
         }
       ],
       "source": "measured",
@@ -185,15 +325,13 @@
       "target": 30000.0,
       "title": "Cold `ripr pilot` to first useful result",
       "unit": "ms",
-      "value": 237697.1106
+      "value": 77565.7261
     },
     {
       "baseline": {
-        "allowed_worsening": 520.4531,
-        "comparable": true,
-        "delta": -2.5117,
-        "regressed": false,
-        "value": 3469.6875
+        "comparable": false,
+        "reason": "runner class differs (baseline `local-linux-x86_64-4cpu`, current `github-hosted-linux-x86_64-4cpu-amd-epyc-7763-64-core-processor`)",
+        "value": 3467.1758
       },
       "board": "speed",
       "direction": "lower_is_better",
@@ -206,25 +344,25 @@
           "detail": "VmHWM sampled every 10 ms",
           "repo": "serde",
           "status": "meets_target",
-          "value": 122.0547
+          "value": 74.4453
         },
         {
           "detail": "VmHWM sampled every 10 ms",
           "repo": "ripgrep",
           "status": "meets_target",
-          "value": 582.5977
+          "value": 247.9766
         },
         {
           "detail": "VmHWM sampled every 10 ms",
           "repo": "regex",
           "status": "meets_target",
-          "value": 990.3672
+          "value": 352.3203
         },
         {
           "detail": "VmHWM sampled every 10 ms",
           "repo": "ripr-swarm",
           "status": "below_target",
-          "value": 3467.1758
+          "value": 1594.8242
         }
       ],
       "source": "measured",
@@ -232,15 +370,13 @@
       "target": 1024.0,
       "title": "Cold `ripr pilot` peak memory",
       "unit": "MB",
-      "value": 3467.1758
+      "value": 1594.8242
     },
     {
       "baseline": {
-        "allowed_worsening": 2686.5706,
-        "comparable": true,
-        "delta": 751.7858,
-        "regressed": false,
-        "value": 10746.2825
+        "comparable": false,
+        "reason": "runner class differs (baseline `local-linux-x86_64-4cpu`, current `github-hosted-linux-x86_64-4cpu-amd-epyc-7763-64-core-processor`)",
+        "value": 11498.0683
       },
       "board": "speed",
       "direction": "lower_is_better",
@@ -253,25 +389,25 @@
           "detail": "exit 0, 1 finding(s) on HEAD~1..HEAD",
           "repo": "serde",
           "status": "meets_target",
-          "value": 459.7482
+          "value": 143.7272
         },
         {
           "detail": "exit 0, 4 finding(s) on HEAD~1..HEAD",
           "repo": "ripgrep",
           "status": "meets_target",
-          "value": 610.8685
+          "value": 234.057
         },
         {
           "detail": "exit 0, 5 finding(s) on HEAD~1..HEAD",
           "repo": "regex",
           "status": "meets_target",
-          "value": 813.5383
+          "value": 253.855
         },
         {
           "detail": "exit 0, 4 finding(s) on HEAD~1..HEAD",
           "repo": "ripr-swarm",
           "status": "below_target",
-          "value": 11498.0683
+          "value": 5143.303
         }
       ],
       "source": "measured",
@@ -279,15 +415,13 @@
       "target": 2000.0,
       "title": "Warm `ripr check` on the last commit",
       "unit": "ms",
-      "value": 11498.0683
+      "value": 5143.303
     },
     {
       "baseline": {
-        "allowed_worsening": 176.1381,
-        "comparable": true,
-        "delta": 13.1953,
-        "regressed": false,
-        "value": 1174.2539
+        "comparable": false,
+        "reason": "runner class differs (baseline `local-linux-x86_64-4cpu`, current `github-hosted-linux-x86_64-4cpu-amd-epyc-7763-64-core-processor`)",
+        "value": 1187.4492
       },
       "board": "speed",
       "direction": "lower_is_better",
@@ -300,25 +434,25 @@
           "detail": "VmHWM sampled every 10 ms",
           "repo": "serde",
           "status": "meets_target",
-          "value": 56.7773
+          "value": 30.918
         },
         {
           "detail": "VmHWM sampled every 10 ms",
           "repo": "ripgrep",
           "status": "meets_target",
-          "value": 46.6445
+          "value": 36.207
         },
         {
           "detail": "VmHWM sampled every 10 ms",
           "repo": "regex",
           "status": "meets_target",
-          "value": 108.0195
+          "value": 49.8086
         },
         {
           "detail": "VmHWM sampled every 10 ms",
           "repo": "ripr-swarm",
           "status": "below_target",
-          "value": 1187.4492
+          "value": 590.4023
         }
       ],
       "source": "measured",
@@ -326,15 +460,19 @@
       "target": 512.0,
       "title": "Warm `ripr check` peak memory",
       "unit": "MB",
-      "value": 1187.4492
+      "value": 590.4023
     },
     {
       "baseline": {
-        "allowed_worsening": 237.4,
+        "allowed_worsening": 115.4,
         "comparable": true,
-        "delta": -1220.0,
+        "delta": -767.0,
+        "missing_repos": [],
+        "new_repos": [],
+        "recovered_repos": [],
         "regressed": false,
-        "value": 2374.0
+        "regressed_repos": [],
+        "value": 1154.0
       },
       "board": "ci",
       "direction": "lower_is_better",
@@ -347,7 +485,7 @@
           "detail": "lines in .github/workflows/ripr.yml from `ripr init --ci github`",
           "repo": null,
           "status": "below_target",
-          "value": 1154.0
+          "value": 387.0
         }
       ],
       "source": "measured",
@@ -355,15 +493,19 @@
       "target": 150.0,
       "title": "Lines in the workflow `ripr init --ci github` writes",
       "unit": "lines",
-      "value": 1154.0
+      "value": 387.0
     },
     {
       "baseline": {
         "allowed_worsening": 0.0,
         "comparable": true,
-        "delta": -1.0,
+        "delta": 0.0,
+        "missing_repos": [],
+        "new_repos": [],
+        "recovered_repos": [],
         "regressed": false,
-        "value": 1.0
+        "regressed_repos": [],
+        "value": 0.0
       },
       "board": "ci",
       "direction": "lower_is_better",
@@ -389,17 +531,17 @@
     {
       "baseline": {
         "comparable": false,
-        "reason": "baseline or current value is missing",
+        "reason": "runner class differs (baseline `local-linux-x86_64-4cpu`, current `github-hosted-linux-x86_64-4cpu-amd-epyc-7763-64-core-processor`)",
         "value": null
       },
       "board": "ci",
       "direction": "lower_is_better",
       "id": "ci.install_seconds",
       "per_repo": false,
-      "reason": "needs a hosted run of the generated workflow; the prebuilt-install path landed with #5236 but no instrument times it yet",
+      "reason": "no --ingest file supplied for `ingest:install`",
       "runner_dependent": true,
       "samples": [],
-      "source": "pending",
+      "source": "ingest:install",
       "status": "not_measured",
       "target": 30.0,
       "title": "Time for the generated workflow to have ripr on PATH",
@@ -410,8 +552,12 @@
       "baseline": {
         "allowed_worsening": 0.0,
         "comparable": true,
-        "delta": 0.0,
+        "delta": -2.0,
+        "missing_repos": [],
+        "new_repos": [],
+        "recovered_repos": [],
         "regressed": false,
+        "regressed_repos": [],
         "value": 2.0
       },
       "board": "trust",
@@ -422,25 +568,55 @@
       "runner_dependent": false,
       "samples": [
         {
-          "detail": "2 of 12 exit 0: `ripr first-pr --root <missing> --head HEAD`, `ripr reports gap-ledger --root <missing> --repo-exposure <missing>/repo-exposure.json --out <scratch>/bad-ledger.json`",
+          "detail": "all 12 probes refused",
           "repo": null,
-          "status": "below_target",
-          "value": 2.0
+          "status": "meets_target",
+          "value": 0.0
         }
       ],
       "source": "measured",
-      "status": "below_target",
+      "status": "meets_target",
       "target": 0.0,
       "title": "Commands that exit 0 when pointed at a missing repository",
       "unit": "commands",
-      "value": 2.0
+      "value": 0.0
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "trust",
+      "direction": "lower_is_better",
+      "id": "trust.hostile_repo_failures",
+      "partial": false,
+      "per_repo": false,
+      "runner_dependent": false,
+      "samples": [
+        {
+          "detail": "17 of 17 hostile-input journeys pass",
+          "repo": null,
+          "status": "meets_target",
+          "value": 0.0
+        }
+      ],
+      "source": "measured",
+      "status": "meets_target",
+      "target": 0.0,
+      "title": "Hostile-repository journeys (odd file names, symlink loops, shallow clones, submodules) where ripr neither finds nor refuses cleanly",
+      "unit": "journeys",
+      "value": 0.0
     },
     {
       "baseline": {
         "allowed_worsening": 0.0,
         "comparable": true,
-        "delta": 0.0,
+        "delta": -1.0,
+        "missing_repos": [],
+        "new_repos": [],
+        "recovered_repos": [],
         "regressed": false,
+        "regressed_repos": [],
         "value": 1.0
       },
       "board": "trust",
@@ -451,10 +627,10 @@
       "runner_dependent": false,
       "samples": [
         {
-          "detail": "e.g. R3 probe:serde_derive_src_ser.rs:static_unknown:39db18a1 says related tests were found but lists 0",
+          "detail": "pilot repo-exposure and warm check JSON scanned",
           "repo": "serde",
-          "status": "below_target",
-          "value": 1.0
+          "status": "meets_target",
+          "value": 0.0
         },
         {
           "detail": "pilot repo-exposure and warm check JSON scanned",
@@ -463,10 +639,10 @@
           "value": 0.0
         },
         {
-          "detail": "e.g. R3 probe:regex-automata_src_util_primitives.rs:static_unknown:c3bf5470 says related tests were found but lists 0",
+          "detail": "pilot repo-exposure and warm check JSON scanned",
           "repo": "regex",
-          "status": "below_target",
-          "value": 1.0
+          "status": "meets_target",
+          "value": 0.0
         },
         {
           "detail": "pilot repo-exposure and warm check JSON scanned",
@@ -476,29 +652,186 @@
         }
       ],
       "source": "measured",
-      "status": "below_target",
+      "status": "meets_target",
       "target": 0.0,
       "title": "Findings or seams whose own evidence contradicts itself",
       "unit": "findings",
-      "value": 1.0
+      "value": 0.0
     },
     {
       "baseline": {
         "comparable": false,
+        "new_repos": [],
         "reason": "baseline or current value is missing",
+        "recovered_repos": [],
         "value": null
       },
       "board": "trust",
       "direction": "lower_is_better",
       "id": "trust.false_verdict_rate",
+      "partial": false,
       "per_repo": false,
-      "reason": "no --ingest file supplied for `ingest:verdict-corpus`",
       "runner_dependent": false,
-      "samples": [],
-      "source": "ingest:verdict-corpus",
-      "status": "not_measured",
+      "samples": [
+        {
+          "detail": "fixtures/rust-verdict-corpus/expected/report.json false_verdict_rate: 72/203",
+          "repo": null,
+          "status": "below_target",
+          "value": 0.3547
+        }
+      ],
+      "source": "file:fixtures/rust-verdict-corpus/expected/report.json#false_verdict_rate",
+      "status": "below_target",
       "target": 0.05,
       "title": "Wrong verdicts on the hand-checked verdict corpus",
+      "unit": "ratio",
+      "value": 0.3547
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "trust",
+      "direction": "lower_is_better",
+      "id": "trust.verdict_corpus_false_actionable",
+      "partial": false,
+      "per_repo": false,
+      "runner_dependent": false,
+      "samples": [
+        {
+          "detail": "fixtures/rust-verdict-corpus/expected/report.json false_actionable_rate: 66/106",
+          "repo": null,
+          "status": "below_target",
+          "value": 0.6226
+        }
+      ],
+      "source": "file:fixtures/rust-verdict-corpus/expected/report.json#false_actionable_rate",
+      "status": "below_target",
+      "target": 0.05,
+      "title": "Hand-checked edits the crate's tests fully catch that ripr still flags as a gap",
+      "unit": "ratio",
+      "value": 0.6226
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "trust",
+      "direction": "lower_is_better",
+      "id": "trust.verdict_corpus_abstention",
+      "partial": false,
+      "per_repo": false,
+      "runner_dependent": false,
+      "samples": [
+        {
+          "detail": "fixtures/rust-verdict-corpus/expected/report.json abstention_rate: 58/203",
+          "repo": null,
+          "status": "below_target",
+          "value": 0.2857
+        }
+      ],
+      "source": "file:fixtures/rust-verdict-corpus/expected/report.json#abstention_rate",
+      "status": "below_target",
+      "target": 0.2,
+      "title": "Hand-checked edits where ripr gives no specific verdict",
+      "unit": "ratio",
+      "value": 0.2857
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "trust",
+      "direction": "lower_is_better",
+      "id": "trust.verdict_corpus_false_silent",
+      "partial": false,
+      "per_repo": false,
+      "runner_dependent": false,
+      "samples": [
+        {
+          "detail": "fixtures/rust-verdict-corpus/expected/report.json false_silent_rate: 0/97",
+          "repo": null,
+          "status": "meets_target",
+          "value": 0.0
+        }
+      ],
+      "source": "file:fixtures/rust-verdict-corpus/expected/report.json#false_silent_rate",
+      "status": "meets_target",
+      "target": 0.0,
+      "title": "Hand-checked edits the crate's tests miss that ripr reports as fine (counterweight to abstaining less)",
+      "unit": "ratio",
+      "value": 0.0
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "trust",
+      "direction": "lower_is_better",
+      "id": "trust.verdict_corpus_false_exposed",
+      "partial": false,
+      "per_repo": false,
+      "runner_dependent": false,
+      "samples": [
+        {
+          "detail": "fixtures/rust-verdict-corpus/expected/report.json false_exposed_rate: 6/97",
+          "repo": null,
+          "status": "below_target",
+          "value": 0.0619
+        }
+      ],
+      "source": "file:fixtures/rust-verdict-corpus/expected/report.json#false_exposed_rate",
+      "status": "below_target",
+      "target": 0.0,
+      "title": "Hand-checked edits the crate's tests miss that ripr credits as caught (false confidence; few credited cases so far, so read with its denominator)",
+      "unit": "ratio",
+      "value": 0.0619
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "new_repos": [],
+        "reason": "baseline or current value is missing",
+        "recovered_repos": [],
+        "value": 1.0
+      },
+      "board": "trust",
+      "direction": "higher_is_better",
+      "id": "trust.discriminator_claim_agreement",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:mutation-spot-check`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:mutation-spot-check",
+      "status": "not_measured",
+      "target": 0.95,
+      "title": "When ripr says a test discriminates, real mutants are caught",
+      "unit": "ratio",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "new_repos": [],
+        "reason": "baseline or current value is missing",
+        "recovered_repos": [],
+        "value": 0.043
+      },
+      "board": "trust",
+      "direction": "higher_is_better",
+      "id": "trust.gap_claim_agreement",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:mutation-spot-check`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:mutation-spot-check",
+      "status": "not_measured",
+      "target": 0.8,
+      "title": "When ripr reports a gap, real mutants survive",
       "unit": "ratio",
       "value": null
     },
@@ -509,81 +842,46 @@
       },
       "board": "trust",
       "direction": "higher_is_better",
-      "id": "trust.discriminator_claim_agreement",
-      "partial": false,
+      "id": "trust.pilot_top_recommendation_precision",
       "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:mutation-spot-check`",
       "runner_dependent": false,
-      "samples": [
-        {
-          "detail": "ingested from mutation-spot-check: 14 seam-precise mutants scored",
-          "repo": null,
-          "status": "meets_target",
-          "value": 1.0
-        }
-      ],
+      "samples": [],
       "source": "ingest:mutation-spot-check",
-      "status": "meets_target",
-      "target": 0.95,
-      "title": "When ripr says a test discriminates, real mutants are caught",
+      "status": "not_measured",
+      "target": 0.6,
+      "title": "When ripr pilot ranks a seam in its top ten, a real mutant there is missed",
       "unit": "ratio",
-      "value": 1.0
+      "value": null
     },
     {
       "baseline": {
         "comparable": false,
-        "reason": "metric absent from baseline"
-      },
-      "board": "trust",
-      "direction": "higher_is_better",
-      "id": "trust.gap_claim_agreement",
-      "partial": false,
-      "per_repo": false,
-      "runner_dependent": false,
-      "samples": [
-        {
-          "detail": "ingested from mutation-spot-check: 23 seam-precise mutants scored",
-          "repo": null,
-          "status": "below_target",
-          "value": 0.043
-        }
-      ],
-      "source": "ingest:mutation-spot-check",
-      "status": "below_target",
-      "target": 0.8,
-      "title": "When ripr reports a gap, real mutants survive",
-      "unit": "ratio",
-      "value": 0.043
-    },
-    {
-      "baseline": {
-        "comparable": false,
-        "reason": "metric absent from baseline"
+        "new_repos": [],
+        "reason": "baseline or current value is missing",
+        "recovered_repos": [],
+        "value": 0.0997
       },
       "board": "trust",
       "direction": "higher_is_better",
       "id": "trust.mutation_join_coverage",
-      "partial": false,
       "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:mutation-spot-check`",
       "runner_dependent": false,
-      "samples": [
-        {
-          "detail": "ingested from mutation-spot-check: 174 of 1745 mutants joined seam-precise",
-          "repo": null,
-          "status": "below_target",
-          "value": 0.0997
-        }
-      ],
+      "samples": [],
       "source": "ingest:mutation-spot-check",
-      "status": "below_target",
+      "status": "not_measured",
       "target": 0.5,
       "title": "Real mutants that join a ripr seam precisely enough to score",
       "unit": "ratio",
-      "value": 0.0997
+      "value": null
     },
     {
       "baseline": {
         "comparable": false,
+        "new_repos": [],
         "reason": "baseline or current value is missing",
+        "recovered_repos": [],
         "value": null
       },
       "board": "trust",
@@ -613,7 +911,11 @@
         "allowed_worsening": 0.0,
         "comparable": true,
         "delta": 0.0,
+        "missing_repos": [],
+        "new_repos": [],
+        "recovered_repos": [],
         "regressed": false,
+        "regressed_repos": [],
         "value": 0.0
       },
       "board": "paste",
@@ -624,7 +926,7 @@
       "runner_dependent": false,
       "samples": [
         {
-          "detail": "0 of 7 printed commands replayed under bash",
+          "detail": "0 of 8 printed commands replayed under bash",
           "repo": null,
           "status": "meets_target",
           "value": 0.0
@@ -642,7 +944,11 @@
         "allowed_worsening": 0.0,
         "comparable": true,
         "delta": 0.0,
+        "missing_repos": [],
+        "new_repos": [],
+        "recovered_repos": [],
         "regressed": false,
+        "regressed_repos": [],
         "value": 0.0
       },
       "board": "paste",
@@ -653,7 +959,7 @@
       "runner_dependent": false,
       "samples": [
         {
-          "detail": "0 of 7 printed commands drop the root",
+          "detail": "0 of 8 printed commands drop the root",
           "repo": null,
           "status": "meets_target",
           "value": 0.0
@@ -669,7 +975,7 @@
     {
       "baseline": {
         "comparable": false,
-        "reason": "baseline or current value is missing",
+        "reason": "runner class differs (baseline `local-linux-x86_64-4cpu`, current `github-hosted-linux-x86_64-4cpu-amd-epyc-7763-64-core-processor`)",
         "value": null
       },
       "board": "first_run",
@@ -688,168 +994,605 @@
     },
     {
       "baseline": {
-        "allowed_worsening": 0.0,
-        "comparable": true,
-        "delta": 0.0,
-        "regressed": false,
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "first_run",
+      "direction": "lower_is_better",
+      "id": "first_run.install_seconds",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:first-run`",
+      "runner_dependent": true,
+      "samples": [],
+      "source": "ingest:first-run",
+      "status": "not_measured",
+      "target": 120.0,
+      "title": "Fresh machine: seconds to install ripr by the route the walk times (`cargo install ripr --locked`, a source build)",
+      "unit": "s",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "new_repos": [],
+        "reason": "baseline or current value is missing",
+        "recovered_repos": [],
         "review": {
           "baseline": [
-            "ingested from first-run: first_run.v1 receipt for ripr 0.11.0 (a7a089e1c51dfa51a1727eeefe7e561aaecd7abc), 3 case(s); no install step timed"
-          ],
-          "current": [
             "ingested from first-run: verdicts: semver-1.0.23=infection_unknown, fastrand-2.3.0=infection_unknown, bytesize-1.3.0=infection_unknown"
-          ]
+          ],
+          "baseline_values": [
+            3.0
+          ],
+          "current": [],
+          "current_values": []
         },
         "value": 3.0
       },
       "board": "first_run",
       "direction": "lower_is_better",
       "id": "first_run.unknown_verdicts",
-      "partial": false,
       "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:first-run`",
       "runner_dependent": false,
-      "samples": [
-        {
-          "detail": "ingested from first-run: verdicts: semver-1.0.23=infection_unknown, fastrand-2.3.0=infection_unknown, bytesize-1.3.0=infection_unknown",
-          "repo": null,
-          "status": "below_target",
-          "value": 3.0
-        }
-      ],
+      "samples": [],
       "source": "ingest:first-run",
-      "status": "below_target",
+      "status": "not_measured",
       "target": 0.0,
       "title": "Simple boundary edits on unfamiliar crates that get an `*_unknown` verdict",
       "unit": "cases",
-      "value": 3.0
+      "value": null
     },
     {
       "baseline": {
-        "allowed_worsening": 0.0,
-        "comparable": true,
-        "delta": 0.0,
-        "regressed": false,
+        "comparable": false,
+        "new_repos": [],
+        "reason": "baseline or current value is missing",
+        "recovered_repos": [],
         "value": 4.0
       },
       "board": "first_run",
       "direction": "lower_is_better",
       "id": "first_run.friction_events",
-      "partial": false,
       "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:first-run`",
       "runner_dependent": false,
-      "samples": [
-        {
-          "detail": "ingested from first-run: first_run_row.v1 rows for ripr 0.11.0 (a7a089e1c51dfa51a1727eeefe7e561aaecd7abc), 3 case(s); no install step timed",
-          "repo": null,
-          "status": "below_target",
-          "value": 4.0
-        }
-      ],
+      "samples": [],
       "source": "ingest:first-run",
-      "status": "below_target",
+      "status": "not_measured",
       "target": 0.0,
       "title": "Friction events logged during the scripted first run",
       "unit": "events",
-      "value": 4.0
+      "value": null
     },
     {
       "baseline": {
         "comparable": false,
-        "reason": "metric absent from baseline"
+        "new_repos": [],
+        "reason": "baseline or current value is missing",
+        "recovered_repos": [],
+        "value": 0.0
       },
       "board": "first_run",
       "direction": "lower_is_better",
       "id": "first_run.failed_steps",
-      "partial": false,
       "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:first-run`",
       "runner_dependent": false,
-      "samples": [
-        {
-          "detail": "ingested from first-run: none",
-          "repo": null,
-          "status": "meets_target",
-          "value": 0.0
-        }
-      ],
+      "samples": [],
       "source": "ingest:first-run",
-      "status": "meets_target",
+      "status": "not_measured",
       "target": 0.0,
       "title": "First-run steps that exit nonzero",
       "unit": "steps",
-      "value": 0.0
+      "value": null
     },
     {
       "baseline": {
         "comparable": false,
-        "reason": "metric absent from baseline"
+        "new_repos": [],
+        "reason": "baseline or current value is missing",
+        "recovered_repos": [],
+        "value": 3.0
       },
       "board": "first_run",
       "direction": "lower_is_better",
       "id": "first_run.over_budget_steps",
-      "partial": false,
       "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:first-run`",
       "runner_dependent": false,
-      "samples": [
-        {
-          "detail": "ingested from first-run: semver-1.0.23/init_ci workflow_lines 2374 > 1500, fastrand-2.3.0/init_ci workflow_lines 2374 > 1500, bytesize-1.3.0/init_ci workflow_lines 2374 > 1500",
-          "repo": null,
-          "status": "below_target",
-          "value": 3.0
-        }
-      ],
+      "samples": [],
       "source": "ingest:first-run",
-      "status": "below_target",
+      "status": "not_measured",
       "target": 0.0,
       "title": "First-run steps over their own time, output-length or workflow-size budget",
       "unit": "steps",
-      "value": 3.0
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "runner class differs (baseline `local-linux-x86_64-4cpu`, current `github-hosted-linux-x86_64-4cpu-amd-epyc-7763-64-core-processor`)",
+        "value": 3.56
+      },
+      "board": "first_run",
+      "direction": "lower_is_better",
+      "id": "first_run.walk_secs",
+      "per_repo": true,
+      "reason": "no --ingest file supplied for `ingest:first-run`",
+      "runner_dependent": true,
+      "samples": [],
+      "source": "ingest:first-run",
+      "status": "not_measured",
+      "target": 10.0,
+      "title": "Seconds for the scripted walk on one crate, setup excluded",
+      "unit": "s",
+      "value": null
     },
     {
       "baseline": {
         "comparable": false,
         "reason": "metric absent from baseline"
       },
-      "board": "first_run",
-      "direction": "lower_is_better",
-      "id": "first_run.walk_secs",
-      "partial": false,
+      "board": "agent",
+      "direction": "higher_is_better",
+      "id": "agent.fix_success_rate",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:agent-as-user`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:agent-as-user",
+      "status": "not_measured",
+      "target": 1.0,
+      "title": "Targets where every answer-key mutant is caught after the agent finishes",
+      "unit": "ratio",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "agent",
+      "direction": "higher_is_better",
+      "id": "agent.answer_key_mutants_caught",
       "per_repo": true,
-      "runner_dependent": true,
-      "samples": [
-        {
-          "detail": "ingested from first-run: first_run_row.v1 rows for ripr 0.11.0 (a7a089e1c51dfa51a1727eeefe7e561aaecd7abc), 3 case(s); no install step timed",
-          "repo": "bytesize-1.3.0",
-          "status": "meets_target",
-          "value": 2.18
-        },
-        {
-          "detail": "ingested from first-run: first_run_row.v1 rows for ripr 0.11.0 (a7a089e1c51dfa51a1727eeefe7e561aaecd7abc), 3 case(s); no install step timed",
-          "repo": "fastrand-2.3.0",
-          "status": "meets_target",
-          "value": 2.03
-        },
-        {
-          "detail": "ingested from first-run: first_run_row.v1 rows for ripr 0.11.0 (a7a089e1c51dfa51a1727eeefe7e561aaecd7abc), 3 case(s); no install step timed",
-          "repo": "semver-1.0.23",
-          "status": "meets_target",
-          "value": 3.56
-        }
-      ],
-      "source": "ingest:first-run",
-      "status": "meets_target",
+      "reason": "no --ingest file supplied for `ingest:agent-as-user`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:agent-as-user",
+      "status": "not_measured",
+      "target": 3.0,
+      "title": "Answer-key mutants caught after the agent's fix",
+      "unit": "mutants",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "agent",
+      "direction": "lower_is_better",
+      "id": "agent.ripr_commands_to_fix",
+      "per_repo": true,
+      "reason": "no --ingest file supplied for `ingest:agent-as-user`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:agent-as-user",
+      "status": "not_measured",
       "target": 10.0,
-      "title": "Seconds for the scripted walk on one crate, setup excluded",
+      "title": "ripr commands the agent ran to close the gap",
+      "unit": "commands",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "agent",
+      "direction": "lower_is_better",
+      "id": "agent.tool_steps_to_fix",
+      "per_repo": true,
+      "reason": "no --ingest file supplied for `ingest:agent-as-user`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:agent-as-user",
+      "status": "not_measured",
+      "target": 15.0,
+      "title": "All agent tool calls to close the gap",
+      "unit": "steps",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "agent",
+      "direction": "lower_is_better",
+      "id": "agent.false_weak_findings_after_fix",
+      "per_repo": true,
+      "reason": "no --ingest file supplied for `ingest:agent-as-user`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:agent-as-user",
+      "status": "not_measured",
+      "target": 0.0,
+      "title": "Non-exposed verdicts left after every mutant is caught",
+      "unit": "findings",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "agent",
+      "direction": "lower_is_better",
+      "id": "agent.stale_recheck_cycles",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:agent-as-user`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:agent-as-user",
+      "status": "not_measured",
+      "target": 0.0,
+      "title": "Re-checks after an edit that returned stale output",
+      "unit": "cycles",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "agent",
+      "direction": "lower_is_better",
+      "id": "agent.white_box_tests_to_satisfy_ripr",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:agent-as-user`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:agent-as-user",
+      "status": "not_measured",
+      "target": 0.0,
+      "title": "White-box tests written only to satisfy ripr",
+      "unit": "tests",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "agent",
+      "direction": "higher_is_better",
+      "id": "agent.stub_calls",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:agent-as-user`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:agent-as-user",
+      "status": "not_measured",
+      "target": 0.0,
+      "title": "`ripr agent stub` calls the agent made on `check`'s suggestion",
+      "unit": "calls",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "agent",
+      "direction": "higher_is_better",
+      "id": "agent.stub_calls_producing_stub",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:agent-as-user`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:agent-as-user",
+      "status": "not_measured",
+      "target": 1.0,
+      "title": "Of those stub calls, ones that produced a stub instead of a refusal",
+      "unit": "calls",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "agent",
+      "direction": "higher_is_better",
+      "id": "agent.stub_compile_rate",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:agent-stub`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:agent-stub",
+      "status": "not_measured",
+      "target": 1.0,
+      "title": "Distinct generated stubs that compile and fail at their own ripr todo",
+      "unit": "ratio",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "agent",
+      "direction": "higher_is_better",
+      "id": "agent.stub_coverage",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:agent-stub`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:agent-stub",
+      "status": "not_measured",
+      "target": 0.5,
+      "title": "Gap locations that get a working stub instead of a named refusal",
+      "unit": "ratio",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "agent",
+      "direction": "lower_is_better",
+      "id": "agent.stub_observer_required_refusals",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:agent-stub`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:agent-stub",
+      "status": "not_measured",
+      "target": 0.0,
+      "title": "Gap locations refused because the stub needs an observer ripr cannot name",
+      "unit": "locations",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "agent",
+      "direction": "lower_is_better",
+      "id": "agent.stub_seconds",
+      "per_repo": true,
+      "reason": "no --ingest file supplied for `ingest:agent-stub`",
+      "runner_dependent": true,
+      "samples": [],
+      "source": "ingest:agent-stub",
+      "status": "not_measured",
+      "target": 10.0,
+      "title": "One `ripr agent stub` call on a corpus repository",
       "unit": "s",
-      "value": 3.56
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "corpus",
+      "direction": "lower_is_better",
+      "id": "corpus.not_analyzed",
+      "per_repo": true,
+      "reason": "no --ingest file supplied for `ingest:rust-corpus-smoke`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:rust-corpus-smoke",
+      "status": "not_measured",
+      "target": 0.0,
+      "title": "Pinned repository whose diff-scoped `ripr check` did not reach `analyzed`",
+      "unit": "repos",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "corpus",
+      "direction": "lower_is_better",
+      "id": "corpus.check_ms",
+      "per_repo": true,
+      "reason": "no --ingest file supplied for `ingest:rust-corpus-smoke`",
+      "runner_dependent": true,
+      "samples": [],
+      "source": "ingest:rust-corpus-smoke",
+      "status": "not_measured",
+      "target": 5000.0,
+      "title": "Diff-scoped `ripr check` on a pinned real change",
+      "unit": "ms",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "ranking",
+      "direction": "higher_is_better",
+      "id": "ranking.pilot_precision_top5",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:pilot-ranking`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:pilot-ranking",
+      "status": "not_measured",
+      "target": 0.6,
+      "title": "Pilot's top 5 picks per crate where a mutant at the seam, its line or its function was missed (of picks a label can judge)",
+      "unit": "ratio",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "ranking",
+      "direction": "higher_is_better",
+      "id": "ranking.pilot_precision_top10",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:pilot-ranking`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:pilot-ranking",
+      "status": "not_measured",
+      "target": 0.6,
+      "title": "Pilot's top 10 picks per crate where a mutant at the seam, its line or its function was missed (of picks a label can judge)",
+      "unit": "ratio",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "ranking",
+      "direction": "higher_is_better",
+      "id": "ranking.pilot_scored_share_top10",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:pilot-ranking`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:pilot-ranking",
+      "status": "not_measured",
+      "target": 0.8,
+      "title": "Pilot's top 10 picks a labeled mutant can judge (precision can rise by making picks unjudgeable)",
+      "unit": "ratio",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "ranking",
+      "direction": "higher_is_better",
+      "id": "ranking.pilot_distinct_function_share_top10",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:pilot-ranking`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:pilot-ranking",
+      "status": "not_measured",
+      "target": 0.9,
+      "title": "Pilot's top 10 picks that land in a function no higher pick named",
+      "unit": "ratio",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "ranking",
+      "direction": "higher_is_better",
+      "id": "ranking.pilot_picks_top10",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:pilot-ranking`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:pilot-ranking",
+      "status": "not_measured",
+      "target": 50.0,
+      "title": "Picks in pilot's top 10 across the pinned crates (precision and shares can rise by ranking fewer seams)",
+      "unit": "picks",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "ranking",
+      "direction": "higher_is_better",
+      "id": "ranking.pilot_confirmed_top5",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:pilot-ranking`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:pilot-ranking",
+      "status": "not_measured",
+      "target": 12.0,
+      "title": "Pilot's top 5 picks per crate a missed mutant confirms (pooled count)",
+      "unit": "picks",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "ranking",
+      "direction": "lower_is_better",
+      "id": "ranking.pilot_refuted_top5",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:pilot-ranking`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:pilot-ranking",
+      "status": "not_measured",
+      "target": 8.0,
+      "title": "Pilot's top 5 picks per crate where every judging mutant was caught (pooled count)",
+      "unit": "picks",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "ranking",
+      "direction": "higher_is_better",
+      "id": "ranking.pilot_confirmed_top10",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:pilot-ranking`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:pilot-ranking",
+      "status": "not_measured",
+      "target": 24.0,
+      "title": "Pilot's top 10 picks per crate a missed mutant confirms (pooled count)",
+      "unit": "picks",
+      "value": null
+    },
+    {
+      "baseline": {
+        "comparable": false,
+        "reason": "metric absent from baseline"
+      },
+      "board": "ranking",
+      "direction": "lower_is_better",
+      "id": "ranking.pilot_refuted_top10",
+      "per_repo": false,
+      "reason": "no --ingest file supplied for `ingest:pilot-ranking`",
+      "runner_dependent": false,
+      "samples": [],
+      "source": "ingest:pilot-ranking",
+      "status": "not_measured",
+      "target": 16.0,
+      "title": "Pilot's top 10 picks per crate where every judging mutant was caught (pooled count)",
+      "unit": "picks",
+      "value": null
     }
   ],
   "report": "dx-scoreboard",
   "repos": [
     {
       "counts": {
-        "below_target": 2,
+        "below_target": 0,
         "failed": 0,
-        "meets_target": 3,
+        "meets_target": 5,
         "not_measured": 0,
         "regressed": 0
       },
@@ -857,11 +1600,11 @@
       "metrics": [
         {
           "metric": "speed.cold_pilot_ms",
-          "status": "below_target",
+          "status": "meets_target",
           "target": 30000.0,
           "title": "Cold `ripr pilot` to first useful result",
           "unit": "ms",
-          "value": 70319.0868
+          "value": 1394.6809
         },
         {
           "metric": "speed.cold_pilot_peak_rss_mb",
@@ -869,7 +1612,7 @@
           "target": 1024.0,
           "title": "Cold `ripr pilot` peak memory",
           "unit": "MB",
-          "value": 122.0547
+          "value": 74.4453
         },
         {
           "metric": "speed.warm_check_ms",
@@ -877,7 +1620,7 @@
           "target": 2000.0,
           "title": "Warm `ripr check` on the last commit",
           "unit": "ms",
-          "value": 459.7482
+          "value": 143.7272
         },
         {
           "metric": "speed.warm_check_peak_rss_mb",
@@ -885,26 +1628,26 @@
           "target": 512.0,
           "title": "Warm `ripr check` peak memory",
           "unit": "MB",
-          "value": 56.7773
+          "value": 30.918
         },
         {
           "metric": "trust.self_contradictions",
-          "status": "below_target",
+          "status": "meets_target",
           "target": 0.0,
           "title": "Findings or seams whose own evidence contradicts itself",
           "unit": "findings",
-          "value": 1.0
+          "value": 0.0
         }
       ],
       "note": "small library workspace, macro-heavy tests",
       "sha": "dd18663450ec3ee38e35e3a4ee141932614e662c",
-      "status": "gaps"
+      "status": "meets_target"
     },
     {
       "counts": {
-        "below_target": 1,
+        "below_target": 0,
         "failed": 0,
-        "meets_target": 4,
+        "meets_target": 5,
         "not_measured": 0,
         "regressed": 0
       },
@@ -912,11 +1655,11 @@
       "metrics": [
         {
           "metric": "speed.cold_pilot_ms",
-          "status": "below_target",
+          "status": "meets_target",
           "target": 30000.0,
           "title": "Cold `ripr pilot` to first useful result",
           "unit": "ms",
-          "value": 80380.9674
+          "value": 10798.3441
         },
         {
           "metric": "speed.cold_pilot_peak_rss_mb",
@@ -924,7 +1667,7 @@
           "target": 1024.0,
           "title": "Cold `ripr pilot` peak memory",
           "unit": "MB",
-          "value": 582.5977
+          "value": 247.9766
         },
         {
           "metric": "speed.warm_check_ms",
@@ -932,7 +1675,7 @@
           "target": 2000.0,
           "title": "Warm `ripr check` on the last commit",
           "unit": "ms",
-          "value": 610.8685
+          "value": 234.057
         },
         {
           "metric": "speed.warm_check_peak_rss_mb",
@@ -940,7 +1683,7 @@
           "target": 512.0,
           "title": "Warm `ripr check` peak memory",
           "unit": "MB",
-          "value": 46.6445
+          "value": 36.207
         },
         {
           "metric": "trust.self_contradictions",
@@ -953,13 +1696,13 @@
       ],
       "note": "multi-crate CLI workspace",
       "sha": "020687a77d13146923333f0beb274eeabd54a270",
-      "status": "gaps"
+      "status": "meets_target"
     },
     {
       "counts": {
-        "below_target": 2,
+        "below_target": 0,
         "failed": 0,
-        "meets_target": 3,
+        "meets_target": 5,
         "not_measured": 0,
         "regressed": 0
       },
@@ -967,11 +1710,11 @@
       "metrics": [
         {
           "metric": "speed.cold_pilot_ms",
-          "status": "below_target",
+          "status": "meets_target",
           "target": 30000.0,
           "title": "Cold `ripr pilot` to first useful result",
           "unit": "ms",
-          "value": 100071.5922
+          "value": 17202.4441
         },
         {
           "metric": "speed.cold_pilot_peak_rss_mb",
@@ -979,7 +1722,7 @@
           "target": 1024.0,
           "title": "Cold `ripr pilot` peak memory",
           "unit": "MB",
-          "value": 990.3672
+          "value": 352.3203
         },
         {
           "metric": "speed.warm_check_ms",
@@ -987,7 +1730,7 @@
           "target": 2000.0,
           "title": "Warm `ripr check` on the last commit",
           "unit": "ms",
-          "value": 813.5383
+          "value": 253.855
         },
         {
           "metric": "speed.warm_check_peak_rss_mb",
@@ -995,20 +1738,20 @@
           "target": 512.0,
           "title": "Warm `ripr check` peak memory",
           "unit": "MB",
-          "value": 108.0195
+          "value": 49.8086
         },
         {
           "metric": "trust.self_contradictions",
-          "status": "below_target",
+          "status": "meets_target",
           "target": 0.0,
           "title": "Findings or seams whose own evidence contradicts itself",
           "unit": "findings",
-          "value": 1.0
+          "value": 0.0
         }
       ],
       "note": "large library workspace with generated test suites",
       "sha": "72d650cb0a880a01ab6dc2137c0888e8f89740f7",
-      "status": "gaps"
+      "status": "meets_target"
     },
     {
       "counts": {
@@ -1026,7 +1769,7 @@
           "target": 30000.0,
           "title": "Cold `ripr pilot` to first useful result",
           "unit": "ms",
-          "value": 237697.1106
+          "value": 77565.7261
         },
         {
           "metric": "speed.cold_pilot_peak_rss_mb",
@@ -1034,7 +1777,7 @@
           "target": 1024.0,
           "title": "Cold `ripr pilot` peak memory",
           "unit": "MB",
-          "value": 3467.1758
+          "value": 1594.8242
         },
         {
           "metric": "speed.warm_check_ms",
@@ -1042,7 +1785,7 @@
           "target": 2000.0,
           "title": "Warm `ripr check` on the last commit",
           "unit": "ms",
-          "value": 11498.0683
+          "value": 5143.303
         },
         {
           "metric": "speed.warm_check_peak_rss_mb",
@@ -1050,7 +1793,7 @@
           "target": 512.0,
           "title": "Warm `ripr check` peak memory",
           "unit": "MB",
-          "value": 1187.4492
+          "value": 590.4023
         },
         {
           "metric": "trust.self_contradictions",
@@ -1066,15 +1809,15 @@
       "status": "gaps"
     }
   ],
-  "revision": "c6ccf9d3f73a45ee586c298f45dfb5b537a51826",
+  "revision": "10e56371911a4e6ef8020fbcd7e5f2692fc9b7f1",
   "rollup": {
-    "below_target": 12,
+    "below_target": 9,
     "failed": 0,
-    "meets_target": 6,
-    "not_measured": 4,
+    "meets_target": 7,
+    "not_measured": 37,
     "regressed": 0
   },
-  "runner_class": "local-linux-x86_64-4cpu",
+  "runner_class": "github-hosted-linux-x86_64-4cpu-amd-epyc-7763-64-core-processor",
   "schema_version": "ripr-dx-scoreboard-v1",
   "tool": "ripr"
 }
