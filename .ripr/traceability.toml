@@ -1507,6 +1507,13 @@ tests = [
   "crates/ripr/src/app/pr_evidence.rs::tests::packet_maps_check_summary_to_routing_fields",
   "crates/ripr/src/app/pr_evidence.rs::tests::packet_names_limitation_when_severe_finding_has_no_safe_candidate",
   "crates/ripr/src/app/impacted_evidence.rs::tests::impacted_evidence_preserves_targeted_mutation_route",
+  "crates/ripr/src/app/impacted_evidence.rs::tests::refusing_run_removes_outputs_that_predate_it",
+  "crates/ripr/src/app/impacted_evidence.rs::tests::refusal_leaves_outputs_a_concurrent_run_wrote",
+  "crates/ripr/src/app/impacted_evidence.rs::tests::one_concurrent_output_is_left_with_singular_wording",
+  "crates/ripr/src/app/impacted_evidence.rs::tests::a_newer_markdown_keeps_its_unchanged_json_partner",
+  "crates/ripr/src/app/impacted_evidence.rs::tests::mixed_start_pair_from_an_interleaved_publish_keeps_both",
+  "crates/ripr/src/app/impacted_evidence.rs::tests::unreadable_output_metadata_is_reported_not_skipped",
+  "crates/ripr/src/app/impacted_evidence.rs::tests::output_with_unreadable_start_stamp_is_kept_and_reported",
   "xtask/src/main.rs::tests::dogfood_reports_are_advisory",
   "xtask/src/main.rs::tests::dogfood_gate_adoption_scenarios_have_checked_receipts",
 ]
