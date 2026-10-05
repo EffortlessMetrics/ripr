@@ -1766,11 +1766,26 @@ fn far_above_threshold_discounts() {
     }
 
     pub(super) fn ripr(dir: &Path, args: &[&str]) -> TestResult<Output> {
-        Ok(Command::new(env!("CARGO_BIN_EXE_ripr"))
-            .args(args)
-            .current_dir(dir)
-            .stdin(Stdio::null())
-            .output()?)
+        ripr_with_env(dir, args, &[], &[])
+    }
+
+    /// `ripr` with `removed` taken out of the inherited environment and
+    /// `set` added, so a test does not depend on the runner's own `GITHUB_*`.
+    pub(super) fn ripr_with_env(
+        dir: &Path,
+        args: &[&str],
+        removed: &[&str],
+        set: &[(&str, &str)],
+    ) -> TestResult<Output> {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_ripr"));
+        command.args(args).current_dir(dir).stdin(Stdio::null());
+        for name in removed {
+            command.env_remove(name);
+        }
+        for (name, value) in set {
+            command.env(name, value);
+        }
+        Ok(command.output()?)
     }
 
     fn path_with_ripr() -> TestResult<String> {
@@ -3643,4 +3658,59 @@ fn workflow_step_block(text: &str, name: &str) -> Option<String> {
         .map(|offset| marker.len() + offset)
         .unwrap_or(rest.len());
     Some(rest[..end].trim_end().to_string())
+}
+
+/// The generated summary step runs `ripr reports ci-summary --root .` with
+/// no setting flags, so the base ref, SARIF upload and comment mode reach
+/// the summary only through the step environment (#6723). Each setting is
+/// checked against the same run without it, so a summary that stops
+/// reading the environment fails here.
+#[cfg(unix)]
+#[test]
+fn ci_summary_reads_the_workflow_settings_from_the_environment() -> Result<(), Box<dyn Error>> {
+    let root = replay::unique_temp_dir("ci-summary-env")?;
+    let summary = |settings: &[(&str, &str)]| -> Result<String, Box<dyn Error>> {
+        let output = replay::ripr_with_env(
+            &root,
+            &["reports", "ci-summary", "--root", "."],
+            &[
+                "GITHUB_BASE_REF",
+                "GITHUB_EVENT_PATH",
+                "RIPR_UPLOAD_SARIF",
+                "RIPR_COMMENT_MODE",
+                "RIPR_GATE_BASELINE",
+            ],
+            settings,
+        )?;
+        if !output.status.success() {
+            return Err(format!(
+                "ci-summary failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )
+            .into());
+        }
+        Ok(String::from_utf8(output.stdout)?)
+    };
+    let unset = summary(&[]);
+    let set = summary(&[
+        ("GITHUB_BASE_REF", "release"),
+        ("RIPR_UPLOAD_SARIF", "true"),
+        ("RIPR_COMMENT_MODE", "inline"),
+    ]);
+    let _ = fs::remove_dir_all(&root);
+    let (unset, set) = (unset?, set?);
+
+    assert!(set.contains("--base origin/release --head HEAD"), "{set}");
+    assert!(set.contains("\n- Diff SARIF: "), "{set}");
+    assert!(set.contains("\n- Repo seam SARIF: "), "{set}");
+    assert!(!set.contains("disabled by `RIPR_UPLOAD_SARIF`"), "{set}");
+    assert!(set.contains("\n- Mode: `inline`"), "{set}");
+
+    assert!(unset.contains("--base origin/main --head HEAD"), "{unset}");
+    assert!(
+        unset.contains("\n- SARIF upload: disabled by `RIPR_UPLOAD_SARIF`"),
+        "{unset}"
+    );
+    assert!(unset.contains("\n- Mode: `off`"), "{unset}");
+    Ok(())
 }

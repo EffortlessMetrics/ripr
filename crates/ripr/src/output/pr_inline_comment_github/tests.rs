@@ -262,3 +262,53 @@ fn a_keep_only_or_empty_plan_sends_nothing() {
         assert!(requests.notes.is_empty(), "{empty}");
     }
 }
+
+#[test]
+fn only_cap_and_size_skips_count_as_additional_recommendations() {
+    let plan = json!({
+        "summary": {"safe_to_publish": true, "publishable": 1},
+        "operations": [{"operation": "create", "safe_to_publish": true, "dedupe_key": "k",
+            "placement": {"path": "a.rs", "line": 1}, "body": "x"}],
+        "skipped": [
+            {"skip_reason": "inline_comment_cap_reached"},
+            {"skip_reason": "comment_body_too_large"},
+            {"skip_reason": "outside_diff_hunk"},
+            {}
+        ]
+    });
+    let requests = publish_requests(&plan, "7", "abc");
+    assert_eq!(requests.requests.len(), 1);
+    let body = requests.requests[0].payload["body"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(
+        body.contains("\n\n2 additional recommendations remain in the generated"),
+        "{body}"
+    );
+}
+
+#[test]
+fn update_messages_and_notes_fold_line_breaks_in_the_key() {
+    let plan = json!({
+        "summary": {"safe_to_publish": true, "publishable": 2},
+        "operations": [
+            {"operation": "update", "safe_to_publish": true, "existing_comment_id": 9,
+             "dedupe_key": "a\r\n::error::x", "body": "card"},
+            {"operation": "update", "safe_to_publish": true,
+             "dedupe_key": "b\n::warning::y", "body": "card"}
+        ]
+    });
+    let requests = publish_requests(&plan, "7", "abc");
+    assert_eq!(requests.requests.len(), 1);
+    assert_eq!(
+        requests.requests[0].message,
+        "Updated RIPR inline comment: a  ::error::x"
+    );
+    assert_eq!(
+        requests.notes,
+        vec![
+            "Skipped a RIPR inline comment update without a numeric comment id: b ::warning::y"
+                .to_string()
+        ]
+    );
+}

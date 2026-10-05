@@ -126,32 +126,7 @@ pub(super) fn parse_pr_comments_requests_options(
         }
         i += 1;
     }
-    // The run replaces request files in this directory, so it must stay a
-    // relative path inside --root: no absolute path, no `..`.
-    if !options.out_dir.components().all(|part| {
-        matches!(
-            part,
-            std::path::Component::Normal(_) | std::path::Component::CurDir
-        )
-    }) || options
-        .out_dir
-        .components()
-        .all(|part| part == std::path::Component::CurDir)
-    {
-        return Err(format!(
-            "{REQUESTS} --out-dir must be a relative directory inside --root (got {}); the run replaces its request files",
-            options.out_dir.display()
-        ));
-    }
-    if options
-        .out_dir
-        .to_string_lossy()
-        .contains(['\t', '\r', '\n'])
-    {
-        return Err(format!(
-            "{REQUESTS} --out-dir cannot contain a tab or line break: the request manifest is tab-separated"
-        ));
-    }
+    validate_out_dir(&options.out_dir)?;
     // Both land in an API path or payload; refuse anything but the shapes
     // GitHub uses so a request can never address another endpoint.
     if options.pull_request.is_empty() || !options.pull_request.bytes().all(|b| b.is_ascii_digit())
@@ -168,6 +143,32 @@ pub(super) fn parse_pr_comments_requests_options(
         ));
     }
     Ok(options)
+}
+
+/// The run replaces request files in `--out-dir`, so it must stay a relative
+/// path inside `--root`: no absolute path, no `..`, not the root itself, and
+/// no tab or line break, since the request manifest is tab-separated.
+fn validate_out_dir(out_dir: &Path) -> Result<(), String> {
+    if !out_dir.components().all(|part| {
+        matches!(
+            part,
+            std::path::Component::Normal(_) | std::path::Component::CurDir
+        )
+    }) || out_dir
+        .components()
+        .all(|part| part == std::path::Component::CurDir)
+    {
+        return Err(format!(
+            "{REQUESTS} --out-dir must be a relative directory inside --root (got {}); the run replaces its request files",
+            out_dir.display()
+        ));
+    }
+    if out_dir.to_string_lossy().contains(['\t', '\r', '\n']) {
+        return Err(format!(
+            "{REQUESTS} --out-dir cannot contain a tab or line break: the request manifest is tab-separated"
+        ));
+    }
+    Ok(())
 }
 
 pub(super) fn pr_comments_requests(args: &[String]) -> Result<(), String> {
@@ -312,7 +313,26 @@ fn write_json(path: &Path, value: &Value, command: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_request_file, parse_pr_comments_requests_options, pr_comments_requests};
+    use super::{
+        is_request_file, parse_pr_comments_existing_options, parse_pr_comments_requests_options,
+        pr_comments_existing, pr_comments_requests, validate_out_dir,
+    };
+    use std::path::{Path, PathBuf};
+
+    fn strings(args: &[&str]) -> Vec<String> {
+        args.iter().map(|arg| arg.to_string()).collect()
+    }
+
+    fn scratch(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "ripr-pr-comments-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_nanos())
+                .unwrap_or(0)
+        ))
+    }
 
     #[test]
     fn only_request_files_are_cleared() {
@@ -463,5 +483,199 @@ mod tests {
         assert!(!leaked, "the manifest was written through the link");
         assert!(manifest_is_plain.map_err(|err| err.to_string())?);
         Ok(())
+    }
+
+    #[test]
+    fn out_dir_validation_is_lexical() {
+        for allowed in ["publish", "./out", "target/ripr/review/publish", "a/./b"] {
+            assert_eq!(validate_out_dir(Path::new(allowed)), Ok(()), "{allowed}");
+        }
+        for refused in [
+            "/tmp/publish",
+            "../sibling",
+            "target/../..",
+            ".",
+            "./.",
+            "",
+            "a\tb",
+            "a\rb",
+            "a\nb",
+        ] {
+            assert!(
+                validate_out_dir(Path::new(refused)).is_err(),
+                "{refused:?} was accepted"
+            );
+        }
+    }
+
+    /// Both values land in an API path or payload, so only a number and a
+    /// hex SHA pass.
+    #[test]
+    fn requests_refuse_a_pull_request_or_head_sha_of_another_shape() {
+        let parse = |pull_request: &str, head_sha: &str| {
+            parse_pr_comments_requests_options(&strings(&[
+                "--pull-request",
+                pull_request,
+                "--head-sha",
+                head_sha,
+            ]))
+        };
+        assert_eq!(parse("7", "abc123").err(), None);
+        for pull_request in ["7/../x", "", "-1", "7 ", "0x7"] {
+            let err = parse(pull_request, "abc").err();
+            assert!(
+                err.as_deref()
+                    .is_some_and(|err| err.contains("needs --pull-request N")),
+                "{pull_request:?}: {err:?}"
+            );
+        }
+        for head_sha in ["", "xyz", "abc/../x", "abc def", "g1"] {
+            let err = parse("7", head_sha).err();
+            assert!(
+                err.as_deref()
+                    .is_some_and(|err| err.contains("needs --head-sha SHA")),
+                "{head_sha:?}: {err:?}"
+            );
+        }
+        let missing = parse_pr_comments_requests_options(&strings(&["--head-sha", "abc"]));
+        assert!(
+            missing
+                .err()
+                .is_some_and(|err| err.contains("needs --pull-request N")),
+            "a missing --pull-request was accepted"
+        );
+    }
+
+    /// A rerun whose plan is not safe clears the request files an earlier
+    /// run left, so the workflow replays nothing stale.
+    #[test]
+    fn a_rerun_with_an_unsafe_plan_leaves_no_stale_requests() -> Result<(), String> {
+        use std::fs;
+        let root = scratch("stale");
+        let review = root.join("target/ripr/review");
+        let publish = review.join("publish");
+        fs::create_dir_all(&publish).map_err(|err| err.to_string())?;
+        let plan = review.join("comment-publish-plan.json");
+        let args = strings(&[
+            "--root",
+            &root.display().to_string(),
+            "--pull-request",
+            "7",
+            "--head-sha",
+            "abc",
+        ]);
+
+        fs::write(
+            &plan,
+            r#"{"summary": {"safe_to_publish": true, "publishable": 1},
+                "operations": [{"operation": "update", "safe_to_publish": true,
+                  "existing_comment_id": 9, "dedupe_key": "k", "body": "card"}]}"#,
+        )
+        .map_err(|err| err.to_string())?;
+        let first = pr_comments_requests(&args);
+        let first_wrote = publish.join("01-patch.json").is_file();
+        let first_manifest = fs::read_to_string(publish.join("requests.tsv"));
+
+        fs::write(&plan, r#"{"summary": {"safe_to_publish": false}}"#)
+            .map_err(|err| err.to_string())?;
+        fs::write(publish.join("notes.txt"), "mine\n").map_err(|err| err.to_string())?;
+        let rerun = pr_comments_requests(&args);
+        let stale = publish.join("01-patch.json").exists();
+        let manifest = fs::read_to_string(publish.join("requests.tsv"));
+        let kept = fs::read_to_string(publish.join("notes.txt"));
+        let _ = fs::remove_dir_all(&root);
+
+        first?;
+        assert!(first_wrote, "the first run wrote no PATCH request");
+        assert!(
+            first_manifest
+                .map_err(|err| err.to_string())?
+                .starts_with("PATCH\tpulls/comments/9\t")
+        );
+        rerun?;
+        assert!(!stale, "the rerun left 01-patch.json behind");
+        assert_eq!(manifest.map_err(|err| err.to_string())?, "");
+        assert_eq!(kept.map_err(|err| err.to_string())?, "mine\n");
+        Ok(())
+    }
+
+    #[test]
+    fn existing_reads_a_raw_file_and_writes_the_named_output() -> Result<(), String> {
+        use std::fs;
+        let root = scratch("existing");
+        fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+        fs::write(
+            root.join("pages.json"),
+            r#"[[{"id": 4, "user": {"login": "github-actions[bot]", "type": "Bot"},
+                 "path": "a.rs", "line": 3, "body": "<!-- ripr:dedupe=k -->"},
+                {"id": 5, "user": {"login": "someone", "type": "User"},
+                 "path": "a.rs", "line": 3, "body": "<!-- ripr:dedupe=k -->"}]]"#,
+        )
+        .map_err(|err| err.to_string())?;
+        let result = pr_comments_existing(&strings(&[
+            "--root",
+            &root.display().to_string(),
+            "--raw",
+            "pages.json",
+            "--out",
+            "out/existing.json",
+        ]));
+        let written = fs::read_to_string(root.join("out/existing.json"));
+        let default_written = root
+            .join("target/ripr/review/existing-comments.json")
+            .exists();
+        let missing = pr_comments_existing(&strings(&[
+            "--root",
+            &root.display().to_string(),
+            "--raw",
+            "absent.json",
+        ]));
+        let _ = fs::remove_dir_all(&root);
+
+        result?;
+        let written: serde_json::Value =
+            serde_json::from_str(&written.map_err(|err| err.to_string())?)
+                .map_err(|err| err.to_string())?;
+        assert_eq!(written["comments"].as_array().map(Vec::len), Some(1));
+        assert_eq!(written["comments"][0]["comment_id"], 4);
+        assert!(!default_written, "--out was ignored");
+        assert!(
+            missing
+                .err()
+                .is_some_and(|err| err.contains("could not read") && err.contains("absent.json"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn existing_parses_its_flags_and_refuses_unknown_ones() {
+        let parsed = parse_pr_comments_existing_options(&strings(&[
+            "--root", "r", "--raw", "-", "--out", "o.json",
+        ]));
+        assert_eq!(
+            parsed.map(|options| (options.root, options.raw, options.out)),
+            Ok((
+                PathBuf::from("r"),
+                PathBuf::from("-"),
+                PathBuf::from("o.json")
+            ))
+        );
+        let unknown = parse_pr_comments_existing_options(&strings(&["--plan", "x"]));
+        assert!(
+            unknown
+                .err()
+                .is_some_and(|err| err.contains("pr-comments existing") && err.contains("--plan")),
+            "an unknown flag was accepted"
+        );
+        assert!(
+            parse_pr_comments_existing_options(&strings(&["--out"]))
+                .err()
+                .is_some()
+        );
+        assert!(
+            parse_pr_comments_existing_options(&strings(&["--raw", ""]))
+                .err()
+                .is_some()
+        );
     }
 }

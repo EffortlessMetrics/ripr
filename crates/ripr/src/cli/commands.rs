@@ -7120,6 +7120,87 @@ language = "rust"
         Ok(())
     }
 
+    /// The reverse of the setting checks above (#6723): every setting,
+    /// permission, job setting and step that docs/CI.md describes for the
+    /// generated workflow is still in it, so removing one from the template
+    /// while the doc still explains it fails here. A bullet this test cannot
+    /// bind fails too, so a new doc entry has to be added here.
+    #[test]
+    fn ci_doc_describes_only_what_the_generated_workflow_has() -> Result<(), String> {
+        let workflow = generated_github_actions_workflow();
+        let workflow_lines: Vec<&str> = workflow.lines().map(str::trim_start).collect();
+        let doc = include_str!("../../../../docs/CI.md");
+        let section = doc
+            .split_once("#### Generated workflow settings and steps\n")
+            .and_then(|(_, rest)| rest.split_once("\nFor a first rollout"))
+            .map(|(section, _)| section)
+            .ok_or("docs/CI.md has no generated workflow settings section ending at \"For a first rollout\"")?;
+        let mut entries = 0usize;
+        for entry in section.lines().filter_map(|line| line.strip_prefix("- ")) {
+            let step = entry
+                .strip_prefix("**")
+                .and_then(|rest| rest.split_once("**"))
+                .map(|(step, _)| step);
+            let setting = entry
+                .strip_prefix('`')
+                .and_then(|rest| rest.split_once('`'))
+                .map(|(setting, _)| setting);
+            let present = match (step, setting) {
+                // The two unnamed steps are documented by what they use.
+                (Some("Checkout"), _) => workflow_lines
+                    .iter()
+                    .any(|line| line.starts_with("- uses: actions/checkout@")),
+                (Some("actions/cache"), _) => workflow_lines
+                    .iter()
+                    .any(|line| line.starts_with("- uses: actions/cache@")),
+                (Some(name), _) => {
+                    let expected = format!("- name: {name}");
+                    workflow_lines.iter().any(|line| *line == expected)
+                }
+                (None, Some("labeled")) => workflow_lines.iter().any(|line| {
+                    line.starts_with("types: [")
+                        && line.contains(" labeled,")
+                        && line.contains(" unlabeled]")
+                }),
+                (None, Some(setting)) if setting.starts_with("RIPR_") => {
+                    let expected = format!("{setting}:");
+                    workflow_lines
+                        .iter()
+                        .any(|line| line.starts_with(&expected))
+                }
+                (None, Some(permission)) => workflow_lines
+                    .iter()
+                    .any(|line| line.split(" #").next().map(str::trim_end) == Some(permission)),
+                (None, None) if entry.starts_with("Every run step is bash") => {
+                    workflow.contains("\ndefaults:\n  run:\n    shell: bash\n")
+                }
+                (None, None) if entry.starts_with("One run per pull request") => {
+                    workflow.contains("\nconcurrency:\n")
+                        && workflow_lines.contains(&"cancel-in-progress: true")
+                }
+                (None, None) if entry.starts_with("The job is `continue-on-error`") => {
+                    workflow_lines.iter().any(|line| {
+                        line.starts_with("continue-on-error: ${{ vars.RIPR_GATE_MODE == '' ")
+                    })
+                }
+                (None, None) => {
+                    return Err(format!(
+                        "docs/CI.md entry is not bound to the generated workflow; add it to this test: {entry}"
+                    ));
+                }
+            };
+            assert!(
+                present,
+                "docs/CI.md describes `{entry}`, which the generated workflow no longer has"
+            );
+            entries += 1;
+        }
+        // Today's inventory: 4 settings, 6 permission and job entries and 8
+        // steps. Fewer means the section stopped being read or lost an entry.
+        assert!(entries >= 18, "read only {entries} entries:\n{section}");
+        Ok(())
+    }
+
     #[test]
     fn init_generated_github_workflow_is_advisory() -> Result<(), String> {
         let workflow = generated_github_actions_workflow();
