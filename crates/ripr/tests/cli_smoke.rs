@@ -1144,7 +1144,7 @@ fn agent_brief_sample_workspace(
     std::fs::create_dir_all(&root)?;
     std::fs::write(
         root.join("Cargo.toml"),
-        "[package]\nname = \"agent-brief-sample\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        "[package]\nname = \"agent-brief-sample\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n",
     )?;
     std::fs::create_dir_all(root.join("src"))?;
     std::fs::create_dir_all(root.join("tests"))?;
@@ -14797,7 +14797,7 @@ fn make_temp_workspace_with_production_seam_and_report_opt(
     std::fs::create_dir_all(&dir).map_err(|e| format!("create_dir_all: {e}"))?;
     std::fs::write(
         dir.join("Cargo.toml"),
-        "[package]\nname=\"ripr-repo-badge-fixture\"\nversion=\"0.1.0\"\nedition=\"2024\"\n",
+        "[package]\nname=\"ripr-repo-badge-fixture\"\nversion=\"0.1.0\"\nedition=\"2024\"\n\n[workspace]\n",
     )
     .map_err(|e| format!("write Cargo.toml: {e}"))?;
     std::fs::create_dir_all(dir.join("src")).map_err(|e| format!("create src: {e}"))?;
@@ -14823,7 +14823,7 @@ fn make_temp_workspace_with_suppressions(
     std::fs::create_dir_all(&dir).map_err(|e| format!("create_dir_all: {e}"))?;
     std::fs::write(
         dir.join("Cargo.toml"),
-        "[package]\nname=\"ripr-badge-plus-fixture\"\nversion=\"0.1.0\"\nedition=\"2024\"\n",
+        "[package]\nname=\"ripr-badge-plus-fixture\"\nversion=\"0.1.0\"\nedition=\"2024\"\n\n[workspace]\n",
     )
     .map_err(|e| format!("write Cargo.toml: {e}"))?;
     std::fs::create_dir_all(dir.join("src")).map_err(|e| format!("create src: {e}"))?;
@@ -16241,7 +16241,7 @@ fn make_two_seam_workspace() -> Result<PathBuf, String> {
     std::fs::create_dir_all(dir.join("src")).map_err(|e| format!("create src: {e}"))?;
     std::fs::write(
         dir.join("Cargo.toml"),
-        "[package]\nname=\"ripr-seam-limit-fixture\"\nversion=\"0.1.0\"\nedition=\"2024\"\n",
+        "[package]\nname=\"ripr-seam-limit-fixture\"\nversion=\"0.1.0\"\nedition=\"2024\"\n\n[workspace]\n",
     )
     .map_err(|e| format!("write Cargo.toml: {e}"))?;
     // Two predicate-boundary functions -> at least 2 seams.

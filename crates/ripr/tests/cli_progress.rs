@@ -332,7 +332,7 @@ fn repo_fixture_root(tag: &str) -> Result<PathBuf, String> {
     std::fs::write(
         root.join("Cargo.toml"),
         format!(
-            "[package]\nname=\"ripr-cli-progress-{tag}\"\nversion=\"0.1.0\"\nedition=\"2024\"\n"
+            "[package]\nname=\"ripr-cli-progress-{tag}\"\nversion=\"0.1.0\"\nedition=\"2024\"\n\n[workspace]\n"
         ),
     )
     .map_err(|error| format!("write Cargo.toml: {error}"))?;

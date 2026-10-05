@@ -7114,14 +7114,20 @@ language = "rust"
             "ripr agent packet",
             "ripr agent status",
             "ripr agent review-summary",
-            "ripr check --root . --base origin/main --format json > target/ripr/pr/check.json",
-            "--check-output target/ripr/pr/check.json",
+            "ripr pr-evidence --root . --base origin/main --head HEAD",
+            "ripr review-comments --root . --base origin/main --head HEAD --check-output target/ripr/pr/check.json --out target/ripr/review/comments.json",
         ] {
             assert!(
                 packet.contains(command),
                 "packet runs no `{command}`:\n{packet}"
             );
         }
+        assert!(
+            !packet.contains(
+                "ripr check --root . --base origin/main --format json > target/ripr/pr/check.json"
+            ),
+            "packet must use the whole PR-evidence producer before strict review-comments:\n{packet}"
+        );
         assert!(workflow.contains("name: Capture existing RIPR inline comments"));
         assert!(workflow.contains("name: Publish RIPR inline comments"));
         assert!(workflow.contains("name: Add RIPR advisory summary"));
