@@ -9977,6 +9977,60 @@ fn doctor_json_reports_an_unpinned_generated_workflow_as_advisory() -> Result<()
     Ok(())
 }
 
+fn assert_doctor_in_owned_invocation(args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
+    let isolated = IsolatedFixtureWorkspace(make_temp_workspace(None)?);
+    init_git_fixture_repo(isolated.path())?;
+    let invoke = || run_command(env!("CARGO_BIN_EXE_ripr"), Some(isolated.path()), args);
+    let config_path = isolated.path().join("ripr.toml");
+    assert!(
+        std::fs::symlink_metadata(&config_path)
+            .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound),
+        "owned Doctor fixture must begin without ripr.toml"
+    );
+    {
+        let mut config = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&config_path)?;
+        config.write_all(b"[languages]\nenabled = [\"javascript\"]\n")?;
+    }
+    let refusal = invoke();
+    std::fs::remove_file(&config_path)?;
+    let refusal = refusal?;
+    assert_failure(&refusal);
+    let diagnostic = format!(
+        "{}{}",
+        String::from_utf8_lossy(&refusal.stdout),
+        String::from_utf8_lossy(&refusal.stderr)
+    );
+    assert!(
+        diagnostic.contains("unknown language `javascript`"),
+        "Doctor must read the invocation-owned configuration: {diagnostic}"
+    );
+    let output = invoke()?;
+    assert_success(&output);
+    if args.contains(&"--json") {
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+        assert_eq!(report["root"], ".");
+        assert_eq!(report["status"], "pass");
+    } else {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.lines().any(|line| line == "- root: ."));
+        assert!(stdout.contains("Config: not found; using built-in defaults"));
+    }
+    Ok(())
+}
+
+#[test]
+fn doctor_accepts_default_root() -> Result<(), Box<dyn std::error::Error>> {
+    assert_doctor_in_owned_invocation(&["doctor"])
+}
+
+#[test]
+fn doctor_json_flag_accepts_explicit_root() -> Result<(), Box<dyn std::error::Error>> {
+    assert_doctor_in_owned_invocation(&["doctor", "--json", "--root", "."])
+}
+
 #[test]
 fn doctor_json_reports_current_schema() -> Result<(), String> {
     let workspace = make_temp_workspace(None)?;

@@ -2581,11 +2581,6 @@ mod tests {
     }
 
     #[test]
-    fn doctor_accepts_default_root() {
-        assert_eq!(doctor(&args(&[])), Ok(()));
-    }
-
-    #[test]
     fn doctor_core_report_fails_closed_for_invalid_config() -> Result<(), String> {
         let dir = unique_command_test_dir("doctor-invalid-config");
         std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
@@ -2761,11 +2756,6 @@ mod tests {
             return Err("human doctor unexpectedly passed for a file root".to_string());
         }
         Ok(())
-    }
-
-    #[test]
-    fn doctor_json_flag_accepts_explicit_root() -> Result<(), String> {
-        doctor(&args(&["--json", "--root", "."]))
     }
 
     // --- preview_language_enable_suggestions tests ---
