@@ -19,6 +19,11 @@
 //! `--input <path>`, a JSON file the caller produces (for example
 //! `gh run list --workflow "Routed Rust Small" --json ... > runs.json`).
 
+//! The exclusive --hard-enforcement-readiness mode observes bounded local
+//! Linux capability metadata through crate::run. It launches no processes,
+//! changes no settings, and always records NOT_READY/full trial NOT_RUN until
+//! real family, storage and streaming enforcement controls are established.
+
 use crate::run::{run_output_optional, run_output_owned};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -29,8 +34,7 @@ const CI_BUDGET_SCHEMA_VERSION: &str = "0.1";
 const CI_BUDGET_STATE: &str = "advisory-report-only";
 const CI_BUDGET_JSON: &str = "ci-budget.json";
 const CI_BUDGET_MD: &str = "ci-budget.md";
-const CI_BUDGET_USAGE: &str =
-    "usage: cargo xtask ci-budget [--workflow <name>] [--limit <n>] [--input <path>]";
+const CI_BUDGET_USAGE: &str = "usage: cargo xtask ci-budget [--workflow <name>] [--limit <n>] [--input <path>] | --hard-enforcement-readiness";
 
 /// The impl lanes a routed run can land on, parsed from job names. The route
 /// and result coordinator jobs are tracked separately and are never counted
@@ -38,6 +42,16 @@ const CI_BUDGET_USAGE: &str =
 const IMPL_LANES: &[&str] = &["cx43", "cpx42", "cx53", "github"];
 
 pub(crate) fn ci_budget(args: &[String]) -> Result<(), String> {
+    if hard_enforcement_observation_mode(args)? {
+        let report = crate::run::hard_enforcement_readiness_report()?;
+        crate::write_report("native-calibration-readiness.json", &report)?;
+        println!("Native calibration readiness: NOT_READY; full trial: NOT_RUN");
+        println!("Wrote target/ripr/reports/native-calibration-readiness.json");
+        println!("BEGIN RIPR NATIVE CALIBRATION READINESS");
+        print!("{report}");
+        println!("END RIPR NATIVE CALIBRATION READINESS");
+        return Ok(());
+    }
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         println!("{CI_BUDGET_USAGE}");
         return Ok(());
@@ -64,6 +78,21 @@ pub(crate) fn ci_budget(args: &[String]) -> Result<(), String> {
     println!("Wrote target/ripr/reports/{CI_BUDGET_JSON}");
     println!("Wrote target/ripr/reports/{CI_BUDGET_MD}");
     Ok(())
+}
+
+// This mode reports observations only. It cannot authorize a calibration
+// run and must not mix with the existing GitHub/offline budget-report route.
+fn hard_enforcement_observation_mode(args: &[String]) -> Result<bool, String> {
+    if !args.iter().any(|arg| arg == "--hard-enforcement-readiness") {
+        return Ok(false);
+    }
+    if args.len() != 1 {
+        return Err(
+            "ci-budget --hard-enforcement-readiness is an exclusive read-only observation mode"
+                .to_string(),
+        );
+    }
+    Ok(true)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -846,6 +875,50 @@ fn markdown_cell(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn readiness_mode_is_exclusive_and_never_selects_live_run_collection() -> Result<(), String> {
+        assert!(hard_enforcement_observation_mode(&[
+            "--hard-enforcement-readiness".to_string()
+        ])?);
+        assert!(!hard_enforcement_observation_mode(&[
+            "--input".to_string(),
+            "runs.json".to_string()
+        ])?);
+        assert!(!hard_enforcement_observation_mode(&[])?);
+        for args in [
+            vec![
+                "--hard-enforcement-readiness".to_string(),
+                "--input".to_string(),
+                "runs.json".to_string(),
+            ],
+            vec![
+                "--workflow".to_string(),
+                "CI".to_string(),
+                "--hard-enforcement-readiness".to_string(),
+            ],
+            vec![
+                "--hard-enforcement-readiness".to_string(),
+                "--help".to_string(),
+            ],
+        ] {
+            match hard_enforcement_observation_mode(&args) {
+                Err(error) => assert_eq!(
+                    error,
+                    "ci-budget --hard-enforcement-readiness is an exclusive read-only observation mode"
+                ),
+                Ok(_) => return Err("mixed readiness/report mode accepted".to_string()),
+            }
+            match ci_budget(&args) {
+                Err(error) => assert_eq!(
+                    error,
+                    "ci-budget --hard-enforcement-readiness is an exclusive read-only observation mode"
+                ),
+                Ok(()) => return Err("live readiness route accepted mixed modes".to_string()),
+            }
+        }
+        Ok(())
+    }
 
     fn run_list_sample() -> &'static str {
         r#"[

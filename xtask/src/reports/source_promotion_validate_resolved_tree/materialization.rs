@@ -219,16 +219,113 @@ fn run_required_command(
             {
                 command_receipt(command, "passed", exit_code, Some(&evidence), None)
             } else {
+                let failure_reason = required_command_failure_reason(root, command, index, &output);
                 command_receipt(
                     command,
                     "failed",
                     exit_code,
                     Some(&evidence),
-                    Some("command exited non-zero"),
+                    Some(&failure_reason),
                 )
             }
         }
         Err(reason) => command_receipt(command, "unavailable", None, None, Some(&reason)),
+    }
+}
+
+// Retain policy failure context before the disposable checkout is removed.
+// This only enriches an already-failed receipt; it cannot earn a passed state.
+fn required_command_failure_reason(
+    root: &Path,
+    command: &str,
+    index: usize,
+    output: &TimedBoundedOutput,
+) -> String {
+    const CONTEXT_LIMIT: usize = 16 * 1024;
+    if command != "check-workflows" {
+        return "command exited non-zero".to_string();
+    }
+    let report = bounded_workflow_failure_report(root);
+    let (stderr, stderr_truncated) = bounded_failure_text(output.stderr.as_bytes(), 4 * 1024);
+    let (stdout, stdout_truncated) = bounded_failure_text(output.stdout.as_bytes(), 2 * 1024);
+    let (cwd, cwd_truncated) = bounded_failure_text(root.to_string_lossy().as_bytes(), 512);
+    let context = format!(
+        "command=check-workflows cwd={cwd:?} cwd_truncated={cwd_truncated}\n\
+         workflow_report: {report}\n\
+         command_stderr path=commands/{:02}-check-workflows.stderr.log \
+         capture_truncated={} excerpt_truncated={stderr_truncated} text={stderr:?}\n\
+         command_stdout path=commands/{:02}-check-workflows.stdout.log \
+         capture_truncated={} excerpt_truncated={stdout_truncated} text={stdout:?}",
+        index + 1,
+        output.stderr_truncated,
+        index + 1,
+        output.stdout_truncated,
+    );
+    let (context, truncated) = bounded_failure_text(context.as_bytes(), CONTEXT_LIMIT);
+    format!(
+        "command exited non-zero; bounded_failure_context bytes_limit={CONTEXT_LIMIT} \
+         truncated={truncated}\n{context}"
+    )
+}
+
+fn bounded_failure_text(bytes: &[u8], limit: usize) -> (String, bool) {
+    let prefix = &bytes[..bytes.len().min(limit)];
+    let mut text = String::from_utf8_lossy(prefix).into_owned();
+    let mut end = text.len().min(limit);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    let truncated = bytes.len() > limit || end < text.len();
+    text.truncate(end);
+    (text, truncated)
+}
+
+fn bounded_workflow_failure_report(root: &Path) -> String {
+    const REPORT_LIMIT: usize = 8 * 1024;
+    const REPORT_PATH: &str = "target/ripr/reports/workflows.md";
+    let read_report = || -> Result<Vec<u8>, String> {
+        let components = ["target", "ripr", "reports", "workflows.md"];
+        let mut path = root.to_path_buf();
+        for (index, component) in components.iter().enumerate() {
+            path.push(component);
+            let metadata = fs::symlink_metadata(&path)
+                .map_err(|error| format!("report path metadata: {error}"))?;
+            if metadata.file_type().is_symlink() {
+                return Err(format!("report component {component} is a symlink"));
+            }
+            if (index + 1 == components.len() && !metadata.is_file())
+                || (index + 1 < components.len() && !metadata.is_dir())
+            {
+                return Err(format!(
+                    "report component {component} has an unexpected type"
+                ));
+            }
+        }
+        let file = File::open(&path).map_err(|error| format!("open report: {error}"))?;
+        let mut bytes = Vec::with_capacity(REPORT_LIMIT + 1);
+        file.take((REPORT_LIMIT + 1) as u64)
+            .read_to_end(&mut bytes)
+            .map_err(|error| format!("read report: {error}"))?;
+        Ok(bytes)
+    };
+    match read_report() {
+        Ok(bytes) => {
+            let raw_prefix = &bytes[..bytes.len().min(REPORT_LIMIT)];
+            let (text, truncated) = bounded_failure_text(&bytes, REPORT_LIMIT);
+            format!(
+                "path={REPORT_PATH} read_bytes={} bytes_limit={REPORT_LIMIT} \
+                 truncated={truncated} prefix_sha256={} text={text:?}",
+                bytes.len(),
+                digest_bytes(raw_prefix),
+            )
+        }
+        Err(error) => {
+            let (error, truncated) = bounded_failure_text(error.as_bytes(), 512);
+            format!(
+                "path={REPORT_PATH} bytes_limit={REPORT_LIMIT} \
+                 read_error_truncated={truncated} read_error={error:?}"
+            )
+        }
     }
 }
 

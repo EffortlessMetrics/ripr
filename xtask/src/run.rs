@@ -1,3 +1,7 @@
+mod hard_enforcement_readiness;
+
+pub(crate) use hard_enforcement_readiness::hard_enforcement_readiness_report;
+
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
