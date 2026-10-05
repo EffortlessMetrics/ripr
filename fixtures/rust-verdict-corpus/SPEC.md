@@ -37,7 +37,8 @@ report must equal `expected/report.json`.
 
 ## Must Not
 
-- Run mutation testing, `cargo test`, or network access.
+- Run mutation testing, `cargo test`, or network access (`check` and
+  `report`; only `relabel` runs test commands, with cargo offline).
 - Treat the rates as a population estimate.
 - Edit a retained subject file; a changed byte fails its sha256.
 
@@ -48,3 +49,14 @@ differing line. Read `target/ripr/reports/verdict-corpus/report.md`. A row
 marked `changed_since_labeling` must be re-checked against the full pinned
 checkout (for an authored crate, the stored crate itself) before the expected report is refreshed with
 `cargo xtask verdict-corpus report --out fixtures/rust-verdict-corpus/expected`.
+
+## Re-deriving truth
+
+`cargo xtask verdict-corpus relabel --sample 10` replays ten cases'
+mutants against their own test commands and fails on any drift from the
+label; `--case <id>` replays one. Each mutant of a behavior-preserving rewrite
+must carry `mutated_line`, the trimmed anchor line with the mutant applied,
+and `failing_test` must be one exact test name. Upstream cases replay with
+`--checkouts <dir>` holding `<dir>/<subject_id>` at the pinned commit, with
+its dependencies already fetched, because cargo runs offline. Run it
+on every new or relabeled case before opening the PR.

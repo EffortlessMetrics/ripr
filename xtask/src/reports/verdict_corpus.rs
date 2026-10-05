@@ -193,6 +193,12 @@ impl TruthState {
 #[serde(deny_unknown_fields)]
 pub(crate) struct Mutant {
     pub(crate) replacement: String,
+    /// The anchor line, trimmed, with this mutant applied: what
+    /// `verdict-corpus relabel` writes over the edited anchor to replay it.
+    /// Empty removes the statement. Required for a behavior-preserving
+    /// rewrite; absent for a behavior change, whose mutant is the edit.
+    #[serde(default)]
+    pub(crate) mutated_line: Option<String>,
     pub(crate) outcome: MutantOutcome,
     pub(crate) failing_test: Option<String>,
     pub(crate) equivalence_review: String,
@@ -1211,6 +1217,11 @@ pub(crate) fn case_violations(case: &Case, subject: &Subject, dir: &Path) -> Vec
             violations.push(format!("case `{id}` has an empty `{field}`"));
         }
     }
+    if !case.truth.test_command.trim().is_empty()
+        && let Err(err) = super::verdict_corpus_relabel::test_command_args(&case.truth.test_command)
+    {
+        violations.push(format!("case `{id}` cannot be replayed: {err}"));
+    }
     if case.truth.method != "runtime_mutant_kill" {
         violations.push(format!(
             "case `{id}` truth method `{}` is not runtime_mutant_kill",
@@ -1297,6 +1308,31 @@ pub(crate) fn case_violations(case: &Case, subject: &Subject, dir: &Path) -> Vec
                 if mutant.failing_test.is_some() { "names" } else { "does not name" }
             ));
         }
+        if let Some(name) = &mutant.failing_test
+            && (name.is_empty() || name.contains(char::is_whitespace) || name.contains(','))
+        {
+            violations.push(format!(
+                "case `{id}` mutant `{}` failing_test `{name}` is not one test name; name one test that failed and put any other observations in equivalence_review",
+                mutant.replacement
+            ));
+        }
+        match (case.edit_kind, mutant.mutated_line.as_deref()) {
+            (EditKind::BehaviorPreservingRewrite, None) => violations.push(format!(
+                "case `{id}` mutant `{}` has no mutated_line; give the trimmed anchor line with the mutant applied (empty removes the statement) so verdict-corpus relabel can replay it",
+                mutant.replacement
+            )),
+            (EditKind::BehaviorChange, Some(_)) => violations.push(format!(
+                "case `{id}` is a behavior_change, whose mutant is the edit itself; remove mutated_line from mutant `{}`",
+                mutant.replacement
+            )),
+            (_, Some(line)) if line.contains('\n') || line != line.trim() => {
+                violations.push(format!(
+                    "case `{id}` mutant `{}` mutated_line must be one trimmed line",
+                    mutant.replacement
+                ));
+            }
+            _ => {}
+        }
     }
     let mut unsafe_path = false;
     for (field, path) in [("diff", &case.diff), ("anchor.file", &case.anchor.file)] {
@@ -1343,6 +1379,20 @@ pub(crate) fn case_violations(case: &Case, subject: &Subject, dir: &Path) -> Vec
                     case.anchor.line, case.anchor.file
                 ));
             }
+            let anchor_text = patches
+                .iter()
+                .filter(|patch| patch.path == case.anchor.file)
+                .find_map(|patch| patch.added_line_text(case.anchor.line));
+            if let Some(anchor_text) = anchor_text {
+                for mutant in mutants {
+                    if mutant.mutated_line.as_deref() == Some(anchor_text.trim()) {
+                        violations.push(format!(
+                            "case `{id}` mutant `{}` mutated_line equals the edited anchor line, so it changes nothing",
+                            mutant.replacement
+                        ));
+                    }
+                }
+            }
         }
         Err(err) => violations.push(format!("case `{id}` diff: {err}")),
     }
@@ -1363,6 +1413,21 @@ pub(crate) struct Hunk {
 }
 
 impl FilePatch {
+    /// The text the patch adds at new-file `line`, if it adds that line.
+    pub(crate) fn added_line_text(&self, line: usize) -> Option<&str> {
+        for hunk in &self.hunks {
+            let mut at = hunk.new_start;
+            for (kind, text) in &hunk.lines {
+                match kind {
+                    '+' if at == line => return Some(text),
+                    '+' | ' ' => at += 1,
+                    _ => {}
+                }
+            }
+        }
+        None
+    }
+
     pub(crate) fn added_lines(&self) -> BTreeSet<usize> {
         let mut added = BTreeSet::new();
         for hunk in &self.hunks {
@@ -1547,7 +1612,7 @@ pub(crate) fn apply_patch(original: &str, patch: &FilePatch) -> Result<String, S
 }
 
 /// Copy a stored subject, restoring upstream `.rs` names.
-fn copy_tree(from: &Path, to: &Path) -> Result<(), String> {
+pub(crate) fn copy_tree(from: &Path, to: &Path) -> Result<(), String> {
     for rel in files_under(from)? {
         let logical = logical_path(&rel).ok_or_else(|| {
             format!(
@@ -1576,6 +1641,15 @@ fn materialize(dir: &Path, case: &Case, work_root: &Path) -> Result<(PathBuf, Pa
         Err(err) => return Err(format!("clear {}: {err}", normalize_path(&work))),
     }
     copy_tree(&dir.join("subjects").join(&case.subject_id), &work)?;
+    materialize_edit(dir, case, &work)?;
+    let absolute = |p: &Path| {
+        std::path::absolute(p).map_err(|err| format!("resolve {}: {err}", normalize_path(p)))
+    };
+    Ok((absolute(&work)?, absolute(&dir.join(&case.diff))?))
+}
+
+/// Apply the case edit to a run-owned tree and return the anchored file.
+pub(crate) fn materialize_edit(dir: &Path, case: &Case, work: &Path) -> Result<PathBuf, String> {
     let diff_path = dir.join(&case.diff);
     let context = |err: String| {
         format!(
@@ -1595,10 +1669,7 @@ fn materialize(dir: &Path, case: &Case, work_root: &Path) -> Result<(PathBuf, Pa
         fs::write(&target, patched)
             .map_err(|err| format!("write {}: {err}", normalize_path(&target)))?;
     }
-    let absolute = |p: &Path| {
-        std::path::absolute(p).map_err(|err| format!("resolve {}: {err}", normalize_path(p)))
-    };
-    Ok((absolute(&work)?, absolute(&diff_path)?))
+    Ok(work.join(&case.anchor.file))
 }
 
 fn run_case(dir: &Path, case: &Case, work_root: &Path) -> Result<(Value, Option<String>), String> {
@@ -1667,7 +1738,7 @@ fn run_corpus(dir: &Path, corpus: &Corpus, work_root: &Path) -> Result<Report, S
     build_report(corpus, &checks, &anchor_lines)
 }
 
-fn validated_corpus(dir: &Path) -> Result<Corpus, String> {
+pub(crate) fn validated_corpus(dir: &Path) -> Result<Corpus, String> {
     let corpus = load_corpus(dir)?;
     let violations = validate(&corpus, dir);
     if violations.is_empty() {
@@ -1691,6 +1762,9 @@ fn first_differing_line(expected: &str, actual: &str) -> String {
 
 pub(crate) fn verdict_corpus(args: &[String]) -> Result<(), String> {
     let dir = Path::new(CORPUS_DIR);
+    if args.first().map(String::as_str) == Some("relabel") {
+        return super::verdict_corpus_relabel::relabel(&args[1..]);
+    }
     let mut iter = args.iter();
     let sub = iter.next().map(String::as_str).unwrap_or("check");
     let mut out = PathBuf::from(DEFAULT_OUT);
@@ -1786,7 +1860,7 @@ pub(crate) fn verdict_corpus(args: &[String]) -> Result<(), String> {
             Ok(())
         }
         other => Err(format!(
-            "verdict-corpus: unknown subcommand `{other}` (expected validate, check, or report)"
+            "verdict-corpus: unknown subcommand `{other}` (expected validate, check, report, or relabel)"
         )),
     }
 }

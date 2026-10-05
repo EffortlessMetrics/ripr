@@ -451,6 +451,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "verdict-corpus validate",
         "verdict-corpus check [--out <dir>]",
         "verdict-corpus report [--out <dir>]",
+        "verdict-corpus relabel [--sample <n> [--seed <s>] | --case <id>...] [--checkouts <dir>] [--repeat <k>] [--timeout-secs <t>] [--out <dir>] [--work-dir <dir>]",
         "test-oracle-report",
         "check-test-oracles",
         "test-efficiency-report",
@@ -1040,6 +1041,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             false,
             false,
             "Same scoring as verdict-corpus check without the expected-report comparison. Writes depending on --out: by default under target/ripr/reports/verdict-corpus; --out fixtures/rust-verdict-corpus/expected refreshes the reviewed expected report.",
+        ),
+        command_entry(
+            "verdict-corpus relabel [--sample <n> [--seed <s>] | --case <id>...] [--checkouts <dir>] [--repeat <k>] [--timeout-secs <t>] [--out <dir>] [--work-dir <dir>]",
+            "report_only",
+            "target/ripr/reports/verdict-corpus/relabel.json or --out <dir>; run-owned trees under the system temp dir or --work-dir <dir>",
+            false,
+            false,
+            "Re-derives runtime truth for a deterministic sample of labeled cases: in a run-owned copy of each subject it runs the case's own `cargo test` command on the unedited tree, on the edit, and on every mutant's mutated_line, each --repeat times, and fails when an outcome, failing test, or derived truth drifts from the label, a mutant does not compile or changes nothing, repeated runs disagree, or the toolchain differs from the labeled one. Authored subjects replay offline; upstream excerpts replay only from full checkouts at the pinned commit under --checkouts. Never clones, fetches, or edits the corpus.",
         ),
         command_entry(
             "test-oracle-report",
