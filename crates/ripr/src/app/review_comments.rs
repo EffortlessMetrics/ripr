@@ -304,13 +304,12 @@ pub(crate) fn live_guidance_head_metadata(
             root,
             path,
             config.suppressions().path(),
-        ) {
-            if metadata.insert(identity, path.clone()).is_some() {
-                return Err(ProducerAdmissionError {
-                    category: "producer_identity_mismatch",
-                    message: "HEAD contains ambiguous live-guidance metadata owner aliases; restore one concrete owned input and regenerate PR evidence".to_string(),
-                });
-            }
+        ) && metadata.insert(identity, path.clone()).is_some()
+        {
+            return Err(ProducerAdmissionError {
+                category: "producer_identity_mismatch",
+                message: "HEAD contains ambiguous live-guidance metadata owner aliases; restore one concrete owned input and regenerate PR evidence".to_string(),
+            });
         }
     }
     Ok(metadata)

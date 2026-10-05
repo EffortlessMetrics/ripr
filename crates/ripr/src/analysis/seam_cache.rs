@@ -3489,14 +3489,13 @@ fn metadata_owner_alias(root: &Path, path: &Path, suppressions: &Path) -> Option
     if same_owned_path(suppressions) {
         return Some(suppressions.to_path_buf());
     }
-    if path.parent() == Some(Path::new("")) {
-        if let Some(marker) = path
+    if path.parent() == Some(Path::new(""))
+        && let Some(marker) = path
             .file_name()
             .and_then(|name| name.to_str())
             .and_then(crate::config::python_project_marker_name)
-        {
-            return Some(PathBuf::from(marker));
-        }
+    {
+        return Some(PathBuf::from(marker));
     }
     None
 }
