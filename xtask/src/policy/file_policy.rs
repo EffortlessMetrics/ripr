@@ -2,13 +2,14 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::time::Duration;
 
-use crate::run::TimedOutput;
+use super::phase_diagnostics::Observation;
+use crate::run::{TimedOutput, capture_output_with_timeout_observed};
 use crate::{
     FilePolicyHost, FilePolicyTestCommand, FixKind, PolicyDisclosure, PolicyReportSpec,
-    capture_output_with_timeout, collect_files, finish_policy_report_with_disclosures,
-    is_cargo_test_command, is_file_policy_candidate, is_non_rust_programming_candidate,
-    matches_any_glob, non_rust_programming_retention_reason, normalize_path,
-    read_file_policy_allowlist, read_file_policy_test_commands,
+    collect_files, finish_policy_report_with_disclosures, is_cargo_test_command,
+    is_file_policy_candidate, is_non_rust_programming_candidate, matches_any_glob,
+    non_rust_programming_retention_reason, normalize_path, read_file_policy_allowlist,
+    read_file_policy_test_commands,
 };
 
 const TEST_COVERED_BY_LIST_TIMEOUT: Duration = Duration::from_mins(5);
@@ -108,7 +109,15 @@ fn validate_test_covered_by(
     commands: &[FilePolicyTestCommand],
 ) -> Result<Vec<TestCoverageObservation>, String> {
     let mut warmed = BTreeSet::new();
-    validate_test_covered_by_with(path, commands, FilePolicyHost::current()?, |args| {
+    let host = FilePolicyHost::current()?;
+    let mut selectors = commands
+        .iter()
+        .filter(|selector| selector.host.is_none_or(|declared| declared == host));
+    let mut ordinal = 0;
+    let observation = Observation::for_checker();
+    validate_test_covered_by_with(path, commands, host, |args| {
+        ordinal += 1;
+        let policy_line = selectors.next().map(|selector| selector.line);
         let spawns = enumeration_spawns(args);
         let warmup = spawns.len() == 2;
         let mut listed = None;
@@ -116,13 +125,27 @@ fn validate_test_covered_by(
             if index == 0 && warmup && !warmed.insert(spawn.args.join("\u{1f}")) {
                 continue;
             }
-            let output = capture_output_with_timeout(
-                "cargo",
-                &spawn.args,
-                &[],
-                spawn.timeout,
-                spawn.description,
-            )?;
+            if let Some(observation) = &observation {
+                observation.phase(ordinal, policy_line, spawn.description, &spawn.args);
+            }
+            let output = if let Some(observation) = &observation {
+                capture_output_with_timeout_observed(
+                    "cargo",
+                    &spawn.args,
+                    &[],
+                    spawn.timeout,
+                    spawn.description,
+                    observation,
+                )?
+            } else {
+                crate::run::capture_output_with_timeout(
+                    "cargo",
+                    &spawn.args,
+                    &[],
+                    spawn.timeout,
+                    spawn.description,
+                )?
+            };
             if output.timed_out || !output.status.is_some_and(|status| status.success()) {
                 return Ok(enumeration_result(output, spawn.timeout));
             }

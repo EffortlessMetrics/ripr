@@ -1940,6 +1940,94 @@ fn initial_required_command_diagnostics_follow_owned_receipts() -> Result<(), St
     result.and(fs::remove_dir_all(&root).map_err(|error| error.to_string()))
 }
 
+#[test]
+fn parent_phase_export_retains_framed_boundary_without_scope_or_cap_escape() -> Result<(), String> {
+    let prefix = "ripr_covered_by_parent ";
+    let argument = "\\\"\n界".repeat(150);
+    let mut value = serde_json::json!({
+        "event":"phase_summary","checker_pid":9,"first_phase":{"argv":["test",argument]},
+        "last_phase":{"argv":["test","last"]},"phases_complete":true
+    });
+    let initial = format!("{prefix}{value}");
+    if initial.len() > 4096 {
+        return Err("export fixture exceeds boundary".into());
+    }
+    value["padding"] = serde_json::json!("");
+    let framed = format!("{prefix}{value}");
+    value["padding"] = serde_json::json!("x".repeat(4096 - framed.len()));
+    let line = format!("{prefix}{value}\n");
+    if line.len() != 4097
+        || bounded_parent_phase_observation_for_scope(line.as_bytes(), true) != line
+        || bounded_parent_phase_observation_for_scope(line.as_bytes(), false) != "NOT_ENABLED"
+    {
+        return Err("actual framed exporter boundary or scope lost".into());
+    }
+    value["padding"] = serde_json::json!(format!(
+        "{}x",
+        value["padding"].as_str().ok_or("padding missing")?
+    ));
+    let oversized = format!("{prefix}{value}\n");
+    let refused = bounded_parent_phase_observation_for_scope(oversized.as_bytes(), true);
+    if refused.contains("phase_summary") || !refused.contains("parent_observation_truncated=true") {
+        return Err("exporter per-line ceiling weakened".into());
+    }
+    let doubled = format!("{line}{line}");
+    let capped = bounded_parent_phase_observation_for_scope(doubled.as_bytes(), true);
+    if capped.len() > 8 * 1024 || !capped.contains("parent_observation_truncated=true") {
+        return Err("exporter aggregate ceiling weakened".into());
+    }
+    Ok(())
+}
+
+fn bounded_parent_phase_observation(bytes: &[u8]) -> String {
+    let enabled =
+        std::env::var("RIPR_SOURCE_PROMOTION_PHASE_DIAGNOSTICS").is_ok_and(|value| value == "1");
+    bounded_parent_phase_observation_for_scope(bytes, enabled)
+}
+fn bounded_parent_phase_observation_for_scope(bytes: &[u8], enabled: bool) -> String {
+    const PREFIX: &[u8] = b"ripr_covered_by_parent ";
+    const CAP: usize = 8 * 1024;
+    if !enabled {
+        return "NOT_ENABLED".into();
+    }
+    let mut retained = Vec::new();
+    let mut truncated = false;
+    for line in bytes.split(|byte| *byte == b'\n') {
+        if !line.starts_with(PREFIX) {
+            continue;
+        }
+        if line.len() > 4096 || retained.len().saturating_add(line.len() + 1) > CAP - 128 {
+            truncated = true;
+            continue;
+        }
+        let Ok(value) = serde_json::from_slice::<Value>(&line[PREFIX.len()..]) else {
+            truncated = true;
+            continue;
+        };
+        if !matches!(
+            value["event"].as_str(),
+            Some(
+                "post_capture"
+                    | "phase_summary"
+                    | "process_liveness"
+                    | "diagnostic_budget_exhausted"
+            )
+        ) {
+            truncated = true;
+            continue;
+        }
+        retained.extend_from_slice(line);
+        retained.push(b'\n');
+    }
+    if truncated {
+        retained.extend_from_slice(b"parent_observation_truncated=true\n")
+    }
+    if retained.is_empty() {
+        return "NOT_REACHED_OR_UNAVAILABLE".into();
+    }
+    String::from_utf8(retained).unwrap_or_else(|_error| "parent_observation_invalid_utf8".into())
+}
+
 fn production_workflow_fixture(profile: &str) -> Result<(), String> {
     let xtask = PathBuf::from(env!("CARGO_BIN_EXE_xtask"));
     // Stage a private copy of the xtask binary beside the original. The suite
@@ -2076,9 +2164,10 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
             .map_err(|error| format!("failed to run production J5 workflow: {error}"))?;
         if profile == "positive_synthetic" {
             let initial_context = format!(
-                "failed_required_context={}\ncatalog_context={}",
+                "failed_required_context={}\ncatalog_context={}\nparent_phase_observation={}",
                 initial_required_command_failure_output(&root, false),
-                initial_required_command_failure_output(&root, true)
+                initial_required_command_failure_output(&root, true),
+                bounded_parent_phase_observation(&output.stderr)
             );
             match retain_initial_required_command_context(&repo_root, &initial_context, nonce) {
                 Ok(identity) => println!("retained_initial_command_context {identity}"),

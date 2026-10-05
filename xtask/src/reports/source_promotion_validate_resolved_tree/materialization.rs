@@ -171,23 +171,68 @@ fn run_required_command(
     logs_dir: &Path,
     source_parent: &str,
 ) -> Value {
-    let args = vec![command.to_string()];
-    let output = capture_output_in_dir_with_timeout_bounded(
+    run_required_command_observed(
         checker,
-        &args,
-        &[
-            ("GIT_NO_REPLACE_OBJECTS", "1"),
-            ("RIPR_SOURCE_PROMOTION_TRUSTED_CHECKER_SHA", source_parent),
-            ("RIPR_SOURCE_PROMOTION_VALIDATION", "1"),
-        ],
         root,
-        COMMAND_TIMEOUT,
-        MAX_STREAM_BYTES,
-        &format!("source-trusted governance command {command}"),
-    );
+        command,
+        index,
+        logs_dir,
+        source_parent,
+        false,
+    )
+}
+fn run_required_command_observed(
+    checker: &Path,
+    root: &Path,
+    command: &str,
+    index: usize,
+    logs_dir: &Path,
+    source_parent: &str,
+    phase_diagnostics: bool,
+) -> Value {
+    let args = vec![command.to_string()];
+    let mut checker_pid = None;
+    let context = format!("source-trusted governance command {command}");
+    let envs = [
+        ("GIT_NO_REPLACE_OBJECTS", "1"),
+        ("RIPR_SOURCE_PROMOTION_TRUSTED_CHECKER_SHA", source_parent),
+        ("RIPR_SOURCE_PROMOTION_VALIDATION", "1"),
+        (
+            "RIPR_SOURCE_PROMOTION_PHASE_DIAGNOSTICS_OWNED",
+            if phase_diagnostics { "1" } else { "0" },
+        ),
+    ];
+    let output = if phase_diagnostics {
+        crate::run::capture_output_in_dir_with_timeout_bounded_observed(
+            (checker, &args, root),
+            &envs,
+            (COMMAND_TIMEOUT, MAX_STREAM_BYTES),
+            &context,
+            |pid| checker_pid = Some(pid),
+        )
+    } else {
+        capture_output_in_dir_with_timeout_bounded(
+            checker,
+            &args,
+            &envs,
+            root,
+            COMMAND_TIMEOUT,
+            MAX_STREAM_BYTES,
+            &context,
+        )
+    };
 
     match output {
         Ok(output) => {
+            if phase_diagnostics {
+                // Parent survives the outer checker kill. Observe only; never modify
+                // captured bytes, receipt semantics or existing process cleanup.
+                crate::policy::phase_diagnostics::observe_parent(
+                    &output.stderr,
+                    checker_pid,
+                    output.stderr_truncated,
+                );
+            }
             let _ = output.duration;
             let evidence = match write_command_logs(logs_dir, command, index, &output) {
                 Ok(evidence) => evidence,

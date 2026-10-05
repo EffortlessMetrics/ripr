@@ -48,6 +48,13 @@ jobs:
       - name: Prove scoped Ready parser against a wrong implementation
         timeout-minutes: 5
         run: python3 .github/scripts/ready_parser_control.py
+      - name: Diagnose source-promotion required-command phases
+        env:
+          RIPR_SOURCE_PROMOTION_PHASE_DIAGNOSTICS: "1"
+        run: >-
+          cargo nextest run -p xtask --test source_promotion_workflow_contract
+          -E 'test(=green_historical_diagnostics_are_rejected_by_the_real_final_gate)'
+          --test-threads 1
       - run: cargo nextest run --workspace
       - name: Observe native calibration enforcement readiness
         if: ${{ !cancelled() && steps.native-readiness-artifact.outcome == 'success' }}

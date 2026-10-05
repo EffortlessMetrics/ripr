@@ -11,6 +11,7 @@ mod file_policy;
 mod local_context;
 mod network;
 mod no_panic;
+pub(crate) mod phase_diagnostics;
 mod positioning_language;
 mod process;
 mod product_copy;

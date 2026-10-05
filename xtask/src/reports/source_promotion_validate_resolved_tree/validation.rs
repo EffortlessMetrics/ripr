@@ -15,7 +15,16 @@ fn validate_with_final_authority(
     options: &Options,
     state: &mut ValidationState,
     evidence_root: &Path,
+    final_authority: impl FnMut(&Options, &Value) -> Result<(), String>,
+) -> Result<(), String> {
+    validate_with_final_authority_observed(options, state, evidence_root, final_authority, false)
+}
+fn validate_with_final_authority_observed(
+    options: &Options,
+    state: &mut ValidationState,
+    evidence_root: &Path,
     mut final_authority: impl FnMut(&Options, &Value) -> Result<(), String>,
+    phase_diagnostics: bool,
 ) -> Result<(), String> {
     let (preflight, preflight_path) = read_bound_json(
         &options.repo,
@@ -103,8 +112,18 @@ fn validate_with_final_authority(
     state.materialized_tree = Some(options.reviewed_tree.clone());
     state.disposable_commit = Some(materialized.commit.clone());
 
-    let execution_result =
-        validate_materialized_tree(options, state, &checker, &materialized.root, evidence_root);
+    let execution_result = if phase_diagnostics {
+        validate_materialized_tree_observed(
+            options,
+            state,
+            &checker,
+            &materialized.root,
+            evidence_root,
+            true,
+        )
+    } else {
+        validate_materialized_tree(options, state, &checker, &materialized.root, evidence_root)
+    };
     let execution_result = execution_result.and_then(|()| final_authority(options, &preflight));
 
     let cleanup = materialized.cleanup();
@@ -222,6 +241,16 @@ fn validate_materialized_tree(
     root: &Path,
     evidence_root: &Path,
 ) -> Result<(), String> {
+    validate_materialized_tree_observed(options, state, checker, root, evidence_root, false)
+}
+fn validate_materialized_tree_observed(
+    options: &Options,
+    state: &mut ValidationState,
+    checker: &Path,
+    root: &Path,
+    evidence_root: &Path,
+    phase_diagnostics: bool,
+) -> Result<(), String> {
     let candidate_tree = git(root, &["rev-parse", "HEAD^{tree}"], &[])?;
     if candidate_tree.trim() != options.reviewed_tree {
         return Err(format!(
@@ -259,14 +288,26 @@ fn validate_materialized_tree(
             continue;
         }
 
-        let receipt = run_required_command(
-            checker,
-            root,
-            command,
-            index,
-            &logs_dir,
-            &options.source_parent,
-        );
+        let receipt = if phase_diagnostics && *command == "check-file-policy" {
+            run_required_command_observed(
+                checker,
+                root,
+                command,
+                index,
+                &logs_dir,
+                &options.source_parent,
+                true,
+            )
+        } else {
+            run_required_command(
+                checker,
+                root,
+                command,
+                index,
+                &logs_dir,
+                &options.source_parent,
+            )
+        };
         if *command == "check-command-catalog"
             && let Err(_error) =
                 retain_command_catalog_context(options, state, root, evidence_root, &receipt)

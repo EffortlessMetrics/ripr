@@ -598,6 +598,24 @@ fn capture_output_with_deadline(
         .map(|(output, _)| output)
 }
 
+pub(crate) fn capture_output_with_timeout_observed(
+    program: &str,
+    args: &[String],
+    envs: &[(&str, &str)],
+    timeout: Duration,
+    error_context: &str,
+    observation: &crate::policy::phase_diagnostics::Observation,
+) -> Result<TimedOutput, String> {
+    capture_output_sampled_observed(
+        (program, args, None),
+        envs,
+        (Some(timeout), false),
+        error_context,
+        Some(observation),
+    )
+    .map(|(output, _)| output)
+}
+
 fn capture_output_sampled(
     program: &str,
     args: &[String],
@@ -607,6 +625,23 @@ fn capture_output_sampled(
     sample_rss: bool,
     error_context: &str,
 ) -> Result<(TimedOutput, Option<u64>), String> {
+    capture_output_sampled_observed(
+        (program, args, cwd),
+        envs,
+        (deadline, sample_rss),
+        error_context,
+        None,
+    )
+}
+fn capture_output_sampled_observed(
+    source: (&str, &[String], Option<&Path>),
+    envs: &[(&str, &str)],
+    budget: (Option<Duration>, bool),
+    error_context: &str,
+    observation: Option<&crate::policy::phase_diagnostics::Observation>,
+) -> Result<(TimedOutput, Option<u64>), String> {
+    let (program, args, cwd) = source;
+    let (deadline, sample_rss) = budget;
     let started = Instant::now();
     let mut command = Command::new(program);
     command.args(args);
@@ -625,6 +660,9 @@ fn capture_output_sampled(
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = OwnedProcess::spawn(command)
         .map_err(|err| format!("failed to run {error_context}: {err}"))?;
+    if let Some(observation) = observation {
+        observation.spawn(child.id());
+    }
     let stdout = child
         .stdout_pipe()
         .take()
@@ -642,6 +680,8 @@ fn capture_output_sampled(
     let (stdout_handle, stdout_rx) = spawn_stream_reader_channel(stdout);
     let (stderr_handle, stderr_rx) = if echo_latency_trace {
         spawn_latency_stream_reader_channel(stderr)
+    } else if let Some(observation) = observation {
+        spawn_stream_reader_channel_observed(stderr, observation.clone(), child.id())
     } else {
         spawn_stream_reader_channel(stderr)
     };
@@ -965,6 +1005,23 @@ pub(crate) fn capture_output_in_dir_with_timeout_bounded(
     max_stream_bytes: usize,
     error_context: &str,
 ) -> Result<TimedBoundedOutput, String> {
+    capture_output_in_dir_with_timeout_bounded_observed(
+        (program, args, cwd),
+        envs,
+        (timeout, max_stream_bytes),
+        error_context,
+        |_pid| {},
+    )
+}
+pub(crate) fn capture_output_in_dir_with_timeout_bounded_observed(
+    source: (&Path, &[String], &Path),
+    envs: &[(&str, &str)],
+    budget: (Duration, usize),
+    error_context: &str,
+    mut spawned: impl FnMut(u32),
+) -> Result<TimedBoundedOutput, String> {
+    let (program, args, cwd) = source;
+    let (timeout, max_stream_bytes) = budget;
     let started = Instant::now();
     let mut command = Command::new(program);
     command
@@ -978,6 +1035,7 @@ pub(crate) fn capture_output_in_dir_with_timeout_bounded(
     }
     let mut child = OwnedProcess::spawn(command)
         .map_err(|err| format!("failed to run {error_context}: {err}"))?;
+    spawned(child.id());
     let stdout = child
         .stdout_pipe()
         .take()
@@ -1561,6 +1619,34 @@ fn read_stream_with_latency_progress<T: Read>(stream: T) -> Result<String, Strin
 /// only through `JoinHandle::join`.  Returns `(handle, receiver)`.  The handle
 /// is kept so the OS can reap the thread; the receiver is used to impose a
 /// deadline on the drain via `recv_timeout`.
+fn spawn_stream_reader_channel_observed<T: Read + Send + 'static>(
+    mut stream: T,
+    observation: crate::policy::phase_diagnostics::Observation,
+    pid: u32,
+) -> (
+    thread::JoinHandle<()>,
+    mpsc::Receiver<Result<String, String>>,
+) {
+    let (tx, rx) = mpsc::channel();
+    let handle = thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let mut chunk = [0u8; 4096];
+        let result = loop {
+            match stream.read(&mut chunk) {
+                Ok(0) => break Ok(String::from_utf8_lossy(&bytes).into_owned()),
+                Ok(count) => {
+                    bytes.extend_from_slice(&chunk[..count]);
+                    observation.tail(pid, &chunk[..count]);
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) => break Err(format!("failed to read process output: {error}")),
+            }
+        };
+        let _send_result = tx.send(result);
+    });
+    (handle, rx)
+}
+
 fn spawn_stream_reader_channel<T: Read + Send + 'static>(
     stream: T,
 ) -> (
@@ -1992,6 +2078,29 @@ mod tests {
         }
         if !stderr.is_empty() {
             return Err(format!("captured stderr should be empty: {stderr}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn covered_by_observed_reader_preserves_original_bytes_and_invalid_utf8() -> Result<(), String>
+    {
+        let input = b"Cargo progress\n\xff\nripr_covered_by_phase fabricated child text\n".to_vec();
+        let observation = crate::policy::phase_diagnostics::Observation::for_test();
+        let (handle, receiver) = super::spawn_stream_reader_channel_observed(
+            std::io::Cursor::new(input.clone()),
+            observation,
+            7,
+        );
+        let actual = super::drain_stream_reader_bounded(
+            receiver,
+            handle,
+            Duration::from_secs(1),
+            "stderr",
+            "owned observer reader control",
+        )?;
+        if actual != String::from_utf8_lossy(&input) {
+            return Err("optional observer changed original child stream bytes".into());
         }
         Ok(())
     }
