@@ -15,6 +15,7 @@ mod language;
 pub(crate) mod new_test_target;
 pub(crate) mod path_glob;
 mod pipeline;
+pub(crate) use pipeline::NON_TEXT_ONLY_DETAIL;
 mod probes;
 pub(crate) mod repair_route;
 /// Process CPU time and peak resident memory observability (#5213). One

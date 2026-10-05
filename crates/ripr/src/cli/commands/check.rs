@@ -998,6 +998,15 @@ fn zero_findings_diff_hedge(
     let Some(outcome) = outcome else {
         return Some(generic.to_string());
     };
+    // A well-formed binary- or mode-only diff already got its own stderr note
+    // from the pipeline; the generic "may not be a valid diff" hedge would
+    // contradict it.
+    if outcome.limitations.iter().any(|limitation| {
+        limitation.kind == AnalysisLimitationKind::MalformedDiff
+            && limitation.bounded_detail.as_deref() == Some(crate::analysis::NON_TEXT_ONLY_DETAIL)
+    }) {
+        return None;
+    }
     let causes = outcome
         .limitations
         .iter()
@@ -1394,6 +1403,29 @@ mod tests {
                 "{label}: {hedge}"
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn zero_findings_hedge_stays_silent_for_a_well_formed_non_text_only_diff() -> Result<(), String>
+    {
+        let root = copy_sample_workspace_to_temp("hedge-binary-only")?;
+        std::fs::write(
+            root.join("example.diff"),
+            "diff --git a/logo.png b/logo.png\nBinary files a/logo.png and b/logo.png differ\n",
+        )
+        .map_err(|err| err.to_string())?;
+        let input = CheckInput {
+            root: root.clone(),
+            diff_file: Some(root.join("example.diff")),
+            ..CheckInput::default()
+        };
+        let result = app::check_workspace_with_config(input, &RiprConfig::default());
+        if let Ok(()) = std::fs::remove_dir_all(&root) {}
+        let outcome = result?
+            .analysis_outcome
+            .ok_or_else(|| "diff pipeline must project an analysis outcome".to_string())?;
+        assert_eq!(zero_findings_diff_hedge(Some(&outcome)), None);
         Ok(())
     }
 
