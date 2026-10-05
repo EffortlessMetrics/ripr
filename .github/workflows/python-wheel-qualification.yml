@@ -597,10 +597,10 @@ jobs:
           fi
           installed_native_version="$(cat "${version_stdout}")"
           printf 'post-install[%s] installed-native-version status=%s expected=<%s> actual=<%s>\n' \
-            "${CLIENT}" "${version_status}" "ripr ${RIPR_NATIVE_VERSION}" "${installed_native_version}"
+            "${CLIENT}" "${version_status}" "ripr ${RIPR_NATIVE_VERSION} (${CANDIDATE_SHA,,})" "${installed_native_version}"
           printf 'post-install[%s] installed-native-version stderr follows\n' "${CLIENT}" >&2
           cat "${version_stderr}" >&2
-          test "${installed_native_version}" = "ripr ${RIPR_NATIVE_VERSION}"
+          test "${installed_native_version}" = "ripr ${RIPR_NATIVE_VERSION} (${CANDIDATE_SHA,,})"
 
           printf 'post-install[%s] check=planted-executable-not-run path=<%s>\n' \
             "${CLIENT}" "${planted_marker}"
