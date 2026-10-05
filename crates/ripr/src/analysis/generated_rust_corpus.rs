@@ -67,7 +67,7 @@ pub(crate) fn review_guidance_input_paths(
     root: &Path,
     config: &RiprConfig,
     owner_files: &[PathBuf],
-) -> Result<Vec<PathBuf>, crate::CoreError> {
+) -> Result<Vec<PathBuf>, crate::core_error::CoreError> {
     super::cancellation::checkpoint_typed()?;
     let mut paths = guidance_analyzable_rust_paths(root, config)
         .map_err(guidance_error_from_shared_owner)?
@@ -79,7 +79,7 @@ pub(crate) fn review_guidance_input_paths(
 
 /// Transparent error-family bridge for explicit guidance. observed_abort is
 /// pure: recorded/unobserved reason or later deadline cannot relabel source IO.
-fn guidance_error_from_shared_owner(error: String) -> crate::CoreError {
+fn guidance_error_from_shared_owner(error: String) -> crate::core_error::CoreError {
     match super::cancellation::current_token().and_then(|token| token.observed_abort()) {
         Some(kind) => super::cancellation::AnalysisCancellation { kind }.into(),
         None => error.into(),
@@ -207,7 +207,8 @@ mod tests {
                 "analysis cancelled: DeadlineExceeded inside a source filename".to_string(),
             );
             match error {
-                crate::CoreError::Message(message) if message.contains("source filename") => {}
+                crate::core_error::CoreError::Message(message)
+                    if message.contains("source filename") => {}
                 other => {
                     return Err(format!(
                         "recorded-only reason relabeled source failure: {other}"
@@ -222,7 +223,7 @@ mod tests {
             let error =
                 super::guidance_error_from_shared_owner("wrapped checkpoint failure".to_string());
             match error {
-                crate::CoreError::AnalysisCancelled(cause)
+                crate::core_error::CoreError::AnalysisCancelled(cause)
                     if cause.kind == AnalysisAbortKind::Cancelled => {}
                 other => return Err(format!("observed abort lost typed authority: {other}")),
             }

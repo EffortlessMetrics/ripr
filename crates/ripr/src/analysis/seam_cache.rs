@@ -3613,8 +3613,8 @@ fn visit_named_workspace_file_paths(
     root: &Path,
     directory: &Path,
     strict: bool,
-    visit: &mut impl FnMut(PathBuf) -> Result<(), crate::CoreError>,
-) -> Result<(), crate::CoreError> {
+    visit: &mut impl FnMut(PathBuf) -> Result<(), crate::core_error::CoreError>,
+) -> Result<(), crate::core_error::CoreError> {
     if strict {
         super::cancellation::checkpoint_typed()?;
     }
@@ -3733,12 +3733,12 @@ pub(crate) fn review_guidance_workspace_key(
     corpus: &[PathBuf],
     max_paths: usize,
     max_bytes: u64,
-) -> Result<RepoSeamCacheKey, crate::CoreError> {
+) -> Result<RepoSeamCacheKey, crate::core_error::CoreError> {
     super::cancellation::checkpoint_typed()?;
     let metadata_paths =
         review_guidance_metadata_paths(root, config.suppressions().path(), max_paths)?;
     let mut remaining = max_bytes;
-    let mut read = |path: &Path| -> Result<Vec<u8>, crate::CoreError> {
+    let mut read = |path: &Path| -> Result<Vec<u8>, crate::core_error::CoreError> {
         use std::io::Read;
         super::cancellation::checkpoint_typed()?;
         let mut file = std::fs::File::open(root.join(path))
@@ -3770,27 +3770,28 @@ pub(crate) fn review_guidance_workspace_key(
         let bytes = read(&path)?;
         metadata.insert(path, bytes);
     }
-    let file_identity = |files: &[(PathBuf, Vec<u8>)]| -> Result<Option<String>, crate::CoreError> {
-        let mut files = files.iter().collect::<Vec<_>>();
-        files.sort_by(|left, right| left.0.cmp(&right.0));
-        let mut input = String::new();
-        for (path, bytes) in files {
-            super::cancellation::checkpoint_typed()?;
-            input.push_str(&path.to_string_lossy().replace('\\', "/"));
-            input.push('\0');
-            input.push_str(&guidance_hash_bytes(bytes)?);
-            input.push('\n');
-        }
-        if input.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(guidance_hash_bytes(input.as_bytes())?))
-        }
-    };
+    let file_identity =
+        |files: &[(PathBuf, Vec<u8>)]| -> Result<Option<String>, crate::core_error::CoreError> {
+            let mut files = files.iter().collect::<Vec<_>>();
+            files.sort_by(|left, right| left.0.cmp(&right.0));
+            let mut input = String::new();
+            for (path, bytes) in files {
+                super::cancellation::checkpoint_typed()?;
+                input.push_str(&path.to_string_lossy().replace('\\', "/"));
+                input.push('\0');
+                input.push_str(&guidance_hash_bytes(bytes)?);
+                input.push('\n');
+            }
+            if input.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(guidance_hash_bytes(input.as_bytes())?))
+            }
+        };
     // files_content_hash hashes an empty corpus as FNV(empty), while the
     // existing named-file identity uses the no-matching-files placeholder.
     let source_hash = file_identity(&source_files)?.unwrap_or(guidance_hash_bytes(&[])?);
-    let named_identity = |name: &str| -> Result<String, crate::CoreError> {
+    let named_identity = |name: &str| -> Result<String, crate::core_error::CoreError> {
         let files = metadata
             .iter()
             .filter(|(path, _)| {
@@ -3822,7 +3823,7 @@ pub(crate) fn review_guidance_workspace_key(
         }
     }
     let workspace_manifests_hash = workspace_manifest_identity(cargo_identity, &markers, &dirs);
-    let optional_text = |path: &Path| -> Result<Option<String>, crate::CoreError> {
+    let optional_text = |path: &Path| -> Result<Option<String>, crate::core_error::CoreError> {
         super::cancellation::checkpoint_typed()?;
         let identity = review_guidance_metadata_identity(root, path, config.suppressions().path());
         for (candidate, bytes) in &metadata {
@@ -3869,9 +3870,9 @@ pub(crate) fn review_guidance_metadata_paths(
     root: &Path,
     suppressions: &Path,
     max_paths: usize,
-) -> Result<Vec<PathBuf>, crate::CoreError> {
+) -> Result<Vec<PathBuf>, crate::core_error::CoreError> {
     let mut files = BTreeSet::new();
-    let mut insert = |path: PathBuf| -> Result<(), crate::CoreError> {
+    let mut insert = |path: PathBuf| -> Result<(), crate::core_error::CoreError> {
         if !files.contains(&path) && files.len() >= max_paths {
             return Err(format!(
                 "review_guidance_oversized: more than {max_paths} workspace metadata inputs; raise RIPR_REVIEW_GUIDANCE_MAX_INDEX_FILES on an admitted runner"
@@ -3993,7 +3994,7 @@ fn fnv1a_update(hash: &mut u64, bytes: &[u8], prime: u64) {
     }
 }
 
-fn guidance_hash_bytes(bytes: &[u8]) -> Result<String, crate::CoreError> {
+fn guidance_hash_bytes(bytes: &[u8]) -> Result<String, crate::core_error::CoreError> {
     let mut hash: u64 = 0xcbf29ce484222325;
     for chunk in bytes.chunks(64 * 1024) {
         super::cancellation::checkpoint_typed()?;
@@ -4035,7 +4036,8 @@ mod tests {
                     Ok(_) => return Err("pre-abort metadata owner returned success".to_string()),
                 };
                 match error {
-                    crate::CoreError::AnalysisCancelled(cause) if cause.kind == kind => {}
+                    crate::core_error::CoreError::AnalysisCancelled(cause)
+                        if cause.kind == kind => {}
                     other => return Err(format!("metadata owner lost typed abort: {other}")),
                 }
                 let error = match review_guidance_workspace_key(
@@ -4049,7 +4051,8 @@ mod tests {
                     Ok(_) => return Err("pre-abort key owner returned success".to_string()),
                 };
                 match error {
-                    crate::CoreError::AnalysisCancelled(cause) if cause.kind == kind => {}
+                    crate::core_error::CoreError::AnalysisCancelled(cause)
+                        if cause.kind == kind => {}
                     other => return Err(format!("key owner lost typed abort: {other}")),
                 }
                 Ok(())
