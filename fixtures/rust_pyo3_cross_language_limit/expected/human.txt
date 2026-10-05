@@ -41,3 +41,6 @@ Note: ripr found no static test path for any of the 2 changed expression(s) in t
   test(s). This is not a coverage assessment. A test may already exercise these changes through
   macros, helper-call chains, or integration tests that ripr's static model does not yet trace; if
   none does, add or check tests in the bindings' other language that observe the changed behavior.
+  This repo also has 1 Python test file(s) (for example tests/test_fee.py); ripr does not link
+  Python tests to Rust changes, so a change they alone cover reads as no static path. Check those
+  tests with your Python test runner, or add a Rust test that observes the behavior.

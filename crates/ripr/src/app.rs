@@ -293,6 +293,11 @@ pub struct CheckOutput {
     /// `--worktree` for files it cannot see. Cleared together with
     /// `unanalyzed_working_tree` for every non-committed-history mode.
     pub(crate) untracked_working_tree_source_paths: Vec<String>,
+    /// Python test files in the repository, set only when a changed Rust file
+    /// has a `no_static_path` finding (#6340). Human-output context only: ripr
+    /// does not link Python tests to Rust changes. Never serialized; no
+    /// verdict, class or gate reads it.
+    pub(crate) unlinked_python_tests: Option<crate::analysis::UnlinkedPythonTests>,
     /// Suppression-policy application outcome (#1441). `Some` only when the
     /// caller passed `--suppression-policy`; findings named here stay in
     /// `findings` (visible, marked suppressed by renderers) while the

@@ -1,7 +1,7 @@
 use super::progress::{
     AnalysisProgressScope, AnalysisProgressSink, AnalysisProgressStage, ProgressRun,
 };
-use super::{CheckInput, CheckOutput};
+use super::{CheckInput, CheckOutput, OutputFormat};
 use crate::analysis::{
     AnalysisResult, run_analysis_with_oracle_policy_and_rust_config,
     run_repo_analysis_with_oracle_policy_and_rust_config,
@@ -284,12 +284,48 @@ fn check_with_progress_and_origins_with_open_rust_paths(
     let suppression_policy = input.suppression_policy.clone();
     let origins = analysis.rust_diagnostic_origins.clone();
     let consumed_sources = std::mem::take(&mut analysis.rust_consumed_sources);
+    let human_output = matches!(input.format, OutputFormat::Human | OutputFormat::HumanFull);
     let mut output = output_builder::check_output_from_analysis(input, analysis);
+    // #6340: only a human-rendered run pays for the Python test walk; JSON, LSP
+    // refreshes and other machine consumers never read the note.
+    if human_output && python_test_note_possible(&output.findings) {
+        output.unlinked_python_tests = crate::analysis::discover_python_test_files(&output.root)?;
+    }
     if let Some(policy) = suppression_policy {
         apply_suppression_policy(&mut output, &policy)?;
     }
     progress.complete();
     Ok((output, origins, consumed_sources))
+}
+
+/// Whether the all-no-path human note could name unlinked Python tests. This
+/// mirrors `render_all_no_path_disclosure` (RIPR-SPEC-0090): no exposed, weakly
+/// exposed or reachable finding, every finding in a no-path or unknown class,
+/// no finding with `reach: yes`, and at least one `no_static_path` finding in a
+/// Rust file. A necessary condition only; the renderer applies the rest.
+pub(crate) fn python_test_note_possible(findings: &[crate::domain::Finding]) -> bool {
+    use crate::domain::{ExposureClass, StageState};
+    let mut rust_no_path = false;
+    for finding in findings {
+        if finding.ripr.reach.state == StageState::Yes {
+            return false;
+        }
+        match finding.class {
+            ExposureClass::NoStaticPath => {
+                rust_no_path |= finding
+                    .probe
+                    .location
+                    .file
+                    .extension()
+                    .is_some_and(|e| e == "rs");
+            }
+            ExposureClass::InfectionUnknown
+            | ExposureClass::PropagationUnknown
+            | ExposureClass::StaticUnknown => {}
+            _ => return false,
+        }
+    }
+    rust_no_path
 }
 
 /// Build a minimal [`CheckOutput`] for repo seam-driven rendering.
