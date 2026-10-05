@@ -1961,7 +1961,7 @@ fn gap_record_from_perl_preview_finding(finding: &Value, index: usize) -> Option
             "ripr_plus_count".to_string(),
             ProjectionEligibility {
                 eligible: false,
-                reason: "Preview Perl evidence does not contribute to badges.".to_string(),
+                reason: "Preview Perl evidence does not contribute to calibrated RIPR 0 or ripr+ badge gap counts.".to_string(),
             },
         ),
     ]);
