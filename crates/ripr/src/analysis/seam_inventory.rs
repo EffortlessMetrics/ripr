@@ -337,7 +337,12 @@ pub(crate) fn inventory_classified_seams_report_at_with_config(
         &lexical_fallback_files,
         store_limit,
     ) {
-        Ok(status) => status.label,
+        Ok(status) => {
+            if let Some(advisory) = &status.advisory {
+                eprintln!("ripr: {advisory}");
+            }
+            status.label
+        }
         Err(reason) => {
             eprintln!("ripr: repo seam cache store ignored ({reason})");
             cache_store_status_label(&reason)
@@ -629,7 +634,12 @@ pub(crate) fn inventory_compact_classified_seams_at_with_config(
         &lexical_fallback_files,
         store_limit,
     ) {
-        Ok(status) => status.label,
+        Ok(status) => {
+            if let Some(advisory) = &status.advisory {
+                eprintln!("ripr: {advisory}");
+            }
+            status.label
+        }
         Err(reason) => {
             eprintln!("ripr: compact repo seam cache store ignored ({reason})");
             cache_store_status_label(&reason)

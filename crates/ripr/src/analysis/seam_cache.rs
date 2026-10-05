@@ -1252,6 +1252,8 @@ pub(crate) struct RepoSeamFactCache {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct CacheStoreStatus {
     pub(crate) label: String,
+    /// One-line stderr notice when the store succeeded without caching, naming the next step.
+    pub(crate) advisory: Option<String>,
 }
 
 impl RepoSeamFactCache {

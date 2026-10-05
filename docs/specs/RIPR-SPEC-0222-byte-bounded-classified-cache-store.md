@@ -63,10 +63,32 @@ proving a universal RSS threshold.
   pre-commit failure restores it only when no newer single entry occupies
   the preferred path and the sharded manifest is unchanged since park
   (a leftover manifest from an earlier single-entry publish does not
-  block restore; a replaced or unreadable manifest does).
+  block restore; a replaced or unreadable manifest does). After its
+  manifest commits, the writer also removes any single entry at the
+  preferred path when that entry was last written before this publication
+  began, so a competing writer that rolls back late cannot restore an
+  older single entry over the newer generation. A single entry a later
+  writer published is newer and stays.
+  There is no per-key cross-process lock, so a stat-then-remove window
+  remains: a late rollback that restores an older single entry after the
+  post-commit check, followed by termination before its own re-check, can
+  leave a stale classified result for that key until the next publish.
+  The cost is a stale cache result, never a corrupt one (#5350).
+  Generation directories are swept only after a successful sharded commit,
+  so writers terminated before any commit leave directories until a later
+  commit for that key.
+- After a commit, the writer removes `g*/` generation directories the
+  current manifest does not reference once they are older than one
+  hour (a terminated or superseded writer leaves them). The previous
+  manifest is integrity-validated before any of its files are deleted,
+  and only files under `g*/` are ever deleted.
 - If one classified seam cannot fit under the configured byte ceiling,
-  the store returns `skipped_oversized_record_index_{i}_ceiling_{n}` and
-  does not claim a populated cache. Analysis output stays usable.
+  the store returns `skipped_oversized_record_index_{i}_ceiling_{n}`
+  (`skipped_oversized_metadata_ceiling_{n}` when the metadata around the
+  records is what overflows) and does not claim a populated cache.
+  Analysis output stays usable, and one stderr line names the record,
+  its encoded size against the ceiling, and the
+  `RIPR_CLASSIFIED_SEAM_CACHE_SHARD_BYTES` value that restores warm runs.
 - Semantic digests, schema/analyzer identity, shard order, checksums,
   corruption handling, and warm-load reconstruction stay the current
   contracts. This spec does not bound cache *load* auxiliary memory.
@@ -150,6 +172,14 @@ proving a universal RSS threshold.
 - `crates/ripr/src/analysis/seam_cache/store.rs::tests::publication_ids_stay_unique_across_concurrent_calls`
 - `crates/ripr/src/analysis/seam_cache/store.rs::tests::size_probe_stops_once_the_encoded_ceiling_is_exceeded`
 - `crates/ripr/src/analysis/seam_cache/store.rs::tests::sharded_cache_paths_reject_drive_prefix_and_parent_components`
+- `crates/ripr/src/analysis/seam_cache/store.rs::tests::oversized_record_skip_names_the_record_its_size_and_the_remedy`
+- `crates/ripr/src/analysis/seam_cache/store.rs::tests::oversized_metadata_skip_names_metadata_not_a_record`
+- `crates/ripr/src/analysis/seam_cache/store.rs::tests::older_single_entry_restored_after_a_sharded_commit_never_hides_it`
+- `crates/ripr/src/analysis/seam_cache/store.rs::tests::single_entry_published_after_a_sharded_commit_is_kept`
+- `crates/ripr/src/analysis/seam_cache/store.rs::tests::orphan_generations_are_swept_only_when_old_and_unreferenced`
+- `crates/ripr/src/analysis/seam_cache/store.rs::tests::orphan_sweep_does_nothing_without_a_valid_manifest`
+- `crates/ripr/src/analysis/seam_cache/store.rs::tests::replaced_generation_cleanup_only_deletes_files_inside_generation_directories`
+- `crates/ripr/src/analysis/seam_cache/store.rs::tests::tampered_previous_manifest_never_deletes_the_live_manifest`
 - Existing `crates/ripr/src/analysis/seam_cache.rs` integrity, missing-shard,
   and sharded warm-hit tests
 
