@@ -19,14 +19,24 @@ use std::sync::mpsc;
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
+#[cfg(test)]
+pub(super) type RecordedThread = (std::thread::ThreadId, Option<String>);
+
 pub(super) struct AnalysisThread {
     sender: Mutex<Option<mpsc::Sender<Job>>>,
+    /// Identity and name of the thread that ran each job, so backend tests
+    /// can prove refreshes reach this one thread rather than the blocking
+    /// pool (#6632).
+    #[cfg(test)]
+    job_threads: std::sync::Arc<Mutex<Vec<RecordedThread>>>,
 }
 
 impl Default for AnalysisThread {
     fn default() -> Self {
         Self {
             sender: Mutex::new(None),
+            #[cfg(test)]
+            job_threads: std::sync::Arc::default(),
         }
     }
 }
@@ -40,7 +50,15 @@ impl AnalysisThread {
         F: FnOnce() -> T + Send + 'static,
     {
         let (result_sender, result) = tokio::sync::oneshot::channel();
+        #[cfg(test)]
+        let job_threads = std::sync::Arc::clone(&self.job_threads);
         self.submit(Box::new(move || {
+            #[cfg(test)]
+            {
+                let current = std::thread::current();
+                lock_ignoring_poison(&job_threads)
+                    .push((current.id(), current.name().map(str::to_owned)));
+            }
             // The receiver is gone only when the refresh was dropped; there
             // is nobody left to tell.
             let _ = result_sender.send(job());
@@ -53,11 +71,14 @@ impl AnalysisThread {
         })
     }
 
+    /// Threads recorded for every job that has started, in order.
+    #[cfg(test)]
+    pub(super) fn job_threads_for_test(&self) -> Vec<RecordedThread> {
+        lock_ignoring_poison(&self.job_threads).clone()
+    }
+
     fn submit(&self, job: Job) -> Result<(), String> {
-        let mut sender = match self.sender.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let mut sender = lock_ignoring_poison(&self.sender);
         let job = match sender.as_ref() {
             Some(live) => match live.send(job) {
                 Ok(()) => return Ok(()),
@@ -94,9 +115,19 @@ impl AnalysisThread {
     }
 }
 
+fn lock_ignoring_poison<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::AnalysisThread;
+    use super::{AnalysisThread, Job};
+    use std::sync::{Mutex, mpsc};
+
+    const ANALYSIS_THREAD_NAME: &str = "ripr-lsp-analysis";
 
     fn runtime() -> Result<tokio::runtime::Runtime, String> {
         tokio::runtime::Builder::new_current_thread()
@@ -133,7 +164,15 @@ mod tests {
             else {
                 return Err("a panicking job must report a failure".to_owned());
             };
-            assert!(err.contains("panicked"), "{err}");
+            // Only the result channel closing produces this message; a failed
+            // spawn or a thread that exits before taking the job reads
+            // differently. The job also started, so it was not dropped
+            // unrun: the panic is what closed the channel.
+            assert!(
+                err.starts_with("the analysis job ended without a result"),
+                "{err}"
+            );
+            assert_eq!(worker.job_threads_for_test().len(), 2);
             let after = worker.run(|| std::thread::current().id()).await?;
             assert_eq!(before, after, "the thread survives the panic");
             Ok(())
@@ -157,6 +196,33 @@ mod tests {
             );
             assert!(failed.is_err(), "the panicking job reports a failure");
             assert_eq!(queued?, 7);
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn a_job_sent_after_the_thread_is_gone_starts_a_fresh_one() -> Result<(), String> {
+        // A sender whose receiver is dropped fails every send, exactly as it
+        // would after the analysis thread exited.
+        let (dead, gone) = mpsc::channel::<Job>();
+        drop(gone);
+        let worker = AnalysisThread {
+            sender: Mutex::new(Some(dead)),
+            ..AnalysisThread::default()
+        };
+        runtime()?.block_on(async {
+            let first = worker
+                .run(|| {
+                    let current = std::thread::current();
+                    (current.id(), current.name().map(str::to_owned))
+                })
+                .await?;
+            assert_eq!(first.1.as_deref(), Some(ANALYSIS_THREAD_NAME));
+            // The fresh thread replaced the dead sender: the next job reuses
+            // it instead of starting a third.
+            let second = worker.run(|| std::thread::current().id()).await?;
+            assert_eq!(first.0, second);
+            assert_eq!(worker.job_threads_for_test().len(), 2);
             Ok(())
         })
     }

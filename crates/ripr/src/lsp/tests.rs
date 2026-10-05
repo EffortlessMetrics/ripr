@@ -81,6 +81,7 @@ use tower_lsp_server::ls_types::{
 };
 use tower_lsp_server::{LspService, Server};
 
+mod analysis_thread_routing_tests;
 mod consumed_source_tests;
 mod shutdown_clear_tests;
 
