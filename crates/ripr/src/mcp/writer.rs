@@ -11,7 +11,11 @@ impl Write for CappedBuffer {
             .len()
             .checked_add(bytes.len())
             .ok_or_else(output_limit)?;
-        if len >= super::MAX_RESPONSE_BYTES {
+        // The bound is "at most MAX": the semantic layers emit a typed
+        // `result_too_large` only above MAX, so the writer backstop must
+        // admit exactly-MAX frames instead of replacing them with its
+        // generic fallback (#5254 item 5).
+        if len > super::MAX_RESPONSE_BYTES {
             return Err(output_limit());
         }
         self.0.extend_from_slice(bytes);
@@ -49,7 +53,7 @@ pub(super) fn failure_reason(error: &Error) -> &'static str {
         None => "MCP output IO failed",
     }
 }
-fn encode<T: Serialize>(item: &T) -> std::io::Result<Vec<u8>> {
+pub(super) fn encode<T: Serialize>(item: &T) -> std::io::Result<Vec<u8>> {
     let mut buffer = CappedBuffer(Vec::new());
     serde_json::to_writer(&mut buffer, item).map_err(|error| {
         if error.io_error_kind() == Some(ErrorKind::InvalidData) {
@@ -144,6 +148,17 @@ impl<W: AsyncWrite + Unpin> FrameWriter<W> {
             ServerJsonRpcMessage::Error(error) => error.id.clone(),
             _ => None,
         };
+        Ok(())
+    }
+    /// Queues a pre-encoded frame that answers no admitted request (a
+    /// protocol error with an explicit null id). Carries no reply identity,
+    /// so flushing it never completes an admission.
+    pub(super) fn queue_raw(&mut self, frame: Vec<u8>) -> std::io::Result<()> {
+        if !self.pending.is_empty() {
+            return Err(Error::new(ErrorKind::WouldBlock, "MCP output pending"));
+        }
+        self.pending = frame;
+        self.queued_reply_id = None;
         Ok(())
     }
     pub(super) async fn close(&mut self) -> std::io::Result<()> {

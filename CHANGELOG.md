@@ -302,6 +302,14 @@ are scoped or reviewed.
   this verdict" section: each examined test with the assertion it was judged
   by, what a test would need to change the verdict, and what each stop reason
   means (#5356). No verdict changes.
+- MCP: transport protocol errors (oversize frame, undecodable request) now
+  carry an explicit `"id": null` per JSON-RPC instead of omitting the id;
+  `ripr_workspace_status` goes through the shared response bound with a
+  typed `result_too_large` refusal; the writer backstop admits
+  exactly-at-bound frames like the semantic layers; the refresh
+  limitations text no longer claims a cancelled attempt is never
+  committed; and superseded-attempt tombstones are capped so long
+  sessions stay bounded (#5254 items 2, 3, 4, 5, 7).
 - LSP: `ripr lsp` exits 2 when the `exit` notification arrives without a
   prior `shutdown` request, per LSP §exit. `shutdown` then `exit` still
   exits 0, as do stdin EOF and malformed-frame termination (#5249).

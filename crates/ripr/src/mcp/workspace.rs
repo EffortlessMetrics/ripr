@@ -304,6 +304,11 @@ pub(crate) struct WorkspaceSession {
     /// packet is pruned, without holding superseded packets in memory for
     /// the lifetime of the session.
     pub(crate) superseded_attempts: std::collections::BTreeMap<String, String>,
+    /// Insertion order of `superseded_attempts` keys, oldest first. Attempt
+    /// ids are unordered digest hex, so the map alone cannot say which
+    /// tombstone is oldest; the queue makes cap eviction drop the oldest
+    /// tombstone first and never a recent one (#6291).
+    pub(crate) superseded_order: std::collections::VecDeque<String>,
 }
 
 impl WorkspaceSession {
@@ -625,7 +630,7 @@ pub(crate) fn refresh_document(session: &WorkspaceSession) -> Value {
         "claim_boundary": "One bounded static analysis attempt over the workspace diff. The server never edits source, executes verification or mutation commands, or loads project-local provider configuration.",
         "limitations": [
             "an attempt runs to a terminal state; MCP cancellation of the request does not roll back a running attempt and never manufactures a snapshot",
-            "a cancelled or superseded attempt is never committed as a completed snapshot",
+            "a cancelled refresh attempt still commits as a completed snapshot when it finishes; only transport teardown abandons an attempt before it commits (#5254 item 2)",
         ],
     })
 }
@@ -821,6 +826,7 @@ mod tests {
             last_failure: None,
             repairs: std::collections::BTreeMap::new(),
             superseded_attempts: std::collections::BTreeMap::new(),
+            superseded_order: std::collections::VecDeque::new(),
         })
     }
 
@@ -848,6 +854,7 @@ mod tests {
             last_failure: None,
             repairs: std::collections::BTreeMap::new(),
             superseded_attempts: std::collections::BTreeMap::new(),
+            superseded_order: std::collections::VecDeque::new(),
         };
         let _ = complete.list_gaps(None).map_err(|failure| failure.detail)?;
         let incomplete_doc = incomplete
@@ -1051,6 +1058,29 @@ mod tests {
     }
 
     #[test]
+    fn refresh_limitations_distinguish_cancel_commit_from_teardown_abandon() -> Result<(), String> {
+        // A cancel notification does not stop a running attempt: it still
+        // commits as completed. Only transport teardown abandons an attempt
+        // before commit (#5254 item 2).
+        let session = session_with(AnalysisOutcomeKind::CompleteNoFindings, 0)?;
+        let document = refresh_document(&session);
+        let limitations = document
+            .pointer("/limitations")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "refresh document lost its limitations".to_string())?;
+        let text = serde_json::to_string(limitations).map_err(|error| error.to_string())?;
+        if !text.contains("still commits as a completed snapshot")
+            || !text.contains("only transport teardown abandons an attempt before it commits")
+        {
+            return Err(format!("cancel/commit limitations drifted: {text}"));
+        }
+        if text.contains("is never committed as a completed snapshot") {
+            return Err(format!("false never-committed claim remained: {text}"));
+        }
+        Ok(())
+    }
+
+    #[test]
     fn refresh_document_reports_failure_without_dropping_last_known_good() -> Result<(), String> {
         let mut session = session_with(AnalysisOutcomeKind::CompleteNoFindings, 0)?;
         let failure = AttemptFailure::new(CODE_ANALYSIS_FAILED, "producer hiccup", "retry");
@@ -1135,6 +1165,7 @@ mod tests {
                 last_failure: None,
                 repairs: std::collections::BTreeMap::new(),
                 superseded_attempts: std::collections::BTreeMap::new(),
+                superseded_order: std::collections::VecDeque::new(),
             };
             let item = original_items
                 .first()

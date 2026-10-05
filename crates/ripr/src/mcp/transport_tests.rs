@@ -1,4 +1,5 @@
 use super::*;
+use rmcp::model::ErrorData;
 use serde_json::{Value, json};
 use std::sync::Mutex as StdMutex;
 use tokio::io::AsyncWriteExt;
@@ -205,6 +206,46 @@ async fn fatal_output_limit_wakes_receive_while_input_remains_open() -> Result<(
 }
 
 #[tokio::test]
+async fn oversized_frame_error_carries_explicit_null_id() -> Result<(), String> {
+    // Transport-level errors answer no request, so JSON-RPC requires
+    // `"id": null` — not a missing member (#5254 item 3).
+    let mut input = vec![b'x'; super::super::MAX_MESSAGE_BYTES + 16];
+    input.push(b'\n');
+    let writer = Arc::new(Mutex::new(FrameWriter::new(Vec::<u8>::new())));
+    let mut transport = BoundedTransport {
+        reader: Arc::new(Mutex::new(FrameReader::new(input.as_slice()))),
+        writer: writer.clone(),
+        failure: Arc::new(TransportFailure::default()),
+        admission: Arc::new(Admission::default()),
+        pending_protocol_error: None,
+        writer_needs_drain: false,
+    };
+    if transport.receive().await.is_some() {
+        return Err("oversized input must not yield a message".to_string());
+    }
+    let guard = writer.lock().await;
+    let frames: Vec<_> = guard
+        .output()
+        .split(|byte| *byte == b'\n')
+        .filter(|frame| !frame.is_empty())
+        .collect();
+    if frames.len() != 1 {
+        return Err(format!(
+            "expected exactly one protocol-error frame, got {}",
+            frames.len()
+        ));
+    }
+    let error: Value = serde_json::from_slice(frames[0]).map_err(|error| error.to_string())?;
+    if error.get("id") != Some(&Value::Null) {
+        return Err(format!("protocol error lost its null id: {error}"));
+    }
+    if error.pointer("/error/code").and_then(Value::as_i64) != Some(-32600) {
+        return Err(format!("protocol error lost its code: {error}"));
+    }
+    Ok(())
+}
+
+#[tokio::test]
 async fn sdk_syntax_ignore_and_typed_shape_error_recover_next_request() -> Result<(), String> {
     let input = b"{not json}\ntrue\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{},\"clientInfo\":{\"name\":\"control\",\"version\":\"1\"}}}\n";
     let writer = Arc::new(Mutex::new(FrameWriter::new(Vec::<u8>::new())));
@@ -236,10 +277,12 @@ async fn sdk_syntax_ignore_and_typed_shape_error_recover_next_request() -> Resul
         .first()
         .ok_or_else(|| "typed-shape error missing".to_string())?;
     let error: Value = serde_json::from_slice(frame).map_err(|error| error.to_string())?;
-    if error.get("id").is_some()
+    // Transport-level errors carry an explicit null id per JSON-RPC (#5254
+    // item 3), not a missing member.
+    if error.get("id") != Some(&Value::Null)
         || error.pointer("/error/code").and_then(Value::as_i64) != Some(-32600)
     {
-        return Err("SDK typed-shape error ID/code differs".into());
+        return Err("protocol typed-shape error ID/code differs".into());
     }
     Ok(())
 }

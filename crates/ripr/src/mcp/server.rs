@@ -61,7 +61,7 @@ impl McpServer {
 
     async fn status_tool(&self) -> Result<CallToolResponse, ErrorData> {
         let session = self.session.lock().await;
-        let result = protocol::status_tool_result(
+        let envelope = protocol::status_tool_result(
             &self.status,
             &session,
             &self.profile,
@@ -69,9 +69,13 @@ impl McpServer {
             super::MAX_RESPONSE_BYTES,
         )
         .map_err(|_error| ErrorData::internal_error("serialize workspace status", None))?;
-        let mut result: CallToolResult = typed(result)?;
-        result.result_type = Some(ResultType::COMPLETE);
-        Ok(result.into())
+        // Status goes through the same bound as every other tool (#5254
+        // item 4): only the writer backstop guarded it before.
+        self.bounded_tool_envelope(
+            envelope,
+            workspace::SESSION_SCHEMA_VERSION,
+            "serialize workspace status",
+        )
     }
 
     async fn refresh_tool(&self) -> Result<CallToolResponse, ErrorData> {
@@ -319,6 +323,18 @@ impl McpServer {
     ) -> Result<CallToolResponse, ErrorData> {
         let envelope = protocol::tool_result(document)
             .map_err(|_error| ErrorData::internal_error(serialize_context, None))?;
+        self.bounded_tool_envelope(envelope, failure_version, serialize_context)
+    }
+
+    /// The shared response bound for an already-built tool envelope, used
+    /// by tools whose envelope comes from the protocol layer instead of
+    /// [`tool_result`](protocol::tool_result).
+    fn bounded_tool_envelope(
+        &self,
+        envelope: Value,
+        failure_version: &'static str,
+        serialize_context: &'static str,
+    ) -> Result<CallToolResponse, ErrorData> {
         let bytes = serde_json::to_vec(&envelope)
             .map_err(|_error| ErrorData::internal_error(serialize_context, None))?;
         if bytes.len() > super::MAX_RESPONSE_BYTES {

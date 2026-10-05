@@ -54,6 +54,69 @@ async fn delayed_durable_read_leaves_the_async_executor_and_status_available() -
 }
 
 #[test]
+fn oversized_status_envelope_gets_typed_too_large_like_every_tool() -> Result<(), String> {
+    // `ripr_workspace_status` goes through the shared response bound
+    // (#5254 item 4): an over-cap envelope yields the typed
+    // `result_too_large` failure, not the writer backstop.
+    let server = McpServer::new(WorkspaceStatus::resolve_with_root(None).0, None)
+        .map_err(|error| error.to_string())?;
+    let envelope = serde_json::json!({
+        "content": [{"type": "text", "text": "x".repeat(super::super::MAX_RESPONSE_BYTES + 1)}],
+        "structuredContent": {},
+        "isError": false,
+    });
+    let response = server
+        .bounded_tool_envelope(
+            envelope,
+            workspace::SESSION_SCHEMA_VERSION,
+            "serialize workspace status",
+        )
+        .map_err(|error| error.to_string())?;
+    let rendered = format!("{response:?}");
+    if !rendered.contains(workspace::CODE_RESULT_TOO_LARGE) {
+        return Err(format!(
+            "oversized envelope missed typed refusal: {rendered}"
+        ));
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn status_tool_still_serves_through_the_shared_bound() -> Result<(), String> {
+    let server = McpServer::new(WorkspaceStatus::resolve_with_root(None).0, None)
+        .map_err(|error| error.to_string())?;
+    server
+        .status_tool()
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn oversized_status_tool_response_returns_typed_too_large() -> Result<(), String> {
+    // The envelope-level test pins the shared bound; this one pins that
+    // `status_tool` itself routes through it (#6291): restoring the
+    // previous unbounded conversion must fail here.
+    let server = McpServer::new(WorkspaceStatus::resolve_with_root(None).0, None)
+        .map_err(|error| error.to_string())?;
+    server.session.lock().await.last_failure = Some(
+        workspace::AttemptFailure::new(workspace::CODE_ANALYSIS_FAILED, "test failure", "retry")
+            .with_data(serde_json::json!({
+                "payload": "x".repeat(super::super::MAX_RESPONSE_BYTES + 1),
+            })),
+    );
+    let response = server
+        .status_tool()
+        .await
+        .map_err(|error| error.to_string())?;
+    let rendered = format!("{response:?}");
+    if !rendered.contains(workspace::CODE_RESULT_TOO_LARGE) {
+        return Err(format!("oversized status missed typed refusal: {rendered}"));
+    }
+    Ok(())
+}
+
+#[test]
 fn sdk_server_metadata_preserves_bounded_status_instructions() -> Result<(), String> {
     let server = McpServer::new(WorkspaceStatus::resolve_with_root(None).0, None)
         .map_err(|error| error.to_string())?;

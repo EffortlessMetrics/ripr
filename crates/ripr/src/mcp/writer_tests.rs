@@ -18,6 +18,46 @@ fn readable_giant_id_cannot_escape_the_output_cap() -> Result<(), String> {
     Ok(())
 }
 
+#[test]
+fn exactly_max_response_bytes_passes_and_one_more_falls_back() -> Result<(), String> {
+    // The writer backstop admits exactly-MAX frames, matching the semantic
+    // layers' `> MAX` typed refusal (#5254 item 5). The overflow case pads
+    // the message text, not the id: a giant id falls back to a hard error
+    // by design, which is a different contract.
+    let message_with_pad = |pad_len: usize| {
+        ServerJsonRpcMessage::error(
+            ErrorData::internal_error("x".repeat(pad_len), None),
+            Some(rmcp::model::RequestId::String("pad".into())),
+        )
+    };
+    let base_len = serde_json::to_vec(&message_with_pad(0))
+        .map_err(|error| error.to_string())?
+        .len();
+    let pad_len = super::super::MAX_RESPONSE_BYTES
+        .checked_sub(base_len)
+        .ok_or_else(|| "fixture exceeds the response bound".to_string())?;
+    let exact = encode_message(&message_with_pad(pad_len)).map_err(|error| error.to_string())?;
+    // The newline is appended after the cap check, so the frame is MAX + 1.
+    if exact.len() != super::super::MAX_RESPONSE_BYTES + 1 {
+        return Err(format!(
+            "exactly-MAX frame has wrong length: {}",
+            exact.len()
+        ));
+    }
+    let exact_text = String::from_utf8(exact).map_err(|error| error.to_string())?;
+    if !exact_text.contains("\"code\":-32603")
+        || exact_text.contains("MCP response exceeds the configured byte limit")
+    {
+        return Err("exactly-MAX frame was replaced by the fallback".into());
+    }
+    let over = encode_message(&message_with_pad(pad_len + 1)).map_err(|error| error.to_string())?;
+    let over_text = String::from_utf8(over).map_err(|error| error.to_string())?;
+    if !over_text.contains("MCP response exceeds the configured byte limit") {
+        return Err(format!("MAX+1 frame missed the fallback: {over_text}"));
+    }
+    Ok(())
+}
+
 #[tokio::test]
 async fn cancelled_partial_write_resumes_without_repeating_bytes() -> Result<(), String> {
     use std::{

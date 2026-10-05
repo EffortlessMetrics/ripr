@@ -49,6 +49,12 @@ pub(crate) const CODE_ATTEMPT_INVALID: &str = "attempt_invalid";
 const ATTEMPT_ID_PREFIX: &str = "repair-attempt-";
 const ATTEMPT_ID_HEX_LEN: usize = 24;
 
+/// Cap on `superseded_attempts` tombstones (#5254 item 7). Eviction is
+/// oldest-first via the session's insertion-order queue, so recent
+/// supersedes keep their typed `superseded` reads; a tombstone older than
+/// the cap degrades to `attempt_not_found` for MCP-only ids (#6291).
+const MAX_SUPERSEDED_TOMBSTONES: usize = 64;
+
 /// The product repair transaction's shared non-claims, verbatim from the
 /// durable manifest authority; MCP repeats them on every prepared packet so
 /// no surface can read preparation as completion.
@@ -776,9 +782,27 @@ impl WorkspaceSession {
         });
         self.repairs.insert(attempt_id, transaction);
         for (id, old_snapshot) in evicted {
-            self.superseded_attempts.insert(id, old_snapshot);
+            self.insert_superseded_tombstone(id, old_snapshot);
         }
         Ok(packet)
+    }
+
+    /// Records one evicted transaction's tombstone, keeping the map bounded
+    /// so long sessions cannot grow it without limit (#5254 item 7).
+    /// Eviction is oldest-first: the queue holds keys in insertion order,
+    /// so a recent supersede is never the one dropped (#6291).
+    fn insert_superseded_tombstone(&mut self, attempt_id: String, snapshot_id: String) {
+        if self.superseded_attempts.contains_key(&attempt_id) {
+            self.superseded_order.retain(|id| id != &attempt_id);
+        }
+        self.superseded_order.push_back(attempt_id.clone());
+        self.superseded_attempts.insert(attempt_id, snapshot_id);
+        while self.superseded_attempts.len() > MAX_SUPERSEDED_TOMBSTONES {
+            let Some(oldest) = self.superseded_order.pop_front() else {
+                break;
+            };
+            self.superseded_attempts.remove(&oldest);
+        }
     }
 
     /// `ripr_get_repair_attempt` / `ripr://repair-attempt/{attempt_id}`:
@@ -959,7 +983,120 @@ mod tests {
             last_failure: None,
             repairs: std::collections::BTreeMap::new(),
             superseded_attempts: std::collections::BTreeMap::new(),
+            superseded_order: std::collections::VecDeque::new(),
         })
+    }
+
+    #[test]
+    fn superseded_tombstones_stay_capped_for_long_sessions() -> Result<(), String> {
+        // Tombstone eviction needs no snapshot: build the session shell
+        // directly instead of a findings-bearing fixture.
+        let mut session = WorkspaceSession {
+            in_flight: false,
+            last_good: None,
+            last_failure: None,
+            repairs: std::collections::BTreeMap::new(),
+            superseded_attempts: std::collections::BTreeMap::new(),
+            superseded_order: std::collections::VecDeque::new(),
+        };
+        for index in 0..MAX_SUPERSEDED_TOMBSTONES + 10 {
+            session.insert_superseded_tombstone(
+                format!("repair-attempt-{index:04}"),
+                "snapshot-old".to_string(),
+            );
+        }
+        if session.superseded_attempts.len() != MAX_SUPERSEDED_TOMBSTONES {
+            return Err(format!(
+                "tombstone map grew past its cap: {}",
+                session.superseded_attempts.len()
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn tombstone_eviction_drops_oldest_first_and_reads_fail_closed() -> Result<(), String> {
+        // Past the cap, the oldest tombstones go first (#6291): a recent
+        // supersede keeps its typed reads, while an evicted MCP-only id
+        // reads attempt_not_found on both the attempt and receipt routes.
+        // Ids sort reverse to insertion order on purpose, so digest order
+        // cannot masquerade as age order.
+        let mut session = WorkspaceSession {
+            in_flight: false,
+            last_good: None,
+            last_failure: None,
+            repairs: std::collections::BTreeMap::new(),
+            superseded_attempts: std::collections::BTreeMap::new(),
+            superseded_order: std::collections::VecDeque::new(),
+        };
+        let total = MAX_SUPERSEDED_TOMBSTONES + 10;
+        for index in 0..total {
+            session.insert_superseded_tombstone(
+                format!("repair-attempt-{:04}", total - index),
+                "snapshot-old".to_string(),
+            );
+        }
+        let oldest_evicted = format!("repair-attempt-{total:04}");
+        let newest_kept = "repair-attempt-0001".to_string();
+        if session.superseded_attempts.contains_key(&oldest_evicted) {
+            return Err("the oldest tombstone must be evicted first".to_string());
+        }
+        if !session.superseded_attempts.contains_key(&newest_kept) {
+            return Err("the newest tombstone must survive the cap".to_string());
+        }
+        match session.repair_attempt_document(&oldest_evicted, None, None) {
+            Err(failure) if failure.code == CODE_ATTEMPT_NOT_FOUND => {}
+            Err(failure) => {
+                return Err(format!(
+                    "evicted attempt must read attempt_not_found, got: {}",
+                    failure.code
+                ));
+            }
+            Ok(value) => {
+                return Err(format!("evicted attempt must not read a document: {value}"));
+            }
+        }
+        match session.receipt_status_document(&oldest_evicted, None, None) {
+            Err(failure) if failure.code == CODE_ATTEMPT_NOT_FOUND => {}
+            Err(failure) => {
+                return Err(format!(
+                    "evicted receipt must read attempt_not_found, got: {}",
+                    failure.code
+                ));
+            }
+            Ok(value) => {
+                return Err(format!("evicted receipt must not read a document: {value}"));
+            }
+        }
+        match session.repair_attempt_document(&newest_kept, None, None) {
+            Err(failure) if failure.code == "superseded" => {}
+            Err(failure) => {
+                return Err(format!(
+                    "newest tombstone must stay superseded, got: {}",
+                    failure.code
+                ));
+            }
+            Ok(value) => {
+                return Err(format!(
+                    "superseded attempt must not read a document: {value}"
+                ));
+            }
+        }
+        match session.receipt_status_document(&newest_kept, None, None) {
+            Err(failure) if failure.code == "superseded" => {}
+            Err(failure) => {
+                return Err(format!(
+                    "newest receipt must stay superseded, got: {}",
+                    failure.code
+                ));
+            }
+            Ok(value) => {
+                return Err(format!(
+                    "superseded receipt must not read a document: {value}"
+                ));
+            }
+        }
+        Ok(())
     }
 
     fn unique_test_dir(name: &str) -> Result<PathBuf, String> {
