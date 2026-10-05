@@ -599,7 +599,7 @@ fn invoke_perl_lsp_producer(
             // Cooperative cancellation (#2303): the enclosing analysis was
             // superseded or cancelled; the shared wait already terminated +
             // reaped the child. Propagate the named cancellation error.
-            Err(cancelled)
+            Err(cancelled.to_string())
         }
         crate::git::ChildWait::WaitFailed(err) => {
             // The shared wait already terminated + reaped the child.

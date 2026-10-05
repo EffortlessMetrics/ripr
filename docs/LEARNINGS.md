@@ -19,6 +19,20 @@ sites (diagnostic operand stripping, guarded owner-result matches, exact-variant
 pins, Python's typed-oracle gate) do not scan identifier lexemes. Do not reopen
 #4748.
 
+## 2026-10-04: cancellation is the token's observed abort, not a phrase (#4860)
+
+Analysis checkpoints render `analysis cancelled: <Kind>` and the text then
+travels through ~120 `Result<_, String>` call sites, where callers wrap it.
+The LSP refresh wrapped it as `workspace analysis failed: ...`, so its
+`starts_with("analysis cancelled:")` check read a real deadline abort as an
+analysis failure. Decide cancellation from
+`AnalysisCancellationToken::observed_abort()`: the recorded kind, set only
+once a checkpoint handed it to the work. A recorded reason that no checkpoint
+saw is not an outcome, because the work failed or finished on its own.
+Inside `CoreError` code (git invocation, diff load) the abort is the typed
+`CoreError::AnalysisCancelled`. `is_cancellation_error(&str)` is test-only
+and asserts rendered wording.
+
 ## 2026-10-04: Initialize-session `ping` is the method name, not `params._meta` (#6022)
 
 Pinned `rmcp` 3.5.0 answers pre-init `ping` in the handshake loop (any

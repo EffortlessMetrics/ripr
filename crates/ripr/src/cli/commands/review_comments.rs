@@ -581,9 +581,8 @@ fn review_comments_with_admission(
     })
     .map_err(|error| {
         if error.is_git_invocation_timeout()
-            || (analysis::cancellation::is_cancellation_error(&error.to_string())
-                && cancellation.abort_kind()
-                    == Some(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded))
+            || cancellation.observed_abort()
+                == Some(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded)
         {
             record_review_comments_timeout(&mut receipt, &receipt_path, "diff_discovery")
         } else {
@@ -624,9 +623,8 @@ fn review_comments_with_admission(
         analysis::analyzable_corpus_payload_size(&input.root, &config, &owner_files)
     })
     .map_err(|error| {
-        if analysis::cancellation::is_cancellation_error(&error)
-            && cancellation.abort_kind()
-                == Some(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded)
+        if cancellation.observed_abort()
+            == Some(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded)
         {
             record_review_comments_timeout(&mut receipt, &receipt_path, "language_facts")
         } else {
@@ -682,9 +680,8 @@ fn review_comments_with_admission(
         )
     })
     .map_err(|error| {
-        if analysis::cancellation::is_cancellation_error(&error)
-            && cancellation.abort_kind()
-                == Some(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded)
+        if cancellation.observed_abort()
+            == Some(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded)
         {
             record_review_comments_timeout(&mut receipt, &receipt_path, "canonical_analysis")
         } else {

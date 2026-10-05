@@ -563,10 +563,8 @@ fn collect_output_with_optional_deadline_and_limit(
             stdout: stdout.bytes,
             stderr: stderr.bytes,
         }),
-        ChildWait::TimedOut(error) => Err(error),
-        ChildWait::Cancelled(message) | ChildWait::CleanupFailed(message) => {
-            Err(CoreError::message(message))
-        }
+        ChildWait::TimedOut(error) | ChildWait::Cancelled(error) => Err(error),
+        ChildWait::CleanupFailed(message) => Err(CoreError::message(message)),
         ChildWait::WaitFailed(err) => Err(CoreError::message(format!(
             "failed while waiting on {describe}: {err}"
         ))),
@@ -805,7 +803,7 @@ impl CatFileBatch {
     /// announced blob size in bytes, or `None` when git reports the object
     /// missing (the caller fails closed naming the identity).
     pub(crate) fn request_blob(&mut self, object: &str) -> Result<Option<u64>, CoreError> {
-        if let Err(cancelled) = crate::analysis::cancellation::checkpoint() {
+        if let Err(cancelled) = crate::analysis::cancellation::checkpoint_typed() {
             return Err(self.abort("cancellation", cancelled));
         }
         let write_result = self
@@ -852,7 +850,7 @@ impl CatFileBatch {
     /// of `buf` sized by the caller bound resident memory; the overall
     /// session deadline is enforced between chunk reads.
     pub(crate) fn read_blob_bytes(&mut self, buf: &mut [u8]) -> Result<(), CoreError> {
-        if let Err(cancelled) = crate::analysis::cancellation::checkpoint() {
+        if let Err(cancelled) = crate::analysis::cancellation::checkpoint_typed() {
             return Err(self.abort("cancellation", cancelled));
         }
         let deadline = self.deadline();
@@ -929,8 +927,7 @@ impl CatFileBatch {
                     Err(format!("git cat-file --batch exited with {status}: {detail}").into())
                 }
             }
-            ChildWait::TimedOut(error) => Err(error),
-            ChildWait::Cancelled(message) => Err(message.into()),
+            ChildWait::TimedOut(error) | ChildWait::Cancelled(error) => Err(error),
             ChildWait::WaitFailed(err) => {
                 Err(format!("failed while waiting on {}: {err}", self.describe).into())
             }
@@ -1136,10 +1133,8 @@ fn collect_output_with_deadline(
             stdout,
             stderr,
         }),
-        ChildWait::TimedOut(error) => Err(error),
-        ChildWait::Cancelled(message) | ChildWait::CleanupFailed(message) => {
-            Err(CoreError::message(message))
-        }
+        ChildWait::TimedOut(error) | ChildWait::Cancelled(error) => Err(error),
+        ChildWait::CleanupFailed(message) => Err(CoreError::message(message)),
         ChildWait::WaitFailed(err) => Err(CoreError::message(format!(
             "failed while waiting on {describe}: {err}"
         ))),
@@ -1158,7 +1153,7 @@ fn collect_output_with_deadline(
 pub(crate) enum ChildWait {
     Exited(std::process::ExitStatus),
     TimedOut(CoreError),
-    Cancelled(String),
+    Cancelled(CoreError),
     WaitFailed(String),
     CleanupFailed(String),
 }
@@ -1170,10 +1165,8 @@ impl ChildWait {
     fn summary(&self) -> String {
         match self {
             Self::Exited(status) => format!("child exited with {status}"),
-            Self::TimedOut(error) => error.to_string(),
-            Self::Cancelled(message) | Self::WaitFailed(message) | Self::CleanupFailed(message) => {
-                message.clone()
-            }
+            Self::TimedOut(error) | Self::Cancelled(error) => error.to_string(),
+            Self::WaitFailed(message) | Self::CleanupFailed(message) => message.clone(),
         }
     }
 }
@@ -1202,11 +1195,11 @@ pub(crate) fn poll_child(
         match child.try_wait() {
             Ok(Some(status)) => return ChildWait::Exited(status),
             Ok(None) => {
-                if let Err(cancelled) = crate::analysis::cancellation::checkpoint() {
+                if let Err(cancelled) = crate::analysis::cancellation::checkpoint_typed() {
                     return terminate_then_classify(
                         describe,
                         "cancellation",
-                        ChildWait::Cancelled(cancelled),
+                        ChildWait::Cancelled(cancelled.into()),
                         || child.terminate_tree(),
                     );
                 }
@@ -1313,9 +1306,7 @@ fn drain_pipe_reader(
 mod tests {
 
     use super::*;
-    use crate::analysis::cancellation::{
-        AnalysisAbortKind, AnalysisCancellationToken, is_cancellation_error, with_token,
-    };
+    use crate::analysis::cancellation::{AnalysisAbortKind, AnalysisCancellationToken, with_token};
     use serial_test::serial;
 
     #[test]
@@ -1925,10 +1916,10 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
                 error.is_git_invocation_timeout()
                     && error.to_string().contains("exceeded the 50ms deadline")
             }
-            (ChildWait::Cancelled(message), true) => {
-                is_cancellation_error(message)
-                    && !message.to_string().starts_with("git_invocation_timeout:")
-                    && !CoreError::message(message).is_git_invocation_timeout()
+            (ChildWait::Cancelled(error), true) => {
+                error.is_analysis_cancelled()
+                    && !error.is_git_invocation_timeout()
+                    && error.to_string() == "analysis cancelled: Superseded"
             }
             _ => false,
         };
@@ -1949,10 +1940,8 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
                 "hung child wait took the wrong arm for cancelled={cancelled}: {}",
                 match wait {
                     ChildWait::Exited(status) => format!("exited: {status}"),
-                    ChildWait::TimedOut(error) => error.to_string(),
-                    ChildWait::Cancelled(message)
-                    | ChildWait::WaitFailed(message)
-                    | ChildWait::CleanupFailed(message) => message,
+                    ChildWait::TimedOut(error) | ChildWait::Cancelled(error) => error.to_string(),
+                    ChildWait::WaitFailed(message) | ChildWait::CleanupFailed(message) => message,
                 }
             ));
         }
@@ -2004,10 +1993,12 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
         let wait = terminate_then_classify(
             "stub child",
             "cancellation",
-            ChildWait::Cancelled("stub cancelled".to_string()),
+            ChildWait::Cancelled(CoreError::message("stub cancelled")),
             || Ok(()),
         );
-        assert!(matches!(wait, ChildWait::Cancelled(ref message) if message == "stub cancelled"));
+        assert!(
+            matches!(wait, ChildWait::Cancelled(ref error) if error.to_string() == "stub cancelled")
+        );
     }
 
     #[test]
@@ -2297,8 +2288,11 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
             Err(err) => err,
             Ok(_) => return Err("a cancelled invocation must fail".to_string()),
         };
-        if !is_cancellation_error(&err.to_string()) {
-            return Err(format!("expected the cancellation error, got: {err}"));
+        if !err.is_analysis_cancelled() || err.to_string() != "analysis cancelled: Superseded" {
+            return Err(format!("expected the typed cancellation error, got: {err}"));
+        }
+        if token.observed_abort() != Some(AnalysisAbortKind::Superseded) {
+            return Err("the checkpoint that stopped git must record the observed abort".into());
         }
         if err.is_git_invocation_timeout() || err.to_string().starts_with("git_invocation_timeout:")
         {

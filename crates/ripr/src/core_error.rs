@@ -31,6 +31,9 @@ pub(crate) enum CoreError {
         timeout_ms: u128,
         spawned: bool,
     },
+    /// Cooperative analysis cancellation observed at a checkpoint (#4860).
+    /// Display keeps the public `analysis cancelled: <Kind>` wording.
+    AnalysisCancelled(crate::analysis::cancellation::AnalysisCancellation),
     /// Unmigrated remainder. Display-only until a later family is typed.
     Message(String),
     /// Structured wrap that preserves the source kind.
@@ -69,7 +72,17 @@ impl CoreError {
         match self {
             Self::GitInvocationTimeout { .. } => true,
             Self::Context { source, .. } => source.is_git_invocation_timeout(),
-            Self::Message(_) => false,
+            Self::AnalysisCancelled(_) | Self::Message(_) => false,
+        }
+    }
+
+    /// True for a typed cancellation, including through `with_context`.
+    /// Timeout is a distinct family and never reads as cancellation.
+    pub(crate) fn is_analysis_cancelled(&self) -> bool {
+        match self {
+            Self::AnalysisCancelled(_) => true,
+            Self::Context { source, .. } => source.is_analysis_cancelled(),
+            Self::GitInvocationTimeout { .. } | Self::Message(_) => false,
         }
     }
 
@@ -100,6 +113,7 @@ impl fmt::Display for CoreError {
                 "{GIT_INVOCATION_TIMEOUT_KIND}: {operation} exceeded the {timeout_ms}ms deadline (process terminated).{}",
                 GIT_TIMEOUT_REPAIR_GUIDANCE
             ),
+            Self::AnalysisCancelled(cancellation) => cancellation.fmt(formatter),
             Self::Message(message) => formatter.write_str(message),
             Self::Context { context, source } => write!(formatter, "{context}: {source}"),
         }
@@ -110,8 +124,16 @@ impl Error for CoreError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Context { source, .. } => Some(source.as_ref()),
-            Self::GitInvocationTimeout { .. } | Self::Message(_) => None,
+            Self::GitInvocationTimeout { .. } | Self::AnalysisCancelled(_) | Self::Message(_) => {
+                None
+            }
         }
+    }
+}
+
+impl From<crate::analysis::cancellation::AnalysisCancellation> for CoreError {
+    fn from(cancellation: crate::analysis::cancellation::AnalysisCancellation) -> Self {
+        Self::AnalysisCancelled(cancellation)
     }
 }
 
@@ -254,5 +276,33 @@ mod tests {
                 .to_string()
                 .starts_with(GIT_INVOCATION_TIMEOUT_KIND)
         );
+    }
+
+    #[test]
+    fn analysis_cancellation_is_typed_wrapped_and_distinct_from_timeout() {
+        use crate::analysis::cancellation::{AnalysisAbortKind, AnalysisCancellation};
+        let cancelled = CoreError::from(AnalysisCancellation {
+            kind: AnalysisAbortKind::Superseded,
+        });
+        assert_eq!(cancelled.to_string(), "analysis cancelled: Superseded");
+        assert!(cancelled.is_analysis_cancelled());
+        assert!(!cancelled.is_git_invocation_timeout());
+        assert_eq!(cancelled.git_invocation_timeout_kind(), None);
+
+        let wrapped = cancelled.with_context("workspace analysis failed");
+        assert!(wrapped.is_analysis_cancelled());
+        assert!(!wrapped.to_string().starts_with("analysis cancelled:"));
+
+        for lookalike in [
+            CoreError::message("analysis cancelled: Superseded"),
+            CoreError::from("analysis cancelled: forged".to_string()),
+            CoreError::message("analysis cancelled: Superseded").with_context("outer"),
+        ] {
+            assert!(!lookalike.is_analysis_cancelled(), "{lookalike}");
+        }
+
+        // Timeout and cancellation never stand in for each other.
+        assert!(!timeout().is_analysis_cancelled());
+        assert!(!timeout().with_context("outer").is_analysis_cancelled());
     }
 }

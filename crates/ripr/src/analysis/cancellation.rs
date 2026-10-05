@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::sync::{
     Arc,
-    atomic::{AtomicU8, Ordering},
+    atomic::{AtomicBool, AtomicU8, Ordering},
 };
 use std::time::{Duration, Instant};
 
@@ -29,6 +29,10 @@ struct AnalysisBudget {
 
 struct CancellationState {
     reason: AtomicU8,
+    /// Set once a checkpoint has returned the abort to running work (#4860).
+    /// A recorded reason alone does not mean the work stopped because of it:
+    /// work that failed or finished before its next checkpoint never saw it.
+    observed: AtomicBool,
     budget: Option<AnalysisBudget>,
 }
 
@@ -75,6 +79,7 @@ impl AnalysisCancellationToken {
     pub(crate) fn new() -> Self {
         Self(Arc::new(CancellationState {
             reason: AtomicU8::new(ACTIVE),
+            observed: AtomicBool::new(false),
             budget: None,
         }))
     }
@@ -84,6 +89,7 @@ impl AnalysisCancellationToken {
     pub(crate) fn with_budget(started: Instant, limit: Duration, now: AnalysisClock) -> Self {
         Self(Arc::new(CancellationState {
             reason: AtomicU8::new(ACTIVE),
+            observed: AtomicBool::new(false),
             budget: Some(AnalysisBudget {
                 started,
                 limit,
@@ -129,8 +135,29 @@ impl AnalysisCancellationToken {
             self.cancel(AnalysisAbortKind::DeadlineExceeded);
         }
         // Re-read the winner after CAS, including a concurrent earlier reason.
-        self.abort_kind()
-            .map_or(Ok(()), |kind| Err(AnalysisCancellation { kind }))
+        match self.abort_kind() {
+            None => Ok(()),
+            Some(kind) => {
+                self.0.observed.store(true, Ordering::Release);
+                Err(AnalysisCancellation { kind })
+            }
+        }
+    }
+
+    /// The typed outcome of an attempt that ended in an error (#4860): the
+    /// recorded abort, but only once a checkpoint handed it to the work.
+    /// Consumers decide cancellation here instead of parsing the error's
+    /// rendered text, so a wrapped cancellation stays a cancellation and an
+    /// ordinary failure that merely reads like one stays a failure. A few
+    /// best-effort walks swallow a checkpoint error and stop early; that still
+    /// counts as observed, so a later failure in the same attempt is named by
+    /// the abort that truncated it. Pure: it never expires a budget.
+    pub(crate) fn observed_abort(&self) -> Option<AnalysisAbortKind> {
+        if self.0.observed.load(Ordering::Acquire) {
+            self.abort_kind()
+        } else {
+            None
+        }
     }
 }
 
@@ -170,10 +197,16 @@ pub(crate) fn with_optional_token<T>(
 }
 
 pub(crate) fn checkpoint() -> Result<(), String> {
+    checkpoint_typed().map_err(|error| error.to_string())
+}
+
+/// [`checkpoint`] for callers that carry [`crate::core_error::CoreError`]:
+/// the abort stays typed instead of becoming rendered text.
+pub(crate) fn checkpoint_typed() -> Result<(), AnalysisCancellation> {
     CURRENT_TOKEN.with(|slot| {
-        slot.borrow().as_ref().map_or(Ok(()), |token| {
-            token.checkpoint().map_err(|error| error.to_string())
-        })
+        slot.borrow()
+            .as_ref()
+            .map_or(Ok(()), AnalysisCancellationToken::checkpoint)
     })
 }
 
@@ -191,6 +224,10 @@ pub(crate) fn current_abort_kind() -> Option<AnalysisAbortKind> {
     CURRENT_TOKEN.with(|slot| slot.borrow().as_ref().and_then(|token| token.abort_kind()))
 }
 
+/// Rendered-wording assertion for tests only (#4860). Production decides
+/// cancellation from [`AnalysisCancellationToken::observed_abort`] or
+/// [`crate::core_error::CoreError::is_analysis_cancelled`], never from text.
+#[cfg(test)]
 pub(crate) fn is_cancellation_error(error: &str) -> bool {
     error.starts_with("analysis cancelled:")
 }
@@ -389,5 +426,56 @@ mod tests {
             ));
         }
         Ok(())
+    }
+
+    #[test]
+    fn observed_abort_requires_a_checkpoint_to_hand_the_abort_to_work() {
+        // #4860: a recorded reason alone does not name the attempt's outcome.
+        let token = AnalysisCancellationToken::new();
+        assert_eq!(token.observed_abort(), None);
+        assert!(token.cancel(AnalysisAbortKind::Superseded));
+        assert_eq!(token.abort_kind(), Some(AnalysisAbortKind::Superseded));
+        assert_eq!(
+            token.observed_abort(),
+            None,
+            "work that never reached a checkpoint was not stopped by the abort"
+        );
+        assert_eq!(
+            token.checkpoint(),
+            Err(AnalysisCancellation {
+                kind: AnalysisAbortKind::Superseded
+            })
+        );
+        assert_eq!(token.observed_abort(), Some(AnalysisAbortKind::Superseded));
+        // First-cancel-wins: a later deadline cannot relabel the outcome.
+        assert!(!token.cancel(AnalysisAbortKind::DeadlineExceeded));
+        assert_eq!(token.observed_abort(), Some(AnalysisAbortKind::Superseded));
+    }
+
+    #[test]
+    fn budget_expiry_is_observed_as_the_deadline_kind_through_the_free_checkpoint() {
+        let started = Instant::now();
+        let token = AnalysisCancellationToken::with_budget(
+            started,
+            Duration::ZERO,
+            Arc::new(move || started),
+        );
+        assert_eq!(token.observed_abort(), None);
+        let typed = with_token(&token, checkpoint_typed);
+        assert_eq!(
+            typed,
+            Err(AnalysisCancellation {
+                kind: AnalysisAbortKind::DeadlineExceeded
+            })
+        );
+        assert_eq!(
+            token.observed_abort(),
+            Some(AnalysisAbortKind::DeadlineExceeded)
+        );
+        // The String checkpoint keeps the public wording.
+        assert_eq!(
+            with_token(&token, checkpoint).err().as_deref(),
+            Some("analysis cancelled: DeadlineExceeded")
+        );
     }
 }
