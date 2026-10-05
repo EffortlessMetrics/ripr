@@ -16,7 +16,7 @@ testing, edit source files, configure CI policy, or make gate decisions.
 "#;
 pub(super) const REVIEW_COMMENTS_HELP: &str = r#"Write advisory PR test guidance on changed lines (does not post to GitHub).
 
-Usage: ripr review-comments [--root PATH] --base SHA --head SHA [--gap-ledger PATH | --check-output PATH] [--out PATH] [--timeout-ms MS]
+Usage: ripr review-comments [--root PATH] --base SHA --head SHA [--gap-ledger PATH | --check-output PATH [--enrich-repair-guidance]] [--out PATH] [--timeout-ms MS]
 
 Options:
   --root PATH    Workspace root. Defaults to current directory.
@@ -27,9 +27,22 @@ Options:
                  repair cards come only from `projection_eligibility.pr_comment`
                  GapRecord targets.
   --check-output PATH
-                 Optional producer-generated `ripr check --json` artifact.
-                 Its typed analysis outcome is projected without rerunning the
-                 producer; incomplete input remains incomplete guidance.
+                  Optional PR-evidence producer packet's check.json path.
+                  Strict subject and review-input admission is required. By
+                  default only its compact projection is reused; compact cards
+                  do not establish actionable repair semantics.
+  --enrich-repair-guidance
+                  Requires --check-output. Run fresh bounded repair guidance
+                  from the clean admitted HEAD after strict producer admission.
+                  Requires the enabled Rust adapter for genuine seam analysis.
+                  Requires a clean tracked workspace and tracked selected Rust
+                  sources, changed-owner files, Cargo files, intent, suppression
+                  and project markers. Current configuration must match the
+                  producer's admitted settings and stay stable during analysis;
+                  its path is not required to be tracked just because it is the
+                  configuration source. Reject selected-input drift.
+                  Keep the admitted compact packet as producer_review_input;
+                  fresh classified guidance is not recorded as reused analysis.
   --out PATH     JSON output path. Defaults to target/ripr/review/comments.json.
   --timeout-ms MS
                  Cooperative analysis budget (default 120000ms), checked at

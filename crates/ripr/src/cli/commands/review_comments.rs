@@ -202,6 +202,14 @@ fn record_producer_admission_error(
     receipt_path: &Path,
     error: app::review_comments::ProducerAdmissionError,
 ) -> String {
+    if error.category == "review_guidance_oversized" {
+        return record_review_comments_oversized(
+            receipt,
+            receipt_path,
+            "producer_evidence_admission",
+            error.message,
+        );
+    }
     if error.category == "producer_timeout" {
         return record_review_comments_timeout(
             receipt,
@@ -320,6 +328,15 @@ fn review_comments_with_admission(
     }
 
     let config = load_for_root(&options.root)?;
+    if options.enrich_repair_guidance
+        && (!crate::domain::LanguageId::Rust.is_available()
+            || !config
+                .languages()
+                .enabled
+                .contains(&crate::domain::LanguageId::Rust))
+    {
+        return Err("review-comments --enrich-repair-guidance requires the enabled Rust adapter; use the compact producer projection for other adapter configurations".to_string());
+    }
     let mut input = CheckInput {
         root: options.root.clone(),
         ..CheckInput::default()
@@ -597,6 +614,26 @@ fn review_comments_with_admission(
             error,
         ));
     }
+    // Fresh repair guidance is a separate analysis, never a reinterpretation
+    // of the deliberately minimal producer cards. Admit its consumed sources
+    // after the common memory ceiling and before owner attribution.
+    let live_binding = if options.enrich_repair_guidance {
+        Some(
+            analysis::cancellation::with_token(&cancellation, || {
+                bind_live_guidance_inputs(
+                    &options,
+                    &input,
+                    admitted.as_ref(),
+                    admitted_review_input.as_ref(),
+                    &owner_files,
+                    ceiling,
+                )
+            })
+            .map_err(|error| record_producer_admission_error(&mut receipt, &receipt_path, error))?,
+        )
+    } else {
+        None
+    };
     let (changed_owners, enclosing_owners) = attribute_owners(&input.root, &changed_lines);
     enforce_review_comments_deadline(
         &mut receipt,
@@ -616,7 +653,10 @@ fn review_comments_with_admission(
         .iter()
         .map(|owner| owner.owner.clone())
         .collect::<Vec<_>>();
-    if let Some(review_input) = admitted_review_input {
+    if let Some(review_input) = admitted_review_input
+        .as_ref()
+        .filter(|_| !options.enrich_repair_guidance)
+    {
         let analysis_scope =
             output::review_comments::ReviewCommentsAnalysisScope::producer_projection(
                 &working_set,
@@ -627,7 +667,7 @@ fn review_comments_with_admission(
             "route_construction",
             true,
             Some(review_input.reviewed_count),
-            Some(review_input.projection_sha256),
+            Some(review_input.projection_sha256.clone()),
         );
         receipt.write_atomic(&receipt_path)?;
         let render_context = output::review_comments::ReviewCommentsRenderContext {
@@ -727,6 +767,29 @@ fn review_comments_with_admission(
         options.timeout_ms,
         "canonical_analysis",
     )?;
+    if let Some(before) = &live_binding {
+        let after = analysis::cancellation::with_token(&cancellation, || {
+            bind_live_guidance_inputs(
+                &options,
+                &input,
+                admitted.as_ref(),
+                admitted_review_input.as_ref(),
+                &owner_files,
+                ceiling,
+            )
+        })
+        .map_err(|error| record_producer_admission_error(&mut receipt, &receipt_path, error))?;
+        if before != &after || scoped_inventory.workspace_cache_key != before.0 {
+            return Err(record_producer_admission_error(
+                &mut receipt,
+                &receipt_path,
+                app::review_comments::ProducerAdmissionError {
+                    category: "producer_identity_mismatch",
+                    message: "live repair-guidance inputs changed during analysis; restore the producer-bound workspace and regenerate PR evidence".to_string(),
+                },
+            ));
+        }
+    }
     receipt.measured_phase(
         "canonical_analysis",
         "route_construction",
@@ -787,7 +850,10 @@ fn review_comments_with_admission(
     );
     let analysis_outcome = admitted
         .as_ref()
-        .filter(|value| value.outcome.kind.is_complete())
+        // A complete producer packet can cover other adapters and a different
+        // denominator. Fresh Rust guidance reports its actual limited scope;
+        // it must not inherit the producer's whole-packet completeness.
+        .filter(|value| !options.enrich_repair_guidance && value.outcome.kind.is_complete())
         .map(|value| value.outcome.clone());
     let render_context = output::review_comments::ReviewCommentsRenderContext {
         root: &input.root,
@@ -806,6 +872,25 @@ fn review_comments_with_admission(
     .map_err(|error| {
         record_review_comments_error(&mut receipt, &receipt_path, "static_rendering", error)
     })?;
+    let rendered_json = if let Some(producer) = admitted_review_input.as_ref() {
+        let mut value: serde_json::Value =
+            serde_json::from_str(&rendered_json).map_err(|error| {
+                record_review_comments_error(
+                    &mut receipt,
+                    &receipt_path,
+                    "static_rendering",
+                    error.to_string(),
+                )
+            })?;
+        // Keep the live renderer's own review_input unchanged. This distinct
+        // field is the exact compact producer projection already admitted.
+        value["producer_review_input"] = producer.projection.clone();
+        output::json::render_pretty(&value, "enriched review comments").map_err(|error| {
+            record_review_comments_error(&mut receipt, &receipt_path, "static_rendering", error)
+        })?
+    } else {
+        rendered_json
+    };
     let rendered_md = output::review_comments::render_review_comments_markdown_with_scope(
         &render_context,
         &working_set,
@@ -843,12 +928,184 @@ fn review_comments_with_admission(
     Ok(())
 }
 
+// The workspace key is owned by the actual ClassifiedSeam inventory. The
+// raw digests cover the same corpus plus all changed owner-attribution inputs,
+// including sources excluded from canonical inventory by generated policy.
+type LiveGuidanceBinding = (
+    analysis::seam_cache::RepoSeamCacheKey,
+    std::collections::BTreeMap<PathBuf, String>,
+);
+
+fn live_guidance_input_paths(
+    root: &Path,
+    config: &crate::config::RiprConfig,
+    owner_files: &[PathBuf],
+    ceiling: GuidancePayloadCeiling,
+) -> Result<Vec<PathBuf>, String> {
+    let source_paths = analysis::review_guidance_input_paths(root, config, owner_files)?;
+    let metadata_paths = analysis::seam_cache::review_guidance_metadata_paths(
+        root,
+        config.suppressions().path(),
+        ceiling.max_index_files,
+    )?;
+    let mut files = std::collections::BTreeSet::new();
+    for path in source_paths.into_iter().chain(metadata_paths) {
+        analysis::cancellation::checkpoint()?;
+        if !files.contains(&path) && files.len() >= ceiling.max_index_files {
+            return Err(format!(
+                "{REVIEW_GUIDANCE_OVERSIZED_PREFIX}: more than {} live source and metadata inputs; raise {REVIEW_GUIDANCE_MAX_INDEX_FILES_ENV} on an admitted runner",
+                ceiling.max_index_files
+            ));
+        }
+        files.insert(path);
+    }
+    Ok(files.into_iter().collect())
+}
+
+fn bind_live_guidance_inputs(
+    options: &ReviewCommentsOptions,
+    input: &CheckInput,
+    producer: Option<&app::review_comments::AdmittedReviewAnalysis>,
+    producer_input: Option<&app::review_comments::AdmittedReviewInput>,
+    owner_files: &[PathBuf],
+    ceiling: GuidancePayloadCeiling,
+) -> Result<LiveGuidanceBinding, app::review_comments::ProducerAdmissionError> {
+    let malformed = app::review_comments::live_guidance_failure;
+    let producer = producer.ok_or_else(|| {
+        malformed("live repair guidance requires admitted producer evidence".to_string())
+    })?;
+    let producer_input = producer_input.ok_or_else(|| {
+        malformed("live repair guidance requires admitted review input".to_string())
+    })?;
+    let path = options
+        .check_output
+        .as_deref()
+        .ok_or_else(|| malformed("live repair guidance requires --check-output".to_string()))?;
+    let config = load_for_root(&input.root).map_err(malformed)?;
+    let mut current_input = CheckInput {
+        root: input.root.clone(),
+        ..CheckInput::default()
+    };
+    apply_to_check_input(&mut current_input, &config, CheckInputExplicit::default());
+    let diff = load_review_comments_diff(&input.root, &options.base, &options.head)
+        .map_err(app::review_comments::live_guidance_git_failure)?;
+    let current = app::review_comments::admit_producer_evidence(
+        path,
+        &current_input,
+        &config,
+        &options.base,
+        &options.head,
+        &diff,
+    )?;
+    let current_projection = app::review_comments::admit_review_input(
+        &path.with_file_name("review-input.json"),
+        &input.root,
+        &current.identity,
+        current.outcome.counts.finding_count,
+        Some(&current.producer_projection),
+    )?;
+    if current.identity != producer.identity
+        || current.outcome != producer.outcome
+        || current.producer_projection != producer.producer_projection
+        || &current_projection != producer_input
+    {
+        return Err(app::review_comments::ProducerAdmissionError {
+            category: "producer_identity_mismatch",
+            message: "producer identity or projection changed before live repair guidance; regenerate PR evidence".to_string(),
+        });
+    }
+    let files =
+        live_guidance_input_paths(&input.root, &config, owner_files, ceiling).map_err(malformed)?;
+    let capture_limit =
+        usize::try_from(ceiling.max_payload_bytes.min(4 * 1024 * 1024)).unwrap_or(usize::MAX);
+    let mut payload = analysis::CorpusPayloadSize {
+        file_count: files.len(),
+        total_bytes: 0,
+    };
+    for path in &files {
+        analysis::cancellation::checkpoint().map_err(malformed)?;
+        let metadata = std::fs::symlink_metadata(input.root.join(path)).map_err(|error| {
+            malformed(format!(
+                "stat live guidance input {}: {error}",
+                path.display()
+            ))
+        })?;
+        payload.total_bytes = payload.total_bytes.saturating_add(metadata.len());
+    }
+    ceiling
+        .enforce(
+            payload,
+            payload.total_bytes.saturating_add(diff.len() as u64),
+        )
+        .map_err(|message| app::review_comments::ProducerAdmissionError {
+            category: "review_guidance_oversized",
+            message,
+        })?;
+    app::review_comments::admit_live_guidance_sources(
+        &input.root,
+        &current.identity.head_sha,
+        &files,
+        &config,
+        capture_limit,
+    )?;
+    let mut source_digests = std::collections::BTreeMap::new();
+    let mut remaining = ceiling.max_payload_bytes.saturating_sub(diff.len() as u64);
+    for path in files {
+        analysis::cancellation::checkpoint().map_err(malformed)?;
+        use sha2::{Digest, Sha256};
+        use std::io::Read;
+        let mut file = std::fs::File::open(input.root.join(&path)).map_err(|error| {
+            malformed(format!(
+                "open live guidance source {}: {error}",
+                path.display()
+            ))
+        })?;
+        let mut digest = Sha256::new();
+        let mut buffer = [0_u8; 8192];
+        loop {
+            analysis::cancellation::checkpoint().map_err(malformed)?;
+            let count = file.read(&mut buffer).map_err(|error| {
+                malformed(format!(
+                    "read live guidance source {}: {error}",
+                    path.display()
+                ))
+            })?;
+            if count == 0 {
+                break;
+            }
+            if count as u64 > remaining {
+                return Err(app::review_comments::ProducerAdmissionError {
+                    category: "review_guidance_oversized",
+                    message: format!(
+                        "{REVIEW_GUIDANCE_OVERSIZED_PREFIX}: live source grew beyond the guidance payload ceiling; restore the workspace or raise {REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES_ENV} on an admitted runner"
+                    ),
+                });
+            }
+            remaining -= count as u64;
+            digest.update(&buffer[..count]);
+        }
+        source_digests.insert(path, format!("sha256:{:x}", digest.finalize()));
+    }
+    let corpus =
+        analysis::review_guidance_input_paths(&input.root, &config, &[]).map_err(malformed)?;
+    let workspace = analysis::seam_cache::review_guidance_workspace_key(
+        &input.root,
+        &config,
+        &corpus,
+        ceiling.max_index_files,
+        ceiling.max_payload_bytes.saturating_sub(diff.len() as u64),
+    )
+    .map_err(malformed)?;
+    Ok((workspace, source_digests))
+}
+
 fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOptions, String> {
     let mut root = PathBuf::from(".");
     let mut base: Option<String> = None;
     let mut head: Option<String> = None;
     let mut gap_ledger = None;
     let mut check_output = None;
+    let mut enrich_repair_guidance = false;
     let mut out = PathBuf::from("target/ripr/review/comments.json");
     let mut timeout_ms = DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS;
 
@@ -895,6 +1152,7 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
                 }
                 check_output = Some(PathBuf::from(value));
             }
+            "--enrich-repair-guidance" => enrich_repair_guidance = true,
             "--out" => {
                 i += 1;
                 let value = expect_value(args, i, "--out")?;
@@ -913,12 +1171,19 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
         i += 1;
     }
 
+    if enrich_repair_guidance && (check_output.is_none() || gap_ledger.is_some()) {
+        return Err(
+            "review-comments --enrich-repair-guidance requires --check-output and cannot use --gap-ledger"
+                .to_string(),
+        );
+    }
     Ok(ReviewCommentsOptions {
         root,
         base: base.ok_or_else(|| "review-comments requires --base <sha>".to_string())?,
         head: head.ok_or_else(|| "review-comments requires --head <sha>".to_string())?,
         gap_ledger,
         check_output,
+        enrich_repair_guidance,
         out,
         timeout_ms,
     })
@@ -986,6 +1251,7 @@ mod tests {
                 head: "HEAD".to_string(),
                 gap_ledger: None,
                 check_output: None,
+                enrich_repair_guidance: false,
                 out: PathBuf::from("target/ripr/review/comments.json"),
                 timeout_ms: DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS,
             })
@@ -1007,6 +1273,7 @@ mod tests {
                     "target/ripr/reports/gap-decision-ledger.json"
                 )),
                 check_output: None,
+                enrich_repair_guidance: false,
                 out: PathBuf::from("target/ripr/review/comments.json"),
                 timeout_ms: DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS,
             })
@@ -1076,6 +1343,243 @@ mod tests {
         );
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn live_guidance_windows_owned_metadata_keeps_head_spelling() -> Result<(), String> {
+        let root = unique_command_test_dir("live-metadata-case-owned");
+        std::fs::create_dir(&root).map_err(|error| error.to_string())?;
+        let fixture = OwnedDeadlineFixture(root);
+        let root = fixture
+            .0
+            .canonicalize()
+            .map_err(|error| error.to_string())?;
+        std::fs::create_dir(root.join("src")).map_err(|error| error.to_string())?;
+        std::fs::create_dir(root.join(".ripr")).map_err(|error| error.to_string())?;
+        for (path, body) in [
+            (
+                "Cargo.toml",
+                "[package]\nname = \"metadata-case-fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[workspace]\n",
+            ),
+            ("src/lib.rs", "pub fn value() -> bool { true }\n"),
+            ("PyProject.toml", "# owned case marker\n"),
+            (".ripr/Test_Intent.toml", "# owned intent\n"),
+            (".ripr/Suppressions.toml", "# owned suppressions\n"),
+        ] {
+            std::fs::write(root.join(path), body).map_err(|error| error.to_string())?;
+        }
+        for arguments in [
+            &["init", "--quiet"][..],
+            &["config", "user.email", "ripr-test@example.invalid"][..],
+            &["config", "user.name", "RIPR Test"][..],
+            &[
+                "add",
+                "--",
+                "Cargo.toml",
+                "src/lib.rs",
+                "PyProject.toml",
+                ".ripr/Test_Intent.toml",
+                ".ripr/Suppressions.toml",
+            ][..],
+            &[
+                "commit",
+                "--quiet",
+                "--no-gpg-sign",
+                "--no-verify",
+                "-m",
+                "owned case fixture",
+            ][..],
+        ] {
+            let output = crate::git::run_git_output_with_deadline(
+                &root,
+                arguments,
+                Some(Duration::from_secs(5)),
+            )
+            .map_err(|error| error.to_string())?;
+            if !output.status.success() {
+                return Err(format!(
+                    "owned Git case fixture failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
+        }
+        let output = crate::git::run_git_output_with_deadline(
+            &root,
+            &["rev-parse", "HEAD"],
+            Some(Duration::from_secs(5)),
+        )
+        .map_err(|error| error.to_string())?;
+        if !output.status.success() {
+            return Err("owned case fixture HEAD did not resolve".to_string());
+        }
+        let head = String::from_utf8(output.stdout).map_err(|error| error.to_string())?;
+        // The pure guard receives the same explicit Rust configuration;
+        // default Python adapter admission is outside this path-identity test.
+        let config = crate::config::RiprConfig::default();
+        let limits = GuidancePayloadCeiling {
+            max_index_files: 16,
+            max_payload_bytes: 1024 * 1024,
+        };
+        let paths = live_guidance_input_paths(&root, &config, &[], limits)?;
+        app::review_comments::admit_live_guidance_sources(
+            &root,
+            head.trim(),
+            &paths,
+            &config,
+            1024 * 1024,
+        )
+        .map_err(|error| error.message)?;
+        let head_paths = analysis::committed_source::regular_head_paths(&root, 1024 * 1024)
+            .map_err(|error| error.to_string())?;
+        // Expire the existing budget inside the actual HEAD metadata walk,
+        // after observing real paths. No sleep or production clock is added.
+        let observations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let clock_observations = std::sync::Arc::clone(&observations);
+        let started = Instant::now();
+        let token = analysis::cancellation::AnalysisCancellationToken::with_budget(
+            started,
+            Duration::from_millis(1),
+            std::sync::Arc::new(move || {
+                if clock_observations.fetch_add(1, std::sync::atomic::Ordering::SeqCst) < 2 {
+                    started
+                } else {
+                    started + Duration::from_millis(1)
+                }
+            }),
+        );
+        let expired = analysis::cancellation::with_token(&token, || {
+            app::review_comments::live_guidance_head_metadata(&root, &head_paths, &config)
+        })
+        .err()
+        .ok_or("owning deadline did not interrupt actual HEAD metadata pass")?;
+        if expired.category != "producer_timeout"
+            || observations.load(std::sync::atomic::Ordering::SeqCst) != 3
+            || token.abort_kind()
+                != Some(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded)
+        {
+            return Err(format!(
+                "HEAD metadata deadline lost actual budget authority: {}",
+                expired.message
+            ));
+        }
+        for configured in [".ripr/Suppressions.toml", ".ripr/Test_Intent.toml"] {
+            let configured_text =
+                format!("[languages]\nenabled = []\n[suppressions]\npath = {configured:?}\n");
+            let configured = crate::config::parse_config_diagnostic(&configured_text)
+                .map_err(|error| error.message)?;
+            let corpus = analysis::review_guidance_input_paths(&root, &configured, &[])?;
+            let fresh = analysis::seam_cache::review_guidance_workspace_key(
+                &root,
+                &configured,
+                &corpus,
+                limits.max_index_files,
+                limits.max_payload_bytes,
+            )?;
+            let ordinary = analysis::workspace_cache_key_at_with_config(&root, &configured)?;
+            if fresh != ordinary {
+                return Err(format!(
+                    "actual configured suppression/intent key fields diverged: {}",
+                    configured.suppressions().path().display()
+                ));
+            }
+            if configured.suppressions().path() == Path::new(".ripr/Test_Intent.toml")
+                && fresh.suppressions_hash != fresh.test_intent_hash
+            {
+                return Err(
+                    "actual dual-role input lost either intent or suppression key field"
+                        .to_string(),
+                );
+            }
+            let configured_paths = live_guidance_input_paths(&root, &configured, &[], limits)?;
+            app::review_comments::admit_live_guidance_sources(
+                &root,
+                head.trim(),
+                &configured_paths,
+                &configured,
+                1024 * 1024,
+            )
+            .map_err(|error| error.message)?;
+        }
+        let marker = root.join("pyproject.toml");
+        let original = std::fs::read(&marker).map_err(|error| error.to_string())?;
+        std::fs::write(&marker, "# actual marker edit\n").map_err(|error| error.to_string())?;
+        let refused = app::review_comments::admit_live_guidance_sources(
+            &root,
+            head.trim(),
+            &paths,
+            &config,
+            1024 * 1024,
+        );
+        std::fs::write(&marker, original).map_err(|error| error.to_string())?;
+        let refused = refused
+            .err()
+            .ok_or("mixed-case metadata edit gained HEAD authority")?;
+        if refused.category != "producer_identity_mismatch" {
+            return Err(format!(
+                "wrong mixed-case metadata refusal: {}",
+                refused.message
+            ));
+        }
+        app::review_comments::admit_live_guidance_sources(
+            &root,
+            head.trim(),
+            &paths,
+            &config,
+            1024 * 1024,
+        )
+        .map_err(|error| error.message)
+    }
+
+    #[test]
+    fn review_comments_live_enrichment_requires_exact_producer_source() -> Result<(), String> {
+        let parsed = parse_review_comments_options(&args(&[
+            "--base",
+            "main",
+            "--head",
+            "HEAD",
+            "--check-output",
+            "check.json",
+            "--enrich-repair-guidance",
+        ]))?;
+        if !parsed.enrich_repair_guidance
+            || parsed.check_output != Some(PathBuf::from("check.json"))
+        {
+            return Err("live enrichment did not retain its required producer path".to_string());
+        }
+        for source in [vec![], args(&["--gap-ledger", "gaps.json"])] {
+            let mut values = args(&[
+                "--base",
+                "main",
+                "--head",
+                "HEAD",
+                "--enrich-repair-guidance",
+            ]);
+            values.extend(source);
+            let error = parse_review_comments_options(&values)
+                .err()
+                .ok_or_else(|| "enrichment without a check producer must fail".to_string())?;
+            if !error.contains("requires --check-output") {
+                return Err(format!("wrong live source refusal: {error}"));
+            }
+        }
+        let error = parse_review_comments_options(&args(&[
+            "--base",
+            "main",
+            "--head",
+            "HEAD",
+            "--check-output",
+            "check.json",
+            "--gap-ledger",
+            "gaps.json",
+            "--enrich-repair-guidance",
+        ]))
+        .err()
+        .ok_or_else(|| "mixed live producer authority must fail".to_string())?;
+        if !error.contains("cannot use --gap-ledger") {
+            return Err(format!("wrong mixed live source refusal: {error}"));
+        }
+        Ok(())
+    }
+
     #[test]
     fn review_comments_analysis_timeout_is_typed_and_fail_closed() -> Result<(), String> {
         let result = app::review_comments::run_analysis_with_timeout(10, || {
@@ -1119,7 +1623,11 @@ mod tests {
         .map_err(|error| error.to_string())?;
         std::fs::write(root.join("src/lib.rs"), "pub fn value() -> u8 { 1 }\n")
             .map_err(|error| error.to_string())?;
-        std::fs::write(root.join(".gitignore"), "target/\n").map_err(|error| error.to_string())?;
+        std::fs::write(
+            root.join(".gitignore"),
+            "target/\nsrc/ignored.scratch.rs\n.ripr/suppressions.toml\n",
+        )
+        .map_err(|error| error.to_string())?;
         for git_args in [
             &["init", "--quiet"][..],
             &["config", "user.email", "ripr-test@example.invalid"][..],
@@ -1307,6 +1815,322 @@ mod tests {
             return Err(format!(
                 "producer reuse lost its complete bound evidence: {receipt}"
             ));
+        }
+
+        #[cfg(feature = "lang-rust")]
+        {
+            // The explicit live route executes the actual semantic inventory,
+            // while this intentionally gap-free fixture cannot gain a fake repair.
+            let enriched_out = root.join("target/ripr/review-comments-enriched.json");
+            let mut enriched_args = args.clone();
+            let out_arg = enriched_args
+                .last_mut()
+                .ok_or("owned fixture has no output argument")?;
+            *out_arg = enriched_out.display().to_string();
+            enriched_args.push("--enrich-repair-guidance".to_string());
+            review_comments(&enriched_args)?;
+            let enriched: serde_json::Value = serde_json::from_str(
+                &std::fs::read_to_string(&enriched_out).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            let producer_input: serde_json::Value = serde_json::from_slice(
+                &std::fs::read(&review_path).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            let canonical_phase = enriched["run_receipt"]["phase_evidence"]
+                .as_array()
+                .and_then(|phases| {
+                    phases
+                        .iter()
+                        .find(|phase| phase["phase"] == "canonical_analysis")
+                })
+                .ok_or("enriched run omitted its actual canonical analysis receipt")?;
+            if enriched["producer_review_input"] != producer_input
+                || canonical_phase["reused"] != false
+                || enriched["run_receipt"]["status"] != "complete"
+                || enriched.get("analysis_outcome").is_some()
+                || enriched["analysis_scope"]["basis"]
+                    != "changed_production_files_plus_immediate_callers"
+                || enriched["analysis_scope"]["run_status"] != "limited_diff_scope"
+                || enriched["analysis_scope"]["limitation"] != "review_comments_diff_scope_only"
+                || canonical_phase["subject_count"]
+                    != enriched["analysis_scope"]["classified_seams_considered"]
+                || rendered["analysis_outcome"] != producer_input["analysis_outcome"]
+            {
+                return Err(format!(
+                    "live enrichment conflated compact and actual analysis: {enriched}"
+                ));
+            }
+            let config = crate::config::RiprConfig::default();
+            let control_ceiling = GuidancePayloadCeiling {
+                max_index_files: 16,
+                max_payload_bytes: 1024 * 1024,
+            };
+            let input_paths = live_guidance_input_paths(&root, &config, &[], control_ceiling)?;
+            app::review_comments::admit_live_guidance_sources(
+                &root,
+                &base_sha,
+                &input_paths,
+                &config,
+                1024 * 1024,
+            )
+            .map_err(|error| error.message)?;
+            let wrong_head = app::review_comments::admit_live_guidance_sources(
+                &root,
+                "not-the-head",
+                &input_paths,
+                &config,
+                1024 * 1024,
+            )
+            .err()
+            .ok_or("live guidance admitted a different HEAD")?;
+            if wrong_head.category != "producer_identity_mismatch" {
+                return Err(format!("wrong live HEAD refusal: {}", wrong_head.message));
+            }
+            let corpus = analysis::review_guidance_input_paths(&root, &config, &[])?;
+            let fresh_key = analysis::seam_cache::review_guidance_workspace_key(
+                &root,
+                &config,
+                &corpus,
+                control_ceiling.max_index_files,
+                control_ceiling.max_payload_bytes,
+            )?;
+            // Compare real owner key fields, first cold then the same ordinary
+            // lookup again; the explicit derivation never reads/writes this cache.
+            for _ in 0..2 {
+                if fresh_key != analysis::workspace_cache_key_at_with_config(&root, &config)? {
+                    return Err(
+                        "cooperative fresh key differs from actual ordinary cold/warm key fields"
+                            .to_string(),
+                    );
+                }
+            }
+            for kind in [
+                analysis::cancellation::AnalysisAbortKind::DeadlineExceeded,
+                analysis::cancellation::AnalysisAbortKind::Cancelled,
+                analysis::cancellation::AnalysisAbortKind::Superseded,
+            ] {
+                let token = analysis::cancellation::AnalysisCancellationToken::new();
+                token.cancel(kind);
+                let refused = analysis::cancellation::with_token(&token, || {
+                    analysis::seam_cache::review_guidance_workspace_key(
+                        Path::new("not-an-owned-root"),
+                        &config,
+                        &corpus,
+                        control_ceiling.max_index_files,
+                        control_ceiling.max_payload_bytes,
+                    )
+                })
+                .err()
+                .ok_or("recorded abort did not stop fresh key before filesystem admission")?;
+                if !analysis::cancellation::is_cancellation_error(&refused) {
+                    return Err(format!(
+                        "fresh key lost {kind:?} cancellation authority: {refused}"
+                    ));
+                }
+            }
+            // The shared ordinary source census admits this tiny corpus. Added
+            // metadata must still reach the same named count/byte guard family.
+            for (label, limits, metadata_count_control) in [
+                (
+                    "metadata-count",
+                    GuidancePayloadCeiling {
+                        max_index_files: 1,
+                        max_payload_bytes: 1024 * 1024,
+                    },
+                    true,
+                ),
+                (
+                    "metadata-bytes",
+                    GuidancePayloadCeiling {
+                        max_index_files: 16,
+                        max_payload_bytes: analysis::analyzable_corpus_payload_size(
+                            &root,
+                            &config,
+                            &[],
+                        )?
+                        .total_bytes,
+                    },
+                    false,
+                ),
+            ] {
+                let lock = root.join("Cargo.lock");
+                if metadata_count_control {
+                    use std::io::Write;
+                    let mut file = std::fs::OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .open(&lock)
+                        .map_err(|error| error.to_string())?;
+                    file.write_all(b"# owned count admission control\n")
+                        .map_err(|error| error.to_string())?;
+                }
+                let refused_out = root.join(format!("target/ripr/refused-{label}.json"));
+                let mut refused_args = enriched_args.clone();
+                let out = refused_args
+                    .iter_mut()
+                    .skip_while(|value| value.as_str() != "--out")
+                    .nth(1)
+                    .ok_or("owned guard fixture lost output option")?;
+                *out = refused_out.display().to_string();
+                let result = review_comments_with_diff_loader_at_with_ceiling(
+                    &refused_args,
+                    |_root, _base, _head| Ok(String::new()),
+                    Instant::now,
+                    limits,
+                );
+                if metadata_count_control {
+                    std::fs::remove_file(&lock).map_err(|error| error.to_string())?;
+                }
+                let error = result.err().ok_or_else(|| {
+                    format!("added {label} inputs bypassed actual guidance ceiling")
+                })?;
+                if !error.starts_with(&format!("{REVIEW_GUIDANCE_OVERSIZED_PREFIX}:"))
+                    || !error.contains(if metadata_count_control {
+                        REVIEW_GUIDANCE_MAX_INDEX_FILES_ENV
+                    } else {
+                        REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES_ENV
+                    })
+                    || refused_out.exists()
+                    || refused_out.with_extension("md").exists()
+                {
+                    return Err(format!(
+                        "wrong actual {label} guard/artefact authority: {error}"
+                    ));
+                }
+                let guard_receipt: serde_json::Value = serde_json::from_slice(
+                    &std::fs::read(
+                        output::review_comments_receipt::ReviewCommentsRunReceipt::path_for_output(
+                            &refused_out,
+                        ),
+                    )
+                    .map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+                if guard_receipt["status"] != "failed"
+                    || !guard_receipt["limitations"]
+                        .as_array()
+                        .is_some_and(|values| {
+                            values
+                                .iter()
+                                .any(|value| value["category"] == "review_guidance_oversized")
+                        })
+                {
+                    return Err(format!(
+                        "{label} receipt lost its named oversized limitation: {guard_receipt}"
+                    ));
+                }
+            }
+            // A stable edited tracked manifest cannot gain HEAD-bound repair
+            // authority just because the current cache key is internally stable.
+            let manifest = root.join("Cargo.toml");
+            let original_manifest = std::fs::read(&manifest).map_err(|error| error.to_string())?;
+            let mut changed_manifest = original_manifest.clone();
+            changed_manifest.extend_from_slice(b"\n[features]\nchanged_control = []\n");
+            std::fs::write(&manifest, changed_manifest).map_err(|error| error.to_string())?;
+            let refusal = app::review_comments::admit_live_guidance_sources(
+                &root,
+                &base_sha,
+                &input_paths,
+                &config,
+                1024 * 1024,
+            );
+            std::fs::write(&manifest, &original_manifest).map_err(|error| error.to_string())?;
+            let refusal = refusal
+                .err()
+                .ok_or("live guidance admitted an edited tracked manifest")?;
+            if refusal.category != "producer_identity_mismatch" {
+                return Err(format!(
+                    "wrong tracked metadata refusal: {}",
+                    refusal.message
+                ));
+            }
+            std::fs::create_dir(root.join(".ripr")).map_err(|error| error.to_string())?;
+            for relative in [".ripr/test_intent.toml", ".ripr/suppressions.toml"] {
+                let path = root.join(relative);
+                let mut owned = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&path)
+                    .map_err(|error| error.to_string())?;
+                use std::io::Write;
+                owned
+                    .write_all(b"# actual untracked metadata control\n")
+                    .map_err(|error| error.to_string())?;
+                drop(owned);
+                let checked = (|| {
+                    let paths = live_guidance_input_paths(&root, &config, &[], control_ceiling)?;
+                    if !paths.iter().any(|path| path == Path::new(relative)) {
+                        return Err(format!(
+                            "metadata control is not an actual owned input: {relative}"
+                        ));
+                    }
+                    Ok(app::review_comments::admit_live_guidance_sources(
+                        &root,
+                        &base_sha,
+                        &paths,
+                        &config,
+                        1024 * 1024,
+                    ))
+                })();
+                std::fs::remove_file(&path).map_err(|error| error.to_string())?;
+                let refusal = checked?
+                    .err()
+                    .ok_or_else(|| format!("live guidance admitted metadata {relative}"))?;
+                if refusal.category != "producer_identity_mismatch" {
+                    return Err(format!("wrong metadata refusal: {}", refusal.message));
+                }
+            }
+            std::fs::remove_dir(root.join(".ripr")).map_err(|error| error.to_string())?;
+            // The same immutable packet recovers after removing only owned
+            // controls; no new evidence packet or reference commit is manufactured.
+            let recovered = root.join("target/ripr/review-comments-enriched-restored.json");
+            let out_arg = enriched_args
+                .iter_mut()
+                .skip_while(|value| value.as_str() != "--out")
+                .nth(1)
+                .ok_or("owned enriched fixture lost its output option")?;
+            *out_arg = recovered.display().to_string();
+            review_comments(&enriched_args)?;
+            let recovered: serde_json::Value = serde_json::from_str(
+                &std::fs::read_to_string(&recovered).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            if recovered["producer_review_input"] != producer_input
+                || recovered.get("analysis_outcome").is_some()
+            {
+                return Err(
+                    "restored fresh guidance lost exact producer/scoped outcome separation"
+                        .to_string(),
+                );
+            }
+            // Routed untracked source and git-ignored source both participate in
+            // live discovery; target receipts remain harmless ignored artifacts.
+            for relative in ["src/untracked.rs", "src/ignored.scratch.rs"] {
+                let path = root.join(relative);
+                std::fs::write(&path, "pub fn extra() -> bool { true }\n")
+                    .map_err(|error| error.to_string())?;
+                let paths = live_guidance_input_paths(&root, &config, &[], control_ceiling)?;
+                if !paths.iter().any(|path| path == Path::new(relative)) {
+                    return Err(format!(
+                        "source guard control is not in actual corpus: {relative}"
+                    ));
+                }
+                let refusal = app::review_comments::admit_live_guidance_sources(
+                    &root,
+                    &base_sha,
+                    &paths,
+                    &config,
+                    1024 * 1024,
+                );
+                std::fs::remove_file(&path).map_err(|error| error.to_string())?;
+                let refusal = refusal
+                    .err()
+                    .ok_or_else(|| format!("live guidance admitted {relative}"))?;
+                if refusal.category != "producer_identity_mismatch" {
+                    return Err(format!("wrong source refusal: {}", refusal.message));
+                }
+            }
         }
 
         // Byte drift that preserves the decoded DTO must still refuse exact

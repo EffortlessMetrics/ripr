@@ -1241,7 +1241,9 @@ impl PacketRun {
             "--head",
             "HEAD",
         ]))?;
-        self.ripr(&args(&[
+        let config = crate::config::load_for_root(&self.root)?;
+        let rust = crate::domain::LanguageId::Rust;
+        let mut guidance = args(&[
             "review-comments",
             "--root",
             ".",
@@ -1249,11 +1251,17 @@ impl PacketRun {
             &base,
             "--head",
             "HEAD",
+        ]);
+        if rust.is_available() && config.languages().enabled.contains(&rust) {
+            guidance.push("--enrich-repair-guidance".to_string());
+        }
+        guidance.extend(args(&[
             "--check-output",
             "target/ripr/pr/check.json",
             "--out",
             COMMENTS_JSON,
-        ]))
+        ]));
+        self.ripr(&guidance)
     }
 
     fn plan_inline_comments(&mut self) -> StageResult {
@@ -2016,6 +2024,9 @@ mod tests {
             "ripr reports gap-ledger --root . --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md",
             "capture origin/main...HEAD > target/ripr/reports/pr.diff",
             "ripr pr-evidence --root . --base origin/main --head HEAD",
+            #[cfg(feature = "lang-rust")]
+            "ripr review-comments --root . --base origin/main --head HEAD --enrich-repair-guidance --check-output target/ripr/pr/check.json --out target/ripr/review/comments.json",
+            #[cfg(not(feature = "lang-rust"))]
             "ripr review-comments --root . --base origin/main --head HEAD --check-output target/ripr/pr/check.json --out target/ripr/review/comments.json",
             "ripr pr-comments plan --root . --pr-guidance target/ripr/review/comments.json --mode inline --event-name pull_request --pull-request 7 --head-repo owner/repo --base-repo owner/repo --out target/ripr/review/comment-publish-plan.json --out-md target/ripr/review/comment-publish-plan.md --existing-comments target/ripr/review/existing-comments.json --token-available --write-permission",
             "ripr check --root . --diff target/ripr/reports/pr.diff --format sarif > target/ripr/reports/ripr-findings.sarif",
@@ -2051,6 +2062,56 @@ mod tests {
             "ripr agent review-summary --root . > target/ripr/workflow/agent-review-summary.md",
         ];
         assert_eq!(packet.lines().collect::<Vec<_>>(), expected);
+        Ok(())
+    }
+
+    #[test]
+    fn pr_guidance_enrichment_uses_the_actual_compiled_and_enabled_owner() -> Result<(), String> {
+        let assert_route = |languages: &[&str], enriched: bool| -> Result<(), String> {
+            let (packet, failed) =
+                recorded_packet_with_languages(full_packet_settings(), languages, false)?;
+            if !failed.is_empty() {
+                return Err(format!("typed language route failed: {failed:?}"));
+            }
+            let guidance = packet
+                .lines()
+                .filter(|line| line.starts_with("ripr review-comments "))
+                .collect::<Vec<_>>();
+            let expected = if enriched {
+                "ripr review-comments --root . --base origin/main --head HEAD --enrich-repair-guidance --check-output target/ripr/pr/check.json --out target/ripr/review/comments.json"
+            } else {
+                "ripr review-comments --root . --base origin/main --head HEAD --check-output target/ripr/pr/check.json --out target/ripr/review/comments.json"
+            };
+            if guidance != vec![expected] {
+                return Err(format!(
+                    "wrong genuine owner for {languages:?}: {guidance:?}"
+                ));
+            }
+            let commands = packet.lines().collect::<Vec<_>>();
+            let producer = commands
+                .iter()
+                .position(|line| {
+                    *line == "ripr pr-evidence --root . --base origin/main --head HEAD"
+                })
+                .ok_or("recorded guidance lost its actual whole-packet producer")?;
+            let consumer = commands
+                .iter()
+                .position(|line| *line == expected)
+                .ok_or("recorded guidance lost its strict consumer")?;
+            if consumer != producer + 1 {
+                return Err("producer/strict consumer ordering changed".to_string());
+            }
+            Ok(())
+        };
+        assert_route(&[], false)?;
+        #[cfg(feature = "lang-rust")]
+        assert_route(&["rust"], true)?;
+        #[cfg(feature = "lang-python")]
+        assert_route(&["python"], false)?;
+        #[cfg(feature = "lang-typescript")]
+        assert_route(&["typescript"], false)?;
+        #[cfg(all(feature = "lang-rust", feature = "lang-python"))]
+        assert_route(&["python", "rust"], true)?;
         Ok(())
     }
 

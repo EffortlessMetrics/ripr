@@ -440,7 +440,251 @@ fn generated_workflow_replay_prints_only_runnable_next_steps() -> Result<(), Box
         String::from_utf8_lossy(&started.stderr)
     );
 
+    assert_repair_guidance_enrichment_retains_producer_authority(&root, repair_command)?;
+
     fs::remove_dir_all(base)?;
+    Ok(())
+}
+
+/// The workflow explicitly enriches a strictly admitted compact packet with
+/// current source-owned repair evidence. The compact packet does not itself
+/// establish repair readiness, and its producer identity must remain exact.
+#[cfg(unix)]
+fn assert_repair_guidance_enrichment_retains_producer_authority(
+    root: &std::path::Path,
+    repair_command: &str,
+) -> Result<(), Box<dyn Error>> {
+    use serde_json::Value;
+    use sha2::{Digest, Sha256};
+
+    let producer: Value =
+        serde_json::from_slice(&fs::read(root.join("target/ripr/pr/review-input.json"))?)?;
+    let enriched: Value =
+        serde_json::from_slice(&fs::read(root.join("target/ripr/review/comments.json"))?)?;
+    assert_eq!(
+        enriched["producer_review_input"], producer,
+        "live repair enrichment must retain the whole admitted producer projection"
+    );
+    assert!(
+        enriched.get("analysis_outcome").is_none(),
+        "fresh limited Rust guidance must not inherit the producer's broader AnalysisOutcome"
+    );
+    assert_eq!(enriched["status"], "advisory");
+    let findings = producer["findings"]
+        .as_array()
+        .ok_or("producer findings must be an array")?;
+    assert!(
+        !findings.is_empty(),
+        "this genuine boundary PR must supply a nonempty compact finding control"
+    );
+    assert_eq!(
+        producer["reviewed_count"],
+        serde_json::json!(findings.len())
+    );
+    assert_eq!(
+        producer["projected_finding_count"],
+        serde_json::json!(findings.len())
+    );
+    let digest = format!("sha256:{:x}", Sha256::digest(serde_json::to_vec(findings)?));
+    assert_eq!(
+        producer["projection_sha256"].as_str(),
+        Some(digest.as_str())
+    );
+    assert_eq!(
+        enriched["analysis_scope"]["basis"],
+        "changed_production_files_plus_immediate_callers"
+    );
+    let fresh = enriched["run_receipt"]["phase_evidence"]
+        .as_array()
+        .ok_or("enrichment receipt must record phase evidence")?
+        .iter()
+        .find(|phase| phase["phase"] == "canonical_analysis")
+        .ok_or("enrichment receipt must record canonical analysis")?;
+    assert_eq!(
+        fresh["reused"], false,
+        "live guidance is new source analysis"
+    );
+    assert_eq!(
+        fresh["subject_count"],
+        enriched["analysis_scope"]["classified_seams_considered"]
+    );
+    assert!(
+        fresh["subject_count"]
+            .as_u64()
+            .is_some_and(|count| count > 0),
+        "repair guidance must come from actual classified seams: {fresh}"
+    );
+    let live_card = ["comments", "summary_only"]
+        .into_iter()
+        .filter_map(|key| enriched[key].as_array())
+        .flatten()
+        .find(|card| card["llm_guidance"]["repair_command"].as_str() == Some(repair_command))
+        .ok_or("the selected repair must be carried by an actual enriched review card")?;
+    assert_eq!(live_card["gap_state"], "actionable");
+    assert!(live_card["missing_discriminator"].as_str().is_some());
+    assert!(
+        live_card["llm_guidance"]["verify_command"]
+            .as_str()
+            .is_some()
+    );
+    assert!(live_card["receipt_command"].as_str().is_some());
+    assert!(
+        live_card["suggested_test"]["recommended_file"]
+            .as_str()
+            .is_some()
+    );
+
+    // The identical real packet, without the explicit opt-in, keeps the
+    // compact inspect-only contract. Write controls below ignored target/ so
+    // they cannot change either source footprint or the workflow's artifacts.
+    let compact_path = "target/ripr/review/compact-control/comments.json";
+    let compact_run = replay::ripr(
+        root,
+        &[
+            "review-comments",
+            "--root",
+            ".",
+            "--base",
+            "origin/trunk",
+            "--head",
+            "HEAD",
+            "--check-output",
+            "target/ripr/pr/check.json",
+            "--out",
+            compact_path,
+        ],
+    )?;
+    assert!(
+        compact_run.status.success(),
+        "the admitted compact control must succeed: stdout={} stderr={}",
+        String::from_utf8_lossy(&compact_run.stdout),
+        String::from_utf8_lossy(&compact_run.stderr)
+    );
+    let compact: Value = serde_json::from_slice(&fs::read(root.join(compact_path))?)?;
+    assert_eq!(
+        compact["analysis_scope"]["basis"],
+        "producer_check_projection"
+    );
+    let mut compact_count = 0usize;
+    for key in ["comments", "summary_only"] {
+        for card in compact[key]
+            .as_array()
+            .ok_or("compact cards must be arrays")?
+        {
+            compact_count += 1;
+            assert_eq!(card["gap_state"], "unknown");
+            assert!(card["missing_discriminator"].is_null());
+            assert!(card["llm_guidance"].get("repair_command").is_none());
+            assert!(card["llm_guidance"].get("verify_command").is_none());
+            assert!(card.get("receipt_command").is_none());
+        }
+    }
+    assert_eq!(
+        compact_count,
+        findings.len(),
+        "control must inspect real producer cards"
+    );
+    let reused = compact["run_receipt"]["phase_evidence"]
+        .as_array()
+        .ok_or("compact receipt must record phase evidence")?
+        .iter()
+        .find(|phase| phase["phase"] == "canonical_analysis")
+        .ok_or("compact receipt must record canonical analysis")?;
+    assert_eq!(reused["reused"], true);
+    assert_eq!(reused["subject_count"], producer["reviewed_count"]);
+    assert_eq!(
+        reused["input_identity_digest"],
+        producer["projection_sha256"]
+    );
+    let compact_selection = replay::ripr(
+        root,
+        &[
+            "first-pr",
+            "--root",
+            ".",
+            "--base",
+            "origin/trunk",
+            "--head",
+            "HEAD",
+            "--gap-ledger",
+            "target/ripr/reports/gap-decision-ledger.json",
+            "--review-comments",
+            compact_path,
+            "--out-dir",
+            "target/ripr/reports/compact-control",
+        ],
+    )?;
+    assert!(
+        compact_selection.status.success(),
+        "first-pr must consume current compact cards: stdout={} stderr={}",
+        String::from_utf8_lossy(&compact_selection.stdout),
+        String::from_utf8_lossy(&compact_selection.stderr)
+    );
+    let no_action: Value = serde_json::from_slice(&fs::read(
+        root.join("target/ripr/reports/compact-control/start-here.json"),
+    )?)?;
+    assert_eq!(no_action["preflight"]["status"], "ready", "{no_action}");
+    assert_eq!(no_action["selected"]["state"], "no_action", "{no_action}");
+    assert!(no_action["selected"].get("repair_command").is_none());
+
+    // HEAD, config and the exact producer packet remain unchanged, but this
+    // newly present Rust test would close the equality gap. Its untracked
+    // source bytes must invalidate the producer's live guidance binding.
+    let new_test = root.join("tests/untracked_boundary_control.rs");
+    assert!(!new_test.exists(), "control must own a new fixture file");
+    fs::write(
+        &new_test,
+        "use pricing::discounted_total;\n#[test]\nfn equality_boundary_is_observed() { assert_eq!(discounted_total(10_000), 9_000); }\n",
+    )?;
+    let guarded_path = "target/ripr/review/untracked-control/comments.json";
+    let guard_args = [
+        "review-comments",
+        "--root",
+        ".",
+        "--base",
+        "origin/trunk",
+        "--head",
+        "HEAD",
+        "--check-output",
+        "target/ripr/pr/check.json",
+        "--enrich-repair-guidance",
+        "--out",
+        guarded_path,
+    ];
+    let refused = replay::ripr(root, &guard_args)?;
+    assert!(
+        !refused.status.success(),
+        "untracked changed test evidence must not reuse the producer guidance binding: stdout={} stderr={}",
+        String::from_utf8_lossy(&refused.stdout),
+        String::from_utf8_lossy(&refused.stderr)
+    );
+    let refused_out = root.join(guarded_path);
+    assert!(!refused_out.exists() && !refused_out.with_extension("md").exists());
+    let refusal_receipt: Value =
+        serde_json::from_slice(&fs::read(refused_out.with_file_name("run-receipt.json"))?)?;
+    assert_eq!(refusal_receipt["status"], "failed", "{refusal_receipt}");
+    assert_eq!(
+        refusal_receipt["primary_failure"]["category"], "producer_identity_mismatch",
+        "refusal must identify the consumed untracked source, not an unrelated producer failure: {refusal_receipt}"
+    );
+    fs::remove_file(new_test)?;
+    let restored = replay::ripr(root, &guard_args)?;
+    assert!(
+        restored.status.success(),
+        "the unchanged producer binding must work after removing only the owned untracked test: stdout={} stderr={}",
+        String::from_utf8_lossy(&restored.stdout),
+        String::from_utf8_lossy(&restored.stderr)
+    );
+    let restored: Value = serde_json::from_slice(&fs::read(refused_out)?)?;
+    assert_eq!(restored["producer_review_input"], producer);
+    assert!(
+        ["comments", "summary_only"]
+            .into_iter()
+            .filter_map(|key| restored[key].as_array())
+            .flatten()
+            .any(|card| card["llm_guidance"]["repair_command"].as_str() == Some(repair_command)),
+        "restoring the original source corpus must recover the genuine repair card"
+    );
     Ok(())
 }
 

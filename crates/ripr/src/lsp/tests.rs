@@ -402,7 +402,7 @@ where
 fn watched_diagnostics_inputs_register_root_anchored_and_refresh_over_the_wire()
 -> Result<(), String> {
     work_done_progress_runtime()?.block_on(async {
-        let root = unique_lsp_test_root("watched-diagnostics-input")?;
+        let root = owned_empty_lsp_admission_root("watched-diagnostics-input")?;
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
         let (mut client_read, mut client_write) = tokio::io::split(client_io);
         let (server_read, server_write) = tokio::io::split(server_io);
@@ -9029,8 +9029,8 @@ fn poisoned_initialize_failure_commit_survives_a_wedged_client_channel() -> Resu
         .map_err(|err| format!("failed to start test runtime: {err}"))?;
     runtime.block_on(async {
         use tower::Service as _;
-        let root_first = unique_lsp_test_root("poisoned-initialize-wedged-first")?;
-        let root_second = unique_lsp_test_root("poisoned-initialize-wedged-second")?;
+        let root_first = owned_empty_lsp_admission_root("poisoned-initialize-wedged-first")?;
+        let root_second = owned_empty_lsp_admission_root("poisoned-initialize-wedged-second")?;
         let (mut service, _socket) = build_service(
             PathBuf::from("."),
             super::transport_bounds::CLIENT_REQUEST_TIMEOUT,
@@ -9064,6 +9064,11 @@ fn poisoned_initialize_failure_commit_survives_a_wedged_client_channel() -> Resu
             return Err("healthy framed initialize must succeed".to_string());
         }
         let backend = service.inner();
+        if let Some(failure) = backend.configuration_failure() {
+            return Err(format!(
+                "healthy initialize must admit fixture config: {failure:?}"
+            ));
+        }
         backend.poison_client_features_for_test();
         // The changed root exercises the transition path whose analysis
         // status publication fills the capacity-1 client channel before the
@@ -9841,7 +9846,7 @@ fn framed_lsp_direct_root_switch_repulls_on_reselection() -> Result<(), String> 
             boundary_gap_git_fixture_root("framed-config-pull-direct-switch-a")?;
         let root_a = root_a_fixture.path().to_path_buf();
         let root_a_uri = file_uri_for_path(&root_a)?;
-        let root_b = unique_lsp_test_root("framed-config-pull-direct-switch")?;
+        let root_b = owned_empty_lsp_admission_root("framed-config-pull-direct-switch")?;
         let root_b_uri = file_uri_for_path(root_b.path())?;
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
         let (client_read, mut client_write) = tokio::io::split(client_io);
@@ -12909,6 +12914,61 @@ pub(crate) fn unique_lsp_test_root(name: &str) -> Result<TempLspRoot, String> {
     let root = std::env::temp_dir().join(format!("ripr-lsp-{name}-{}-{stamp}", std::process::id()));
     std::fs::create_dir_all(&root).map_err(|err| format!("create temp root failed: {err}"))?;
     Ok(TempLspRoot { path: root })
+}
+
+/// Only the five intended-healthy empty roots used by the wire/liveness controls.
+struct OwnedEmptyLspRoot {
+    _parent: TempLspRoot,
+    path: PathBuf,
+}
+
+impl OwnedEmptyLspRoot {
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+fn owned_empty_lsp_admission_root(name: &str) -> Result<OwnedEmptyLspRoot, String> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("owned LSP fixture clock: {err}"))?
+        .as_nanos();
+    let parent_path = std::env::temp_dir().join(format!(
+        "ripr-lsp-owned-{name}-{}-{stamp}",
+        std::process::id()
+    ));
+    std::fs::create_dir(&parent_path).map_err(|err| format!("acquire owned LSP parent: {err}"))?;
+    let parent = TempLspRoot { path: parent_path };
+    // This parsed parent workspace is the discovery boundary. The selected
+    // child stays truly empty, so missing-base/broken-workspace stimuli remain.
+    std::fs::write(
+        parent.path().join("Cargo.toml"),
+        "[workspace]\nmembers = []\n",
+    )
+    .map_err(|err| format!("write owned LSP boundary: {err}"))?;
+    let path = parent.path().join("empty");
+    std::fs::create_dir(&path).map_err(|err| format!("create empty LSP child: {err}"))?;
+    if std::fs::read_dir(&path)
+        .map_err(|err| format!("read empty LSP child: {err}"))?
+        .next()
+        .is_some()
+    {
+        return Err("owned LSP child must remain empty".to_string());
+    }
+    let config = crate::config::load_for_root(&path)?;
+    let languages: Vec<&str> = config
+        .languages()
+        .enabled()
+        .iter()
+        .map(|id| id.as_str())
+        .collect();
+    if config.source_path().is_some() || languages != ["rust"] {
+        return Err("healthy LSP fixture must use built-in Rust defaults".to_string());
+    }
+    Ok(OwnedEmptyLspRoot {
+        _parent: parent,
+        path,
+    })
 }
 
 fn boundary_gap_lsp_config(repo_config: crate::config::RiprConfig) -> LspAnalysisConfig {
@@ -18113,7 +18173,7 @@ async fn run_wire_refresh_with_progress_capability(
 #[test]
 fn work_done_progress_failed_end_through_real_refresh_on_broken_workspace() -> Result<(), String> {
     work_done_progress_runtime()?.block_on(async {
-        let root = unique_lsp_test_root("progress-analysis-error")?;
+        let root = owned_empty_lsp_admission_root("progress-analysis-error")?;
         let (creates, progress) =
             run_wire_refresh_with_progress_capability(root.path(), true).await?;
 

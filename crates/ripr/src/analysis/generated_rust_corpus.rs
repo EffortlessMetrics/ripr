@@ -41,6 +41,14 @@ pub(crate) fn analyzable_corpus_payload_size(
     config: &RiprConfig,
     owner_files: &[PathBuf],
 ) -> Result<CorpusPayloadSize, String> {
+    let analyzable = guidance_analyzable_rust_paths(root, config)?;
+    corpus_payload_size_for_paths(root, analyzable, owner_files)
+}
+
+fn guidance_analyzable_rust_paths(
+    root: &Path,
+    config: &RiprConfig,
+) -> Result<Vec<PathBuf>, String> {
     let generated_sources = GeneratedRustSources::for_repo(root, &config.languages().rust);
     let mut analyzable = Vec::new();
     for path in workspace::discover_rust_files(root)? {
@@ -49,7 +57,22 @@ pub(crate) fn analyzable_corpus_payload_size(
             analyzable.push(path);
         }
     }
-    corpus_payload_size_for_paths(root, analyzable, owner_files)
+    Ok(analyzable)
+}
+
+/// The exact common guidance census file set, including changed-owner inputs
+/// outside canonical generated-file policy. The caller enforces its ceiling
+/// before reading these inputs for a separate live guidance binding.
+pub(crate) fn review_guidance_input_paths(
+    root: &Path,
+    config: &RiprConfig,
+    owner_files: &[PathBuf],
+) -> Result<Vec<PathBuf>, String> {
+    let mut paths = guidance_analyzable_rust_paths(root, config)?
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    paths.extend(owner_files.iter().cloned());
+    Ok(paths.into_iter().collect())
 }
 
 fn corpus_payload_size_for_paths(

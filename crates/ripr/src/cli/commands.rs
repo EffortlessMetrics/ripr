@@ -7115,7 +7115,11 @@ language = "rust"
             "ripr agent status",
             "ripr agent review-summary",
             "ripr pr-evidence --root . --base origin/main --head HEAD",
-            "ripr review-comments --root . --base origin/main --head HEAD --check-output target/ripr/pr/check.json --out target/ripr/review/comments.json",
+            if crate::domain::LanguageId::Rust.is_available() {
+                "ripr review-comments --root . --base origin/main --head HEAD --enrich-repair-guidance --check-output target/ripr/pr/check.json --out target/ripr/review/comments.json"
+            } else {
+                "ripr review-comments --root . --base origin/main --head HEAD --check-output target/ripr/pr/check.json --out target/ripr/review/comments.json"
+            },
         ] {
             assert!(
                 packet.contains(command),

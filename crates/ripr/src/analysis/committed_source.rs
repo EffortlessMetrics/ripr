@@ -357,6 +357,31 @@ pub(crate) fn probe(
     }))
 }
 
+/// Bounded path-only HEAD authority for an explicit live-input presence guard.
+/// Reuse the committed-source tree parser and regular-mode predicate.
+pub(crate) fn regular_head_paths(
+    root: &Path,
+    capture_limit: usize,
+) -> Result<Vec<PathBuf>, CoreError> {
+    let output = crate::git::run_git_output_with_optional_deadline_and_limit(
+        root,
+        &["ls-tree", "-r", "-z", "HEAD", "--", "."],
+        Some(Duration::from_secs(5)),
+        capture_limit,
+    )?;
+    if !output.status.success() {
+        return Err(CoreError::message(format!(
+            "live guidance HEAD path probe failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    Ok(parse_ls_tree_z(&output.stdout)?
+        .into_iter()
+        .filter(|(_, entry)| is_regular_file_mode(&entry.mode))
+        .map(|(path, _)| PathBuf::from(path))
+        .collect())
+}
+
 fn is_regular_file_mode(mode: &str) -> bool {
     mode == "100644" || mode == "100755"
 }

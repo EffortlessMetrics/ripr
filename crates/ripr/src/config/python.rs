@@ -151,30 +151,66 @@ fn canonical_marker_name<'a>(candidates: &[&'a str], name: &str) -> Option<&'a s
 }
 
 fn dir_contains_python_source(dir: &Path) -> bool {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return false;
+    dir_contains_python_source_with_control(dir, false).unwrap_or(false)
+}
+
+pub(crate) fn source_dir_contains_detectable_python_cancellable(
+    root: &Path,
+    marker: &str,
+) -> Result<bool, String> {
+    dir_contains_python_source_with_control(&root.join(marker), true)
+}
+
+fn dir_contains_python_source_with_control(dir: &Path, cooperative: bool) -> Result<bool, String> {
+    if cooperative {
+        crate::analysis::cancellation::checkpoint()?;
+    }
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if cooperative && error.kind() != std::io::ErrorKind::NotFound => {
+            return Err(format!(
+                "read Python role directory {}: {error}",
+                dir.display()
+            ));
+        }
+        Err(_) => return Ok(false),
     };
-    for entry in entries.flatten() {
+    for entry in entries {
+        if cooperative {
+            crate::analysis::cancellation::checkpoint()?;
+        }
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) if cooperative => return Err(format!("read Python role entry: {error}")),
+            Err(_) => continue,
+        };
         let path = entry.path();
         let name = path
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or_default();
-        let Ok(file_type) = entry.file_type() else {
-            continue;
+        let file_type = match entry.file_type() {
+            Ok(kind) => kind,
+            Err(error) if cooperative => {
+                return Err(format!(
+                    "stat Python role entry {}: {error}",
+                    path.display()
+                ));
+            }
+            Err(_) => continue,
         };
         if file_type.is_dir() {
             if is_python_excluded_dir_everywhere(name) {
                 continue;
             }
-            if dir_contains_python_source(&path) {
-                return true;
+            if dir_contains_python_source_with_control(&path, cooperative)? {
+                return Ok(true);
             }
         } else if file_type.is_file() && is_detectable_python_source_path(&path, name) {
-            return true;
+            return Ok(true);
         }
     }
-    false
+    Ok(false)
 }
 
 /// The `.py` check runs on the entry path's extension — `Path::extension` is

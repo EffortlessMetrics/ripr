@@ -3099,6 +3099,20 @@ mod tests {
         assert_eq!(value["summary"]["comments"], 3);
         assert_eq!(value["summary"]["summary_only"], 7);
         assert_eq!(value["comments"][0]["placement"]["side"], "RIGHT");
+        for card in value["comments"]
+            .as_array()
+            .ok_or("compact comments are not an array")?
+            .iter()
+            .chain(
+                value["summary_only"]
+                    .as_array()
+                    .ok_or("compact summary is not an array")?,
+            )
+        {
+            assert_eq!(card["gap_state"], "unknown");
+            assert!(card["missing_discriminator"].is_null());
+            assert!(card["llm_guidance"].get("repair_command").is_none());
+        }
         assert_eq!(
             value["summary_only"][0]["summary_reason"],
             SUMMARY_REASON_INLINE_CAP_REACHED

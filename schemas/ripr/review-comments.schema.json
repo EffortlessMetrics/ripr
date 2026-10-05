@@ -68,6 +68,10 @@
     "review_input": {
       "$ref": "#/$defs/review_input"
     },
+    "producer_review_input": {
+      "description": "Exact separately admitted compact producer packet on explicit fresh repair guidance; distinct from the live renderer projection.",
+      "$ref": "#/$defs/producer_review_input"
+    },
     "analysis_outcome": {
       "$ref": "#/$defs/analysis_outcome_projection"
     },
@@ -361,6 +365,104 @@
           }
         },
         "claim_boundary": { "type": "string", "minLength": 1 }
+      }
+    },
+    "producer_review_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "findings",
+        "projection_sha256",
+        "reviewed_count"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "ripr.review_input.v1"
+        },
+        "root": {
+          "type": "string",
+          "minLength": 1
+        },
+        "root_identity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "base_sha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "head_sha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "head_tree": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonical_diff_sha256": {
+          "type": "string",
+          "minLength": 1
+        },
+        "producer_check_sha256": {
+          "type": "string",
+          "minLength": 1
+        },
+        "check_sha256": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "analysis_complete": {
+          "type": "boolean"
+        },
+        "total_finding_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "projected_finding_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reviewed_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "projection_limit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "projection_truncated": {
+          "type": "boolean"
+        },
+        "projection_selection_policy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projection_selection_policy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projection_sha256": {
+          "type": "string",
+          "minLength": 1
+        },
+        "analysis_outcome": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/analysis_outcome_projection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "findings": {
+          "type": "array"
+        }
       }
     },
     "analysis_outcome_projection": {

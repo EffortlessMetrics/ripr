@@ -10,7 +10,7 @@ use crate::review_input::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 #[cfg(test)]
 use std::sync::mpsc;
 use std::time::Duration;
@@ -249,6 +249,232 @@ pub(crate) fn admit_producer_evidence(
         producer_projection,
     })
 }
+/// Classify only actual cancellation-origin messages. A recorded abort does
+/// not replace a source failure or the owned subprocess cleanup failure.
+pub(crate) fn live_guidance_failure(message: String) -> ProducerAdmissionError {
+    let category = if message.starts_with("review_guidance_oversized:") {
+        "review_guidance_oversized"
+    } else if crate::analysis::cancellation::is_cancellation_error(&message) {
+        match crate::analysis::cancellation::current_abort_kind() {
+            Some(crate::analysis::cancellation::AnalysisAbortKind::DeadlineExceeded) => {
+                "producer_timeout"
+            }
+            Some(_) => "producer_cancelled",
+            None => "malformed_producer",
+        }
+    } else {
+        "malformed_producer"
+    };
+    ProducerAdmissionError { category, message }
+}
+
+pub(crate) fn live_guidance_git_failure(
+    error: crate::core_error::CoreError,
+) -> ProducerAdmissionError {
+    let message = error.to_string();
+    if error.is_git_invocation_timeout() {
+        return ProducerAdmissionError {
+            category: "producer_timeout",
+            message,
+        };
+    }
+    let mut cause = &error;
+    while let crate::core_error::CoreError::Context { source, .. } = cause {
+        cause = source;
+    }
+    let category = if let crate::core_error::CoreError::Message(cause) = cause {
+        live_guidance_failure(cause.clone()).category
+    } else {
+        "malformed_producer"
+    };
+    ProducerAdmissionError { category, message }
+}
+
+/// Classify actual HEAD metadata under the owning cooperative budget,
+/// retaining its original spelling for the later strict membership probe.
+pub(crate) fn live_guidance_head_metadata(
+    root: &Path,
+    head_paths: &[PathBuf],
+    config: &RiprConfig,
+) -> Result<std::collections::BTreeMap<PathBuf, PathBuf>, ProducerAdmissionError> {
+    let mut metadata = std::collections::BTreeMap::new();
+    for path in head_paths {
+        crate::analysis::cancellation::checkpoint().map_err(live_guidance_failure)?;
+        if let Some(identity) = crate::analysis::seam_cache::review_guidance_metadata_input_identity(
+            root,
+            path,
+            config.suppressions().path(),
+        ) {
+            if metadata.insert(identity, path.clone()).is_some() {
+                return Err(ProducerAdmissionError {
+                    category: "producer_identity_mismatch",
+                    message: "HEAD contains ambiguous live-guidance metadata owner aliases; restore one concrete owned input and regenerate PR evidence".to_string(),
+                });
+            }
+        }
+    }
+    Ok(metadata)
+}
+
+/// Explicit fresh guidance requires Git's clean tracked image. Selected Rust
+/// corpus files, changed-owner files, and manifest/lock/intent/suppression/marker
+/// inputs must be regular tracked files at HEAD. Configuration is admitted
+/// separately by the producer's consumed settings; the fresh key binds current
+/// raw configuration text before/after analysis. This selection does not add a
+/// configuration path solely because it is the loaded configuration source.
+/// This retains Git's clean-file authority; it is not an atomic byte freeze.
+pub(crate) fn admit_live_guidance_sources(
+    root: &Path,
+    head_sha: &str,
+    files: &[PathBuf],
+    config: &RiprConfig,
+    capture_limit: usize,
+) -> Result<(), ProducerAdmissionError> {
+    crate::analysis::cancellation::checkpoint().map_err(live_guidance_failure)?;
+    require_equal(
+        "live_head_sha",
+        &resolve_revision(root, "HEAD", "commit")?,
+        head_sha,
+    )?;
+    let tracked = crate::git::run_git_output_with_optional_deadline_and_limit(
+        root,
+        &["diff", "--quiet", "HEAD", "--"],
+        Some(Duration::from_secs(5)),
+        capture_limit,
+    )
+    .map_err(live_guidance_git_failure)?;
+    if tracked.status.code() == Some(1) {
+        return Err(ProducerAdmissionError {
+            category: "producer_identity_mismatch",
+            message: "live repair guidance requires the admitted HEAD's clean tracked workspace, including manifests and metadata; commit or restore changes and regenerate PR evidence".to_string(),
+        });
+    }
+    if !tracked.status.success() {
+        return Err(ProducerAdmissionError::malformed(format!(
+            "live guidance tracked-image probe failed: {}",
+            String::from_utf8_lossy(&tracked.stderr),
+        )));
+    }
+    let head_paths = crate::analysis::committed_source::regular_head_paths(root, capture_limit)
+        .map_err(live_guidance_git_failure)?;
+    let expected_metadata = live_guidance_head_metadata(root, &head_paths, config)?;
+    let mut current_metadata = std::collections::BTreeMap::new();
+    for path in files {
+        crate::analysis::cancellation::checkpoint().map_err(live_guidance_failure)?;
+        if let Some(identity) = crate::analysis::seam_cache::review_guidance_metadata_input_identity(
+            root,
+            path,
+            config.suppressions().path(),
+        ) {
+            current_metadata.insert(path.clone(), identity);
+        }
+    }
+    let expected_identities = expected_metadata
+        .keys()
+        .collect::<std::collections::BTreeSet<_>>();
+    let current_identities = current_metadata
+        .values()
+        .collect::<std::collections::BTreeSet<_>>();
+    if expected_identities != current_identities {
+        return Err(ProducerAdmissionError {
+            category: "producer_identity_mismatch",
+            message: "live repair-guidance manifest/lock/intent/suppression/marker presence differs from the admitted HEAD; restore the metadata and regenerate PR evidence".to_string(),
+        });
+    }
+    // Python source-directory presence participates in this Rust owner's
+    // workspace-role key. Compare the exact presence predicate, not Python
+    // contents or an invented cross-language analysis denominator.
+    for marker in crate::config::PYTHON_SOURCE_DIR_MARKERS {
+        crate::analysis::cancellation::checkpoint().map_err(live_guidance_failure)?;
+        let mut expected_presence = false;
+        for path in &head_paths {
+            crate::analysis::cancellation::checkpoint().map_err(live_guidance_failure)?;
+            let first = path
+                .components()
+                .next()
+                .and_then(|part| part.as_os_str().to_str());
+            if first.and_then(crate::config::python_source_dir_marker_name) == Some(*marker)
+                && !crate::config::is_detectable_excluded_python_path(path)
+                && path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(crate::config::is_detectable_python_source_name)
+            {
+                expected_presence = true;
+                break;
+            }
+        }
+        if expected_presence
+            != crate::config::source_dir_contains_detectable_python_cancellable(root, marker)
+                .map_err(live_guidance_failure)?
+        {
+            return Err(ProducerAdmissionError {
+                category: "producer_identity_mismatch",
+                message: format!(
+                    "live repair-guidance Python source-role presence below {marker} differs from HEAD; restore the inputs and regenerate PR evidence"
+                ),
+            });
+        }
+    }
+    for chunk in files.chunks(64) {
+        let mut args = vec!["--literal-pathspecs", "ls-files", "--error-unmatch", "--"];
+        for path in chunk {
+            crate::analysis::cancellation::checkpoint().map_err(live_guidance_failure)?;
+            if path.as_os_str().is_empty()
+                || path
+                    .components()
+                    .any(|component| !matches!(component, std::path::Component::Normal(_)))
+            {
+                return Err(ProducerAdmissionError::malformed(
+                    "live guidance source must be root-relative",
+                ));
+            }
+            let metadata = std::fs::symlink_metadata(root.join(path)).map_err(|error| {
+                ProducerAdmissionError::malformed(format!(
+                    "stat live guidance source {}: {error}",
+                    path.display()
+                ))
+            })?;
+            if !metadata.file_type().is_file() {
+                return Err(ProducerAdmissionError {
+                    category: "producer_identity_mismatch",
+                    message: format!(
+                        "live guidance source {} is not a regular source at the admitted HEAD",
+                        path.display()
+                    ),
+                });
+            }
+            let tracked_path = if let Some(identity) = current_metadata.get(path) {
+                expected_metadata.get(identity).ok_or_else(|| {
+                    ProducerAdmissionError::malformed("admitted metadata identity has no HEAD path")
+                })?
+            } else {
+                path
+            };
+            args.push(tracked_path.to_str().ok_or_else(|| {
+                ProducerAdmissionError::malformed("live guidance source path is not UTF-8")
+            })?);
+        }
+        let output = crate::git::run_git_output_with_optional_deadline_and_limit(
+            root,
+            &args,
+            Some(Duration::from_secs(5)),
+            capture_limit,
+        )
+        .map_err(live_guidance_git_failure)?;
+        if !output.status.success() {
+            return Err(ProducerAdmissionError {
+                category: "producer_identity_mismatch",
+                message: format!(
+                    "live repair-guidance inputs are not tracked at the admitted HEAD; commit or restore them and regenerate PR evidence: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ),
+            });
+        }
+    }
+    crate::analysis::cancellation::checkpoint().map_err(live_guidance_failure)
+}
+
 pub(crate) fn admit_review_input(
     review_input_path: &Path,
     root: &Path,
@@ -501,21 +727,12 @@ fn resolve_revision(
         Some(Duration::from_secs(5)),
     )
     .map_err(|error| {
-        let message = format!("resolve producer revision {revision:?} failed: {error}");
-        if error.is_git_invocation_timeout()
-            || (crate::analysis::cancellation::is_cancellation_error(&error.to_string())
-                && crate::analysis::cancellation::current_token().is_some_and(|token| {
-                    token.abort_kind()
-                        == Some(crate::analysis::cancellation::AnalysisAbortKind::DeadlineExceeded)
-                }))
-        {
-            ProducerAdmissionError {
-                category: "producer_timeout",
-                message,
-            }
-        } else {
-            ProducerAdmissionError::malformed(message)
-        }
+        let mut failure = live_guidance_git_failure(error);
+        failure.message = format!(
+            "resolve producer revision {revision:?} failed: {}",
+            failure.message
+        );
+        failure
     })?;
     if !output.status.success() {
         return Err(ProducerAdmissionError::malformed(format!(
@@ -1604,6 +1821,69 @@ mod tests {
         }
         Ok(())
     }
+    #[test]
+    fn live_guidance_failure_categories_preserve_primary_source_and_cleanup() -> Result<(), String>
+    {
+        use crate::analysis::cancellation::{
+            AnalysisAbortKind, AnalysisCancellationToken, checkpoint, with_token,
+        };
+        use crate::core_error::CoreError;
+        let active = AnalysisCancellationToken::new();
+        with_token(&active, || {
+            checkpoint()?;
+            if live_guidance_failure("source read failed".to_string()).category
+                != "malformed_producer"
+                || live_guidance_git_failure(CoreError::git_invocation_timeout(
+                    "owned probe",
+                    5,
+                    true,
+                ))
+                .category
+                    != "producer_timeout"
+            {
+                return Err("active source or typed Git timeout lost its category".to_string());
+            }
+            Ok(())
+        })?;
+        for (kind, expected) in [
+            (AnalysisAbortKind::DeadlineExceeded, "producer_timeout"),
+            (AnalysisAbortKind::Cancelled, "producer_cancelled"),
+            (AnalysisAbortKind::Superseded, "producer_cancelled"),
+        ] {
+            let token = AnalysisCancellationToken::new();
+            token.cancel(kind);
+            with_token(&token, || {
+                let message = checkpoint()
+                    .err()
+                    .ok_or("recorded abort did not cancel its checkpoint")?;
+                if live_guidance_failure(message.clone()).category != expected {
+                    return Err(format!("direct {kind:?} cancellation lost its category"));
+                }
+                let contextual = CoreError::message(message).with_context("committed-source probe");
+                if live_guidance_git_failure(contextual).category != expected {
+                    return Err(format!(
+                        "contextual {kind:?} cancellation lost its category"
+                    ));
+                }
+                let cleanup = "cancellation of owned git did not complete tree cleanup; child may still be running (suppressed wait outcome: analysis cancelled: cancelled)";
+                let failure = live_guidance_git_failure(
+                    CoreError::message(cleanup).with_context("committed-source probe"),
+                );
+                if failure.category != "malformed_producer"
+                    || !failure.message.contains(cleanup)
+                    || live_guidance_failure("actual source read failed".to_string()).category
+                        != "malformed_producer"
+                {
+                    return Err(format!(
+                        "recorded {kind:?} abort hid primary source/cleanup failure"
+                    ));
+                }
+                Ok(())
+            })?;
+        }
+        Ok(())
+    }
+
     #[test]
     fn producer_revision_deadline_remains_a_typed_timeout() -> Result<(), String> {
         let token = crate::analysis::cancellation::AnalysisCancellationToken::new();

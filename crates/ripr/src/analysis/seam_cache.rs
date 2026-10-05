@@ -967,6 +967,23 @@ impl WorkspaceKeyContext<'_> {
 
         let workspace_manifests_hash = hash_workspace_manifests(self.workspace_root);
         let lockfile_hash = hash_named_workspace_files(self.workspace_root, "Cargo.lock");
+        self.cache_key_with_workspace_identities(
+            files_content_hash,
+            workspace_root_hash,
+            seam_limit_key,
+            workspace_manifests_hash,
+            lockfile_hash,
+        )
+    }
+
+    fn cache_key_with_workspace_identities(
+        &self,
+        files_content_hash: String,
+        workspace_root_hash: String,
+        seam_limit_key: String,
+        workspace_manifests_hash: String,
+        lockfile_hash: String,
+    ) -> RepoSeamCacheKey {
         let toolchain_hash = hash_str(
             std::env::var("RUSTUP_TOOLCHAIN")
                 .or_else(|_| std::env::var("RIPR_TOOLCHAIN"))
@@ -3232,6 +3249,18 @@ fn hash_workspace_manifests(root: &Path) -> String {
         .copied()
         .filter(|dir| source_dir_contains_detectable_python(root, dir))
         .collect();
+    workspace_manifest_identity(
+        cargo_identity,
+        &present_python_markers,
+        &detectable_source_dirs,
+    )
+}
+
+fn workspace_manifest_identity(
+    cargo_identity: String,
+    present_python_markers: &[&str],
+    detectable_source_dirs: &[&str],
+) -> String {
     if present_python_markers.is_empty() && detectable_source_dirs.is_empty() {
         return cargo_identity;
     }
@@ -3373,28 +3402,315 @@ fn collect_named_workspace_files_by_name(
     directory: &Path,
     files: &mut [Vec<(PathBuf, Vec<u8>)>; 2],
 ) {
-    let Ok(entries) = std::fs::read_dir(directory) else {
-        return;
+    // Legacy callers retain unreadable-directory/entry skipping, placeholder
+    // file bytes, and their original absence of cancellation observations.
+    let _ = visit_named_workspace_file_paths(root, directory, false, &mut |relative| {
+        let index = usize::from(
+            relative
+                .file_name()
+                .is_some_and(|name| name == "Cargo.lock"),
+        );
+        let bytes = std::fs::read(root.join(&relative))
+            .unwrap_or_else(|_| b"<workspace input unreadable>".to_vec());
+        files[index].push((relative, bytes));
+        Ok(())
+    });
+}
+
+fn visit_named_workspace_file_paths(
+    root: &Path,
+    directory: &Path,
+    strict: bool,
+    visit: &mut impl FnMut(PathBuf) -> Result<(), String>,
+) -> Result<(), String> {
+    if strict {
+        super::cancellation::checkpoint()?;
+    }
+    let entries = match std::fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if strict => {
+            return Err(format!(
+                "read workspace metadata directory {}: {error}",
+                directory.display()
+            ));
+        }
+        Err(_) => return Ok(()),
     };
-    for entry in entries.flatten() {
+    for entry in entries {
+        if strict {
+            super::cancellation::checkpoint()?;
+        }
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) if strict => return Err(format!("read workspace metadata entry: {error}")),
+            Err(_) => continue,
+        };
         let path = entry.path();
         let name = path
             .file_name()
             .and_then(|value| value.to_str())
             .unwrap_or("");
-        if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+        let directory = match entry.file_type() {
+            Ok(kind) => kind.is_dir(),
+            Err(error) if strict => {
+                return Err(format!(
+                    "stat workspace metadata {}: {error}",
+                    path.display()
+                ));
+            }
+            Err(_) => false,
+        };
+        if directory {
             if WORKSPACE_SCAN_SKIPPED_DIRS.contains(&name) {
                 continue;
             }
-            collect_named_workspace_files_by_name(root, &path, files);
+            visit_named_workspace_file_paths(root, &path, strict, visit)?;
         } else if matches!(name, "Cargo.toml" | "Cargo.lock") {
-            let index = usize::from(name == "Cargo.lock");
-            let relative = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
-            let bytes =
-                std::fs::read(&path).unwrap_or_else(|_| b"<workspace input unreadable>".to_vec());
-            files[index].push((relative, bytes));
+            visit(path.strip_prefix(root).unwrap_or(&path).to_path_buf())?;
         }
     }
+    Ok(())
+}
+
+fn metadata_owner_alias(root: &Path, path: &Path, suppressions: &Path) -> Option<PathBuf> {
+    let fixed = Path::new(".ripr/test_intent.toml");
+    let same_owned_path = |expected: &Path| {
+        path == expected
+            || (cfg!(windows)
+                && (path
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case(&expected.to_string_lossy())
+                    || matches!((std::fs::canonicalize(root.join(path)), std::fs::canonicalize(root.join(expected))),
+                    (Ok(actual), Ok(expected)) if actual == expected)))
+    };
+    if same_owned_path(fixed) {
+        return Some(fixed.to_path_buf());
+    }
+    if same_owned_path(suppressions) {
+        return Some(suppressions.to_path_buf());
+    }
+    if path.parent() == Some(Path::new("")) {
+        if let Some(marker) = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(crate::config::python_project_marker_name)
+        {
+            return Some(PathBuf::from(marker));
+        }
+    }
+    None
+}
+
+pub(crate) fn review_guidance_metadata_identity(
+    root: &Path,
+    path: &Path,
+    suppressions: &Path,
+) -> PathBuf {
+    metadata_owner_alias(root, path, suppressions).unwrap_or_else(|| path.to_path_buf())
+}
+
+pub(crate) fn review_guidance_metadata_input_identity(
+    root: &Path,
+    path: &Path,
+    suppressions: &Path,
+) -> Option<PathBuf> {
+    if let Some(identity) = metadata_owner_alias(root, path, suppressions) {
+        return Some(identity);
+    }
+    let named_workspace_input = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| matches!(name, "Cargo.toml" | "Cargo.lock"))
+        && !path.parent().is_some_and(|parent| {
+            parent.components().any(|part| {
+                part.as_os_str()
+                    .to_str()
+                    .is_some_and(|name| WORKSPACE_SCAN_SKIPPED_DIRS.contains(&name))
+            })
+        });
+    named_workspace_input.then(|| path.to_path_buf())
+}
+
+/// Same manifest/lock traversal as the existing key, path-only and fail-closed
+/// for explicit live guidance. No metadata body is read before its byte census.
+/// Fresh key for explicit live guidance; exact existing key fields/FNV.
+/// Avoid a second legacy fingerprint/cache walk. The inventory still owns
+/// its ordinary warm/cold admission and cache integrity independently.
+pub(crate) fn review_guidance_workspace_key(
+    root: &Path,
+    config: &crate::config::RiprConfig,
+    corpus: &[PathBuf],
+    max_paths: usize,
+    max_bytes: u64,
+) -> Result<RepoSeamCacheKey, String> {
+    super::cancellation::checkpoint()?;
+    let metadata_paths =
+        review_guidance_metadata_paths(root, config.suppressions().path(), max_paths)?;
+    let mut remaining = max_bytes;
+    let mut read = |path: &Path| -> Result<Vec<u8>, String> {
+        use std::io::Read;
+        super::cancellation::checkpoint()?;
+        let mut file = std::fs::File::open(root.join(path))
+            .map_err(|error| format!("open guidance key input {}: {error}", path.display()))?;
+        let mut bytes = Vec::new();
+        let mut buffer = [0_u8; 8192];
+        loop {
+            super::cancellation::checkpoint()?;
+            let count = file
+                .read(&mut buffer)
+                .map_err(|error| format!("read guidance key input {}: {error}", path.display()))?;
+            if count == 0 {
+                break;
+            }
+            if count as u64 > remaining {
+                return Err("review_guidance_oversized: live key inputs grew beyond RIPR_REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES; restore inputs or raise the admitted ceiling".to_string());
+            }
+            remaining -= count as u64;
+            bytes.extend_from_slice(&buffer[..count]);
+        }
+        Ok(bytes)
+    };
+    let mut source_files = Vec::new();
+    for path in corpus {
+        source_files.push((path.clone(), read(path)?));
+    }
+    let mut metadata = std::collections::BTreeMap::new();
+    for path in metadata_paths {
+        let bytes = read(&path)?;
+        metadata.insert(path, bytes);
+    }
+    let file_identity = |files: &[(PathBuf, Vec<u8>)]| -> Result<Option<String>, String> {
+        let mut files = files.iter().collect::<Vec<_>>();
+        files.sort_by(|left, right| left.0.cmp(&right.0));
+        let mut input = String::new();
+        for (path, bytes) in files {
+            super::cancellation::checkpoint()?;
+            input.push_str(&path.to_string_lossy().replace('\\', "/"));
+            input.push('\0');
+            input.push_str(&guidance_hash_bytes(bytes)?);
+            input.push('\n');
+        }
+        if input.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(guidance_hash_bytes(input.as_bytes())?))
+        }
+    };
+    // files_content_hash hashes an empty corpus as FNV(empty), while the
+    // existing named-file identity uses the no-matching-files placeholder.
+    let source_hash = file_identity(&source_files)?.unwrap_or(guidance_hash_bytes(&[])?);
+    let named_identity = |name: &str| -> Result<String, String> {
+        let files = metadata
+            .iter()
+            .filter(|(path, _)| {
+                path.file_name().is_some_and(|part| part == name)
+                    && !path.components().any(|part| {
+                        part.as_os_str()
+                            .to_str()
+                            .is_some_and(|name| WORKSPACE_SCAN_SKIPPED_DIRS.contains(&name))
+                    })
+            })
+            .map(|(path, bytes)| (path.clone(), bytes.clone()))
+            .collect::<Vec<_>>();
+        Ok(file_identity(&files)?.unwrap_or_else(|| hash_str("<no matching workspace files>")))
+    };
+    let cargo_identity = named_identity("Cargo.toml")?;
+    let lockfile_hash = named_identity("Cargo.lock")?;
+    let mut markers = Vec::new();
+    for marker in PYTHON_PROJECT_MARKERS {
+        super::cancellation::checkpoint()?;
+        if root.join(marker).is_file() {
+            markers.push(*marker);
+        }
+    }
+    let mut dirs = Vec::new();
+    for dir in PYTHON_SOURCE_DIR_MARKERS {
+        super::cancellation::checkpoint()?;
+        if crate::config::source_dir_contains_detectable_python_cancellable(root, dir)? {
+            dirs.push(*dir);
+        }
+    }
+    let workspace_manifests_hash = workspace_manifest_identity(cargo_identity, &markers, &dirs);
+    let optional_text = |path: &Path| -> Result<Option<String>, String> {
+        super::cancellation::checkpoint()?;
+        let identity = review_guidance_metadata_identity(root, path, config.suppressions().path());
+        for (candidate, bytes) in &metadata {
+            super::cancellation::checkpoint()?;
+            if review_guidance_metadata_identity(root, candidate, config.suppressions().path())
+                == identity
+            {
+                return Ok(String::from_utf8(bytes.clone()).ok());
+            }
+        }
+        Ok(None)
+    };
+    super::cancellation::checkpoint()?;
+    let intent = optional_text(Path::new(".ripr/test_intent.toml"))?;
+    super::cancellation::checkpoint()?;
+    let suppressions = optional_text(config.suppressions().path())?;
+    super::cancellation::checkpoint()?;
+    let cfg_features = std::env::var("RIPR_CFG_FEATURES").ok();
+    let context = WorkspaceKeyContext {
+        workspace_root: root,
+        cfg_features: cfg_features.as_deref(),
+        config_text: config.source_text(),
+        test_intent_text: intent.as_deref(),
+        suppressions_text: suppressions.as_deref(),
+    };
+    let seam_limit_key = match repo_exposure_seam_limit() {
+        Ok(None) => "unlimited".to_string(),
+        Ok(Some((n, _))) => format!("limit_{n}"),
+        Err(_) => "invalid".to_string(),
+    };
+    super::cancellation::checkpoint()?;
+    let key = context.cache_key_with_workspace_identities(
+        source_hash,
+        hash_str(&root.to_string_lossy()),
+        seam_limit_key,
+        workspace_manifests_hash,
+        lockfile_hash,
+    );
+    super::cancellation::checkpoint()?;
+    Ok(key)
+}
+
+pub(crate) fn review_guidance_metadata_paths(
+    root: &Path,
+    suppressions: &Path,
+    max_paths: usize,
+) -> Result<Vec<PathBuf>, String> {
+    let mut files = BTreeSet::new();
+    let mut insert = |path: PathBuf| -> Result<(), String> {
+        if !files.contains(&path) && files.len() >= max_paths {
+            return Err(format!(
+                "review_guidance_oversized: more than {max_paths} workspace metadata inputs; raise RIPR_REVIEW_GUIDANCE_MAX_INDEX_FILES on an admitted runner"
+            ));
+        }
+        files.insert(path);
+        Ok(())
+    };
+    visit_named_workspace_file_paths(root, root, true, &mut insert)?;
+    for path in std::iter::once(PathBuf::from(".ripr/test_intent.toml"))
+        .chain(std::iter::once(suppressions.to_path_buf()))
+        .chain(
+            PYTHON_PROJECT_MARKERS
+                .iter()
+                .map(|marker| PathBuf::from(*marker)),
+        )
+    {
+        super::cancellation::checkpoint()?;
+        match std::fs::symlink_metadata(root.join(&path)) {
+            Ok(_) => insert(path)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!(
+                    "stat workspace metadata {}: {error}",
+                    path.display()
+                ));
+            }
+        }
+    }
+    Ok(files.into_iter().collect())
 }
 
 fn collect_named_workspace_files(
@@ -3478,11 +3794,24 @@ fn fnv1a_64(bytes: &[u8]) -> u64 {
     const FNV_OFFSET: u64 = 0xcbf29ce484222325;
     const FNV_PRIME: u64 = 0x100000001b3;
     let mut hash: u64 = FNV_OFFSET;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
+    fnv1a_update(&mut hash, bytes, FNV_PRIME);
     hash
+}
+
+fn fnv1a_update(hash: &mut u64, bytes: &[u8], prime: u64) {
+    for byte in bytes {
+        *hash ^= u64::from(*byte);
+        *hash = (*hash).wrapping_mul(prime);
+    }
+}
+
+fn guidance_hash_bytes(bytes: &[u8]) -> Result<String, String> {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for chunk in bytes.chunks(64 * 1024) {
+        super::cancellation::checkpoint()?;
+        fnv1a_update(&mut hash, chunk, 0x100000001b3);
+    }
+    Ok(format!("{hash:016x}"))
 }
 
 /// Best-effort temp-dir teardown for tests. The `io::Result` is matched
