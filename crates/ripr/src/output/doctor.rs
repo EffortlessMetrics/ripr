@@ -2571,13 +2571,39 @@ mod tests {
     #[test]
     #[cfg(feature = "lang-python")]
     fn python_root_skips_rust_toolchain_checks_without_cargo_or_rustc() -> Result<(), String> {
-        let root = doctor_scope_root(
-            "scope-python",
-            &[
-                ("pyproject.toml", "[project]\nname = \"textfmt\"\n"),
-                ("src/textfmt/__init__.py", "def f():\n    return 1\n"),
-            ],
-        )?;
+        struct OwnedPythonScope(std::path::PathBuf);
+        impl Drop for OwnedPythonScope {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let parent = unique_test_dir("scope-python-boundary");
+        std::fs::create_dir(&parent)
+            .map_err(|err| format!("acquire Python scope boundary: {err}"))?;
+        let owned = OwnedPythonScope(parent);
+        std::fs::write(owned.0.join("Cargo.toml"), "[workspace]\nmembers = []\n")
+            .map_err(|err| format!("write Python scope boundary: {err}"))?;
+        let root = owned.0.join("python-subject");
+        std::fs::create_dir(&root).map_err(|err| format!("create Python subject: {err}"))?;
+        std::fs::create_dir_all(root.join("src/textfmt"))
+            .map_err(|err| format!("create Python source directory: {err}"))?;
+        std::fs::write(
+            root.join("pyproject.toml"),
+            "[project]\nname = \"textfmt\"\n",
+        )
+        .map_err(|err| format!("write Python project marker: {err}"))?;
+        std::fs::write(
+            root.join("src/textfmt/__init__.py"),
+            "def f():\n    return 1\n",
+        )
+        .map_err(|err| format!("write Python source: {err}"))?;
+        if root.join("Cargo.toml").exists() || root.join(CONFIG_FILE_NAME).exists() {
+            return Err("Python subject must have no Cargo manifest or direct config".to_string());
+        }
+        let config = crate::config::load_for_root(&root)?;
+        if config.source_path.is_some() {
+            return Err("Python scope must use unconfigured project defaults".to_string());
+        }
         let (report, probed) = evaluate_without_rust_toolchain(&root, &[LanguageId::Python]);
         let _ = std::fs::remove_dir_all(&root);
         // Python auto-enablement keeps the default `rust` entry, so the skip

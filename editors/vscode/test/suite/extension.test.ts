@@ -45,6 +45,7 @@ suite('Extension Smoke', () => {
     assert.ok(commands.includes('ripr.selectWorkspaceRoot'));
     assert.ok(commands.includes('ripr.showOutput'));
     assert.ok(commands.includes('ripr.showStatus'));
+    assert.ok(commands.includes('ripr.showAttemptStatus'));
     assert.ok(commands.includes('ripr.diagnoseSetup'));
     assert.ok(commands.includes('ripr.startCurrentRepair'));
     assert.ok(commands.includes('ripr.copyCurrentRepairPacket'));
@@ -77,6 +78,165 @@ suite('Extension Smoke', () => {
     assert.ok(commands.includes('ripr.copyTopVerifyCommand'));
     assert.ok(commands.includes('ripr.openReport'));
     assert.ok(commands.includes('ripr.showTopLimitation'));
+
+    // Exercise the registered command in the active development or VSIX copy.
+    // Only the CLI transport is fixture-backed; retain the actual controller,
+    // typed adapter, status bar and command argument guard.
+    const extension = vscode.extensions.getExtension('EffortlessMetrics.ripr');
+    assert.ok(extension?.isActive, 'the actual extension must already be active');
+    const activeClient = require(path.join(extension.extensionPath, 'out/src/client.js')) as {
+      RiprClientController: typeof RiprClientController;
+    };
+    const prototype = activeClient.RiprClientController.prototype;
+    const original = prototype.showAttemptStatus;
+    const selectedRaw = await fs.readFile(
+      path.resolve(__dirname, '../../../test-fixtures/attempt-status/status-awaiting_edit.json'),
+      'utf8'
+    );
+    const selected = JSON.parse(selectedRaw) as {
+      schema_version: string;
+      kind: string;
+      attempt: { attempt_id: string; seam_id: string; state: string; status_class: string };
+      next_action: { command: string };
+    };
+    assert.strictEqual(selected.schema_version, '0.1');
+    assert.strictEqual(selected.kind, 'agent_attempt_status');
+    assert.strictEqual(selected.attempt.status_class, 'awaiting_edit');
+    assert.strictEqual(selected.attempt.state, 'awaiting_edit');
+    const attemptId = selected.attempt.attempt_id;
+    assert.strictEqual(attemptId, 'repair-attempt-0123456789abcdef01234567');
+    assert.ok(selected.next_action.command.includes(attemptId));
+    const inventory = JSON.stringify({
+      schema_version: selected.schema_version,
+      repair_attempts: [{
+        attempt_id: attemptId,
+        seam_id: selected.attempt.seam_id,
+        state: selected.attempt.state
+      }]
+    });
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    assert.ok(root, 'command proof requires the owned editor workspace');
+    const trusted = vscode.workspace.isTrusted;
+    const forwarded: Array<string | undefined> = [];
+    let controller: RiprClientController | undefined;
+    let expectedArgument: string | undefined;
+    let mismatch = false;
+    let restoreSurface: (() => Promise<void>) | undefined;
+    prototype.showAttemptStatus = async function (this: RiprClientController, argument?: string) {
+      forwarded.push(argument);
+      assert.strictEqual(argument, expectedArgument, 'registration must preserve strings and drop other values');
+      const view = this as unknown as {
+        context: vscode.ExtensionContext;
+        runtime: RiprClientRuntime;
+        output: vscode.LogOutputChannel;
+        attemptStatusBar?: vscode.StatusBarItem;
+        server?: { command: string };
+      };
+      const bar = view.attemptStatusBar;
+      assert.ok(bar, 'actual activation must create the independent attempt status bar');
+      assert.strictEqual(view.runtime.isWorkspaceTrusted(), trusted);
+      if (trusted) {
+        assert.ok(view.server?.command, 'qualified editor test server must be resolved before transport injection');
+      }
+      if (controller === undefined) {
+        controller = this;
+        const saved = {
+          text: bar.text, tooltip: bar.tooltip, command: bar.command,
+          backgroundColor: bar.backgroundColor, color: bar.color
+        };
+        const selectionKey = 'ripr.activeAttemptSelection.v1';
+        const savedSelection = view.context.workspaceState.get<Record<string, unknown>>(selectionKey);
+        restoreSurface = async () => {
+          bar.hide(); // This first command test starts with activation's hidden attempt item.
+          Object.assign(bar, saved);
+          await view.context.workspaceState.update(selectionKey, savedSelection);
+        };
+      } else {
+        assert.strictEqual(this, controller, 'all invocations must reach the same active extension controller');
+      }
+      const runtime = view.runtime;
+      const runRipr = runtime.runRipr;
+      const information = runtime.showInformationMessage;
+      const warning = runtime.showWarningMessage;
+      const appendLine = view.output.appendLine;
+      const showBar = bar.show;
+      const reads: Array<{ command: string; args: string[]; cwd: string }> = [];
+      const info: string[] = [];
+      const warnings: string[] = [];
+      const lines: string[] = [];
+      let shown = 0;
+      try {
+        runtime.runRipr = async (command, args, cwd) => {
+          reads.push({ command, args: [...args], cwd });
+          assert.strictEqual(command, view.server?.command);
+          assert.strictEqual(cwd, root);
+          assert.ok(reads.length <= 2, 'status is exactly inventory then selected read');
+          assert.deepStrictEqual(args, reads.length === 1
+            ? ['agent', 'status', '--root', root, '--json']
+            : ['agent', 'status', '--root', root, '--attempt', argument ?? attemptId, '--json']);
+          return reads.length === 1 ? inventory : selectedRaw;
+        };
+        runtime.showInformationMessage = async (message) => { info.push(message); return undefined; };
+        runtime.showWarningMessage = async (message) => { warnings.push(message); return undefined; };
+        view.output.appendLine = (line) => { lines.push(line); appendLine.call(view.output, line); };
+        bar.show = () => { shown += 1; showBar.call(bar); };
+        await original.call(this, argument);
+        if (!trusted) {
+          assert.deepStrictEqual(reads, [], 'untrusted command must never read attempt authority');
+          assert.strictEqual(shown, 0);
+          assert.deepStrictEqual(info, [
+            'ripr repair-attempt status is unavailable in an untrusted workspace; trust the workspace to read shared attempt state.'
+          ]);
+          return;
+        }
+        assert.strictEqual(reads.length, 2, 'nonempty fixture must reach selected typed status');
+        assert.strictEqual(shown, 1, 'actual bar must be shown once by the retained owner');
+        assert.strictEqual(bar.command, 'ripr.showAttemptStatus');
+        if (mismatch) {
+          const refusal = `ripr attempt status for ${argument} returned a document for ${attemptId}; refusing mismatched attempt state.`;
+          assert.strictEqual(bar.text, '$(warning) ripr: attempt status unavailable');
+          assert.strictEqual(bar.tooltip, refusal);
+          assert.deepStrictEqual(info, [], 'a foreign selected identity must never be presented as success');
+          assert.ok(warnings.includes(refusal), warnings.join('\n'));
+          assert.ok(lines.includes(refusal), lines.join('\n'));
+        } else {
+          assert.strictEqual(bar.text, '$(edit) ripr: attempt awaiting edit');
+          assert.strictEqual(bar.backgroundColor, undefined);
+          assert.strictEqual(bar.color, undefined);
+          const tooltip = String(bar.tooltip);
+          assert.ok(tooltip.includes(`attempt: ${attemptId}`), tooltip);
+          assert.ok(tooltip.includes('status: awaiting_edit'), tooltip);
+          assert.ok(tooltip.includes(`next: ${selected.next_action.command}`), tooltip);
+          assert.deepStrictEqual(info, [`ripr attempt awaiting edit: ${attemptId}`]);
+          assert.deepStrictEqual(warnings, []);
+          assert.ok(lines.some((line) => line.includes(`ripr attempt status:\nattempt: ${attemptId}\nstatus: awaiting_edit`)), lines.join('\n'));
+        }
+      } finally {
+        runtime.runRipr = runRipr;
+        runtime.showInformationMessage = information;
+        runtime.showWarningMessage = warning;
+        view.output.appendLine = appendLine;
+        bar.show = showBar;
+      }
+    };
+    try {
+      expectedArgument = attemptId;
+      await vscode.commands.executeCommand('ripr.showAttemptStatus', attemptId);
+      assert.strictEqual(forwarded.length, 1, 'registered handler must actually delegate');
+      expectedArgument = 'repair-attempt-explicit-editor-control';
+      mismatch = true;
+      await vscode.commands.executeCommand('ripr.showAttemptStatus', expectedArgument);
+      assert.strictEqual(forwarded.length, 2);
+      expectedArgument = undefined;
+      mismatch = false;
+      await vscode.commands.executeCommand('ripr.showAttemptStatus', { attempt_id: attemptId });
+      assert.deepStrictEqual(forwarded, [attemptId, 'repair-attempt-explicit-editor-control', undefined]);
+    } finally {
+      prototype.showAttemptStatus = original;
+      if (restoreSurface) {
+        await restoreSurface();
+      }
+    }
   });
 
   test('trusted-host gate is limited to explicit untrusted harness mode', () => {
