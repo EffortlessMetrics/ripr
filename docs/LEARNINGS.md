@@ -308,6 +308,26 @@ bare-name method relation (#4760) into this pairing gate. Pairing reuses
 activation's `==` facts so a same-test oracle that already infected through
 a named constant or helper hop stays `exposed`.
 
+## 2026-10-05: A boundary literal buried in an argument expression is a false `exposed` (#6668)
+
+Same-test pairing reused `owner_argument_values`, which collects every scalar
+token inside the argument text. `assert_eq!(gate(if false { 10 } else { 50 }),
+true)` and `assert_eq!(gate(std::cmp::max(10, 50)), true)` therefore paired as
+boundary inputs even though both calls evaluate to 50; the `10 <= value` →
+`10 < value` mutant still passes. Bool-owner `assert!(gate(..))` pins inherit
+the same matcher. Pairing now admits an argument only when it is the literal
+itself, a named local bound to that literal, or a call infection already
+recorded as `==` the boundary. Do not "fix" this by changing
+`owner_argument_values` / `scalar_values` (those remain the activation
+authority; #5638 / #5359). Activation `==` fallback is refused when the
+compared argument is compound, not when an unrelated extra argument is
+(`gate(LIMIT, make_context())` still pairs) or when the compared argument
+is a path-qualified constant (`bulk_rate(parcels::BULK_ITEMS)`). When a
+compared operand is a local alias rather than a parameter name, activation
+fallback fail-closes to the whole argument list so a buried literal in the
+aliased slot cannot restore pairing. The reverse direction, helper-built
+inputs that read as gaps, is #6615.
+
 ## 2026-09-29: Whole-object equality is not an effect observer of a different collection (#4575)
 
 A SideEffect `items.push(...)` on a passed collection can be confirmed by
