@@ -262,6 +262,9 @@ are scoped or reviewed.
   this verdict" section: each examined test with the assertion it was judged
   by, what a test would need to change the verdict, and what each stop reason
   means (#5356). No verdict changes.
+- LSP: `ripr lsp` exits 2 when the `exit` notification arrives without a
+  prior `shutdown` request, per LSP §exit. `shutdown` then `exit` still
+  exits 0, as do stdin EOF and malformed-frame termination (#5249).
 
 - `ripr explain` and `ripr context` explain `file:line` syntax after a malformed
   location misses and retain the scoped listing command for recovery. Finding

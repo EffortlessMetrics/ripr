@@ -1186,8 +1186,13 @@ fn serve_stdio_call_presence_observer() -> Result<(), String> {
         "serve_streams should set the explicit in-flight request concurrency bound (#2034)"
     );
     assert!(
-        serve_streams.contains(".serve(dollar_requests::AnswerDollarRequests(service))"),
-        "serve_streams should hand the bounded transport, the socket, and the service (behind the `$/` request layer, #4456) to the tower LSP server"
+        serve_streams.contains("dollar_requests::AnswerDollarRequests(")
+            && serve_streams.contains("RecordShutdownExit::new(service, order.clone())"),
+        "serve_streams should hand the bounded transport, the socket, and the service (behind the `$/` request layer, #4456, with the shutdown/exit order recorder inside it, #5249) to the tower LSP server"
+    );
+    assert!(
+        serve_streams.contains("order.exit_without_shutdown()"),
+        "serve_streams should exit nonzero when `exit` arrives without a prior `shutdown` (LSP section exit, #5249)"
     );
 
     Ok(())

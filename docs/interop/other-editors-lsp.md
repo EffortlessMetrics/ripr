@@ -167,7 +167,7 @@ Observed error behavior:
 | Unknown method, including one starting with `$/` | `-32601` method not found |
 | Invalid params | `-32602` with the field named |
 | Malformed frame or JSON | `-32700` with a null id, then the server exits with status 0 |
-| `exit` without `shutdown` | Exits with status 0 (the spec suggests 1) |
+| `exit` without `shutdown` | Exits with status 2 per LSP §exit (#5249) |
 | Client stops reading output | The server stops after two minutes without write progress |
 
 `initialize.processId` is accepted but not watched: close the server's stdin
