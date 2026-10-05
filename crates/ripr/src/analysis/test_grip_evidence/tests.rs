@@ -3715,7 +3715,6 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
             path: file.clone(),
             functions: vec![function],
             tests: vec![test.clone()],
-            calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
             probe_shapes: Vec::new(),

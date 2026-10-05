@@ -572,7 +572,9 @@ pub(crate) const COUNT_CACHE_SCHEMA_VERSION: &str = "0.2";
 /// `1.21`: bodies and shape text are spans into the entry's `source`, not
 /// allocated strings (#5415 step 2). Predecessor payloads carry bare-string
 /// bodies that the span wire rejects, so they must cold-recompute.
-pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "1.21";
+/// `1.22`: file-level `calls` are no longer stored (#5415 step 3); the
+/// wire derives them from per-function calls, ignoring any legacy copy.
+pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "1.22";
 
 /// Keep the best-effort classified-seam cache from turning a successful live
 /// analysis into an unbounded post-analysis stall on large repos. Larger live
@@ -3842,7 +3844,9 @@ mod tests {
         // (#4478); a warm pre-bump hit would read every owner as `Unknown`.
         // 1.20 -> 1.21: bodies and shape text are spans into `source`
         // (#5415 step 2); bare-string predecessor bodies must not replay.
-        assert_eq!(FILE_FACT_CACHE_SCHEMA_VERSION, "1.21");
+        // 1.21 -> 1.22: file-level `calls` are derived, not stored
+        // (#5415 step 3); legacy payloads carry a dead copy.
+        assert_eq!(FILE_FACT_CACHE_SCHEMA_VERSION, "1.22");
         // 1.4 -> 1.5: metadata-sourced harness validation (#3634) flips
         // verdicts for workspaces the manifest emulation approximated.
         // 1.5 -> 1.6: the #3636 reachability authority excludes
@@ -4051,6 +4055,53 @@ mod tests {
     }
 
     #[test]
+    fn file_fact_entry_with_legacy_stored_file_calls_loads_derived() -> Result<(), String> {
+        use crate::analysis::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter};
+        // #5415 step 3: a 1.21-shaped payload (stored file-level `calls`)
+        // placed at a 1.22 entry path must still load, with the stored copy
+        // ignored: derivation from per-function calls is authoritative. The
+        // legacy bytes below contradict the functions on purpose, so a load
+        // that trusted them would surface the phantom call.
+        let scratch = integrity_scratch("legacy-stored-file-calls")?;
+        let cache = RepoFileFactCache::at_dir(scratch.0.clone());
+        let file = Path::new("src/lib.rs");
+        let source = "fn f(x: u32) -> u32 { helper(x) }\nfn helper(y: u32) -> u32 { y }\n";
+        let facts = RaRustSyntaxAdapter.summarize_file(file, source)?;
+        if facts.functions.iter().all(|f| f.calls.is_empty()) {
+            return Err("fixture must produce per-function calls".to_owned());
+        }
+        let expected = facts.file_calls();
+        if expected.is_empty() {
+            return Err("fixture must derive file-level calls".to_owned());
+        }
+        let key = RepoFileFactCacheKey::new(file, source.as_bytes());
+        cache.store_file_facts(&key, &facts)?;
+        if !matches!(cache.load_file_facts(&key), CacheLoad::Hit(_)) {
+            return Err("seeded file facts must warm hit".to_owned());
+        }
+        let entry = cache.entry_path(&key);
+        let bytes = std::fs::read(&entry).map_err(|err| err.to_string())?;
+        let mut envelope: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|err| err.to_string())?;
+        envelope["file_facts"]["calls"] = serde_json::json!([{
+            "line": 999,
+            "name": "phantom",
+            "text": "phantom()",
+        }]);
+        let bytes = serde_json::to_vec(&envelope).map_err(|err| err.to_string())?;
+        std::fs::write(&entry, bytes).map_err(|err| err.to_string())?;
+        match cache.load_file_facts(&key) {
+            CacheLoad::Hit(loaded) if loaded.file_calls() == expected => {}
+            other => {
+                return Err(format!(
+                    "legacy stored calls must load derived from functions, got {other:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn empty_macro_call_predecessor_from_another_build_misses_and_current_reuses()
     -> Result<(), String> {
         use crate::analysis::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter};
@@ -4088,7 +4139,6 @@ mod tests {
                 call.text = old_line.clone();
             }
         };
-        restore_old_text(&mut favorable.calls);
         for function in &mut favorable.functions {
             restore_old_text(&mut function.calls);
         }

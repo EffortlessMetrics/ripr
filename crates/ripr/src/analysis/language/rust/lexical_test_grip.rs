@@ -432,7 +432,6 @@ mod tests {
                     let_bindings: Vec::new(),
                 })
                 .collect(),
-            calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
             probe_shapes: Vec::new(),

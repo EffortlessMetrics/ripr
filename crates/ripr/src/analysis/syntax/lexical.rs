@@ -62,7 +62,6 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
     let lines: Vec<&str> = text.lines().collect();
     let mut functions = Vec::new();
     let mut tests = Vec::new();
-    let mut file_calls = Vec::new();
     let mut file_returns = Vec::new();
     let mut file_literals = Vec::new();
     let mut pending_test = false;
@@ -107,7 +106,6 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
             // verbatim substrings (line endings); both facts share one
             // owned copy instead of the file allocation.
             let linked_body = SourceText::owned(body.as_str());
-            file_calls.extend(calls.clone());
             file_returns.extend(returns.clone());
             file_literals.extend(literals.clone());
             let function = FunctionFact {
@@ -182,8 +180,6 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
         i += 1;
     }
 
-    file_calls.sort_by(|a, b| a.line.cmp(&b.line).then(a.name.cmp(&b.name)));
-    file_calls.dedup_by(|a, b| a.line == b.line && a.name == b.name && a.text == b.text);
     file_returns.sort_by(|a, b| a.line.cmp(&b.line).then(a.text.cmp(&b.text)));
     file_returns.dedup_by(|a, b| a.line == b.line && a.text == b.text);
     file_literals.sort_by(|a, b| a.line.cmp(&b.line).then(a.value.cmp(&b.value)));
@@ -193,7 +189,6 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
         path,
         functions,
         tests,
-        calls: file_calls,
         returns: file_returns,
         literals: file_literals,
         // probe_shapes is intentionally empty: shape extraction is parser-only.
@@ -390,7 +385,7 @@ fn checks_value() {
                 .any(|function| function.name == "load_value")
         );
         assert!(facts.tests.iter().any(|test| test.name == "checks_value"));
-        assert!(facts.calls.iter().any(|call| call.name == "helper"));
+        assert!(facts.file_calls().iter().any(|call| call.name == "helper"));
         assert!(
             facts
                 .returns
