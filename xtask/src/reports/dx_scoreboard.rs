@@ -42,12 +42,15 @@ const MUTATION_SPOT_CHECK_SCHEMA_VERSION: &str = "ripr-mutation-spot-check-v1";
 /// One JSON object per line from the first-run walk's scoreboard export.
 const FIRST_RUN_ROW_SCHEMA_VERSION: &str = "first_run_row.v1";
 const RUST_CORPUS_SMOKE_SCHEMA_VERSION: &str = "ripr-rust-corpus-smoke-v1";
+/// Receipt written by `cargo xtask pilot-ranking score` (pilot's top picks
+/// judged against the checked-in mutation answer key); converted on ingest.
+const PILOT_RANKING_SCHEMA_VERSION: &str = super::pilot_ranking::RECEIPT_SCHEMA_VERSION;
 /// Row metrics that carry their own per-step `budget`.
 const FIRST_RUN_BUDGETED: [&str; 3] = ["secs", "stdout_lines", "workflow_lines"];
 const DEFAULT_CONFIG: &str = "benchmarks/dx_scoreboard/scoreboards.toml";
 const DEFAULT_CORPUS_DIR: &str = "target/ripr/dx-scoreboard/corpus";
 const DEFAULT_TIMEOUT_MS: u64 = 900_000;
-const BOARDS: [&str; 7] = [
+const BOARDS: [&str; 8] = [
     "speed",
     "ci",
     "trust",
@@ -55,6 +58,7 @@ const BOARDS: [&str; 7] = [
     "first_run",
     "agent",
     "corpus",
+    "ranking",
 ];
 
 const USAGE: &str = "usage: cargo xtask dx-scoreboard [--config <path>] [--boards <list>] [--repo <id>]... [--include-heavy] [--corpus-dir <dir>] [--clone] [--ripr-bin <path>] [--ingest <file>]... [--baseline <report.json>] [--gate] [--timeout-ms <n>]
@@ -63,7 +67,7 @@ Measures the developer-experience scoreboards declared in
 benchmarks/dx_scoreboard/scoreboards.toml and writes
 target/ripr/reports/dx-scoreboard.{json,md}.
 
-  --boards <list>     comma-separated subset of speed,ci,trust,paste,first_run,agent,corpus
+  --boards <list>     comma-separated subset of speed,ci,trust,paste,first_run,agent,corpus,ranking
   --repo <id>         limit corpus measurements to these corpus ids
   --include-heavy     also measure corpus entries marked heavy
   --corpus-dir <dir>  where pinned corpus checkouts live
@@ -515,9 +519,13 @@ pub(crate) fn parse_ingest(value: &Value, config: &Config) -> Result<Vec<Sample>
         let converted = rust_corpus_smoke_to_input(value)?;
         return parse_ingest(&converted, config);
     }
+    if value["schema_version"].as_str() == Some(PILOT_RANKING_SCHEMA_VERSION) {
+        let converted = pilot_ranking_to_input(value)?;
+        return parse_ingest(&converted, config);
+    }
     if value["schema_version"].as_str() != Some(INPUT_SCHEMA_VERSION) {
         return Err(format!(
-            "schema_version must be one of `{INPUT_SCHEMA_VERSION}`, `{FIRST_RUN_SCHEMA_VERSION}`, `{MUTATION_SPOT_CHECK_SCHEMA_VERSION}`, `{RUST_CORPUS_SMOKE_SCHEMA_VERSION}`, or `{FIRST_RUN_ROW_SCHEMA_VERSION}` JSON Lines"
+            "schema_version must be one of `{INPUT_SCHEMA_VERSION}`, `{FIRST_RUN_SCHEMA_VERSION}`, `{MUTATION_SPOT_CHECK_SCHEMA_VERSION}`, `{RUST_CORPUS_SMOKE_SCHEMA_VERSION}`, `{PILOT_RANKING_SCHEMA_VERSION}`, or `{FIRST_RUN_ROW_SCHEMA_VERSION}` JSON Lines"
         ));
     }
     let source = value["source"]
@@ -1011,6 +1019,142 @@ pub(crate) fn rust_corpus_smoke_to_input(value: &Value) -> Result<Value, String>
             "ripr-rust-corpus-smoke-v1 receipt, corpus {corpus_version}, tier {tier}, {} repositories",
             repos.len()
         ),
+        "metrics": rows,
+    }))
+}
+
+/// Convert a `ripr-pilot-ranking-v1` receipt (`cargo xtask pilot-ranking
+/// score`) into pooled `ranking` rows: precision of pilot's top 5 and top 10,
+/// the share of top-10 picks a label could judge, the share of top-10 picks
+/// whose function no higher pick named, and the number of top-10 picks.
+///
+/// Scored share sits beside precision because precision can rise by making
+/// picks unjudgeable, and the pick count because it can rise by ranking
+/// fewer seams. A receipt that lost or skipped a repository measured a
+/// different population than its baseline, so every row is incomplete (lost
+/// completion to the gate) rather than a rate compared as like for like.
+pub(crate) fn pilot_ranking_to_input(value: &Value) -> Result<Value, String> {
+    let corpus = value["corpus_version"].as_str().unwrap_or("unknown");
+    let unavailable = value["unavailable_repos"]
+        .as_u64()
+        .ok_or("pilot-ranking receipt needs unavailable_repos as a non-negative integer")?;
+    let total = value["repos_total"]
+        .as_u64()
+        .filter(|total| *total > 0 && unavailable <= *total)
+        .ok_or(
+            "pilot-ranking receipt needs a positive repos_total no smaller than unavailable_repos",
+        )?;
+    let complete = unavailable == 0 && value["status"].as_str() == Some("complete");
+    let mut rows = Vec::new();
+    for (metric, cut, field) in [
+        ("ranking.pilot_precision_top5", "top5", "precision"),
+        ("ranking.pilot_precision_top10", "top10", "precision"),
+        ("ranking.pilot_scored_share_top10", "top10", "scored_share"),
+        (
+            "ranking.pilot_distinct_function_share_top10",
+            "top10",
+            "distinct_function_share",
+        ),
+        ("ranking.pilot_picks_top10", "top10", "picks"),
+        ("ranking.pilot_confirmed_top5", "top5", "confirmed"),
+        ("ranking.pilot_refuted_top5", "top5", "refuted"),
+        ("ranking.pilot_confirmed_top10", "top10", "confirmed"),
+        ("ranking.pilot_refuted_top10", "top10", "refuted"),
+    ] {
+        let entry = &value["pooled"][cut];
+        let count = |key: &str| {
+            entry[key]
+                .as_u64()
+                .ok_or_else(|| format!("pilot-ranking pooled.{cut} needs {key}"))
+        };
+        let (picks, confirmed, refuted) = (count("picks")?, count("confirmed")?, count("refuted")?);
+        let distinct = count("distinct_functions")?;
+        // How much of this cut's precision rests on the coarse line and owner
+        // tiers. The split must account for exactly the cut's judged picks.
+        let tiers = match entry.get("by_tier") {
+            None => String::new(),
+            Some(by_tier) => {
+                let mut judged = 0;
+                let mut parts = Vec::new();
+                for tier in ["seam", "line", "owner"] {
+                    let tally = |verdict: &str| by_tier[tier][verdict].as_u64().unwrap_or(0);
+                    let (tier_confirmed, tier_judged) =
+                        (tally("confirmed"), tally("confirmed") + tally("refuted"));
+                    judged += tier_judged;
+                    parts.push(format!("{tier} {tier_confirmed}/{tier_judged}"));
+                }
+                if judged != confirmed + refuted {
+                    return Err(format!(
+                        "pilot-ranking pooled.{cut}.by_tier judges {judged} picks, not the cut's {}",
+                        confirmed + refuted
+                    ));
+                }
+                format!(" (by tier: {})", parts.join(", "))
+            }
+        };
+        if confirmed + refuted > picks || distinct > picks {
+            return Err(format!(
+                "pilot-ranking pooled.{cut} counts more confirmed, refuted or distinct picks than its {picks} picks"
+            ));
+        }
+        // The rate is derived from the validated counts, so a receipt whose
+        // stated ratio disagrees with its own counts cannot pass the gate.
+        let ratio = |numerator: u64, denominator: u64| {
+            (denominator > 0).then(|| numerator as f64 / denominator as f64)
+        };
+        let counted = matches!(field, "picks" | "confirmed" | "refuted");
+        let rate = match field {
+            "picks" => Some(picks as f64),
+            "confirmed" => Some(confirmed as f64),
+            "refuted" => Some(refuted as f64),
+            "precision" => ratio(confirmed, confirmed + refuted),
+            "scored_share" => ratio(confirmed + refuted, picks),
+            _ => ratio(distinct, picks),
+        };
+        if !counted {
+            let stated = entry[field].as_f64();
+            let agrees = match (stated, rate) {
+                (None, None) => entry[field].is_null(),
+                (Some(stated), Some(rate)) => (stated - rate).abs() < 1e-9,
+                _ => false,
+            };
+            if !agrees {
+                return Err(format!(
+                    "pilot-ranking pooled.{cut}.{field} is {}, but its counts give {}",
+                    entry[field],
+                    rate.map_or_else(|| "null".to_string(), |rate| rate.to_string())
+                ));
+            }
+        }
+        let mut evidence = if field == "distinct_function_share" {
+            format!("{distinct} distinct functions in {picks} picks")
+        } else {
+            format!("{confirmed} confirmed, {refuted} refuted of {picks} picks{tiers}")
+        };
+        evidence.push_str(&format!(
+            " over {} of {total} repositories, corpus {corpus}",
+            total - unavailable
+        ));
+        if !complete {
+            evidence.push_str(&format!(
+                "; {unavailable} repositories unavailable or not selected, so this run is not comparable"
+            ));
+        }
+        // The corpus identity is the row's repository, so a baseline taken
+        // on another answer key shares no repository with this run and is
+        // reported uncompared instead of compared as the same population.
+        rows.push(json!({
+            "id": metric,
+            "repo": format!("pilot-ranking corpus {corpus}"),
+            "value": rate.unwrap_or(0.0),
+            "completed": complete && rate.is_some(),
+            "evidence": evidence,
+        }));
+    }
+    Ok(json!({
+        "schema_version": INPUT_SCHEMA_VERSION,
+        "source": "pilot-ranking",
+        "evidence": format!("ripr-pilot-ranking-v1 receipt, corpus {corpus}, {total} repositories"),
         "metrics": rows,
     }))
 }

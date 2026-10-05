@@ -677,6 +677,24 @@ reason = "Controlled inputs, specs, and corpora consumed by the B1-B6 agentic-su
 covered_by = ["cargo xtask agentic-bench", "cargo xtask check-file-policy"]
 
 [[allow]]
+glob = "benchmarks/pilot_ranking/manifest.json"
+kind = "benchmark_fixture"
+owner = "eval-corpus"
+surface = "fixtures"
+classification = "fixture"
+reason = "Pinned crates for the pilot ranking answer key; pins exact upstream commits and never vendors their source."
+covered_by = ["cargo xtask pilot-ranking check", "cargo test -p xtask --bin xtask pilot_ranking", "cargo xtask check-file-policy"]
+
+[[allow]]
+glob = "benchmarks/pilot_ranking/labels/*.json"
+kind = "benchmark_fixture"
+owner = "eval-corpus"
+surface = "fixtures"
+classification = "fixture"
+reason = "Pilot ranking answer key: cargo-mutants outcome, location and containing-function lines of each viable mutant at a pinned commit; written by `cargo xtask pilot-ranking label` after checking every mutant diff against the checkout, and holds no upstream source."
+covered_by = ["cargo xtask pilot-ranking check", "cargo test -p xtask --bin xtask pilot_ranking", "cargo xtask check-file-policy"]
+
+[[allow]]
 glob = "benchmarks/rust_corpus/manifest.json"
 kind = "benchmark_fixture"
 owner = "eval-corpus"

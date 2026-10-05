@@ -29,6 +29,7 @@ mod mutation_spot_check;
 mod operator;
 mod orchestration;
 mod perl_migration;
+mod pilot_ranking;
 mod pr;
 mod pr_causal_delta;
 mod pr_evidence;
@@ -147,6 +148,7 @@ pub(crate) use operator::operator_cockpit_report;
 pub(crate) use orchestration::{
     assess_orchestration_fixture_corpus, orchestration_scorecard_report,
 };
+pub(crate) use pilot_ranking::pilot_ranking;
 pub(crate) use pr::{critic, gh_pr_status, pr_summary, pr_triage_report};
 pub(crate) use pr_evidence::ripr_pr;
 pub(crate) use pr_evidence_summary::ripr_pr_summary;

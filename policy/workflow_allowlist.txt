@@ -22,6 +22,7 @@
 .github/workflows/dx-scoreboard.yml|1|Nightly developer-experience scoreboard delegates corpus measurement, ingest, and the regression gate to one cargo xtask dx-scoreboard command.
 .github/workflows/future-clippy.yml|1|Advisory future-Clippy lane keeps each run block to one shell command.
 .github/workflows/npm-launcher.yml|1|Script-free npm launcher workflow delegates behavior and package-content proof to two single-command npm invocations.
+.github/workflows/pilot-ranking.yml|4|Pilot ranking answer key lane: one-command build, fetch and score steps, then one folded cargo xtask dx-scoreboard gate command.
 .github/workflows/pr-plan.yml|1|Advisory PR Plan workflow keeps each run block to one shell command (mkdir/git, ls, printf).
 .github/workflows/pr-staleness-watchdog.yml|52|Scheduled watchdog finds open PR heads with no Ripr Rust Small Result check run on the head (#4937) and dispatches the workflow within a per-run cap; the sweep is pure gh api orchestration with its audit table, not product logic.
 .github/workflows/printed-command-paste.yml|1|Printed-command paste lane keeps each run block to one shell command; the harness and its verdict live in the printed_command_paste test.

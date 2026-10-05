@@ -30,7 +30,7 @@
 //! outcomes (see [`pilot`]), because a wrong top recommendation is the error a
 //! developer meets first.
 
-mod pilot;
+pub(crate) mod pilot;
 
 use crate::run::{
     capture_bytes_in_dir_with_timeout, capture_output_with_timeout,
@@ -421,7 +421,7 @@ fn spot_check_repo(
 /// another commit would join stale outcomes to this checkout's seams. Every
 /// mutant diff carries the original lines it replaced; they must still match
 /// the checkout, or nothing from this directory is scored.
-fn require_mutants_match_checkout(
+pub(crate) fn require_mutants_match_checkout(
     name: &str,
     checkout: &Path,
     revision: &str,
@@ -659,7 +659,7 @@ fn run_text(
     Ok(output.stdout)
 }
 
-fn read_json(path: &Path) -> Result<Value, String> {
+pub(crate) fn read_json(path: &Path) -> Result<Value, String> {
     let text = fs::read_to_string(path).map_err(|err| format!("read {}: {err}", path.display()))?;
     serde_json::from_str(&text).map_err(|err| format!("parse {}: {err}", path.display()))
 }
@@ -682,7 +682,7 @@ struct Pair {
 }
 
 /// Seam id to source expression, from the repo exposure JSON.
-fn seam_expressions(exposure: &Value) -> BTreeMap<&str, &str> {
+pub(crate) fn seam_expressions(exposure: &Value) -> BTreeMap<&str, &str> {
     exposure
         .get("seams")
         .and_then(Value::as_array)

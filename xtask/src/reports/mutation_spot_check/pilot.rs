@@ -27,7 +27,7 @@ use std::path::Path;
 /// the scoreboard enough scored recommendations on small crates.
 pub(super) const PILOT_MAX_SEAMS: usize = 10;
 
-pub(super) const CLAIM_BOUNDARY: &str = "A pilot recommendation is confirmed when a viable operator mutant of its predicate or return expression was missed (with none, a viable mutant on its line; with none there either, a whole-body mutant of its innermost function), refuted when every such mutant was caught, and unscored otherwise. Precision is confirmed over confirmed plus refuted, for the recorded revisions and cargo-mutants versions only.";
+pub(crate) const CLAIM_BOUNDARY: &str = "A pilot recommendation is confirmed when a viable operator mutant of its predicate or return expression was missed (with none, a viable mutant on its line; with none there either, a whole-body mutant of its innermost function), refuted when every such mutant was caught, and unscored otherwise. Precision is confirmed over confirmed plus refuted, for the recorded revisions and cargo-mutants versions only.";
 
 /// The 1-based column range `[start, end)` of `expression` on `line`, in
 /// characters as cargo-mutants reports them, when it occurs exactly once.
@@ -51,6 +51,19 @@ pub(super) fn pilot_top_seams(
     name: &str,
     checkout: &Path,
 ) -> Result<Vec<Value>, String> {
+    run_pilot(binary, scratch, name, checkout, PILOT_MAX_SEAMS).map(|(top, _)| top)
+}
+
+/// Run `ripr pilot --max-seams <max_seams>` on `checkout` and return its
+/// ranked top seams with the repo exposure snapshot pilot ranked them from,
+/// so seam expressions come from the same analysis as the ranking.
+pub(crate) fn run_pilot(
+    binary: &Path,
+    scratch: &Path,
+    name: &str,
+    checkout: &Path,
+    max_seams: usize,
+) -> Result<(Vec<Value>, Value), String> {
     let out_dir = scratch.join(format!("{name}.pilot"));
     run_text(
         &path_arg(binary),
@@ -61,14 +74,16 @@ pub(super) fn pilot_top_seams(
             "--out".to_string(),
             path_arg(&out_dir),
             "--max-seams".to_string(),
-            PILOT_MAX_SEAMS.to_string(),
+            max_seams.to_string(),
             "--quiet".to_string(),
         ],
         EXPOSURE_TIMEOUT,
-        "ripr pilot for spot check",
+        &format!("ripr pilot for `{name}`"),
     )?;
     let summary = read_json(&out_dir.join("pilot-summary.json"))?;
-    top_seams_from_summary(name, &summary)
+    let top = top_seams_from_summary(name, &summary)?;
+    let exposure = read_json(&out_dir.join("repo-exposure.json"))?;
+    Ok((top, exposure))
 }
 
 /// Pilot exits 0 with a `partial` summary and no ranked seams when its own
@@ -161,7 +176,7 @@ fn viable_outcomes<'a>(mutants: &'a Value, outcomes: &'a Value) -> Vec<Outcome<'
 /// decide alone, so a mutant of another expression on the same line, even one
 /// with the same operator, cannot grade the seam. Otherwise the coarser `line`
 /// tier, then the `owner` tier, applies.
-pub(super) fn judge_recommendations(
+pub(crate) fn judge_recommendations(
     top: &[Value],
     mutants: &Value,
     outcomes: &Value,

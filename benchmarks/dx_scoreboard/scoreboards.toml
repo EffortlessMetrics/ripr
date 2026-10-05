@@ -646,3 +646,128 @@ regression_floor = 500
 runner_dependent = true
 per_repo = true
 source = "ingest:rust-corpus-smoke"
+
+# --------------------------------------------------------------- ranking --
+# Pilot's top picks judged against the checked-in mutation answer key in
+# benchmarks/pilot_ranking/ (`cargo xtask pilot-ranking score`). Pooled over
+# the five pinned crates; per-crate detail stays in the receipt. Pins, labels
+# and pilot are deterministic, so there is no run-to-run noise to allow for:
+# each rate floor sits just under one pick even when every pick is judged
+# (top-5 precision moves at least 0.04 per pick, top-10 precision 0.02, the
+# top-10 shares 0.02), and the confirmed and refuted counts allow no change in
+# the worse direction, because an unscored pick turning refuted moves precision by less than one
+# pick's step. Any pick that moves the wrong way fails. An intended trade-off
+# refreshes the baseline in the same pull request. Each row's repository is
+# the corpus version, so a baseline from another answer key is reported
+# uncompared rather than compared.
+#
+# A pick is judged by mutants of its own expression, else of its line, else
+# whole-body mutants of its function; the evidence shows the tier mix.
+
+[[metric]]
+id = "ranking.pilot_precision_top5"
+board = "ranking"
+title = "Pilot's top 5 picks per crate where a mutant at the seam, its line or its function was missed (of picks a label can judge)"
+unit = "ratio"
+direction = "higher_is_better"
+target = 0.6
+regression_pct = 0
+regression_floor = 0.039
+runner_dependent = false
+source = "ingest:pilot-ranking"
+
+[[metric]]
+id = "ranking.pilot_precision_top10"
+board = "ranking"
+title = "Pilot's top 10 picks per crate where a mutant at the seam, its line or its function was missed (of picks a label can judge)"
+unit = "ratio"
+direction = "higher_is_better"
+target = 0.6
+regression_pct = 0
+regression_floor = 0.019
+runner_dependent = false
+source = "ingest:pilot-ranking"
+
+[[metric]]
+id = "ranking.pilot_scored_share_top10"
+board = "ranking"
+title = "Pilot's top 10 picks a labeled mutant can judge (precision can rise by making picks unjudgeable)"
+unit = "ratio"
+direction = "higher_is_better"
+target = 0.8
+regression_pct = 0
+regression_floor = 0.015
+runner_dependent = false
+source = "ingest:pilot-ranking"
+
+[[metric]]
+id = "ranking.pilot_distinct_function_share_top10"
+board = "ranking"
+title = "Pilot's top 10 picks that land in a function no higher pick named"
+unit = "ratio"
+direction = "higher_is_better"
+target = 0.9
+regression_pct = 0
+regression_floor = 0.015
+runner_dependent = false
+source = "ingest:pilot-ranking"
+
+[[metric]]
+id = "ranking.pilot_picks_top10"
+board = "ranking"
+title = "Picks in pilot's top 10 across the pinned crates (precision and shares can rise by ranking fewer seams)"
+unit = "picks"
+direction = "higher_is_better"
+target = 50
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "ingest:pilot-ranking"
+
+[[metric]]
+id = "ranking.pilot_confirmed_top5"
+board = "ranking"
+title = "Pilot's top 5 picks per crate a missed mutant confirms (pooled count)"
+unit = "picks"
+direction = "higher_is_better"
+target = 12
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "ingest:pilot-ranking"
+
+[[metric]]
+id = "ranking.pilot_refuted_top5"
+board = "ranking"
+title = "Pilot's top 5 picks per crate where every judging mutant was caught (pooled count)"
+unit = "picks"
+direction = "lower_is_better"
+target = 8
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "ingest:pilot-ranking"
+
+[[metric]]
+id = "ranking.pilot_confirmed_top10"
+board = "ranking"
+title = "Pilot's top 10 picks per crate a missed mutant confirms (pooled count)"
+unit = "picks"
+direction = "higher_is_better"
+target = 24
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "ingest:pilot-ranking"
+
+[[metric]]
+id = "ranking.pilot_refuted_top10"
+board = "ranking"
+title = "Pilot's top 10 picks per crate where every judging mutant was caught (pooled count)"
+unit = "picks"
+direction = "lower_is_better"
+target = 16
+regression_pct = 0
+regression_floor = 0
+runner_dependent = false
+source = "ingest:pilot-ranking"

@@ -34,6 +34,10 @@ id = "rust-corpus"
 paths = ["target/ripr/reports/rust-corpus-smoke.json", "target/ripr/reports/rust-corpus-smoke.md", "target/ripr/reports/dx-scoreboard.json", "target/ripr/reports/dx-scoreboard.md"]
 
 [[artifact_family]]
+id = "pilot-ranking"
+paths = ["target/ripr/reports/pilot-ranking.json", "target/ripr/reports/pilot-ranking.md", "target/ripr/reports/dx-scoreboard.json", "target/ripr/reports/dx-scoreboard.md"]
+
+[[artifact_family]]
 id = "public-badge-endpoints"
 paths = ["badges/*.json", "target/ripr/reports/repo-ripr-badge*.json", "target/ripr/reports/repo-ripr-badges.md"]
 
@@ -156,6 +160,16 @@ commands = ["cargo build --release -p ripr --bin ripr", "cargo xtask rust-corpus
 estimated_lem = 30
 artifact_families = ["rust-corpus"]
 description = "Shared Rust corpus: fast tier on demand, full tier nightly; fails only when a repository that analyzed in the committed baseline stops analyzing or cannot be fetched."
+
+[[lane]]
+id = "pilot-ranking"
+posture = "advisory"
+workflow = ".github/workflows/pilot-ranking.yml"
+jobs = ["ranking"]
+commands = ["cargo build --release -p ripr --bin ripr", "cargo xtask pilot-ranking fetch --allow-network", "cargo xtask pilot-ranking score --ripr target/release/ripr", "cargo xtask dx-scoreboard --boards ranking --ingest target/ripr/reports/pilot-ranking.json --baseline metrics/dx-scoreboard/pilot-ranking-baseline.json --gate"]
+estimated_lem = 15
+artifact_families = ["pilot-ranking"]
+description = "Pilot ranking answer key: nightly, on demand, and at draft-to-ready on pilot ranking or seam grading changes; fails only when pooled top-5 or top-10 precision, scored share or function diversity regresses past its margin against the committed baseline, or a pinned crate cannot be fetched."
 
 [[lane]]
 id = "vscode-compile"
