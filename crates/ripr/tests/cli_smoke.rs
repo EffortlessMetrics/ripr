@@ -538,6 +538,26 @@ fn sample_diff() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/sample/example.diff")
 }
 
+/// Own the exact tracked sample layout without inheriting this checkout's config.
+fn owned_cli_sample_subject(label: &str) -> Result<IsolatedFixtureWorkspace, String> {
+    let root = unique_temp_workspace(label);
+    std::fs::create_dir(&root).map_err(|error| format!("acquire owned CLI sample: {error}"))?;
+    let isolated = IsolatedFixtureWorkspace(root);
+    std::fs::write(isolated.path().join("Cargo.toml"), "[workspace]\n")
+        .map_err(|error| format!("write sample workspace boundary: {error}"))?;
+    let original = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/sample");
+    let copied = isolated.path().join("crates/ripr/examples/sample");
+    for relative in ["example.diff", "src/lib.rs", "tests/pricing.rs"] {
+        let target = copied.join(relative);
+        let parent = target.parent().ok_or("owned sample target has no parent")?;
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("create sample parent: {error}"))?;
+        std::fs::copy(original.join(relative), &target)
+            .map_err(|error| format!("copy exact sample {relative}: {error}"))?;
+    }
+    Ok(isolated)
+}
+
 fn unique_temp_workspace(label: &str) -> PathBuf {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -610,6 +630,58 @@ fn isolated_fixture_workspace(
         &isolated.path().join(fixture),
     )
     .map_err(|error| format!("copy fixture {fixture}: {error}"))?;
+    Ok(isolated)
+}
+
+/// Own only the two tracked Rust subjects used by the rerun/input controls.
+/// Original input manifests, sources, tests and diff bytes are copied unchanged.
+fn owned_tracked_rust_subject(
+    label: &str,
+    fixture: &str,
+) -> Result<IsolatedFixtureWorkspace, String> {
+    fn copy_subject_input(source: &Path, destination: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(destination)?;
+        for entry in std::fs::read_dir(source)? {
+            let entry = entry?;
+            if entry.file_name() == "target" || entry.file_name() == ".git" {
+                continue;
+            }
+            let target = destination.join(entry.file_name());
+            let kind = entry.file_type()?;
+            if kind.is_dir() {
+                copy_subject_input(&entry.path(), &target)?;
+            } else if kind.is_file() {
+                std::fs::copy(entry.path(), target)?;
+            } else {
+                return Err(std::io::Error::other(
+                    "unsupported owned subject entry type",
+                ));
+            }
+        }
+        Ok(())
+    }
+    match fixture {
+        "fixtures/boundary_gap" | "fixtures/observation_verified_field_construction" => {}
+        other => return Err(format!("unowned tracked fixture subject: {other}")),
+    }
+    let root = unique_temp_workspace(label);
+    std::fs::create_dir(&root)
+        .map_err(|error| format!("acquire owned tracked fixture: {error}"))?;
+    let isolated = IsolatedFixtureWorkspace(root);
+    let member = format!("{fixture}/input");
+    std::fs::write(
+        isolated.path().join("Cargo.toml"),
+        format!("[workspace]\nmembers = [{member:?}]\nresolver = \"3\"\n"),
+    )
+    .map_err(|error| format!("write owned fixture workspace: {error}"))?;
+    let original = workspace_root().join(fixture);
+    let copied = isolated.path().join(fixture);
+    copy_subject_input(&original.join("input"), &copied.join("input"))
+        .map_err(|error| format!("copy tracked fixture input: {error}"))?;
+    std::fs::copy(original.join("diff.patch"), copied.join("diff.patch"))
+        .map_err(|error| format!("copy tracked fixture diff: {error}"))?;
+    std::fs::create_dir(isolated.path().join("target"))
+        .map_err(|error| format!("create owned receipt prefix: {error}"))?;
     Ok(isolated)
 }
 
@@ -1831,8 +1903,12 @@ fn unknown_command_typo_reports_nearest_known_command() {
 
 #[test]
 fn check_human_output_reports_sample_findings() {
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff();
+    let isolated = owned_cli_sample_subject("check_human_output_reports_sample_findings")
+        .expect("create owned CLI sample fixture");
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff");
     assert!(diff.exists());
 
     let diff = diff.display().to_string();
@@ -1854,10 +1930,15 @@ fn check_human_output_reports_sample_findings() {
 
 #[test]
 fn check_no_unchanged_tests_restates_the_recall_tradeoff_on_stderr() {
+    let isolated =
+        owned_cli_sample_subject("check_no_unchanged_tests_restates_the_recall_tradeoff_on_stderr")
+            .expect("create owned CLI sample fixture");
     // #4946(a): the flag's recall/cost tradeoff is restated on stderr where
     // the user waits, and only while the flag is actually active.
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff();
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff");
     assert!(diff.exists());
     let diff = diff.display().to_string();
 
@@ -2193,10 +2274,13 @@ fn config_validate_discovers_parent_config_from_nested_directory() -> Result<(),
 
 #[test]
 fn check_human_navigation_commands_replay_custom_scope() -> Result<(), String> {
+    let isolated = owned_cli_sample_subject("check_human_navigation_commands_replay_custom_scope")?;
+    let run_owned =
+        |argv: &[&str]| run_command(env!("CARGO_BIN_EXE_ripr"), Some(isolated.path()), argv);
     let root = ".";
     let diff = "crates/ripr/examples/sample/example.diff";
-    let output = run_ripr_in_workspace(&["check", "--root", root, "--diff", diff])
-        .map_err(|err| err.to_string())?;
+    let output =
+        run_owned(&["check", "--root", root, "--diff", diff]).map_err(|err| err.to_string())?;
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -2216,13 +2300,13 @@ fn check_human_navigation_commands_replay_custom_scope() -> Result<(), String> {
         ));
     }
 
-    let explain = run_ripr_in_workspace(&explain_args[1..]).map_err(|err| err.to_string())?;
+    let explain = run_owned(&explain_args[1..]).map_err(|err| err.to_string())?;
     assert_success(&explain);
     let selector = explain_args
         .last()
         .copied()
         .ok_or_else(|| "explain command omitted selector".to_string())?;
-    let context = run_ripr_in_workspace(&context_args[1..]).map_err(|err| err.to_string())?;
+    let context = run_owned(&context_args[1..]).map_err(|err| err.to_string())?;
     assert_success(&context);
     if !String::from_utf8_lossy(&explain.stdout).contains(&format!(
         "Next: ripr context --root {root} --diff {diff} --at {selector}"
@@ -2289,8 +2373,14 @@ fn check_navigation_replays_explicit_draft_over_configured_ready() -> Result<(),
 
 #[test]
 fn check_json_output_has_stable_contract_fields() {
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff().display().to_string();
+    let isolated = owned_cli_sample_subject("check_json_output_has_stable_contract_fields")
+        .expect("create owned CLI sample fixture");
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff")
+        .display()
+        .to_string();
     let output = run_ripr(&["check", "--root", &root, "--diff", &diff, "--json"]);
     assert_success(&output);
 
@@ -2319,8 +2409,15 @@ fn write_suppression_policy(label: &str, text: &str) -> Result<PathBuf, String> 
 
 #[test]
 fn check_json_suppression_policy_marks_findings_and_adjusts_summary() -> Result<(), String> {
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff().display().to_string();
+    let isolated = owned_cli_sample_subject(
+        "check_json_suppression_policy_marks_findings_and_adjusts_summary",
+    )?;
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff")
+        .display()
+        .to_string();
     let policy = write_suppression_policy(
         "suppression-json",
         "schema_version = 1\n\n[[suppressions]]\nkind = \"exposure_gap\"\npath = \"crates/ripr/examples/sample/**\"\nreason = \"sample surface accepted for this smoke test\"\nowner = \"repo-owner\"\n",
@@ -2377,8 +2474,15 @@ fn check_json_suppression_policy_marks_findings_and_adjusts_summary() -> Result<
 
 #[test]
 fn check_human_suppression_policy_lists_suppressed_findings_compactly() -> Result<(), String> {
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff().display().to_string();
+    let isolated = owned_cli_sample_subject(
+        "check_human_suppression_policy_lists_suppressed_findings_compactly",
+    )?;
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff")
+        .display()
+        .to_string();
     let policy = write_suppression_policy(
         "suppression-human",
         "schema_version = 1\n\n[[suppressions]]\nkind = \"exposure_gap\"\npath = \"crates/ripr/examples/sample/**\"\nreason = \"sample surface accepted for this smoke test\"\nowner = \"repo-owner\"\n",
@@ -2411,12 +2515,19 @@ fn check_human_suppression_policy_lists_suppressed_findings_compactly() -> Resul
 
 #[test]
 fn check_github_over_broad_suppression_policy_emits_denominator_notice() -> Result<(), String> {
+    let isolated = owned_cli_sample_subject(
+        "check_github_over_broad_suppression_policy_emits_denominator_notice",
+    )?;
     // Production-path control for #4393: an over-broad path glob that hides
     // every sample finding must still emit a github denominator notice, not
     // zero bytes, and must not annotate the suppressed findings. Exit status
     // stays success (no gate/exit-code authority change).
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff().display().to_string();
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff")
+        .display()
+        .to_string();
     let policy = write_suppression_policy(
         "suppression-github-over-broad",
         "schema_version = 1\n\n[[suppressions]]\nkind = \"exposure_gap\"\npath = \"crates/ripr/examples/sample/**\"\nreason = \"repro: suppress all sample findings\"\nowner = \"qa\"\n",
@@ -2478,8 +2589,14 @@ fn check_github_over_broad_suppression_policy_emits_denominator_notice() -> Resu
 
 #[test]
 fn check_suppression_policy_missing_file_fails_closed() {
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff().display().to_string();
+    let isolated = owned_cli_sample_subject("check_suppression_policy_missing_file_fails_closed")
+        .expect("create owned CLI sample fixture");
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff")
+        .display()
+        .to_string();
 
     let output = run_ripr(&[
         "check",
@@ -2816,8 +2933,14 @@ fn gate_evaluate_complete_gap_ledger_is_advisory_in_visible_only_mode() -> Resul
 
 #[test]
 fn check_json_diff_scope_oversized_emits_limited_artifact() -> Result<(), String> {
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff().display().to_string();
+    let isolated =
+        owned_cli_sample_subject("check_json_diff_scope_oversized_emits_limited_artifact")?;
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff")
+        .display()
+        .to_string();
     let output = run_ripr_with_env(
         &["check", "--root", &root, "--diff", &diff, "--json"],
         &[("RIPR_MAX_DIFF_CHANGED_RUST_LINES", "1")],
@@ -2852,8 +2975,15 @@ fn check_json_diff_scope_oversized_emits_limited_artifact() -> Result<(), String
 /// diff has no dependent packages to narrow.
 #[test]
 fn check_rejects_an_invalid_dependent_scope_without_dependents() {
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff().display().to_string();
+    let isolated =
+        owned_cli_sample_subject("check_rejects_an_invalid_dependent_scope_without_dependents")
+            .expect("create owned CLI sample fixture");
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff")
+        .display()
+        .to_string();
     let output = run_ripr_with_env(
         &["check", "--root", &root, "--diff", &diff, "--json"],
         &[("RIPR_DIFF_DEPENDENT_SCOPE", "everything")],
@@ -9521,8 +9651,14 @@ fn agent_receipt_keeps_unmoved_target_unchanged_when_another_seam_moves()
 
 #[test]
 fn check_badge_json_output_has_native_badge_shape() {
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff().display().to_string();
+    let isolated = owned_cli_sample_subject("check_badge_json_output_has_native_badge_shape")
+        .expect("create owned CLI sample fixture");
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff")
+        .display()
+        .to_string();
     let output = run_ripr(&[
         "check",
         "--root",
@@ -9557,8 +9693,15 @@ fn check_badge_json_output_has_native_badge_shape() {
 
 #[test]
 fn check_badge_shields_output_has_exactly_four_top_level_fields() {
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff().display().to_string();
+    let isolated =
+        owned_cli_sample_subject("check_badge_shields_output_has_exactly_four_top_level_fields")
+            .expect("create owned CLI sample fixture");
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff")
+        .display()
+        .to_string();
     let output = run_ripr(&[
         "check",
         "--root",
@@ -12761,7 +12904,11 @@ fn pilot_writes_default_packet_outputs_for_boundary_gap_fixture() -> Result<(), 
 
 #[test]
 fn rerun_changed_test_emits_current_state_only_for_boundary_gap_fixture() -> Result<(), String> {
-    let root = workspace_root().join("fixtures/boundary_gap/input");
+    let isolated = owned_tracked_rust_subject(
+        "rerun_changed_test_emits_current_state_only_for_boundary_gap_fixture",
+        "fixtures/boundary_gap",
+    )?;
+    let root = isolated.path().join("fixtures/boundary_gap/input");
     let root_arg = root.to_string_lossy().into_owned();
     let output = run_ripr(&[
         "rerun",
@@ -12798,7 +12945,11 @@ fn rerun_changed_test_emits_current_state_only_for_boundary_gap_fixture() -> Res
 
 #[test]
 fn rerun_changed_test_check_parity_matches_full_pipeline_for_boundary_gap() -> Result<(), String> {
-    let root = workspace_root().join("fixtures/boundary_gap/input");
+    let isolated = owned_tracked_rust_subject(
+        "rerun_changed_test_check_parity_matches_full_pipeline_for_boundary_gap",
+        "fixtures/boundary_gap",
+    )?;
+    let root = isolated.path().join("fixtures/boundary_gap/input");
     let root_arg = root.to_string_lossy().into_owned();
     let output = run_ripr(&[
         "rerun",
@@ -12838,7 +12989,11 @@ fn rerun_changed_test_check_parity_matches_full_pipeline_for_boundary_gap() -> R
 
 #[test]
 fn rerun_before_receipt_names_toolchain_fingerprint_change() -> Result<(), String> {
-    let root = workspace_root().join("fixtures/boundary_gap/input");
+    let isolated = owned_tracked_rust_subject(
+        "rerun_before_receipt_names_toolchain_fingerprint_change",
+        "fixtures/boundary_gap",
+    )?;
+    let root = isolated.path().join("fixtures/boundary_gap/input");
     let root_arg = root.to_string_lossy().into_owned();
     let before = run_ripr_with_env(
         &[
@@ -12892,8 +13047,15 @@ fn rerun_before_receipt_names_toolchain_fingerprint_change() -> Result<(), Strin
 
 #[test]
 fn rerun_gap_before_receipt_names_selector_ledger_change() -> Result<(), String> {
+    let isolated = owned_tracked_rust_subject(
+        "rerun_gap_before_receipt_names_selector_ledger_change",
+        "fixtures/boundary_gap",
+    )?;
     let root_arg = "fixtures/boundary_gap/input";
-    let changed = run_ripr_in_workspace(&[
+    let run_fixture = |arguments: &[&str]| {
+        run_command(env!("CARGO_BIN_EXE_ripr"), Some(isolated.path()), arguments)
+    };
+    let changed = run_fixture(&[
         "rerun",
         "--root",
         root_arg,
@@ -12940,7 +13102,7 @@ fn rerun_gap_before_receipt_names_selector_ledger_change() -> Result<(), String>
     )
     .map_err(|err| format!("write ledger fingerprint input: {err}"))?;
     let ledger_arg = ledger.to_string_lossy().into_owned();
-    let before = run_ripr_in_workspace(&[
+    let before = run_fixture(&[
         "rerun",
         "--root",
         root_arg,
@@ -12966,7 +13128,7 @@ fn rerun_gap_before_receipt_names_selector_ledger_change() -> Result<(), String>
     )
     .map_err(|err| format!("write changed ledger fingerprint input: {err}"))?;
     let before_arg = before_path.to_string_lossy().into_owned();
-    let after = run_ripr_in_workspace(&[
+    let after = run_fixture(&[
         "rerun",
         "--root",
         root_arg,
@@ -13001,7 +13163,13 @@ fn rerun_gap_before_receipt_names_selector_ledger_change() -> Result<(), String>
 
 #[test]
 fn rerun_check_parity_names_capped_inventory_and_suppresses_movement() -> Result<(), String> {
-    let root = workspace_root().join("fixtures/observation_verified_field_construction/input");
+    let isolated = owned_tracked_rust_subject(
+        "rerun_check_parity_names_capped_inventory_and_suppresses_movement",
+        "fixtures/observation_verified_field_construction",
+    )?;
+    let root = isolated
+        .path()
+        .join("fixtures/observation_verified_field_construction/input");
     let root_arg = root.to_string_lossy().into_owned();
     let before = run_ripr(&[
         "rerun",
@@ -13048,7 +13216,11 @@ fn rerun_check_parity_names_capped_inventory_and_suppresses_movement() -> Result
 
 #[test]
 fn rerun_changed_test_uses_explicit_before_receipt_for_static_movement() -> Result<(), String> {
-    let root = workspace_root().join("fixtures/boundary_gap/input");
+    let isolated = owned_tracked_rust_subject(
+        "rerun_changed_test_uses_explicit_before_receipt_for_static_movement",
+        "fixtures/boundary_gap",
+    )?;
+    let root = isolated.path().join("fixtures/boundary_gap/input");
     let root_arg = root.to_string_lossy().into_owned();
     let before = run_ripr(&[
         "rerun",
@@ -13059,7 +13231,7 @@ fn rerun_changed_test_uses_explicit_before_receipt_for_static_movement() -> Resu
         "--json",
     ]);
     assert_success(&before);
-    let before_path = workspace_root().join("target").join(format!(
+    let before_path = isolated.path().join("target").join(format!(
         "rerun-before-{}-{}.json",
         std::process::id(),
         TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
@@ -13099,8 +13271,15 @@ fn rerun_changed_test_uses_explicit_before_receipt_for_static_movement() -> Resu
 
 #[test]
 fn rerun_gap_recomputes_fixture_anchor_from_explicit_canonical_ledger() -> Result<(), String> {
+    let isolated = owned_tracked_rust_subject(
+        "rerun_gap_recomputes_fixture_anchor_from_explicit_canonical_ledger",
+        "fixtures/boundary_gap",
+    )?;
     let root_arg = "fixtures/boundary_gap/input";
-    let changed = run_ripr_in_workspace(&[
+    let run_fixture = |arguments: &[&str]| {
+        run_command(env!("CARGO_BIN_EXE_ripr"), Some(isolated.path()), arguments)
+    };
+    let changed = run_fixture(&[
         "rerun",
         "--root",
         root_arg,
@@ -13126,7 +13305,7 @@ fn rerun_gap_recomputes_fixture_anchor_from_explicit_canonical_ledger() -> Resul
         .as_str()
         .ok_or_else(|| "changed-test rerun seam lacks owner".to_string())?;
 
-    let ledger_dir = workspace_root().join("target").join(format!(
+    let ledger_dir = isolated.path().join("target").join(format!(
         "rerun-gap-ledger-{}-{}",
         std::process::id(),
         TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
@@ -13151,12 +13330,12 @@ fn rerun_gap_recomputes_fixture_anchor_from_explicit_canonical_ledger() -> Resul
     )
     .map_err(|err| format!("write gap ledger {}: {err}", ledger.display()))?;
     let ledger_arg = ledger
-        .strip_prefix(workspace_root())
+        .strip_prefix(isolated.path())
         .map_err(|err| format!("make ledger path relative to workspace: {err}"))?
         .to_string_lossy()
         .into_owned();
 
-    let selected = run_ripr_in_workspace(&[
+    let selected = run_fixture(&[
         "rerun",
         "--root",
         root_arg,
@@ -13181,7 +13360,7 @@ fn rerun_gap_recomputes_fixture_anchor_from_explicit_canonical_ledger() -> Resul
         ));
     }
 
-    let unresolved = run_ripr_in_workspace(&[
+    let unresolved = run_fixture(&[
         "rerun",
         "--root",
         root_arg,
@@ -13215,7 +13394,7 @@ fn rerun_gap_recomputes_fixture_anchor_from_explicit_canonical_ledger() -> Resul
             .map_err(|err| format!("serialize duplicate gap ledger: {err}"))?,
     )
     .map_err(|err| format!("write duplicate gap ledger {}: {err}", ledger.display()))?;
-    let duplicate = run_ripr_in_workspace(&[
+    let duplicate = run_fixture(&[
         "rerun",
         "--root",
         root_arg,
@@ -13256,7 +13435,7 @@ fn rerun_gap_recomputes_fixture_anchor_from_explicit_canonical_ledger() -> Resul
             .map_err(|err| format!("serialize mixed gap ledger: {err}"))?,
     )
     .map_err(|err| format!("write mixed gap ledger {}: {err}", ledger.display()))?;
-    let mixed = run_ripr_in_workspace(&[
+    let mixed = run_fixture(&[
         "rerun",
         "--root",
         root_arg,
@@ -13293,7 +13472,7 @@ fn rerun_gap_recomputes_fixture_anchor_from_explicit_canonical_ledger() -> Resul
             .map_err(|err| format!("serialize conflict gap ledger: {err}"))?,
     )
     .map_err(|err| format!("write conflict gap ledger {}: {err}", ledger.display()))?;
-    let conflict = run_ripr_in_workspace(&[
+    let conflict = run_fixture(&[
         "rerun",
         "--root",
         root_arg,
@@ -13326,7 +13505,7 @@ fn rerun_gap_recomputes_fixture_anchor_from_explicit_canonical_ledger() -> Resul
             .map_err(|err| format!("serialize stale gap ledger: {err}"))?,
     )
     .map_err(|err| format!("write stale gap ledger {}: {err}", ledger.display()))?;
-    let stale = run_ripr_in_workspace(&[
+    let stale = run_fixture(&[
         "rerun",
         "--root",
         root_arg,
@@ -15381,10 +15560,17 @@ index 0000000..1111111 100644
 
 #[test]
 fn check_badge_command_exits_zero_even_with_nonzero_count() {
+    let isolated =
+        owned_cli_sample_subject("check_badge_command_exits_zero_even_with_nonzero_count")
+            .expect("create owned CLI sample fixture");
     // Default policy is fail_on_nonzero=false. The sample diff has gaps but
     // the command must still exit successfully so CI artifact pipelines work.
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff().display().to_string();
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff")
+        .display()
+        .to_string();
     let output = run_ripr(&[
         "check",
         "--root",
@@ -15399,8 +15585,14 @@ fn check_badge_command_exits_zero_even_with_nonzero_count() {
 
 #[test]
 fn explain_returns_targeted_probe_details() {
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff().display().to_string();
+    let isolated = owned_cli_sample_subject("explain_returns_targeted_probe_details")
+        .expect("create owned CLI sample fixture");
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff")
+        .display()
+        .to_string();
     let output = run_ripr(&[
         "explain",
         "--root",
@@ -15420,8 +15612,15 @@ fn explain_returns_targeted_probe_details() {
 
 #[test]
 fn context_json_returns_probe_and_discriminator_guidance() {
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff().display().to_string();
+    let isolated =
+        owned_cli_sample_subject("context_json_returns_probe_and_discriminator_guidance")
+            .expect("create owned CLI sample fixture");
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff")
+        .display()
+        .to_string();
     let output = run_ripr(&[
         "context",
         "--root",
@@ -15446,8 +15645,14 @@ fn context_json_returns_probe_and_discriminator_guidance() {
 
 #[test]
 fn explain_unknown_probe_fails_with_clear_error() {
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff().display().to_string();
+    let isolated = owned_cli_sample_subject("explain_unknown_probe_fails_with_clear_error")
+        .expect("create owned CLI sample fixture");
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff")
+        .display()
+        .to_string();
     let output = run_ripr(&[
         "explain",
         "--root",
@@ -15471,8 +15676,15 @@ fn explain_unknown_probe_fails_with_clear_error() {
 #[test]
 fn check_write_artifact_then_explain_and_context_reuse_preserves_detail_and_source_navigation()
 -> Result<(), String> {
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff().display().to_string();
+    let isolated = owned_cli_sample_subject(
+        "check_write_artifact_then_explain_and_context_reuse_preserves_detail_and_source_navigation",
+    )?;
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff")
+        .display()
+        .to_string();
     let dir = unique_temp_workspace("check-artifact-reuse");
     std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
     let artifact = dir.join("last-check.json");
@@ -15574,8 +15786,13 @@ fn context_reuse_matches_fresh(fresh: &[u8], reused: &[u8]) -> Result<(), String
 /// mismatched field — never a silent recompute.
 #[test]
 fn explain_from_fails_closed_on_tampered_identity() -> Result<(), String> {
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff().display().to_string();
+    let isolated = owned_cli_sample_subject("explain_from_fails_closed_on_tampered_identity")?;
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff")
+        .display()
+        .to_string();
     let dir = unique_temp_workspace("check-artifact-tamper");
     std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
     let artifact = dir.join("last-check.json");
@@ -15638,7 +15855,13 @@ fn explain_from_fails_closed_on_tampered_identity() -> Result<(), String> {
         // override: a different --diff than the recording fails closed.
         std::fs::write(&artifact, &original).map_err(|err| format!("write: {err}"))?;
         let other_diff = dir.join("other.diff");
-        std::fs::copy(sample_diff(), &other_diff).map_err(|err| format!("copy: {err}"))?;
+        std::fs::copy(
+            isolated
+                .path()
+                .join("crates/ripr/examples/sample/example.diff"),
+            &other_diff,
+        )
+        .map_err(|err| format!("copy: {err}"))?;
         let other_diff_arg = other_diff.display().to_string();
         let output = run_ripr(&[
             "explain",
@@ -15668,7 +15891,9 @@ fn explain_from_fails_closed_on_tampered_identity() -> Result<(), String> {
 /// see check_worktree_write_artifact_then_explain_reuse_and_drift_fails_closed.)
 #[test]
 fn check_write_artifact_rejects_unsupported_run_shapes() {
-    let root = workspace_root().display().to_string();
+    let isolated = owned_cli_sample_subject("check_write_artifact_rejects_unsupported_run_shapes")
+        .expect("create owned CLI sample fixture");
+    let root = isolated.path().display().to_string();
     let dir = unique_temp_workspace("check-artifact-reject");
     let artifact = dir.join("last-check.json");
     let artifact_arg = artifact.display().to_string();
@@ -15838,8 +16063,14 @@ fn check_worktree_write_artifact_then_explain_reuse_and_drift_fails_closed() -> 
 /// names the source identity used by each invocation.
 #[test]
 fn explain_from_consumes_artifact_written_with_non_default_mode() -> Result<(), String> {
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff().display().to_string();
+    let isolated =
+        owned_cli_sample_subject("explain_from_consumes_artifact_written_with_non_default_mode")?;
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff")
+        .display()
+        .to_string();
     let dir = unique_temp_workspace("check-artifact-mode");
     std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
     let artifact = dir.join("ready.json");
@@ -15920,8 +16151,14 @@ fn explain_from_consumes_artifact_written_with_non_default_mode() -> Result<(), 
 /// `analysis_options.include_unchanged_tests` without it.
 #[test]
 fn context_from_consumes_artifact_written_with_no_unchanged_tests() -> Result<(), String> {
-    let root = workspace_root().display().to_string();
-    let diff = sample_diff().display().to_string();
+    let isolated =
+        owned_cli_sample_subject("context_from_consumes_artifact_written_with_no_unchanged_tests")?;
+    let root = isolated.path().display().to_string();
+    let diff = isolated
+        .path()
+        .join("crates/ripr/examples/sample/example.diff")
+        .display()
+        .to_string();
     let dir = unique_temp_workspace("check-artifact-unchanged");
     std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
     let artifact = dir.join("no-unchanged.json");
@@ -21727,10 +21964,14 @@ impl Drop for DeclaredHunkScratch {
 #[test]
 fn truncated_declared_hunk_is_incomplete_through_file_and_stdin()
 -> Result<(), Box<dyn std::error::Error>> {
+    let isolated = owned_tracked_rust_subject(
+        "truncated_declared_hunk_is_incomplete_through_file_and_stdin",
+        "fixtures/boundary_gap",
+    )?;
     let scratch = unique_temp_workspace("declared-hunk-completeness");
     std::fs::create_dir(&scratch)?;
     let _cleanup = DeclaredHunkScratch(scratch.clone());
-    let root = workspace_root().join("fixtures/boundary_gap/input");
+    let root = isolated.path().join("fixtures/boundary_gap/input");
     let root_arg = root.display().to_string();
     let prefix = concat!(
         "--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,5 +1,5 @@\n",
@@ -21815,10 +22056,14 @@ fn truncated_declared_hunk_is_incomplete_through_file_and_stdin()
 #[test]
 fn truncated_unsupported_file_hunk_is_incomplete_through_file_and_stdin()
 -> Result<(), Box<dyn std::error::Error>> {
+    let isolated = owned_tracked_rust_subject(
+        "truncated_unsupported_file_hunk_is_incomplete_through_file_and_stdin",
+        "fixtures/boundary_gap",
+    )?;
     let scratch = unique_temp_workspace("declared-hunk-unsupported-language");
     std::fs::create_dir(&scratch)?;
     let _cleanup = DeclaredHunkScratch(scratch.clone());
-    let root = workspace_root().join("fixtures/boundary_gap/input");
+    let root = isolated.path().join("fixtures/boundary_gap/input");
     let root_arg = root.display().to_string();
     for (label, input, complete) in [
         (
@@ -21916,8 +22161,12 @@ fn truncated_unsupported_file_hunk_is_incomplete_through_file_and_stdin()
 #[test]
 fn check_diff_stdin_from_a_pipe_stays_silent_about_terminal_disclosure()
 -> Result<(), Box<dyn std::error::Error>> {
+    let isolated = owned_tracked_rust_subject(
+        "check_diff_stdin_from_a_pipe_stays_silent_about_terminal_disclosure",
+        "fixtures/boundary_gap",
+    )?;
     let note = "ripr: reading the diff from the attached terminal; paste the diff and press Ctrl+Z then Enter on Windows, or Ctrl+D on Unix, to end input";
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/boundary_gap/input");
+    let root = isolated.path().join("fixtures/boundary_gap/input");
     let output = run_ripr_with_stdin(
         &[
             "check",
@@ -22304,9 +22553,13 @@ fn check_rejects_invalid_ripr_git_timeout_env() -> Result<(), String> {
 #[test]
 fn interrupted_report_write_keeps_the_previous_complete_report()
 -> Result<(), Box<dyn std::error::Error>> {
+    let isolated = owned_tracked_rust_subject(
+        "interrupted_report_write_keeps_the_previous_complete_report",
+        "fixtures/boundary_gap",
+    )?;
     let workspace = unique_temp_workspace("interrupted-report-write");
     std::fs::create_dir_all(&workspace)?;
-    let fixture = workspace_root().join("fixtures/boundary_gap");
+    let fixture = isolated.path().join("fixtures/boundary_gap");
     let fixture_input = fixture.join("input").to_string_lossy().into_owned();
     let check = run_ripr(&[
         "check",
@@ -22468,7 +22721,12 @@ fn assert_input_limit_refusal(output: &Output, subject: &str) {
 #[cfg(unix)]
 #[test]
 fn check_diff_from_endless_device_is_refused_at_input_limit() -> Result<(), std::io::Error> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/boundary_gap/input");
+    let isolated = owned_tracked_rust_subject(
+        "check_diff_from_endless_device_is_refused_at_input_limit",
+        "fixtures/boundary_gap",
+    )
+    .map_err(std::io::Error::other)?;
+    let root = isolated.path().join("fixtures/boundary_gap/input");
     let output = run_ripr_with_deadline(
         &[
             "check",
@@ -22494,7 +22752,12 @@ fn check_diff_from_endless_device_is_refused_at_input_limit() -> Result<(), std:
 #[cfg(unix)]
 #[test]
 fn check_diff_stdin_from_endless_stream_is_refused_at_input_limit() -> Result<(), std::io::Error> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/boundary_gap/input");
+    let isolated = owned_tracked_rust_subject(
+        "check_diff_stdin_from_endless_stream_is_refused_at_input_limit",
+        "fixtures/boundary_gap",
+    )
+    .map_err(std::io::Error::other)?;
+    let root = isolated.path().join("fixtures/boundary_gap/input");
     let output = run_ripr_with_deadline(
         &[
             "check",
@@ -22671,11 +22934,15 @@ fn doctor_probes_language_runtimes_outside_the_checkout() -> Result<(), String> 
 /// The build reports that once, not once per source file (#4888).
 #[test]
 fn unusable_cache_directory_is_reported_once_per_build() -> Result<(), Box<dyn std::error::Error>> {
+    let isolated = owned_tracked_rust_subject(
+        "unusable_cache_directory_is_reported_once_per_build",
+        "fixtures/boundary_gap",
+    )?;
     let workspace = unique_temp_workspace("unusable-cache-dir");
     std::fs::create_dir_all(&workspace)?;
     let not_a_directory = workspace.join("cache-is-a-file");
     std::fs::write(&not_a_directory, "not a directory\n")?;
-    let fixture = workspace_root().join("fixtures/boundary_gap");
+    let fixture = isolated.path().join("fixtures/boundary_gap");
     let fixture_input = fixture.join("input").to_string_lossy().into_owned();
     let diff = fixture.join("diff.patch").to_string_lossy().into_owned();
     let output = run_command_with_env(
