@@ -66,6 +66,13 @@ or absolute output path, so the next receipt reads the genuine verifier output
 from that repository. Custom missing inputs do not invent a workflow producer;
 successful recovery does not promote missing analysis evidence to complete
 receipt evidence (#6684).
+Generated workflow commands must preserve the custom output directory selected
+by `agent start --out` under an absolute repository root without a literal Unix
+backslash in the root's name, including literal UTF-8 Unix backslashes and shell
+quotes in the output directory. A genuine verifier and receipt from a
+different slash-normalized directory do not establish that selected-directory
+identity. Preserving the native locator does not change snapshot commitments,
+containment, canonical equality, currentness or completeness admission (#6809).
 Root containment and canonical equality remain mandatory, including when an
 authentic artifact is presented through a different checkout with the same HEAD.
 Version 4 (#3906)

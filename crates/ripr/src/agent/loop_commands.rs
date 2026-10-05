@@ -343,7 +343,7 @@ pub(crate) fn display_path(path: &Path) -> String {
 }
 
 pub(crate) fn workflow_artifact_path(out_dir: &Path, file_name: &str) -> String {
-    let out_dir = display_path(out_dir);
+    let out_dir = root_path_display(out_dir);
     if out_dir == "." {
         file_name.to_string()
     } else {

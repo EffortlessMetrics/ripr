@@ -60,6 +60,17 @@ when a UTF-8 Unix directory name contains a literal backslash. A custom missing
 verify path has no known snapshot pair and emits no workflow producer hint.
 The refusal and receipt evidence boundaries remain unchanged (#6684).
 
+With an absolute selected root that has no literal Unix backslash in its name,
+`agent start --out` preserves a custom workflow directory's native UTF-8 Unix
+filename characters in manifest locators,
+artifact inventory and generated commands. Both relative and absolute `--out`
+inputs must address that same physical directory when the emitted snapshot,
+verify, receipt and regeneration commands run from another working directory.
+A literal backslash or shell quote must not select a slash-normalized decoy.
+Windows retains separator presentation. This does not qualify arbitrary
+relative-root invocations, workflow root spellings containing a literal Unix
+backslash, or change missing custom-input recovery (#6809).
+
 The loop command templates are centralized in one internal module before the
 workflow manifest is introduced. That module owns the current workflow artifact
 paths, the editor/CI pilot-agent artifact paths, and the command builders for:
