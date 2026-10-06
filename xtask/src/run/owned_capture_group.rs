@@ -436,6 +436,15 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
     const WORKER: &str = "run::owned_capture_group::tests::owned_file_policy_group_worker";
+    const CARGO_SHIM: &str = r#"#!/bin/sh
+if [ "$#" -ne 2 ] || [ "$1" != "test" ] || [ "$2" != "owned-proof" ]; then
+    exit 71
+fi
+/usr/bin/sleep 10 &
+descendant=$!
+printf '%s %s' "$$" "$descendant" > "$RIPR_OWNED_GROUP_MEMBER_MARKER"
+wait
+"#;
     struct Fixture {
         path: std::path::PathBuf,
     }
@@ -451,6 +460,27 @@ mod tests {
         }
         fn marker(&self) -> std::path::PathBuf {
             self.path.join("members")
+        }
+        fn cargo_environment(&self) -> Result<String, String> {
+            use std::os::unix::fs::PermissionsExt;
+            let cargo = self.path.join("cargo");
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&cargo)
+                .map_err(|err| format!("claim owned cargo shim: {err}"))?;
+            file.write_all(CARGO_SHIM.as_bytes())
+                .map_err(|err| format!("write owned cargo shim: {err}"))?;
+            file.set_permissions(fs::Permissions::from_mode(0o700))
+                .map_err(|err| format!("owned cargo shim mode: {err}"))?;
+            let mut paths = vec![self.path.clone()];
+            if let Some(original) = std::env::var_os("PATH") {
+                paths.extend(std::env::split_paths(&original));
+            }
+            std::env::join_paths(paths)
+                .map_err(|err| format!("owned cargo child PATH: {err}"))?
+                .into_string()
+                .map_err(|err| format!("owned cargo child PATH is not UTF-8: {err:?}"))
         }
     }
     impl Drop for Fixture {
@@ -519,10 +549,57 @@ mod tests {
         }
     }
     fn worker_args() -> Vec<String> {
-        ["--ignored", "--exact", WORKER, "--nocapture"]
-            .into_iter()
-            .map(ToString::to_string)
-            .collect()
+        [
+            "check-file-policy",
+            "--ignored",
+            "--exact",
+            WORKER,
+            "--nocapture",
+        ]
+        .into_iter()
+        .map(ToString::to_string)
+        .collect()
+    }
+    struct WorkerInvocation {
+        args: Vec<String>,
+        envs: Vec<(&'static str, String)>,
+    }
+    fn worker_invocation(fixture: &Fixture, mode: &str) -> Result<WorkerInvocation, String> {
+        let mut args = worker_args();
+        if mode == "invalid-argv" {
+            args[0] = "check-command-catalog".to_string();
+        }
+        // This is the reviewed input marker for the route's format gate, not a
+        // binary-source attestation or an authority to signal any process.
+        let source = if mode == "invalid-source" {
+            "invalid"
+        } else {
+            "eec85c62d2e041ffe0d245f14c354a89f9cc80d0"
+        };
+        Ok(WorkerInvocation {
+            args,
+            envs: vec![
+                ("RIPR_OWNED_GROUP_WORKER_MODE", mode.to_string()),
+                (
+                    "RIPR_OWNED_GROUP_MEMBER_MARKER",
+                    fixture.marker().to_string_lossy().into_owned(),
+                ),
+                (
+                    "RIPR_SOURCE_PROMOTION_VALIDATION",
+                    if mode == "invalid-validation" {
+                        "0"
+                    } else {
+                        "1"
+                    }
+                    .to_string(),
+                ),
+                (
+                    "RIPR_SOURCE_PROMOTION_TRUSTED_CHECKER_SHA",
+                    source.to_string(),
+                ),
+                ("PATH", fixture.cargo_environment()?),
+            ],
+        })
     }
     fn worker(
         fixture: &Fixture,
@@ -531,13 +608,15 @@ mod tests {
     ) -> Result<TimedBoundedOutput, String> {
         let executable =
             std::env::current_exe().map_err(|err| format!("test executable: {err}"))?;
-        let marker = fixture.marker().to_string_lossy().into_owned();
+        let invocation = worker_invocation(fixture, mode)?;
+        let envs: Vec<_> = invocation
+            .envs
+            .iter()
+            .map(|(name, value)| (*name, value.as_str()))
+            .collect();
         capture_owned_file_policy_group(
-            (&executable, &worker_args(), &fixture.path),
-            &[
-                ("RIPR_OWNED_GROUP_WORKER_MODE", mode),
-                ("RIPR_OWNED_GROUP_MEMBER_MARKER", &marker),
-            ],
+            (&executable, &invocation.args, &fixture.path),
+            &envs,
             (Duration::from_secs(3), 8192),
             "synthetic owned file-policy group",
             spawned,
@@ -563,10 +642,10 @@ mod tests {
         let scope = FilePolicyScope {
             checker: checker.clone(),
             parent: parent.clone(),
-            outer: Duration::from_secs(180),
+            outer: Duration::from_mins(3),
         };
-        scope.verify_observed(&checker, &parent, Duration::from_secs(300))?;
-        scope.verify_observed(&checker, &parent, Duration::from_secs(1800))?;
+        scope.verify_observed(&checker, &parent, Duration::from_mins(5))?;
+        scope.verify_observed(&checker, &parent, Duration::from_mins(30))?;
         require_error(
             scope.verify_observed(&checker, &parent, Duration::from_secs(179)),
             "shorter",
@@ -590,7 +669,7 @@ mod tests {
             },
         ] {
             require_error(
-                scope.verify_observed(&changed, &parent, Duration::from_secs(300)),
+                scope.verify_observed(&changed, &parent, Duration::from_mins(5)),
                 "lineage",
             )?;
         }
@@ -601,7 +680,7 @@ mod tests {
                     start: 12,
                     ..parent.clone()
                 },
-                Duration::from_secs(300),
+                Duration::from_mins(5),
             ),
             "lineage",
         )?;
@@ -658,6 +737,23 @@ mod tests {
             signal_authority(&checker, Ok(checker.clone()), Ok(vec![checker.pid]))?,
             vec![checker.pid]
         );
+        // The real child argv/env selection gate refuses before literal Cargo.
+        for mode in ["invalid-argv", "invalid-validation", "invalid-source"] {
+            let fixture = Fixture::new()?;
+            let output = worker(&fixture, mode, |_| {})?;
+            if !output.status.is_some_and(|status| status.success())
+                || output.timed_out
+                || output.stdout_truncated
+                || output.stderr_truncated
+                || !output.stdout.contains(WORKER)
+                || !output.stdout.contains("1 passed")
+                || fixture.marker().exists()
+            {
+                return Err(format!(
+                    "actual requested() refusal control was not executed: {mode}"
+                ));
+            }
+        }
         Ok(())
     }
     #[test]
@@ -745,14 +841,16 @@ mod tests {
         let fixture = Fixture::new()?;
         let executable =
             std::env::current_exe().map_err(|err| format!("test executable: {err}"))?;
-        let marker = fixture.marker().to_string_lossy().into_owned();
+        let invocation = worker_invocation(&fixture, "timeout")?;
+        let envs: Vec<_> = invocation
+            .envs
+            .iter()
+            .map(|(name, value)| (*name, value.as_str()))
+            .collect();
         let mut checker_pid = None;
         let result = capture_owned_file_policy_group_checked(
-            (&executable, &worker_args(), &fixture.path),
-            &[
-                ("RIPR_OWNED_GROUP_WORKER_MODE", "timeout"),
-                ("RIPR_OWNED_GROUP_MEMBER_MARKER", &marker),
-            ],
+            (&executable, &invocation.args, &fixture.path),
+            &envs,
             (Duration::from_secs(3), 8192),
             "synthetic capture error",
             |pid| {
@@ -861,23 +959,32 @@ mod tests {
     #[test]
     #[ignore = "owned child-only helper; never a bootstrap acceptance witness"]
     fn owned_file_policy_group_worker() -> Result<(), String> {
-        let value =
-            std::env::var(ENV).map_err(|err| format!("owned worker handoff missing: {err}"))?;
-        let scope = FilePolicyScope::resolve(&value)?;
         let mode = std::env::var("RIPR_OWNED_GROUP_WORKER_MODE")
             .map_err(|err| format!("owned worker mode missing: {err}"))?;
+        if matches!(
+            mode.as_str(),
+            "invalid-argv" | "invalid-validation" | "invalid-source"
+        ) {
+            require_error(
+                FilePolicyScope::requested(),
+                "outside the selected checker route",
+            )?;
+            return Ok(());
+        }
+        let scope = FilePolicyScope::requested()?.ok_or_else(|| {
+            "actual file-policy requested() did not select owned scope".to_string()
+        })?;
         let marker = std::env::var("RIPR_OWNED_GROUP_MEMBER_MARKER")
             .map_err(|err| format!("owned member marker missing: {err}"))?;
         if mode == "shorter" {
-            let args = Vec::new();
+            let args = vec!["test".to_string(), "owned-proof".to_string()];
             require_error(
-                capture_output_sampled_scoped(
-                    ("/ripr-never-spawn-missing-program", &args, None),
-                    &[],
-                    (Some(Duration::from_millis(1)), false),
-                    "shorter scoped refusal",
+                capture_file_policy_cargo(
+                    &args,
+                    Duration::from_millis(1),
+                    "shorter literal Cargo scoped refusal",
+                    &scope,
                     None,
-                    Some(&scope),
                 ),
                 "shorter",
             )?;
@@ -886,21 +993,20 @@ mod tests {
         let args = vec!["-c".to_string(),
             r#"sleep 30 & descendant=$!; printf '%s %s' "$$" "$descendant" > "$RIPR_OWNED_GROUP_MEMBER_MARKER"; wait"#.to_string()];
         if mode == "timeout" {
-            let output = capture_output_sampled_scoped(
-                ("sh", &args, None),
-                &[],
-                (Some(Duration::from_secs(300)), false),
-                "synthetic inherited Cargo equivalent",
+            let args = vec!["test".to_string(), "owned-proof".to_string()];
+            let _output = capture_file_policy_cargo(
+                &args,
+                Duration::from_mins(5),
+                "synthetic literal Cargo owned route",
+                &scope,
                 None,
-                Some(&scope),
             )?;
-            let _ = output;
             return Err("owned worker continued beyond its parent's enforced deadline".to_string());
         }
         if mode != "normal" && mode != "nonzero" {
             return Err("unknown owned worker mode".to_string());
         }
-        scope.verify(Duration::from_secs(300))?;
+        scope.verify(Duration::from_mins(5))?;
         let string_refs: Vec<_> = args.iter().map(String::as_str).collect();
         let mut command = test_command("sh", &string_refs, false);
         // Preserve held pipes so successful root exit is not a drain certificate.
