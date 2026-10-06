@@ -2600,7 +2600,7 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
             if natural_exit_marker.exists() {
                 // Disarm cleanup of an already naturally exited PID.
                 let _ = std::fs::remove_file(&marker_path);
-                return Err("descendant survived primary exit until natural expiry; owned cleanup did not precede drain".to_string());
+                return Err("descendant remained after primary exit until natural expiry; owned cleanup did not precede drain".to_string());
             }
             assert_pipe_descendant_stopped(&marker_path, "successful primary completion")?;
         }

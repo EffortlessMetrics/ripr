@@ -778,7 +778,9 @@ wait
         require_not_live(grandchild)?;
         let still_separate = identity(separate.id())?;
         if !separate_identity.same_owner(&still_separate) || !still_separate.live() {
-            return Err("outer cleanup killed or changed the unrelated separate group".to_string());
+            return Err(
+                "outer cleanup terminated or changed the unrelated separate group".to_string(),
+            );
         }
         separate
             .kill()
