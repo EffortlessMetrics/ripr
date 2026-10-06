@@ -1167,14 +1167,16 @@ fn capture_bounded_supervised(
         wait_for_child_with_deadline(&mut child, started, Some(timeout), error_context)
             .map(|outcome| (outcome, None))
     };
-    let stdout = drain_bounded_stream_reader(
+    let stdout = drain_capture_stream_reader(
+        supervised,
         stdout_rx,
         stdout_handle,
         POST_KILL_DRAIN_GRACE,
         "stdout",
         error_context,
     );
-    let stderr = drain_bounded_stream_reader(
+    let stderr = drain_capture_stream_reader(
+        supervised,
         stderr_rx,
         stderr_handle,
         POST_KILL_DRAIN_GRACE,
@@ -1494,7 +1496,10 @@ fn materialized_build_preparation_linux_monitor_retains_actual_settled_group_fai
                 }
             }
         }
-        assert!(captured.checked().is_err());
+        assert_eq!(
+            captured.checked().err(),
+            Some("synthetic observed preparation storage stop".into())
+        );
         Ok(())
     })();
     let cleanup = fs::remove_dir_all(&root).map_err(|error| error.to_string());
@@ -1598,7 +1603,10 @@ fn materialized_build_preparation_windows_monitor_stops_the_actual_owned_job() -
         {
             return Err("owned preparation Job member remains live or unobservable".into());
         }
-        assert!(captured.checked().is_err());
+        assert_eq!(
+            captured.checked().err(),
+            Some("synthetic observed preparation storage stop".into())
+        );
         Ok(())
     })();
     let cleanup = fs::remove_dir_all(&root).map_err(|error| error.to_string());
@@ -1821,11 +1829,27 @@ fn capture_owned_group_supervised(
 /// A scoped drain can never become successful output or warmup credit.
 fn drain_owned_stream_reader<T>(
     rx: mpsc::Receiver<Result<T, String>>,
-    _handle: thread::JoinHandle<()>,
+    handle: thread::JoinHandle<()>,
     stream_name: &str,
     error_context: &str,
 ) -> Result<T, String> {
-    match rx.recv_timeout(POST_KILL_DRAIN_GRACE) {
+    drain_owned_stream_reader_with_grace(
+        rx,
+        handle,
+        POST_KILL_DRAIN_GRACE,
+        stream_name,
+        error_context,
+    )
+}
+
+fn drain_owned_stream_reader_with_grace<T>(
+    rx: mpsc::Receiver<Result<T, String>>,
+    _handle: thread::JoinHandle<()>,
+    grace: Duration,
+    stream_name: &str,
+    error_context: &str,
+) -> Result<T, String> {
+    match rx.recv_timeout(grace) {
         Ok(result) => result,
         Err(mpsc::RecvTimeoutError::Timeout) => Err(format!(
             "owned {stream_name} drain incomplete for {error_context}; cleanup and warmup credit refused"
@@ -1870,6 +1894,59 @@ fn read_stream_bounded<T: Read>(mut stream: T, max_bytes: usize) -> Result<Bound
         }
     }
     Ok(BoundedBytes { bytes, truncated })
+}
+
+fn drain_capture_stream_reader(
+    supervised: bool,
+    rx: mpsc::Receiver<Result<BoundedBytes, String>>,
+    handle: thread::JoinHandle<()>,
+    grace: Duration,
+    stream_name: &str,
+    error_context: &str,
+) -> Result<BoundedBytes, String> {
+    if supervised {
+        drain_owned_stream_reader_with_grace(rx, handle, grace, stream_name, error_context)
+    } else {
+        drain_bounded_stream_reader(rx, handle, grace, stream_name, error_context)
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn materialized_build_preparation_supervised_drain_timeout_refuses_unknown_output() {
+    let (tx, rx) = mpsc::channel::<Result<BoundedBytes, String>>();
+    let handle = thread::spawn(|| {});
+    let output = drain_capture_stream_reader(
+        true,
+        rx,
+        handle,
+        Duration::ZERO,
+        "stdout",
+        "trusted drain control",
+    );
+    assert_eq!(output.err(), Some(
+        "owned stdout drain incomplete for trusted drain control; cleanup and warmup credit refused".into()
+    ));
+    drop(tx);
+}
+
+#[cfg(test)]
+#[test]
+fn materialized_build_preparation_supervised_drain_disconnect_refuses_unknown_output() {
+    let (tx, rx) = mpsc::channel::<Result<BoundedBytes, String>>();
+    drop(tx);
+    let handle = thread::spawn(|| {});
+    let output = drain_capture_stream_reader(
+        true,
+        rx,
+        handle,
+        Duration::ZERO,
+        "stderr",
+        "trusted drain control",
+    );
+    assert_eq!(output.err(), Some(
+        "owned stderr reader disconnected for trusted drain control; cleanup and warmup credit refused".into()
+    ));
 }
 
 fn drain_bounded_stream_reader(
