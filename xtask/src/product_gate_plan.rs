@@ -704,26 +704,32 @@ mod tests {
 
     /// Keys that change which tests nextest selects or how it retries them,
     /// wherever they appear in the parsed config, quoted or inline.
-    fn collect_selection_keys(value: &toml::Value, path: &[String], violations: &mut Vec<String>) {
+    fn collect_selection_keys(
+        value: &toml::Value,
+        path: &[String],
+        under_array: bool,
+        violations: &mut Vec<String>,
+    ) {
         match value {
             toml::Value::Table(table) => {
                 for (key, child) in table {
                     let mut child_path = path.to_vec();
                     child_path.push(key.clone());
                     if key == "default-filter"
-                        || (key == "overrides" && !source_promotion_reservation(child, &child_path))
+                        || (key == "overrides"
+                            && (under_array || !source_promotion_reservation(child, &child_path)))
                     {
                         violations.push(format!(
                             "nextest config declares `{}`, which narrows or re-policies the selected tests",
                             child_path.join(".")
                         ));
                     }
-                    collect_selection_keys(child, &child_path, violations);
+                    collect_selection_keys(child, &child_path, under_array, violations);
                 }
             }
             toml::Value::Array(items) => {
                 for item in items {
-                    collect_selection_keys(item, path, violations);
+                    collect_selection_keys(item, path, true, violations);
                 }
             }
             _ => {}
@@ -736,7 +742,7 @@ mod tests {
             Err(err) => return vec![format!("nextest config does not parse: {err}")],
         };
         let mut violations = Vec::new();
-        collect_selection_keys(&value, &[], &mut violations);
+        collect_selection_keys(&value, &[], false, &mut violations);
         let ci = value.get("profile").and_then(|profile| profile.get("ci"));
         if ci
             .and_then(|ci| ci.get("retries"))
@@ -948,6 +954,10 @@ mod tests {
                 "threads-required = \"num-test-threads\"\nretries = 2",
             ),
             NEXTEST_CONFIG.replace("[[profile.default.overrides]]", "[[profile.ci.overrides]]"),
+            NEXTEST_CONFIG.replace(
+                "[[profile.default.overrides]]",
+                "[[profile.default]]\n[[profile.default.overrides]]",
+            ),
             format!(
                 "{NEXTEST_CONFIG}\n[[\"profile.default\".overrides]]\nfilter = 'binary(=source_promotion_workflow_contract) & test(=green_historical_diagnostics_are_rejected_by_the_real_final_gate)'\nthreads-required = \"num-test-threads\"\n"
             ),
@@ -955,6 +965,10 @@ mod tests {
             assert_ne!(
                 repolicied, NEXTEST_CONFIG,
                 "fixture must change the reservation"
+            );
+            assert!(
+                toml::from_str::<toml::Value>(&repolicied).is_ok(),
+                "reservation mutation must reach the structural oracle"
             );
             assert!(!nextest_config_violations(&repolicied).is_empty());
         }
