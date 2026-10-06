@@ -110,6 +110,7 @@ fn validate_test_covered_by(
 ) -> Result<Vec<TestCoverageObservation>, String> {
     let mut warmed = BTreeSet::new();
     let host = FilePolicyHost::current()?;
+    let owned_scope = crate::run::file_policy_capture_scope()?;
     let mut selectors = commands
         .iter()
         .filter(|selector| selector.host.is_none_or(|declared| declared == host));
@@ -129,7 +130,15 @@ fn validate_test_covered_by(
             let phase = observation.as_ref().and_then(|observation| {
                 observation.phase(ordinal, policy_line, spawn.description, &spawn.args)
             });
-            let output = if let Some(phase) = &phase {
+            let output = if let Some(scope) = &owned_scope {
+                crate::run::capture_file_policy_cargo(
+                    &spawn.args,
+                    spawn.timeout,
+                    spawn.description,
+                    scope,
+                    phase.as_ref(),
+                )?
+            } else if let Some(phase) = &phase {
                 capture_output_with_timeout_observed(
                     "cargo",
                     &spawn.args,

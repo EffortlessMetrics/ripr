@@ -1,5 +1,43 @@
 mod hard_enforcement_readiness;
 
+#[cfg(target_os = "linux")]
+mod owned_capture_group;
+#[cfg(target_os = "linux")]
+pub(crate) use owned_capture_group::FilePolicyScope;
+#[cfg(not(target_os = "linux"))]
+pub(crate) struct FilePolicyScope;
+
+/// Ordinary calls have no handoff and retain their original isolated captures.
+pub(crate) fn file_policy_capture_scope() -> Result<Option<FilePolicyScope>, String> {
+    #[cfg(target_os = "linux")]
+    {
+        FilePolicyScope::requested()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        Ok(None)
+    }
+}
+
+/// Only the file-policy owner can select this literal Cargo route.
+pub(crate) fn capture_file_policy_cargo(
+    args: &[String],
+    timeout: Duration,
+    error_context: &str,
+    scope: &FilePolicyScope,
+    observation: Option<&crate::policy::phase_diagnostics::PhaseToken>,
+) -> Result<TimedOutput, String> {
+    capture_output_sampled_scoped(
+        ("cargo", args, None),
+        &[],
+        (Some(timeout), false),
+        error_context,
+        observation,
+        Some(scope),
+    )
+    .map(|(output, _)| output)
+}
+
 pub(crate) use hard_enforcement_readiness::hard_enforcement_readiness_report;
 
 use std::fs;
@@ -640,15 +678,38 @@ fn capture_output_sampled_observed(
     error_context: &str,
     observation: Option<&crate::policy::phase_diagnostics::PhaseToken>,
 ) -> Result<(TimedOutput, Option<u64>), String> {
+    capture_output_sampled_scoped(source, envs, budget, error_context, observation, None)
+}
+fn capture_output_sampled_scoped(
+    source: (&str, &[String], Option<&Path>),
+    envs: &[(&str, &str)],
+    budget: (Option<Duration>, bool),
+    error_context: &str,
+    observation: Option<&crate::policy::phase_diagnostics::PhaseToken>,
+    scope: Option<&FilePolicyScope>,
+) -> Result<(TimedOutput, Option<u64>), String> {
     let (program, args, cwd) = source;
     let (deadline, sample_rss) = budget;
+    let delegated = scope.is_some();
+    #[cfg(target_os = "linux")]
+    if let Some(scope) = scope {
+        scope.verify(deadline.ok_or_else(|| {
+            "owned file-policy inner deadline absent; spawn refused".to_string()
+        })?)?;
+    }
+    #[cfg(not(target_os = "linux"))]
+    if delegated {
+        return Err("owned file-policy delegated captures are Linux-only".to_string());
+    }
     let started = Instant::now();
     let mut command = Command::new(program);
     command.args(args);
     if let Some(cwd) = cwd {
         command.current_dir(cwd);
     }
-    configure_timed_child_command(&mut command);
+    if !delegated {
+        configure_timed_child_command(&mut command);
+    }
     for (name, value) in envs {
         command.env(name, value);
     }
@@ -658,8 +719,16 @@ fn capture_output_sampled_observed(
     // timeout path below owns the whole tree instead of shelling out to
     // `taskkill /T /F`.
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = OwnedProcess::spawn(command)
-        .map_err(|err| format!("failed to run {error_context}: {err}"))?;
+    let mut child = if delegated {
+        OwnedProcess::spawn_with_bounded_drop(command)
+    } else {
+        OwnedProcess::spawn(command)
+    }
+    .map_err(|err| format!("failed to run {error_context}: {err}"))?;
+    #[cfg(target_os = "linux")]
+    if let Some(scope) = scope {
+        scope.verify_spawn(child.id())?;
+    }
     let captured_observation = observation.map(|phase| phase.spawn(child.id()));
     let stdout = child
         .stdout_pipe()
@@ -684,8 +753,13 @@ fn capture_output_sampled_observed(
         spawn_stream_reader_channel(stderr)
     };
 
-    let wait_outcome =
-        wait_for_child_sampled(&mut child, started, deadline, sample_rss, error_context)?;
+    let wait_outcome = wait_for_child_sampled(
+        &mut child,
+        started,
+        if delegated { None } else { deadline },
+        sample_rss,
+        error_context,
+    )?;
 
     // Always use the bounded drain.  On a normal process exit the pipe
     // write-ends are already closed, so the reader threads finish promptly and
@@ -695,20 +769,29 @@ fn capture_output_sampled_observed(
     // guaranteeing the function returns in bounded time regardless.  The same
     // grace bounds the no-deadline path when the direct child exits but a
     // pipe-inheriting descendant survives it.
-    let stdout = drain_stream_reader_bounded(
-        stdout_rx,
-        stdout_handle,
-        POST_KILL_DRAIN_GRACE,
-        "stdout",
-        error_context,
-    )?;
-    let stderr = drain_stream_reader_bounded(
-        stderr_rx,
-        stderr_handle,
-        POST_KILL_DRAIN_GRACE,
-        "stderr",
-        error_context,
-    )?;
+    let (stdout, stderr) = if delegated {
+        (
+            drain_owned_stream_reader(stdout_rx, stdout_handle, "stdout", error_context)?,
+            drain_owned_stream_reader(stderr_rx, stderr_handle, "stderr", error_context)?,
+        )
+    } else {
+        (
+            drain_stream_reader_bounded(
+                stdout_rx,
+                stdout_handle,
+                POST_KILL_DRAIN_GRACE,
+                "stdout",
+                error_context,
+            )?,
+            drain_stream_reader_bounded(
+                stderr_rx,
+                stderr_handle,
+                POST_KILL_DRAIN_GRACE,
+                "stderr",
+                error_context,
+            )?,
+        )
+    };
 
     Ok((
         TimedOutput {
@@ -1071,6 +1154,120 @@ pub(crate) fn capture_output_in_dir_with_timeout_bounded_observed(
         stdout_truncated: stdout.truncated,
         stderr_truncated: stderr.truncated,
     })
+}
+
+/// The selected source-owned file-policy checker owns this cooperative Linux
+/// group. Ordinary captures and Windows retain their original implementations.
+pub(crate) fn capture_owned_file_policy_group(
+    source: (&Path, &[String], &Path),
+    envs: &[(&str, &str)],
+    budget: (Duration, usize),
+    error_context: &str,
+    spawned: impl FnMut(u32),
+) -> Result<TimedBoundedOutput, String> {
+    #[cfg(target_os = "linux")]
+    {
+        let mut spawned = spawned;
+        capture_owned_file_policy_group_checked(source, envs, budget, error_context, |pid| {
+            spawned(pid);
+            Ok(())
+        })
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        capture_output_in_dir_with_timeout_bounded_observed(
+            source,
+            envs,
+            budget,
+            error_context,
+            spawned,
+        )
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn capture_owned_file_policy_group_checked(
+    source: (&Path, &[String], &Path),
+    envs: &[(&str, &str)],
+    budget: (Duration, usize),
+    error_context: &str,
+    mut spawned: impl FnMut(u32) -> Result<(), String>,
+) -> Result<TimedBoundedOutput, String> {
+    let (program, args, cwd) = source;
+    let (timeout, max_stream_bytes) = budget;
+    let handoff = owned_capture_group::ParentHandoff::new(timeout)?;
+    let started = Instant::now();
+    let mut command = Command::new(program);
+    command
+        .args(args)
+        .current_dir(cwd)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    configure_timed_child_command(&mut command);
+    for (name, value) in envs {
+        command.env(name, value);
+    }
+    command.env(owned_capture_group::ENV, handoff.value());
+    let child = OwnedProcess::spawn_with_bounded_drop(command)
+        .map_err(|err| format!("failed to run {error_context}: {err}"))?;
+    // Establish the actual unreaped leader lease before callbacks or pipes.
+    let mut guard = owned_capture_group::OwnedCaptureGuard::new(child)?;
+    let result = (|| {
+        spawned(guard.child().id())?;
+        let stdout = guard
+            .child()
+            .stdout_pipe()
+            .take()
+            .ok_or_else(|| format!("failed to capture stdout for {error_context}"))?;
+        let stderr = guard
+            .child()
+            .stderr_pipe()
+            .take()
+            .ok_or_else(|| format!("failed to capture stderr for {error_context}"))?;
+        let (stdout_handle, stdout_rx) =
+            spawn_bounded_stream_reader_channel(stdout, max_stream_bytes);
+        let (stderr_handle, stderr_rx) =
+            spawn_bounded_stream_reader_channel(stderr, max_stream_bytes);
+        let outcome = guard.wait(started, timeout)?;
+        let stdout = drain_owned_stream_reader(stdout_rx, stdout_handle, "stdout", error_context)?;
+        let stderr = drain_owned_stream_reader(stderr_rx, stderr_handle, "stderr", error_context)?;
+        Ok(TimedBoundedOutput {
+            status: Some(outcome.status),
+            stdout: String::from_utf8_lossy(&stdout.bytes).into_owned(),
+            stderr: String::from_utf8_lossy(&stderr.bytes).into_owned(),
+            duration: outcome.duration,
+            timed_out: outcome.timed_out,
+            stdout_truncated: stdout.truncated,
+            stderr_truncated: stderr.truncated,
+        })
+    })();
+    match result {
+        Ok(output) => Ok(output),
+        Err(error) => match guard.abort() {
+            Ok(()) => Err(error),
+            Err(cleanup) => Err(format!(
+                "{error}; qualified group cleanup unconfirmed: {cleanup}"
+            )),
+        },
+    }
+}
+
+/// A scoped drain can never become successful output or warmup credit.
+fn drain_owned_stream_reader<T>(
+    rx: mpsc::Receiver<Result<T, String>>,
+    _handle: thread::JoinHandle<()>,
+    stream_name: &str,
+    error_context: &str,
+) -> Result<T, String> {
+    match rx.recv_timeout(POST_KILL_DRAIN_GRACE) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => Err(format!(
+            "owned {stream_name} drain incomplete for {error_context}; cleanup and warmup credit refused"
+        )),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(format!(
+            "owned {stream_name} reader disconnected for {error_context}; cleanup and warmup credit refused"
+        )),
+    }
 }
 
 fn spawn_bounded_stream_reader_channel<T: Read + Send + 'static>(

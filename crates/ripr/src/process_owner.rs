@@ -107,6 +107,8 @@ pub struct OwnedProcess {
     child: Box<dyn ChildWrapper>,
     #[cfg(not(windows))]
     child: std::process::Child,
+    #[cfg(not(windows))]
+    bounded_drop: bool,
 }
 
 impl OwnedProcess {
@@ -135,7 +137,31 @@ impl OwnedProcess {
             // the Windows arm's by-value consumption.
             let mut command = command;
             let child = command.spawn()?;
-            Ok(Self { child })
+            Ok(Self {
+                child,
+                bounded_drop: false,
+            })
+        }
+    }
+
+    /// Spawn with bounded direct-child fallback on ownership release.
+    ///
+    /// This is an explicit opt-in for callers with a separate qualified
+    /// process-group settlement authority. Ordinary spawn/Drop behavior is
+    /// unchanged. A refused settlement cannot fall into an unbounded direct
+    /// child wait; bounded fallback never certifies descendant termination.
+    /// Windows retains the existing owned Job Object behavior.
+    pub fn spawn_with_bounded_drop(command: Command) -> std::io::Result<Self> {
+        let owned = Self::spawn(command)?;
+        #[cfg(not(windows))]
+        {
+            let mut owned = owned;
+            owned.bounded_drop = true;
+            Ok(owned)
+        }
+        #[cfg(windows)]
+        {
+            Ok(owned)
         }
     }
 
@@ -362,6 +388,11 @@ impl Drop for OwnedProcess {
             return;
         }
         if self.request_kill().is_ok() {
+            #[cfg(not(windows))]
+            if self.bounded_drop {
+                let _ = self.reap_within(FALLBACK_REAP_BUDGET);
+                return;
+            }
             let _ = self.wait();
         }
     }

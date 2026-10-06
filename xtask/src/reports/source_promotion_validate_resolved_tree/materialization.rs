@@ -207,7 +207,15 @@ fn run_required_command_observed(
             if phase_diagnostics { "1" } else { "0" },
         ),
     ];
-    let output = if phase_diagnostics {
+    let output = if command == "check-file-policy" {
+        crate::run::capture_owned_file_policy_group(
+            (checker, &args, root),
+            &envs,
+            (COMMAND_TIMEOUT, MAX_STREAM_BYTES),
+            &context,
+            |pid| checker_pid = Some(pid),
+        )
+    } else if phase_diagnostics {
         crate::run::capture_output_in_dir_with_timeout_bounded_observed(
             (checker, &args, root),
             &envs,
@@ -260,7 +268,11 @@ fn run_required_command_observed(
                     exit_code,
                     Some(&evidence),
                     Some(
-                        "command exceeded the 180 second bound and its process tree was terminated",
+                        if command == "check-file-policy" && cfg!(target_os = "linux") {
+                            "command exceeded the 180 second bound; its qualified cooperative group was settled"
+                        } else {
+                            "command exceeded the 180 second bound and its process tree was terminated"
+                        },
                     ),
                 )
             } else if output

@@ -131,6 +131,11 @@ jobs:
       # PIPESTATUS[0] into a file rather than inferred from log prose, which
       # cannot distinguish a compile failure from a test failure reliably. The
       # step itself exits 0 because test outcomes are advisory.
+      - name: Hold full suites during owned cleanup proof review
+        shell: bash
+        run: |
+          printf '%s\n' 'Source-sync cleanup proof stage holds full fixtures and suites pending reviewed cleanup evidence.'
+          exit 1
       - name: Run workspace tests (advisory, run 1)
         shell: bash
         run: |
