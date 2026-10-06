@@ -1,3 +1,111 @@
+fn preparation_bound_refusals_remain_equivalent(
+    root: &Path,
+    packet_relative: &str,
+    report: &Value,
+    manifest: &Value,
+    index: &Value,
+    original_stdout: &[u8],
+) -> Result<(), String> {
+    let packet = root.join(packet_relative);
+    for (classes, rejected) in [
+        (None, true),
+        (Some(Value::Null), true),
+        (Some(json!("not an array")), true),
+        (Some(json!([{}, {}, {}, {}, {}, {}])), true),
+        (Some(json!([])), false),
+        (Some(json!([{}, {}, {}, {}, {}])), false),
+    ] {
+        let mut changed = manifest.clone();
+        match classes {
+            Some(classes) => changed["classes"] = classes,
+            None => changed
+                .as_object_mut()
+                .ok_or("control manifest must be an object")?
+                .retain(|key, _value| key != "classes"),
+        }
+        let bytes = serde_json::to_vec(&changed).map_err(|error| error.to_string())?;
+        fs::write(packet.join("build-preparation.json"), &bytes)
+            .map_err(|error| error.to_string())?;
+        let mut changed_index = index.clone();
+        for member in changed_index["files"]
+            .as_array_mut()
+            .ok_or("control index must contain files")?
+        {
+            if member["path"] == "build-preparation.json" {
+                member["bytes"] = json!(bytes.len());
+                member["sha256"] = json!(format!("{:x}", Sha256::digest(&bytes)));
+            }
+        }
+        match initial_preparation_manifest(root, packet_relative, report, &changed_index) {
+            Ok((_bytes, _manifest)) if !rejected => {}
+            Err(reason)
+                if rejected
+                    && reason
+                        == "preparation manifest/report identity or resource scope mismatch" => {}
+            other => return Err(format!("preparation classes refusal changed: {other:?}")),
+        }
+    }
+    fs::write(
+        packet.join("build-preparation.json"),
+        serde_json::to_vec(manifest).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+
+    let relative = "build-preparation/01.stdout.log";
+    let mut row = json!({"stdout":{"path":relative,"sha256":"d".repeat(64)}});
+    // These malformed claims must be refused at the receipt bound, before
+    // reading an existing stream or consulting the index's extent.
+    for extent in [
+        None,
+        Some(Value::Null),
+        Some(json!("16384")),
+        Some(json!(-1)),
+        Some(json!(0.5)),
+        Some(json!(2 * 1024 * 1024 + 1)),
+        Some(json!(u64::MAX)),
+    ] {
+        match extent {
+            Some(extent) => row["stdout"]["bytes"] = extent,
+            None => row["stdout"]
+                .as_object_mut()
+                .ok_or("control stream receipt must be an object")?
+                .retain(|key, _value| key != "bytes"),
+        }
+        match initial_preparation_stream_bytes(root, packet_relative, index, &row, 0, "stdout") {
+            Err(reason) if reason == "preparation stream receipt mapping or bound mismatch" => {}
+            other => return Err(format!("preparation stream refusal changed: {other:?}")),
+        }
+    }
+    for extent in [0, 2 * 1024 * 1024] {
+        let bytes = vec![b'x'; extent];
+        fs::write(packet.join(relative), &bytes).map_err(|error| error.to_string())?;
+        row["stdout"]["bytes"] = json!(extent);
+        row["stdout"]["sha256"] = json!(format!("{:x}", Sha256::digest(&bytes)));
+        let mut changed_index = index.clone();
+        for member in changed_index["files"]
+            .as_array_mut()
+            .ok_or("control index must contain files")?
+        {
+            if member["path"] == relative {
+                *member = row["stdout"].clone();
+            }
+        }
+        let (path, actual) = initial_preparation_stream_bytes(
+            root,
+            packet_relative,
+            &changed_index,
+            &row,
+            0,
+            "stdout",
+        )?;
+        if path != relative || actual != bytes {
+            return Err("preparation stream inclusive boundary changed".into());
+        }
+    }
+    fs::write(packet.join(relative), original_stdout).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 #[test]
 fn initial_materialized_preparation_failure_evidence_is_retained() -> Result<(), String> {
     let nonce = std::time::SystemTime::now()
@@ -89,6 +197,15 @@ fn initial_materialized_preparation_failure_evidence_is_retained() -> Result<(),
             serde_json::to_vec(&index).map_err(|error| error.to_string())?,
         )
         .map_err(|error| error.to_string())?;
+
+        preparation_bound_refusals_remain_equivalent(
+            &root,
+            &packet_relative,
+            &report,
+            &manifest,
+            &index,
+            &original_streams[0].1,
+        )?;
 
         // The real preparation failure has no failed governed command. The
         // old reader returned only "required command failure sequence mismatch".

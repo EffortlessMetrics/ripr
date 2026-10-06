@@ -57,9 +57,9 @@ fn initial_preparation_manifest(
         || manifest["stream_bytes_limit"] != 2 * 1024 * 1024
         || manifest["known_path_growth_bytes_limit"] != 4u64 * 1024 * 1024 * 1024
         || manifest["settlement_reserve_seconds"] != 30
-        || !manifest["classes"]
+        || manifest["classes"]
             .as_array()
-            .is_some_and(|rows| rows.len() <= 5)
+            .is_none_or(|rows| rows.len() > 5)
     {
         return Err("preparation manifest/report identity or resource scope mismatch".into());
     }
@@ -77,9 +77,9 @@ fn initial_preparation_stream_bytes(
     let relative = format!("build-preparation/{:02}.{stream}.log", position + 1);
     let receipt = &row[stream];
     if receipt["path"].as_str() != Some(relative.as_str())
-        || !receipt["bytes"]
+        || receipt["bytes"]
             .as_u64()
-            .is_some_and(|bytes| bytes <= 2 * 1024 * 1024)
+            .is_none_or(|bytes| bytes > 2 * 1024 * 1024)
         || !receipt["sha256"].is_string()
     {
         return Err("preparation stream receipt mapping or bound mismatch".into());
