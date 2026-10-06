@@ -55571,6 +55571,82 @@ fn check_pr_report_publication_failure_is_distinguishable() {
 }
 
 #[test]
+fn network_policy_event_fixture_ledger_has_no_unused_count_budget() -> Result<(), String> {
+    let path = "xtask/src/tests.rs";
+    let token = concat!("\"pu", "sh\"");
+    let ledger_path = "policy/network_allowlist.txt";
+    let ledger = include_str!("../../policy/network_allowlist.txt");
+    let allowlist = super::parse_count_policy_allowlist(ledger_path, ledger)?;
+    assert_eq!(
+        allowlist.get(&(path.to_string(), token.to_string())),
+        Some(&2)
+    );
+    assert_eq!(include_str!("tests.rs").matches(token).count(), 2);
+    let prefix = format!("{path}|{token}|");
+    let row = ledger
+        .lines()
+        .find(|line| line.starts_with(&prefix))
+        .ok_or_else(|| "event fixture count row is missing".to_string())?;
+
+    with_temp_cwd("network-policy-event-fixture-counts", |root| {
+        let unlisted = "xtask/src/unlisted_events.rs";
+        write(&root.join(ledger_path), &format!("{row}\n"));
+        write(&root.join(path), &format!("{token}\n").repeat(2));
+        write(&root.join(unlisted), "");
+        let init = run("git", &["init", "--quiet"])?;
+        if !init.success() {
+            return Err(format!("temporary git init failed with {init}"));
+        }
+        let add = run("git", &["add", ledger_path, path, unlisted])?;
+        if !add.success() {
+            return Err(format!("temporary git add failed with {add}"));
+        }
+
+        for (count, expected) in [
+            (2, None),
+            (3, Some("3 time(s), allowed 2")),
+            (1, Some("is stale: max_count=2 but actual=1")),
+            (0, Some("is orphaned: max_count=2")),
+        ] {
+            write(&root.join(path), &format!("{token}\n").repeat(count));
+            let result = check_network_policy();
+            if let Some(expected) = expected {
+                let failure = result
+                    .err()
+                    .ok_or_else(|| format!("event fixture count {count} must fail"))?;
+                assert!(
+                    failure.contains(path) && failure.contains(expected),
+                    "unexpected count-{count} refusal: {failure}"
+                );
+            } else {
+                result?;
+            }
+        }
+
+        write(&root.join(path), &format!("{token}\n").repeat(2));
+        write(&root.join(unlisted), &format!("{token}\n"));
+        let failure = check_network_policy()
+            .err()
+            .ok_or_else(|| "an unlisted event fixture must fail".to_string())?;
+        assert!(
+            failure.contains(unlisted) && failure.contains("1 time(s), allowed 0"),
+            "unexpected unlisted-path refusal: {failure}"
+        );
+
+        write(&root.join(unlisted), "");
+        write(&root.join(ledger_path), &format!("{row}\n{row}\n"));
+        let failure = check_network_policy()
+            .err()
+            .ok_or_else(|| "a duplicate event fixture count row must fail".to_string())?;
+        assert!(
+            failure.contains("duplicate"),
+            "unexpected duplicate-row refusal: {failure}"
+        );
+        Ok(())
+    })
+}
+
+#[test]
 fn network_policy_push_pattern_covers_rust_argument_forms() -> Result<(), String> {
     let patterns = network_policy_patterns();
     let push = patterns
