@@ -8192,8 +8192,11 @@ fn release_server_receipt_set_accepts_different_runner_hosts() -> Result<(), Str
                 assert_ne!(mutated, rustc);
                 receipt["toolchain"]["rustc"] = Value::String(mutated);
                 write(&receipt_path, &format!("{receipt}\n"));
-                let error = super::validate_release_server_receipts(&root.join("dist"), "1.2.3")
-                    .expect_err("missing or changed toolchain identity must reject");
+                let Err(error) =
+                    super::validate_release_server_receipts(&root.join("dist"), "1.2.3")
+                else {
+                    return Err("missing or changed toolchain identity must reject".into());
+                };
                 assert!(
                     error.contains(if missing {
                         "missing release or commit-hash"
