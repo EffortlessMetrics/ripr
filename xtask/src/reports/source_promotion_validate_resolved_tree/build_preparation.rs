@@ -66,12 +66,11 @@ fn prepare_materialized_file_policy(
             &root.join("policy/non-rust-allowlist.toml"),
             crate::FilePolicyHost::current()?,
         )?;
-        let mut known_roots = vec![
-            canonical_root.join("target"),
-            evidence_root
-                .canonicalize()
-                .map_err(|error| error.to_string())?,
-        ];
+        let canonical_evidence = evidence_root
+            .canonicalize()
+            .map_err(|error| error.to_string())?;
+        let mut build_roots = vec![canonical_root.join("target")];
+        let mut known_roots = vec![build_roots[0].clone(), canonical_evidence.clone()];
         for name in ["CARGO_TARGET_DIR", "CARGO_BUILD_BUILD_DIR"] {
             if let Some(value) = std::env::var_os(name) {
                 if value.is_empty() {
@@ -79,13 +78,19 @@ fn prepare_materialized_file_policy(
                 }
                 let path = PathBuf::from(value);
                 reject_parent_components(&path, "known preparation storage")?;
-                known_roots.push(if path.is_absolute() {
+                let path = if path.is_absolute() {
                     path
                 } else {
                     canonical_root.join(path)
-                });
+                };
+                build_roots.push(path.clone());
+                known_roots.push(path);
             }
         }
+        crate::run::TrustedStorageMonitor::establish_roots(
+            &build_roots,
+            &[canonical_root.clone(), canonical_evidence],
+        )?;
         storage = Some(crate::run::TrustedStorageMonitor::new(
             known_roots,
             PREPARATION_STORAGE_GROWTH,

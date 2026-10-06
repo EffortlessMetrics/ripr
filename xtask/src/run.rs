@@ -1165,6 +1165,7 @@ fn capture_bounded_supervised(
         })
     } else {
         wait_for_child_with_deadline(&mut child, started, Some(timeout), error_context)
+            .map(|outcome| (outcome, None))
     };
     let stdout = drain_bounded_stream_reader(
         stdout_rx,
@@ -1172,31 +1173,52 @@ fn capture_bounded_supervised(
         POST_KILL_DRAIN_GRACE,
         "stdout",
         error_context,
-    )?;
+    );
     let stderr = drain_bounded_stream_reader(
         stderr_rx,
         stderr_handle,
         POST_KILL_DRAIN_GRACE,
         "stderr",
         error_context,
-    )?;
+    );
+    finish_preparation_capture(wait_outcome, stdout, stderr)
+}
 
-    let (status, duration, timed_out, failure_reason) = match wait_outcome {
-        Ok(outcome) => (
-            Some(outcome.status),
-            outcome.duration,
-            outcome.timed_out,
-            None,
-        ),
-        Err(reason) => (None, started.elapsed(), false, Some(reason)),
+fn finish_preparation_capture(
+    wait_outcome: Result<(WaitOutcome, Option<String>), String>,
+    stdout: Result<BoundedBytes, String>,
+    stderr: Result<BoundedBytes, String>,
+) -> Result<TrustedPreparationCapture, String> {
+    // Try both bounded drains before deciding whether capture is complete.
+    // Unknown drains keep capture unavailable and cannot erase the original
+    // observation/cleanup failure or manufacture a retained output prefix.
+    let drain_failures: Vec<_> = [stdout.as_ref().err(), stderr.as_ref().err()]
+        .into_iter()
+        .flatten()
+        .cloned()
+        .collect();
+    let (outcome, failure_reason) = match wait_outcome {
+        Ok(outcome) => outcome,
+        Err(reason) => {
+            let mut reasons = vec![reason];
+            reasons.extend(drain_failures);
+            return Err(reasons.join("; "));
+        }
     };
+    if !drain_failures.is_empty() {
+        let mut reasons = failure_reason.into_iter().collect::<Vec<_>>();
+        reasons.extend(drain_failures);
+        return Err(reasons.join("; "));
+    }
+    let stdout = stdout?;
+    let stderr = stderr?;
     Ok(TrustedPreparationCapture {
         output: TimedBoundedOutput {
-            status,
+            status: Some(outcome.status),
             stdout: String::from_utf8_lossy(&stdout.bytes).into_owned(),
             stderr: String::from_utf8_lossy(&stderr.bytes).into_owned(),
-            duration,
-            timed_out,
+            duration: outcome.duration,
+            timed_out: outcome.timed_out,
             stdout_truncated: stdout.truncated,
             stderr_truncated: stderr.truncated,
         },
@@ -1332,6 +1354,153 @@ fn materialized_build_preparation_overflow_sets_abort_and_retains_only_bounded_p
     Ok(())
 }
 
+#[cfg(test)]
+#[test]
+fn materialized_build_preparation_capture_preserves_original_cleanup_and_both_drain_errors() {
+    let result = finish_preparation_capture(
+        Err("original storage observation; owned cleanup unconfirmed".into()),
+        Err("stdout drain unconfirmed".into()),
+        Err("stderr drain unconfirmed".into()),
+    );
+    assert_eq!(result.err(), Some(
+        "original storage observation; owned cleanup unconfirmed; stdout drain unconfirmed; stderr drain unconfirmed".into()
+    ));
+}
+
+#[cfg(all(test, any(unix, windows)))]
+#[test]
+fn materialized_build_preparation_capture_retains_failed_observation_without_success_credit()
+-> Result<(), String> {
+    #[cfg(unix)]
+    use std::os::unix::process::ExitStatusExt;
+    #[cfg(windows)]
+    use std::os::windows::process::ExitStatusExt;
+    let captured = finish_preparation_capture(
+        Ok((
+            WaitOutcome {
+                status: ExitStatus::from_raw(0),
+                duration: Duration::from_millis(7),
+                timed_out: false,
+                peak_rss_bytes: None,
+            },
+            Some("original observed storage stop".into()),
+        )),
+        Ok(BoundedBytes {
+            bytes: b"actual stdout".to_vec(),
+            truncated: false,
+        }),
+        Ok(BoundedBytes {
+            bytes: b"actual stderr".to_vec(),
+            truncated: false,
+        }),
+    )?;
+    assert!(
+        captured
+            .output
+            .status
+            .is_some_and(|status| status.success())
+    );
+    assert_eq!(captured.output.stdout, "actual stdout");
+    assert_eq!(captured.output.stderr, "actual stderr");
+    assert!(!captured.output.timed_out);
+    assert_eq!(
+        captured.checked().err(),
+        Some("original observed storage stop".into())
+    );
+    Ok(())
+}
+
+#[cfg(all(test, target_os = "linux"))]
+#[test]
+fn materialized_build_preparation_linux_monitor_retains_actual_settled_group_failure()
+-> Result<(), String> {
+    let root = std::env::temp_dir().join(format!(
+        "ripr-preparation-group-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_nanos()
+    ));
+    fs::create_dir(&root).map_err(|error| error.to_string())?;
+    let result = (|| {
+        let marker = root.join("owned-members");
+        let marker_text = marker.to_string_lossy().into_owned();
+        let args = vec!["-c".into(),
+            "sleep 30 & member=$!; printf '%s\\n' 'actual-preparation-group-stdout'; printf '%s\\n' 'actual-preparation-group-stderr' >&2; printf '%s %s' \"$$\" \"$member\" > \"$RIPR_PREPARATION_MEMBER_MARKER\"; wait".into()];
+        let mut leader = None;
+        let captured = capture_owned_group_supervised(
+            (Path::new("/bin/sh"), &args, &root),
+            &[("RIPR_PREPARATION_MEMBER_MARKER", &marker_text)],
+            (Duration::from_secs(5), 8192),
+            "actual qualified Linux preparation observation control",
+            |pid| {
+                leader = Some(pid);
+                Ok(())
+            },
+            false,
+            || {
+                if fs::read_to_string(&marker).ok().is_some_and(|text| {
+                    text.split_whitespace()
+                        .map(str::parse::<u32>)
+                        .collect::<Result<Vec<_>, _>>()
+                        .is_ok_and(|pids| pids.len() == 2 && pids.iter().all(|pid| *pid > 0))
+                }) {
+                    Err("synthetic observed preparation storage stop".into())
+                } else {
+                    Ok(())
+                }
+            },
+        )?;
+        assert!(captured.output.status.is_some());
+        assert!(
+            captured
+                .output
+                .stdout
+                .contains("actual-preparation-group-stdout")
+        );
+        assert!(
+            captured
+                .output
+                .stderr
+                .contains("actual-preparation-group-stderr")
+        );
+        assert!(!captured.output.timed_out);
+        assert!(
+            captured
+                .failure_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("synthetic observed"))
+        );
+        let members = fs::read_to_string(&marker).map_err(|error| error.to_string())?;
+        let pids = members
+            .split_whitespace()
+            .map(str::parse::<u32>)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?;
+        assert_eq!(pids.len(), 2);
+        assert_eq!(Some(pids[0]), leader);
+        for pid in pids {
+            match fs::read_to_string(format!("/proc/{pid}/stat")) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(format!("owned group member unobservable: {error}")),
+                Ok(stat) => {
+                    let (_, fields) = stat
+                        .rsplit_once(')')
+                        .ok_or("owned member state unavailable")?;
+                    if !matches!(fields.split_whitespace().next(), Some("Z" | "X" | "x")) {
+                        return Err("owned preparation group member remains live".into());
+                    }
+                }
+            }
+        }
+        assert!(captured.checked().is_err());
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&root).map_err(|error| error.to_string());
+    result.and(cleanup)
+}
+
 #[cfg(all(test, windows))]
 #[test]
 fn materialized_build_preparation_windows_monitor_stops_the_actual_owned_job() -> Result<(), String>
@@ -1348,7 +1517,7 @@ fn materialized_build_preparation_windows_monitor_stops_the_actual_owned_job() -
     let result = (|| {
         let marker = root.join("owned-members");
         let marker_text = marker.to_string_lossy().into_owned();
-        let script = "$child = Start-Process -WindowStyle Hidden -FilePath ($PSHOME + '\\powershell.exe') -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -PassThru; Write-Output 'actual-bounded-preparation-prefix'; [IO.File]::WriteAllText($env:RIPR_PREPARATION_MEMBER_MARKER, [string]$PID + ' ' + [string]$child.Id); Start-Sleep -Seconds 30";
+        let script = "$child = Start-Process -WindowStyle Hidden -FilePath ($PSHOME + '\\powershell.exe') -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -PassThru; Write-Output 'actual-bounded-preparation-prefix'; [Console]::Error.WriteLine('actual-bounded-preparation-stderr'); [IO.File]::WriteAllText($env:RIPR_PREPARATION_MEMBER_MARKER, [string]$PID + ' ' + [string]$child.Id); Start-Sleep -Seconds 30";
         let args = vec![
             "-NoProfile".into(),
             "-NonInteractive".into(),
@@ -1391,6 +1560,13 @@ fn materialized_build_preparation_windows_monitor_stops_the_actual_owned_job() -
                 .contains("actual-bounded-preparation-prefix")
         );
         assert!(!captured.output.timed_out);
+        assert!(captured.output.status.is_some());
+        assert!(
+            captured
+                .output
+                .stderr
+                .contains("actual-bounded-preparation-stderr")
+        );
         let members = fs::read_to_string(&marker).map_err(|error| error.to_string())?;
         let pids = members
             .split_whitespace()
@@ -1422,7 +1598,7 @@ fn materialized_build_preparation_windows_monitor_stops_the_actual_owned_job() -
         {
             return Err("owned preparation Job member remains live or unobservable".into());
         }
-
+        assert!(captured.checked().is_err());
         Ok(())
     })();
     let cleanup = fs::remove_dir_all(&root).map_err(|error| error.to_string());
@@ -1434,30 +1610,71 @@ fn wait_for_trusted_child(
     started: Instant,
     timeout: Duration,
     mut monitor: impl FnMut() -> Result<(), String>,
-) -> Result<WaitOutcome, String> {
+) -> Result<(WaitOutcome, Option<String>), String> {
     loop {
         if let Err(reason) = monitor() {
             return match child.terminate_tree() {
-                Ok(()) => Err(reason),
+                Ok(()) => retain_settled_observation_failure(child, started, reason, "owned"),
                 Err(cleanup) => Err(format!("{reason}; owned cleanup unconfirmed: {cleanup}")),
             };
         }
-        let status = child.try_wait().map_err(|error| error.to_string())?;
+        let status = match child.try_wait() {
+            Ok(status) => status,
+            Err(error) => {
+                let reason =
+                    format!("trusted preparation primary observation unavailable: {error}");
+                return match child.terminate_tree() {
+                    Ok(()) => Err(reason),
+                    Err(cleanup) => Err(format!("{reason}; owned cleanup unconfirmed: {cleanup}")),
+                };
+            }
+        };
         let expired = started.elapsed() >= timeout;
         if status.is_some() || expired {
             child.terminate_tree()?;
             let status = status
                 .or(child.try_wait().map_err(|error| error.to_string())?)
                 .ok_or("trusted preparation primary reap unavailable")?;
-            return Ok(WaitOutcome {
-                status,
-                duration: started.elapsed(),
-                timed_out: expired,
-                peak_rss_bytes: None,
-            });
+            return Ok((
+                WaitOutcome {
+                    status,
+                    duration: started.elapsed(),
+                    timed_out: expired,
+                    peak_rss_bytes: None,
+                },
+                None,
+            ));
         }
         thread::sleep(Duration::from_millis(20));
     }
+}
+
+/// Called only after the existing owner has explicitly settled its Job/group.
+/// A reaped status retains that disposition, while the original observation
+/// failure still refuses preparation. Later Drop cannot establish this result.
+fn retain_settled_observation_failure(
+    child: &mut OwnedProcess,
+    started: Instant,
+    reason: String,
+    owner: &str,
+) -> Result<(WaitOutcome, Option<String>), String> {
+    child
+        .try_wait()
+        .map_err(|error| format!("{reason}; {owner} primary reap unavailable: {error}"))
+        .and_then(|status| {
+            status.ok_or_else(|| format!("{reason}; {owner} primary reap unavailable"))
+        })
+        .map(|status| {
+            (
+                WaitOutcome {
+                    status,
+                    duration: started.elapsed(),
+                    timed_out: false,
+                    peak_rss_bytes: None,
+                },
+                Some(reason),
+            )
+        })
 }
 
 /// The selected source-owned file-policy checker owns this cooperative Linux
@@ -1575,32 +1792,20 @@ fn capture_owned_group_supervised(
                 monitor()
             })
         };
-        if outcome.is_err() {
-            guard.abort()?;
-        }
-        let stdout = drain_owned_stream_reader(stdout_rx, stdout_handle, "stdout", error_context)?;
-        let stderr = drain_owned_stream_reader(stderr_rx, stderr_handle, "stderr", error_context)?;
-        let (status, duration, timed_out, failure_reason) = match outcome {
-            Ok(outcome) => (
-                Some(outcome.status),
-                outcome.duration,
-                outcome.timed_out,
-                None,
-            ),
-            Err(reason) => (None, started.elapsed(), false, Some(reason)),
-        };
-        Ok(TrustedPreparationCapture {
-            output: TimedBoundedOutput {
-                status,
-                stdout: String::from_utf8_lossy(&stdout.bytes).into_owned(),
-                stderr: String::from_utf8_lossy(&stderr.bytes).into_owned(),
-                duration,
-                timed_out,
-                stdout_truncated: stdout.truncated,
-                stderr_truncated: stderr.truncated,
+        let retained_outcome = match outcome {
+            Ok(outcome) => Ok((outcome, None)),
+            Err(reason) => match guard.abort() {
+                Ok(()) => {
+                    retain_settled_observation_failure(guard.child(), started, reason, "qualified")
+                }
+                Err(cleanup) => Err(format!(
+                    "{reason}; qualified group cleanup unconfirmed: {cleanup}"
+                )),
             },
-            failure_reason,
-        })
+        };
+        let stdout = drain_owned_stream_reader(stdout_rx, stdout_handle, "stdout", error_context);
+        let stderr = drain_owned_stream_reader(stderr_rx, stderr_handle, "stderr", error_context);
+        finish_preparation_capture(retained_outcome, stdout, stderr)
     })();
     match result {
         Ok(output) => Ok(output),
