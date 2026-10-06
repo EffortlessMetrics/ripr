@@ -37,9 +37,7 @@ jobs:
 
       - name: Hold full suites during owned cleanup proof review
         shell: bash
-        run: |
-          printf '%s\n' 'Source-sync cleanup proof stage holds full fixtures and suites pending reviewed cleanup evidence.'
-          exit 1
+        run: exit 1
       - name: Run Rust tests with JUnit output
         run: cargo nextest run --workspace --all-features --profile ci
 
