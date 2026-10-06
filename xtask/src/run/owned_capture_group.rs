@@ -1,4 +1,5 @@
-//! Cooperative Linux ownership for the source-owned file-policy checker only.
+//! Cooperative Linux ownership for the source-owned file-policy checker and
+//! trusted repository build preparation.
 //! Diagnostic process records never authorize termination. The actual unreaped
 //! OwnedProcess leader leases the numeric group until settlement and reaping.
 use super::*;
@@ -363,7 +364,17 @@ impl OwnedCaptureGuard {
         started: Instant,
         timeout: Duration,
     ) -> Result<WaitOutcome, String> {
+        self.wait_supervised(started, timeout, || Ok(()))
+    }
+
+    pub(super) fn wait_supervised(
+        &mut self,
+        started: Instant,
+        timeout: Duration,
+        mut monitor: impl FnMut() -> Result<(), String>,
+    ) -> Result<WaitOutcome, String> {
         loop {
+            monitor()?;
             let leader = self.qualified()?;
             if !leader.live() || started.elapsed() >= timeout {
                 let expired = leader.live() && started.elapsed() >= timeout;
@@ -913,6 +924,59 @@ wait
             || output.timed_out
         {
             return Err("shorter inner deadline did not refuse before spawn".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn materialized_build_preparation_supervision_settles_actual_cooperative_descendants()
+    -> Result<(), String> {
+        for mode in ["storage-stop", "overflow", "timeout"] {
+            let fixture = Fixture::new()?;
+            let marker = fixture.marker().to_string_lossy().into_owned();
+            let args = vec![
+                "-c".to_string(),
+                "sleep 30 & first=$!; sleep 30 & second=$!; printf '%s %s' \"$first\" \"$second\" > \"$RIPR_PREPARATION_MEMBER_MARKER\"; printf bounded-preparation-output; wait".to_string(),
+            ];
+            let mut leader = None;
+            let capture = capture_owned_group_supervised(
+                (Path::new("sh"), &args, &fixture.path),
+                &[("RIPR_PREPARATION_MEMBER_MARKER", &marker)],
+                (
+                    if mode == "timeout" {
+                        Duration::from_millis(100)
+                    } else {
+                        Duration::from_secs(3)
+                    },
+                    if mode == "overflow" { 8 } else { 8192 },
+                ),
+                "actual cooperative preparation supervision control",
+                |pid| {
+                    leader = Some(pid);
+                    wait_for_marker(&fixture.marker())
+                },
+                false,
+                || {
+                    if mode == "storage-stop" {
+                        Err("synthetic observed storage bound".into())
+                    } else {
+                        Ok(())
+                    }
+                },
+            )?;
+            if mode == "timeout" {
+                assert!(capture.output.timed_out);
+            } else {
+                assert!(capture.failure_reason.is_some());
+            }
+            if mode == "overflow" {
+                assert!(capture.output.stdout_truncated);
+                assert!(capture.output.stdout.len() <= 8);
+            }
+            require_not_live(leader.ok_or("preparation control leader unavailable")?)?;
+            let (child, grandchild) = members(&fixture.marker())?;
+            require_not_live(child)?;
+            require_not_live(grandchild)?;
         }
         Ok(())
     }

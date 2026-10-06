@@ -243,7 +243,12 @@ fn write_new_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
         .write(true)
         .create_new(true)
         .open(path)
-        .map_err(|error| format!("failed to create new packet file {}: {error}", path.display()))?;
+        .map_err(|error| {
+            format!(
+                "failed to create new packet file {}: {error}",
+                path.display()
+            )
+        })?;
     file.write_all(bytes)
         .map_err(|error| format!("failed to write packet file {}: {error}", path.display()))?;
     file.flush()
@@ -262,16 +267,21 @@ fn packet_entries(root: &Path) -> Result<Vec<Value>, String> {
         .filter(|relative| relative != Path::new(PACKET_INDEX))
         .map(|relative| {
             let path = root.join(&relative);
-            let metadata = fs::symlink_metadata(&path)
-                .map_err(|error| format!("failed to inspect packet evidence {}: {error}", path.display()))?;
+            let metadata = fs::symlink_metadata(&path).map_err(|error| {
+                format!(
+                    "failed to inspect packet evidence {}: {error}",
+                    path.display()
+                )
+            })?;
             if metadata.file_type().is_symlink() || !metadata.is_file() {
                 return Err(format!(
                     "packet evidence is not a non-symlink regular file: {}",
                     path.display()
                 ));
             }
-            let bytes = fs::read(&path)
-                .map_err(|error| format!("failed to read packet evidence {}: {error}", path.display()))?;
+            let bytes = fs::read(&path).map_err(|error| {
+                format!("failed to read packet evidence {}: {error}", path.display())
+            })?;
             Ok(serde_json::json!({
                 "path": normalize_path(&relative),
                 "bytes": bytes.len(),
@@ -281,16 +291,26 @@ fn packet_entries(root: &Path) -> Result<Vec<Value>, String> {
         .collect()
 }
 
-fn collect_packet_paths(root: &Path, current: &Path, paths: &mut Vec<PathBuf>) -> Result<(), String> {
+fn collect_packet_paths(
+    root: &Path,
+    current: &Path,
+    paths: &mut Vec<PathBuf>,
+) -> Result<(), String> {
     let mut entries = fs::read_dir(current)
-        .map_err(|error| format!("failed to enumerate packet directory {}: {error}", current.display()))?
+        .map_err(|error| {
+            format!(
+                "failed to enumerate packet directory {}: {error}",
+                current.display()
+            )
+        })?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| format!("failed to enumerate packet directory entry: {error}"))?;
     entries.sort_by_key(|entry| entry.file_name());
     for entry in entries {
         let path = entry.path();
-        let metadata = fs::symlink_metadata(&path)
-            .map_err(|error| format!("failed to inspect packet entry {}: {error}", path.display()))?;
+        let metadata = fs::symlink_metadata(&path).map_err(|error| {
+            format!("failed to inspect packet entry {}: {error}", path.display())
+        })?;
         if metadata.file_type().is_symlink() {
             return Err(format!("packet entry is a symlink: {}", path.display()));
         }
@@ -302,7 +322,10 @@ fn collect_packet_paths(root: &Path, current: &Path, paths: &mut Vec<PathBuf>) -
                 .map_err(|error| format!("packet entry escaped staging root: {error}"))?;
             paths.push(relative.to_path_buf());
         } else {
-            return Err(format!("packet entry has unsupported type: {}", path.display()));
+            return Err(format!(
+                "packet entry has unsupported type: {}",
+                path.display()
+            ));
         }
     }
     Ok(())
@@ -350,6 +373,15 @@ fn snapshot_worktrees(repo: &Path) -> Result<String, String> {
 }
 
 fn git(repo: &Path, args: &[&str], envs: &[(&str, &str)]) -> Result<String, String> {
+    git_with_timeout(repo, args, envs, GIT_TIMEOUT)
+}
+
+fn git_with_timeout(
+    repo: &Path,
+    args: &[&str],
+    envs: &[(&str, &str)],
+    timeout: Duration,
+) -> Result<String, String> {
     let mut owned_args = vec!["--no-replace-objects".to_string()];
     owned_args.extend(args.iter().map(|value| (*value).to_string()));
     let output = capture_output_in_dir_with_timeout_bounded(
@@ -357,15 +389,19 @@ fn git(repo: &Path, args: &[&str], envs: &[(&str, &str)]) -> Result<String, Stri
         &owned_args,
         envs,
         repo,
-        GIT_TIMEOUT,
+        timeout,
         MAX_STREAM_BYTES,
         &format!("git {}", args.join(" ")),
     )?;
     if output.timed_out {
         return Err(format!(
-            "git {} exceeded the 60 second bound",
-            args.join(" ")
+            "git {} exceeded its {} second bound",
+            args.join(" "),
+            timeout.as_secs()
         ));
+    }
+    if output.stdout_truncated || output.stderr_truncated {
+        return Err("git bounded capture was incomplete".into());
     }
     if !output
         .status

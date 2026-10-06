@@ -7,6 +7,7 @@
 
 include!("source_promotion_validate_resolved_tree/core.rs");
 include!("source_promotion_validate_resolved_tree/validation.rs");
+include!("source_promotion_validate_resolved_tree/build_preparation.rs");
 include!("source_promotion_validate_resolved_tree/materialization.rs");
 include!("source_promotion_validate_resolved_tree/receipt.rs");
 include!("source_promotion_validate_resolved_tree/io.rs");

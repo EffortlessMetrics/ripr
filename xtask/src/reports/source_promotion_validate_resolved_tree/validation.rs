@@ -288,6 +288,18 @@ fn validate_materialized_tree_observed(
             continue;
         }
 
+        if *command == "check-file-policy"
+            && let Err(reason) =
+                prepare_materialized_file_policy(options, state, checker, root, evidence_root)
+        {
+            state.commands[index] = command_receipt(command, "not_run", None, None, Some(&reason));
+            state
+                .failure_reasons
+                .push(format!("{command} preparation: {reason}"));
+            prior_failure = Some((*command).to_string());
+            continue;
+        }
+
         let receipt = if phase_diagnostics && *command == "check-file-policy" {
             run_required_command_observed(
                 checker,

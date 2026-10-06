@@ -1,4 +1,6 @@
 mod hard_enforcement_readiness;
+mod trusted_storage;
+pub(crate) use trusted_storage::TrustedStorageMonitor;
 
 #[cfg(target_os = "linux")]
 mod owned_capture_group;
@@ -1099,8 +1101,23 @@ pub(crate) fn capture_output_in_dir_with_timeout_bounded_observed(
     envs: &[(&str, &str)],
     budget: (Duration, usize),
     error_context: &str,
-    mut spawned: impl FnMut(u32),
+    spawned: impl FnMut(u32),
 ) -> Result<TimedBoundedOutput, String> {
+    capture_bounded_supervised(source, envs, budget, error_context, spawned, false, || {
+        Ok(())
+    })
+    .and_then(TrustedPreparationCapture::checked)
+}
+
+fn capture_bounded_supervised(
+    source: (&Path, &[String], &Path),
+    envs: &[(&str, &str)],
+    budget: (Duration, usize),
+    error_context: &str,
+    mut spawned: impl FnMut(u32),
+    supervised: bool,
+    mut monitor: impl FnMut() -> Result<(), String>,
+) -> Result<TrustedPreparationCapture, String> {
     let (program, args, cwd) = source;
     let (timeout, max_stream_bytes) = budget;
     let started = Instant::now();
@@ -1114,8 +1131,12 @@ pub(crate) fn capture_output_in_dir_with_timeout_bounded_observed(
     for (name, value) in envs {
         command.env(name, value);
     }
-    let mut child = OwnedProcess::spawn(command)
-        .map_err(|err| format!("failed to run {error_context}: {err}"))?;
+    let mut child = if supervised {
+        OwnedProcess::spawn_with_bounded_drop(command)
+    } else {
+        OwnedProcess::spawn(command)
+    }
+    .map_err(|err| format!("failed to run {error_context}: {err}"))?;
     spawned(child.id());
     let stdout = child
         .stdout_pipe()
@@ -1125,11 +1146,26 @@ pub(crate) fn capture_output_in_dir_with_timeout_bounded_observed(
         .stderr_pipe()
         .take()
         .ok_or_else(|| format!("failed to capture stderr for {error_context}"))?;
-    let (stdout_handle, stdout_rx) = spawn_bounded_stream_reader_channel(stdout, max_stream_bytes);
-    let (stderr_handle, stderr_rx) = spawn_bounded_stream_reader_channel(stderr, max_stream_bytes);
+    let overflow = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (stdout_handle, stdout_rx) = if supervised {
+        spawn_supervised_stream_reader(stdout, max_stream_bytes, overflow.clone())
+    } else {
+        spawn_bounded_stream_reader_channel(stdout, max_stream_bytes)
+    };
+    let (stderr_handle, stderr_rx) = if supervised {
+        spawn_supervised_stream_reader(stderr, max_stream_bytes, overflow.clone())
+    } else {
+        spawn_bounded_stream_reader_channel(stderr, max_stream_bytes)
+    };
 
-    let wait_outcome =
-        wait_for_child_with_deadline(&mut child, started, Some(timeout), error_context)?;
+    let wait_outcome = if supervised {
+        wait_for_trusted_child(&mut child, started, timeout, || {
+            refuse_preparation_overflow(&overflow)?;
+            monitor()
+        })
+    } else {
+        wait_for_child_with_deadline(&mut child, started, Some(timeout), error_context)
+    };
     let stdout = drain_bounded_stream_reader(
         stdout_rx,
         stdout_handle,
@@ -1145,15 +1181,271 @@ pub(crate) fn capture_output_in_dir_with_timeout_bounded_observed(
         error_context,
     )?;
 
-    Ok(TimedBoundedOutput {
-        status: Some(wait_outcome.status),
-        stdout: String::from_utf8_lossy(&stdout.bytes).into_owned(),
-        stderr: String::from_utf8_lossy(&stderr.bytes).into_owned(),
-        duration: wait_outcome.duration,
-        timed_out: wait_outcome.timed_out,
-        stdout_truncated: stdout.truncated,
-        stderr_truncated: stderr.truncated,
+    let (status, timed_out, failure_reason) = match wait_outcome {
+        Ok(outcome) => (Some(outcome.status), outcome.timed_out, None),
+        Err(reason) => (None, false, Some(reason)),
+    };
+    Ok(TrustedPreparationCapture {
+        output: TimedBoundedOutput {
+            status,
+            stdout: String::from_utf8_lossy(&stdout.bytes).into_owned(),
+            stderr: String::from_utf8_lossy(&stderr.bytes).into_owned(),
+            duration: started.elapsed(),
+            timed_out,
+            stdout_truncated: stdout.truncated,
+            stderr_truncated: stderr.truncated,
+        },
+        failure_reason,
     })
+}
+
+/// Captured diagnostics never imply successful preparation or policy acceptance.
+pub(crate) struct TrustedPreparationCapture {
+    pub(crate) output: TimedBoundedOutput,
+    pub(crate) failure_reason: Option<String>,
+}
+impl TrustedPreparationCapture {
+    fn checked(self) -> Result<TimedBoundedOutput, String> {
+        match self.failure_reason {
+            Some(reason) => Err(reason),
+            None => Ok(self.output),
+        }
+    }
+}
+
+/// Trusted repository-pinned Cargo only. This supervises known storage paths
+/// and owns cooperative Linux group settlement (Windows uses the Job owner).
+/// It does not claim arbitrary-process containment or a hard storage quota.
+pub(crate) fn capture_trusted_build_preparation(
+    args: &[String],
+    root: &Path,
+    timeout: Duration,
+    max_stream_bytes: usize,
+    storage: &mut TrustedStorageMonitor,
+) -> Result<TrustedPreparationCapture, String> {
+    #[cfg(not(any(target_os = "linux", windows)))]
+    return Err("trusted preparation requires a supported Linux group or Windows Job owner".into());
+    #[cfg(any(target_os = "linux", windows))]
+    {
+        storage.check_now()?;
+        let source = (Path::new("cargo"), args, root);
+        let envs = [("CARGO_BUILD_JOBS", "1"), ("GIT_NO_REPLACE_OBJECTS", "1")];
+        #[cfg(target_os = "linux")]
+        let capture = capture_owned_group_supervised(
+            source,
+            &envs,
+            (timeout, max_stream_bytes),
+            "trusted materialized build preparation",
+            |_pid| Ok(()),
+            false,
+            || storage.check(),
+        );
+        #[cfg(windows)]
+        let capture = capture_bounded_supervised(
+            source,
+            &envs,
+            (timeout, max_stream_bytes),
+            "trusted materialized build preparation",
+            |_pid| {},
+            true,
+            || storage.check(),
+        );
+        let mut capture = capture?;
+        let postcondition = storage.check_now().and_then(|()| {
+            if capture.output.stdout_truncated || capture.output.stderr_truncated {
+                Err(
+                    "trusted preparation output overflow or incomplete drain; build reuse refused"
+                        .into(),
+                )
+            } else {
+                Ok(())
+            }
+        });
+        if let Err(reason) = postcondition {
+            capture.failure_reason = Some(match capture.failure_reason {
+                Some(prior) => format!("{prior}; {reason}"),
+                None => reason,
+            });
+        }
+        Ok(capture)
+    }
+}
+
+fn refuse_preparation_overflow(flag: &std::sync::atomic::AtomicBool) -> Result<(), String> {
+    if flag.load(std::sync::atomic::Ordering::Relaxed) {
+        Err("trusted preparation output overflow; owned capture aborted".into())
+    } else {
+        Ok(())
+    }
+}
+
+fn spawn_supervised_stream_reader<T: Read + Send + 'static>(
+    mut stream: T,
+    max_bytes: usize,
+    overflow: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> (
+    thread::JoinHandle<()>,
+    mpsc::Receiver<Result<BoundedBytes, String>>,
+) {
+    let (tx, rx) = mpsc::channel();
+    let handle = thread::spawn(move || {
+        let result = (|| {
+            let mut bytes = Vec::with_capacity(max_bytes.min(64 * 1024));
+            let mut buf = [0; 64 * 1024];
+            let mut truncated = false;
+            loop {
+                let read = stream.read(&mut buf).map_err(|error| error.to_string())?;
+                if read == 0 {
+                    break;
+                }
+                let keep = read.min(max_bytes.saturating_sub(bytes.len()));
+                bytes.extend_from_slice(&buf[..keep]);
+                if keep < read {
+                    truncated = true;
+                    overflow.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+            Ok(BoundedBytes { bytes, truncated })
+        })();
+        let _ = tx.send(result);
+    });
+    (handle, rx)
+}
+
+#[cfg(test)]
+#[test]
+fn materialized_build_preparation_overflow_sets_abort_and_retains_only_bounded_prefix()
+-> Result<(), String> {
+    let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (handle, rx) =
+        spawn_supervised_stream_reader(std::io::Cursor::new(vec![42u8; 17]), 16, flag.clone());
+    let output =
+        drain_owned_stream_reader(rx, handle, "stdout", "bounded preparation reader control")?;
+    assert_eq!(output.bytes, vec![42u8; 16]);
+    assert!(output.truncated);
+    assert!(refuse_preparation_overflow(&flag).is_err());
+    Ok(())
+}
+
+#[cfg(all(test, windows))]
+#[test]
+fn materialized_build_preparation_windows_monitor_stops_the_actual_owned_job() -> Result<(), String>
+{
+    let root = std::env::temp_dir().join(format!(
+        "ripr-preparation-job-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_nanos()
+    ));
+    fs::create_dir(&root).map_err(|error| error.to_string())?;
+    let result = (|| {
+        let marker = root.join("owned-members");
+        let marker_text = marker.to_string_lossy().into_owned();
+        let script = "$child = Start-Process -WindowStyle Hidden -FilePath ($PSHOME + '\\powershell.exe') -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -PassThru; Write-Output 'actual-bounded-preparation-prefix'; [IO.File]::WriteAllText($env:RIPR_PREPARATION_MEMBER_MARKER, [string]$PID + ' ' + [string]$child.Id); Start-Sleep -Seconds 30";
+        let args = vec![
+            "-NoProfile".into(),
+            "-NonInteractive".into(),
+            "-Command".into(),
+            script.into(),
+        ];
+        let mut leader = None;
+        let captured = capture_bounded_supervised(
+            (Path::new("powershell.exe"), &args, &root),
+            &[("RIPR_PREPARATION_MEMBER_MARKER", &marker_text)],
+            (Duration::from_secs(5), 8192),
+            "actual owned Windows preparation monitor control",
+            |pid| leader = Some(pid),
+            true,
+            || {
+                if marker.exists() {
+                    Err("synthetic observed preparation storage stop".into())
+                } else {
+                    Ok(())
+                }
+            },
+        )?;
+        assert!(
+            captured
+                .failure_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("synthetic observed"))
+        );
+        assert!(
+            captured
+                .output
+                .stdout
+                .contains("actual-bounded-preparation-prefix")
+        );
+        assert!(!captured.output.timed_out);
+        let members = fs::read_to_string(&marker).map_err(|error| error.to_string())?;
+        let pids = members
+            .split_whitespace()
+            .map(str::parse::<u32>)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?;
+        assert_eq!(pids.len(), 2);
+        assert_eq!(Some(pids[0]), leader);
+        let verify_args = vec![
+            "-NoProfile".into(), "-NonInteractive".into(), "-Command".into(),
+            "foreach ($ownedMemberId in $env:RIPR_PREPARATION_MEMBER_IDS.Split(' ')) { try { $observed = Get-Process -Id ([int]$ownedMemberId) -ErrorAction Stop; if (-not $observed.HasExited) { throw 'owned preparation member remains live' } } catch { if ($_.FullyQualifiedErrorId -notlike 'NoProcessFoundForGivenId*') { throw } } }; Write-Output 'owned-preparation-members-settled'".into(),
+        ];
+        let observed = capture_output_in_dir_with_timeout_bounded(
+            Path::new("powershell.exe"),
+            &verify_args,
+            &[("RIPR_PREPARATION_MEMBER_IDS", members.trim())],
+            &root,
+            Duration::from_secs(5),
+            8192,
+            "read-only actual owned Job member observation",
+        )?;
+        if observed.timed_out
+            || observed.stdout_truncated
+            || observed.stderr_truncated
+            || !observed.status.is_some_and(|status| status.success())
+            || !observed
+                .stdout
+                .contains("owned-preparation-members-settled")
+        {
+            return Err("owned preparation Job member remains live or unobservable".into());
+        }
+
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&root).map_err(|error| error.to_string());
+    result.and(cleanup)
+}
+
+fn wait_for_trusted_child(
+    child: &mut OwnedProcess,
+    started: Instant,
+    timeout: Duration,
+    mut monitor: impl FnMut() -> Result<(), String>,
+) -> Result<WaitOutcome, String> {
+    loop {
+        if let Err(reason) = monitor() {
+            return match child.terminate_tree() {
+                Ok(()) => Err(reason),
+                Err(cleanup) => Err(format!("{reason}; owned cleanup unconfirmed: {cleanup}")),
+            };
+        }
+        let status = child.try_wait().map_err(|error| error.to_string())?;
+        let expired = started.elapsed() >= timeout;
+        if status.is_some() || expired {
+            child.terminate_tree()?;
+            let status = status
+                .or(child.try_wait().map_err(|error| error.to_string())?)
+                .ok_or("trusted preparation primary reap unavailable")?;
+            return Ok(WaitOutcome {
+                status,
+                duration: started.elapsed(),
+                timed_out: expired,
+                peak_rss_bytes: None,
+            });
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
 }
 
 /// The selected source-owned file-policy checker owns this cooperative Linux
@@ -1191,11 +1483,37 @@ fn capture_owned_file_policy_group_checked(
     envs: &[(&str, &str)],
     budget: (Duration, usize),
     error_context: &str,
-    mut spawned: impl FnMut(u32) -> Result<(), String>,
+    spawned: impl FnMut(u32) -> Result<(), String>,
 ) -> Result<TimedBoundedOutput, String> {
+    capture_owned_group_supervised(
+        source,
+        envs,
+        budget,
+        error_context,
+        spawned,
+        true,
+        || Ok(()),
+    )
+    .and_then(TrustedPreparationCapture::checked)
+}
+
+#[cfg(target_os = "linux")]
+fn capture_owned_group_supervised(
+    source: (&Path, &[String], &Path),
+    envs: &[(&str, &str)],
+    budget: (Duration, usize),
+    error_context: &str,
+    mut spawned: impl FnMut(u32) -> Result<(), String>,
+    checker_handoff: bool,
+    mut monitor: impl FnMut() -> Result<(), String>,
+) -> Result<TrustedPreparationCapture, String> {
     let (program, args, cwd) = source;
     let (timeout, max_stream_bytes) = budget;
-    let handoff = owned_capture_group::ParentHandoff::new(timeout)?;
+    let handoff = if checker_handoff {
+        Some(owned_capture_group::ParentHandoff::new(timeout)?)
+    } else {
+        None
+    };
     let started = Instant::now();
     let mut command = Command::new(program);
     command
@@ -1207,7 +1525,9 @@ fn capture_owned_file_policy_group_checked(
     for (name, value) in envs {
         command.env(name, value);
     }
-    command.env(owned_capture_group::ENV, handoff.value());
+    if let Some(handoff) = &handoff {
+        command.env(owned_capture_group::ENV, handoff.value());
+    }
     let child = OwnedProcess::spawn_with_bounded_drop(command)
         .map_err(|err| format!("failed to run {error_context}: {err}"))?;
     // Establish the actual unreaped leader lease before callbacks or pipes.
@@ -1224,21 +1544,45 @@ fn capture_owned_file_policy_group_checked(
             .stderr_pipe()
             .take()
             .ok_or_else(|| format!("failed to capture stderr for {error_context}"))?;
-        let (stdout_handle, stdout_rx) =
-            spawn_bounded_stream_reader_channel(stdout, max_stream_bytes);
-        let (stderr_handle, stderr_rx) =
-            spawn_bounded_stream_reader_channel(stderr, max_stream_bytes);
-        let outcome = guard.wait(started, timeout)?;
+        let overflow = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (stdout_handle, stdout_rx) = if checker_handoff {
+            spawn_bounded_stream_reader_channel(stdout, max_stream_bytes)
+        } else {
+            spawn_supervised_stream_reader(stdout, max_stream_bytes, overflow.clone())
+        };
+        let (stderr_handle, stderr_rx) = if checker_handoff {
+            spawn_bounded_stream_reader_channel(stderr, max_stream_bytes)
+        } else {
+            spawn_supervised_stream_reader(stderr, max_stream_bytes, overflow.clone())
+        };
+        let outcome = if checker_handoff {
+            guard.wait(started, timeout)
+        } else {
+            guard.wait_supervised(started, timeout, || {
+                refuse_preparation_overflow(&overflow)?;
+                monitor()
+            })
+        };
+        if outcome.is_err() {
+            guard.abort()?;
+        }
         let stdout = drain_owned_stream_reader(stdout_rx, stdout_handle, "stdout", error_context)?;
         let stderr = drain_owned_stream_reader(stderr_rx, stderr_handle, "stderr", error_context)?;
-        Ok(TimedBoundedOutput {
-            status: Some(outcome.status),
-            stdout: String::from_utf8_lossy(&stdout.bytes).into_owned(),
-            stderr: String::from_utf8_lossy(&stderr.bytes).into_owned(),
-            duration: outcome.duration,
-            timed_out: outcome.timed_out,
-            stdout_truncated: stdout.truncated,
-            stderr_truncated: stderr.truncated,
+        let (status, timed_out, failure_reason) = match outcome {
+            Ok(outcome) => (Some(outcome.status), outcome.timed_out, None),
+            Err(reason) => (None, false, Some(reason)),
+        };
+        Ok(TrustedPreparationCapture {
+            output: TimedBoundedOutput {
+                status,
+                stdout: String::from_utf8_lossy(&stdout.bytes).into_owned(),
+                stderr: String::from_utf8_lossy(&stderr.bytes).into_owned(),
+                duration: started.elapsed(),
+                timed_out,
+                stdout_truncated: stdout.truncated,
+                stderr_truncated: stderr.truncated,
+            },
+            failure_reason,
         })
     })();
     match result {

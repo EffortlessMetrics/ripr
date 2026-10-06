@@ -198,7 +198,7 @@ fn run_required_command_observed(
         None
     };
     let context = format!("source-trusted governance command {command}");
-    let envs = [
+    let mut envs = vec![
         ("GIT_NO_REPLACE_OBJECTS", "1"),
         ("RIPR_SOURCE_PROMOTION_TRUSTED_CHECKER_SHA", source_parent),
         ("RIPR_SOURCE_PROMOTION_VALIDATION", "1"),
@@ -207,6 +207,9 @@ fn run_required_command_observed(
             if phase_diagnostics { "1" } else { "0" },
         ),
     ];
+    if command == "check-file-policy" {
+        envs.push(("CARGO_BUILD_JOBS", "1"));
+    }
     let output = if command == "check-file-policy" {
         crate::run::capture_owned_file_policy_group(
             (checker, &args, root),

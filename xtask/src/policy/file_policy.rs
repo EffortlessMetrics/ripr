@@ -277,6 +277,33 @@ fn record_successful_warmup(
     }
 }
 
+/// Plan compilation only; the governed checker still runs every real warmup
+/// and listing. Use the same scope owner as ordinary covered-by enumeration.
+pub(crate) fn materialized_build_preparation_plan(
+    policy: &Path,
+    host: FilePolicyHost,
+) -> Result<Vec<Vec<String>>, String> {
+    let policy = policy
+        .to_str()
+        .ok_or("materialized file policy path is not UTF-8")?;
+    let mut scopes = BTreeSet::new();
+    let mut builds = Vec::new();
+    for command in read_file_policy_test_commands(policy)?
+        .iter()
+        .filter(|command| command.host.is_none_or(|declared| declared == host))
+    {
+        let spawns = enumeration_spawns(&enumeration_args(&command.command));
+        if spawns.len() != 2 {
+            return Err("materialized preparation requires a separate build/list recipe".into());
+        }
+        let build = &spawns[0].args;
+        if scopes.insert(successful_warmup_key(build)) {
+            builds.push(build.clone());
+        }
+    }
+    Ok(builds)
+}
+
 fn enumeration_args(command: &str) -> Vec<String> {
     let words = command.split_whitespace().skip(2);
     let mut args = vec!["test".to_string()];
@@ -469,6 +496,84 @@ mod tests {
     use super::validate_test_covered_by_with;
     use crate::run::TimedOutput;
     use crate::{FilePolicyHost, FilePolicyTestCommand, is_cargo_test_command};
+
+    #[test]
+    fn materialized_build_preparation_uses_exact_actual_host_recipes() -> Result<(), String> {
+        let policy = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or("xtask repository parent unavailable")?
+            .join("policy/non-rust-allowlist.toml");
+        // Independent frozen first recipes, not derived from the planner/key.
+        let expected = vec![
+            vec![
+                "test",
+                "-p",
+                "xtask",
+                "repository_language_policy_admits_real_mixed_language_producer",
+                "--no-run",
+            ],
+            vec![
+                "test",
+                "-p",
+                "xtask",
+                "--locked",
+                "--offline",
+                "rust_judged_panel::rolling_observation",
+                "--no-run",
+            ],
+            vec![
+                "test",
+                "-p",
+                "xtask",
+                "--bin",
+                "xtask",
+                "dx_scoreboard",
+                "--no-run",
+            ],
+            vec![
+                "test",
+                "-p",
+                "ripr",
+                "--test",
+                "causal_delta_fixture",
+                "--no-run",
+            ],
+            vec![
+                "test",
+                "-p",
+                "ripr",
+                "--locked",
+                "--offline",
+                "--test",
+                "portable_consumer_packet",
+                "--no-run",
+            ],
+        ]
+        .into_iter()
+        .map(|row| row.into_iter().map(str::to_string).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+        assert_eq!(
+            super::materialized_build_preparation_plan(&policy, FilePolicyHost::Unix)?,
+            expected
+        );
+        assert_eq!(
+            super::materialized_build_preparation_plan(&policy, FilePolicyHost::Windows)?,
+            expected[..4]
+        );
+        let commands =
+            crate::read_file_policy_test_commands(policy.to_str().ok_or("policy path UTF-8")?)?;
+        assert_eq!(commands.len(), 23);
+        assert_eq!(
+            commands
+                .iter()
+                .filter(|command| command
+                    .host
+                    .is_none_or(|host| host == FilePolicyHost::Windows))
+                .count(),
+            22
+        );
+        Ok(())
+    }
 
     const FROZEN_WARMUP_SELECTORS: &str = r#"[[107,["test","-p","xtask","repository_language_policy_admits_real_mixed_language_producer"]],[348,["test","-p","xtask","implementation_slices_validate_and_coexist"]],[357,["test","-p","xtask","committed_spec_review_receipts_validate"]],[411,["test","-p","xtask","--locked","--offline","rust_judged_panel::rolling_observation"]],[411,["test","-p","xtask","--locked","--offline","rust_judged_panel::calibration"]],[411,["test","-p","xtask","--locked","--offline","rust_analysis_feedback"]],[420,["test","-p","xtask","rust_judged_panel::subject"]],[429,["test","-p","xtask","--locked","--offline","rust_judged_panel::packet::tests"]],[661,["test","-p","xtask","--bin","xtask","dx_scoreboard"]],[697,["test","-p","xtask","--bin","xtask","pilot_ranking"]],[706,["test","-p","xtask","--bin","xtask","pilot_ranking"]],[733,["test","-p","ripr","--test","causal_delta_fixture"]],[742,["test","-p","xtask","--bin","xtask","source_promotion_workflow"]],[751,["test","-p","xtask","source_promotion_control"]],[764,["test","-p","xtask","--locked","--offline","portable_consumer"]],[764,["test","-p","ripr","--locked","--offline","--test","portable_consumer_packet"]],[893,["test","-p","xtask","public_proof"]],[903,["test","-p","xtask","public_proof"]],[913,["test","-p","xtask","public_proof"]],[923,["test","-p","xtask","public_proof"]],[932,["test","-p","xtask","public_proof"]],[941,["test","-p","xtask","public_proof"]],[950,["test","-p","xtask","public_proof"]]]"#;
 

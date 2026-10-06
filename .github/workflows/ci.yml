@@ -57,6 +57,7 @@ jobs:
           RIPR_SOURCE_PROMOTION_PHASE_DIAGNOSTICS: "1"
         run: |
           cargo nextest run -p xtask --bin xtask -E 'test(=policy::phase_diagnostics::tests::exact_owned_optin_and_process_identity_are_required) | test(=policy::phase_diagnostics::tests::escaped_rendered_budgets_and_child_text_never_become_spawn_records) | test(=policy::phase_diagnostics::tests::compact_source_plan_wire_decoder_and_capture_fairness_are_bounded) | test(=run::tests::covered_by_observed_reader_preserves_original_bytes_and_invalid_utf8) | test(=policy::file_policy::tests::test_covered_by_successful_warmup_reuse_preserves_scope_and_runtime_lists)' --test-threads 1
+          cargo nextest run -p xtask --bin xtask -E 'test(materialized_build_preparation)' --test-threads 1
           cargo nextest run -p xtask --test source_promotion_workflow_contract -E 'test(=green_historical_diagnostics_are_rejected_by_the_real_final_gate)' --test-threads 1
       - run: cargo nextest run --workspace
       - name: Observe native calibration enforcement readiness

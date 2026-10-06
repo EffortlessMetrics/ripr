@@ -2062,7 +2062,11 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
     let cache_command = |mut command: Command| {
         #[cfg(unix)]
         command.env("CARGO_TARGET_DIR", owned_target);
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        command
+            .env_remove("CARGO_TARGET_DIR")
+            .env_remove("CARGO_BUILD_BUILD_DIR");
+        #[cfg(not(any(unix, windows)))]
         let _ = &mut command;
         command
     };
@@ -2076,13 +2080,14 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
         .parent()
         .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?
         .to_path_buf();
-    let root = repo_root
-        .parent()
-        .ok_or_else(|| "repository root has no temporary-workspace parent".to_string())?
-        .join(format!(
-            ".ripr-production-j5-workflow-{}-{nonce}",
-            std::process::id()
-        ));
+    // Keep the task-owned fixture and both materializations in the existing
+    // target allocation, including on restricted Windows source-sync hosts.
+    let root = repo_root.join("target").join(format!(
+        ".ripr-production-j5-workflow-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir_all(repo_root.join("target"))
+        .map_err(|error| format!("failed to create owned production target parent: {error}"))?;
     fs::create_dir(&root)
         .map_err(|error| format!("failed to create production J5 test root: {error}"))?;
     let result = (|| {
