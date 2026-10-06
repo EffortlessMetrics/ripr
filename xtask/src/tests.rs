@@ -10587,10 +10587,6 @@ jobs:
     );
 }
 
-/// A pushed `v*` tag must not start publication, and the extension workflow
-/// must neither create the GitHub Release nor replace an attached asset. Each
-/// channel is dispatched explicitly per docs/RELEASE_TRANSACTION.md; #1646 owns
-/// the full single-writer topology.
 /// Keys directly under a workflow's block-form `on:` mapping, in order.
 /// `None` for a missing or inline `on:` (`on: push`, `on: [push]`).
 fn workflow_trigger_keys(workflow: &str) -> Option<Vec<&str>> {
@@ -10606,23 +10602,31 @@ fn workflow_trigger_keys(workflow: &str) -> Option<Vec<&str>> {
 }
 
 #[test]
-fn release_workflows_publish_only_by_explicit_dispatch() -> Result<(), String> {
+fn release_workflows_preserve_public_and_swarm_channel_triggers() -> Result<(), String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     let read = |name: &str| {
         std::fs::read_to_string(root.join(".github/workflows").join(name))
+            .map(|workflow| workflow.replace("\r\n", "\n"))
             .map_err(|error| format!("failed to read {name}: {error}"))
     };
-    for name in ["release-server-binaries.yml", "publish-extension.yml"] {
-        let workflow = read(name)?;
-        let triggers = workflow_trigger_keys(&workflow)
-            .ok_or_else(|| format!("{name} has no block-form `on:` declaration"))?;
-        if triggers != ["workflow_dispatch"] {
-            return Err(format!(
-                "{name} must run only on workflow_dispatch, found {triggers:?}"
-            ));
-        }
-    }
+    // Preserve the public source producer's existing dispatch/tag contract.
+    let server = read("release-server-binaries.yml")?;
+    assert_eq!(
+        workflow_trigger_keys(&server),
+        Some(vec!["workflow_dispatch", "push"])
+    );
+    assert!(server.contains("  push:\n    tags:\n      - \"v*\""));
+    assert!(server.contains("cargo xtask release-upload-assets"));
+    // The retained Swarm rehearsal has no publication trigger or producer.
+    assert_eq!(
+        workflow_trigger_keys(swarm_server_binary_rehearsal_fixture()),
+        Some(vec!["workflow_dispatch"])
+    );
     let extension = read("publish-extension.yml")?;
+    assert_eq!(
+        workflow_trigger_keys(&extension),
+        Some(vec!["workflow_dispatch"])
+    );
     for input in ["publish_vs_marketplace", "publish_open_vsx"] {
         let declared = extension
             .split_once(&format!("\n      {input}:\n"))
@@ -10715,12 +10719,7 @@ jobs:
 
 #[test]
 fn swarm_server_binary_rehearsal_cannot_publish() -> Result<(), String> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or_else(|| "xtask manifest should have a repository parent".to_string())?;
-    let path = root.join(".github/workflows/release-server-binaries.yml");
-    let workflow = fs::read_to_string(&path)
-        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    let workflow = swarm_server_binary_rehearsal_fixture();
     let validate = |candidate: &str| -> Result<(), String> {
         if !candidate.contains("permissions:\n  contents: read")
             || !candidate.contains("uses: ./.github/workflows/server-archive-qualification.yml")
@@ -10740,7 +10739,7 @@ fn swarm_server_binary_rehearsal_cannot_publish() -> Result<(), String> {
         }
         Ok(())
     };
-    validate(&workflow)?;
+    validate(workflow)?;
     for broken in [
         workflow.replace("contents: read", "contents: write"),
         format!("{workflow}\n# release-upload-assets"),
@@ -10754,6 +10753,25 @@ fn swarm_server_binary_rehearsal_cannot_publish() -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn swarm_server_binary_rehearsal_fixture() -> &'static str {
+    r#"
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+permissions:
+  contents: read
+jobs:
+  rehearse:
+    uses: ./.github/workflows/server-archive-qualification.yml
+    with:
+      candidate_sha: ${{ github.sha }}
+      candidate_tag: ""
+      version: ${{ inputs.version }}
+"#
 }
 
 #[test]
@@ -11550,7 +11568,7 @@ fn routed_rust_workflow_contract_rejects_missing_receipt_or_route_assertion() ->
 
 #[test]
 fn source_routed_rust_ready_admission_cannot_be_short_circuited() -> Result<(), String> {
-    let workflow = routed_rust_workflow_text()?;
+    let workflow = routed_rust_workflow_text()?.replace("\r\n", "\n");
     for job in ["route", "detect-docs-only"] {
         let header = format!("  {job}:\n");
         let guarded = format!(
@@ -11578,9 +11596,17 @@ fn source_routed_rust_ready_admission_cannot_be_short_circuited() -> Result<(), 
             "    name: Ripr Rust Small Result",
             "static `Ripr Rust Small Result` context",
         ),
-        ("    if: always()", "result job must run unconditionally"),
+        (
+            "\n    if: always()\n",
+            "result job must run unconditionally",
+        ),
     ] {
-        let mutated = workflow.replacen(snippet, "REMOVED_CONTROL", 1);
+        let replacement = if snippet == "\n    if: always()\n" {
+            "\n    # REMOVED_CONTROL\n"
+        } else {
+            "REMOVED_CONTROL"
+        };
+        let mutated = workflow.replacen(snippet, replacement, 1);
         assert_ne!(mutated, workflow);
         let violations = routed_rust_workflow_contract_violations(&mutated, None, None);
         if !violations
@@ -31317,7 +31343,18 @@ fn command_catalog_pins_ci_enforced_classification() -> Result<(), String> {
     assert!(ci_enforced("check-static-language")?);
     assert!(ci_enforced("goldens check")?);
     assert!(ci_enforced("check-doc-index")?);
-    assert!(!ci_enforced("release-upload-assets --version <version>")?);
+    assert!(ci_enforced("release-upload-assets --version <version>")?);
+    let public = include_str!("../../.github/workflows/release-server-binaries.yml");
+    assert!(
+        ci_enforced_xtask_invocations(public)
+            .iter()
+            .any(|(command, _)| command == "release-upload-assets")
+    );
+    assert!(
+        !ci_enforced_xtask_invocations(swarm_server_binary_rehearsal_fixture())
+            .iter()
+            .any(|(command, _)| command == "release-upload-assets")
+    );
     assert!(ci_enforced("release-readiness --version <version>")?);
     // Issue #2258: the routed-rust lanes invoke `cargo xtask precommit` as the
     // shared required gate table, so precommit and every gate it runs are

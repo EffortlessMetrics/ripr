@@ -2592,8 +2592,21 @@ branches:
     fn merge_queue_capture_extracts_real_settings_desired_source() {
         let text = include_str!("../../../.github/settings.yml");
         let desired = extract_settings_desired(text);
+        let repository = text
+            .lines()
+            .find_map(|line| line.strip_prefix("  name: "))
+            .expect("settings must identify the repository");
+        let expected = match repository {
+            "ripr" => vec!["cargo-deny", "dependency-review", "msrv", "rust", "vscode"],
+            "ripr-swarm" => vec!["Ripr Rust Small Result"],
+            other => panic!("unknown repository identity: {other}"),
+        };
         assert_eq!(
             desired.required_contexts,
+            expected.into_iter().map(str::to_string).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            extract_settings_desired(&settings_text()).required_contexts,
             vec!["Ripr Rust Small Result".to_string()]
         );
         assert_eq!(

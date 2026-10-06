@@ -18,6 +18,8 @@ const SCHEMA_FILE_SUFFIX: &str = ".json";
 
 const PR_EVIDENCE_INSTALLED_PRODUCER: &str = "crates/ripr/src/app/pr_evidence.rs";
 const PR_EVIDENCE_VERSION_PREFIX: &str = "json!({\n        \"schema_version\": \"";
+const PR_EVIDENCE_ENVELOPE_SUFFIX: &str =
+    ",\n        \"tool\": \"ripr\",\n        \"kind\": \"pr_evidence\",";
 
 /// One producer that writes a published schema version into its output.
 struct VersionProducer {
@@ -721,7 +723,15 @@ fn version_mismatch(
     let producers = source
         .split(prefix)
         .skip(1)
-        .filter_map(|rest| rest.split_once('"').map(|(version, _)| version))
+        .filter_map(|rest| {
+            let (version, tail) = rest.split_once('"')?;
+            if prefix == PR_EVIDENCE_VERSION_PREFIX
+                && !tail.starts_with(PR_EVIDENCE_ENVELOPE_SUFFIX)
+            {
+                return None;
+            }
+            Some(version)
+        })
         .collect::<Vec<_>>();
     let doc_row_prefix = format!("| `{schema_path}` | `");
     let documented = version_doc
@@ -1446,6 +1456,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn pr_evidence_version_audit_selects_only_the_two_envelopes() {
+        let envelope =
+            format!("{PR_EVIDENCE_VERSION_PREFIX}0.1\"{PR_EVIDENCE_ENVELOPE_SUFFIX}\n}});");
+        let subject = format!("{PR_EVIDENCE_VERSION_PREFIX}ripr.pr_check_subject.v1\"\n}});");
+        let doc = "| `schemas/ripr/pr-evidence.schema.json` | `0.1` | producer |";
+        let check = |source: &str| {
+            version_mismatch(
+                "schemas/ripr/pr-evidence.schema.json",
+                Some("0.1"),
+                "producer.rs",
+                source,
+                PR_EVIDENCE_VERSION_PREFIX,
+                2,
+                doc,
+            )
+        };
+        let source = format!("{envelope}\n{envelope}\n{subject}");
+        assert!(check(&source).is_none());
+        assert!(check(&format!("{envelope}\n{subject}")).is_some());
+        assert!(check(&format!("{source}\n{envelope}")).is_some());
+        for index in 0..2 {
+            let mut packets = [envelope.clone(), envelope.clone()];
+            packets[index] = packets[index].replace("0.1", "9.9");
+            assert!(check(&format!("{}\n{}\n{subject}", packets[0], packets[1])).is_some());
+        }
+    }
+
     /// Mutate only the installed `ripr pr-evidence` producer and require the
     /// real inventory to reject it, so the unpublished xtask copy cannot stand
     /// in for the binary users actually run.
@@ -1720,6 +1758,26 @@ mod tests {
         };
         assert_eq!(packet["summary"]["comments"], 1);
         assert!(check(&packet).is_empty(), "{:#?}", check(&packet));
+
+        for field in [
+            "requested_mode",
+            "analysis_identity",
+            "phase_evidence",
+            "primary_failure",
+        ] {
+            let mut missing_receipt_field = packet.clone();
+            assert!(
+                missing_receipt_field["run_receipt"]
+                    .as_object_mut()
+                    .ok_or("missing fixture run receipt")?
+                    .remove(field)
+                    .is_some()
+            );
+            assert!(
+                !check(&missing_receipt_field).is_empty(),
+                "missing {field} accepted"
+            );
+        }
 
         let mut missing_identity = packet.clone();
         missing_identity["comments"][0]

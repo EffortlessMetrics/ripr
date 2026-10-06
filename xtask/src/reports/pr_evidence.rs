@@ -2820,10 +2820,10 @@ mod tests {
         run_git(&repo, &["init"])?;
         run_git(&repo, &["config", "user.email", "ripr-pr@example.invalid"])?;
         run_git(&repo, &["config", "user.name", "RIPR PR Test"])?;
-        write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 { 1 }\n")?;
+        write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 {\n    1\n}\n")?;
         run_git(&repo, &["add", "."])?;
         run_git(&repo, &["commit", "--no-gpg-sign", "-m", "initial"])?;
-        write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 { 2 }\n")?;
+        write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 {\n    2\n}\n")?;
         run_git(&repo, &["add", "."])?;
         run_git(&repo, &["commit", "--no-gpg-sign", "-m", "change value"])?;
 
@@ -2834,7 +2834,7 @@ mod tests {
         };
         write_diff(&repo, &options)?;
 
-        let actual = fs::read_to_string(repo.join(PR_DIFF))
+        let actual = fs::read_to_string(repo.join(PR_CANONICAL_DIFF))
             .map_err(|err| format!("read produced diff: {err}"))?;
         let expected = run_git_output(
             &repo,
@@ -2842,6 +2842,13 @@ mod tests {
         )?;
         assert!(!actual.is_empty());
         assert_eq!(actual, expected);
+        let presentation = fs::read_to_string(repo.join(PR_DIFF))
+            .map_err(|err| format!("read presentation diff: {err}"))?;
+        assert_ne!(actual, presentation);
+        assert_eq!(
+            presentation,
+            ripr::analysis::load_pr_evidence_diff_range(&repo, &options.base, &options.head)?
+        );
 
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
@@ -3191,6 +3198,8 @@ mod tests {
                     PR_CHECK_JSON,
                     PR_CHECK_SUBJECT_JSON,
                     PR_REVIEW_INPUT_JSON,
+                    PR_CANONICAL_DIFF,
+                    PR_DIFF,
                 ] {
                     let destination = other.join(artifact);
                     if let Some(parent) = destination.parent() {
