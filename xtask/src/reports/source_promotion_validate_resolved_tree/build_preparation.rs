@@ -205,15 +205,18 @@ mod materialized_build_preparation_tests {
     #[test]
     fn materialized_build_preparation_uses_one_total_deadline_with_settlement_reserve() {
         assert_eq!(
-            preparation_remaining(Duration::from_secs(1)).unwrap(),
-            Duration::from_secs(269)
+            preparation_remaining(Duration::from_secs(1)),
+            Ok(Duration::from_secs(269))
         );
         assert_eq!(
-            preparation_remaining(Duration::from_secs(200)).unwrap(),
-            Duration::from_secs(70)
+            preparation_remaining(Duration::from_secs(200)),
+            Ok(Duration::from_secs(70))
         );
         for seconds in [270, 300, 301] {
-            assert!(preparation_remaining(Duration::from_secs(seconds)).is_err());
+            assert_eq!(
+                preparation_remaining(Duration::from_secs(seconds)),
+                Err("materialized preparation total setup deadline exhausted".to_string())
+            );
         }
     }
 
@@ -257,21 +260,18 @@ mod materialized_build_preparation_tests {
         }
         assert!(
             preparation_output_failure(&output, None)
-                .unwrap()
-                .contains("successfully")
+                .is_some_and(|reason| reason.contains("successfully"))
         );
         output.timed_out = true;
         assert!(
             preparation_output_failure(&output, None)
-                .unwrap()
-                .contains("deadline")
+                .is_some_and(|reason| reason.contains("deadline"))
         );
         output.timed_out = false;
         output.stdout_truncated = true;
         assert!(
             preparation_output_failure(&output, None)
-                .unwrap()
-                .contains("incomplete")
+                .is_some_and(|reason| reason.contains("incomplete"))
         );
     }
 }
