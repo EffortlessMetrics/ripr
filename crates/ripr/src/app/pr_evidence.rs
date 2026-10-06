@@ -781,13 +781,7 @@ fn write_diff(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
 /// review-comments (zero context, no external diff/textconv, short submodules).
 /// The caller retains the packet diff's existing five-minute full-diff ceiling.
 fn load_canonical_check_diff(repo: &Path, options: &PrEvidenceOptions) -> Result<String, String> {
-    crate::analysis::load_diff_range_with_deadline_core(
-        repo,
-        &options.base,
-        &options.head,
-        Some(Duration::from_mins(5)),
-    )
-    .map_err(|error| error.to_string())
+    crate::analysis::load_canonical_pr_evidence_diff_range(repo, &options.base, &options.head)
 }
 
 /// Run the RIPR check in-process over the exact zero-context canonical input.

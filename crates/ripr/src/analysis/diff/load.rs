@@ -681,6 +681,17 @@ pub fn load_diff_range(root: &Path, base: &str, head: &str) -> Result<String, St
     load_diff_range_with_deadline(root, base, head, None)
 }
 
+/// Canonical zero-context analysis bytes for both PR-evidence producers.
+/// Retain their existing five-minute full-diff ceiling and the shared pinned
+/// Git assembly used by review-comments.
+pub fn load_canonical_pr_evidence_diff_range(
+    root: &Path,
+    base: &str,
+    head: &str,
+) -> Result<String, String> {
+    load_diff_range_with_deadline(root, base, head, Some(Duration::from_mins(5)))
+}
+
 /// [`load_diff_range`] under a caller's cooperative git deadline.
 pub(crate) fn load_diff_range_with_deadline(
     root: &Path,

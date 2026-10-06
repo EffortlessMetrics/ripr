@@ -30,6 +30,7 @@ const PR_CHECK_JSON: &str = "target/ripr/pr/check.json";
 const PR_CHECK_SUBJECT_JSON: &str = "target/ripr/pr/check.subject.json";
 const PR_REVIEW_INPUT_JSON: &str = "target/ripr/pr/review-input.json";
 const PR_DIFF: &str = "target/ripr/pr/pr.diff";
+const PR_CANONICAL_DIFF: &str = "target/ripr/pr/check.diff";
 const REVIEW_INPUT_MAX_BYTES: usize = 128 * 1024;
 const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 120;
 const PR_EVIDENCE_TIMEOUT_ENV: &str = "RIPR_PR_EVIDENCE_TIMEOUT_SECS";
@@ -203,7 +204,7 @@ fn write_pr_evidence_packet(
         .map_err(|err| format!("resolve review input root failed: {err}"))?;
     let config = ripr::config::load_for_root(&root)
         .map_err(|err| format!("load review input config: {err}"))?;
-    let canonical_diff = fs::read(repo.join(PR_DIFF))
+    let canonical_diff = fs::read(repo.join(PR_CANONICAL_DIFF))
         .map_err(|err| format!("read canonical diff for check subject binding: {err}"))?;
     let mut subject = json!({
         "schema_version": "ripr.pr_check_subject.v1",
@@ -334,7 +335,7 @@ fn producer_review_input(
         .map_err(|error| format!("serialize review input projection: {error}"))?;
     let projection_bytes = serde_json::to_vec(&findings_value)
         .map_err(|err| format!("serialize producer review input digest: {err}"))?;
-    let canonical_diff = fs::read(repo.join(PR_DIFF))
+    let canonical_diff = fs::read(repo.join(PR_CANONICAL_DIFF))
         .map_err(|err| format!("read canonical diff for review input binding: {err}"))?;
     if projection_bytes.len() > REVIEW_INPUT_MAX_BYTES {
         return Err(format!(
@@ -502,6 +503,31 @@ fn check_subject_violations(repo: &Path, options: &PrEvidenceOptions) -> Vec<Str
             })
         })
         .collect();
+    match digest_file(&repo.join(PR_CANONICAL_DIFF)) {
+        Ok((digest, _)) => {
+            if subject.get("canonical_diff_sha256").and_then(Value::as_str) != Some(digest.as_str())
+            {
+                violations.push(format!(
+                    "{PR_CHECK_SUBJECT_JSON} canonical_diff_sha256 does not match {PR_CANONICAL_DIFF}"
+                ));
+            }
+            match load_canonical_check_diff(repo, options) {
+                Ok(expected) => {
+                    if digest != format!("sha256:{:x}", Sha256::digest(expected.as_bytes())) {
+                        violations.push(format!(
+                            "{PR_CANONICAL_DIFF} does not match the requested canonical base/head diff"
+                        ));
+                    }
+                }
+                Err(error) => {
+                    violations.push(format!("cannot reconstruct {PR_CANONICAL_DIFF}: {error}"))
+                }
+            }
+        }
+        Err(error) => violations.push(format!(
+            "missing or unreadable {PR_CANONICAL_DIFF}: {error}"
+        )),
+    }
     if subject.get("check_byte_count").and_then(Value::as_u64) != Some(check_byte_count) {
         violations.push(format!(
             "{PR_CHECK_SUBJECT_JSON} check_byte_count does not match check.json"
@@ -673,16 +699,22 @@ fn write_diff(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
     let out = repo.join(PR_DIFF);
     // Route the packet diff through the shared pinned Git assembly (#3930,
     // #4004): ambient textconv, color, external-diff, and context config must
-    // not change what the packet analyzes. The assembly pins `-c
+    // not change the packet presentation. The assembly pins `-c
     // core.quotePath=true`, `--no-ext-diff`, `--no-textconv`, `--no-color`,
     // `--src-prefix=a/`, `--dst-prefix=b/`, `--binary`, and three-context
     // presentation.
     let diff = ripr::analysis::load_pr_evidence_diff_range(repo, &options.base, &options.head)?;
-    write_parented_file(&out, PR_DIFF, diff)
+    write_parented_file(&out, PR_DIFF, diff)?;
+    let canonical = load_canonical_check_diff(repo, options)?;
+    write_parented_file(&repo.join(PR_CANONICAL_DIFF), PR_CANONICAL_DIFF, canonical)
+}
+
+fn load_canonical_check_diff(repo: &Path, options: &PrEvidenceOptions) -> Result<String, String> {
+    ripr::analysis::load_canonical_pr_evidence_diff_range(repo, &options.base, &options.head)
 }
 
 fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, String> {
-    let diff_path = repo.join(PR_DIFF);
+    let diff_path = repo.join(PR_CANONICAL_DIFF);
     let diff_arg = diff_path.display().to_string();
     let root_arg = command_root_arg(repo, &options.root);
     let ripr_args = vec![
@@ -1679,8 +1711,11 @@ mod tests {
         });
         fs::create_dir_all(repo.join("target/ripr/pr"))
             .map_err(|err| format!("create review input directory: {err}"))?;
-        fs::write(repo.join(PR_DIFF), "diff --git a/src/lib.rs b/src/lib.rs\n")
-            .map_err(|err| format!("write canonical diff: {err}"))?;
+        fs::write(
+            repo.join(PR_CANONICAL_DIFF),
+            "diff --git a/src/lib.rs b/src/lib.rs\n",
+        )
+        .map_err(|err| format!("write canonical diff: {err}"))?;
         let projected = producer_review_input(&check, &repo, &options(), &subject)?;
         assert_eq!(projected["total_finding_count"], 12);
         assert_eq!(projected["projected_finding_count"], 10);
@@ -2752,8 +2787,8 @@ mod tests {
             .map_err(|err| format!("read review input: {err}"))?;
         let review_input: Value = serde_json::from_str(&review_input_text)
             .map_err(|err| format!("parse review input: {err}"))?;
-        let diff_bytes =
-            fs::read(repo.join(PR_DIFF)).map_err(|err| format!("read canonical diff: {err}"))?;
+        let diff_bytes = fs::read(repo.join(PR_CANONICAL_DIFF))
+            .map_err(|err| format!("read canonical diff: {err}"))?;
         assert_eq!(
             review_input["canonical_diff_sha256"],
             format!("sha256:{:x}", Sha256::digest(diff_bytes))
@@ -3435,6 +3470,32 @@ mod tests {
                 }
                 write_pr_evidence_from_check_json(&repo, &options, &check)?;
                 check_pr_evidence(&repo, &options)?;
+                if complete {
+                    let presentation =
+                        fs::read(repo.join(PR_DIFF)).map_err(|error| error.to_string())?;
+                    let canonical = fs::read(repo.join(PR_CANONICAL_DIFF))
+                        .map_err(|error| error.to_string())?;
+                    assert_ne!(
+                        presentation, canonical,
+                        "fixture must distinguish diff recipes"
+                    );
+                    fs::write(repo.join(PR_CANONICAL_DIFF), &presentation)
+                        .map_err(|error| error.to_string())?;
+                    let violations = check_subject_violations(&repo, &options);
+                    assert!(
+                        violations
+                            .iter()
+                            .any(|error| error.contains("canonical_diff_sha256"))
+                    );
+                    assert!(
+                        violations
+                            .iter()
+                            .any(|error| error.contains("requested canonical base/head diff"))
+                    );
+                    fs::write(repo.join(PR_CANONICAL_DIFF), &canonical)
+                        .map_err(|error| error.to_string())?;
+                    check_pr_evidence(&repo, &options)?;
+                }
                 let args = vec![
                     "review-comments".into(),
                     "--root".into(),
