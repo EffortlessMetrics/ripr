@@ -990,7 +990,7 @@ wait
             )?;
             return Ok(());
         }
-        let args = vec!["-c".to_string(),
+        let args = ["-c".to_string(),
             r#"sleep 30 & descendant=$!; printf '%s %s' "$$" "$descendant" > "$RIPR_OWNED_GROUP_MEMBER_MARKER"; wait"#.to_string()];
         if mode == "timeout" {
             let args = vec!["test".to_string(), "owned-proof".to_string()];
