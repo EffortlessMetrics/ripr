@@ -87,6 +87,24 @@ jobs:
 
       - uses: taiki-e/install-action@nextest
 
+      - name: Check the exact nextest reservation oracle
+        run: cargo test -p xtask product_gate_plan::tests::required_nextest_profile_cannot_filter_retry_or_drop_junit
+
+      - name: Prepare the default-feature xtask listing class
+        run: cargo test -p xtask repository_language_policy_admits_real_mixed_language_producer --no-run
+
+      - name: Prepare the offline xtask listing class
+        run: cargo test -p xtask --locked --offline rust_judged_panel::rolling_observation --no-run
+
+      - name: Prepare the xtask binary listing class
+        run: cargo test -p xtask --bin xtask dx_scoreboard --no-run
+
+      - name: Prepare the causal-delta fixture listing class
+        run: cargo test -p ripr --test causal_delta_fixture --no-run
+
+      - name: Prepare the portable-consumer fixture listing class
+        run: cargo test -p ripr --locked --offline --test portable_consumer_packet --no-run
+
       - name: Run original fixture in the all-features CI build context
         run: cargo nextest run --workspace --all-features --profile ci -E 'binary(=source_promotion_workflow_contract) & test(=green_historical_diagnostics_are_rejected_by_the_real_final_gate)'
 
