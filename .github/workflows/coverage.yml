@@ -31,11 +31,6 @@ jobs:
 
       - uses: taiki-e/install-action@cargo-llvm-cov
 
-      - name: Hold full suites during owned cleanup proof review
-        shell: bash
-        run: |
-          printf '%s\n' 'Source-sync cleanup proof stage holds full fixtures and suites pending reviewed cleanup evidence.'
-          exit 1
       - name: Generate coverage
         run: |
           set -euo pipefail
