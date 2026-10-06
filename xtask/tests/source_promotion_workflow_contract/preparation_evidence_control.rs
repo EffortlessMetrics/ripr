@@ -183,7 +183,7 @@ fn initial_materialized_preparation_failure_evidence_is_retained() -> Result<(),
         }
         let manifest = json!({"schema":"ripr.materialized_build_preparation.v1","setup_only":true,"policy_acceptance_credit":false,
             "source_parent":"a".repeat(40),"reviewed_tree":"c".repeat(40),"disposable_commit":"e".repeat(40),
-            "total_setup_seconds_limit":300,"settlement_reserve_seconds":30,"cargo_build_jobs":1,
+            "total_setup_seconds_limit":600,"settlement_reserve_seconds":30,"cargo_build_jobs":1,
             "stream_bytes_limit":2*1024*1024,"known_path_growth_bytes_limit":4u64*1024*1024*1024,
             "observed_peak_growth_bytes":123,"storage_scope":"known observed paths, no hard quota",
             "failure_reason":reason,"classes":classes});

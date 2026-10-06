@@ -2,9 +2,9 @@
 // This is trusted repository Cargo, with observed known-path storage growth,
 // not a sandbox or a hard aggregate writable-byte quota.
 // Keep this total setup budget separate from the 180-second governed command.
-// A larger setup envelope has not been shown to fit both materializations and
-// their focused/full-suite replay inside the existing 90-minute CI job.
-const MATERIALIZED_PREPARATION_TIMEOUT: Duration = Duration::from_mins(5);
+// The existing 90-minute CI job deadline also bounds both materializations and
+// their focused/full-suite replay; individual limits do not guarantee completion.
+const MATERIALIZED_PREPARATION_TIMEOUT: Duration = Duration::from_mins(10);
 const PREPARATION_SETTLEMENT_RESERVE: Duration = Duration::from_secs(30);
 const PREPARATION_STORAGE_GROWTH: u64 = 4 * 1024 * 1024 * 1024;
 
@@ -99,8 +99,9 @@ fn prepare_materialized_file_policy(
             let setup_elapsed_before = started.elapsed();
             let growth_before = monitor.peak_growth();
             eprintln!(
-                "materialized preparation class={} total_setup_seconds_limit=300 remaining_seconds={} argv={args:?}",
+                "materialized preparation class={} total_setup_seconds_limit={} remaining_seconds={} argv={args:?}",
                 index + 1,
+                MATERIALIZED_PREPARATION_TIMEOUT.as_secs(),
                 timeout.as_secs()
             );
             let captured = crate::run::capture_trusted_build_preparation(
@@ -254,15 +255,21 @@ mod materialized_build_preparation_tests {
 
     #[test]
     fn materialized_build_preparation_uses_one_total_deadline_with_settlement_reserve() {
-        assert_eq!(
-            preparation_remaining(Duration::from_secs(1)),
-            Ok(Duration::from_secs(269))
-        );
-        assert_eq!(
-            preparation_remaining(Duration::from_secs(200)),
-            Ok(Duration::from_secs(70))
-        );
-        for seconds in [270, 300, 301] {
+        for (elapsed, remaining) in [
+            (0, 570),
+            (1, 569),
+            (200, 370),
+            (270, 300),
+            (300, 270),
+            (301, 269),
+            (569, 1),
+        ] {
+            assert_eq!(
+                preparation_remaining(Duration::from_secs(elapsed)),
+                Ok(Duration::from_secs(remaining))
+            );
+        }
+        for seconds in [570, 600, 601, u64::MAX] {
             assert_eq!(
                 preparation_remaining(Duration::from_secs(seconds)),
                 Err("materialized preparation total setup deadline exhausted".to_string())
