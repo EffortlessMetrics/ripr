@@ -674,6 +674,30 @@ mod tests {
         violations
     }
 
+    /// The existing production-path reservation changes scheduling only.
+    /// Keep its exact scope and reject every other override or extra policy.
+    fn source_promotion_reservation(value: &toml::Value, path: &str) -> bool {
+        if path != "profile.default.overrides" {
+            return false;
+        }
+        let Some(items) = value.as_array() else {
+            return false;
+        };
+        let [reservation] = items.as_slice() else {
+            return false;
+        };
+        let Some(table) = reservation.as_table() else {
+            return false;
+        };
+        table.len() == 2
+            && table.get("filter").and_then(toml::Value::as_str)
+                == Some(
+                    "binary(=source_promotion_workflow_contract) & test(=green_historical_diagnostics_are_rejected_by_the_real_final_gate)",
+                )
+            && table.get("threads-required").and_then(toml::Value::as_str)
+                == Some("num-test-threads")
+    }
+
     /// Keys that change which tests nextest selects or how it retries them,
     /// wherever they appear in the parsed config, quoted or inline.
     fn collect_selection_keys(value: &toml::Value, path: &str, violations: &mut Vec<String>) {
@@ -685,7 +709,9 @@ mod tests {
                     } else {
                         format!("{path}.{key}")
                     };
-                    if key == "default-filter" || key == "overrides" {
+                    if key == "default-filter"
+                        || (key == "overrides" && !source_promotion_reservation(child, &child_path))
+                    {
                         violations.push(format!(
                             "nextest config declares `{child_path}`, which narrows or re-policies the selected tests"
                         ));
@@ -905,6 +931,28 @@ mod tests {
         let overridden =
             format!("{NEXTEST_CONFIG}\n[[profile.ci.overrides]]\nfilter = \"test(slow)\"\n");
         assert!(!nextest_config_violations(&overridden).is_empty());
+
+        for repolicied in [
+            NEXTEST_CONFIG.replace(
+                "binary(=source_promotion_workflow_contract)",
+                "binary(=another_contract)",
+            ),
+            NEXTEST_CONFIG.replace(
+                "threads-required = \"num-test-threads\"",
+                "threads-required = 1",
+            ),
+            NEXTEST_CONFIG.replace(
+                "threads-required = \"num-test-threads\"",
+                "threads-required = \"num-test-threads\"\nretries = 2",
+            ),
+            NEXTEST_CONFIG.replace("[[profile.default.overrides]]", "[[profile.ci.overrides]]"),
+        ] {
+            assert_ne!(
+                repolicied, NEXTEST_CONFIG,
+                "fixture must change the reservation"
+            );
+            assert!(!nextest_config_violations(&repolicied).is_empty());
+        }
 
         let retried = NEXTEST_CONFIG.replace("retries = 0", "retries = 2");
         assert_ne!(retried, NEXTEST_CONFIG, "fixture must change retries");
