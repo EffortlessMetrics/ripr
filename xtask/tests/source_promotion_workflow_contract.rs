@@ -1082,6 +1082,8 @@ const INITIAL_REQUIRED_COMMANDS: [&str; 13] = [
 const INITIAL_FIXTURE: &str =
     "workspace/synthetic-fixture/fixture-repository/.git/source-promotion-admission-fixture";
 
+include!("source_promotion_workflow_contract/preparation_evidence.rs");
+
 fn initial_diagnostic_path(root: &Path, relative: &str) -> Result<PathBuf, String> {
     let root_metadata = fs::symlink_metadata(root).map_err(|_error| "owned root unavailable")?;
     if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
@@ -1143,7 +1145,9 @@ fn initial_diagnostic_member<'a>(index: &'a Value, name: &str) -> Result<&'a Val
     let files = index["files"]
         .as_array()
         .ok_or("packet index files unavailable")?;
-    if files.len() > 28 {
+    // Two reports, 26 governed streams, one preparation manifest and ten
+    // preparation streams (five Unix classes; Windows has four).
+    if files.len() > 39 {
         return Err("packet index exceeds fixed command packet".into());
     }
     let mut matches = files
@@ -1380,6 +1384,8 @@ fn initial_required_command_failure_output(root: &Path, catalog_only: bool) -> S
         {
             return Err("required command catalog mismatch".into());
         }
+        let preparation = initial_preparation_failure_context(root, &packet, &report, &index)?;
+        let mut preparation_stopped = false;
         let mut failed = None;
         for (position, (receipt, name)) in
             commands.iter().zip(INITIAL_REQUIRED_COMMANDS).enumerate()
@@ -1398,10 +1404,12 @@ fn initial_required_command_failure_output(root: &Path, catalog_only: bool) -> S
             match receipt["state"].as_str() {
                 Some("passed")
                     if failed.is_none()
+                        && !preparation_stopped
                         && receipt["exit_code"] == 0
                         && receipt["evidence_present"] == true => {}
                 Some("failed")
                     if failed.is_none()
+                        && !preparation_stopped
                         && receipt["evidence_present"] == true
                         && (receipt["exit_code"].is_null()
                             || receipt["exit_code"].as_i64().is_some_and(|code| code != 0)) =>
@@ -1409,14 +1417,34 @@ fn initial_required_command_failure_output(root: &Path, catalog_only: bool) -> S
                     failed = Some((position, receipt, name));
                 }
                 Some("not_run")
-                    if failed.is_some()
+                    if !preparation_stopped
+                        && failed.is_none()
+                        && name == "check-file-policy"
+                        && preparation.as_ref().is_some_and(|(reason, _)| {
+                            receipt["failure_reason"].as_str() == Some(reason.as_str())
+                        })
+                        && receipt["exit_code"].is_null()
+                        && receipt["evidence_present"] == false =>
+                {
+                    preparation_stopped = true;
+                }
+                Some("not_run")
+                    if (failed.is_some() || preparation_stopped)
                         && receipt["exit_code"].is_null()
                         && receipt["evidence_present"] == false => {}
                 _ => return Err("required command failure sequence mismatch".into()),
             }
         }
-        if report["status"] == "validated" && failed.is_some() {
+        if report["status"] == "validated" && (failed.is_some() || preparation_stopped) {
             return Err("failure sequence/report disposition mismatch".into());
+        }
+        if preparation_stopped {
+            let (_, context) = preparation.ok_or("preparation failure context unavailable")?;
+            return Ok(if catalog_only {
+                format!("state=catalog_not_reached preparation_failure=true\n{context}")
+            } else {
+                context
+            });
         }
         if !catalog_only && failed.is_none() {
             return Ok(format!(
@@ -1531,31 +1559,7 @@ fn retain_initial_required_command_context(
     nonce: u128,
 ) -> Result<String, String> {
     const CAP: usize = 64 * 1024;
-    let metadata = fs::symlink_metadata(repo).map_err(|_error| "report owner unavailable")?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err("unexpected report owner type".into());
-    }
-    let mut directory = repo.to_path_buf();
-    for part in ["target", "ripr", "reports"] {
-        directory.push(part);
-        match fs::symlink_metadata(&directory) {
-            Ok(metadata) if !metadata.file_type().is_symlink() && metadata.is_dir() => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                fs::create_dir(&directory)
-                    .map_err(|_error| "owned report directory claim failed")?;
-            }
-            _ => return Err("unexpected owned report directory type".into()),
-        }
-    }
-    let canonical = directory
-        .canonicalize()
-        .map_err(|_error| "report directory identity unavailable")?;
-    if !canonical.starts_with(
-        repo.canonicalize()
-            .map_err(|_error| "report owner identity unavailable")?,
-    ) {
-        return Err("report directory escaped owner".into());
-    }
+    let directory = owned_initial_report_directory(repo)?;
     let name = format!(
         "source-promotion-initial-required-command-context-{}-{nonce}.txt",
         std::process::id()
@@ -2170,6 +2174,15 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
             .output()
             .map_err(|error| format!("failed to run production J5 workflow: {error}"))?;
         if profile == "positive_synthetic" {
+            // Export the indexed preparation evidence before interpreting the
+            // governed sequence: setup failure means file policy was not run.
+            retain_initial_preparation_evidence(
+                &repo_root,
+                &root,
+                &format!("{INITIAL_FIXTURE}/validation-packet"),
+                "initial",
+                nonce,
+            );
             let initial_context = format!(
                 "failed_required_context={}\ncatalog_context={}\nparent_phase_observation={}",
                 initial_required_command_failure_output(&root, false),
@@ -2192,7 +2205,7 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
                 initial_required_command_failure_output(&root, true)
             );
             let finalized = workspace.join("final-workflow-packet");
-            let final_output = Command::new(&staged)
+            let final_output = cache_command(Command::new(&staged))
                 .current_dir(&repo_root)
                 .args([
                     "source-promotion",
@@ -2426,6 +2439,13 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
                     .map_err(|error| format!("missing historical diagnostic receipt: {error}"))?,
             )
             .map_err(|error| format!("decode historical diagnostic receipt: {error}"))?;
+            retain_initial_preparation_evidence(
+                &repo_root,
+                &root,
+                "workspace/public-live-validation",
+                "public",
+                nonce,
+            );
             let required = [
                 "check-network-policy",
                 "check-process-policy",

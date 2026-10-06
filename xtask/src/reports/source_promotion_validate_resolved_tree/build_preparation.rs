@@ -1,6 +1,9 @@
 // Setup only: each materialization still runs the unchanged governed checker.
 // This is trusted repository Cargo, with observed known-path storage growth,
 // not a sandbox or a hard aggregate writable-byte quota.
+// Keep this total setup budget separate from the 180-second governed command.
+// A larger setup envelope has not been shown to fit both materializations and
+// their focused/full-suite replay inside the existing 90-minute CI job.
 const MATERIALIZED_PREPARATION_TIMEOUT: Duration = Duration::from_mins(5);
 const PREPARATION_SETTLEMENT_RESERVE: Duration = Duration::from_secs(30);
 const PREPARATION_STORAGE_GROWTH: u64 = 4 * 1024 * 1024 * 1024;
@@ -92,6 +95,9 @@ fn prepare_materialized_file_policy(
             .ok_or("preparation storage observation unavailable")?;
         for (index, args) in plan.iter().enumerate() {
             let timeout = preparation_remaining(started.elapsed())?;
+            let class_started = std::time::Instant::now();
+            let setup_elapsed_before = started.elapsed();
+            let growth_before = monitor.peak_growth();
             eprintln!(
                 "materialized preparation class={} total_setup_seconds_limit=300 remaining_seconds={} argv={args:?}",
                 index + 1,
@@ -108,14 +114,49 @@ fn prepare_materialized_file_policy(
                 Ok(captured) => {
                     let stdout = format!("{:02}.stdout.log", index + 1);
                     let stderr = format!("{:02}.stderr.log", index + 1);
-                    write_new_file(&logs.join(&stdout), captured.output.stdout.as_bytes())?;
-                    write_new_file(&logs.join(&stderr), captured.output.stderr.as_bytes())?;
+                    // Try both streams and record the class even if retaining
+                    // one fails; a retention failure cannot erase its outcome.
+                    let stdout_retention_failure =
+                        write_new_file(&logs.join(&stdout), captured.output.stdout.as_bytes())
+                            .err();
+                    let stderr_retention_failure =
+                        write_new_file(&logs.join(&stderr), captured.output.stderr.as_bytes())
+                            .err();
                     let failure = preparation_output_failure(
                         &captured.output,
                         captured.failure_reason.as_deref(),
                     );
+                    let retention_failures = [
+                        stdout_retention_failure.as_deref(),
+                        stderr_retention_failure.as_deref(),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>();
+                    let failure = match (failure, retention_failures.is_empty()) {
+                        (failure, true) => failure,
+                        (Some(reason), false) => Some(format!(
+                            "{reason}; preparation stream retention failed: {}",
+                            retention_failures.join("; ")
+                        )),
+                        (None, false) => Some(format!(
+                            "preparation stream retention failed: {}",
+                            retention_failures.join("; ")
+                        )),
+                    };
                     rows.push(serde_json::json!({
-                        "argv": args, "setup_only": true,
+                        "program": "cargo", "argv": args, "setup_only": true,
+                        "work_budget_ms": timeout.as_millis(),
+                        "setup_elapsed_before_ms": setup_elapsed_before.as_millis(),
+                        "observed_class_wall_ms": class_started.elapsed().as_millis(),
+                        "observed_peak_growth_before_bytes": growth_before,
+                        "observed_peak_growth_after_bytes": monitor.peak_growth(),
+                        "capture_failure_reason": captured.failure_reason,
+                        "stdout_retention_failure": stdout_retention_failure,
+                        "stderr_retention_failure": stderr_retention_failure,
+                        // A terminal status is returned only after the owned
+                        // group/Job wait settles. Missing status stays unknown.
+                        "owned_settlement": if captured.output.status.is_some() { "confirmed_by_capture_owner" } else { "unavailable" },
                         "exit_code": captured.output.status.as_ref().and_then(|status| status.code()),
                         "duration_ms": captured.output.duration.as_millis(),
                         "timed_out": captured.output.timed_out,
@@ -128,7 +169,16 @@ fn prepare_materialized_file_policy(
                     }
                 }
                 Err(reason) => {
-                    rows.push(serde_json::json!({"argv": args, "setup_only": true, "capture_unavailable": true, "failure_reason": reason}));
+                    rows.push(serde_json::json!({
+                        "program": "cargo", "argv": args, "setup_only": true,
+                        "work_budget_ms": timeout.as_millis(),
+                        "setup_elapsed_before_ms": setup_elapsed_before.as_millis(),
+                        "observed_class_wall_ms": class_started.elapsed().as_millis(),
+                        "observed_peak_growth_before_bytes": growth_before,
+                        "observed_peak_growth_after_bytes": monitor.peak_growth(),
+                        "capture_unavailable": true, "owned_settlement": "unavailable",
+                        "failure_reason": reason,
+                    }));
                     return Err(reason);
                 }
             }
