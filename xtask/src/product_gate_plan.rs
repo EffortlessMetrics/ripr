@@ -676,8 +676,12 @@ mod tests {
 
     /// The existing production-path reservation changes scheduling only.
     /// Keep its exact scope and reject every other override or extra policy.
-    fn source_promotion_reservation(value: &toml::Value, path: &str) -> bool {
-        if path != "profile.default.overrides" {
+    fn source_promotion_reservation(value: &toml::Value, path: &[String]) -> bool {
+        if !path
+            .iter()
+            .map(String::as_str)
+            .eq(["profile", "default", "overrides"])
+        {
             return false;
         }
         let Some(items) = value.as_array() else {
@@ -700,20 +704,18 @@ mod tests {
 
     /// Keys that change which tests nextest selects or how it retries them,
     /// wherever they appear in the parsed config, quoted or inline.
-    fn collect_selection_keys(value: &toml::Value, path: &str, violations: &mut Vec<String>) {
+    fn collect_selection_keys(value: &toml::Value, path: &[String], violations: &mut Vec<String>) {
         match value {
             toml::Value::Table(table) => {
                 for (key, child) in table {
-                    let child_path = if path.is_empty() {
-                        key.clone()
-                    } else {
-                        format!("{path}.{key}")
-                    };
+                    let mut child_path = path.to_vec();
+                    child_path.push(key.clone());
                     if key == "default-filter"
                         || (key == "overrides" && !source_promotion_reservation(child, &child_path))
                     {
                         violations.push(format!(
-                            "nextest config declares `{child_path}`, which narrows or re-policies the selected tests"
+                            "nextest config declares `{}`, which narrows or re-policies the selected tests",
+                            child_path.join(".")
                         ));
                     }
                     collect_selection_keys(child, &child_path, violations);
@@ -734,7 +736,7 @@ mod tests {
             Err(err) => return vec![format!("nextest config does not parse: {err}")],
         };
         let mut violations = Vec::new();
-        collect_selection_keys(&value, "", &mut violations);
+        collect_selection_keys(&value, &[], &mut violations);
         let ci = value.get("profile").and_then(|profile| profile.get("ci"));
         if ci
             .and_then(|ci| ci.get("retries"))
@@ -946,6 +948,9 @@ mod tests {
                 "threads-required = \"num-test-threads\"\nretries = 2",
             ),
             NEXTEST_CONFIG.replace("[[profile.default.overrides]]", "[[profile.ci.overrides]]"),
+            format!(
+                "{NEXTEST_CONFIG}\n[[\"profile.default\".overrides]]\nfilter = 'binary(=source_promotion_workflow_contract) & test(=green_historical_diagnostics_are_rejected_by_the_real_final_gate)'\nthreads-required = \"num-test-threads\"\n"
+            ),
         ] {
             assert_ne!(
                 repolicied, NEXTEST_CONFIG,
