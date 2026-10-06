@@ -79,6 +79,8 @@ fn j5_request_identity(repo_root: &Path, scratch: &Path) -> Result<Value, String
         repo_root,
         &[
             "clone",
+            "--config",
+            "core.longpaths=true",
             "--local",
             "--no-hardlinks",
             "--no-checkout",

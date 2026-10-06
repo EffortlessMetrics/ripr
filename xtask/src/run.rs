@@ -1181,16 +1181,21 @@ fn capture_bounded_supervised(
         error_context,
     )?;
 
-    let (status, timed_out, failure_reason) = match wait_outcome {
-        Ok(outcome) => (Some(outcome.status), outcome.timed_out, None),
-        Err(reason) => (None, false, Some(reason)),
+    let (status, duration, timed_out, failure_reason) = match wait_outcome {
+        Ok(outcome) => (
+            Some(outcome.status),
+            outcome.duration,
+            outcome.timed_out,
+            None,
+        ),
+        Err(reason) => (None, started.elapsed(), false, Some(reason)),
     };
     Ok(TrustedPreparationCapture {
         output: TimedBoundedOutput {
             status,
             stdout: String::from_utf8_lossy(&stdout.bytes).into_owned(),
             stderr: String::from_utf8_lossy(&stderr.bytes).into_owned(),
-            duration: started.elapsed(),
+            duration,
             timed_out,
             stdout_truncated: stdout.truncated,
             stderr_truncated: stderr.truncated,
@@ -1359,7 +1364,14 @@ fn materialized_build_preparation_windows_monitor_stops_the_actual_owned_job() -
             |pid| leader = Some(pid),
             true,
             || {
-                if marker.exists() {
+                let complete = fs::read_to_string(&marker).ok().is_some_and(|text| {
+                    let pids = text
+                        .split_whitespace()
+                        .map(str::parse::<u32>)
+                        .collect::<Result<Vec<_>, _>>();
+                    pids.is_ok_and(|pids| pids.len() == 2 && pids.iter().all(|pid| *pid > 0))
+                });
+                if complete {
                     Err("synthetic observed preparation storage stop".into())
                 } else {
                     Ok(())
@@ -1568,16 +1580,21 @@ fn capture_owned_group_supervised(
         }
         let stdout = drain_owned_stream_reader(stdout_rx, stdout_handle, "stdout", error_context)?;
         let stderr = drain_owned_stream_reader(stderr_rx, stderr_handle, "stderr", error_context)?;
-        let (status, timed_out, failure_reason) = match outcome {
-            Ok(outcome) => (Some(outcome.status), outcome.timed_out, None),
-            Err(reason) => (None, false, Some(reason)),
+        let (status, duration, timed_out, failure_reason) = match outcome {
+            Ok(outcome) => (
+                Some(outcome.status),
+                outcome.duration,
+                outcome.timed_out,
+                None,
+            ),
+            Err(reason) => (None, started.elapsed(), false, Some(reason)),
         };
         Ok(TrustedPreparationCapture {
             output: TimedBoundedOutput {
                 status,
                 stdout: String::from_utf8_lossy(&stdout.bytes).into_owned(),
                 stderr: String::from_utf8_lossy(&stderr.bytes).into_owned(),
-                duration: started.elapsed(),
+                duration,
                 timed_out,
                 stdout_truncated: stdout.truncated,
                 stderr_truncated: stderr.truncated,
