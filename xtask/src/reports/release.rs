@@ -3297,7 +3297,7 @@ mod tests {
         let source = include_str!("../../../crates/ripr/src/cli/commands/init_workflow.rs");
         let summary =
             include_str!("../../../crates/ripr/src/cli/commands/init_workflow/advisory_summary.rs");
-        Ok(format!(
+        let workflow = format!(
             "{}{}{}",
             section(source, "const TEMPLATE_HEAD: &str = r#\"")?,
             section(
@@ -3305,7 +3305,14 @@ mod tests {
                 "pub(super) const ADVISORY_SUMMARY_STEP: &str = r#\""
             )?,
             section(source, "const TEMPLATE_TAIL: &str = r#\"")?
-        ))
+        );
+        assert_eq!(workflow.matches("@RIPR_PIN_FIRST_LINE@").count(), 1);
+        let rendered = workflow.replace(
+            "@RIPR_PIN_FIRST_LINE@",
+            "      # Synthetic pin comment for the workflow-template fixture.",
+        );
+        assert!(!rendered.contains("@RIPR_PIN_FIRST_LINE@"));
+        Ok(rendered)
     }
 
     #[test]

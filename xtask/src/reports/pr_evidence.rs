@@ -2332,8 +2332,9 @@ mod tests {
                 fake_ripr_invocation(&repo, "fake-ripr-packet-timeout", "", "", 0, Some(30))?;
             (fake.binary, fake.args)
         };
+        let timeout = Duration::from_secs(1);
         let producer_result = write_pr_evidence_with_runner(&repo, &options, |_repo, options| {
-            run_ripr_check_binary(&binary, args, options, Duration::from_secs(1))
+            run_ripr_check_binary(&binary, args, options, timeout)
         });
         let producer_error = producer_result
             .err()
@@ -2349,7 +2350,8 @@ mod tests {
         assert!(
             packet["warnings"][0]["message"]
                 .as_str()
-                .is_some_and(|message| message.contains("timed out after 120 seconds"))
+                .is_some_and(|message| message
+                    .contains(&format!("timed out after {} seconds", timeout.as_secs())))
         );
         let warning = packet["warnings"][0]["message"]
             .as_str()

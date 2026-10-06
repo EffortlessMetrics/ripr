@@ -8173,6 +8173,37 @@ fn release_server_receipt_set_accepts_different_runner_hosts() -> Result<(), Str
             })
             .collect::<Vec<_>>()
             .join("\n");
+        receipt["toolchain"]["rustc"] = Value::String(rustc.clone());
+        write(&receipt_path, &format!("{receipt}\n"));
+        super::validate_release_server_receipts(&root.join("dist"), "1.2.3")?;
+        for field in ["release", "commit-hash"] {
+            for missing in [true, false] {
+                let mutated = rustc
+                    .lines()
+                    .filter_map(|line| {
+                        if line.starts_with(&format!("{field}:")) {
+                            (!missing).then(|| format!("{field}: changed-synthetic-identity"))
+                        } else {
+                            Some(line.to_string())
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                assert_ne!(mutated, rustc);
+                receipt["toolchain"]["rustc"] = Value::String(mutated);
+                write(&receipt_path, &format!("{receipt}\n"));
+                let error = super::validate_release_server_receipts(&root.join("dist"), "1.2.3")
+                    .expect_err("missing or changed toolchain identity must reject");
+                assert!(
+                    error.contains(if missing {
+                        "missing release or commit-hash"
+                    } else {
+                        "toolchain mismatch"
+                    }),
+                    "{error}"
+                );
+            }
+        }
         receipt["toolchain"]["rustc"] = Value::String(rustc);
         write(&receipt_path, &format!("{receipt}\n"));
         super::validate_release_server_receipts(&root.join("dist"), "1.2.3")?;

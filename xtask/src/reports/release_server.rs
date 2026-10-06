@@ -820,7 +820,7 @@ pub(crate) fn release_server_archive_from_synthetic_payload(args: &[String]) -> 
         candidate_sha: "a".repeat(40),
         candidate_tree: "b".repeat(40),
         toolchain: ReleaseServerToolchain {
-            rustc: "synthetic-rustc\nhost: x86_64-unknown-linux-gnu".to_string(),
+            rustc: "synthetic-rustc\nhost: x86_64-unknown-linux-gnu\nrelease: synthetic-release\ncommit-hash: synthetic-commit-hash".to_string(),
             cargo: "synthetic-cargo".to_string(),
         },
         toolchain_file_sha256: "c".repeat(64),
