@@ -10616,7 +10616,11 @@ fn release_workflows_preserve_public_and_swarm_channel_triggers() -> Result<(), 
         Some(vec!["workflow_dispatch", "push"])
     );
     assert!(server.contains("  push:\n    tags:\n      - \"v*\""));
-    assert!(server.contains("cargo xtask release-upload-assets"));
+    assert!(
+        ci_enforced_xtask_invocations(&server)
+            .iter()
+            .any(|(command, _)| command == "release-upload-assets")
+    );
     // The retained Swarm rehearsal has no publication trigger or producer.
     assert_eq!(
         workflow_trigger_keys(swarm_server_binary_rehearsal_fixture()),
