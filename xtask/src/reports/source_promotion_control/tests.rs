@@ -1946,7 +1946,8 @@ pub(crate) mod source_promotion_control_tests {
         validate_validation_command_evidence(&legacy, &report, false)?;
         let original: Value = serde_json::from_slice(
             &fs::read(root.join(PACKET_INDEX)).map_err(|error| error.to_string())?,
-        ).map_err(|error| error.to_string())?;
+        )
+        .map_err(|error| error.to_string())?;
         fs::create_dir(root.join("build-preparation")).map_err(|error| error.to_string())?;
         let mut preparation = serde_json::json!({
             "schema": "ripr.materialized_build_preparation.v1",
@@ -1968,18 +1969,29 @@ pub(crate) mod source_promotion_control_tests {
         });
         let write_prepared = |value: &Value| -> Result<IndexedPacket, String> {
             let mut index = original.clone();
-            let files = index["files"].as_array_mut().ok_or("test index files absent")?;
+            let files = index["files"]
+                .as_array_mut()
+                .ok_or("test index files absent")?;
             for stream in ["stdout", "stderr"] {
                 let path = format!("build-preparation/01.{stream}.log");
                 fs::write(root.join(&path), []).map_err(|error| error.to_string())?;
                 files.push(serde_json::json!({"path":path,"bytes":0,"sha256":digest_bytes(&[])}));
             }
-            let bytes = write_test_json(&root.join("build-preparation.json"), value, "test preparation")?;
+            let bytes = write_test_json(
+                &root.join("build-preparation.json"),
+                value,
+                "test preparation",
+            )?;
             files.push(serde_json::json!({"path":"build-preparation.json","bytes":bytes.len(),"sha256":digest_bytes(&bytes)}));
-            files.sort_by(|left, right| json_string(left,"path").cmp(&json_string(right,"path")));
+            files.sort_by(|left, right| json_string(left, "path").cmp(&json_string(right, "path")));
             write_test_json(&root.join(PACKET_INDEX), &index, "test preparation index")?;
-            read_indexed_packet(&root, RESOLVED_TREE_PACKET_SCHEMA,
-                Some("resolved_tree_validation"), Some("validated"), VALIDATION_REPORT)
+            read_indexed_packet(
+                &root,
+                RESOLVED_TREE_PACKET_SCHEMA,
+                Some("resolved_tree_validation"),
+                Some("validated"),
+                VALIDATION_REPORT,
+            )
         };
         let packet = write_prepared(&preparation)?;
         validate_validation_command_evidence(&packet, &report, false)?;
@@ -1992,14 +2004,25 @@ pub(crate) mod source_promotion_control_tests {
             ("/setup_only", serde_json::json!(false)),
             ("/failure_reason", serde_json::json!("setup failed")),
             ("/classes/0/exit_code", serde_json::json!(1)),
-            ("/classes/0/owned_settlement", serde_json::json!("unavailable")),
-            ("/classes/0/stdout/path", serde_json::json!("build-preparation/02.stdout.log")),
+            (
+                "/classes/0/owned_settlement",
+                serde_json::json!("unavailable"),
+            ),
+            (
+                "/classes/0/stdout/path",
+                serde_json::json!("build-preparation/02.stdout.log"),
+            ),
             ("/classes/0/stdout/bytes", serde_json::json!(1)),
-            ("/classes/0/stdout/sha256", serde_json::json!("0".repeat(64))),
+            (
+                "/classes/0/stdout/sha256",
+                serde_json::json!("0".repeat(64)),
+            ),
             ("/classes/0/stdout/truncated", serde_json::json!(true)),
         ] {
             let mut changed = preparation.clone();
-            *changed.pointer_mut(pointer).ok_or("test preparation pointer absent")? = bad;
+            *changed
+                .pointer_mut(pointer)
+                .ok_or("test preparation pointer absent")? = bad;
             let packet = write_prepared(&changed)?;
             if validate_validation_command_evidence(&packet, &report, false).is_ok() {
                 return Err(format!("preparation replay admitted substituted {pointer}"));
@@ -2018,33 +2041,66 @@ pub(crate) mod source_promotion_control_tests {
             "owned_settlement":"unavailable", "failure_reason":"owned capture unavailable"
         }]);
         let mut failed_packet = packet.clone();
-        failed_packet.files.retain(|path, _| !path.starts_with("build-preparation/"));
+        failed_packet
+            .files
+            .retain(|path, _| !path.starts_with("build-preparation/"));
         let bytes = serde_json::to_vec(&unavailable).map_err(|error| error.to_string())?;
-        failed_packet.files.insert("build-preparation.json".into(), IndexedFile {sha256:digest_bytes(&bytes), contents:bytes});
-        let mut expected = original["files"].as_array().ok_or("original index files absent")?
-            .iter().filter_map(|entry| json_string(entry,"path").map(str::to_string)).collect::<BTreeSet<_>>();
+        failed_packet.files.insert(
+            "build-preparation.json".into(),
+            IndexedFile {
+                sha256: digest_bytes(&bytes),
+                contents: bytes,
+            },
+        );
+        let mut expected = original["files"]
+            .as_array()
+            .ok_or("original index files absent")?
+            .iter()
+            .filter_map(|entry| json_string(entry, "path").map(str::to_string))
+            .collect::<BTreeSet<_>>();
         validate_validation_preparation_evidence(&failed_packet, &report, true, &mut expected)?;
         validate_exact_packet_inventory(&failed_packet, &expected, "failed preparation")?;
         unavailable["classes"][0]["stdout"] = preparation["classes"][0]["stdout"].clone();
         let bytes = serde_json::to_vec(&unavailable).map_err(|error| error.to_string())?;
-        failed_packet.files.insert("build-preparation.json".into(), IndexedFile {sha256:digest_bytes(&bytes), contents:bytes});
-        if validate_validation_preparation_evidence(&failed_packet, &report, true, &mut expected).is_ok() {
+        failed_packet.files.insert(
+            "build-preparation.json".into(),
+            IndexedFile {
+                sha256: digest_bytes(&bytes),
+                contents: bytes,
+            },
+        );
+        if validate_validation_preparation_evidence(&failed_packet, &report, true, &mut expected)
+            .is_ok()
+        {
             return Err("unavailable capture accepted a contradictory stream receipt".into());
         }
         let mut orphan_without_sidecar = packet.clone();
-        orphan_without_sidecar.files.remove("build-preparation.json");
+        orphan_without_sidecar
+            .files
+            .remove("build-preparation.json");
         if validate_validation_command_evidence(&orphan_without_sidecar, &report, false).is_ok() {
             return Err("preparation replay admitted orphan streams without sidecar".into());
         }
         let mut extra_stream = packet.clone();
-        extra_stream.files.insert("build-preparation/02.stdout.log".into(), IndexedFile {sha256:digest_bytes(&[]), contents:Vec::new()});
+        extra_stream.files.insert(
+            "build-preparation/02.stdout.log".into(),
+            IndexedFile {
+                sha256: digest_bytes(&[]),
+                contents: Vec::new(),
+            },
+        );
         if validate_validation_command_evidence(&extra_stream, &report, false).is_ok() {
             return Err("preparation replay admitted an extra indexed stream".into());
+        }
         preparation["classes"] = serde_json::json!([]);
         let orphan = write_prepared(&preparation)?;
         match validate_validation_command_evidence(&orphan, &report, false) {
             Err(reason) if reason.contains("packet inventory differs from its exact contract") => {}
-            other => return Err(format!("preparation replay admitted orphan streams: {other:?}")),
+            other => {
+                return Err(format!(
+                    "preparation replay admitted orphan streams: {other:?}"
+                ));
+            }
         }
         fs::remove_dir_all(&*temp).map_err(|error| error.to_string())?;
         Ok(())
