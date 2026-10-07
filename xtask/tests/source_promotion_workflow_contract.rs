@@ -1553,6 +1553,30 @@ fn initial_required_command_failure_output(root: &Path, catalog_only: bool) -> S
     )
 }
 
+fn initial_workflow_terminal_context(root: &Path) -> String {
+    const CAP: usize = 16 * 1024;
+    let mut context = String::from("diagnostic_only=true acceptance_credit=false\n");
+    for relative in [
+        "workspace/workflow-packet/workflow-disposition.json",
+        "workspace/resolved-tree-admission/resolved-tree-admission.json",
+    ] {
+        match initial_diagnostic_bytes(root, relative, CAP) {
+            Ok(bytes) => {
+                let rendered = format!("{:?}", String::from_utf8_lossy(&bytes));
+                context.push_str(&format!(
+                    "path={relative} bytes={} sha256={:x} rendered_limit={CAP} truncated={} text={}\n",
+                    bytes.len(),
+                    Sha256::digest(&bytes),
+                    rendered.len() > CAP,
+                    initial_diagnostic_text(rendered.as_bytes(), CAP),
+                ));
+            }
+            Err(reason) => context.push_str(&format!("path={relative} unavailable={reason}\n")),
+        }
+    }
+    context
+}
+
 fn retain_initial_required_command_context(
     repo: &Path,
     context: &str,
@@ -1620,6 +1644,30 @@ fn initial_required_command_diagnostics_follow_owned_receipts() -> Result<(), St
     ));
     fs::create_dir(&root).map_err(|error| error.to_string())?;
     let result = (|| {
+        let terminal_dir = root.join("workspace/workflow-packet");
+        fs::create_dir_all(&terminal_dir).map_err(|error| error.to_string())?;
+        let terminal = terminal_dir.join("workflow-disposition.json");
+        fs::write(
+            &terminal,
+            br#"{"status":"rejected","failure_reasons":["actual-terminal-refusal"]}"#,
+        )
+        .map_err(|error| error.to_string())?;
+        let context = initial_workflow_terminal_context(&root);
+        if !context.contains("actual-terminal-refusal")
+            || !context.contains("diagnostic_only=true acceptance_credit=false")
+            || !context.contains("sha256=")
+        {
+            return Err("terminal workflow refusal was not retained as diagnostic evidence".into());
+        }
+        fs::write(&terminal, vec![b'x'; 16 * 1024 + 1]).map_err(|error| error.to_string())?;
+        let oversized = initial_workflow_terminal_context(&root);
+        if !oversized.contains("input byte ceiling exceeded") || oversized.len() > 34 * 1024 {
+            return Err("terminal workflow diagnostic did not preserve its input bound".into());
+        }
+        fs::remove_file(&terminal).map_err(|error| error.to_string())?;
+        if !initial_workflow_terminal_context(&root).contains("unavailable=") {
+            return Err("missing terminal workflow diagnostic was treated as evidence".into());
+        }
         let evidence = root.join(INITIAL_FIXTURE);
         let packet = evidence.join("validation-packet");
         let logs = packet.join("commands");
@@ -2184,7 +2232,8 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
                 nonce,
             );
             let initial_context = format!(
-                "failed_required_context={}\ncatalog_context={}\nparent_phase_observation={}",
+                "workflow_terminal_context={}\nfailed_required_context={}\ncatalog_context={}\nparent_phase_observation={}",
+                initial_workflow_terminal_context(&root),
                 initial_required_command_failure_output(&root, false),
                 initial_required_command_failure_output(&root, true),
                 bounded_parent_phase_observation(&output.stderr)
@@ -2195,9 +2244,9 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
             }
             if !output.status.success() {
                 return Err(format!(
-                    "positive workflow failed: {}; bounded_initial_required_command_output={}",
-                    String::from_utf8_lossy(&output.stderr),
-                    initial_diagnostic_text(initial_context.as_bytes(), 64 * 1024)
+                    "positive workflow failed; bounded_initial_required_command_output={}; stderr={}",
+                    initial_diagnostic_text(initial_context.as_bytes(), 64 * 1024),
+                    initial_diagnostic_text(&output.stderr, 64 * 1024)
                 ));
             }
             println!(
