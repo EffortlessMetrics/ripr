@@ -156,7 +156,10 @@ fn observe_owned_config_fixture_cleanup(return_error: bool) -> Result<(), String
         Ok(())
     };
     assert_eq!(outcome, expected);
-    assert!(removed, "owned config fixture remained after its completed scope");
+    assert!(
+        removed,
+        "owned config fixture remained after its completed scope"
+    );
     Ok(())
 }
 
