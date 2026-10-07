@@ -907,17 +907,39 @@ fn toml_advisory_markers(toml: &str) -> Result<(), String> {
 /// A blocking default here would turn an advisory scaffold into an
 /// enforcement gate.
 fn workflow_advisory_markers(workflow: &str) -> Result<(), String> {
-    for marker in [
-        "continue-on-error",
-        "RIPR_UPLOAD_SARIF",
-        "cargo install ripr --locked",
-        "ripr pilot",
-    ] {
+    for marker in ["continue-on-error", "RIPR_UPLOAD_SARIF", "ripr pilot"] {
         if !workflow.contains(marker) {
             return Err(format!(
                 "generated workflow holds no advisory marker `{marker}`"
             ));
         }
+    }
+    let installs = workflow
+        .lines()
+        .filter_map(|line| {
+            line.trim_start()
+                .strip_prefix("cargo install ripr --version ")
+        })
+        .collect::<Vec<_>>();
+    let [install] = installs.as_slice() else {
+        return Err(
+            "generated workflow needs one version-pinned cargo install ripr fallback".into(),
+        );
+    };
+    let pin = install.strip_suffix(" --locked").ok_or_else(|| {
+        "generated workflow cargo install ripr fallback must retain --locked".to_string()
+    })?;
+    let parts = pin.split('.').collect::<Vec<_>>();
+    if parts.len() != 3
+        || parts
+            .iter()
+            .any(|part| part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()))
+    {
+        return Err("generated workflow fallback needs an exact release version pin".into());
+    }
+    let download_pin = format!("version={pin}");
+    if !workflow.lines().any(|line| line.trim() == download_pin) {
+        return Err("generated workflow prebuilt and cargo fallback version pins differ".into());
     }
     Ok(())
 }
@@ -3446,7 +3468,7 @@ mod tests {
     fn init_generation_must_stay_advisory() -> Result<(), String> {
         toml_advisory_markers("mode = \"draft\"\ninclude_unchanged_tests = true\n")?;
         workflow_advisory_markers(
-            "continue-on-error: true\nRIPR_UPLOAD_SARIF: \"true\"\nrun: cargo install ripr --locked\nrun: ripr pilot\n",
+            "continue-on-error: true\nRIPR_UPLOAD_SARIF: \"true\"\nrun: |\n  version=0.10.0\n  cargo install ripr --version 0.10.0 --locked\n  ripr pilot\n",
         )?;
         // A blocking default or an unpinned install reference refuses.
         assert!(matches!(
@@ -3461,8 +3483,26 @@ mod tests {
             workflow_advisory_markers(
                 "continue-on-error: true\nRIPR_UPLOAD_SARIF: \"true\"\nrun: ripr pilot\n"
             ),
-            Err(error) if error.contains("cargo install ripr --locked")
+            Err(error) if error.contains("version-pinned cargo install ripr")
         ));
+        let pinned = "continue-on-error: true\nRIPR_UPLOAD_SARIF: true\nversion=0.10.0\ncargo install ripr --version 0.10.0 --locked\nripr pilot\n";
+        workflow_advisory_markers(pinned)?;
+        for (bad, expected) in [
+            (pinned.replace(" --locked", ""), "retain --locked"),
+            (pinned.replace(" --version 0.10.0", ""), "version-pinned"),
+            (
+                pinned.replace("version=0.10.0", "version=0.9.0"),
+                "pins differ",
+            ),
+            (
+                pinned.replace("--version 0.10.0", "--version *"),
+                "exact release",
+            ),
+        ] {
+            assert!(
+                matches!(workflow_advisory_markers(&bad), Err(error) if error.contains(expected))
+            );
+        }
         Ok(())
     }
 
