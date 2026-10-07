@@ -907,7 +907,11 @@ fn toml_advisory_markers(toml: &str) -> Result<(), String> {
 /// A blocking default here would turn an advisory scaffold into an
 /// enforcement gate.
 fn workflow_advisory_markers(workflow: &str) -> Result<(), String> {
-    for marker in ["continue-on-error", "RIPR_UPLOAD_SARIF", "ripr pilot"] {
+    for marker in [
+        "continue-on-error",
+        "RIPR_UPLOAD_SARIF",
+        "ripr reports ci-packet",
+    ] {
         if !workflow.contains(marker) {
             return Err(format!(
                 "generated workflow holds no advisory marker `{marker}`"
@@ -3468,7 +3472,7 @@ mod tests {
     fn init_generation_must_stay_advisory() -> Result<(), String> {
         toml_advisory_markers("mode = \"draft\"\ninclude_unchanged_tests = true\n")?;
         workflow_advisory_markers(
-            "continue-on-error: true\nRIPR_UPLOAD_SARIF: \"true\"\nrun: |\n  version=0.10.0\n  cargo install ripr --version 0.10.0 --locked\n  ripr pilot\n",
+            "continue-on-error: true\nRIPR_UPLOAD_SARIF: \"true\"\nrun: |\n  version=0.10.0\n  cargo install ripr --version 0.10.0 --locked\n  ripr reports ci-packet\n",
         )?;
         // A blocking default or an unpinned install reference refuses.
         assert!(matches!(
@@ -3476,17 +3480,21 @@ mod tests {
             Err(error) if error.contains("mode = \"draft\"")
         ));
         assert!(matches!(
-            workflow_advisory_markers("run: cargo install ripr\nrun: ripr pilot\n"),
+            workflow_advisory_markers("run: cargo install ripr\nrun: ripr reports ci-packet\n"),
             Err(error) if error.contains("continue-on-error")
         ));
         assert!(matches!(
             workflow_advisory_markers(
-                "continue-on-error: true\nRIPR_UPLOAD_SARIF: \"true\"\nrun: ripr pilot\n"
+                "continue-on-error: true\nRIPR_UPLOAD_SARIF: \"true\"\nrun: ripr reports ci-packet\n"
             ),
             Err(error) if error.contains("version-pinned cargo install ripr")
         ));
-        let pinned = "continue-on-error: true\nRIPR_UPLOAD_SARIF: true\nversion=0.10.0\ncargo install ripr --version 0.10.0 --locked\nripr pilot\n";
+        let pinned = "continue-on-error: true\nRIPR_UPLOAD_SARIF: true\nversion=0.10.0\ncargo install ripr --version 0.10.0 --locked\nripr reports ci-packet\n";
         workflow_advisory_markers(pinned)?;
+        assert!(matches!(
+            workflow_advisory_markers(&pinned.replace("ripr reports ci-packet", "ripr pilot")),
+            Err(error) if error.contains("ripr reports ci-packet")
+        ));
         for (bad, expected) in [
             (pinned.replace(" --locked", ""), "retain --locked"),
             (pinned.replace(" --version 0.10.0", ""), "version-pinned"),
