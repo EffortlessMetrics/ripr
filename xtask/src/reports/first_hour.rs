@@ -957,6 +957,7 @@ struct InitEvidence {
     toml_conflict_preserved: bool,
     workflow_conflict_refused: bool,
     force_overwrites: bool,
+    force_preserves_config: bool,
 }
 
 /// Runs the installed init journey (issue step 3) on an isolated checkout:
@@ -1092,7 +1093,8 @@ fn run_init_journey(
     if workflow_kept != "# user workflow\n" {
         return Err("installed init overwrote the user-owned workflow".to_string());
     }
-    // The documented escape hatch provably works on the disposable checkout.
+    // A CI force refresh replaces the generated workflow and preserves the
+    // user-owned config, matching the documented upgrade contract.
     init_args.push("--force".to_string());
     journey_run(
         harness,
@@ -1106,7 +1108,9 @@ fn run_init_journey(
         .map_err(|error| format!("read forced ripr.toml: {error}"))?;
     let workflow_forced = std::fs::read_to_string(&workflow_path)
         .map_err(|error| format!("read forced workflow: {error}"))?;
-    toml_advisory_markers(&toml_forced)?;
+    if toml_forced != toml_kept {
+        return Err("installed init --ci github --force modified the user-owned ripr.toml".into());
+    }
     workflow_advisory_markers(&workflow_forced)?;
     // The forced run targets only the two generated files: a --force that
     // modifies or deletes the unrelated user workflow must still fail.
@@ -1123,7 +1127,9 @@ fn run_init_journey(
         rerun_refused: true,
         toml_conflict_preserved: true,
         workflow_conflict_refused: true,
+        // This records workflow replacement; config preservation is separate.
         force_overwrites: true,
+        force_preserves_config: true,
     })
 }
 
@@ -1137,6 +1143,7 @@ fn init_json(evidence: &InitEvidence) -> Value {
         "toml_conflict_preserved": evidence.toml_conflict_preserved,
         "workflow_conflict_refused": evidence.workflow_conflict_refused,
         "force_overwrites": evidence.force_overwrites,
+        "force_preserves_config": evidence.force_preserves_config,
     })
 }
 
