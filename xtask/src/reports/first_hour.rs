@@ -615,6 +615,9 @@ fn build_fixture_repo(
     std::fs::create_dir_all(&tests).map_err(|error| format!("create fixture tests: {error}"))?;
     std::fs::write(repo.join("Cargo.toml"), FIXTURE_CARGO_TOML)
         .map_err(|error| format!("write fixture Cargo.toml: {error}"))?;
+    // The repair edit cage requires Cargo's complete build directory to be ignored.
+    std::fs::write(repo.join(".gitignore"), "/target/\n")
+        .map_err(|error| format!("write fixture .gitignore: {error}"))?;
     std::fs::write(repo.join("Cargo.lock"), FIXTURE_CARGO_LOCK)
         .map_err(|error| format!("write fixture Cargo.lock: {error}"))?;
     std::fs::write(src.join("lib.rs"), FIXTURE_LIB_BASE)
