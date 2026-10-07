@@ -261,7 +261,7 @@ fn write_new_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
 fn packet_entries(root: &Path) -> Result<Vec<Value>, String> {
     let mut paths = Vec::<PathBuf>::new();
     collect_packet_paths(root, root, &mut paths)?;
-    paths.sort();
+    paths.sort_by_cached_key(|relative| normalize_path(relative));
     paths
         .into_iter()
         .filter(|relative| relative != Path::new(PACKET_INDEX))

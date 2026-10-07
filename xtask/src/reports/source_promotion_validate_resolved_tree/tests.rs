@@ -15,6 +15,42 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     #[test]
+    fn packet_index_orders_normalized_paths_for_prefix_siblings() -> Result<(), String> {
+        let root = TempRoot::create("packet-prefix-siblings")?;
+        let preparation = root.path().join("build-preparation");
+        fs::create_dir(&preparation).map_err(|error| error.to_string())?;
+        fs::write(preparation.join("01.stderr.log"), "owned preparation log")
+            .map_err(|error| error.to_string())?;
+        fs::write(root.path().join("build-preparation.json"), "owned sidecar")
+            .map_err(|error| error.to_string())?;
+        fs::write(
+            preparation.join("01.stdout.log"),
+            "owned preparation stdout",
+        )
+        .map_err(|error| error.to_string())?;
+        fs::write(root.path().join(PACKET_INDEX), "existing index is excluded")
+            .map_err(|error| error.to_string())?;
+        let entries = packet_entries(root.path())?;
+        let paths = entries
+            .iter()
+            .map(|entry| entry.get("path").and_then(Value::as_str))
+            .collect::<Option<Vec<_>>>()
+            .ok_or("packet entry has no serialized path")?;
+        if paths
+            != [
+                "build-preparation.json",
+                "build-preparation/01.stderr.log",
+                "build-preparation/01.stdout.log",
+            ]
+        {
+            return Err(format!(
+                "packet prefix siblings are not in wire order: {paths:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
     fn command_catalog_failure_report_is_fixed_bounded_and_typed() -> Result<(), String> {
         let root = TempRoot::create("catalog-failure-context")?;
         let reports = root.path().join("target/ripr/reports");
