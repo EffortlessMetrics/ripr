@@ -788,8 +788,8 @@ fn validate_validation_preparation_evidence(
         {
             return Err("resolved-tree preparation class has invalid setup-only program".into());
         }
-        if !allow_failed {
-            if json_bool(class, "capture_unavailable") == Some(true)
+        if !allow_failed
+            && (json_bool(class, "capture_unavailable") == Some(true)
                 || class.get("exit_code").and_then(Value::as_i64) != Some(0)
                 || json_bool(class, "timed_out") != Some(false)
                 || json_string(class, "owned_settlement") != Some("confirmed_by_capture_owner")
@@ -800,12 +800,9 @@ fn validate_validation_preparation_evidence(
                     "stderr_retention_failure",
                 ]
                 .iter()
-                .any(|key| class.get(key) != Some(&Value::Null))
-            {
-                return Err(
-                    "resolved-tree preparation class lacks successful settled capture".into(),
-                );
-            }
+                .any(|key| class.get(key) != Some(&Value::Null)))
+        {
+            return Err("resolved-tree preparation class lacks successful settled capture".into());
         }
         if allow_failed && json_bool(class, "capture_unavailable") == Some(true) {
             if json_string(class, "owned_settlement") != Some("unavailable")
