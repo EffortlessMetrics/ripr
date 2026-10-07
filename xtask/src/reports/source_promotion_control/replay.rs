@@ -690,10 +690,92 @@ fn validate_validation_command_evidence(
             }
         }
     }
+    validate_validation_preparation_evidence(packet, validation, allow_not_run, &mut expected_files)?;
     validate_exact_packet_inventory(packet, &expected_files, "resolved-tree validation")?;
     Ok(())
 }
 
+fn validate_validation_preparation_evidence(
+    packet: &IndexedPacket,
+    validation: &Value,
+    allow_failed: bool,
+    expected_files: &mut BTreeSet<String>,
+) -> Result<(), String> {
+    const SIDECAR: &str = "build-preparation.json";
+    let Some(indexed) = packet.files.get(SIDECAR) else {
+        return Ok(());
+    };
+    if indexed.contents.len() > 64 * 1024 {
+        return Err("resolved-tree preparation sidecar exceeds its retention bound".into());
+    }
+    let preparation: Value = serde_json::from_slice(&indexed.contents)
+        .map_err(|error| format!("invalid resolved-tree preparation sidecar: {error}"))?;
+    if json_string(&preparation, "schema") != Some("ripr.materialized_build_preparation.v1")
+        || json_bool(&preparation, "setup_only") != Some(true)
+        || json_bool(&preparation, "policy_acceptance_credit") != Some(false)
+    {
+        return Err("resolved-tree preparation has invalid setup-only claim boundary".into());
+    }
+    for (key, expected) in [
+        ("source_parent", validation.get("source_parent")),
+        ("reviewed_tree", validation.get("reviewed_tree")),
+        ("disposable_commit", validation.pointer("/materialization/disposable_commit")),
+    ] {
+        if expected.is_none() || preparation.get(key) != expected {
+            return Err(format!("resolved-tree preparation {key} differs from validation identity"));
+        }
+    }
+    if !allow_failed && preparation.get("failure_reason") != Some(&Value::Null) {
+        return Err("resolved-tree preparation failed before successful validation".into());
+    }
+    let classes = preparation.get("classes").and_then(Value::as_array)
+        .ok_or("resolved-tree preparation is missing its classes")?;
+    expected_files.insert(SIDECAR.into());
+    for (index, class) in classes.iter().enumerate() {
+        if json_string(class, "program") != Some("cargo")
+            || json_bool(class, "setup_only") != Some(true)
+        {
+            return Err("resolved-tree preparation class has invalid setup-only program".into());
+        }
+        if !allow_failed {
+            if json_bool(class, "capture_unavailable") == Some(true)
+                || class.get("exit_code").and_then(Value::as_i64) != Some(0)
+                || json_bool(class, "timed_out") != Some(false)
+                || json_string(class, "owned_settlement") != Some("confirmed_by_capture_owner")
+                || ["failure_reason", "capture_failure_reason", "stdout_retention_failure", "stderr_retention_failure"]
+                    .iter().any(|key| class.get(key) != Some(&Value::Null))
+            {
+                return Err("resolved-tree preparation class lacks successful settled capture".into());
+            }
+        }
+        if allow_failed && json_bool(class, "capture_unavailable") == Some(true) {
+            if json_string(class, "owned_settlement") != Some("unavailable")
+                || class.get("failure_reason").and_then(Value::as_str).is_none()
+                || class.get("stdout").is_some() || class.get("stderr").is_some()
+            {
+                return Err("resolved-tree preparation has invalid unavailable capture".into());
+            }
+            continue;
+        }
+        for stream in ["stdout", "stderr"] {
+            let receipt = class.get(stream)
+                .ok_or_else(|| format!("resolved-tree preparation is missing {stream} receipt"))?;
+            let path = format!("build-preparation/{:02}.{stream}.log", index + 1);
+            let indexed = packet.files.get(&path)
+                .ok_or_else(|| format!("resolved-tree preparation {stream} is not indexed"))?;
+            if json_string(receipt, "path") != Some(path.as_str())
+                || receipt.get("bytes").and_then(Value::as_u64) != Some(indexed.contents.len() as u64)
+                || json_string(receipt, "sha256") != Some(indexed.sha256.as_str())
+                || indexed.contents.len() > 2 * 1024 * 1024
+                || (!allow_failed && json_bool(receipt, "truncated") != Some(false))
+            {
+                return Err(format!("resolved-tree preparation {stream} differs from bounded indexed evidence"));
+            }
+            expected_files.insert(path);
+        }
+    }
+    Ok(())
+}
 fn validate_control_packet(
     packet: &IndexedPacket,
     report_name: &str,
