@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       candidate_tag:
-        description: "Optional immutable tag that must resolve to candidate_sha"
+        description: "Optional protected swarm pin tag; source qualification uses the exact commit"
         required: false
         default: ""
         type: string
@@ -54,10 +54,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "${REPOSITORY}" = "EffortlessMetrics/ripr-swarm"
+          case "${REPOSITORY}" in
+            EffortlessMetrics/ripr|EffortlessMetrics/ripr-swarm) ;;
+            *) echo "::error::unsupported qualification repository" >&2; exit 1 ;;
+          esac
           [[ "${CANDIDATE_SHA}" =~ ^[0-9a-fA-F]{40}$ ]]
           git init "${GITHUB_WORKSPACE}"
-          git -C "${GITHUB_WORKSPACE}" remote add origin "https://github.com/EffortlessMetrics/ripr-swarm.git"
+          git -C "${GITHUB_WORKSPACE}" remote add origin "https://github.com/${REPOSITORY}.git"
           git -C "${GITHUB_WORKSPACE}" -c credential.helper= -c http.extraheader= fetch --no-tags --depth=1 origin "${CANDIDATE_SHA}"
           git -C "${GITHUB_WORKSPACE}" checkout --detach FETCH_HEAD
 
@@ -74,6 +77,8 @@ jobs:
           ruleset_response_sha256="none"
           ruleset_id="none"
           if [[ -n "${CANDIDATE_TAG}" ]]; then
+            # The optional protected pin belongs to the historical swarm transaction.
+            test "${REPOSITORY}" = "EffortlessMetrics/ripr-swarm"
             tag="${CANDIDATE_TAG#refs/tags/}"
             test "${CANDIDATE_TAG}" = "${tag}"
             [[ "${tag}" =~ ^ripr-release-[0-9]+\.[0-9]+\.[0-9]+$ ]]
@@ -185,9 +190,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "${REPOSITORY}" = "EffortlessMetrics/ripr-swarm"
+          case "${REPOSITORY}" in
+            EffortlessMetrics/ripr|EffortlessMetrics/ripr-swarm) ;;
+            *) echo "::error::unsupported qualification repository" >&2; exit 1 ;;
+          esac
           git init "${GITHUB_WORKSPACE}"
-          git -C "${GITHUB_WORKSPACE}" remote add origin "https://github.com/EffortlessMetrics/ripr-swarm.git"
+          git -C "${GITHUB_WORKSPACE}" remote add origin "https://github.com/${REPOSITORY}.git"
           git -C "${GITHUB_WORKSPACE}" -c credential.helper= -c http.extraheader= fetch --no-tags --depth=1 origin "${CANDIDATE_SHA}"
           git -C "${GITHUB_WORKSPACE}" checkout --detach FETCH_HEAD
 
@@ -403,9 +411,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "${REPOSITORY}" = "EffortlessMetrics/ripr-swarm"
+          case "${REPOSITORY}" in
+            EffortlessMetrics/ripr|EffortlessMetrics/ripr-swarm) ;;
+            *) echo "::error::unsupported qualification repository" >&2; exit 1 ;;
+          esac
           git init "${GITHUB_WORKSPACE}"
-          git -C "${GITHUB_WORKSPACE}" remote add origin "https://github.com/EffortlessMetrics/ripr-swarm.git"
+          git -C "${GITHUB_WORKSPACE}" remote add origin "https://github.com/${REPOSITORY}.git"
           git -C "${GITHUB_WORKSPACE}" -c credential.helper= -c http.extraheader= fetch --no-tags --depth=1 origin "${CANDIDATE_SHA}"
           git -C "${GITHUB_WORKSPACE}" checkout --detach FETCH_HEAD
 
@@ -657,10 +668,17 @@ jobs:
           RECEIPT_INSTRUMENT_SHA: ${{ job.workflow_sha }}
         run: |
           set -euo pipefail
-          test "${RECEIPT_INSTRUMENT_REPOSITORY}" = "EffortlessMetrics/ripr-swarm"
+          case "${REPOSITORY}" in
+            EffortlessMetrics/ripr|EffortlessMetrics/ripr-swarm) ;;
+            *) echo "::error::unsupported qualification repository" >&2; exit 1 ;;
+          esac
+          case "${RECEIPT_INSTRUMENT_REPOSITORY}" in
+            EffortlessMetrics/ripr|EffortlessMetrics/ripr-swarm) ;;
+            *) echo "::error::unsupported receipt instrument repository" >&2; exit 1 ;;
+          esac
           [[ "${RECEIPT_INSTRUMENT_SHA}" =~ ^[0-9a-fA-F]{40}$ ]]
           git init "${GITHUB_WORKSPACE}"
-          git -C "${GITHUB_WORKSPACE}" remote add origin "https://github.com/EffortlessMetrics/ripr-swarm.git"
+          git -C "${GITHUB_WORKSPACE}" remote add origin "https://github.com/${RECEIPT_INSTRUMENT_REPOSITORY}.git"
           git -C "${GITHUB_WORKSPACE}" -c credential.helper= -c http.extraheader= fetch --no-tags --depth=1 origin "${RECEIPT_INSTRUMENT_SHA}"
           git -C "${GITHUB_WORKSPACE}" checkout --detach FETCH_HEAD
 
