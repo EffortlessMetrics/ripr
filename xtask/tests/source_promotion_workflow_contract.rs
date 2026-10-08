@@ -2101,10 +2101,10 @@ fn production_fixture_root(
         std::process::id()
     );
     let mut selected_root = None;
-    for parent in [repo_root.join("target"), repo_root.join("xtask/target")] {
-        fs::create_dir_all(&parent)
+    for argument_parent in [repo_root.join("target"), repo_root.join("xtask/target")] {
+        fs::create_dir_all(&argument_parent)
             .map_err(|error| format!("failed to create owned fixture parent: {error}"))?;
-        let parent = parent
+        let parent = argument_parent
             .canonicalize()
             .map_err(|error| format!("failed to resolve owned fixture parent: {error}"))?;
         let candidate = parent.join(&name);
@@ -2112,7 +2112,10 @@ fn production_fixture_root(
             && !candidate.starts_with(&protected_target)
             && !protected_target.starts_with(&candidate)
         {
-            selected_root = Some(candidate);
+            // Canonical spelling proves ownership and cache disjointness, but
+            // Windows canonicalize() adds a verbatim prefix Git cannot use as
+            // a clone destination. Keep the verified parent's argument spelling.
+            selected_root = Some(argument_parent.join(&name));
             break;
         }
     }
@@ -2157,7 +2160,10 @@ fn production_fixture_allocation_preserves_owned_cargo_cache() -> Result<(), Str
             if entries != [std::ffi::OsString::from("cache-marker")]
                 || fs::read(cache.join("cache-marker")).map_err(|error| error.to_string())?
                     != b"protected cache"
-                || !fixture.starts_with(repo.canonicalize().map_err(|error| error.to_string())?)
+                || !fixture
+                    .canonicalize()
+                    .map_err(|error| error.to_string())?
+                    .starts_with(repo.canonicalize().map_err(|error| error.to_string())?)
             {
                 return Err(format!(
                     "{label}: controller fixture changed its protected Cargo cache"
@@ -2168,6 +2174,67 @@ fn production_fixture_allocation_preserves_owned_cargo_cache() -> Result<(), Str
     })();
     let cleanup = fs::remove_dir_all(&owner).map_err(|error| error.to_string());
     result.and(cleanup)
+}
+
+#[cfg(windows)]
+#[test]
+fn production_fixture_allocation_is_a_native_git_clone_destination() -> Result<(), String> {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_nanos();
+    let owner = std::env::temp_dir().join(format!(
+        "ripr-fixture-git-path-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir(&owner).map_err(|error| error.to_string())?;
+    let result = (|| {
+        let repo = owner.join("repo");
+        let cache = repo.join("target");
+        fs::create_dir_all(&cache).map_err(|error| error.to_string())?;
+        fs::write(cache.join("cache-marker"), "protected cache")
+            .map_err(|error| error.to_string())?;
+        let source = owner.join("source");
+        let init = Command::new("git")
+            .args(["init", "--quiet"])
+            .arg(&source)
+            .output()
+            .map_err(|error| format!("initialize native Git probe: {error}"))?;
+        if !init.status.success() {
+            return Err(format!(
+                "native Git probe init failed: {}",
+                String::from_utf8_lossy(&init.stderr)
+            ));
+        }
+        let fixture = production_fixture_root(&repo, &cache, nonce)?;
+        let cloned = Command::new("git")
+            .args([
+                "clone",
+                "--config",
+                "core.longpaths=true",
+                "--local",
+                "--no-hardlinks",
+                "--no-checkout",
+                "--quiet",
+            ])
+            .arg(&source)
+            .arg(&fixture)
+            .output()
+            .map_err(|error| format!("clone native Git probe: {error}"))?;
+        if !cloned.status.success() || !fixture.join(".git").is_dir() {
+            return Err(format!(
+                "allocated fixture is not a native Git clone destination: {}",
+                String::from_utf8_lossy(&cloned.stderr)
+            ));
+        }
+        if fs::read(cache.join("cache-marker")).map_err(|error| error.to_string())?
+            != b"protected cache"
+        {
+            return Err("native Git clone changed the protected Cargo cache".into());
+        }
+        Ok(())
+    })();
+    result.and(fs::remove_dir_all(&owner).map_err(|error| error.to_string()))
 }
 
 fn production_workflow_fixture(profile: &str) -> Result<(), String> {
