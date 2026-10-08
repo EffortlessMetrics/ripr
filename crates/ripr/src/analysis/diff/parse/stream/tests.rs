@@ -533,6 +533,13 @@ fn fixture_added_lines_match_head(patch: &str, head: &str) -> Result<bool, Strin
 fn causal_fixture_hunks_are_complete_and_match_their_head_sources() -> Result<(), String> {
     let cases = [
         (
+            include_str!("../../../../../../../fixtures/unsafe_boundary_probe/diff.patch"),
+            include_str!("../../../../../../../fixtures/unsafe_boundary_probe/input/src/lib.rs"),
+            "@@ -2,7 +2,7 @@",
+            "@@ -2,8 +2,7 @@",
+            "@@ -2,7 +3,7 @@",
+        ),
+        (
             include_str!("../../../../../../../fixtures/infect_wildcard_discard/diff.patch"),
             include_str!("../../../../../../../fixtures/infect_wildcard_discard/input/src/lib.rs"),
             "@@ -1,5 +1,7 @@",

@@ -144,3 +144,65 @@ fn shared_record_definition_and_body_keep_the_real_initializer() -> Result<(), S
     );
     Ok(())
 }
+
+#[test]
+fn unsafe_fixture_retains_interior_and_shared_edge_subjects() -> Result<(), String> {
+    let source = include_str!("../../../../../fixtures/unsafe_boundary_probe/input/src/lib.rs");
+    let patch = include_str!("../../../../../fixtures/unsafe_boundary_probe/diff.patch");
+    let path = PathBuf::from("src/lib.rs");
+    let facts = RaRustSyntaxAdapter.summarize_file(&path, source)?;
+    let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
+        files: BTreeMap::from([(path, facts)]),
+        ..Default::default()
+    });
+    let changed = crate::analysis::diff::parse_unified_diff(patch);
+    let [file] = changed.as_slice() else {
+        return Err("unsafe fixture must parse exactly one changed file".to_string());
+    };
+    assert_eq!(file.added_lines.len(), 3);
+    let probes = probes_for_file(Path::new("."), file, &index);
+    assert_eq!(probes.len(), 3, "{probes:?}");
+    for (line, expression) in [
+        (2, "let mut total: u8 = 1;"),
+        (5, "unsafe block"),
+        (16, "let value = unsafe { *pointer.add(0) };"),
+    ] {
+        let probe = probes
+            .iter()
+            .find(|probe| probe.location.line == line)
+            .ok_or_else(|| format!("missing changed subject at {line}: {probes:?}"))?;
+        assert_eq!(probe.family, ProbeFamily::StaticUnknown);
+        assert_eq!(probe.expression, expression);
+    }
+    let binding = probes
+        .iter()
+        .find(|probe| probe.location.line == 2)
+        .ok_or_else(|| "missing scalar initializer".to_string())?;
+    assert_eq!(binding.before.as_deref(), Some("let mut total: u8 = 0;"));
+    assert_eq!(binding.after.as_deref(), Some("let mut total: u8 = 1;"));
+
+    // Annotation support and intervening writes are independent limits.
+    // Neither can be silently treated as unbroken simple-binding flow.
+    let direct = source.replace(
+        "total = total.wrapping_add(*pointer.add(offset + 1));",
+        "// no intervening reassignment",
+    );
+    let annotated = probes_at(&direct, 2)?;
+    assert_eq!(annotated.len(), 1);
+    assert_eq!(annotated[0].family, ProbeFamily::StaticUnknown);
+    let unannotated = source.replace("total: u8", "total");
+    let reassigned = probes_at(&unannotated, 2)?;
+    assert_eq!(reassigned.len(), 1);
+    assert_eq!(reassigned[0].family, ProbeFamily::StaticUnknown);
+    let retargeted = probes_at(&direct.replace("total: u8", "total"), 2)?;
+    assert_eq!(retargeted.len(), 1, "{retargeted:?}");
+    assert_eq!(retargeted[0].family, ProbeFamily::Predicate);
+    assert_eq!(retargeted[0].location.line, 8);
+
+    // A standalone boundary edge must qualify; shared-edge refusal cannot be
+    // implemented by suppressing every edge line or every unsafe boundary.
+    let standalone = "fn read(pointer: *const u8) -> u8 {\n    unsafe { *pointer.add(0) }\n}\n";
+    let edge = probes_at(standalone, 2)?;
+    assert!(edge.iter().any(|probe| probe.expression == "unsafe block"));
+    Ok(())
+}
