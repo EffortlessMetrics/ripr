@@ -503,8 +503,8 @@ mod tests {
             .parent()
             .ok_or("xtask repository parent unavailable")?
             .join("policy/non-rust-allowlist.toml");
-        // Independent frozen first recipes, not derived from the planner/key.
-        let expected = vec![
+        // Independent frozen host recipes, not derived from the planner/key.
+        let expected_unix = vec![
             vec![
                 "test",
                 "-p",
@@ -519,6 +519,24 @@ mod tests {
                 "--locked",
                 "--offline",
                 "rust_judged_panel::rolling_observation",
+                "--no-run",
+            ],
+            vec!["test", "-p", "ripr", "--lib", "workflow", "--no-run"],
+            vec![
+                "test",
+                "-p",
+                "ripr",
+                "--test",
+                "generated_review_workflow",
+                "--no-run",
+            ],
+            vec![
+                "test",
+                "-p",
+                "ripr",
+                "--test",
+                "generated_review_workflow",
+                "generated_released_publish_adapter_preserves_current_request_semantics",
                 "--no-run",
             ],
             vec![
@@ -552,17 +570,56 @@ mod tests {
         .into_iter()
         .map(|row| row.into_iter().map(str::to_string).collect::<Vec<_>>())
         .collect::<Vec<_>>();
+        let expected_windows = vec![
+            vec![
+                "test",
+                "-p",
+                "xtask",
+                "repository_language_policy_admits_real_mixed_language_producer",
+                "--no-run",
+            ],
+            vec![
+                "test",
+                "-p",
+                "xtask",
+                "--locked",
+                "--offline",
+                "rust_judged_panel::rolling_observation",
+                "--no-run",
+            ],
+            vec!["test", "-p", "ripr", "--lib", "workflow", "--no-run"],
+            vec![
+                "test",
+                "-p",
+                "xtask",
+                "--bin",
+                "xtask",
+                "dx_scoreboard",
+                "--no-run",
+            ],
+            vec![
+                "test",
+                "-p",
+                "ripr",
+                "--test",
+                "causal_delta_fixture",
+                "--no-run",
+            ],
+        ]
+        .into_iter()
+        .map(|row| row.into_iter().map(str::to_string).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
         assert_eq!(
             super::materialized_build_preparation_plan(&policy, FilePolicyHost::Unix)?,
-            expected
+            expected_unix
         );
         assert_eq!(
             super::materialized_build_preparation_plan(&policy, FilePolicyHost::Windows)?,
-            expected[..4]
+            expected_windows
         );
         let commands =
             crate::read_file_policy_test_commands(policy.to_str().ok_or("policy path UTF-8")?)?;
-        assert_eq!(commands.len(), 23);
+        assert_eq!(commands.len(), 31);
         assert_eq!(
             commands
                 .iter()
@@ -570,7 +627,7 @@ mod tests {
                     .host
                     .is_none_or(|host| host == FilePolicyHost::Windows))
                 .count(),
-            22
+            25
         );
         Ok(())
     }
