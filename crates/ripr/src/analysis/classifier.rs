@@ -2544,4 +2544,151 @@ fn far_above_threshold_discounts() {
             ok_value_observed: None,
         }
     }
+    #[test]
+    fn guarded_error_producer_transition_never_fabricates_infection() -> Result<(), String> {
+        let source =
+            include_str!("../../../../fixtures/error_return_unresolved_guard/input/src/lib.rs");
+        let tests =
+            include_str!("../../../../fixtures/error_return_unresolved_guard/input/tests/q.rs");
+        let patch = include_str!("../../../../fixtures/error_return_unresolved_guard/diff.patch");
+        let mut index = parser_backed_index(&[("src/lib.rs", source), ("tests/q.rs", tests)]);
+        index
+            .package_names
+            .insert("error_return_unresolved_guard".to_string());
+        let changed = crate::analysis::diff::parse_unified_diff(patch);
+        let file = changed.first().ok_or("changed fixture source")?;
+        let seeded = crate::analysis::probes::probes_for_file_with_relations(
+            std::path::Path::new(""),
+            file,
+            &index,
+        );
+        assert_eq!(seeded.len(), 3, "all actual changed-return families");
+        for seeded in seeded {
+            let probe = seeded.probe;
+            assert_eq!(probe.location.line, 16);
+            assert!(
+                probe
+                    .before
+                    .as_deref()
+                    .is_some_and(|text| text.contains("cancelled_error()"))
+            );
+            let finding = classify_probe(&probe, &index, true, None);
+            assert!(
+                !finding.related_tests.is_empty(),
+                "nonempty owner observers"
+            );
+            assert_eq!(
+                finding.class,
+                ExposureClass::InfectionUnknown,
+                "{finding:?}"
+            );
+            assert_eq!(finding.ripr.infect.state, StageState::Unknown);
+            assert!(
+                finding
+                    .evidence
+                    .iter()
+                    .any(|text| text.contains("error return guard unresolved")
+                        && text.contains("cancelled"))
+            );
+            assert!(
+                finding
+                    .recommended_next_step
+                    .as_deref()
+                    .is_some_and(|text| text.contains("Typed static limitation")
+                        && !text.contains("Add a test"))
+            );
+        }
+        Ok(())
+    }
+    fn guarded_error_transition_control_findings(
+        source: &str,
+        tests: &str,
+        patch: &str,
+    ) -> Result<Vec<Finding>, String> {
+        let mut index = parser_backed_index(&[("src/lib.rs", source), ("tests/q.rs", tests)]);
+        index
+            .package_names
+            .insert("error_return_unresolved_guard".to_string());
+        let changed = crate::analysis::diff::parse_unified_diff(patch);
+        let file = changed.first().ok_or("changed control source")?;
+        let probes = crate::analysis::probes::probes_for_file_with_relations(
+            std::path::Path::new(""),
+            file,
+            &index,
+        );
+        assert_eq!(
+            probes.len(),
+            3,
+            "nonempty production-seeded control subjects"
+        );
+        Ok(probes
+            .into_iter()
+            .map(|seeded| classify_probe(&seeded.probe, &index, true, None))
+            .collect())
+    }
+
+    #[test]
+    fn guarded_error_producer_transition_preserves_literal_and_unguarded_controls()
+    -> Result<(), String> {
+        let source =
+            include_str!("../../../../fixtures/error_return_unresolved_guard/input/src/lib.rs");
+        let tests =
+            include_str!("../../../../fixtures/error_return_unresolved_guard/input/tests/q.rs");
+        let patch = include_str!("../../../../fixtures/error_return_unresolved_guard/diff.patch");
+        let literal_patch = patch.replace(
+            "-        return Err(cancelled_error());",
+            "-        return Err(OpError { code: -32800, message: \"previous message\".to_string() });",
+        );
+        assert_ne!(literal_patch, patch, "literal value-change control setup");
+        for finding in guarded_error_transition_control_findings(source, tests, &literal_patch)? {
+            assert_eq!(
+                finding.class,
+                ExposureClass::Exposed,
+                "literal delta: {finding:?}"
+            );
+            assert_eq!(finding.ripr.infect.state, StageState::Yes);
+        }
+        let unguarded_source = source.replace("if cancelled {", "{");
+        let unguarded_patch = patch.replace("if cancelled {", "{");
+        assert_ne!(unguarded_source, source, "unguarded control setup");
+        assert_ne!(unguarded_patch, patch, "unguarded patch setup");
+        for finding in
+            guarded_error_transition_control_findings(&unguarded_source, tests, &unguarded_patch)?
+        {
+            assert_eq!(
+                finding.class,
+                ExposureClass::Exposed,
+                "unguarded boundary: {finding:?}"
+            );
+            assert!(
+                !finding
+                    .evidence
+                    .iter()
+                    .any(|text| text.contains("error return guard unresolved"))
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn guarded_error_producer_transition_does_not_admit_unrelated_observer_guidance()
+    -> Result<(), String> {
+        let source =
+            include_str!("../../../../fixtures/error_return_unresolved_guard/input/src/lib.rs");
+        let patch = include_str!("../../../../fixtures/error_return_unresolved_guard/diff.patch");
+        let tests = "use error_return_unresolved_guard::{cancelled_error, run_slow};\n#[test]\nfn unrelated_error() {\nlet _ = run_slow(true);\nlet err = cancelled_error();\nassert_eq!(err, cancelled_error());\nassert_eq!(err.message, \"operation cancelled\");\n}\n";
+        for finding in guarded_error_transition_control_findings(source, tests, patch)? {
+            assert!(
+                !finding.related_tests.is_empty(),
+                "reaching unrelated observer setup"
+            );
+            assert_eq!(finding.ripr.infect.state, StageState::Unknown);
+            assert_ne!(finding.class, ExposureClass::Exposed);
+            assert_ne!(
+                finding.recommended_next_step.as_deref(),
+                Some(finding::ERROR_RETURN_GUARD_UNRESOLVED_NEXT_STEP)
+            );
+        }
+        Ok(())
+    }
 }

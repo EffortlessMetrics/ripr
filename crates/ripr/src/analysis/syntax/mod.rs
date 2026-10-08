@@ -1,4 +1,6 @@
 mod adapter;
+mod error_return;
+pub(crate) use error_return::guarded_opaque_error_transition;
 pub(crate) mod fn_signature;
 pub(crate) mod lexical;
 mod module_tree;

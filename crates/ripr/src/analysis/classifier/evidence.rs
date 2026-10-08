@@ -60,7 +60,27 @@ impl ClassifiedProbeEvidence {
             context.workspace_complete,
             context.test_value_facts,
         );
-        let infect = infection_evidence(context.probe, &test_summaries, &activation);
+        // Reaching a replacement producer does not establish value infection
+        // when its paired before value is opaque. Share the parser-established
+        // guard edge with the finding's limitation/guidance owner.
+        let unresolved_error_producer = matches!(
+            context.probe.family,
+            ProbeFamily::ErrorPath | ProbeFamily::ReturnValue | ProbeFamily::FieldConstruction
+        )
+        .then(|| {
+            crate::analysis::classify::unresolved_guard_error_edge(
+                context.probe,
+                context.owner_fn,
+                &test_summaries,
+                &flow_sinks,
+                context.helper_chain.as_ref(),
+            )
+        })
+        .flatten();
+        let infect = match unresolved_error_producer {
+            Some(reason) => StageEvidence::new(StageState::Unknown, Confidence::Low, reason),
+            None => infection_evidence(context.probe, &test_summaries, &activation),
+        };
         let valid_witness = propagation_witness
             .as_ref()
             .and_then(|diagnostic| match diagnostic {

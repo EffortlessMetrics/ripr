@@ -511,3 +511,54 @@ fn complete_declared_hunks_preserve_ordinary_and_quarantined_controls() -> Resul
     }
     Ok(())
 }
+
+fn fixture_added_lines_match_head(patch: &str, head: &str) -> Result<bool, String> {
+    let parsed = parse_bounded_lines(patch.lines(), 8)?;
+    let mut observed = 0;
+    for file in &parsed.changed_files {
+        for added in &file.added_lines {
+            observed += 1;
+            if head.lines().nth(added.line.saturating_sub(1)) != Some(added.text.as_str()) {
+                return Ok(false);
+            }
+        }
+    }
+    if observed == 0 {
+        return Err("fixture alignment control admitted no added lines".to_string());
+    }
+    Ok(true)
+}
+
+#[test]
+fn causal_fixture_hunks_are_complete_and_match_their_head_sources() -> Result<(), String> {
+    let cases = [
+        (
+            include_str!("../../../../../../../fixtures/infect_wildcard_discard/diff.patch"),
+            include_str!("../../../../../../../fixtures/infect_wildcard_discard/input/src/lib.rs"),
+            "@@ -1,5 +1,7 @@",
+            "@@ -1,5 +1,6 @@",
+            "@@ -1,5 +2,7 @@",
+        ),
+        (
+            include_str!("../../../../../../../fixtures/error_return_unresolved_guard/diff.patch"),
+            include_str!(
+                "../../../../../../../fixtures/error_return_unresolved_guard/input/src/lib.rs"
+            ),
+            "@@ -14,6 +14,6 @@",
+            "@@ -14,7 +14,7 @@",
+            "@@ -13,6 +13,6 @@",
+        ),
+    ];
+    for (patch, head, header, bad_count, bad_coordinates) in cases {
+        check_declared_hunk_status(patch, false)?;
+        assert!(fixture_added_lines_match_head(patch, head)?);
+        if !patch.contains(header) {
+            return Err(format!("fixture control lacks expected header {header}"));
+        }
+        check_declared_hunk_status(&patch.replacen(header, bad_count, 1), true)?;
+        let shifted = patch.replacen(header, bad_coordinates, 1);
+        check_declared_hunk_status(&shifted, false)?;
+        assert!(!fixture_added_lines_match_head(&shifted, head)?);
+    }
+    Ok(())
+}
