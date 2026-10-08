@@ -1,0 +1,4 @@
+[package]
+name = "match_arm_wrapper_callable_shadow_not_credited_fixture"
+version = "0.0.0"
+edition = "2024"

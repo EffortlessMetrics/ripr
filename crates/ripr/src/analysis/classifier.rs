@@ -225,6 +225,43 @@ mod tests {
     }
 
     #[test]
+    fn transparent_match_arm_wrapper_module_const_callable_is_not_owner() {
+        let original = include_str!(
+            "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
+        );
+        let source = original.replace(
+            "use super::*;",
+            "use super::*;\n    const seconds_bridge: fn(Unit) -> u64 = |_| 1_209_600;",
+        );
+        let finding = transparent_match_arm_source_finding(source);
+        assert_ne!(finding.class, ExposureClass::Exposed, "{finding:?}");
+    }
+
+    #[test]
+    fn transparent_match_arm_wrapper_variant_path_shadow_does_not_select_arm() {
+        let original = include_str!(
+            "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
+        );
+        let (production, _) = original.split_once("#[cfg(test)]").expect("fixture module");
+        let source = format!(
+            r#"{production}
+#[cfg(test)]
+mod tests {{
+    use super::*;
+    struct Unit;
+    impl Unit {{ const Fortnight: super::Unit = super::Unit::Week; }}
+    #[test]
+    fn seconds_total() {{ assert_eq!(seconds(super::Unit::Week), 604_800); }}
+    #[test]
+    fn bridge_fortnight() {{ assert_eq!(seconds_bridge(Unit::Fortnight), 604_800); }}
+}}
+"#
+        );
+        let finding = transparent_match_arm_source_finding(source);
+        assert_ne!(finding.class, ExposureClass::Exposed, "{finding:?}");
+    }
+
+    #[test]
     fn given_owner_symbol_when_resolving_owner_then_matches_full_identity() {
         let crate_b_fn = function("crates/crate_b/src/lib.rs", "score");
         let crate_a_fn = function("crates/crate_a/src/lib.rs", "score");

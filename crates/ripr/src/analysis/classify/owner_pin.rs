@@ -181,7 +181,37 @@ impl OwnerPinSyntax {
             return false;
         };
         let owner_module = owner.id.0.rsplit_once("::").map(|(module, _)| module);
-        for wrapper in index.functions().iter().filter(|function| {
+        // This witness supports a root free function and its immediate unit
+        // test module only. Deeper/cross-module paths need separate resolution.
+        let owner_file = owner.file.to_string_lossy();
+        if owner_module != Some(owner_file.as_ref()) {
+            return false;
+        }
+        let Some(test_function) = facts.functions.iter().find(|function| {
+            function.name == test.name
+                && function.start_line == test.start_line
+                && function.end_line == test.end_line
+        }) else {
+            return false;
+        };
+        let Some((test_module, _)) = test_function.id.0.rsplit_once("::") else {
+            return false;
+        };
+        if Some(test_module) != owner_module
+            && test_module.rsplit_once("::").map(|(parent, _)| parent) != owner_module
+        {
+            return false;
+        }
+        let Some((enum_name, _)) = pattern.split_once("::") else {
+            return false;
+        };
+        if file_renames_to(&facts.source, enum_name)
+            || file_imports_foreign_callee_name(&facts.source, enum_name, &index.package_names)
+        {
+            return false;
+        }
+
+        for wrapper in facts.functions.iter().filter(|function| {
             function.file == owner.file
                 && function.item.container == FunctionContainer::Free
                 && !function.item.has_self_param
@@ -209,7 +239,9 @@ impl OwnerPinSyntax {
             for (operand, expected) in [(operands[0], operands[1]), (operands[1], operands[0])] {
                 // A closed integer expected value cannot call either function
                 // again or borrow a variant token from the comparison's RHS.
-                if expected.trim().is_empty()
+                if !expected
+                    .trim()
+                    .starts_with(|character: char| character.is_ascii_digit())
                     || !expected
                         .trim()
                         .chars()
@@ -219,6 +251,7 @@ impl OwnerPinSyntax {
                 }
                 if self.by_file.borrow().get(&test.file).is_some_and(|syntax| {
                     syntax.transparent_wrapper(
+                        (test.start_line, test.end_line, &test.name, &test.body),
                         (owner.start_line, owner.end_line, &owner.name, &owner.body),
                         (
                             wrapper.start_line,

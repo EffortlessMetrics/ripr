@@ -6814,6 +6814,11 @@ tests = [
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::direct_collection_mutation_discriminates_actual_observer_not_sibling_collection",
   "crates/ripr/src/analysis/classify/reveal.rs::tests::name_only_test_cannot_supply_the_oracle_for_reach_from_another_test",
   "crates/ripr/src/analysis/classify/reveal.rs::tests::match_arm_proximity_test_cannot_confirm_beside_reaching_test",
+  "crates/ripr/src/analysis/classifier.rs::tests::transparent_match_arm_wrapper_exact_oracle_binds_identity",
+  "crates/ripr/src/analysis/classifier.rs::tests::transparent_match_arm_wrapper_negative_controls_stay_unbound",
+  "crates/ripr/src/analysis/classifier.rs::tests::transparent_match_arm_wrapper_binding_and_execution_refusals",
+  "crates/ripr/src/analysis/classifier.rs::tests::transparent_match_arm_wrapper_module_const_callable_is_not_owner",
+  "crates/ripr/src/analysis/classifier.rs::tests::transparent_match_arm_wrapper_variant_path_shadow_does_not_select_arm",
   "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::test_may_reach_owner_by_name_unknown_call_or_implicit_dispatch"
 ]
 fixtures = [
@@ -6822,6 +6827,8 @@ fixtures = [
   "fixtures/proximity_name_oracle_not_credited",
   "fixtures/match_arm_proximity_confirmation_not_credited",
   "fixtures/match_arm_proximity_wrapper_confirms",
+  "fixtures/match_arm_wrapper_callable_shadow_not_credited",
+  "fixtures/match_arm_wrapper_variant_shadow_not_credited",
   "fixtures/observation_unverified_return_value",
   "fixtures/observation_verified_return_value",
   "fixtures/observation_unverified_field_construction",

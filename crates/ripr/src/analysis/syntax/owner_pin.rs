@@ -20,6 +20,8 @@ type FunctionKey = (usize, usize, String);
 pub(crate) struct OwnerPinAssertions {
     functions: BTreeMap<FunctionKey, FunctionAssertions>,
     module_declarations: BTreeMap<(usize, String), bool>,
+    value_items: BTreeSet<String>,
+    type_items: BTreeMap<String, usize>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -29,12 +31,14 @@ struct FunctionAssertions {
     macros: BTreeSet<String>,
     alias_pins: BTreeMap<AssertionKey, (String, String)>,
     transparent_tail: Option<TransparentTail>,
+    root_scope: bool,
+    own_parent_glob: bool,
 }
 
 /// Bounded same-file forwarding facts, cached with the exact parser function.
 #[derive(Clone, Debug)]
 enum TransparentTail {
-    Forward(String),
+    Forward(String, String),
     Match(BTreeSet<String>),
 }
 
@@ -43,24 +47,39 @@ impl OwnerPinAssertions {
     /// matches that input directly. Only the changed path pattern is admitted.
     pub(crate) fn transparent_wrapper(
         &self,
+        test: (usize, usize, &str, &str),
         owner: (usize, usize, &str, &str),
         wrapper: (usize, usize, &str, &str),
         operand: &str,
         pattern: &str,
     ) -> bool {
+        let Some(test_facts) = self.functions.get(&(test.0, test.1, test.2.to_string())) else {
+            return false;
+        };
+        if test_facts.body != test.3 || !(test_facts.root_scope || test_facts.own_parent_glob) {
+            return false;
+        }
         let find = |function: (usize, usize, &str, &str)| {
             self.functions
                 .get(&(function.0, function.1, function.2.to_string()))
                 .filter(|facts| facts.body == function.3)
                 .and_then(|facts| facts.transparent_tail.as_ref())
         };
-        let Some(TransparentTail::Forward(callee)) = find(wrapper) else {
+        let Some(TransparentTail::Forward(callee, parameter_type)) = find(wrapper) else {
             return false;
         };
         let Some(TransparentTail::Match(patterns)) = find(owner) else {
             return false;
         };
-        if callee != owner.2 || !patterns.contains(pattern) {
+        let Some((enum_name, _)) = pattern.split_once("::") else {
+            return false;
+        };
+        if self.value_items.contains(wrapper.2)
+            || self.type_items.get(enum_name) != Some(&1)
+            || parameter_type != enum_name
+            || callee != owner.2
+            || !patterns.contains(pattern)
+        {
             return false;
         }
         // Parse only this bounded operand; file/function facts above reuse the
@@ -409,6 +428,30 @@ pub(crate) fn owner_pin_assertions(source: &str, trusted: &[&str]) -> OwnerPinAs
             .and_modify(|previous| *previous = false)
             .or_insert(admitted);
     }
+    // Constants/static callables and type/module namespace shadows are not
+    // FunctionSummary entries. Refuse them conservatively across this file;
+    // the exact owner enum's scope is established separately below.
+    for node in parse.tree().syntax().descendants() {
+        let value = ast::Const::cast(node.clone())
+            .and_then(|item| item.name())
+            .or_else(|| ast::Static::cast(node.clone()).and_then(|item| item.name()));
+        if let Some(name) = value {
+            result.value_items.insert(name.text().to_string());
+        }
+        let ty = ast::Enum::cast(node.clone())
+            .and_then(|item| item.name())
+            .or_else(|| ast::Struct::cast(node.clone()).and_then(|item| item.name()))
+            .or_else(|| ast::Union::cast(node.clone()).and_then(|item| item.name()))
+            .or_else(|| ast::TypeAlias::cast(node.clone()).and_then(|item| item.name()))
+            .or_else(|| ast::Trait::cast(node.clone()).and_then(|item| item.name()))
+            .or_else(|| ast::Module::cast(node.clone()).and_then(|item| item.name()));
+        if let Some(name) = ty {
+            *result
+                .type_items
+                .entry(name.text().to_string())
+                .or_default() += 1;
+        }
+    }
     let mut identities = BTreeMap::<FunctionKey, usize>::new();
     for function in parse
         .tree()
@@ -529,6 +572,24 @@ pub(crate) fn owner_pin_assertions(source: &str, trusted: &[&str]) -> OwnerPinAs
                 macros,
                 alias_pins,
                 transparent_tail: transparent_tail(&function),
+                root_scope: function
+                    .syntax()
+                    .parent()
+                    .is_some_and(|scope| ast::SourceFile::can_cast(scope.kind())),
+                own_parent_glob: function.syntax().parent().is_some_and(|scope| {
+                    !scope
+                        .children()
+                        .any(|node| ast::MacroCall::can_cast(node.kind()))
+                        && scope.children().filter_map(ast::Use::cast).any(|item| {
+                            item.attrs().next().is_none()
+                                && item.use_tree().is_some_and(|tree| {
+                                    tree.path()
+                                        .is_some_and(|path| path.syntax().text() == "super")
+                                        && tree.star_token().is_some()
+                                        && tree.rename().is_none()
+                                })
+                        })
+                }),
             });
         } else {
             result.functions.insert(key, FunctionAssertions::default());
@@ -543,7 +604,13 @@ pub(crate) fn owner_pin_assertions(source: &str, trusted: &[&str]) -> OwnerPinAs
 /// No statements, branches, aliases, mutations or transformed arguments may
 /// mediate this witness. Wider wrappers stay possible reach, never identity.
 fn transparent_tail(function: &ast::Fn) -> Option<TransparentTail> {
-    if function.async_token().is_some() || function.attrs().next().is_some() {
+    if function.async_token().is_some()
+        || function.attrs().next().is_some()
+        || function
+            .syntax()
+            .children()
+            .any(|node| ast::GenericParamList::can_cast(node.kind()))
+    {
         return None;
     }
     let parameters = function.param_list()?;
@@ -561,6 +628,7 @@ fn transparent_tail(function: &ast::Fn) -> Option<TransparentTail> {
     if binding.mut_token().is_some() || binding.ref_token().is_some() || binding.pat().is_some() {
         return None;
     }
+    let parameter_type = parameter.ty()?.syntax().text().to_string();
     let name = binding.name()?;
     let body = function.body()?;
     let statements = body.stmt_list()?;
@@ -587,7 +655,7 @@ fn transparent_tail(function: &ast::Fn) -> Option<TransparentTail> {
             if arguments.next().is_some() || argument.syntax().text() != name.text() {
                 return None;
             }
-            Some(TransparentTail::Forward(callee))
+            Some(TransparentTail::Forward(callee, parameter_type))
         }
         ast::Expr::MatchExpr(expression) => {
             let ast::Expr::PathExpr(scrutinee) = expression.expr()? else {
@@ -605,6 +673,31 @@ fn transparent_tail(function: &ast::Fn) -> Option<TransparentTail> {
                     continue;
                 };
                 let text = pattern.syntax().text().to_string();
+                let Some((enum_name, variant_name)) = text.split_once("::") else {
+                    continue;
+                };
+                if parameter_type != enum_name {
+                    continue;
+                }
+                // The arm's simple path must denote a variant of an enum in
+                // the owner's own parser item scope. Token spelling alone
+                // cannot substitute another type or associated constant.
+                let Some(scope) = function.syntax().parent() else {
+                    return None;
+                };
+                let declared = scope.children().filter_map(ast::Enum::cast).any(|item| {
+                    item.name().is_some_and(|name| name.text() == enum_name)
+                        && item.variant_list().is_some_and(|variants| {
+                            variants.variants().any(|variant| {
+                                variant
+                                    .name()
+                                    .is_some_and(|name| name.text() == variant_name)
+                            })
+                        })
+                });
+                if !declared {
+                    continue;
+                }
                 if !patterns.insert(text) {
                     return None;
                 }
