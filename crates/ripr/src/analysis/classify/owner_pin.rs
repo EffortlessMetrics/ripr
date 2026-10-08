@@ -150,6 +150,93 @@ impl OwnerPinSyntax {
             || self.admits(test, assertion, index)
     }
 
+    /// Assertion-specific transparent-wrapper identity for a changed match arm.
+    /// Possible helper reach is deliberately not an input to this query.
+    pub(in crate::analysis) fn transparent_match_arm_wrapper(
+        &self,
+        probe: &Probe,
+        owner: &FunctionSummary,
+        test: &TestSummary,
+        assertion: &OracleFact,
+        index: &RustIndex,
+    ) -> bool {
+        if probe.family != ProbeFamily::MatchArm
+            || owner.file != test.file
+            || owner.item.container != FunctionContainer::Free
+            || owner.item.has_self_param
+            || other_definition_competes(owner, index, false)
+            || !is_plain_macro(&assertion.text, "assert_eq")
+            || !self.admits(test, assertion, index)
+        {
+            return false;
+        }
+        let Some((pattern, _)) = probe.expression.split_once("=>") else {
+            return false;
+        };
+        let pattern = pattern.trim();
+        let Some(operands) = assertion_comparison_operands(&assertion.text) else {
+            return false;
+        };
+        let Some(facts) = index.files().get(&test.file) else {
+            return false;
+        };
+        let owner_module = owner.id.0.rsplit_once("::").map(|(module, _)| module);
+        for wrapper in index.functions().iter().filter(|function| {
+            function.file == owner.file
+                && function.item.container == FunctionContainer::Free
+                && !function.item.has_self_param
+                && function.id != owner.id
+                && function.id.0.rsplit_once("::").map(|(module, _)| module) == owner_module
+        }) {
+            if other_definition_competes(wrapper, index, false)
+                || test_body_shadows_owner(test, &wrapper.name)
+                || binds_outside_let(&mask_comments_and_strings(&test.body), &wrapper.name)
+                || bound_by_macro(&mask_comments_and_strings(&test.body), &wrapper.name)
+                || file_renames_to(&facts.source, &wrapper.name)
+                || file_imports_foreign_callee_name(
+                    &facts.source,
+                    &wrapper.name,
+                    &index.package_names,
+                )
+                || file_imports_foreign_callee_name(
+                    &facts.source,
+                    &owner.name,
+                    &index.package_names,
+                )
+            {
+                continue;
+            }
+            for (operand, expected) in [(operands[0], operands[1]), (operands[1], operands[0])] {
+                // A closed integer expected value cannot call either function
+                // again or borrow a variant token from the comparison's RHS.
+                if expected.trim().is_empty()
+                    || !expected
+                        .trim()
+                        .chars()
+                        .all(|character| character.is_ascii_digit() || character == '_')
+                {
+                    continue;
+                }
+                if self.by_file.borrow().get(&test.file).is_some_and(|syntax| {
+                    syntax.transparent_wrapper(
+                        (owner.start_line, owner.end_line, &owner.name, &owner.body),
+                        (
+                            wrapper.start_line,
+                            wrapper.end_line,
+                            &wrapper.name,
+                            &wrapper.body,
+                        ),
+                        operand,
+                        pattern,
+                    )
+                }) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     fn alias_pin(
         &self,
         test: &TestSummary,

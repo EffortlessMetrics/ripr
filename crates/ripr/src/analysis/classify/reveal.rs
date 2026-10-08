@@ -14,6 +14,8 @@ use crate::domain::*;
 /// before token, strength, observation, or owner-pin confirmation.
 pub(in crate::analysis) struct ReturnOracleAdmission<'a> {
     pub(in crate::analysis) owner_return_pin: &'a dyn Fn(&TestSummary, &OracleFact) -> bool,
+    pub(in crate::analysis) transparent_wrapper_identity:
+        &'a dyn Fn(&TestSummary, &OracleFact) -> bool,
     pub(in crate::analysis) assertion_admitted: &'a dyn Fn(&TestSummary, &OracleFact) -> bool,
     /// Whether a test related only by file or module may run the owner
     /// (#6297). One that cannot, by any name path, does not confirm a match
@@ -35,6 +37,7 @@ fn reveal_evidence(
         &|_, _| false,
         &ReturnOracleAdmission {
             owner_return_pin: &|_, _| false,
+            transparent_wrapper_identity: &|_, _| false,
             assertion_admitted: &|_, _| true,
             proximity_may_reach_owner: &|_| false,
         },
@@ -571,6 +574,8 @@ fn analyze_related_assertions(
                 ProbeFamily::Predicate => matches!(assertion.kind, OracleKind::RelationalCheck),
                 _ => false,
             } && (return_admission.owner_return_pin)(test, assertion);
+            let wrapper_identity = matches!(probe.family, ProbeFamily::MatchArm)
+                && (return_admission.transparent_wrapper_identity)(test, assertion);
             let bool_owner_pinned =
                 owner_pinned && matches!(assertion.kind, OracleKind::RelationalCheck);
             let (matched, has_token_match) = assertion_matches_probe_detail_with_literals(
@@ -631,13 +636,14 @@ fn analyze_related_assertions(
                 };
                 // Public #1747/#1751: entity identity and a strong change reference
                 // must bind in one admitted oracle; proximity alone cannot credit it.
-                let identity = matches!(
-                    reason,
-                    RelationReason::DirectOwnerCall
-                        | RelationReason::HelperOwnerCall
-                        | RelationReason::AssertionTargetAffinity
-                        | RelationReason::OwnerNamedTest
-                );
+                let identity = wrapper_identity
+                    || matches!(
+                        reason,
+                        RelationReason::DirectOwnerCall
+                            | RelationReason::HelperOwnerCall
+                            | RelationReason::AssertionTargetAffinity
+                            | RelationReason::OwnerNamedTest
+                    );
                 if relative_strength.rank() > strongest.rank() {
                     strongest_identity = identity;
                     strongest_reason = Some(*reason);
@@ -2925,6 +2931,7 @@ mod tests {
                 &|_, _| false,
                 &ReturnOracleAdmission {
                     owner_return_pin: &|_, _| false,
+                    transparent_wrapper_identity: &|_, _| false,
                     assertion_admitted: &|_, _| true,
                     proximity_may_reach_owner: &|_| false,
                 },
@@ -3283,6 +3290,7 @@ mod tests {
             &|_, _| false,
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
+                transparent_wrapper_identity: &|_, _| false,
                 assertion_admitted: &|_, _| true,
                 proximity_may_reach_owner: &|_| false,
             },
@@ -3348,6 +3356,7 @@ mod tests {
             &|_, _| false,
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
+                transparent_wrapper_identity: &|_, _| false,
                 assertion_admitted: &|_, _| true,
                 proximity_may_reach_owner: &|_| false,
             },
@@ -5086,6 +5095,7 @@ return Err(\"typed pin\".into());
             &|_, _| false,
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
+                transparent_wrapper_identity: &|_, _| false,
                 assertion_admitted: &|_, _| true,
                 proximity_may_reach_owner: &|_| false,
             },
@@ -5136,6 +5146,7 @@ return Err(\"typed pin\".into());
             &|_, _| false,
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
+                transparent_wrapper_identity: &|_, _| false,
                 assertion_admitted: &|_, _| true,
                 proximity_may_reach_owner: &|_| false,
             },
@@ -5157,6 +5168,7 @@ return Err(\"typed pin\".into());
             &|_, _| false,
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
+                transparent_wrapper_identity: &|_, _| false,
                 assertion_admitted: &|_, _| true,
                 proximity_may_reach_owner: &|_| false,
             },
@@ -5197,6 +5209,7 @@ return Err(\"typed pin\".into());
             &|_, _| false,
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
+                transparent_wrapper_identity: &|_, _| false,
                 assertion_admitted: &|_, _| true,
                 proximity_may_reach_owner: &|_| false,
             },
@@ -5239,6 +5252,7 @@ return Err(\"typed pin\".into());
             &|_, _| false,
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
+                transparent_wrapper_identity: &|_, _| false,
                 assertion_admitted: &|_, _| true,
                 proximity_may_reach_owner: &|_| false,
             },
@@ -5406,6 +5420,7 @@ return Err(\"typed pin\".into());
             &|_, _| true,
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
+                transparent_wrapper_identity: &|_, _| false,
                 assertion_admitted: &|_, _| true,
                 proximity_may_reach_owner: &|_| false,
             },
@@ -5430,6 +5445,7 @@ return Err(\"typed pin\".into());
             &|_, _| false,
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
+                transparent_wrapper_identity: &|_, _| false,
                 assertion_admitted: &|_, _| true,
                 proximity_may_reach_owner: &|_| false,
             },
@@ -5911,6 +5927,7 @@ return Err(\"typed pin\".into());
         // SameTestFile alone cannot establish sink identity (public #1746).
         let admission = ReturnOracleAdmission {
             owner_return_pin: &|_, _| false,
+            transparent_wrapper_identity: &|_, _| false,
             assertion_admitted: &|_, _| true,
             proximity_may_reach_owner: &|_| false,
         };
@@ -5981,6 +5998,7 @@ return Err(\"typed pin\".into());
         // cannot combine into one discriminator (public #1748).
         let may_reach_admission = ReturnOracleAdmission {
             owner_return_pin: &|_, _| false,
+            transparent_wrapper_identity: &|_, _| false,
             assertion_admitted: &|_, _| true,
             proximity_may_reach_owner: &|test| test.name == "from_str_fortnight",
         };
@@ -6191,6 +6209,7 @@ return Err(\"typed pin\".into());
             &|_, _| false,
             &ReturnOracleAdmission {
                 owner_return_pin: &|_, _| false,
+                transparent_wrapper_identity: &|_, _| false,
                 assertion_admitted: &|_, _| true,
                 proximity_may_reach_owner: &|_| false,
             },

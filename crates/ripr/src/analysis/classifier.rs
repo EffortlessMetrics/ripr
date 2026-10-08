@@ -96,6 +96,134 @@ mod tests {
     use std::collections::BTreeMap;
     use std::path::PathBuf;
 
+    // RIPR-SPEC-0094 / public #1747: the same exact oracle must bind both
+    // changed-arm observation and transparent wrapper owner identity.
+    fn transparent_match_arm_wrapper_finding(wrapper: &str, assertion: &str) -> Finding {
+        let source = include_str!(
+            "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
+        )
+        .replace("seconds(u)\n}", &format!("{wrapper}\n}}"))
+        .replace(
+            "assert_eq!(seconds_bridge(Unit::Fortnight), 1_209_600);",
+            assertion,
+        );
+        transparent_match_arm_source_finding(source)
+    }
+
+    fn transparent_match_arm_source_finding(source: String) -> Finding {
+        let file = PathBuf::from("src/lib.rs");
+        let facts = crate::analysis::rust_index::summarize_file(file.clone(), source);
+        assert!(!facts.used_lexical_fallback);
+        let owner = facts
+            .functions
+            .iter()
+            .find(|item| item.name == "seconds")
+            .expect("parsed owner");
+        let probe = Probe {
+            id: ProbeId("wrapper-arm".to_string()),
+            location: SourceLocation::new(file.clone(), 23, 1),
+            owner: Some(owner.id.clone()),
+            family: ProbeFamily::MatchArm,
+            delta: DeltaKind::Value,
+            before: Some("Unit::Fortnight => 604_800,".to_string()),
+            after: Some("Unit::Fortnight => 1_209_600,".to_string()),
+            expression: "Unit::Fortnight => 1_209_600,".to_string(),
+            expected_sinks: Vec::new(),
+            required_oracles: Vec::new(),
+        };
+        let mut index = RustIndex::default();
+        index.extend_functions(facts.functions.iter().cloned());
+        index.extend_tests(facts.tests.iter().cloned());
+        index.insert_file_only(file, facts);
+        let finding = classify_probe(&probe, &index, true, None);
+        assert!(
+            !finding.related_tests.is_empty(),
+            "nonempty classifier subjects"
+        );
+        finding
+    }
+
+    #[test]
+    fn transparent_match_arm_wrapper_exact_oracle_binds_identity() {
+        for assertion in [
+            "assert_eq!(seconds_bridge(Unit::Fortnight), 1_209_600);",
+            "assert_eq!(1_209_600, seconds_bridge(Unit::Fortnight));",
+        ] {
+            let finding = transparent_match_arm_wrapper_finding("seconds(u)", assertion);
+            assert_eq!(finding.class, ExposureClass::Exposed, "{finding:?}");
+            let bridge = finding
+                .related_tests
+                .iter()
+                .find(|test| test.name == "bridge_fortnight")
+                .expect("bridge oracle");
+            assert_eq!(bridge.relation_reason, Some(RelationReason::SameTestFile));
+        }
+    }
+
+    #[test]
+    fn transparent_match_arm_wrapper_negative_controls_stay_unbound() {
+        for wrapper in [
+            "1_209_600",
+            "seconds(u) + 1",
+            "let _ = seconds(u); 1_209_600",
+            "seconds(Unit::Week)",
+            "if true { seconds(u) } else { 0 }",
+            "return seconds(u);",
+            "if true { return 1_209_600; } seconds(u)",
+            "other_seconds(u)",
+            "let seconds = |_| 1_209_600; seconds(u)",
+        ] {
+            let finding = transparent_match_arm_wrapper_finding(
+                wrapper,
+                "assert_eq!(seconds_bridge(Unit::Fortnight), 1_209_600);",
+            );
+            assert_ne!(
+                finding.class,
+                ExposureClass::Exposed,
+                "{wrapper}: {finding:?}"
+            );
+        }
+        for assertion in [
+            "let seconds_bridge = |_| 1_209_600; assert_eq!(seconds_bridge(Unit::Fortnight), 1_209_600);",
+            "let _deferred = || { assert_eq!(seconds_bridge(Unit::Fortnight), 1_209_600); };",
+            "if false { assert_eq!(seconds_bridge(Unit::Fortnight), 1_209_600); }",
+            "let _ = seconds_bridge(Unit::Fortnight); assert_eq!(Unit::Fortnight, Unit::Fortnight);",
+            "assert_eq!(seconds_bridge(Unit::Week), 1_209_600);",
+            "assert_eq!(seconds_bridge(Unit::Fortnight), seconds_bridge(Unit::Fortnight));",
+        ] {
+            let finding = transparent_match_arm_wrapper_finding("seconds(u)", assertion);
+            assert_ne!(
+                finding.class,
+                ExposureClass::Exposed,
+                "{assertion}: {finding:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn transparent_match_arm_wrapper_binding_and_execution_refusals() {
+        let original = include_str!(
+            "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
+        );
+        for source in [
+            original.replace(
+                "#[test]\n    fn bridge_fortnight",
+                "#[test]\n    #[should_panic]\n    fn bridge_fortnight",
+            ),
+            format!("macro_rules! assert_eq {{ ($($tokens:tt)*) => {{}} }}\n{original}"),
+            format!(
+                "{original}\nmod rival {{ fn seconds(_: super::Unit) -> u64 {{ 1_209_600 }} }}"
+            ),
+            original.replace("seconds(u)\n}", "other_seconds(u)\n}")
+                + "\nfn other_seconds(_: Unit) -> u64 { 1_209_600 }",
+        ] {
+            assert_ne!(
+                transparent_match_arm_source_finding(source).class,
+                ExposureClass::Exposed
+            );
+        }
+    }
+
     #[test]
     fn given_owner_symbol_when_resolving_owner_then_matches_full_identity() {
         let crate_b_fn = function("crates/crate_b/src/lib.rs", "score");

@@ -28,9 +28,70 @@ struct FunctionAssertions {
     assertions: BTreeSet<AssertionKey>,
     macros: BTreeSet<String>,
     alias_pins: BTreeMap<AssertionKey, (String, String)>,
+    transparent_tail: Option<TransparentTail>,
+}
+
+/// Bounded same-file forwarding facts, cached with the exact parser function.
+#[derive(Clone, Debug)]
+enum TransparentTail {
+    Forward(String),
+    Match(BTreeSet<String>),
 }
 
 impl OwnerPinAssertions {
+    /// The wrapper forwards its single plain input unchanged; the owner
+    /// matches that input directly. Only the changed path pattern is admitted.
+    pub(crate) fn transparent_wrapper(
+        &self,
+        owner: (usize, usize, &str, &str),
+        wrapper: (usize, usize, &str, &str),
+        operand: &str,
+        pattern: &str,
+    ) -> bool {
+        let find = |function: (usize, usize, &str, &str)| {
+            self.functions
+                .get(&(function.0, function.1, function.2.to_string()))
+                .filter(|facts| facts.body == function.3)
+                .and_then(|facts| facts.transparent_tail.as_ref())
+        };
+        let Some(TransparentTail::Forward(callee)) = find(wrapper) else {
+            return false;
+        };
+        let Some(TransparentTail::Match(patterns)) = find(owner) else {
+            return false;
+        };
+        if callee != owner.2 || !patterns.contains(pattern) {
+            return false;
+        }
+        // Parse only this bounded operand; file/function facts above reuse the
+        // run-scoped parser cache. No textual callee substitution is involved.
+        let source = format!("fn operand() {{ {operand} }}");
+        let Some(parse) = parse_clean_source_file(&source) else {
+            return false;
+        };
+        let Some(function) = parse.tree().syntax().descendants().find_map(ast::Fn::cast) else {
+            return false;
+        };
+        let Some(ast::Expr::CallExpr(call)) = function.body().and_then(|body| body.tail_expr())
+        else {
+            return false;
+        };
+        let Some(ast::Expr::PathExpr(path)) = call.expr() else {
+            return false;
+        };
+        if path.syntax().text() != wrapper.2 {
+            return false;
+        }
+        let Some(arguments) = call.arg_list() else {
+            return false;
+        };
+        let mut arguments = arguments.args();
+        let Some(ast::Expr::PathExpr(argument)) = arguments.next() else {
+            return false;
+        };
+        arguments.next().is_none() && argument.syntax().text() == pattern
+    }
+
     pub(crate) fn admits_module_declaration(&self, line: usize, declaration: &str) -> bool {
         self.module_declarations
             .get(&(line, declaration.to_string()))
@@ -467,6 +528,7 @@ pub(crate) fn owner_pin_assertions(source: &str, trusted: &[&str]) -> OwnerPinAs
                 assertions,
                 macros,
                 alias_pins,
+                transparent_tail: transparent_tail(&function),
             });
         } else {
             result.functions.insert(key, FunctionAssertions::default());
@@ -476,6 +538,81 @@ pub(crate) fn owner_pin_assertions(source: &str, trusted: &[&str]) -> OwnerPinAs
         .functions
         .retain(|key, _| identities.get(key) == Some(&1));
     result
+}
+
+/// No statements, branches, aliases, mutations or transformed arguments may
+/// mediate this witness. Wider wrappers stay possible reach, never identity.
+fn transparent_tail(function: &ast::Fn) -> Option<TransparentTail> {
+    if function.async_token().is_some() || function.attrs().next().is_some() {
+        return None;
+    }
+    let parameters = function.param_list()?;
+    if parameters.self_param().is_some() {
+        return None;
+    }
+    let mut parameters = parameters.params();
+    let parameter = parameters.next()?;
+    if parameters.next().is_some() {
+        return None;
+    }
+    let ast::Pat::IdentPat(binding) = parameter.pat()? else {
+        return None;
+    };
+    if binding.mut_token().is_some() || binding.ref_token().is_some() || binding.pat().is_some() {
+        return None;
+    }
+    let name = binding.name()?;
+    let body = function.body()?;
+    let statements = body.stmt_list()?;
+    if statements.statements().next().is_some() {
+        return None;
+    }
+    match body.tail_expr()? {
+        ast::Expr::CallExpr(call) => {
+            let ast::Expr::PathExpr(path) = call.expr()? else {
+                return None;
+            };
+            let callee = path.syntax().text().to_string();
+            if !callee
+                .chars()
+                .all(|character| character == '_' || character.is_ascii_alphanumeric())
+            {
+                return None;
+            }
+            let arguments = call.arg_list()?;
+            let mut arguments = arguments.args();
+            let ast::Expr::PathExpr(argument) = arguments.next()? else {
+                return None;
+            };
+            if arguments.next().is_some() || argument.syntax().text() != name.text() {
+                return None;
+            }
+            Some(TransparentTail::Forward(callee))
+        }
+        ast::Expr::MatchExpr(expression) => {
+            let ast::Expr::PathExpr(scrutinee) = expression.expr()? else {
+                return None;
+            };
+            if scrutinee.syntax().text() != name.text() {
+                return None;
+            }
+            let mut patterns = BTreeSet::new();
+            for arm in expression.match_arm_list()?.arms() {
+                if arm.guard().is_some() {
+                    continue;
+                }
+                let Some(ast::Pat::PathPat(pattern)) = arm.pat() else {
+                    continue;
+                };
+                let text = pattern.syntax().text().to_string();
+                if !patterns.insert(text) {
+                    return None;
+                }
+            }
+            Some(TransparentTail::Match(patterns))
+        }
+        _ => None,
+    }
 }
 
 /// A libtest item cannot be nested in an executable body. Module/source

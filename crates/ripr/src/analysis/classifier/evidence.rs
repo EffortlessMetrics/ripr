@@ -164,6 +164,17 @@ impl ClassifiedProbeEvidence {
             &cross_package_defeats,
             &ReturnOracleAdmission {
                 owner_return_pin: &owner_pin_admits,
+                transparent_wrapper_identity: &|test, assertion| {
+                    context.owner_fn.is_some_and(|owner| {
+                        pin_syntax.transparent_match_arm_wrapper(
+                            context.probe,
+                            owner,
+                            test,
+                            assertion,
+                            context.index,
+                        )
+                    })
+                },
                 assertion_admitted: &assertion_admitted,
                 proximity_may_reach_owner: &|test| {
                     context.owner_fn.is_none_or(|owner| {
