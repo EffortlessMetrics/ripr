@@ -19,7 +19,9 @@ jobs:
     name: rust-coverage
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'coverage') || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The full instrumented prefix reached the historical fixture at 44m.
+    # Permit a bounded completion experiment, retaining strict LCOV upload.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
         with:
