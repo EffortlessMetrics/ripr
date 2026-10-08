@@ -733,18 +733,14 @@ fn transparent_tail(function: &ast::Fn) -> Option<TransparentTail> {
                     return None;
                 };
                 let text = pattern.syntax().text().to_string();
-                let Some((enum_name, variant_name)) = text.split_once("::") else {
-                    return None;
-                };
+                let (enum_name, variant_name) = text.split_once("::")?;
                 if parameter_type != enum_name {
                     return None;
                 }
                 // The arm's simple path must denote a variant of an enum in
                 // the owner's own parser item scope. Token spelling alone
                 // cannot substitute another type or associated constant.
-                let Some(scope) = function.syntax().parent() else {
-                    return None;
-                };
+                let scope = function.syntax().parent()?;
                 let declared = scope.children().filter_map(ast::Enum::cast).any(|item| {
                     item.name().is_some_and(|name| name.text() == enum_name)
                         && item.attrs().all(ordinary_enum_derive)
