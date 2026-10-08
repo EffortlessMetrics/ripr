@@ -1,0 +1,1 @@
+The docs-only routed CI lane now uploads its subject-bound execution evidence under the same per-run/attempt artifact identity consumed by the required result job. Optional human report upload stays separate; missing or stale canonical evidence remains unproven.
