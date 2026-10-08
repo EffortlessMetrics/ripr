@@ -1049,7 +1049,7 @@ fn a_bare_assert_keeps_the_owner_binding_defeats() {
 }
 
 #[test]
-fn parent_module_qualified_return_pin_uses_parser_owner_identity() {
+fn parent_module_qualified_return_pin_uses_parser_owner_identity() -> Result<(), String> {
     let source = r#"pub fn score(value: i32) -> i32 {
     value + 1
 }
@@ -1061,15 +1061,16 @@ mod tests {
 }
 "#;
     let index = index(&[(LIB, source)]);
-    let pin = establish(&index, "score", "value + 1").expect("whole return pin");
+    let pin = establish(&index, "score", "value + 1").ok_or("whole return pin")?;
     assert_eq!(
         admitted_texts(&index, &pin),
         ["assert_eq!(super::score(1), 2);"]
     );
+    Ok(())
 }
 
 #[test]
-fn parent_module_qualified_return_pin_refuses_wrong_module_and_extra_paths() {
+fn parent_module_qualified_return_pin_refuses_wrong_module_and_extra_paths() -> Result<(), String> {
     for assertion in [
         "assert_eq!(super::super::score(1), 2);",
         "assert_eq!(crate::score(1), 2);",
@@ -1080,36 +1081,41 @@ fn parent_module_qualified_return_pin_refuses_wrong_module_and_extra_paths() {
             "pub fn score(value: i32) -> i32 {{\n    value + 1\n}}\nmod tests {{\n    #[test]\n    fn observes_score() {{\n        {assertion}\n    }}\n}}\n"
         );
         let index = index(&[(LIB, &source)]);
-        let pin = establish(&index, "score", "value + 1").expect("whole return pin");
+        let pin = establish(&index, "score", "value + 1").ok_or("whole return pin")?;
         assert!(admitted_texts(&index, &pin).is_empty(), "{assertion}");
     }
     let source = "pub fn score(value: i32) -> i32 {\n    value + 1\n}\nmod tests {\n    const score: fn(i32) -> i32 = |_| 2;\n    mod nested {\n        #[test]\n        fn observes_score() {\n            assert_eq!(super::score(1), 2);\n        }\n    }\n}\n";
     let index = index(&[(LIB, source)]);
-    let pin = establish(&index, "score", "value + 1").expect("whole return pin");
+    let pin = establish(&index, "score", "value + 1").ok_or("whole return pin")?;
     assert!(admitted_texts(&index, &pin).is_empty());
+    Ok(())
 }
 
-fn assert_immutable_alias_matches_pin(assertion: &str) {
+fn assert_immutable_alias_matches_pin(assertion: &str) -> Result<(), String> {
     let source = format!(
         "pub fn score(value: i32) -> i32 {{\n    value + 1\n}}\nmod tests {{\n    #[test]\n    fn observes_score() {{\n        let value = super::score(1);\n        {assertion}\n    }}\n}}\n"
     );
     let index = index(&[(LIB, &source)]);
-    let pin = establish(&index, "score", "value + 1").expect("whole return pin");
+    let pin = establish(&index, "score", "value + 1").ok_or("whole return pin")?;
     assert_eq!(admitted_texts(&index, &pin), [assertion], "{assertion}");
+    Ok(())
 }
 
 #[test]
-fn immutable_alias_exact_matches_pins_the_whole_owner_return() {
-    assert_immutable_alias_matches_pin("assert!(matches!(value, 2));");
+fn immutable_alias_exact_matches_pins_the_whole_owner_return() -> Result<(), String> {
+    assert_immutable_alias_matches_pin("assert!(matches!(value, 2));")?;
+    Ok(())
 }
 
 #[test]
-fn immutable_alias_exact_matches_guard_pins_the_whole_owner_return() {
-    assert_immutable_alias_matches_pin("assert!(matches!(value, _ if value == 2));");
+fn immutable_alias_exact_matches_guard_pins_the_whole_owner_return() -> Result<(), String> {
+    assert_immutable_alias_matches_pin("assert!(matches!(value, _ if value == 2));")?;
+    Ok(())
 }
 
 #[test]
-fn immutable_alias_exact_matches_refuses_non_observing_or_ambiguous_contexts() {
+fn immutable_alias_exact_matches_refuses_non_observing_or_ambiguous_contexts() -> Result<(), String>
+{
     for body in [
         "let value = super::score(1); assert!(matches!(value, _));",
         "let value = super::score(1); assert!(matches!(value, _ if value == value));",
@@ -1130,13 +1136,14 @@ fn immutable_alias_exact_matches_refuses_non_observing_or_ambiguous_contexts() {
             "pub fn score(value: i32) -> i32 {{\n    value + 1\n}}\nfn other(value: i32) -> i32 {{ value }}\nmod tests {{\n    #[test]\n    fn observes_score() {{\n        {body}\n    }}\n}}\n"
         );
         let index = index(&[(LIB, &source)]);
-        let pin = establish(&index, "score", "value + 1").expect("whole return pin");
+        let pin = establish(&index, "score", "value + 1").ok_or("whole return pin")?;
         assert!(admitted_texts(&index, &pin).is_empty(), "{body}");
     }
+    Ok(())
 }
 
 #[test]
-fn immutable_alias_exact_matches_refuses_shadowed_macros_and_should_panic() {
+fn immutable_alias_exact_matches_refuses_shadowed_macros_and_should_panic() -> Result<(), String> {
     for prefix in [
         "macro_rules! matches { ($($tokens:tt)*) => { true }; }",
         "macro_rules! assert { ($($tokens:tt)*) => {}; }",
@@ -1145,19 +1152,21 @@ fn immutable_alias_exact_matches_refuses_shadowed_macros_and_should_panic() {
             "{prefix}\npub fn score(value: i32) -> i32 {{\n    value + 1\n}}\nmod tests {{\n    #[test]\n    fn observes_score() {{\n        let value = super::score(1);\n        assert!(matches!(value, 2));\n    }}\n}}\n"
         );
         let index = index(&[(LIB, &source)]);
-        let pin = establish(&index, "score", "value + 1").expect("whole return pin");
+        let pin = establish(&index, "score", "value + 1").ok_or("whole return pin")?;
         assert!(admitted_texts(&index, &pin).is_empty(), "{prefix}");
     }
     let source = "pub fn score(value: i32) -> i32 {\n    value + 1\n}\nmod tests {\n    #[test]\n    #[should_panic]\n    fn observes_score() {\n        let value = super::score(1);\n        assert!(matches!(value, 2));\n    }\n}\n";
     let index = index(&[(LIB, source)]);
-    let pin = establish(&index, "score", "value + 1").expect("whole return pin");
+    let pin = establish(&index, "score", "value + 1").ok_or("whole return pin")?;
     assert!(admitted_texts(&index, &pin).is_empty());
+    Ok(())
 }
 
 #[test]
-fn immutable_alias_exact_matches_refuses_escaping_initializer_argument() {
+fn immutable_alias_exact_matches_refuses_escaping_initializer_argument() -> Result<(), String> {
     let source = "pub fn score(value: i32) -> i32 {\n    value + 1\n}\nfn early_ok() -> Result<i32, ()> { Ok(1) }\nmod tests {\n    #[test]\n    fn observes_score() -> Result<(), ()> {\n        let value = super::score(super::early_ok()?);\n        assert!(matches!(value, 2));\n        Ok(())\n    }\n}\n";
     let index = index(&[(LIB, source)]);
-    let pin = establish(&index, "score", "value + 1").expect("whole return pin");
+    let pin = establish(&index, "score", "value + 1").ok_or("whole return pin")?;
     assert!(admitted_texts(&index, &pin).is_empty());
+    Ok(())
 }

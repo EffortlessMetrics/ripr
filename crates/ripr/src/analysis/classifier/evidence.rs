@@ -249,7 +249,7 @@ impl ClassifiedProbeEvidence {
                 .owner_fn
                 .is_some_and(|owner| !owner_may_be_reached_unseen(owner, context.index));
         let unreached = |stage: StageEvidence, verb: &str| {
-            if reach_ruled_out && stage.state == StageState::Yes {
+            if reach_ruled_out && matches!(stage.state, StageState::Yes | StageState::Weak) {
                 unreached_stage(verb)
             } else {
                 stage

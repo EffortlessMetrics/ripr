@@ -98,7 +98,10 @@ mod tests {
 
     // RIPR-SPEC-0094 / public #1747: the same exact oracle must bind both
     // changed-arm observation and transparent wrapper owner identity.
-    fn transparent_match_arm_wrapper_finding(wrapper: &str, assertion: &str) -> Finding {
+    fn transparent_match_arm_wrapper_finding(
+        wrapper: &str,
+        assertion: &str,
+    ) -> Result<Finding, String> {
         let source = include_str!(
             "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
         )
@@ -110,15 +113,18 @@ mod tests {
         transparent_match_arm_source_finding(source)
     }
 
-    fn transparent_match_arm_source_finding(source: String) -> Finding {
+    fn transparent_match_arm_source_finding(source: String) -> Result<Finding, String> {
         transparent_match_arm_index_finding(source, &[])
     }
 
-    fn transparent_match_arm_index_finding(source: String, additional: &[(&str, &str)]) -> Finding {
+    fn transparent_match_arm_index_finding(
+        source: String,
+        additional: &[(&str, &str)],
+    ) -> Result<Finding, String> {
         let arm_line = source
             .lines()
             .position(|line| line.trim().starts_with("Unit::Fortnight =>"))
-            .expect("changed arm")
+            .ok_or("changed arm")?
             + 1;
 
         let file = PathBuf::from("src/lib.rs");
@@ -128,7 +134,7 @@ mod tests {
             .functions
             .iter()
             .find(|item| item.name == "seconds")
-            .expect("parsed owner");
+            .ok_or("parsed owner")?;
         let probe = Probe {
             id: ProbeId("wrapper-arm".to_string()),
             location: SourceLocation::new(file.clone(), arm_line, 1),
@@ -160,28 +166,29 @@ mod tests {
             !finding.related_tests.is_empty(),
             "nonempty classifier subjects"
         );
-        finding
+        Ok(finding)
     }
 
     #[test]
-    fn transparent_match_arm_wrapper_exact_oracle_binds_identity() {
+    fn transparent_match_arm_wrapper_exact_oracle_binds_identity() -> Result<(), String> {
         for assertion in [
             "assert_eq!(seconds_bridge(Unit::Fortnight), 1_209_600);",
             "assert_eq!(1_209_600, seconds_bridge(Unit::Fortnight));",
         ] {
-            let finding = transparent_match_arm_wrapper_finding("seconds(u)", assertion);
+            let finding = transparent_match_arm_wrapper_finding("seconds(u)", assertion)?;
             assert_eq!(finding.class, ExposureClass::Exposed, "{finding:?}");
             let bridge = finding
                 .related_tests
                 .iter()
                 .find(|test| test.name == "bridge_fortnight")
-                .expect("bridge oracle");
+                .ok_or("bridge oracle")?;
             assert_eq!(bridge.relation_reason, Some(RelationReason::SameTestFile));
         }
+        Ok(())
     }
 
     #[test]
-    fn transparent_match_arm_wrapper_negative_controls_stay_unbound() {
+    fn transparent_match_arm_wrapper_negative_controls_stay_unbound() -> Result<(), String> {
         for wrapper in [
             "1_209_600",
             "seconds(u) + 1",
@@ -196,7 +203,7 @@ mod tests {
             let finding = transparent_match_arm_wrapper_finding(
                 wrapper,
                 "assert_eq!(seconds_bridge(Unit::Fortnight), 1_209_600);",
-            );
+            )?;
             assert_ne!(
                 finding.class,
                 ExposureClass::Exposed,
@@ -211,17 +218,18 @@ mod tests {
             "assert_eq!(seconds_bridge(Unit::Week), 1_209_600);",
             "assert_eq!(seconds_bridge(Unit::Fortnight), seconds_bridge(Unit::Fortnight));",
         ] {
-            let finding = transparent_match_arm_wrapper_finding("seconds(u)", assertion);
+            let finding = transparent_match_arm_wrapper_finding("seconds(u)", assertion)?;
             assert_ne!(
                 finding.class,
                 ExposureClass::Exposed,
                 "{assertion}: {finding:?}"
             );
         }
+        Ok(())
     }
 
     #[test]
-    fn transparent_match_arm_wrapper_binding_and_execution_refusals() {
+    fn transparent_match_arm_wrapper_binding_and_execution_refusals() -> Result<(), String> {
         let original = include_str!(
             "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
         );
@@ -238,14 +246,15 @@ mod tests {
                 + "\nfn other_seconds(_: Unit) -> u64 { 1_209_600 }",
         ] {
             assert_ne!(
-                transparent_match_arm_source_finding(source).class,
+                transparent_match_arm_source_finding(source)?.class,
                 ExposureClass::Exposed
             );
         }
+        Ok(())
     }
 
     #[test]
-    fn transparent_match_arm_wrapper_module_const_callable_is_not_owner() {
+    fn transparent_match_arm_wrapper_module_const_callable_is_not_owner() -> Result<(), String> {
         let original = include_str!(
             "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
         );
@@ -253,16 +262,20 @@ mod tests {
             "use super::*;",
             "use super::*;\n    const seconds_bridge: fn(Unit) -> u64 = |_| 1_209_600;",
         );
-        let finding = transparent_match_arm_source_finding(source);
+        let finding = transparent_match_arm_source_finding(source)?;
         assert_ne!(finding.class, ExposureClass::Exposed, "{finding:?}");
+        Ok(())
     }
 
     #[test]
-    fn transparent_match_arm_wrapper_variant_path_shadow_does_not_select_arm() {
+    fn transparent_match_arm_wrapper_variant_path_shadow_does_not_select_arm() -> Result<(), String>
+    {
         let original = include_str!(
             "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
         );
-        let (production, _) = original.split_once("#[cfg(test)]").expect("fixture module");
+        let (production, _) = original
+            .split_once("#[cfg(test)]")
+            .ok_or("fixture module")?;
         let source = format!(
             r#"{production}
 #[cfg(test)]
@@ -277,12 +290,14 @@ mod tests {{
 }}
 "#
         );
-        let finding = transparent_match_arm_source_finding(source);
+        let finding = transparent_match_arm_source_finding(source)?;
         assert_ne!(finding.class, ExposureClass::Exposed, "{finding:?}");
+        Ok(())
     }
 
     #[test]
-    fn transparent_match_arm_wrapper_workspace_import_cannot_override_parent() {
+    fn transparent_match_arm_wrapper_workspace_import_cannot_override_parent() -> Result<(), String>
+    {
         let original = include_str!(
             "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
         );
@@ -298,12 +313,13 @@ mod tests {{
                 "src/rival.rs",
                 "pub const seconds_bridge: fn(super::Unit) -> u64 = |_| 1_209_600;",
             )],
-        );
+        )?;
         assert_ne!(finding.class, ExposureClass::Exposed, "{finding:?}");
+        Ok(())
     }
 
     #[test]
-    fn transparent_match_arm_wrapper_unreachable_arm_is_not_observed() {
+    fn transparent_match_arm_wrapper_unreachable_arm_is_not_observed() -> Result<(), String> {
         let original = include_str!(
             "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
         );
@@ -318,26 +334,29 @@ mod tests {{
                 &format!("{prefix}\n        Unit::Week => 604_800,"),
             ) + "\nconst ALIAS: Unit = Unit::Fortnight;";
             assert_ne!(
-                transparent_match_arm_source_finding(source).class,
+                transparent_match_arm_source_finding(source)?.class,
                 ExposureClass::Exposed,
                 "{prefix}"
             );
         }
+        Ok(())
     }
 
     #[test]
-    fn transparent_match_arm_wrapper_parameter_callee_is_not_owner() {
+    fn transparent_match_arm_wrapper_parameter_callee_is_not_owner() -> Result<(), String> {
         let source = include_str!(
             "../../../../fixtures/match_arm_wrapper_parameter_callable_not_credited/input/src/lib.rs"
         );
         assert_ne!(
-            transparent_match_arm_source_finding(source.to_string()).class,
+            transparent_match_arm_source_finding(source.to_string())?.class,
             ExposureClass::Exposed
         );
+        Ok(())
     }
 
     #[test]
-    fn transparent_match_arm_wrapper_opaque_sibling_attribute_refuses_binding() {
+    fn transparent_match_arm_wrapper_opaque_sibling_attribute_refuses_binding() -> Result<(), String>
+    {
         let original = include_str!(
             "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
         );
@@ -346,23 +365,26 @@ mod tests {{
             "use super::*;\n    #[external::GenerateBridge] struct Marker;",
         );
         assert_ne!(
-            transparent_match_arm_source_finding(source).class,
+            transparent_match_arm_source_finding(source)?.class,
             ExposureClass::Exposed
         );
+        Ok(())
     }
 
     #[test]
-    fn transparent_match_arm_wrapper_opaque_owner_enum_attribute_refuses_variant() {
+    fn transparent_match_arm_wrapper_opaque_owner_enum_attribute_refuses_variant()
+    -> Result<(), String> {
         let original = include_str!(
             "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
         );
         for attribute in ["#[external::AlterUnit]", "#[derive(external::AlterUnit)]"] {
             let source = original.replace("#[derive(Debug, PartialEq)]", attribute);
             assert_ne!(
-                transparent_match_arm_source_finding(source).class,
+                transparent_match_arm_source_finding(source)?.class,
                 ExposureClass::Exposed
             );
         }
+        Ok(())
     }
 
     #[test]
@@ -2211,6 +2233,70 @@ fn far_above_threshold_discounts() {
 
     // RC walk RS-1: a new function no test calls read `weakly_exposed`, with
     // "strong oracle found", through a same-file test of a sibling function.
+    #[test]
+    fn unreached_return_owner_does_not_borrow_weak_sibling_discrimination() -> Result<(), String> {
+        let fixture = include_str!(
+            "../../../../fixtures/rust_uncalled_owner_same_file_tests/input/src/lib.rs"
+        );
+        for (source, expected_reach) in [
+            (
+                fixture.replace(
+                    "assert_eq!(discount(100), 90)",
+                    "assert_eq!(untested_rounding(100), 1)",
+                ),
+                StageState::Yes,
+            ),
+            (
+                format!(
+                    "{fixture}\npub fn rounding_bridge(cents: u32) -> u32 {{ untested_rounding(cents) }}\n"
+                ),
+                StageState::Weak,
+            ),
+            (fixture.to_string(), StageState::No),
+        ] {
+            let file = PathBuf::from("src/lib.rs");
+            let facts = crate::analysis::rust_index::summarize_file(file.clone(), source);
+            assert!(!facts.used_lexical_fallback);
+            assert_eq!(facts.tests.len(), 2, "parsed fixture subjects");
+            let owner = facts
+                .functions
+                .iter()
+                .find(|item| item.name == "untested_rounding")
+                .ok_or("parsed changed owner")?;
+            let probe = Probe {
+                id: ProbeId("unreached-return".to_string()),
+                location: SourceLocation::new(file.clone(), owner.start_line + 1, 1),
+                owner: Some(owner.id.clone()),
+                family: ProbeFamily::ReturnValue,
+                delta: DeltaKind::Value,
+                before: Some("(cents + 50) / 100".to_string()),
+                after: Some("(cents + 49) / 100".to_string()),
+                expression: "(cents + 49) / 100".to_string(),
+                expected_sinks: Vec::new(),
+                required_oracles: Vec::new(),
+            };
+            let mut index = RustIndex::default();
+            index.extend_functions(facts.functions.iter().cloned());
+            index.extend_tests(facts.tests.iter().cloned());
+            index.insert_file_only(file, facts);
+            let finding = classify_probe(&probe, &index, true, None);
+            assert!(
+                !finding.related_tests.is_empty(),
+                "related fixture subjects"
+            );
+            assert_eq!(finding.ripr.reach.state, expected_reach);
+            if expected_reach == StageState::No {
+                assert_eq!(finding.class, ExposureClass::NoStaticPath);
+                assert_eq!(finding.ripr.reveal.observe.state, StageState::No);
+                assert_eq!(finding.ripr.reveal.discriminate.state, StageState::No);
+            } else {
+                assert_ne!(finding.class, ExposureClass::NoStaticPath);
+                assert_eq!(finding.ripr.reveal.discriminate.state, expected_reach);
+            }
+        }
+        Ok(())
+    }
+
     #[test]
     fn given_uncalled_owner_with_same_file_sibling_test_when_classified_then_no_static_path() {
         let index = uncalled_owner_index("");

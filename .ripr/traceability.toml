@@ -9,6 +9,7 @@ id = "RIPR-SPEC-0001"
 name = "static exposure loop"
 spec = "docs/specs/RIPR-SPEC-0001-static-exposure-loop.md"
 tests = [
+  "crates/ripr/src/analysis/classifier.rs::tests::unreached_return_owner_does_not_borrow_weak_sibling_discrimination",
   "crates/ripr/src/analysis/extract/oracles/wildcard_tests.rs::unguarded_wildcard_patterns_are_not_exact_oracles",
   "crates/ripr/src/analysis/extract/oracles/wildcard_tests.rs::wildcard_downgrade_preserves_patterns_guards_and_other_conditions",
   "crates/ripr/src/analysis/extract/oracles/wildcard_tests.rs::wildcard_runtime_control_accepts_wrong_behavior_while_exact_pin_distinguishes_it",
