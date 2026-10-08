@@ -24,7 +24,9 @@ jobs:
     name: rust-tests-junit
     if: (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && !(github.event_name == 'workflow_dispatch' && inputs.diagnose_source_promotion)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The historical fixture completed in 17m28s within the former 30m cap.
+    # Allow the remaining suite and doctests a bounded completion experiment.
+    timeout-minutes: 60
     env:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
