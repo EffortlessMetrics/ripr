@@ -337,6 +337,35 @@ mod tests {{
     }
 
     #[test]
+    fn transparent_match_arm_wrapper_opaque_sibling_attribute_refuses_binding() {
+        let original = include_str!(
+            "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
+        );
+        let source = original.replace(
+            "use super::*;",
+            "use super::*;\n    #[external::GenerateBridge] struct Marker;",
+        );
+        assert_ne!(
+            transparent_match_arm_source_finding(source).class,
+            ExposureClass::Exposed
+        );
+    }
+
+    #[test]
+    fn transparent_match_arm_wrapper_opaque_owner_enum_attribute_refuses_variant() {
+        let original = include_str!(
+            "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
+        );
+        for attribute in ["#[external::AlterUnit]", "#[derive(external::AlterUnit)]"] {
+            let source = original.replace("#[derive(Debug, PartialEq)]", attribute);
+            assert_ne!(
+                transparent_match_arm_source_finding(source).class,
+                ExposureClass::Exposed
+            );
+        }
+    }
+
+    #[test]
     fn given_owner_symbol_when_resolving_owner_then_matches_full_identity() {
         let crate_b_fn = function("crates/crate_b/src/lib.rs", "score");
         let crate_a_fn = function("crates/crate_a/src/lib.rs", "score");

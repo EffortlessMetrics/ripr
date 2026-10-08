@@ -19,7 +19,6 @@ impl FromStr for Unit {
 
 pub fn seconds(u: Unit) -> u64 {
     match u {
-        _ => 1_209_600,
         Unit::Week => 604_800,
         Unit::Fortnight => 1_209_600,
     }
@@ -32,6 +31,7 @@ pub fn seconds_bridge(u: Unit) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[derive(wrapper_binding_attribute_macros::GenerateBridge)] struct Marker;
 
     #[test]
     fn seconds_total() {
@@ -39,7 +39,7 @@ mod tests {
             .iter()
             .map(|s| seconds(Unit::from_str(s).unwrap()))
             .sum();
-        assert_eq!(total, 2_419_200);
+        assert_eq!(total, 1_814_400);
     }
 
     #[test]

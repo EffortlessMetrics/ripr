@@ -585,9 +585,24 @@ pub(crate) fn owner_pin_assertions(source: &str, trusted: &[&str]) -> OwnerPinAs
                     .descendants()
                     .any(|node| ast::Use::can_cast(node.kind())),
                 own_parent_glob: function.syntax().parent().is_some_and(|scope| {
-                    !scope
-                        .children()
-                        .any(|node| ast::MacroCall::can_cast(node.kind()))
+                    // Sibling attribute/derive expansion can introduce a
+                    // shadowing binding without a visible MacroCall or item.
+                    // Only ordinary test function attributes are transparent.
+                    let transparent_items = scope.children().all(|node| {
+                        if let Some(function) = ast::Fn::cast(node.clone()) {
+                            function
+                                .attrs()
+                                .all(|attr| attr.simple_name().as_deref() == Some("test"))
+                        } else {
+                            !node
+                                .children()
+                                .any(|child| ast::Attr::can_cast(child.kind()))
+                        }
+                    });
+                    transparent_items
+                        && !scope
+                            .children()
+                            .any(|node| ast::MacroCall::can_cast(node.kind()))
                         && scope.children().filter_map(ast::Use::cast).count() == 1
                         && scope.children().filter_map(ast::Use::cast).all(|item| {
                             item.attrs().next().is_none()
@@ -608,6 +623,39 @@ pub(crate) fn owner_pin_assertions(source: &str, trusted: &[&str]) -> OwnerPinAs
         .functions
         .retain(|key, _| identities.get(key) == Some(&1));
     result
+}
+
+/// Derive preserves the annotated enum; opaque item attributes need a
+/// different authority. Keep this query's accepted spellings explicitly bounded.
+fn ordinary_enum_derive(attribute: ast::Attr) -> bool {
+    if attribute.simple_name().as_deref() != Some("derive") {
+        return false;
+    }
+    attribute
+        .syntax()
+        .descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .all(|token| {
+            token.kind().is_trivia()
+                || matches!(
+                    token.text(),
+                    "#" | "["
+                        | "]"
+                        | "("
+                        | ")"
+                        | ","
+                        | "derive"
+                        | "Debug"
+                        | "PartialEq"
+                        | "Eq"
+                        | "Clone"
+                        | "Copy"
+                        | "Hash"
+                        | "Default"
+                        | "PartialOrd"
+                        | "Ord"
+                )
+        })
 }
 
 /// No statements, branches, aliases, mutations or transformed arguments may
@@ -699,6 +747,7 @@ fn transparent_tail(function: &ast::Fn) -> Option<TransparentTail> {
                 };
                 let declared = scope.children().filter_map(ast::Enum::cast).any(|item| {
                     item.name().is_some_and(|name| name.text() == enum_name)
+                        && item.attrs().all(ordinary_enum_derive)
                         && item.variant_list().is_some_and(|variants| {
                             variants.variants().any(|variant| {
                                 variant

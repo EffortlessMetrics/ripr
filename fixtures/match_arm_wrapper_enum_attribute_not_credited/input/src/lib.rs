@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-#[derive(Debug, PartialEq)]
+#[wrapper_binding_attribute_macros::alter_unit]
 pub enum Unit {
     Week,
     Fortnight,
@@ -19,7 +19,6 @@ impl FromStr for Unit {
 
 pub fn seconds(u: Unit) -> u64 {
     match u {
-        _ => 1_209_600,
         Unit::Week => 604_800,
         Unit::Fortnight => 1_209_600,
     }
@@ -39,12 +38,12 @@ mod tests {
             .iter()
             .map(|s| seconds(Unit::from_str(s).unwrap()))
             .sum();
-        assert_eq!(total, 2_419_200);
+        assert_eq!(total, 1_209_600);
     }
 
     #[test]
     fn bridge_fortnight() {
-        assert_eq!(seconds_bridge(Unit::Fortnight), 1_209_600);
+        assert_eq!(seconds_bridge(Unit::Fortnight), 604_800);
     }
 
     #[test]

@@ -1416,6 +1416,54 @@
       ]
     },
     {
+      "id": "rust_match_arm_wrapper_sibling_attribute_not_credited",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/match_arm_wrapper_sibling_attribute_not_credited",
+      "vector": "sibling_attribute_expansion_shadows_wrapper",
+      "probe_family": "match_arm",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
+      "id": "rust_match_arm_wrapper_enum_attribute_not_credited",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/match_arm_wrapper_enum_attribute_not_credited",
+      "vector": "owner_enum_attribute_changes_variant_identity",
+      "probe_family": "match_arm",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
       "id": "rust_same_method_other_type",
       "language": "rust",
       "tier": "pure",
