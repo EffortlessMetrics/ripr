@@ -3666,6 +3666,7 @@ tests = [
   "crates/ripr/tests/cli_smoke.rs::init_ci_github_dry_run_prints_config_and_workflow_without_writing",
   "crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow",
   "xtask/src/main.rs::tests::dogfood_generated_ci_cockpit_receipts_are_checked",
+  "xtask/src/main.rs::tests::dogfood_generated_ci_cockpit_checks_the_public_summary_renderer",
 ]
 fixtures = [
   "fixtures/benches_harness_evidence",

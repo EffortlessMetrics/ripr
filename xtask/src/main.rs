@@ -108,7 +108,7 @@ pub(crate) use dogfood::{
     dogfood_editor_gap_cockpit_scenarios, dogfood_failed_families, dogfood_first_action_run,
     dogfood_first_action_scenarios, dogfood_first_pr_metrics, dogfood_first_pr_run,
     dogfood_first_pr_scenarios, dogfood_gate_adoption_run, dogfood_gate_adoption_scenarios,
-    dogfood_gate_result, dogfood_generated_ci_cockpit_run_from_workflow,
+    dogfood_gate_result, dogfood_generated_ci_cockpit_run_from_surfaces,
     dogfood_language_preview_run, dogfood_language_preview_scenarios,
     dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
     dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
