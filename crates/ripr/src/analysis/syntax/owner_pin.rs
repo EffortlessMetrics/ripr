@@ -550,7 +550,7 @@ fn has_escape(
 /// Closed integer discriminator shapes only: no wildcard, payload pattern,
 /// extra operand, diagnostic argument, projection, or arbitrary guard expression.
 fn exact_matches_alias(call: &ast::MacroCall) -> Option<(String, String, usize)> {
-    if call.path()?.syntax().text().to_string() != "assert" {
+    if call.path()?.syntax().text() != "assert" {
         return None;
     }
     let tree = call.token_tree()?;
@@ -639,7 +639,7 @@ fn immutable_alias_pin(
         .filter_map(ast::LetStmt::cast)
         .filter(|binding| {
             matches!(binding.pat(), Some(ast::Pat::IdentPat(pattern))
-                if pattern.name().is_some_and(|binding_name| binding_name.text().to_string() == name))
+                if pattern.name().is_some_and(|binding_name| binding_name.text() == name))
         });
     let binding = bindings.next()?;
     if bindings.next().is_some()
