@@ -111,6 +111,16 @@ mod tests {
     }
 
     fn transparent_match_arm_source_finding(source: String) -> Finding {
+        transparent_match_arm_index_finding(source, &[])
+    }
+
+    fn transparent_match_arm_index_finding(source: String, additional: &[(&str, &str)]) -> Finding {
+        let arm_line = source
+            .lines()
+            .position(|line| line.trim().starts_with("Unit::Fortnight =>"))
+            .expect("changed arm")
+            + 1;
+
         let file = PathBuf::from("src/lib.rs");
         let facts = crate::analysis::rust_index::summarize_file(file.clone(), source);
         assert!(!facts.used_lexical_fallback);
@@ -121,7 +131,7 @@ mod tests {
             .expect("parsed owner");
         let probe = Probe {
             id: ProbeId("wrapper-arm".to_string()),
-            location: SourceLocation::new(file.clone(), 23, 1),
+            location: SourceLocation::new(file.clone(), arm_line, 1),
             owner: Some(owner.id.clone()),
             family: ProbeFamily::MatchArm,
             delta: DeltaKind::Value,
@@ -135,6 +145,16 @@ mod tests {
         index.extend_functions(facts.functions.iter().cloned());
         index.extend_tests(facts.tests.iter().cloned());
         index.insert_file_only(file, facts);
+        for (path, source) in additional {
+            let file = PathBuf::from(path);
+            let facts =
+                crate::analysis::rust_index::summarize_file(file.clone(), (*source).to_string());
+            assert!(!facts.used_lexical_fallback);
+            index.extend_functions(facts.functions.iter().cloned());
+            index.extend_tests(facts.tests.iter().cloned());
+            index.insert_file_only(file, facts);
+        }
+
         let finding = classify_probe(&probe, &index, true, None);
         assert!(
             !finding.related_tests.is_empty(),
@@ -259,6 +279,61 @@ mod tests {{
         );
         let finding = transparent_match_arm_source_finding(source);
         assert_ne!(finding.class, ExposureClass::Exposed, "{finding:?}");
+    }
+
+    #[test]
+    fn transparent_match_arm_wrapper_workspace_import_cannot_override_parent() {
+        let original = include_str!(
+            "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
+        );
+        let source = original
+            .replace("#[cfg(test)]", "mod rival;\n#[cfg(test)]")
+            .replace(
+                "use super::*;",
+                "use super::*;\n    use crate::rival::seconds_bridge;",
+            );
+        let finding = transparent_match_arm_index_finding(
+            source,
+            &[(
+                "src/rival.rs",
+                "pub const seconds_bridge: fn(super::Unit) -> u64 = |_| 1_209_600;",
+            )],
+        );
+        assert_ne!(finding.class, ExposureClass::Exposed, "{finding:?}");
+    }
+
+    #[test]
+    fn transparent_match_arm_wrapper_unreachable_arm_is_not_observed() {
+        let original = include_str!(
+            "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
+        );
+        for prefix in [
+            "_ => 1_209_600,",
+            "Unit::Fortnight if true => 1_209_600,",
+            "Unit::Week | Unit::Fortnight => 1_209_600,",
+            "crate::ALIAS => 1_209_600,",
+        ] {
+            let source = original.replace(
+                "Unit::Week => 604_800,",
+                &format!("{prefix}\n        Unit::Week => 604_800,"),
+            ) + "\nconst ALIAS: Unit = Unit::Fortnight;";
+            assert_ne!(
+                transparent_match_arm_source_finding(source).class,
+                ExposureClass::Exposed,
+                "{prefix}"
+            );
+        }
+    }
+
+    #[test]
+    fn transparent_match_arm_wrapper_parameter_callee_is_not_owner() {
+        let source = include_str!(
+            "../../../../fixtures/match_arm_wrapper_parameter_callable_not_credited/input/src/lib.rs"
+        );
+        assert_ne!(
+            transparent_match_arm_source_finding(source.to_string()).class,
+            ExposureClass::Exposed
+        );
     }
 
     #[test]

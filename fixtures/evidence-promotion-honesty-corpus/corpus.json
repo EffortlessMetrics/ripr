@@ -1344,6 +1344,78 @@
       ]
     },
     {
+      "id": "rust_match_arm_wrapper_workspace_import_not_credited",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/match_arm_wrapper_workspace_import_not_credited",
+      "vector": "workspace_import_overrides_parent_wrapper",
+      "probe_family": "match_arm",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
+      "id": "rust_match_arm_wrapper_unreachable_arm_not_credited",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/match_arm_wrapper_unreachable_arm_not_credited",
+      "vector": "wildcard_precedes_changed_enum_arm",
+      "probe_family": "match_arm",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
+      "id": "rust_match_arm_wrapper_parameter_callable_not_credited",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/match_arm_wrapper_parameter_callable_not_credited",
+      "vector": "wrapper_parameter_callable_shadows_owner",
+      "probe_family": "match_arm",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
       "id": "rust_same_method_other_type",
       "language": "rust",
       "tier": "pure",

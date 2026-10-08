@@ -33,6 +33,7 @@ struct FunctionAssertions {
     transparent_tail: Option<TransparentTail>,
     root_scope: bool,
     own_parent_glob: bool,
+    local_import: bool,
 }
 
 /// Bounded same-file forwarding facts, cached with the exact parser function.
@@ -56,7 +57,10 @@ impl OwnerPinAssertions {
         let Some(test_facts) = self.functions.get(&(test.0, test.1, test.2.to_string())) else {
             return false;
         };
-        if test_facts.body != test.3 || !(test_facts.root_scope || test_facts.own_parent_glob) {
+        if test_facts.local_import
+            || test_facts.body != test.3
+            || !(test_facts.root_scope || test_facts.own_parent_glob)
+        {
             return false;
         }
         let find = |function: (usize, usize, &str, &str)| {
@@ -576,11 +580,16 @@ pub(crate) fn owner_pin_assertions(source: &str, trusted: &[&str]) -> OwnerPinAs
                     .syntax()
                     .parent()
                     .is_some_and(|scope| ast::SourceFile::can_cast(scope.kind())),
+                local_import: function
+                    .syntax()
+                    .descendants()
+                    .any(|node| ast::Use::can_cast(node.kind())),
                 own_parent_glob: function.syntax().parent().is_some_and(|scope| {
                     !scope
                         .children()
                         .any(|node| ast::MacroCall::can_cast(node.kind()))
-                        && scope.children().filter_map(ast::Use::cast).any(|item| {
+                        && scope.children().filter_map(ast::Use::cast).count() == 1
+                        && scope.children().filter_map(ast::Use::cast).all(|item| {
                             item.attrs().next().is_none()
                                 && item.use_tree().is_some_and(|tree| {
                                     tree.path()
@@ -641,6 +650,9 @@ fn transparent_tail(function: &ast::Fn) -> Option<TransparentTail> {
                 return None;
             };
             let callee = path.syntax().text().to_string();
+            if callee == name.text() {
+                return None;
+            }
             if !callee
                 .chars()
                 .all(|character| character == '_' || character.is_ascii_alphanumeric())
@@ -667,17 +679,17 @@ fn transparent_tail(function: &ast::Fn) -> Option<TransparentTail> {
             let mut patterns = BTreeSet::new();
             for arm in expression.match_arm_list()?.arms() {
                 if arm.guard().is_some() {
-                    continue;
+                    return None;
                 }
                 let Some(ast::Pat::PathPat(pattern)) = arm.pat() else {
-                    continue;
+                    return None;
                 };
                 let text = pattern.syntax().text().to_string();
                 let Some((enum_name, variant_name)) = text.split_once("::") else {
-                    continue;
+                    return None;
                 };
                 if parameter_type != enum_name {
-                    continue;
+                    return None;
                 }
                 // The arm's simple path must denote a variant of an enum in
                 // the owner's own parser item scope. Token spelling alone
@@ -696,7 +708,7 @@ fn transparent_tail(function: &ast::Fn) -> Option<TransparentTail> {
                         })
                 });
                 if !declared {
-                    continue;
+                    return None;
                 }
                 if !patterns.insert(text) {
                     return None;
