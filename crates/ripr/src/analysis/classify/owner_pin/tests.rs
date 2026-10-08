@@ -1047,3 +1047,44 @@ fn a_bare_assert_keeps_the_owner_binding_defeats() {
         OwnerReturnPin::establish(&predicate_probe(gate, "10 <= value"), gate, &partial).is_none()
     );
 }
+
+#[test]
+fn parent_module_qualified_return_pin_uses_parser_owner_identity() {
+    let source = r#"pub fn score(value: i32) -> i32 {
+    value + 1
+}
+mod tests {
+    #[test]
+    fn observes_score() {
+        assert_eq!(super::score(1), 2);
+    }
+}
+"#;
+    let index = index(&[(LIB, source)]);
+    let pin = establish(&index, "score", "value + 1").expect("whole return pin");
+    assert_eq!(
+        admitted_texts(&index, &pin),
+        ["assert_eq!(super::score(1), 2);"]
+    );
+}
+
+#[test]
+fn parent_module_qualified_return_pin_refuses_wrong_module_and_extra_paths() {
+    for assertion in [
+        "assert_eq!(super::super::score(1), 2);",
+        "assert_eq!(crate::score(1), 2);",
+        "assert_eq!(super::Other::score(1), 2);",
+        "assert_eq!(super::score(1).abs(), 2);",
+    ] {
+        let source = format!(
+            "pub fn score(value: i32) -> i32 {{\n    value + 1\n}}\nmod tests {{\n    #[test]\n    fn observes_score() {{\n        {assertion}\n    }}\n}}\n"
+        );
+        let index = index(&[(LIB, &source)]);
+        let pin = establish(&index, "score", "value + 1").expect("whole return pin");
+        assert!(admitted_texts(&index, &pin).is_empty(), "{assertion}");
+    }
+    let source = "pub fn score(value: i32) -> i32 {\n    value + 1\n}\nmod tests {\n    const score: fn(i32) -> i32 = |_| 2;\n    mod nested {\n        #[test]\n        fn observes_score() {\n            assert_eq!(super::score(1), 2);\n        }\n    }\n}\n";
+    let index = index(&[(LIB, source)]);
+    let pin = establish(&index, "score", "value + 1").expect("whole return pin");
+    assert!(admitted_texts(&index, &pin).is_empty());
+}

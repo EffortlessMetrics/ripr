@@ -58,6 +58,8 @@ use std::path::{Path, PathBuf};
 /// The owner-side half of the pin, established once per probe.
 pub(in crate::analysis) struct OwnerReturnPin {
     name: String,
+    owner_file: PathBuf,
+    owner_id: String,
     call: PinCall,
     path: ReturnPathGate,
     /// The owner declares `-> bool`, so `assert!(owner(..))` pins its whole
@@ -374,11 +376,51 @@ impl OwnerReturnPin {
         }
         Some(Self {
             name: name.to_string(),
+            owner_file: owner.file.clone(),
+            owner_id: owner.id.0.clone(),
             call,
             path,
             returns_bool,
             trait_scope_by_file: RefCell::default(),
         })
+    }
+
+    /// A single `super::` free-function call is admitted only when parser
+    /// symbols establish that the test's parent module owns this definition.
+    /// Cross-file composition and longer/type-qualified paths stay unsupported.
+    fn call_shape<'a>(
+        &self,
+        operand: &'a str,
+        test: &TestSummary,
+        index: &RustIndex,
+    ) -> Option<CallShape<'a>> {
+        if let Some(shape) = owner_call_shape(operand, &self.name) {
+            return Some(shape);
+        }
+        if !matches!(self.call, PinCall::Bare) || test.file != self.owner_file {
+            return None;
+        }
+        let bare = operand.trim().strip_prefix("super::")?;
+        if !matches!(owner_call_shape(bare, &self.name), Some(CallShape::Bare)) {
+            return None;
+        }
+        let facts = index.files().get(&test.file)?;
+        if facts.used_lexical_fallback {
+            return None;
+        }
+        let mut candidates = facts.functions.iter().filter(|function| {
+            function.name == test.name
+                && function.start_line == test.start_line
+                && function.end_line == test.end_line
+                && matches!(function.item.container, FunctionContainer::Free)
+        });
+        let function = candidates.next()?;
+        if candidates.next().is_some() {
+            return None;
+        }
+        let (test_module, _) = function.id.0.rsplit_once("::")?;
+        let (parent_module, _) = test_module.rsplit_once("::")?;
+        (self.owner_id == format!("{parent_module}::{}", self.name)).then_some(CallShape::Bare)
     }
 
     /// The test-side gates: whether `assertion` in `test` pins the owner's
@@ -412,8 +454,8 @@ impl OwnerReturnPin {
                 return false;
             };
             match (
-                owner_call_shape(operands[0], &self.name),
-                owner_call_shape(operands[1], &self.name),
+                self.call_shape(operands[0], test, index),
+                self.call_shape(operands[1], test, index),
             ) {
                 (Some(call), None) => (call, operands[1]),
                 (None, Some(call)) => (call, operands[0]),
@@ -432,7 +474,7 @@ impl OwnerReturnPin {
                 Some(negated) => (negated.trim_start(), "false"),
                 None => (operand, "true"),
             };
-            let Some(call) = owner_call_shape(operand, &self.name) else {
+            let Some(call) = self.call_shape(operand, test, index) else {
                 return false;
             };
             (call, expected)
