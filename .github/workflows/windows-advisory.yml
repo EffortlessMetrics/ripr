@@ -80,7 +80,7 @@ concurrency:
 
 jobs:
   windows-advisory:
-    name: windows-advisory
+    name: windows-advisory-evidence
     if: |
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
@@ -144,7 +144,7 @@ jobs:
       - name: Summarize environment
         shell: bash
         run: |
-          printf '## Windows advisory lane\n\nAdvisory only: this lane never fails and is not a required check (issue 2393).\n\n### Environment\n\n```\n%s\n```\n' "$(cat target/windows-env.log 2>/dev/null || echo unavailable)" >> "$GITHUB_STEP_SUMMARY" || true
+          printf '## Windows advisory evidence\n\nThis check validates evidence capture and is not required (issue 2393). Test outcomes are advisory; inspect the verdict for actual pass/fail counts. Missing or broken evidence fails this check.\n\n### Environment\n\n```\n%s\n```\n' "$(cat target/windows-env.log 2>/dev/null || echo unavailable)" >> "$GITHUB_STEP_SUMMARY" || true
 
       # The verdict goes to the job log, to a file, and to the step summary. A
       # step summary is not retrievable through the API, and the file ships only
