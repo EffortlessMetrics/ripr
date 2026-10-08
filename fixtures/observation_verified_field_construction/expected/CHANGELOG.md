@@ -309,3 +309,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — observation_verified_field_construction (26)
+
+Reason:
+RIPR-SPEC-0005: Direct retries FieldConstruction stays Exposed; extra whole ReturnValue remains PropagationUnknown with weaker discriminator because field observation is not whole-object equality. Independent control: Original retries=3 oracle passes; retries=4 mutant fails; current field/whole-owner pin controls.
+
+Command:
+`cargo xtask goldens bless observation_verified_field_construction --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -32,15 +32,20 @@ ripr check --root fixtures/infect_wildcard_discard/input --diff fixtures/infect_
 
 ## Then
 
-`ripr` must emit `infection_unknown` (not `exposed`) for the
-both wildcard-discard probes. The infect stage must be
-`unknown` with reason "Changed value is bound to a discard pattern; it
-cannot infect a sink".
+Both wildcard-discard statements must remain visible, at lines 2 and 3,
+with family/class `static_unknown` and an `unknown` infection stage.
+The bounded probe extractor does not assign a supported value/effect family
+to these call initializers; its generic syntax limitation remains authoritative.
+The original golden already recorded this conservative family/class. The
+corrected head-side diff adds the previously missing second discard subject.
+The unchanged return statement is retained at line 4 as `propagation_unknown`.
 
-This fixture is the **before/after proof** for fix A introduced in
-[RIPR-SPEC-0096](../../docs/specs/RIPR-SPEC-0096-infect-propagate-fail-closed.md):
-without the fix this probe was reported `exposed` — a false-actionable
-because the discarded value can never reach a sink.
+RIPR-SPEC-0096's discard-specific infection refusal applies to supported
+probe families; it does not override `static_unknown` classification. The
+previous fixture prose incorrectly promised `infection_unknown` and its
+specific reason for these unsupported initializer subjects. Discarded-value
+runtime mutations leave the caller's exact return assertion passing; a changed
+caller return fails it. Neither outcome establishes general side-effect purity.
 
 ## Must Not
 

@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/rust_binding_status_wrong_owner_observer/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":1,"probes":3,"findings":3,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":2,"no_static_path":0,"infection_unknown":1,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:94b90a0533063e69f3fd02f590274b4178505c32bc88e5fc781ea8f0286fd567","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":3,"finding_count":3},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:94b90a0533063e69f3fd02f590274b4178505c32bc88e5fc781ea8f0286fd567","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":3,"finding_count":3},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -58,7 +57,9 @@
           "oracle_kind": "unknown",
           "oracle": "",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "no_assertion",
+          "why": "has no assertion"
         }
       ],
       "stop_reasons": ["proc_macro_opaque"],
@@ -127,7 +128,9 @@
           "oracle_kind": "unknown",
           "oracle": "",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "no_assertion",
+          "why": "has no assertion"
         }
       ],
       "stop_reasons": ["proc_macro_opaque"],
@@ -142,7 +145,7 @@
       "id": "probe:src_lib.rs:predicate:1ce6138c",
       "classification": "infection_unknown",
       "severity": "warning",
-      "confidence": 0.66,
+      "confidence": 0.38,
       "probe": {
         "id": "probe:src_lib.rs:predicate:1ce6138c",
         "family": "predicate",
@@ -152,17 +155,17 @@
         "expression": "current.status == recorded.status && current.violations == recorded.violations"
        },
       "ripr": {
-        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach receipt_binding_matches: artifact_terminal_status_is_observed, binding_inputs_reach_the_changed_comparison"},
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach receipt_binding_matches: binding_inputs_reach_the_changed_comparison, artifact_terminal_status_is_observed"},
         "infect": {"state":"unknown","confidence":"low","summary":"Predicate changed, but no literal boundary was visible in the changed expression"},
         "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
-        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
-        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator uncredited: strongest oracle reaches only through weak_token_substring linkage without sink-level evidence (identity_unresolved)"}
+        "observe": {"state":"no","confidence":"medium","summary":"No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)"},
+        "discriminate": {"state":"no","confidence":"medium","summary":"No statically established assertion can discriminate the changed behavior; execution or macro binding is unestablished (rust_assertion_context_unestablished)"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach receipt_binding_matches: artifact_terminal_status_is_observed, binding_inputs_reach_the_changed_comparison", "infection unknown: Predicate changed, but no literal boundary was visible in the changed expression", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator uncredited: strongest oracle reaches only through weak_token_substring linkage without sink-level evidence (identity_unresolved)", "related test tests/artifact.rs:6 artifact_terminal_status_is_observed uses weak relational check oracle: assert!(artifact_reaches_terminal(&record));", "related test tests/artifact.rs:6 artifact_terminal_status_is_observed uses strong exact value oracle: assert_eq!(record.verdict_note, \"blocked\");", "related test tests/artifact.rs:6 artifact_terminal_status_is_observed uses weak relational check oracle: assert!(format!(\"{:?}\", verdict.status).contains(\"Ready\"));", "related test tests/driver.rs:6 binding_inputs_reach_the_changed_comparison uses none unknown oracle", "observed assertion argument value \"blocked\" at line 14", "observed assertion argument value \"Ready\" at line 15", "observed assertion argument value \"{:?}\" at line 15", "observed enum variant value AttemptStatus::Ready at line 15", "observed assertion argument value \"Ready\" at line 21", "observed assertion argument value \"{:?}\" at line 21"],
+      "evidence_path": ["reach yes: Related tests appear to reach receipt_binding_matches: binding_inputs_reach_the_changed_comparison, artifact_terminal_status_is_observed", "infection unknown: Predicate changed, but no literal boundary was visible in the changed expression", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation no: No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)", "discriminator no: No statically established assertion can discriminate the changed behavior; execution or macro binding is unestablished (rust_assertion_context_unestablished)", "related test tests/driver.rs:6 binding_inputs_reach_the_changed_comparison uses none unknown oracle", "related test tests/artifact.rs:6 artifact_terminal_status_is_observed uses weak relational check oracle: assert!(artifact_reaches_terminal(&record));", "related test tests/artifact.rs:6 artifact_terminal_status_is_observed uses weak relational check oracle: assert!(format!(\"{:?}\", verdict.status).contains(\"Ready\"));", "source assertion argument value \"blocked\" at line 14", "source assertion argument value \"Ready\" at line 15", "source assertion argument value \"{:?}\" at line 15", "source enum variant value AttemptStatus::Ready at line 15", "source assertion argument value \"Ready\" at line 21", "source assertion argument value \"{:?}\" at line 21"],
       "flow_sinks": [
       ],
-      "evidence": ["A related test observes a value or effect near the changed behavior", "Discriminator uncredited: strongest oracle reaches only through weak_token_substring linkage without sink-level evidence (identity_unresolved)", "Predicate changed, but no literal boundary was visible in the changed expression", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach receipt_binding_matches: artifact_terminal_status_is_observed, binding_inputs_reach_the_changed_comparison"],
-      "missing": ["No detected boundary input for the changed predicate", "No strong discriminator was detected", "Predicate changed, but no literal boundary was visible in the changed expression"],
+      "evidence": ["No statically established assertion can discriminate the changed behavior; execution or macro binding is unestablished (rust_assertion_context_unestablished)", "No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)", "Predicate changed, but no literal boundary was visible in the changed expression", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach receipt_binding_matches: binding_inputs_reach_the_changed_comparison, artifact_terminal_status_is_observed"],
+      "missing": ["No detected boundary input for the changed predicate", "No relevant oracle was detected", "No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)", "No strong discriminator was detected", "Predicate changed, but no literal boundary was visible in the changed expression"],
       "assertion_texts": {
         "14": "assert_eq!(record.verdict_note, \"blocked\");",
         "15": "assert_eq!(format!(\"{:?}\", AttemptStatus::Ready), \"Ready\");",
@@ -238,8 +241,20 @@
       ],
       "missing_discriminators": [
       ],
-      "related_tests_total": 4,
+      "related_tests_total": 3,
       "related_tests": [
+        {
+          "name": "binding_inputs_reach_the_changed_comparison",
+          "file": "tests/driver.rs",
+          "line": 6,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high",
+          "miss": "no_assertion",
+          "why": "has no assertion"
+        },
         {
           "name": "artifact_terminal_status_is_observed",
           "file": "tests/artifact.rs",
@@ -248,17 +263,9 @@
           "oracle_kind": "relational_check",
           "oracle": "assert!(artifact_reaches_terminal(&record));",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
-        },
-        {
-          "name": "artifact_terminal_status_is_observed",
-          "file": "tests/artifact.rs",
-          "line": 6,
-          "oracle_strength": "strong",
-          "oracle_kind": "exact_value",
-          "oracle": "assert_eq!(record.verdict_note, \"blocked\");",
-          "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_confidence": "low",
+          "miss": "no_call_path",
+          "why": "no call to the changed code found; linked by name only"
         },
         {
           "name": "artifact_terminal_status_is_observed",
@@ -268,22 +275,14 @@
           "oracle_kind": "relational_check",
           "oracle": "assert!(format!(\"{:?}\", verdict.status).contains(\"Ready\"));",
           "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
-        },
-        {
-          "name": "binding_inputs_reach_the_changed_comparison",
-          "file": "tests/driver.rs",
-          "line": 6,
-          "oracle_strength": "none",
-          "oracle_kind": "unknown",
-          "oracle": "",
-          "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "low",
+          "miss": "no_call_path",
+          "why": "no call to the changed code found; linked by name only"
         }
       ],
       "stop_reasons": ["infection_evidence_unknown"],
-      "oracle_kind": "exact_value",
-      "oracle_strength": "strong",
+      "oracle_kind": "relational_check",
+      "oracle_strength": "weak",
       "recommended_next_step": "Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.",
       "suggested_next_action": "Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.",
       "language": "rust",

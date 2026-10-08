@@ -287,3 +287,15 @@ Command:
 Updated:
 - `expected/check.json`
 
+
+## Pending — infect_wildcard_discard (9)
+
+Reason:
+RIPR-SPEC-0096: Corrected hunk retains both wildcard initializer subjects, StaticUnknown/infect Unknown, plus shifted return line4 PropagationUnknown. SPEC reconciles original StaticUnknown golden versus incorrect InfectionUnknown prose without expanding supported syntax. Independent control: Changed discarded calculation passes existing exact process return oracle; changed process return fails.
+
+Command:
+`cargo xtask goldens bless infect_wildcard_discard --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

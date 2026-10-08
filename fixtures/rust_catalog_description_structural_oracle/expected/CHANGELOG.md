@@ -35,3 +35,16 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — rust_catalog_description_structural_oracle (4)
+
+Reason:
+RIPR-SPEC-0108: Same wording ReturnValue remains WeaklyExposed; structural consistency oracle is not a wording pin. Refresh conservative severity/guidance/reason projections; no class change. Independent control: Actual structural test passes original and wrong wording.
+
+Command:
+`cargo xtask goldens bless rust_catalog_description_structural_oracle --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

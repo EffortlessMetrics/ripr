@@ -37,3 +37,16 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — boundary_operand_unresolved (4)
+
+Reason:
+RIPR-SPEC-0158: Three existing subjects remain WeaklyExposed; unresolved rfind/len_utf8 edge gets typed limitation and earliest producer explanation, not a false missing-test prescription. Remove unverified supplied base and refresh projections. Independent control: 3 actual runtime tests include equality; removing equality return fails; activation unresolved control.
+
+Command:
+`cargo xtask goldens bless boundary_operand_unresolved --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

@@ -330,3 +330,16 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — rust_constructor_field_observation (12)
+
+Reason:
+RIPR-SPEC-0005: Diff-scoped whole ReturnValue remains PropagationUnknown; weaken whole-value discriminator while retaining exact storage field evidence through repo-scoped caller graph. Independent control: Original storage oracle passes; replacing storage with Local fails; current field/chain grip controls.
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

@@ -169,6 +169,133 @@ mod tests {
         Ok(finding)
     }
 
+    // Actual fixture subjects, not synthetic names or an empty refusal. Nearby
+    // exact assertions survive, but none binds the changed arm through a wrapper.
+    fn assert_actual_wrapper_refusal(name: &str, source: &str) -> Result<(), String> {
+        let additional = if name == "workspace_import" {
+            vec![(
+                "src/rival.rs",
+                include_str!(
+                    "../../../../fixtures/match_arm_wrapper_workspace_import_not_credited/input/src/rival.rs"
+                ),
+            )]
+        } else {
+            Vec::new()
+        };
+        let finding = transparent_match_arm_index_finding(source.to_string(), &additional)?;
+        assert_eq!(
+            finding.class,
+            ExposureClass::WeaklyExposed,
+            "{name}: {finding:?}"
+        );
+        assert_eq!(finding.ripr.reach.state, StageState::Yes, "{name}");
+        assert_eq!(finding.ripr.propagate.state, StageState::Yes, "{name}");
+        assert_eq!(
+            finding.ripr.reveal.discriminate.state,
+            StageState::Weak,
+            "{name}"
+        );
+        assert!(
+            finding
+                .ripr
+                .reveal
+                .discriminate
+                .summary
+                .contains("specificity_unbound"),
+            "{name}: {finding:?}"
+        );
+        let bridge = finding
+            .related_tests
+            .iter()
+            .find(|test| test.name == "bridge_fortnight")
+            .ok_or_else(|| format!("missing bridge subject: {name}"))?;
+        assert_eq!(
+            bridge.relation_reason,
+            Some(RelationReason::SameTestFile),
+            "{name}"
+        );
+        assert_eq!(bridge.oracle_strength, OracleStrength::Strong, "{name}");
+        assert!(!finding.flow_sinks.is_empty(), "{name}");
+        Ok(())
+    }
+
+    #[test]
+    fn transparent_match_arm_actual_variant_shadow_keeps_unbound_discriminator()
+    -> Result<(), String> {
+        assert_actual_wrapper_refusal(
+            "variant_shadow",
+            include_str!(
+                "../../../../fixtures/match_arm_wrapper_variant_shadow_not_credited/input/src/lib.rs"
+            ),
+        )
+    }
+
+    #[test]
+    fn transparent_match_arm_actual_workspace_import_keeps_unbound_discriminator()
+    -> Result<(), String> {
+        assert_actual_wrapper_refusal(
+            "workspace_import",
+            include_str!(
+                "../../../../fixtures/match_arm_wrapper_workspace_import_not_credited/input/src/lib.rs"
+            ),
+        )
+    }
+
+    #[test]
+    fn transparent_match_arm_actual_parameter_callable_keeps_unbound_discriminator()
+    -> Result<(), String> {
+        assert_actual_wrapper_refusal(
+            "parameter_callable",
+            include_str!(
+                "../../../../fixtures/match_arm_wrapper_parameter_callable_not_credited/input/src/lib.rs"
+            ),
+        )
+    }
+
+    #[test]
+    fn transparent_match_arm_actual_sibling_attribute_keeps_unbound_discriminator()
+    -> Result<(), String> {
+        assert_actual_wrapper_refusal(
+            "sibling_attribute",
+            include_str!(
+                "../../../../fixtures/match_arm_wrapper_sibling_attribute_not_credited/input/src/lib.rs"
+            ),
+        )
+    }
+
+    #[test]
+    fn transparent_match_arm_actual_callable_shadow_keeps_unbound_discriminator()
+    -> Result<(), String> {
+        assert_actual_wrapper_refusal(
+            "callable_shadow",
+            include_str!(
+                "../../../../fixtures/match_arm_wrapper_callable_shadow_not_credited/input/src/lib.rs"
+            ),
+        )
+    }
+
+    #[test]
+    fn transparent_match_arm_actual_unreachable_arm_keeps_unbound_discriminator()
+    -> Result<(), String> {
+        assert_actual_wrapper_refusal(
+            "unreachable_arm",
+            include_str!(
+                "../../../../fixtures/match_arm_wrapper_unreachable_arm_not_credited/input/src/lib.rs"
+            ),
+        )
+    }
+
+    #[test]
+    fn transparent_match_arm_actual_enum_attribute_keeps_unbound_discriminator()
+    -> Result<(), String> {
+        assert_actual_wrapper_refusal(
+            "enum_attribute",
+            include_str!(
+                "../../../../fixtures/match_arm_wrapper_enum_attribute_not_credited/input/src/lib.rs"
+            ),
+        )
+    }
+
     #[test]
     fn transparent_match_arm_wrapper_exact_oracle_binds_identity() -> Result<(), String> {
         for assertion in [

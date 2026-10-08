@@ -160,3 +160,15 @@ Updated:
 ## #5051 plain no-path guidance
 
 Only the selected untyped no-path safe-action sentence changes. Static-limited state, selection, classification, full output and JSON remain unchanged.
+
+## Pending — unsafe_boundary_probe (14)
+
+Reason:
+RIPR-SPEC-0168: Corrected head-side input retains three StaticUnknown subjects: annotated scalar, interior unsafe boundary, shared-edge ordinary statement. Primitive annotation is not FieldConstruction; absent owner tests means NoStaticPath. Independent control: Current actual RA/diff controls assert all three subjects, annotation/write limitations and both-removed Predicate; 9d unsafe-write removal assertion failure.
+
+Command:
+`cargo xtask goldens bless unsafe_boundary_probe --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

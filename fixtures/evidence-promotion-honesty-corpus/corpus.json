@@ -5424,7 +5424,7 @@
         },
         {
           "type": "expected_finding_count",
-          "count": 1
+          "count": 3
         },
         {
           "type": "maximum_class",
