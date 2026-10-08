@@ -484,7 +484,7 @@ impl OwnerReturnPin {
                 (None, Some(call)) => (call, operands[0]),
                 _ => return false,
             }
-        } else if !self.returns_bool && is_plain_macro(&assertion.text, "assert") {
+        } else if !self.returns_bool {
             let Some(pin) = syntax.alias_pin(test, assertion, index) else {
                 return false;
             };
