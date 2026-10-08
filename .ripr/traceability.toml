@@ -3658,6 +3658,11 @@ id = "RIPR-SPEC-0038"
 name = "Generated PR CI review workflow"
 spec = "docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md"
 tests = [
+  "crates/ripr/src/cli/commands/init_workflow.rs::install_version_tests::installed_release_selects_only_qualified_command_surfaces",
+  "crates/ripr/src/cli/commands/init_workflow.rs::install_version_tests::unqualified_historical_install_versions_fail_before_product_commands",
+  "crates/ripr/src/cli/commands/init_workflow.rs::template_pin_tests::development_replay_fixture_preserves_the_compact_command_contract",
+  "crates/ripr/tests/generated_review_workflow.rs::generated_workflow_runs_with_its_installed_release",
+  "crates/ripr/tests/generated_review_workflow.rs::generated_released_publish_adapter_preserves_current_request_semantics",
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_is_advisory",
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_never_auto_refreshes_baseline",
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional",
@@ -3672,6 +3677,10 @@ fixtures = [
   "fixtures/benches_harness_evidence",
 ]
 code = [
+  "crates/ripr/src/cli/commands/init_workflow.rs",
+  "crates/ripr/src/cli/commands/init_workflow/released_0_10_producer.yml",
+  "crates/ripr/src/cli/commands/init_workflow/released_0_10_summary.yml",
+  "crates/ripr/tests/generated_review_workflow.rs",
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/tests/cli_smoke.rs",
   "xtask/src/main.rs",

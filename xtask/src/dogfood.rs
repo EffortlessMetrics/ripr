@@ -3422,11 +3422,26 @@ pub(crate) fn dogfood_generated_ci_cockpit_run() -> Result<DogfoodGeneratedCiCoc
         "[languages]\nenabled = [\"rust\"]\n",
     )
     .map_err(|err| err.to_string())?;
-    let workflow = run_output_owned_in(
+    let generated_workflow = run_output_owned_in(
         &binary.to_string_lossy(),
         &["init", "--ci", "github", "--dry-run"].map(str::to_string),
         root,
     )?;
+    if !generated_workflow.contains("          version=0.10.0\n")
+        || !generated_workflow.contains("name: Verify installed RIPR compatibility")
+        || generated_workflow.contains("ripr reports ci-packet --root .")
+        || generated_workflow.contains("ripr reports ci-summary --root .")
+    {
+        return Err(
+            "generated adopter workflow does not match its installed 0.10.0 command surface"
+                .to_string(),
+        );
+    }
+    // The compact renderer/packet commands remain development capabilities.
+    // Keep their original wiring oracle separate from the actual default
+    // adopter workflow; a current-CLI renderer pass is not release proof.
+    let workflow =
+        include_str!("../../crates/ripr/tests/fixtures/development_ci_workflow.yml").to_string();
     // Both configurations see the same explicit packet. Rust-only must not
     // present preview groups merely because preview artifacts exist.
     fs::write(root.join("target/ripr/review/comments.json"), serde_json::json!({
@@ -3448,6 +3463,7 @@ pub(crate) fn dogfood_generated_ci_cockpit_run() -> Result<DogfoodGeneratedCiCoc
     .map_err(|err| err.to_string())?;
     let preview_summary = run_output_owned_in(&binary.to_string_lossy(), &args, root)?;
     for (name, content) in [
+        ("generated-release-workflow.txt", &generated_workflow),
         ("workflow.txt", &workflow),
         ("rust-summary.md", &rust_summary),
         ("preview-summary.md", &preview_summary),
@@ -3456,7 +3472,7 @@ pub(crate) fn dogfood_generated_ci_cockpit_run() -> Result<DogfoodGeneratedCiCoc
     }
     Ok(dogfood_generated_ci_cockpit_run_from_surfaces(
         "generated-pr-ci-review-workflow",
-        "ripr init --ci github --dry-run; ripr reports ci-summary --root . --base-ref main (Rust-only and configured TypeScript; identical explicit preview packet)",
+        "ripr init --ci github --dry-run (released command contract); development wiring fixture + ripr reports ci-summary --root . --base-ref main (Rust-only and configured TypeScript; identical explicit preview packet, not installed-release proof)",
         started.elapsed().as_millis(),
         &workflow,
         &rust_summary,

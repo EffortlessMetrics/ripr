@@ -454,8 +454,8 @@ mod tests {
             "the workflow must pin bash for every job:\n{workflow}"
         );
         assert!(
-            workflow.contains("IFS=$'\\t'"),
-            "bash-only syntax (ANSI-C quoting) the pin protects"
+            workflow.contains("comment_args=("),
+            "bash-only arrays the pin protects"
         );
     }
 

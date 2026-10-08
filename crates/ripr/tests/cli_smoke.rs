@@ -12454,14 +12454,17 @@ fn init_ci_github_dry_run_prints_config_and_workflow_without_writing() -> Result
     assert!(stdout.contains("actions/upload-artifact@v7"));
     // #5409: one upload path covers every RIPR report directory.
     assert!(stdout.contains("            target/ripr\n            target/ci\n"));
-    assert!(stdout.contains("target/ripr/review/publish/requests.tsv"));
+    assert!(stdout.contains("comment-publish-plan.json"));
     assert!(stdout.contains("RIPR advisory summary"));
-    assert!(stdout.contains("ripr pr-comments existing --root . --raw -"));
-    // #4696: the analysis steps run inside one packet command.
-    assert!(stdout.contains("run: ripr reports ci-packet --root ."));
+    assert!(!stdout.contains("ripr pr-comments existing --root . --raw -"));
+    // Published 0.10.0 uses compatible executable steps; the compact packet
+    // command remains a separately covered development capability.
+    assert!(stdout.contains("name: Generate RIPR pilot packet"));
+    assert!(!stdout.contains("ripr reports ci-packet --root ."));
     // #3906: CI writes only the before side of the repair loop.
     assert!(!stdout.contains("ripr agent receipt"));
-    assert!(stdout.contains("ripr reports ci-summary --root ."));
+    assert!(stdout.contains("echo '## RIPR advisory summary'"));
+    assert!(!stdout.contains("ripr reports ci-summary --root ."));
     assert!(stdout.contains("github/codeql-action/upload-sarif@v4"));
     assert!(!workspace.join("ripr.toml").exists());
     assert!(!workspace.join(".github/workflows/ripr.yml").exists());
@@ -12577,7 +12580,9 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     // The prebuilt install needs no third-party toolchain or cache action.
     assert!(!workflow.contains("dtolnay/rust-toolchain"));
     assert!(!workflow.contains("Swatinem/rust-cache"));
-    assert!(workflow.contains("run: ripr reports ci-packet --root ."));
+    assert!(workflow.contains("name: Generate RIPR pilot packet"));
+    assert!(workflow.contains("name: Verify installed RIPR compatibility"));
+    assert!(!workflow.contains("ripr reports ci-packet --root ."));
     // #3906 (F60-1): CI has no test edit between snapshots, so it runs no
     // verify, receipt, or outcome; the repair's after phase writes those.
     assert!(!workflow.contains("ripr agent receipt"));
@@ -12587,7 +12592,7 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     assert!(workflow.contains("Capture existing RIPR inline comments"));
     assert!(workflow.contains("Publish RIPR inline comments"));
     assert!(workflow.contains("target/ripr/review"));
-    // The packet the workflow runs declares the steps it replaced (#4696);
+    // The development packet declares the steps it replaced (#4696);
     // an unknown --step runs nothing and names them all.
     let packet = run_ripr(&[
         "reports",
@@ -12620,7 +12625,8 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
         "an unknown --step ran a step"
     );
     assert!(workflow.contains("Add RIPR advisory summary"));
-    assert!(workflow.contains("ripr reports ci-summary --root ."));
+    assert!(workflow.contains("echo '## RIPR advisory summary'"));
+    assert!(!workflow.contains("ripr reports ci-summary --root ."));
     assert!(!workflow.contains("cargo xtask"));
     assert!(workflow.contains("continue-on-error: true"));
     assert!(workflow.contains("actions/upload-artifact@v7"));
