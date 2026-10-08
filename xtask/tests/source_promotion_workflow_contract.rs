@@ -1553,6 +1553,30 @@ fn initial_required_command_failure_output(root: &Path, catalog_only: bool) -> S
     )
 }
 
+fn initial_workflow_terminal_context(root: &Path) -> String {
+    const CAP: usize = 16 * 1024;
+    let mut context = String::from("diagnostic_only=true acceptance_credit=false\n");
+    for relative in [
+        "workspace/workflow-packet/workflow-disposition.json",
+        "workspace/resolved-tree-admission/resolved-tree-admission.json",
+    ] {
+        match initial_diagnostic_bytes(root, relative, CAP) {
+            Ok(bytes) => {
+                let rendered = format!("{:?}", String::from_utf8_lossy(&bytes));
+                context.push_str(&format!(
+                    "path={relative} bytes={} sha256={:x} rendered_limit={CAP} truncated={} text={}\n",
+                    bytes.len(),
+                    Sha256::digest(&bytes),
+                    rendered.len() > CAP,
+                    initial_diagnostic_text(rendered.as_bytes(), CAP),
+                ));
+            }
+            Err(reason) => context.push_str(&format!("path={relative} unavailable={reason}\n")),
+        }
+    }
+    context
+}
+
 fn retain_initial_required_command_context(
     repo: &Path,
     context: &str,
@@ -1620,6 +1644,30 @@ fn initial_required_command_diagnostics_follow_owned_receipts() -> Result<(), St
     ));
     fs::create_dir(&root).map_err(|error| error.to_string())?;
     let result = (|| {
+        let terminal_dir = root.join("workspace/workflow-packet");
+        fs::create_dir_all(&terminal_dir).map_err(|error| error.to_string())?;
+        let terminal = terminal_dir.join("workflow-disposition.json");
+        fs::write(
+            &terminal,
+            br#"{"status":"rejected","failure_reasons":["actual-terminal-refusal"]}"#,
+        )
+        .map_err(|error| error.to_string())?;
+        let context = initial_workflow_terminal_context(&root);
+        if !context.contains("actual-terminal-refusal")
+            || !context.contains("diagnostic_only=true acceptance_credit=false")
+            || !context.contains("sha256=")
+        {
+            return Err("terminal workflow refusal was not retained as diagnostic evidence".into());
+        }
+        fs::write(&terminal, vec![b'x'; 16 * 1024 + 1]).map_err(|error| error.to_string())?;
+        let oversized = initial_workflow_terminal_context(&root);
+        if !oversized.contains("input byte ceiling exceeded") || oversized.len() > 34 * 1024 {
+            return Err("terminal workflow diagnostic did not preserve its input bound".into());
+        }
+        fs::remove_file(&terminal).map_err(|error| error.to_string())?;
+        if !initial_workflow_terminal_context(&root).contains("unavailable=") {
+            return Err("missing terminal workflow diagnostic was treated as evidence".into());
+        }
         let evidence = root.join(INITIAL_FIXTURE);
         let packet = evidence.join("validation-packet");
         let logs = packet.join("commands");
@@ -2034,6 +2082,94 @@ fn bounded_parent_phase_observation_for_scope(bytes: &[u8], enabled: bool) -> St
     String::from_utf8(retained).unwrap_or_else(|_error| "parent_observation_invalid_utf8".into())
 }
 
+fn production_fixture_root(
+    repo_root: &Path,
+    owned_target: &Path,
+    nonce: u128,
+) -> Result<PathBuf, String> {
+    // Keep fixtures in ignored workspace allocations, disjoint from the actual
+    // Cargo cache. The default cache owns target/, so controller receipts must
+    // use xtask/target/ instead; the production overlap guard remains strict.
+    let protected_target = owned_target
+        .canonicalize()
+        .map_err(|error| format!("failed to resolve owned Cargo target: {error}"))?;
+    let workspace_root = repo_root
+        .canonicalize()
+        .map_err(|error| format!("failed to resolve fixture workspace: {error}"))?;
+    let name = format!(
+        ".ripr-production-j5-workflow-{}-{nonce}",
+        std::process::id()
+    );
+    let mut selected_root = None;
+    for parent in [repo_root.join("target"), repo_root.join("xtask/target")] {
+        fs::create_dir_all(&parent)
+            .map_err(|error| format!("failed to create owned fixture parent: {error}"))?;
+        let parent = parent
+            .canonicalize()
+            .map_err(|error| format!("failed to resolve owned fixture parent: {error}"))?;
+        let candidate = parent.join(&name);
+        if parent.starts_with(&workspace_root)
+            && !candidate.starts_with(&protected_target)
+            && !protected_target.starts_with(&candidate)
+        {
+            selected_root = Some(candidate);
+            break;
+        }
+    }
+    let root =
+        selected_root.ok_or("no owned workspace fixture allocation is disjoint from Cargo")?;
+    Ok(root)
+}
+
+#[test]
+fn production_fixture_allocation_preserves_owned_cargo_cache() -> Result<(), String> {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_nanos();
+    let owner = std::env::temp_dir().join(format!(
+        "ripr-fixture-allocation-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir(&owner).map_err(|error| error.to_string())?;
+    let result = (|| {
+        for (label, relative) in [
+            ("default", Some("target")),
+            ("xtask", Some("xtask/target")),
+            ("external", None),
+        ] {
+            let repo = owner.join(label).join("repo");
+            fs::create_dir_all(&repo).map_err(|error| error.to_string())?;
+            let cache = relative.map_or_else(|| owner.join(label).join("cache"), |p| repo.join(p));
+            fs::create_dir_all(&cache).map_err(|error| error.to_string())?;
+            fs::write(cache.join("cache-marker"), "protected cache")
+                .map_err(|error| error.to_string())?;
+            let fixture = production_fixture_root(&repo, &cache, nonce)?;
+            fs::create_dir(&fixture).map_err(|error| error.to_string())?;
+            fs::write(fixture.join("receipt-marker"), "owned controller receipt")
+                .map_err(|error| error.to_string())?;
+            let mut entries = fs::read_dir(&cache)
+                .map_err(|error| error.to_string())?
+                .map(|entry| entry.map(|entry| entry.file_name()))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|error| error.to_string())?;
+            entries.sort();
+            if entries != [std::ffi::OsString::from("cache-marker")]
+                || fs::read(cache.join("cache-marker")).map_err(|error| error.to_string())?
+                    != b"protected cache"
+                || !fixture.starts_with(repo.canonicalize().map_err(|error| error.to_string())?)
+            {
+                return Err(format!(
+                    "{label}: controller fixture changed its protected Cargo cache"
+                ));
+            }
+        }
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&owner).map_err(|error| error.to_string());
+    result.and(cleanup)
+}
+
 fn production_workflow_fixture(profile: &str) -> Result<(), String> {
     let xtask = PathBuf::from(env!("CARGO_BIN_EXE_xtask"));
     // Stage a private copy of the xtask binary beside the original. The suite
@@ -2060,7 +2196,6 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
     // Reuse Cargo's owned Linux build cache while still compiling and enumerating
     // the actual reviewed tree. Windows keeps isolated targets because nested
     // Cargo may replace this running integration executable there.
-    #[cfg(unix)]
     let owned_target = xtask
         .parent()
         .and_then(Path::parent)
@@ -2086,14 +2221,7 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
         .parent()
         .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?
         .to_path_buf();
-    // Keep the task-owned fixture and both materializations in the existing
-    // target allocation, including on restricted Windows source-sync hosts.
-    let root = repo_root.join("target").join(format!(
-        ".ripr-production-j5-workflow-{}-{nonce}",
-        std::process::id()
-    ));
-    fs::create_dir_all(repo_root.join("target"))
-        .map_err(|error| format!("failed to create owned production target parent: {error}"))?;
+    let root = production_fixture_root(&repo_root, owned_target, nonce)?;
     fs::create_dir(&root)
         .map_err(|error| format!("failed to create production J5 test root: {error}"))?;
     let result = (|| {
@@ -2184,7 +2312,8 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
                 nonce,
             );
             let initial_context = format!(
-                "failed_required_context={}\ncatalog_context={}\nparent_phase_observation={}",
+                "workflow_terminal_context={}\nfailed_required_context={}\ncatalog_context={}\nparent_phase_observation={}",
+                initial_workflow_terminal_context(&root),
                 initial_required_command_failure_output(&root, false),
                 initial_required_command_failure_output(&root, true),
                 bounded_parent_phase_observation(&output.stderr)
@@ -2195,9 +2324,9 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
             }
             if !output.status.success() {
                 return Err(format!(
-                    "positive workflow failed: {}; bounded_initial_required_command_output={}",
-                    String::from_utf8_lossy(&output.stderr),
-                    initial_diagnostic_text(initial_context.as_bytes(), 64 * 1024)
+                    "positive workflow failed; bounded_initial_required_command_output={}; stderr={}",
+                    initial_diagnostic_text(initial_context.as_bytes(), 64 * 1024),
+                    initial_diagnostic_text(&output.stderr, 64 * 1024)
                 ));
             }
             println!(

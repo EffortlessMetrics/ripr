@@ -465,7 +465,7 @@ Use its verifier and receipt; this runbook does not duplicate its semantics.
 > `publish-candidate-ref`; see ripr `docs/SOURCE_PROMOTION.md`), and ripr#1773
 > merges it with a guarded expected-head and expected-base merge commit.
 > Conflict dispositions, the trial join, and tree qualification are described
-> in [`swarm-development.md`](swarm-development.md#resolving-the-join).
+> in [`swarm-development.md`](swarm-development.md#conflict-dispositions-and-historical-integration-evidence).
 
 ```bash
 set -euo pipefail

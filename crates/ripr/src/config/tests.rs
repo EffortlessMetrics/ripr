@@ -110,6 +110,69 @@ fn write_file(path: &Path, text: &str) -> Result<(), String> {
     fs::write(path, text).map_err(|err| format!("write {} failed: {err}", path.display()))
 }
 
+fn with_owned_temp_root(
+    name: &str,
+    run: impl FnOnce(&Path) -> Result<(), String>,
+) -> Result<(), String> {
+    let root = temp_root(name)?;
+    let result = run(&root);
+    let cleanup = fs::remove_dir_all(&root)
+        .map_err(|error| format!("remove owned fixture {} failed: {error}", root.display()));
+    match (result, cleanup) {
+        (Err(run_error), Err(cleanup_error)) => Err(format!("{run_error}; {cleanup_error}")),
+        (result, cleanup) => result.and(cleanup),
+    }
+}
+
+fn observe_owned_config_fixture_cleanup(return_error: bool) -> Result<(), String> {
+    let mut retained_root = None;
+    let outcome = with_owned_temp_root("cleanup-control", |root| {
+        retained_root = Some(root.to_path_buf());
+        write_file(&root.join("owned-marker"), "fixture is live")?;
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("missing.toml", root.join("ripr.toml"))
+            .map_err(|error| format!("create cleanup-control symlink: {error}"))?;
+        if return_error {
+            Err("owned fixture control error".into())
+        } else {
+            Ok(())
+        }
+    });
+    let root = retained_root.ok_or("cleanup control did not enter the fixture")?;
+    let removed = match fs::symlink_metadata(&root) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+        Ok(_) => false,
+        Err(error) => return Err(format!("observe cleanup-control root: {error}")),
+    };
+    // A deliberately wrong cleanup implementation must not leave this test's
+    // own symlink behind after the removal experiment.
+    if !removed {
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("remove failed cleanup-control witness: {error}"))?;
+    }
+    let expected = if return_error {
+        Err("owned fixture control error".into())
+    } else {
+        Ok(())
+    };
+    assert_eq!(outcome, expected);
+    assert!(
+        removed,
+        "owned config fixture remained after its completed scope"
+    );
+    Ok(())
+}
+
+#[test]
+fn owned_config_fixture_removes_root_after_success() -> Result<(), String> {
+    observe_owned_config_fixture_cleanup(false)
+}
+
+#[test]
+fn owned_config_fixture_removes_root_after_returned_error() -> Result<(), String> {
+    observe_owned_config_fixture_cleanup(true)
+}
+
 #[test]
 fn missing_config_uses_behavior_preserving_defaults() -> Result<(), String> {
     let root = temp_root("missing")?;
@@ -133,14 +196,18 @@ fn missing_config_uses_behavior_preserving_defaults() -> Result<(), String> {
 #[test]
 fn unresolvable_config_symlink_is_a_loud_error_not_defaults() -> Result<(), String> {
     for (label, target) in [("dangling", "no-such-target.toml"), ("loop", "ripr.toml")] {
-        let root = temp_root(label)?;
-        std::os::unix::fs::symlink(target, root.join("ripr.toml"))
-            .map_err(|err| format!("symlink failed: {err}"))?;
-        let error = match load_for_root(&root) {
-            Ok(_) => return Err(format!("{label}: expected an error, got a config")),
-            Err(error) => error,
-        };
-        assert!(error.contains("ripr.toml"), "{label}: {error}");
+        with_owned_temp_root(label, |root| {
+            std::os::unix::fs::symlink(target, root.join("ripr.toml"))
+                .map_err(|err| format!("symlink failed: {err}"))?;
+            let error = match load_for_root(root) {
+                Ok(_) => return Err(format!("{label}: expected an error, got a config")),
+                Err(error) => error,
+            };
+            if !error.contains("ripr.toml") {
+                return Err(format!("{label}: {error}"));
+            }
+            Ok(())
+        })?;
     }
     Ok(())
 }
@@ -148,22 +215,24 @@ fn unresolvable_config_symlink_is_a_loud_error_not_defaults() -> Result<(), Stri
 #[cfg(unix)]
 #[test]
 fn dangling_config_symlink_at_a_nearer_ancestor_is_not_skipped() -> Result<(), String> {
-    let outer = temp_root("ancestor-walk")?;
-    write_file(&outer.join("ripr.toml"), "")?;
-    let middle = outer.join("middle");
-    let nested = middle.join("nested");
-    fs::create_dir_all(&nested).map_err(|err| format!("mkdir failed: {err}"))?;
-    std::os::unix::fs::symlink("no-such-target.toml", middle.join("ripr.toml"))
-        .map_err(|err| format!("symlink failed: {err}"))?;
+    with_owned_temp_root("ancestor-walk", |outer| {
+        write_file(&outer.join("ripr.toml"), "")?;
+        let middle = outer.join("middle");
+        let nested = middle.join("nested");
+        fs::create_dir_all(&nested).map_err(|err| format!("mkdir failed: {err}"))?;
+        std::os::unix::fs::symlink("no-such-target.toml", middle.join("ripr.toml"))
+            .map_err(|err| format!("symlink failed: {err}"))?;
 
-    let error = match load_for_root(&nested) {
-        Ok(_) => return Err("expected an error, got a config".to_string()),
-        Err(error) => error,
-    };
+        let error = match load_for_root(&nested) {
+            Ok(_) => return Err("expected an error, got a config".to_string()),
+            Err(error) => error,
+        };
 
-    assert!(error.contains("middle"), "{error}");
-    let _ = fs::remove_dir_all(&outer);
-    Ok(())
+        if !error.contains("middle") {
+            return Err(error);
+        }
+        Ok(())
+    })
 }
 
 #[cfg(feature = "lang-python")]

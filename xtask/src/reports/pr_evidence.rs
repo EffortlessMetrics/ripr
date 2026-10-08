@@ -767,7 +767,11 @@ fn run_ripr_check_binary(
     let output = capture_output_with_timeout(
         binary,
         &ripr_args,
-        &[],
+        // Review admission requires the complete finding set. The interactive
+        // JSON default may retain only a disclosed prefix; never reuse that
+        // bounded document as complete producer evidence. Keep timed capture
+        // and the canonical-index/projection bounds unchanged.
+        &[("RIPR_CHECK_FINDINGS_BYTES", "0")],
         timeout,
         "ripr check for PR evidence",
     )?;
@@ -2441,6 +2445,34 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn run_ripr_check_requests_complete_findings_from_actual_child() -> Result<(), String> {
+        #[cfg(windows)]
+        let (binary, args) = (
+            "powershell".to_string(),
+            vec![
+                "-NoProfile".to_string(),
+                "-NonInteractive".to_string(),
+                "-Command".to_string(),
+                "[Console]::Out.Write($env:RIPR_CHECK_FINDINGS_BYTES)".to_string(),
+            ],
+        );
+        #[cfg(not(windows))]
+        let (binary, args) = (
+            "/bin/sh".to_string(),
+            vec![
+                "-c".to_string(),
+                "printf '%s' \"$RIPR_CHECK_FINDINGS_BYTES\"".to_string(),
+            ],
+        );
+        let result = run_ripr_check_binary(&binary, args, &options(), Duration::from_secs(30))?;
+        if result != "0" {
+            return Err(format!(
+                "PR evidence child inherited a bounded findings budget: {result:?}"
+            ));
+        }
+        Ok(())
+    }
     #[test]
     fn run_ripr_check_uses_fake_binary_success_output() -> Result<(), String> {
         let repo = temp_repo("ripr-pr-fake-success")?;
