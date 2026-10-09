@@ -1220,6 +1220,13 @@ mod tests {
                 ).map_err(|error| error.to_string())?;
                 run_impacted_evidence_at(&repo, &[])?;
                 assert!(repo.join(IMPACTED_JSON).exists());
+                assert!(repo.join(IMPACTED_MD).exists());
+                let routed: Value = serde_json::from_slice(
+                    &fs::read(repo.join(IMPACTED_JSON)).map_err(|error| error.to_string())?
+                ).map_err(|error| error.to_string())?;
+                assert_eq!(routed["summary"]["ripr_severe_gap"], true);
+                assert!(routed["summary"]["requires_targeted_mutation"] == true
+                    || routed["summary"]["requires_full_owner_mutation"] == true);
                 let mut marked = ordinary.clone();
                 marked["experimental_complete_execution"] = generation;
                 fs::write(repo.join(DEFAULT_PR_EVIDENCE_JSON),
