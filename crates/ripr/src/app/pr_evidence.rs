@@ -11,6 +11,10 @@
 //! This avoids recompilation and keeps the analysis in-process.
 
 mod complete_execution;
+mod generation;
+
+#[cfg(test)]
+mod complete_contract_tests;
 
 use crate::app::{CheckInput, Mode, OutputFormat, check_workspace_with_config};
 use crate::cli::unknown_argument;
@@ -197,39 +201,54 @@ fn write_pr_evidence_with_generation(
     generation: Option<&Value>,
 ) -> Result<(), String> {
     remove_stale_check_artifact(repo)?;
-    verify_revision(repo, &options.base)?;
-    verify_revision(repo, &options.head)?;
-    let changed_files = changed_files(repo, options)?;
-    write_diff(repo, options)?;
+    let binding = generation
+        .map(|_| self::generation::resolve_subject(repo, options))
+        .transpose()?;
+    let pinned = binding.as_ref().map(self::generation::ResolvedWholeSubject::pinned_options);
+    let execution_options = pinned.as_ref().unwrap_or(options);
+    verify_revision(repo, &execution_options.base)?;
+    verify_revision(repo, &execution_options.head)?;
+    let changed_files = changed_files(repo, execution_options)?;
+    write_diff(repo, execution_options)?;
     if generation.is_some() {
-        let prepared = match prepare_experimental_configuration(repo, options) {
+        let prepared = match prepare_experimental_configuration(repo, execution_options) {
             Ok(prepared) => prepared,
             Err(error) => {
-                return write_pr_evidence_error_packet(repo, options, &changed_files, &error);
+                return write_pr_evidence_error_packet(repo, execution_options, &changed_files, &error);
             }
         };
         let canonical = crate::bounded_input::read_to_string(repo.join(PR_CANONICAL_DIFF))
             .map_err(|error| format!("read owned canonical check input: {error}"))?;
         let authority = prepared
-            .frozen_source_authority(&command_root_path(repo, &options.root))
+            .frozen_source_authority(&command_root_path(repo, &execution_options.root))
             .map_err(|error| format!("bind named-head source context: {error}"))?;
         let canonical: std::sync::Arc<str> = canonical.into();
         return crate::analysis::committed_source::frozen::with_context(
             Some(authority.clone()),
             || {
                 crate::analysis::committed_source::frozen::with_canonical_diff(canonical, || {
-                    let result = run_check(repo, options).and_then(|check_json| {
+                    let result = run_check(repo, execution_options).and_then(|check_json| {
                         authority.ensure_clean().map_err(|error| error.to_string())?;
                         validate_frozen_configuration(repo, options, &authority)?;
+                        if let Some(binding) = binding.as_ref() {
+                            self::generation::validate_current(repo, options, binding)?;
+                        }
                         Ok(check_json)
                     });
-                    finish_pr_evidence_check(repo, options, &changed_files, result, generation)
+                    finish_pr_evidence_check(
+                        repo,
+                        execution_options,
+                        &changed_files,
+                        result,
+                        generation,
+                        binding.as_ref().map(|binding| (options, binding)),
+                    )
                 })
             },
         );
     }
-    let result = run_check(repo, options);
-    finish_pr_evidence_check(repo, options, &changed_files, result, generation)
+    let result = run_check(repo, execution_options);
+    finish_pr_evidence_check(repo, execution_options, &changed_files, result, generation, None)
 }
 
 fn finish_pr_evidence_check(
@@ -238,6 +257,7 @@ fn finish_pr_evidence_check(
     changed_files: &[String],
     check_result: Result<String, String>,
     generation: Option<&Value>,
+    binding: Option<(&PrEvidenceOptions, &self::generation::ResolvedWholeSubject)>,
 ) -> Result<(), String> {
     match check_result {
         Ok(check_json) => {
@@ -247,6 +267,7 @@ fn finish_pr_evidence_check(
                 changed_files,
                 &check_json,
                 generation,
+                binding,
             ) {
                 Ok(()) => Ok(()),
                 Err(err) => {
@@ -452,7 +473,7 @@ fn write_pr_evidence_packet(
     changed_files: &[String],
     check_json: &str,
 ) -> Result<(), String> {
-    write_pr_evidence_packet_with_generation(repo, options, changed_files, check_json, None)
+    write_pr_evidence_packet_with_generation(repo, options, changed_files, check_json, None, None)
 }
 
 fn write_pr_evidence_packet_with_generation(
@@ -461,6 +482,7 @@ fn write_pr_evidence_packet_with_generation(
     changed_files: &[String],
     check_json: &str,
     generation: Option<&Value>,
+    binding: Option<(&PrEvidenceOptions, &self::generation::ResolvedWholeSubject)>,
 ) -> Result<(), String> {
     let check_value: Value = serde_json::from_str(check_json)
         .map_err(|err| format!("ripr check output was not valid JSON: {err}"))?;
@@ -581,13 +603,17 @@ fn write_pr_evidence_packet_with_generation(
         &config,
     )?;
     if let Some(authority) = crate::analysis::committed_source::frozen::current() {
-        validate_frozen_configuration(repo, options, &authority)?;
+        let requested = binding.map(|(requested, _)| requested).unwrap_or(options);
+        validate_frozen_configuration(repo, requested, &authority)?;
         let owned = crate::analysis::committed_source::frozen::canonical_diff()
             .ok_or("frozen analysis has no owned canonical check input")?;
         if canonical_diff.as_slice() != owned.as_bytes() {
             return Err("owned canonical check input changed before publication".into());
         }
         authority.ensure_clean().map_err(|error| error.to_string())?;
+    }
+    if let Some((requested, binding)) = binding {
+        self::generation::validate_current(repo, requested, binding)?;
     }
     // Commit admission authority only after every fallible producer operation.
     crate::atomic_file::write(
