@@ -2216,10 +2216,43 @@ mod tests {
                 REVIEW_INDEX_MAX_ENTRIES + 1
             ]);
             let oversized = serde_json::to_string(&oversized).map_err(|error| error.to_string())?;
+            let mut excess_bytes = value.clone();
+            excess_bytes["findings"] = Value::Array(
+                (0..REVIEW_INDEX_MAX_ENTRIES)
+                    .map(|i| {
+                        let mut finding = value["findings"][0].clone();
+                        finding["id"] = json!(format!("index-byte-{i:04}"));
+                        finding["suggested_next_action"] = json!("x".repeat(600));
+                        finding
+                    })
+                    .collect(),
+            );
+            let byte_findings = excess_bytes["findings"]
+                .as_array()
+                .ok_or_else(|| "byte fixture findings are missing".to_string())?;
+            let entries = crate::review_input::canonical_projection_all(byte_findings, &repo)?;
+            let legacy = serde_json::to_vec(&entries).map_err(|error| error.to_string())?;
+            assert!(legacy.len() > REVIEW_INDEX_MAX_BYTES);
+            let selected = crate::review_input::canonical_projection(byte_findings, &repo)?;
+            assert!(
+                serde_json::to_vec(&selected)
+                    .map_err(|error| error.to_string())?
+                    .len()
+                    < 128 * 1024
+            );
+            let excess_bytes =
+                serde_json::to_string(&excess_bytes).map_err(|error| error.to_string())?;
+            let mut malformed_oversized = value.clone();
+            malformed_oversized["findings"] =
+                Value::Array(vec![Value::Null; REVIEW_INDEX_MAX_ENTRIES + 1]);
+            let malformed_oversized =
+                serde_json::to_string(&malformed_oversized).map_err(|error| error.to_string())?;
             for (label, replacement) in [
                 ("runner failure", None),
                 ("malformed conversion", Some("{")),
                 ("oversized conversion", Some(oversized.as_str())),
+                ("index byte limit", Some(excess_bytes.as_str())),
+                ("entry guard before projection", Some(malformed_oversized.as_str())),
             ] {
                 baseline()?;
                 let failure = write_pr_evidence_with_runner(&repo, &options, |_, _| {
@@ -2233,7 +2266,8 @@ mod tests {
                 let expected = match label {
                     "runner failure" => "injected runner failure",
                     "malformed conversion" => "not valid JSON",
-                    "oversized conversion" => "exceeds entry limit",
+                    "oversized conversion" | "entry guard before projection" => "exceeds entry limit",
+                    "index byte limit" => "exceeds byte limit",
                     _ => return Err(format!("unknown failure control: {label}")),
                 };
                 assert!(
