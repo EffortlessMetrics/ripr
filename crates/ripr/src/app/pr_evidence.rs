@@ -180,6 +180,7 @@ fn write_pr_evidence_with_runner(
     options: &PrEvidenceOptions,
     run_check: impl FnOnce(&Path, &PrEvidenceOptions) -> Result<String, String>,
 ) -> Result<(), String> {
+    remove_stale_check_artifact(repo)?;
     verify_revision(repo, &options.base)?;
     verify_revision(repo, &options.head)?;
     let changed_files = changed_files(repo, options)?;
@@ -206,6 +207,7 @@ fn write_pr_evidence_from_check_json(
     options: &PrEvidenceOptions,
     check_json: &str,
 ) -> Result<(), String> {
+    remove_stale_check_artifact(repo)?;
     verify_revision(repo, &options.base)?;
     verify_revision(repo, &options.head)?;
 
@@ -316,11 +318,6 @@ fn write_pr_evidence_packet(
         PR_REVIEW_INPUT_JSON,
         review_input_text,
     )?;
-    write_parented_file(
-        &repo.join(PR_CHECK_SUBJECT_JSON),
-        PR_CHECK_SUBJECT_JSON,
-        subject_text,
-    )?;
 
     write_parented_file(
         &repo.join(PR_EVIDENCE_JSON),
@@ -343,7 +340,12 @@ fn write_pr_evidence_packet(
 
     println!("Wrote {PR_EVIDENCE_JSON}");
     println!("Wrote {PR_EVIDENCE_MD}");
-    Ok(())
+    // Commit admission authority only after every fallible producer operation.
+    crate::atomic_file::write(
+        &repo.join(PR_CHECK_SUBJECT_JSON),
+        subject_text.as_bytes(),
+        PR_CHECK_SUBJECT_JSON,
+    )
 }
 
 fn producer_review_input(
@@ -405,6 +407,19 @@ fn producer_review_input(
         .map_err(|error| format!("producer review input does not match ReviewInputV1: {error}"))?;
     serde_json::to_value(typed)
         .map_err(|error| format!("serialize typed producer review input: {error}"))
+}
+
+fn remove_stale_check_artifact(repo: &Path) -> Result<(), String> {
+    // The subject is admission authority. Remove it before touching subordinate
+    // artifacts or attempting setup/analysis; only missing files are harmless.
+    for relative in [PR_CHECK_SUBJECT_JSON, PR_CHECK_JSON, PR_REVIEW_INPUT_JSON] {
+        match fs::remove_file(repo.join(relative)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("remove stale {relative} failed: {error}")),
+        }
+    }
+    Ok(())
 }
 
 fn write_pr_evidence_error_packet(
@@ -2107,10 +2122,18 @@ mod tests {
                 "Cargo.toml",
                 "[package]\nname = \"subject-probe\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
             )?;
-            write_repo_file(&repo, "src/lib.rs", "pub fn eligible(value: i32) -> bool { value > 0 }\n")?;
+            write_repo_file(
+                &repo,
+                "src/lib.rs",
+                "pub fn eligible(value: i32) -> bool { value > 0 }\n",
+            )?;
             run_git(&repo, &["add", "-A"])?;
             run_git(&repo, &["commit", "--quiet", "-m", "base"])?;
-            write_repo_file(&repo, "src/lib.rs", "pub fn eligible(value: i32) -> bool { value > 1 }\n")?;
+            write_repo_file(
+                &repo,
+                "src/lib.rs",
+                "pub fn eligible(value: i32) -> bool { value > 1 }\n",
+            )?;
             run_git(&repo, &["commit", "--quiet", "-a", "-m", "predicate"])?;
             let options = PrEvidenceOptions {
                 base: resolve_revision(&repo, "HEAD~1", "commit")?,
@@ -2126,7 +2149,11 @@ mod tests {
             let value: Value = serde_json::from_str(&check).map_err(|error| error.to_string())?;
             assert_eq!(value["schema_version"], "0.2");
             assert_eq!(value["analysis_outcome"]["analysis_complete"], true);
-            assert!(value["findings"].as_array().is_some_and(|findings| !findings.is_empty()));
+            assert!(
+                value["findings"]
+                    .as_array()
+                    .is_some_and(|findings| !findings.is_empty())
+            );
             let review = || {
                 crate::cli::run(vec![
                     "ripr".into(),
@@ -2153,9 +2180,11 @@ mod tests {
                 )
                 .map_err(|error| error.to_string())?;
                 assert_eq!(rendered["analysis_scope"]["basis"], "producer_check_projection");
-                assert!(rendered["analysis_scope"]["classified_seams_considered"]
-                    .as_u64()
-                    .is_some_and(|count| count > 0));
+                assert!(
+                    rendered["analysis_scope"]["classified_seams_considered"]
+                        .as_u64()
+                        .is_some_and(|count| count > 0)
+                );
                 Ok(())
             };
             let refused = |label: &str| -> Result<(), String> {
@@ -2166,7 +2195,10 @@ mod tests {
                     error.contains("missing_producer") || error.contains("malformed_producer"),
                     "{label}: unexpected review refusal: {error}"
                 );
-                assert!(check_pr_evidence(&repo, &options).is_err(), "{label}: saved check admitted failure");
+                assert!(
+                    check_pr_evidence(&repo, &options).is_err(),
+                    "{label}: saved check admitted failure"
+                );
                 Ok(())
             };
             let mut oversized = value.clone();
@@ -2189,7 +2221,13 @@ mod tests {
                 })
                 .err()
                 .ok_or_else(|| format!("{label}: producer returned success"))?;
-                assert!(!failure.is_empty());
+                let expected = match label {
+                    "runner failure" => "injected runner failure",
+                    "malformed conversion" => "not valid JSON",
+                    "oversized conversion" => "exceeds entry limit",
+                    _ => return Err(format!("unknown failure control: {label}")),
+                };
+                assert!(failure.contains(expected), "{label}: wrong failure: {failure}");
                 refused(label)?;
             }
             // This late failure distinguishes subject-last publication from
@@ -2224,12 +2262,16 @@ mod tests {
                 .map_err(|error| error.to_string())?
             {
                 let entry = entry.map_err(|error| error.to_string())?;
-                assert!(!entry.file_name().to_string_lossy().ends_with(".tmp"), "owned stage was stranded");
+                assert!(
+                    !entry.file_name().to_string_lossy().ends_with(".tmp"),
+                    "owned stage was stranded"
+                );
             }
             fs::remove_dir(&subject).map_err(|error| error.to_string())?;
 
             baseline()?;
-            let retained_check = fs::read(repo.join(PR_CHECK_JSON)).map_err(|error| error.to_string())?;
+            let retained_check =
+                fs::read(repo.join(PR_CHECK_JSON)).map_err(|error| error.to_string())?;
             fs::remove_file(&subject).map_err(|error| error.to_string())?;
             fs::create_dir(&subject).map_err(|error| error.to_string())?;
             let mut runner_called = false;
@@ -2256,7 +2298,10 @@ mod tests {
                 runner_called = true;
                 Err("injected failure with no old artifacts".into())
             });
-            assert!(runner_called, "missing old artifacts must not block the runner");
+            assert!(
+                runner_called,
+                "missing old artifacts must not block the runner"
+            );
             assert!(failure.is_err());
             refused("missing old artifacts")?;
             baseline()?;
