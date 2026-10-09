@@ -1398,7 +1398,7 @@ mod tests {
 
     use super::*;
     #[test]
-    fn strict_bounded_capture_requires_both_readers_and_preserves_compatibility() -> Result<(), String> {
+    fn strict_capture_requires_both_readers_with_legacy_parity() -> Result<(), String> {
         for stream in ["stdout", "stderr"] {
             let compatibility = drain_bounded_pipe_reader_with_policy(
                 None,
@@ -1438,7 +1438,7 @@ mod tests {
     }
 
     #[test]
-    fn strict_bounded_git_capture_accepts_empty_stderr_and_rejects_overflow() -> Result<(), String> {
+    fn strict_git_capture_accepts_empty_stderr_and_refuses_overflow() -> Result<(), String> {
         let root = std::env::current_dir().map_err(|error| error.to_string())?;
         let output = run_git_output_with_deadline_and_limit_strict(
             &root,
@@ -1458,7 +1458,10 @@ mod tests {
         )
         .err()
         .ok_or("strict capture must retain the existing finite output guard")?;
-        assert!(error.to_string().contains("git_output_limit_exceeded"), "{error}");
+        assert!(
+            error.to_string().contains("git_output_limit_exceeded"),
+            "{error}"
+        );
         Ok(())
     }
 
