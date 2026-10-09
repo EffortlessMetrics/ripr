@@ -546,6 +546,9 @@ fn validate_producer_artifacts(repo: &Path, options: &PrEvidenceOptions) -> Resu
         .map_err(|error| format!("missing or unreadable {PR_REVIEW_INPUT_JSON}: {error}"))?;
     let subject: Value = serde_json::from_slice(&subject_bytes)
         .map_err(|error| format!("{PR_CHECK_SUBJECT_JSON} is not valid JSON: {error}"))?;
+    if let Some(error) = reject_pr_evidence_error_packet(&subject) {
+        return Err(error);
+    }
     let review_input: ReviewInputV1 = serde_json::from_slice(&review_input_bytes)
         .map_err(|error| format!("{PR_REVIEW_INPUT_JSON} is not valid ReviewInputV1: {error}"))?;
     if subject.get("schema_version").and_then(Value::as_str) != Some("ripr.pr_check_subject.v1") {

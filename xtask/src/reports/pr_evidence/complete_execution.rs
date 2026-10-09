@@ -374,9 +374,32 @@ mod tests {
                         stderr_bytes: STREAM_MAX }, "ordinary producer equivalence control")?;
                 Ok(!out.timed_out && out.status.is_some_and(|status| status.success()))
             };
+            let review = || ripr::cli::run(vec!["ripr".into(), "review-comments".into(),
+                "--root".into(), repo.display().to_string(), "--base".into(), options.base.clone(),
+                "--head".into(), options.head.clone(), "--check-output".into(),
+                repo.join(PR_CHECK_JSON).display().to_string(), "--out".into(),
+                repo.join("target/review.json").display().to_string()]);
             assert!(ordinary(false)?);
             assert!(ordinary(true)?);
             check_pr_evidence(&repo, &options)?;
+            // Subject-only marking defeats the packet-level fast path and
+            // distinguishes both saved subject validators from the old code.
+            let original_subject = fs::read_to_string(repo.join(PR_CHECK_SUBJECT_JSON))
+                .map_err(|error| error.to_string())?;
+            for generation in [Value::Null, json!({"coverage":"complete","production_admission":true})] {
+                let mut subject: Value = serde_json::from_str(&original_subject)
+                    .map_err(|error| error.to_string())?;
+                subject["experimental_complete_execution"] = generation;
+                super::super::tests::write_repo_file(&repo, PR_CHECK_SUBJECT_JSON,
+                    &serde_json::to_string(&subject).map_err(|error| error.to_string())?)?;
+                assert!(!ordinary(true)?);
+                assert!(check_pr_evidence(&repo, &options).is_err());
+                assert!(review().is_err());
+            }
+            super::super::tests::write_repo_file(&repo, PR_CHECK_SUBJECT_JSON, &original_subject)?;
+            assert!(ordinary(true)?);
+            check_pr_evidence(&repo, &options)?;
+            assert!(review().is_ok());
             let baseline: Value = serde_json::from_slice(&fs::read(repo.join(PR_CHECK_JSON)).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
             let receipt = run_candidate(&repo, &binary, &options, Path::new("/usr/bin/prlimit"), profile()?)?;
             assert_eq!(receipt.coverage, "not_established");
@@ -386,11 +409,6 @@ mod tests {
             }
             assert!(!ordinary(true)?);
             assert!(check_pr_evidence(&repo, &options).is_err());
-            let review = || ripr::cli::run(vec!["ripr".into(), "review-comments".into(),
-                "--root".into(), repo.display().to_string(), "--base".into(), options.base.clone(),
-                "--head".into(), options.head.clone(), "--check-output".into(),
-                repo.join(PR_CHECK_JSON).display().to_string(), "--out".into(),
-                repo.join("target/review.json").display().to_string()]);
             assert!(review().is_err());
             assert!(run_candidate(&repo, &binary, &options, Path::new("/missing-ripr-experiment-limiter"), profile()?).is_err());
             assert!(!repo.join(PR_CHECK_SUBJECT_JSON).exists());

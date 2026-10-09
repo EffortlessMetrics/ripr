@@ -509,6 +509,9 @@ fn check_subject_violations(repo: &Path, options: &PrEvidenceOptions) -> Vec<Str
             )];
         }
     };
+    if let Some(error) = ripr::reject_pr_evidence_error_packet(&subject) {
+        return vec![error];
+    }
     let expected = [
         ("schema_version", "ripr.pr_check_subject.v1".to_string()),
         (
