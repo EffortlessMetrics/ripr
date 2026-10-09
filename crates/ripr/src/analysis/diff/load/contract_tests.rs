@@ -492,3 +492,193 @@ fn explicit_diff_file_remains_verbatim_and_needs_no_git_base() -> io::Result<()>
     assert_eq!(actual, supplied);
     Ok(())
 }
+
+
+// #1627: this adapter is intentionally wrong in the test-only predecessor.
+// Reconstructing bytes after semantic decoding cannot preserve raw intake.
+// The repair replaces this body with the retained raw loader entry point;
+// assertions and fixture bytes remain the same.
+fn canonical_intake_bytes(root: &Path, base: &str, head: &str) -> Result<Vec<u8>, String> {
+    super::load_canonical_pr_evidence_diff_range(root, base, head).map(String::into_bytes)
+}
+
+fn contains_bytes(bytes: &[u8], needle: &[u8]) -> bool {
+    bytes.windows(needle.len()).any(|window| window == needle)
+}
+
+fn independent_canonical_bytes(repo: &Repo, base: &str, head: &str) -> io::Result<Vec<u8>> {
+    run_git_diff_bytes(
+        &repo.root,
+        &format!("{base}...{head}"),
+        &["--relative", "--unified=0", "--no-ext-diff", "--submodule=short"],
+        "0",
+        Some(GIT_TIMEOUT),
+    )
+    .map_err(io::Error::other)
+}
+
+#[test]
+fn raw_canonical_range_preserves_non_utf8_body_before_semantic_decode() -> io::Result<()> {
+    let repo = Repo::new("raw-body")?;
+    fs::write(repo.root.join("raw.txt"), b"body:\xfe\n")?;
+    git(&repo.root, &["add", "raw.txt"])?;
+    git(&repo.root, &["commit", "--quiet", "-m", "raw body base"])?;
+    let base = git(&repo.root, &["rev-parse", "HEAD"])?.trim().to_string();
+    fs::write(repo.root.join("raw.txt"), b"body:\xff\n")?;
+    git(&repo.root, &["add", "raw.txt"])?;
+    git(&repo.root, &["commit", "--quiet", "-m", "distinct raw body"])?;
+    let head = git(&repo.root, &["rev-parse", "HEAD"])?.trim().to_string();
+    let expected = independent_canonical_bytes(&repo, &base, &head)?;
+    assert!(contains_bytes(&expected, b"-body:\xfe\n"));
+    assert!(contains_bytes(&expected, b"+body:\xff\n"));
+    assert!(std::str::from_utf8(&expected).is_err());
+    let legacy = super::load_canonical_pr_evidence_diff_range(&repo.root, &base, &head)
+        .map_err(io::Error::other)?;
+    assert_eq!(legacy, String::from_utf8_lossy(&expected));
+    assert!(legacy.contains("-body:\u{fffd}\n+body:\u{fffd}\n"));
+    assert_ne!(legacy.as_bytes(), expected.as_slice(), "fixture must reject semantic reconstruction");
+
+    let actual = canonical_intake_bytes(&repo.root, &base, &head).map_err(io::Error::other)?;
+    assert!(
+        contains_bytes(&actual, b"-body:\xfe\n") && contains_bytes(&actual, b"+body:\xff\n"),
+        "raw intake lost distinct source bytes before coverage could identify them"
+    );
+    assert_eq!(actual, expected);
+    assert_eq!(String::from_utf8_lossy(&actual), legacy);
+    Ok(())
+}
+
+#[test]
+fn raw_canonical_range_keeps_metadata_and_same_head_empty() -> io::Result<()> {
+    let repo = Repo::new("raw-metadata")?;
+    repo.config("core.filemode", "false")?;
+    repo.config("diff.renames", "true")?;
+    repo.config("diff.submodule", "log")?;
+    let old_gitlink = repo.base.clone();
+    let new_gitlink = git(&repo.root, &["rev-parse", "HEAD"])?.trim().to_string();
+    assert_ne!(old_gitlink, new_gitlink);
+    fs::write(repo.root.join("deleted.txt"), "deleted source\n")?;
+    fs::write(repo.root.join("rename_from.txt"), "unique exact rename payload\n")?;
+    fs::write(repo.root.join("binary.dat"), b"\0old\0")?;
+    fs::write(repo.root.join("mode.txt"), "unchanged mode payload\n")?;
+    git(&repo.root, &["add", "."])?;
+    git(&repo.root, &["update-index", "--add", "--cacheinfo", &format!("160000,{old_gitlink},nested")])?;
+    git(&repo.root, &["commit", "--quiet", "-m", "metadata base"])?;
+    let base = git(&repo.root, &["rev-parse", "HEAD"])?.trim().to_string();
+
+    fs::remove_file(repo.root.join("deleted.txt"))?;
+    fs::rename(repo.root.join("rename_from.txt"), repo.root.join("rename_to.txt"))?;
+    fs::write(repo.root.join("binary.dat"), b"\0new\0")?;
+    fs::write(repo.root.join("empty_added.txt"), b"")?;
+    git(&repo.root, &["add", "."])?;
+    git(&repo.root, &["update-index", "--chmod=+x", "mode.txt"])?;
+    git(&repo.root, &["update-index", "--add", "--cacheinfo", &format!("160000,{new_gitlink},nested")])?;
+    git(&repo.root, &["commit", "--quiet", "-m", "metadata head"])?;
+    let head = git(&repo.root, &["rev-parse", "HEAD"])?.trim().to_string();
+
+    let expected = independent_canonical_bytes(&repo, &base, &head)?;
+    let actual = canonical_intake_bytes(&repo.root, &base, &head).map_err(io::Error::other)?;
+    assert_eq!(actual, expected);
+    let text = String::from_utf8(actual).map_err(io::Error::other)?;
+    for required in [
+        "deleted file mode 100644",
+        "+++ /dev/null",
+        "similarity index 100%",
+        "rename from rename_from.txt",
+        "rename to rename_to.txt",
+        "diff --git a/empty_added.txt b/empty_added.txt",
+        "new file mode 100644",
+        "old mode 100644\nnew mode 100755",
+        "Binary files a/binary.dat and b/binary.dat differ",
+        &format!("-Subproject commit {old_gitlink}"),
+        &format!("+Subproject commit {new_gitlink}"),
+    ] {
+        assert!(text.contains(required), "missing real Git metadata: {required}");
+    }
+    assert!(!text.contains("GIT binary patch"));
+    assert!(!text.contains("Submodule nested"));
+    let legacy = super::load_canonical_pr_evidence_diff_range(&repo.root, &base, &head)
+        .map_err(io::Error::other)?;
+    assert_eq!(legacy, text);
+    let project = |input: &str| {
+        parse_unified_diff(input).into_iter()
+            .map(|file| (file.path, file.added_lines, file.removed_lines))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(project(&legacy), project(&text));
+    assert!(canonical_intake_bytes(&repo.root, &head, &head).map_err(io::Error::other)?.is_empty());
+    assert!(canonical_intake_bytes(&repo.root, &head, &base).map_err(io::Error::other)?.is_empty());
+    Ok(())
+}
+
+#[test]
+fn raw_canonical_range_uses_full_literal_three_dot_subject_and_refusals() -> io::Result<()> {
+    let repo = Repo::new("raw-range")?;
+    let head = git(&repo.root, &["rev-parse", "HEAD"])?.trim().to_string();
+    let forward = canonical_intake_bytes(&repo.root, &repo.base, &head).map_err(io::Error::other)?;
+    assert_eq!(forward, independent_canonical_bytes(&repo, &repo.base, &head)?);
+    assert!(contains_bytes(&forward, b"+pub const VALUE_100: u32 = 101;"));
+    assert!(contains_bytes(&forward, b"+pub const VALUE_1900: u32 = 1901;"));
+
+    git(&repo.root, &["checkout", "--quiet", "-b", "side", &repo.base])?;
+    fs::write(repo.root.join("src/lib.rs"), source(false).replace("VALUE_1: u32 = 1;", "VALUE_1: u32 = 777;"))?;
+    git(&repo.root, &["add", "src/lib.rs"])?;
+    git(&repo.root, &["commit", "--quiet", "-m", "divergent side"])?;
+    let side = git(&repo.root, &["rev-parse", "HEAD"])?.trim().to_string();
+    let side_diff = canonical_intake_bytes(&repo.root, &head, &side).map_err(io::Error::other)?;
+    assert_eq!(side_diff, independent_canonical_bytes(&repo, &head, &side)?);
+    assert!(contains_bytes(&side_diff, b"+pub const VALUE_1: u32 = 777;"));
+    assert!(!contains_bytes(&side_diff, b"VALUE_100"));
+    assert!(!contains_bytes(&side_diff, b"VALUE_1900"));
+    for (base, head, category) in [
+        (repo.base.as_str(), "refs/heads/absent-intake-head", "does not resolve to a commit"),
+        ("-invalid-intake-base", side.as_str(), "a revision range cannot start with"),
+    ] {
+        let raw_error = canonical_intake_bytes(&repo.root, base, head).err()
+            .ok_or_else(|| io::Error::other("raw loader accepted an invalid range"))?;
+        let legacy_error = super::load_canonical_pr_evidence_diff_range(&repo.root, base, head).err()
+            .ok_or_else(|| io::Error::other("legacy loader accepted an invalid range"))?;
+        assert!(raw_error.contains(category), "{raw_error}");
+        assert_eq!(raw_error, legacy_error);
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn raw_canonical_range_keeps_c_quoted_invalid_path_and_literal_octal_distinct() -> io::Result<()> {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let repo = Repo::new("raw-path")?;
+    let invalid = PathBuf::from(OsString::from_vec(b"raw_\xff.rs".to_vec()));
+    let literal = PathBuf::from(r"raw_\377.rs");
+    assert_ne!(invalid, literal);
+    fs::write(repo.root.join(&invalid), "fn invalid() -> u32 { 1 }\n")?;
+    fs::write(repo.root.join(&literal), "fn literal() -> u32 { 2 }\n")?;
+    git(&repo.root, &["add", "."])?;
+    git(&repo.root, &["commit", "--quiet", "-m", "distinct byte paths"])?;
+    let base = git(&repo.root, &["rev-parse", "HEAD"])?.trim().to_string();
+    fs::write(repo.root.join(&invalid), "fn invalid() -> u32 { 11 }\n")?;
+    fs::write(repo.root.join(&literal), "fn literal() -> u32 { 22 }\n")?;
+    git(&repo.root, &["add", "."])?;
+    git(&repo.root, &["commit", "--quiet", "-m", "edit both byte paths"])?;
+    let head = git(&repo.root, &["rev-parse", "HEAD"])?.trim().to_string();
+    repo.config("core.quotePath", "false")?;
+    repo.config("diff.noprefix", "true")?;
+    repo.config("diff.context", "1000")?;
+
+    let expected = independent_canonical_bytes(&repo, &base, &head)?;
+    let raw = canonical_intake_bytes(&repo.root, &base, &head).map_err(io::Error::other)?;
+    assert_eq!(raw, expected);
+    assert!(contains_bytes(&raw, br#"+++ "b/raw_\377.rs""#));
+    assert!(contains_bytes(&raw, br#"+++ "b/raw_\\377.rs""#));
+    let text = String::from_utf8(raw).map_err(io::Error::other)?;
+    assert!(!text.lines().any(|line| line.starts_with(' ')));
+    let mut paths = parse_unified_diff(&text).into_iter().map(|file| file.path).collect::<Vec<_>>();
+    paths.sort();
+    let mut expected_paths = vec![invalid, literal];
+    expected_paths.sort();
+    assert_eq!(paths, expected_paths);
+    Ok(())
+}
