@@ -7203,7 +7203,7 @@ language = "rust"
 
     #[test]
     fn init_generated_github_workflow_is_advisory() -> Result<(), String> {
-        let workflow = generated_github_actions_workflow();
+        let workflow = super::init_workflow::generated_development_workflow();
         let (packet, _) = ci_packet::recorded_full_packet()?;
         assert!(workflow.contains("github/codeql-action/upload-sarif@v4"));
         assert!(workflow.contains("actions/upload-artifact@v7"));
@@ -7278,7 +7278,7 @@ language = "rust"
     #[test]
     fn init_generated_github_workflow_uploads_reports_and_makes_sarif_optional()
     -> Result<(), String> {
-        let workflow = generated_github_actions_workflow();
+        let workflow = super::init_workflow::generated_development_workflow();
         assert!(workflow.contains("name: RIPR advisory reports"));
         let upload = workflow_step(&workflow, "Upload RIPR report artifacts");
         assert!(
@@ -7359,7 +7359,7 @@ language = "rust"
 
     #[test]
     fn init_generated_github_workflow_renders_the_summary_with_one_command() {
-        let workflow = generated_github_actions_workflow();
+        let workflow = super::init_workflow::generated_development_workflow();
         let summary = workflow_step(&workflow, "Add RIPR advisory summary");
         assert!(summary.contains("        if: always()\n        continue-on-error: true\n"));
         // #5409: the command reads the base ref and settings from the
@@ -7454,7 +7454,7 @@ language = "rust"
     fn init_generated_github_workflow_matches_smoke_fixture() -> Result<(), String> {
         use super::init_workflow::workflow_install_version;
 
-        let workflow = generated_github_actions_workflow();
+        let workflow = super::init_workflow::generated_development_workflow();
         let fixture = generated_workflow_smoke_fixture();
         // The analysis steps run inside `ripr reports ci-packet` (#4696). Its
         // own tests pin every command line a pull request run records and

@@ -17,7 +17,7 @@ Start here:
   Analyzer limit: No clear propagation path from changed behavior to an observable sink
   Related test: tests/lower.rs:4 lower_ast_preserves_storage
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
-  Evidence: reach weak · infection yes · propagation unknown · observation yes · discriminator not established
+  Evidence: reach weak · infection yes · propagation unknown · observation yes · discriminator weak
     - reach weak: No test is seen calling lower_statement; tests share only its file or a name token: lower_ast_preserves_storage
     - infection yes: Reachable tests can plausibly activate this changed behavior
     - 6 more detail line(s) in --format human-full

@@ -813,6 +813,12 @@ fn unresolved_local_operand_edge(
 pub(in crate::analysis) const ERROR_RETURN_GUARD_UNRESOLVED_MARKER: &str =
     "error return guard unresolved";
 
+/// Actual return/error/field probes also retain an unresolved infection
+/// edge when their paired before producer is an opaque constructor and the
+/// parser establishes the inline replacement beneath a bare boolean guard.
+/// This branch makes no before/after equivalence claim and does not depend
+/// on observer strength; finding guidance separately admits owner observers.
+///
 /// #1579: name the guard when a bare-identifier predicate guards a
 /// changed error return an exact observer already covers. A guard
 /// with visible literals keeps its satisfiable boundary repair; only
@@ -831,6 +837,16 @@ pub(in crate::analysis) fn unresolved_guard_error_edge(
     flow_sinks: &[FlowSinkFact],
     helper_chain: Option<&super::helper_transfer::HelperChain>,
 ) -> Option<String> {
+    if let Some((guard, producer)) = owner_fn
+        .and_then(|owner| crate::analysis::syntax::guarded_opaque_error_transition(probe, owner))
+    {
+        return Some(format!(
+            "{ERROR_RETURN_GUARD_UNRESOLVED_MARKER}: `{guard}` guards the changed error return; before-producing expression `{producer}()` is opaque, so value divergence from the inline producer is unestablished"
+        ));
+    }
+    if probe.family != ProbeFamily::Predicate {
+        return None;
+    }
     let guard = probe.expression.trim();
     if !super::value_transfer::is_identifier(guard) || !extract_literals(guard).is_empty() {
         return None;

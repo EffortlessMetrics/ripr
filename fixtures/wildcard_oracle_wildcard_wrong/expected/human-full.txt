@@ -27,7 +27,7 @@ Evidence
   - infection yes: Reachable tests can plausibly activate this changed behavior
   - propagation yes: Complete propagation witness reaches returned value: value + 2
   - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator weak: Only relational oracle found; it may not discriminate the changed value exactly
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches returned value: value + 2 (line 2)
   - related test src/lib.rs:8 observes_score uses weak relational check oracle: assert!(matches!(value, _)); misses: assertion too weak to tell the old behavior from the new
   - source function argument value value = 1 at line 9

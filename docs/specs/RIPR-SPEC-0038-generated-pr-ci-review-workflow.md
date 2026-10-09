@@ -211,6 +211,21 @@ that generated CI can create tests, edit source, or run provider-backed repair.
 
 ## Test Mapping
 
+Installed compatibility is separate from development command projection.
+The current generator installs published 0.10.0 and selects compatible
+command adapters; it does not emit development-only `ci-packet`, `ci-summary`
+or comment helper calls for that binary. An explicit installed-binary replay
+(`generated_workflow_runs_with_its_installed_release`) qualifies each executed
+step using a checksum-verified 0.10.0 installation, validates JSON outputs,
+preserves before-phase-only evidence and checks unsupported-command/version
+and producer-failure controls. It is an explicit qualification lane, ignored
+in ordinary tests to avoid implicit executable downloads. The ordinary
+version-dispatch and generated-file tests still run by default.
+
+The original compact template hash and development replay assertions remain
+pinned. Their pass establishes current-source command behavior, not compatibility
+with an older installed executable. `docs/CI.md` records this support boundary.
+
 Existing generated-workflow tests cover advisory defaults, artifact upload, and
 non-blocking workflow generation:
 

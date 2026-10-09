@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/boundary_operand_unresolved/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":1,"probes":3,"findings":3,"exposed":0,"weakly_exposed":3,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:4fd76931031c418a9440455138a1df24bd922f9effaf4476ae4487e357cc13da","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":4,"candidate_line_count":3,"probe_count":3,"finding_count":3},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:4fd76931031c418a9440455138a1df24bd922f9effaf4476ae4487e357cc13da","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":4,"candidate_line_count":3,"probe_count":3,"finding_count":3},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -30,7 +29,7 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: Some(\"\")", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: Some(\"\") (line 5)", "related test tests/q.rs:4 empty_body_equality_case uses strong exact value oracle: assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));", "related test tests/q.rs:14 missing_close_returns_none uses strong exact value oracle: assert_eq!(quote_body(\"[ab\", '[', ']'), None);", "related test tests/q.rs:9 nonempty_body uses strong exact value oracle: assert_eq!(quote_body(\"[ab]\", '[', ']'), Some(\"ab\"));", "observed assertion argument value \"\" at line 5", "observed function argument value close = ']' at line 5", "observed function argument value open = '[' at line 5", "observed function argument value rest = \"[]\" at line 5", "observed assertion argument value \"ab\" at line 10", "observed function argument value close = ']' at line 10", "observed function argument value open = '[' at line 10", "observed function argument value rest = \"[ab]\" at line 10", "missing discriminator end == start: No related test call uses end equal to start; observed end values: unknown; boundary operand value unresolved: `end` flows through `rest.rfind(close)?` (earliest unsupported edge: expression `rest.rfind(close)?` is not a supported operation chain)"],
+      "evidence_path": ["reach yes: Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: Some(\"\")", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator missing: `end == start`; related oracle: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: Some(\"\") (line 5)", "related test tests/q.rs:4 empty_body_equality_case uses strong exact value oracle: assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));", "related test tests/q.rs:14 missing_close_returns_none uses strong exact value oracle: assert_eq!(quote_body(\"[ab\", '[', ']'), None);", "related test tests/q.rs:9 nonempty_body uses strong exact value oracle: assert_eq!(quote_body(\"[ab]\", '[', ']'), Some(\"ab\"));", "source assertion argument value \"\" at line 5", "source function argument value close = ']' at line 5", "source function argument value open = '[' at line 5", "source function argument value rest = \"[]\" at line 5", "source assertion argument value \"ab\" at line 10", "source function argument value close = ']' at line 10", "source function argument value open = '[' at line 10", "source function argument value rest = \"[ab]\" at line 10", "missing discriminator end == start: No related test call uses end equal to start; observed end values: unknown; boundary operand value unresolved: `end` flows through `rest.rfind(close)?` (earliest unsupported edge: expression `rest.rfind(close)?` is not a supported operation chain)"],
       "flow_sinks": [
         {"kind":"return_value","text":"Some(\"\")","line":5}
       ],
@@ -233,7 +232,7 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: Some(\"\")", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: Some(\"\") (line 5)", "related test tests/q.rs:4 empty_body_equality_case uses strong exact value oracle: assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));", "related test tests/q.rs:14 missing_close_returns_none uses strong exact value oracle: assert_eq!(quote_body(\"[ab\", '[', ']'), None);", "related test tests/q.rs:9 nonempty_body uses strong exact value oracle: assert_eq!(quote_body(\"[ab]\", '[', ']'), Some(\"ab\"));", "observed assertion argument value \"\" at line 5", "observed function argument value close = ']' at line 5", "observed function argument value open = '[' at line 5", "observed function argument value rest = \"[]\" at line 5", "observed assertion argument value \"ab\" at line 10", "observed function argument value close = ']' at line 10", "observed function argument value open = '[' at line 10", "observed function argument value rest = \"[ab]\" at line 10"],
+      "evidence_path": ["reach yes: Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: Some(\"\")", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: Some(\"\") (line 5)", "related test tests/q.rs:4 empty_body_equality_case uses strong exact value oracle: assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));", "related test tests/q.rs:14 missing_close_returns_none uses strong exact value oracle: assert_eq!(quote_body(\"[ab\", '[', ']'), None);", "related test tests/q.rs:9 nonempty_body uses strong exact value oracle: assert_eq!(quote_body(\"[ab]\", '[', ']'), Some(\"ab\"));", "source assertion argument value \"\" at line 5", "source function argument value close = ']' at line 5", "source function argument value open = '[' at line 5", "source function argument value rest = \"[]\" at line 5", "source assertion argument value \"ab\" at line 10", "source function argument value close = ']' at line 10", "source function argument value open = '[' at line 10", "source function argument value rest = \"[ab]\" at line 10"],
       "flow_sinks": [
         {"kind":"return_value","text":"Some(\"\")","line":5}
       ],
@@ -374,7 +373,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "ripr could not confirm that this assertion observes the changed behavior"
         },
         {
           "name": "missing_close_returns_none",
@@ -384,7 +385,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(quote_body(\"[ab\", '[', ']'), None);",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "ripr could not confirm that this assertion observes the changed behavior"
         },
         {
           "name": "nonempty_body",
@@ -394,7 +397,9 @@
           "oracle_kind": "exact_value",
           "oracle": "assert_eq!(quote_body(\"[ab]\", '[', ']'), Some(\"ab\"));",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "observation_unconfirmed",
+          "why": "ripr could not confirm that this assertion observes the changed behavior"
         }
       ],
       "stop_reasons": [],
@@ -425,7 +430,7 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: Some(&rest[start..end])", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: Some(&rest[start..end]) (line 7)", "related test tests/q.rs:4 empty_body_equality_case uses strong exact value oracle: assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));", "related test tests/q.rs:14 missing_close_returns_none uses strong exact value oracle: assert_eq!(quote_body(\"[ab\", '[', ']'), None);", "related test tests/q.rs:9 nonempty_body uses strong exact value oracle: assert_eq!(quote_body(\"[ab]\", '[', ']'), Some(\"ab\"));", "observed assertion argument value \"\" at line 5", "observed function argument value close = ']' at line 5", "observed function argument value open = '[' at line 5", "observed function argument value rest = \"[]\" at line 5", "observed assertion argument value \"ab\" at line 10", "observed function argument value close = ']' at line 10", "observed function argument value open = '[' at line 10", "observed function argument value rest = \"[ab]\" at line 10", "missing discriminator end == start: No related test call uses end equal to start; observed end values: unknown; boundary operand value unresolved: `end` flows through `rest.rfind(close)?` (earliest unsupported edge: expression `rest.rfind(close)?` is not a supported operation chain)"],
+      "evidence_path": ["reach yes: Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: Some(&rest[start..end])", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator missing: `end == start`; related oracle: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: Some(&rest[start..end]) (line 7)", "related test tests/q.rs:4 empty_body_equality_case uses strong exact value oracle: assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));", "related test tests/q.rs:14 missing_close_returns_none uses strong exact value oracle: assert_eq!(quote_body(\"[ab\", '[', ']'), None);", "related test tests/q.rs:9 nonempty_body uses strong exact value oracle: assert_eq!(quote_body(\"[ab]\", '[', ']'), Some(\"ab\"));", "source assertion argument value \"\" at line 5", "source function argument value close = ']' at line 5", "source function argument value open = '[' at line 5", "source function argument value rest = \"[]\" at line 5", "source assertion argument value \"ab\" at line 10", "source function argument value close = ']' at line 10", "source function argument value open = '[' at line 10", "source function argument value rest = \"[ab]\" at line 10", "missing discriminator end == start: No related test call uses end equal to start; observed end values: unknown; boundary operand value unresolved: `end` flows through `rest.rfind(close)?` (earliest unsupported edge: expression `rest.rfind(close)?` is not a supported operation chain)"],
       "flow_sinks": [
         {"kind":"return_value","text":"Some(&rest[start..end])","line":7}
       ],

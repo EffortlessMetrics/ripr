@@ -3,24 +3,24 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/infect_wildcard_discard/input",
-  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":1,"static_unknown":1,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "summary": {"changed_rust_files":1,"probes":3,"findings":3,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":1,"static_unknown":2,"changed_files_by_language":[{"language":"rust","files":1}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:3f1eb8b4435915f92a40d4dc038060a005506aa3fab051f15b190b21d20d63a8","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":3,"candidate_line_count":2,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:1ab712a288ba331957ae8a1f8eafbfa6792c28a5a5da4647ca9ba8c71c7a823e","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":4,"candidate_line_count":3,"probe_count":3,"finding_count":3},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
-      "id": "probe:src_lib.rs:static_unknown:49492955",
+      "id": "probe:src_lib.rs:static_unknown:dcb92362",
       "classification": "static_unknown",
       "severity": "note",
       "confidence": 0.50,
       "probe": {
-        "id": "probe:src_lib.rs:static_unknown:49492955",
+        "id": "probe:src_lib.rs:static_unknown:dcb92362",
         "family": "static_unknown",
         "delta": "unknown",
         "file": "fixtures/infect_wildcard_discard/input/src/lib.rs",
         "line": 2,
-        "expression": "let _ = compute_fee(amount * 9);"
+        "expression": "let _ : i32 = compute_fee(amount * 9);"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach process: process_returns_amount_unchanged"},
@@ -90,6 +90,86 @@
       "source_currentness": "candidate_current"
     },
     {
+      "id": "probe:src_lib.rs:static_unknown:655908b8",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.50,
+      "probe": {
+        "id": "probe:src_lib.rs:static_unknown:655908b8",
+        "family": "static_unknown",
+        "delta": "unknown",
+        "file": "fixtures/infect_wildcard_discard/input/src/lib.rs",
+        "line": 3,
+        "expression": "let _= compute_fee(amount * 9);"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach process: process_returns_amount_unchanged"},
+        "infect": {"state":"unknown","confidence":"unknown","summary":"Changed syntax is not mapped to a high-confidence probe family"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"No propagation model is available for this changed syntax"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Assertions exist, but oracle strength is unknown"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach process: process_returns_amount_unchanged", "infection unknown: Changed syntax is not mapped to a high-confidence probe family", "propagation unknown: No propagation model is available for this changed syntax", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator unknown: Assertions exist, but oracle strength is unknown", "local flow reaches unknown sink: unknown sink (line 3)", "related test tests/process_tests.rs:4 process_returns_amount_unchanged uses unknown exact value oracle: assert_eq!(process(42), 42);", "source assertion argument value 42 at line 5", "source function argument value amount = 42 at line 5"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"unknown sink","line":3}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Assertions exist, but oracle strength is unknown", "Changed syntax is not mapped to a high-confidence probe family", "No propagation model is available for this changed syntax", "Related tests appear to reach process: process_returns_amount_unchanged"],
+      "missing": ["No strong discriminator was detected", "Syntax-first analysis cannot classify this change; use deep mode or real mutation"],
+      "assertion_texts": {
+        "5": "assert_eq!(process(42), 42);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "42",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "value": "amount = 42",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "42",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "value": "amount = 42",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "process_returns_amount_unchanged",
+          "file": "tests/process_tests.rs",
+          "line": 4,
+          "oracle_strength": "unknown",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(process(42), 42);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
       "id": "probe:src_lib.rs:return_value:d0b06139",
       "classification": "propagation_unknown",
       "severity": "note",
@@ -99,7 +179,7 @@
         "family": "return_value",
         "delta": "value",
         "file": "fixtures/infect_wildcard_discard/input/src/lib.rs",
-        "line": 3,
+        "line": 4,
         "expression": "amount"
        },
       "ripr": {
@@ -109,9 +189,9 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach process: process_returns_amount_unchanged", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator not established (propagation_unknown); related oracle: Strong oracle found: exact value or pattern assertion", "local flow reaches unknown sink: unknown sink (line 3)", "related test tests/process_tests.rs:4 process_returns_amount_unchanged uses strong exact value oracle: assert_eq!(process(42), 42);", "source assertion argument value 42 at line 5", "source function argument value amount = 42 at line 5"],
+      "evidence_path": ["reach yes: Related tests appear to reach process: process_returns_amount_unchanged", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator not established (propagation_unknown); related oracle: Strong oracle found: exact value or pattern assertion", "local flow reaches unknown sink: unknown sink (line 4)", "related test tests/process_tests.rs:4 process_returns_amount_unchanged uses strong exact value oracle: assert_eq!(process(42), 42);", "source assertion argument value 42 at line 5", "source function argument value amount = 42 at line 5"],
       "flow_sinks": [
-        {"kind":"unknown","text":"unknown sink","line":3}
+        {"kind":"unknown","text":"unknown sink","line":4}
       ],
       "evidence": ["A related test observes a value or effect near the changed behavior", "Propagation is not statically obvious from syntax-first analysis", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach process: process_returns_amount_unchanged", "Strong oracle found: exact value or pattern assertion"],
       "missing": ["No clear propagation path from changed behavior to an observable sink"],

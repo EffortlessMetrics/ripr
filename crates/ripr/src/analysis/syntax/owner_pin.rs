@@ -20,6 +20,8 @@ type FunctionKey = (usize, usize, String);
 pub(crate) struct OwnerPinAssertions {
     functions: BTreeMap<FunctionKey, FunctionAssertions>,
     module_declarations: BTreeMap<(usize, String), bool>,
+    value_items: BTreeSet<String>,
+    type_items: BTreeMap<String, usize>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -27,14 +29,118 @@ struct FunctionAssertions {
     body: String,
     assertions: BTreeSet<AssertionKey>,
     macros: BTreeSet<String>,
+    alias_pins: BTreeMap<AssertionKey, (String, String)>,
+    transparent_tail: Option<TransparentTail>,
+    root_scope: bool,
+    own_parent_glob: bool,
+    local_import: bool,
+}
+
+/// Bounded same-file forwarding facts, cached with the exact parser function.
+#[derive(Clone, Debug)]
+enum TransparentTail {
+    Forward(String, String),
+    Match(BTreeSet<String>),
 }
 
 impl OwnerPinAssertions {
+    /// The wrapper forwards its single plain input unchanged; the owner
+    /// matches that input directly. Only the changed path pattern is admitted.
+    pub(crate) fn transparent_wrapper(
+        &self,
+        test: (usize, usize, &str, &str),
+        owner: (usize, usize, &str, &str),
+        wrapper: (usize, usize, &str, &str),
+        operand: &str,
+        pattern: &str,
+    ) -> bool {
+        let Some(test_facts) = self.functions.get(&(test.0, test.1, test.2.to_string())) else {
+            return false;
+        };
+        if test_facts.local_import
+            || test_facts.body != test.3
+            || !(test_facts.root_scope || test_facts.own_parent_glob)
+        {
+            return false;
+        }
+        let find = |function: (usize, usize, &str, &str)| {
+            self.functions
+                .get(&(function.0, function.1, function.2.to_string()))
+                .filter(|facts| facts.body == function.3)
+                .and_then(|facts| facts.transparent_tail.as_ref())
+        };
+        let Some(TransparentTail::Forward(callee, parameter_type)) = find(wrapper) else {
+            return false;
+        };
+        let Some(TransparentTail::Match(patterns)) = find(owner) else {
+            return false;
+        };
+        let Some((enum_name, _)) = pattern.split_once("::") else {
+            return false;
+        };
+        if self.value_items.contains(wrapper.2)
+            || self.type_items.get(enum_name) != Some(&1)
+            || parameter_type != enum_name
+            || callee != owner.2
+            || !patterns.contains(pattern)
+        {
+            return false;
+        }
+        // Parse only this bounded operand; file/function facts above reuse the
+        // run-scoped parser cache. No textual callee substitution is involved.
+        let source = format!("fn operand() {{ {operand} }}");
+        let Some(parse) = parse_clean_source_file(&source) else {
+            return false;
+        };
+        let Some(function) = parse.tree().syntax().descendants().find_map(ast::Fn::cast) else {
+            return false;
+        };
+        let Some(ast::Expr::CallExpr(call)) = function.body().and_then(|body| body.tail_expr())
+        else {
+            return false;
+        };
+        let Some(ast::Expr::PathExpr(path)) = call.expr() else {
+            return false;
+        };
+        if path.syntax().text() != wrapper.2 {
+            return false;
+        }
+        let Some(arguments) = call.arg_list() else {
+            return false;
+        };
+        let mut arguments = arguments.args();
+        let Some(ast::Expr::PathExpr(argument)) = arguments.next() else {
+            return false;
+        };
+        arguments.next().is_none() && argument.syntax().text() == pattern
+    }
+
     pub(crate) fn admits_module_declaration(&self, line: usize, declaration: &str) -> bool {
         self.module_declarations
             .get(&(line, declaration.to_string()))
             .copied()
             .unwrap_or(false)
+    }
+
+    /// Exact memoized alias evidence; execution and ambiguity admission remain
+    /// a separate mandatory gate in the classify-side query.
+    pub(crate) fn alias_pin(
+        &self,
+        function: (usize, usize, &str),
+        body: &str,
+        assertion: (usize, &str),
+    ) -> Option<(String, String)> {
+        let facts = self
+            .functions
+            .get(&(function.0, function.1, function.2.to_string()))?;
+        (facts.body == body)
+            .then(|| {
+                facts
+                    .alias_pins
+                    .get(&(assertion.0, assertion.1.to_string()))
+                    .cloned()
+            })
+            .flatten()
     }
 
     pub(crate) fn admits(
@@ -326,6 +432,30 @@ pub(crate) fn owner_pin_assertions(source: &str, trusted: &[&str]) -> OwnerPinAs
             .and_modify(|previous| *previous = false)
             .or_insert(admitted);
     }
+    // Constants/static callables and type/module namespace shadows are not
+    // FunctionSummary entries. Refuse them conservatively across this file;
+    // the exact owner enum's scope is established separately below.
+    for node in parse.tree().syntax().descendants() {
+        let value = ast::Const::cast(node.clone())
+            .and_then(|item| item.name())
+            .or_else(|| ast::Static::cast(node.clone()).and_then(|item| item.name()));
+        if let Some(name) = value {
+            result.value_items.insert(name.text().to_string());
+        }
+        let ty = ast::Enum::cast(node.clone())
+            .and_then(|item| item.name())
+            .or_else(|| ast::Struct::cast(node.clone()).and_then(|item| item.name()))
+            .or_else(|| ast::Union::cast(node.clone()).and_then(|item| item.name()))
+            .or_else(|| ast::TypeAlias::cast(node.clone()).and_then(|item| item.name()))
+            .or_else(|| ast::Trait::cast(node.clone()).and_then(|item| item.name()))
+            .or_else(|| ast::Module::cast(node.clone()).and_then(|item| item.name()));
+        if let Some(name) = ty {
+            *result
+                .type_items
+                .entry(name.text().to_string())
+                .or_default() += 1;
+        }
+    }
     let mut identities = BTreeMap::<FunctionKey, usize>::new();
     for function in parse
         .tree()
@@ -381,13 +511,23 @@ pub(crate) fn owner_pin_assertions(source: &str, trusted: &[&str]) -> OwnerPinAs
             );
             candidates.entry(assertion).or_default().push(call);
         }
-        let macros = function
+        let mut macros: BTreeSet<_> = function
             .syntax()
             .descendants()
             .filter_map(ast::MacroCall::cast)
             .filter_map(|call| call.path())
             .map(|path| path.syntax().text().to_string())
             .collect();
+        // Nested matches tokens are opaque to the AST walk. Record the exact
+        // bounded nested macro too, so workspace shadowing still refuses it.
+        if function
+            .syntax()
+            .descendants()
+            .filter_map(ast::MacroCall::cast)
+            .any(|call| exact_matches_alias(&call).is_some())
+        {
+            macros.insert("matches".to_string());
+        }
         // Compute the conservative prefix boundary once per function, rather
         // than rescanning its body for every candidate assertion/invocation.
         // A nested helper or async block has its own return context.
@@ -409,14 +549,21 @@ pub(crate) fn owner_pin_assertions(source: &str, trusted: &[&str]) -> OwnerPinAs
             })
             .map(|expression| expression.syntax().text_range().start())
             .min();
+        let mut alias_pins = BTreeMap::new();
         let assertions = candidates
             .into_iter()
             .filter_map(|(key, calls)| {
                 // OracleFact has line/text, not an offset. No identical spelling
                 // on the same line may borrow another invocation's context.
-                (calls.len() == 1
-                    && eager_path(calls[0].syntax().clone(), &function, false, first_return))
-                .then_some(key)
+                if calls.len() != 1
+                    || !eager_path(calls[0].syntax().clone(), &function, false, first_return)
+                {
+                    return None;
+                }
+                if let Some(pin) = immutable_alias_pin(&function, &body, &calls[0]) {
+                    alias_pins.insert(key.clone(), pin);
+                }
+                Some(key)
             })
             .collect();
         // Duplicate function identities are ambiguous too.
@@ -427,6 +574,46 @@ pub(crate) fn owner_pin_assertions(source: &str, trusted: &[&str]) -> OwnerPinAs
                 body: body_source,
                 assertions,
                 macros,
+                alias_pins,
+                transparent_tail: transparent_tail(&function),
+                root_scope: function
+                    .syntax()
+                    .parent()
+                    .is_some_and(|scope| ast::SourceFile::can_cast(scope.kind())),
+                local_import: function
+                    .syntax()
+                    .descendants()
+                    .any(|node| ast::Use::can_cast(node.kind())),
+                own_parent_glob: function.syntax().parent().is_some_and(|scope| {
+                    // Sibling attribute/derive expansion can introduce a
+                    // shadowing binding without a visible MacroCall or item.
+                    // Only ordinary test function attributes are transparent.
+                    let transparent_items = scope.children().all(|node| {
+                        if let Some(function) = ast::Fn::cast(node.clone()) {
+                            function
+                                .attrs()
+                                .all(|attr| attr.simple_name().as_deref() == Some("test"))
+                        } else {
+                            !node
+                                .children()
+                                .any(|child| ast::Attr::can_cast(child.kind()))
+                        }
+                    });
+                    transparent_items
+                        && !scope
+                            .children()
+                            .any(|node| ast::MacroCall::can_cast(node.kind()))
+                        && scope.children().filter_map(ast::Use::cast).count() == 1
+                        && scope.children().filter_map(ast::Use::cast).all(|item| {
+                            item.attrs().next().is_none()
+                                && item.use_tree().is_some_and(|tree| {
+                                    tree.path()
+                                        .is_some_and(|path| path.syntax().text() == "super")
+                                        && tree.star_token().is_some()
+                                        && tree.rename().is_none()
+                                })
+                        })
+                }),
             });
         } else {
             result.functions.insert(key, FunctionAssertions::default());
@@ -436,6 +623,146 @@ pub(crate) fn owner_pin_assertions(source: &str, trusted: &[&str]) -> OwnerPinAs
         .functions
         .retain(|key, _| identities.get(key) == Some(&1));
     result
+}
+
+/// Derive preserves the annotated enum; opaque item attributes need a
+/// different authority. Keep this query's accepted spellings explicitly bounded.
+fn ordinary_enum_derive(attribute: ast::Attr) -> bool {
+    if attribute.simple_name().as_deref() != Some("derive") {
+        return false;
+    }
+    attribute
+        .syntax()
+        .descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .all(|token| {
+            token.kind().is_trivia()
+                || matches!(
+                    token.text(),
+                    "#" | "["
+                        | "]"
+                        | "("
+                        | ")"
+                        | ","
+                        | "derive"
+                        | "Debug"
+                        | "PartialEq"
+                        | "Eq"
+                        | "Clone"
+                        | "Copy"
+                        | "Hash"
+                        | "Default"
+                        | "PartialOrd"
+                        | "Ord"
+                )
+        })
+}
+
+/// No statements, branches, aliases, mutations or transformed arguments may
+/// mediate this witness. Wider wrappers stay possible reach, never identity.
+fn transparent_tail(function: &ast::Fn) -> Option<TransparentTail> {
+    if function.async_token().is_some()
+        || function.attrs().next().is_some()
+        || function
+            .syntax()
+            .children()
+            .any(|node| ast::GenericParamList::can_cast(node.kind()))
+    {
+        return None;
+    }
+    let parameters = function.param_list()?;
+    if parameters.self_param().is_some() {
+        return None;
+    }
+    let mut parameters = parameters.params();
+    let parameter = parameters.next()?;
+    if parameters.next().is_some() {
+        return None;
+    }
+    let ast::Pat::IdentPat(binding) = parameter.pat()? else {
+        return None;
+    };
+    if binding.mut_token().is_some() || binding.ref_token().is_some() || binding.pat().is_some() {
+        return None;
+    }
+    let parameter_type = parameter.ty()?.syntax().text().to_string();
+    let name = binding.name()?;
+    let body = function.body()?;
+    let statements = body.stmt_list()?;
+    if statements.statements().next().is_some() {
+        return None;
+    }
+    match body.tail_expr()? {
+        ast::Expr::CallExpr(call) => {
+            let ast::Expr::PathExpr(path) = call.expr()? else {
+                return None;
+            };
+            let callee = path.syntax().text().to_string();
+            if callee == name.text() {
+                return None;
+            }
+            if !callee
+                .chars()
+                .all(|character| character == '_' || character.is_ascii_alphanumeric())
+            {
+                return None;
+            }
+            let arguments = call.arg_list()?;
+            let mut arguments = arguments.args();
+            let ast::Expr::PathExpr(argument) = arguments.next()? else {
+                return None;
+            };
+            if arguments.next().is_some() || argument.syntax().text() != name.text() {
+                return None;
+            }
+            Some(TransparentTail::Forward(callee, parameter_type))
+        }
+        ast::Expr::MatchExpr(expression) => {
+            let ast::Expr::PathExpr(scrutinee) = expression.expr()? else {
+                return None;
+            };
+            if scrutinee.syntax().text() != name.text() {
+                return None;
+            }
+            let mut patterns = BTreeSet::new();
+            for arm in expression.match_arm_list()?.arms() {
+                if arm.guard().is_some() {
+                    return None;
+                }
+                let Some(ast::Pat::PathPat(pattern)) = arm.pat() else {
+                    return None;
+                };
+                let text = pattern.syntax().text().to_string();
+                let (enum_name, variant_name) = text.split_once("::")?;
+                if parameter_type != enum_name {
+                    return None;
+                }
+                // The arm's simple path must denote a variant of an enum in
+                // the owner's own parser item scope. Token spelling alone
+                // cannot substitute another type or associated constant.
+                let scope = function.syntax().parent()?;
+                let declared = scope.children().filter_map(ast::Enum::cast).any(|item| {
+                    item.name().is_some_and(|name| name.text() == enum_name)
+                        && item.attrs().all(ordinary_enum_derive)
+                        && item.variant_list().is_some_and(|variants| {
+                            variants.variants().any(|variant| {
+                                variant
+                                    .name()
+                                    .is_some_and(|name| name.text() == variant_name)
+                            })
+                        })
+                });
+                if !declared {
+                    return None;
+                }
+                if !patterns.insert(text) {
+                    return None;
+                }
+            }
+            Some(TransparentTail::Match(patterns))
+        }
+        _ => None,
+    }
 }
 
 /// A libtest item cannot be nested in an executable body. Module/source
@@ -483,6 +810,7 @@ fn has_escape(
             if call
                 .token_tree()
                 .is_some_and(|tree| opaque_macro_operand(&tree))
+                && exact_matches_alias(&call).is_none()
             {
                 return true;
             }
@@ -504,6 +832,134 @@ fn has_escape(
             || ast::ContinueExpr::can_cast(node.kind())
             || ast::YieldExpr::can_cast(node.kind())
     })
+}
+
+/// Closed integer discriminator shapes only: no wildcard, payload pattern,
+/// extra operand, diagnostic argument, projection, or arbitrary guard expression.
+fn exact_matches_alias(call: &ast::MacroCall) -> Option<(String, String, usize)> {
+    if call.path()?.syntax().text() != "assert" {
+        return None;
+    }
+    let tree = call.token_tree()?;
+    let tokens: Vec<_> = tree
+        .syntax()
+        .descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .filter(|token| !token.kind().is_trivia())
+        .collect();
+    let text = |index: usize| tokens.get(index).map(|token| token.text());
+    if text(0) != Some("(")
+        || text(1) != Some("matches")
+        || text(2) != Some("!")
+        || text(3) != Some("(")
+        || text(5) != Some(",")
+        || tokens.get(4)?.kind() != ra_ap_syntax::SyntaxKind::IDENT
+        || text(4)?.starts_with("r#")
+    {
+        return None;
+    }
+    let (expected, uses) = if tokens.len() == 9 && text(7) == Some(")") && text(8) == Some(")") {
+        (6, 1)
+    } else if text(6) == Some("_") && text(7) == Some("if") && text(8) == text(4) {
+        if tokens.len() == 13
+            && text(9) == Some("==")
+            && text(11) == Some(")")
+            && text(12) == Some(")")
+        {
+            (10, 2)
+        } else if tokens.len() == 14
+            && text(9) == Some("=")
+            && text(10) == Some("=")
+            && tokens[9].text_range().end() == tokens[10].text_range().start()
+            && text(12) == Some(")")
+            && text(13) == Some(")")
+        {
+            (11, 2)
+        } else {
+            return None;
+        }
+    } else {
+        return None;
+    };
+    (tokens[expected].kind() == ra_ap_syntax::SyntaxKind::INT_NUMBER).then(|| {
+        (
+            tokens[4].text().to_string(),
+            tokens[expected].text().to_string(),
+            uses,
+        )
+    })
+}
+
+/// One immutable root-statement alias, with no other binding, borrow, capture,
+/// mutation or read anywhere in the test. Literal call arguments cannot hide an
+/// early exit or deferred/opaque evaluation; the original call text is retained
+/// for the independent owner-identity and return-path gates.
+fn immutable_alias_pin(
+    function: &ast::Fn,
+    body: &ast::BlockExpr,
+    assertion: &ast::MacroCall,
+) -> Option<(String, String)> {
+    let (name, expected, uses) = exact_matches_alias(assertion)?;
+    let scope = body.stmt_list()?.syntax().clone();
+    if assertion
+        .syntax()
+        .ancestors()
+        .skip(1)
+        .find(|node| ast::StmtList::can_cast(node.kind()))?
+        != scope
+    {
+        return None;
+    }
+    if function
+        .syntax()
+        .descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .filter(|token| token.text().trim_start_matches("r#") == name)
+        .count()
+        != uses + 1
+    {
+        return None;
+    }
+    let mut bindings = function
+        .syntax()
+        .descendants()
+        .filter_map(ast::LetStmt::cast)
+        .filter(|binding| {
+            matches!(binding.pat(), Some(ast::Pat::IdentPat(pattern))
+                if pattern.name().is_some_and(|binding_name| binding_name.text() == name))
+        });
+    let binding = bindings.next()?;
+    if bindings.next().is_some()
+        || binding.syntax().parent()? != scope
+        || binding.syntax().text_range().end() > assertion.syntax().text_range().start()
+        || binding.ty().is_some()
+        || binding.let_else().is_some()
+        || binding
+            .syntax()
+            .children()
+            .any(|node| ast::Attr::can_cast(node.kind()))
+    {
+        return None;
+    }
+    let ast::Pat::IdentPat(pattern) = binding.pat()? else {
+        return None;
+    };
+    if pattern.mut_token().is_some()
+        || pattern.ref_token().is_some()
+        || pattern.at_token().is_some()
+    {
+        return None;
+    }
+    let call = ast::CallExpr::cast(binding.initializer()?.syntax().clone())?;
+    if !matches!(call.expr(), Some(ast::Expr::PathExpr(_)))
+        || !call
+            .arg_list()?
+            .args()
+            .all(|argument| matches!(argument, ast::Expr::Literal(_)))
+    {
+        return None;
+    }
+    Some((call.syntax().text().to_string(), expected))
 }
 
 fn opaque_macro_operand(tree: &ast::TokenTree) -> bool {

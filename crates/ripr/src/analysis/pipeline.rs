@@ -231,17 +231,17 @@ pub(crate) fn run_worktree_pipeline_with_oracle_policy_and_rust_config(
 /// scope-less run's outcome identity is built before the loader's default is
 /// known; without this it would keep no base while the envelope names the
 /// resolved one, and `read_analysis_outcome_artifact_at` rejects that pair.
-/// An explicit base is already the identity's base; diff-file and stdin
-/// inputs involve no loader base and are left as they are.
+/// Caller declarations cannot establish this identity. Diff-file and stdin
+/// inputs have no loader base, even when the caller supplies a base option.
 fn bind_effective_base(
     result: &mut AnalysisResult,
     effective_base: Option<String>,
 ) -> Result<(), String> {
-    if let (Some(outcome), Some(base)) = (result.analysis_outcome.as_mut(), &effective_base)
-        && outcome.identity.base_revision.is_none()
+    if let Some(outcome) = result.analysis_outcome.as_mut()
+        && outcome.identity.base_revision != effective_base
     {
         let mut identity = outcome.identity.clone();
-        identity.base_revision = Some(base.clone());
+        identity.base_revision = effective_base.clone();
         *outcome = AnalysisOutcome::new(
             outcome.kind,
             identity,
@@ -1167,7 +1167,9 @@ fn run_pipeline_for_diff_text(
     let analysis_outcome = Some(AnalysisOutcome::new(
         kind,
         AnalysisIdentity {
-            base_revision: options.base.clone(),
+            // Only the diff loader can establish the source base; supplied
+            // bytes and a caller's ref name do not verify that provenance.
+            base_revision: None,
             input_identity: Some(input_identity),
             git_candidate_subject: options.resolved_subject_identity.clone(),
             ..AnalysisIdentity::default()
@@ -4096,8 +4098,8 @@ mod tests {
 
     /// #3940 follow-up: the envelope base and the typed outcome identity name
     /// one resolved value. A scope-less run (no explicit base) takes the
-    /// loader's resolved default into the identity; an explicit base and a
-    /// base-less (diff-file) run keep the identity they were built with.
+    /// loader's resolved default into the identity; stale declarations must
+    /// neither override a loader base nor survive a base-less supplied diff.
     #[test]
     fn effective_base_binds_the_outcome_identity_to_the_loader_base() -> Result<(), String> {
         let root = temp_root("effective-base-identity")?;
@@ -4137,6 +4139,14 @@ mod tests {
                 Some("origin/main"),
             ),
             ("diff file", None, None, None),
+            ("supplied explicit", Some("origin/main"), None, None),
+            ("supplied invalid", Some("missing-base"), None, None),
+            (
+                "stale declaration",
+                Some("wrong-base"),
+                Some("main"),
+                Some("main"),
+            ),
         ] {
             let mut result = run_pipeline_for_diff_text(
                 &options(explicit),
@@ -4145,9 +4155,13 @@ mod tests {
                 &crate::config::RustLanguageConfig::default(),
                 diff,
             )?;
-            // Precondition: the identity is built from the caller's base alone.
-            if identity_base(&result) != Some(explicit.map(str::to_string)) {
+            // Raw diff text has no verified source base.
+            if identity_base(&result) != Some(None) {
                 return Err(format!("{case}: unexpected pre-binding identity base"));
+            }
+            // Challenge binding independently of safe initial construction.
+            if let Some(outcome) = result.analysis_outcome.as_mut() {
+                outcome.identity.base_revision = explicit.map(str::to_string);
             }
             bind_effective_base(&mut result, loader.map(str::to_string))?;
             assert_eq!(

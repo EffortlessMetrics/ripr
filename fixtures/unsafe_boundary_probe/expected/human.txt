@@ -11,22 +11,22 @@ Start here:
   State: limited by static analysis (static_limited)
   Safe next action: review the unresolved static path and existing tests before treating this as repair-ready.
   File: fixtures/unsafe_boundary_probe/input/src/lib.rs:2
-  Static exposure: no path (no_static_path, warning, confidence 0.48)
+  Static exposure: no path (no_static_path, warning, confidence 0.35)
   Why no path: no related test was found that reaches this change
   Changed behavior: let mut total: u8 = 1;
-  Missing discriminator (1 of 4): let mut total: u8 = 1;
+  Missing discriminator (1 of 3): No relevant oracle was detected
   Next step: ripr found no static test path to this change — this is not a coverage assessment. A
     test may already exercise it through macros, helper-call chains, or integration tests that
     ripr's static model does not yet trace. If none does, add a co-located test that reaches and
     observes the changed behavior so a discriminator exists.
-  Evidence: reach no · infection unknown · propagation yes · observation no · discriminator no
+  Evidence: reach no · infection unknown · propagation unknown · observation no · discriminator no
     - reach no: No static test path found for the changed owner
-    - infection unknown: No reachable tests were found, so infection cannot be established
+    - infection unknown: Changed syntax is not mapped to a high-confidence probe family
     - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
-  ripr explain --root fixtures/unsafe_boundary_probe/input --diff fixtures/unsafe_boundary_probe/diff.patch --mode fast probe:src_lib.rs:field_construction:ca914e5b
-  ripr context --root fixtures/unsafe_boundary_probe/input --diff fixtures/unsafe_boundary_probe/diff.patch --mode fast --at probe:src_lib.rs:field_construction:ca914e5b
+  ripr explain --root fixtures/unsafe_boundary_probe/input --diff fixtures/unsafe_boundary_probe/diff.patch --mode fast probe:src_lib.rs:static_unknown:eff3c10e
+  ripr context --root fixtures/unsafe_boundary_probe/input --diff fixtures/unsafe_boundary_probe/diff.patch --mode fast --at probe:src_lib.rs:static_unknown:eff3c10e
 
 Hidden:
   2 lower-priority finding(s) omitted from default human output.

@@ -63,3 +63,16 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — wildcard_oracle_wildcard_original (3)
+
+Reason:
+RIPR-SPEC-0108: One ReturnValue remains WeaklyExposed with weak relational wildcard and returned-value propagation. Refresh complete witness explanation/confidence; keep related observes_score. Independent control: Actual original runtime wildcard passes; matched wildcard/exact/guarded runtime control distinguishes2 versus3.
+
+Command:
+`cargo xtask goldens bless wildcard_oracle_wildcard_original --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

@@ -9,6 +9,7 @@ id = "RIPR-SPEC-0001"
 name = "static exposure loop"
 spec = "docs/specs/RIPR-SPEC-0001-static-exposure-loop.md"
 tests = [
+  "crates/ripr/src/analysis/classifier.rs::tests::unreached_return_owner_does_not_borrow_weak_sibling_discrimination",
   "crates/ripr/src/analysis/extract/oracles/wildcard_tests.rs::unguarded_wildcard_patterns_are_not_exact_oracles",
   "crates/ripr/src/analysis/extract/oracles/wildcard_tests.rs::wildcard_downgrade_preserves_patterns_guards_and_other_conditions",
   "crates/ripr/src/analysis/extract/oracles/wildcard_tests.rs::wildcard_runtime_control_accepts_wrong_behavior_while_exact_pin_distinguishes_it",
@@ -3657,6 +3658,11 @@ id = "RIPR-SPEC-0038"
 name = "Generated PR CI review workflow"
 spec = "docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md"
 tests = [
+  "crates/ripr/src/cli/commands/init_workflow.rs::install_version_tests::installed_release_selects_only_qualified_command_surfaces",
+  "crates/ripr/src/cli/commands/init_workflow.rs::install_version_tests::unqualified_historical_install_versions_fail_before_product_commands",
+  "crates/ripr/src/cli/commands/init_workflow.rs::template_pin_tests::development_replay_fixture_preserves_the_compact_command_contract",
+  "crates/ripr/tests/generated_review_workflow.rs::generated_workflow_runs_with_its_installed_release",
+  "crates/ripr/tests/generated_review_workflow.rs::generated_released_publish_adapter_preserves_current_request_semantics",
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_is_advisory",
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_never_auto_refreshes_baseline",
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional",
@@ -3665,11 +3671,16 @@ tests = [
   "crates/ripr/tests/cli_smoke.rs::init_ci_github_dry_run_prints_config_and_workflow_without_writing",
   "crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow",
   "xtask/src/main.rs::tests::dogfood_generated_ci_cockpit_receipts_are_checked",
+  "xtask/src/main.rs::tests::dogfood_generated_ci_cockpit_checks_the_public_summary_renderer",
 ]
 fixtures = [
   "fixtures/benches_harness_evidence",
 ]
 code = [
+  "crates/ripr/src/cli/commands/init_workflow.rs",
+  "crates/ripr/src/cli/commands/init_workflow/released_0_10_producer.yml",
+  "crates/ripr/src/cli/commands/init_workflow/released_0_10_summary.yml",
+  "crates/ripr/tests/generated_review_workflow.rs",
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/tests/cli_smoke.rs",
   "xtask/src/main.rs",
@@ -6814,6 +6825,16 @@ tests = [
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::direct_collection_mutation_discriminates_actual_observer_not_sibling_collection",
   "crates/ripr/src/analysis/classify/reveal.rs::tests::name_only_test_cannot_supply_the_oracle_for_reach_from_another_test",
   "crates/ripr/src/analysis/classify/reveal.rs::tests::match_arm_proximity_test_cannot_confirm_beside_reaching_test",
+  "crates/ripr/src/analysis/classifier.rs::tests::transparent_match_arm_wrapper_exact_oracle_binds_identity",
+  "crates/ripr/src/analysis/classifier.rs::tests::transparent_match_arm_wrapper_opaque_owner_enum_attribute_refuses_variant",
+  "crates/ripr/src/analysis/classifier.rs::tests::transparent_match_arm_wrapper_opaque_sibling_attribute_refuses_binding",
+  "crates/ripr/src/analysis/classifier.rs::tests::transparent_match_arm_wrapper_parameter_callee_is_not_owner",
+  "crates/ripr/src/analysis/classifier.rs::tests::transparent_match_arm_wrapper_workspace_import_cannot_override_parent",
+  "crates/ripr/src/analysis/classifier.rs::tests::transparent_match_arm_wrapper_unreachable_arm_is_not_observed",
+  "crates/ripr/src/analysis/classifier.rs::tests::transparent_match_arm_wrapper_negative_controls_stay_unbound",
+  "crates/ripr/src/analysis/classifier.rs::tests::transparent_match_arm_wrapper_binding_and_execution_refusals",
+  "crates/ripr/src/analysis/classifier.rs::tests::transparent_match_arm_wrapper_module_const_callable_is_not_owner",
+  "crates/ripr/src/analysis/classifier.rs::tests::transparent_match_arm_wrapper_variant_path_shadow_does_not_select_arm",
   "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::test_may_reach_owner_by_name_unknown_call_or_implicit_dispatch"
 ]
 fixtures = [
@@ -6822,6 +6843,13 @@ fixtures = [
   "fixtures/proximity_name_oracle_not_credited",
   "fixtures/match_arm_proximity_confirmation_not_credited",
   "fixtures/match_arm_proximity_wrapper_confirms",
+  "fixtures/match_arm_wrapper_sibling_attribute_not_credited",
+  "fixtures/match_arm_wrapper_enum_attribute_not_credited",
+  "fixtures/match_arm_wrapper_parameter_callable_not_credited",
+  "fixtures/match_arm_wrapper_workspace_import_not_credited",
+  "fixtures/match_arm_wrapper_unreachable_arm_not_credited",
+  "fixtures/match_arm_wrapper_callable_shadow_not_credited",
+  "fixtures/match_arm_wrapper_variant_shadow_not_credited",
   "fixtures/observation_unverified_return_value",
   "fixtures/observation_verified_return_value",
   "fixtures/observation_unverified_field_construction",
@@ -6833,9 +6861,33 @@ fixtures = [
   "fixtures/match_arm_type_token_blind"
 ]
 code = [
+  "crates/ripr/src/analysis/classify/owner_pin.rs",
+  "crates/ripr/src/analysis/syntax/owner_pin.rs",
+  "crates/ripr/src/analysis/classifier/evidence.rs",
   "crates/ripr/src/analysis/classify/reveal.rs"
 ]
 outputs = [
+  "fixtures/match_arm_wrapper_callable_shadow_not_credited/expected/check.json",
+  "fixtures/match_arm_wrapper_callable_shadow_not_credited/expected/human.txt",
+  "fixtures/match_arm_wrapper_callable_shadow_not_credited/expected/human-full.txt",
+  "fixtures/match_arm_wrapper_enum_attribute_not_credited/expected/check.json",
+  "fixtures/match_arm_wrapper_enum_attribute_not_credited/expected/human.txt",
+  "fixtures/match_arm_wrapper_enum_attribute_not_credited/expected/human-full.txt",
+  "fixtures/match_arm_wrapper_parameter_callable_not_credited/expected/check.json",
+  "fixtures/match_arm_wrapper_parameter_callable_not_credited/expected/human.txt",
+  "fixtures/match_arm_wrapper_parameter_callable_not_credited/expected/human-full.txt",
+  "fixtures/match_arm_wrapper_sibling_attribute_not_credited/expected/check.json",
+  "fixtures/match_arm_wrapper_sibling_attribute_not_credited/expected/human.txt",
+  "fixtures/match_arm_wrapper_sibling_attribute_not_credited/expected/human-full.txt",
+  "fixtures/match_arm_wrapper_unreachable_arm_not_credited/expected/check.json",
+  "fixtures/match_arm_wrapper_unreachable_arm_not_credited/expected/human.txt",
+  "fixtures/match_arm_wrapper_unreachable_arm_not_credited/expected/human-full.txt",
+  "fixtures/match_arm_wrapper_variant_shadow_not_credited/expected/check.json",
+  "fixtures/match_arm_wrapper_variant_shadow_not_credited/expected/human.txt",
+  "fixtures/match_arm_wrapper_variant_shadow_not_credited/expected/human-full.txt",
+  "fixtures/match_arm_wrapper_workspace_import_not_credited/expected/check.json",
+  "fixtures/match_arm_wrapper_workspace_import_not_credited/expected/human.txt",
+  "fixtures/match_arm_wrapper_workspace_import_not_credited/expected/human-full.txt",
   "docs/specs/RIPR-SPEC-0094-observation-unverified-guard-generalization.md",
   "fixtures/oracle_confirmation_mixed/expected/check.json",
   "fixtures/oracle_confirmation_mixed/expected/human.txt",

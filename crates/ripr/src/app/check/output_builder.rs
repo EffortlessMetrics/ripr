@@ -15,7 +15,9 @@ pub(super) fn check_output_from_analysis(
         // #3940: record the base the loader actually used (explicit or
         // resolved default) rather than only an explicitly supplied one, so
         // scope-less runs stay consumable by base-matching consumers.
-        base: analysis.effective_base.or(input.base),
+        // Supplied bytes have no loader base; a caller declaration must not
+        // be restored as verified provenance in the rendered envelope.
+        base: analysis.effective_base,
         analysis_outcome: analysis.analysis_outcome,
         summary: analysis.summary,
         findings: analysis.findings,

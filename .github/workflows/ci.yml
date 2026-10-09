@@ -22,10 +22,12 @@ jobs:
   rust:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
-    # Product gates take ~28 min; the PR-evidence step allows 1,800s, so the
-    # 45-minute cap kills evidence past ~17 min (observed 2026-09-17). 90
-    # matches routed rust-github and covers gates plus a full evidence run.
-    timeout-minutes: 90
+    # PR1828 reached release readiness after ~90 min on 2026-10-08;
+    # cancellation coincided with the cap after all tests/policy gates passed.
+    # Comparable Perl readiness/evidence took another ~15-18 min. Allow a
+    # 120-minute completion experiment, not a guaranteed whole-job bound;
+    # retain all tests, inner deadlines and required evidence artifacts.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v6
         with:

@@ -1,0 +1,47 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/match_arm_wrapper_variant_shadow_not_credited/input
+
+Summary: 1 probe(s), 0 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 1 of 1 finding(s) unsuppressed
+
+Analysis outcome: findings below (analysis complete; complete_with_findings).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+WARNING fixtures/match_arm_wrapper_variant_shadow_not_credited/input/src/lib.rs:23
+  id: probe:src_lib.rs:match_arm:9e71545f
+
+Changed
+  before: Unit::Fortnight => 1_296_000,
+  after:  Unit::Fortnight =>
+
+Probe
+  family: match_arm
+  delta:  control
+  owner:  src/lib.rs::seconds
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach seconds: seconds_total, bridge_fortnight
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence match arm result: Unit::Fortnight =>
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator split across oracles: no single oracle binds entity identity, strong observation, and a change reference (specificity_unbound)
+  - local flow reaches match arm result: Unit::Fortnight => (line 23)
+  - related test src/lib.rs:37 seconds_total uses strong exact value oracle: assert_eq!(seconds(super::Unit::Week), 604_800);
+  - related test src/lib.rs:39 bridge_fortnight uses strong exact value oracle: assert_eq!(seconds_bridge(Unit::Fortnight), 604_800);
+  - source assertion argument value 604_800 at line 37
+  - source enum variant value super::Unit::Week at line 37
+  - source enum variant value super::Unit::Week at line 37
+  - source assertion argument value 604_800 at line 39
+  - source enum variant value Unit::Fortnight at line 39
+
+Weakness
+  - No strong discriminator was detected
+
+Next step
+  Strengthen the related assertion so it discriminates the changed behavior.
+Drill in:
+  ripr explain --root fixtures/match_arm_wrapper_variant_shadow_not_credited/input --diff fixtures/match_arm_wrapper_variant_shadow_not_credited/diff.patch --mode fast probe:src_lib.rs:match_arm:9e71545f
+  ripr context --root fixtures/match_arm_wrapper_variant_shadow_not_credited/input --diff fixtures/match_arm_wrapper_variant_shadow_not_credited/diff.patch --mode fast --at probe:src_lib.rs:match_arm:9e71545f

@@ -64,18 +64,25 @@ pub(in crate::analysis) fn build_finding(
             .missing_discriminators
             .iter()
             .any(|fact| fact.reason.contains(BOUNDARY_OPERAND_UNRESOLVED_MARKER));
-    // #1579: a bare-guard predicate over a changed error return an
+    // #1579: a bare-guard predicate or actual changed error producer an
     // exact observer already covers is unconfirmed, not
     // established-missing. Prescribing a boundary or error-assertion
     // test would instruct the user to add a test the suite already
     // contains, so the typed static limitation replaces the
-    // prescription. The class stays `InfectionUnknown`: the gap is
+    // prescription. The shared infection decision keeps actual opaque
+    // producer transitions `InfectionUnknown`; the limitation here cannot
+    // manufacture observer admission. The gap is
     // still visible, only the impossible repair assignment is withheld.
     let fallback_pin_syntax = OwnerPinSyntax::default();
     let pin_syntax = context.owner_pin_syntax.unwrap_or(&fallback_pin_syntax);
     let error_guard_unresolved: Option<String> = if class == ExposureClass::InfectionUnknown
-        && matches!(context.probe.family, ProbeFamily::Predicate)
-    {
+        && matches!(
+            context.probe.family,
+            ProbeFamily::Predicate
+                | ProbeFamily::ErrorPath
+                | ProbeFamily::ReturnValue
+                | ProbeFamily::FieldConstruction
+        ) {
         unresolved_guard_error_edge(
             context.probe,
             context.owner_fn,

@@ -1260,15 +1260,28 @@ See [PR inline comment publisher workflow](PR_INLINE_COMMENT_PUBLISHER_WORKFLOW.
 for rollout guidance, publish-plan review, fork and permission behavior,
 dedupe/upsert expectations, and rollback.
 
-The generated workflow also captures existing RIPR inline-comment metadata
-(`ripr pr-comments existing`), turns the publish plan into GitHub API requests
-(`ripr pr-comments requests`, which writes none unless the plan is safe to
-publish), and only calls GitHub for them in explicit `inline` mode. Read those
-steps in the output of `ripr init --ci github --dry-run`; this page does not
-keep a copy because a copy drifts from what the command writes.
+The generated workflow installs published RIPR **0.10.0** and uses commands
+that binary supports. It retains shell/jq adapters for the report pipeline,
+summary, existing-comment capture and ordered comment requests. The adapters
+preserve bot-author filtering, safe-publish checks, changed-line batching,
+blocking gate failures and the before phase of the repair loop. CI does not
+manufacture an after snapshot or repair receipt without a test edit.
 
-One step is kept here because a test holds it byte-equal to the template: the
-step that runs the analysis and report steps with one command. The token-holding
+`reports ci-packet`, `reports ci-summary`, `pr-comments existing` and
+`pr-comments requests` are development-only capabilities of the current
+0.11.0-alpha.2 source; they are absent from installed 0.10.0. A successful
+current-CLI replay does not qualify a workflow using the released binary.
+The generated file verifies the installed version before running its command
+steps and keeps the modern checksum, checkout and artifact protections.
+It only calls GitHub in explicit `inline` mode. Read those
+steps in the output of `ripr init --ci github --dry-run`; this page does not
+keep a copy because a copy drifts from what the command writes. Installed
+0.10.0 also predates repair-attempt orchestration: its proof rail uses manual
+snapshots, verify and receipt after the focused test edit. Included reports
+label snapshot comparisons as post-edit guidance.
+
+The development command fixture keeps this step byte-equal to the compact
+template; it is not emitted for an installation pinned to 0.10.0. The token-holding
 comment capture and publish steps and the summary stay in YAML around it.
 `ripr reports ci-packet` runs the pilot, the pull request diff capture (which pins the diff presentation so
 ambient Git configuration cannot change the bytes RIPR analyzes, #4005), the
@@ -1321,7 +1334,7 @@ Permissions and job settings:
   `ripr-waive` is added or removed, since the gate reads labels from the event.
   Any label change re-runs the job, and the concurrency group cancels the
   superseded run.
-- Every run step is bash (`$'\t'` in the publish loop), so `defaults.run.shell`
+- Every run step is bash (arrays in the comment planner), so `defaults.run.shell`
   pins bash; the steps still parse if the job moves to `windows-latest`, whose
   default shell is PowerShell.
 - One run per pull request: a newer push cancels the older run. Only the
@@ -1362,17 +1375,25 @@ Steps:
   saves to that pull request, and the cache lives outside the checkout, so a
   pull request cannot commit one. The action is pinned to a commit SHA because
   the job holds a token with write scopes.
-- **Capture existing RIPR inline comments** pipes the pull request's review
-  comments into `ripr pr-comments existing`, which keeps only comments the
+- **Verify installed RIPR compatibility** rejects a binary reporting a version
+  other than the installed 0.10.0 contract before the report steps run.
+- **Capture existing RIPR inline comments** normalizes the pull request's review
+  comments with jq, keeping only comments the
   workflow posted (author `github-actions[bot]`, type `Bot`) that carry a
   `ripr:dedupe` marker. Anyone can write the marker; a marked comment from
   another author must not suppress a RIPR card or be PATCHed by this job.
-- **Run RIPR** is the one command above. It reads no token; the comment steps
-  around it hold that.
-- **Publish RIPR inline comments** runs `ripr pr-comments requests`, which turns
-  the publish plan into an ordered list of GitHub API requests (updates first,
+- **Generate RIPR pilot packet** starts the compatible report pipeline. Report
+  commands read no token; only the comment capture and publish steps hold it.
+- **Run RIPR PR guidance report** uses the released check and review APIs. A
+  failed check stops this gate-critical producer; it cannot borrow a partial
+  check result and report success. Development's strict `--check-output` join
+  is not an API provided by installed 0.10.0.
+- **Evaluate RIPR gate decision** remains the pass/fail authority for a
+  configured mode. The step is not `continue-on-error`.
+- **Publish RIPR inline comments** turns
+  the publish plan into ordered GitHub API requests (updates first,
   then one review for new cards), and the step sends each one with `gh api`.
-  ripr writes no request when the plan is not safe to publish, and folds CR/LF
+  It sends no request when the plan is not safe to publish, and folds CR/LF
   in every message it prints so a repository path cannot start a line GitHub
   reads as a workflow command.
 - **Upload RIPR diff findings** stays `continue-on-error`: upload infrastructure

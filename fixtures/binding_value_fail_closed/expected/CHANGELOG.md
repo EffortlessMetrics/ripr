@@ -153,3 +153,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — binding_value_fail_closed (10)
+
+Reason:
+RIPR-SPEC-0158: Three predicate subjects remain infection/propagation-unknown; unsupported map_or_else, shifted closures and dynamic needles cannot establish exact boundary values. Only the earliest unsupported producer explanation changes. Independent control: 3 actual runtime tests; current activation evaluator refusal controls.
+
+Command:
+`cargo xtask goldens bless binding_value_fail_closed --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

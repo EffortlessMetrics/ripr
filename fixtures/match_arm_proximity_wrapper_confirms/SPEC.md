@@ -24,13 +24,18 @@ cargo xtask fixtures match_arm_proximity_wrapper_confirms
 
 ## Then
 
-The arm reads `exposed`. `bridge_fortnight` is related only by sharing the
-file, but it calls a function that reaches `seconds`, so it may run the arm
-and its `Unit::Fortnight` assertion still confirms it. This is the control for
-`match_arm_proximity_confirmation_not_credited`.
+The arm reads `exposed`. `bridge_fortnight` remains related by file proximity,
+but its own exact assertion calls a parser-established transparent wrapper.
+The wrapper forwards its sole plain enum parameter unchanged to the owner's
+whole tail match, and the assertion selects the changed enum variant through
+a verified parent-module binding. That same admitted oracle therefore supplies
+owner identity, changed-arm observation, and strong discrimination. Possible
+wrapper reach alone supplies no such identity. This is the positive control for
+`match_arm_proximity_confirmation_not_credited` and the wrapper binding refusal
+fixtures.
 
 ## Must Not
 
-- Withhold confirmation from a same-file test that calls a function with a
-  name path to the owner.
+- Promote an oracle through possible wrapper reach without its own verified
+  callable, enum-variant, and eager assertion binding.
 - Claim runtime adequacy.

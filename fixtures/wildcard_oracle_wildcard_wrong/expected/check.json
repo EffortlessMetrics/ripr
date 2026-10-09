@@ -27,13 +27,13 @@
         "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
         "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches returned value: value + 2"},
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
-        "discriminate": {"state":"weak","confidence":"high","summary":"Only relational oracle found; it may not discriminate the changed value exactly"}
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach score: observes_score", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: value + 2", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Only relational oracle found; it may not discriminate the changed value exactly", "local flow reaches returned value: value + 2 (line 2)", "related test src/lib.rs:8 observes_score uses weak relational check oracle: assert!(matches!(value, _));", "source function argument value value = 1 at line 9"],
+      "evidence_path": ["reach yes: Related tests appear to reach score: observes_score", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: value + 2", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: value + 2 (line 2)", "related test src/lib.rs:8 observes_score uses weak relational check oracle: assert!(matches!(value, _));", "source function argument value value = 1 at line 9"],
       "flow_sinks": [
         {"kind":"return_value","text":"value + 2","line":2}
       ],
-      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches returned value: value + 2", "Only relational oracle found; it may not discriminate the changed value exactly", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach score: observes_score"],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches returned value: value + 2", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach score: observes_score"],
       "missing": ["No strong discriminator was detected"],
       "assertion_texts": {
         "9": "let value = super::score(1);"

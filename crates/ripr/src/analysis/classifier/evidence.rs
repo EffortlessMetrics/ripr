@@ -60,7 +60,27 @@ impl ClassifiedProbeEvidence {
             context.workspace_complete,
             context.test_value_facts,
         );
-        let infect = infection_evidence(context.probe, &test_summaries, &activation);
+        // Reaching a replacement producer does not establish value infection
+        // when its paired before value is opaque. Share the parser-established
+        // guard edge with the finding's limitation/guidance owner.
+        let unresolved_error_producer = matches!(
+            context.probe.family,
+            ProbeFamily::ErrorPath | ProbeFamily::ReturnValue | ProbeFamily::FieldConstruction
+        )
+        .then(|| {
+            crate::analysis::classify::unresolved_guard_error_edge(
+                context.probe,
+                context.owner_fn,
+                &test_summaries,
+                &flow_sinks,
+                context.helper_chain.as_ref(),
+            )
+        })
+        .flatten();
+        let infect = match unresolved_error_producer {
+            Some(reason) => StageEvidence::new(StageState::Unknown, Confidence::Low, reason),
+            None => infection_evidence(context.probe, &test_summaries, &activation),
+        };
         let valid_witness = propagation_witness
             .as_ref()
             .and_then(|diagnostic| match diagnostic {
@@ -164,6 +184,17 @@ impl ClassifiedProbeEvidence {
             &cross_package_defeats,
             &ReturnOracleAdmission {
                 owner_return_pin: &owner_pin_admits,
+                transparent_wrapper_identity: &|test, assertion| {
+                    context.owner_fn.is_some_and(|owner| {
+                        pin_syntax.transparent_match_arm_wrapper(
+                            context.probe,
+                            owner,
+                            test,
+                            assertion,
+                            context.index,
+                        )
+                    })
+                },
                 assertion_admitted: &assertion_admitted,
                 proximity_may_reach_owner: &|test| {
                     context.owner_fn.is_none_or(|owner| {
@@ -238,7 +269,7 @@ impl ClassifiedProbeEvidence {
                 .owner_fn
                 .is_some_and(|owner| !owner_may_be_reached_unseen(owner, context.index));
         let unreached = |stage: StageEvidence, verb: &str| {
-            if reach_ruled_out && stage.state == StageState::Yes {
+            if reach_ruled_out && matches!(stage.state, StageState::Yes | StageState::Weak) {
                 unreached_stage(verb)
             } else {
                 stage

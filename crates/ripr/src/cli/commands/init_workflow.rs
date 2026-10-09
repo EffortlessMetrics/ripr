@@ -4,20 +4,23 @@
 //! a ~2,400-line raw string inline in `init.rs`, dwarfing the command logic
 //! around it. This module owns the generated workflow bytes; `init.rs` keeps
 //! only the init command surface. The template is stored as a head, the
-//! advisory-summary step ([`advisory_summary`], now one `ripr reports
-//! ci-summary` call), and a tail, spliced in
-//! source order; the assembled bytes are pinned by hash in the test below.
+//! development advisory-summary step and a tail. Their compact command
+//! wiring remains pinned by hash. Adopter rendering instead selects the
+//! command template qualified for the installed release, currently 0.10.0.
 //! `generated_github_actions_workflow` substitutes `@RIPR_...@` placeholders
 //! at render time; rendered behavior stays pinned by the
 //! `generated_workflow_*` tests in `init.rs` and `commands.rs`, the
 //! `tests/generated_review_workflow.rs` replay, and `cargo xtask
 //! check-workflows`.
 
+#[cfg(test)]
 #[path = "init_workflow/advisory_summary.rs"]
 mod advisory_summary;
 
+#[cfg(test)]
 use crate::agent::loop_commands;
 
+#[cfg(test)]
 use advisory_summary::ADVISORY_SUMMARY_STEP;
 
 /// The template up to the `Add RIPR advisory summary` step, ending with the
@@ -168,14 +171,53 @@ const TEMPLATE_TAIL: &str = r#"      - name: Upload RIPR report artifacts
 /// The unrendered workflow template, pinned by hash below. The only
 /// substitutions between this and the written file are the render-time
 /// `@RIPR_...@` placeholder replacements below.
+#[cfg(test)]
 fn generated_workflow_template() -> String {
     TEMPLATE_HEAD.to_owned() + ADVISORY_SUMMARY_STEP + TEMPLATE_TAIL
+}
+
+/// Retained development command wiring, never selected for an installed
+/// 0.10.0 adopter workflow. Tests replay it with the binary under test.
+#[cfg(test)]
+pub(super) fn generated_development_workflow() -> String {
+    render_development_workflow(env!("CARGO_PKG_VERSION"))
+}
+
+/// Published 0.10.0 has no ci-packet/ci-summary or comment JSON helper
+/// commands. Keep its executable steps and artifact paths together, while
+/// retaining current checkout, installation, cache and upload protections.
+fn released_0_10_workflow_template() -> String {
+    let prefix = TEMPLATE_HEAD
+        .split("      - name: Capture existing RIPR inline comments\n")
+        .next()
+        .unwrap_or(TEMPLATE_HEAD);
+    prefix.to_owned()
+        + "      - name: Verify installed RIPR compatibility\n        run: |\n          installed=\"$(ripr --version)\"\n          if [ \"$installed\" != 'ripr 0.10.0' ]; then\n            echo \"::error::Expected ripr 0.10.0 for these workflow commands; got $installed\"; exit 1\n          fi\n\n"
+        + include_str!("init_workflow/released_0_10_producer.yml")
+        + "\n"
+        + include_str!("init_workflow/released_0_10_summary.yml")
+        + "\n"
+        + TEMPLATE_TAIL
+}
+
+/// Pin selection alone does not establish command compatibility. Historical
+/// simulated pins without a qualified template must fail visibly before the
+/// install or any product command, never fall through to development APIs.
+fn unsupported_workflow_template() -> String {
+    let prefix = TEMPLATE_HEAD
+        .split("      - name: Capture existing RIPR inline comments\n")
+        .next()
+        .unwrap_or(TEMPLATE_HEAD);
+    prefix.replace(
+        "@RIPR_PIN_FIRST_LINE@",
+        "      - name: Reject unsupported RIPR command contract\n        run: |\n          echo '::error::No qualified workflow command template for installed ripr @RIPR_VERSION@; use the supported 0.10.0 generator contract.'\n          exit 1\n\n@RIPR_PIN_FIRST_LINE@",
+    ) + TEMPLATE_TAIL
 }
 
 /// Newest ripr release on crates.io. `init --ci github` pins this in the
 /// generated workflow when the generating binary is NEWER (unreleased), so
 /// the install step always resolves (#5208). Released generators pin
-/// themselves and render byte-identical output to before.
+/// themselves; command compatibility is selected separately below.
 ///
 /// Bump together with the package version in the release commit, and
 /// publish from that commit — never for a release candidate (#5208, #5244
@@ -217,7 +259,7 @@ pub(super) fn workflow_install_version(generator_version: &str) -> String {
 }
 
 /// Historical pin-comment first line, byte-for-byte: released generators
-/// keep it so their output is unchanged (#5208). Only the first line is
+/// retain this pin description (#5208). Only the first line is
 /// substituted — the rest of the install-step comment (prebuilt download,
 /// cache, upgrade route) is version-independent (#5236).
 const RELEASED_PIN_FIRST_LINE: &str =
@@ -244,6 +286,47 @@ pub(super) fn generated_github_actions_workflow() -> String {
 /// Parameterized so tests pin released and unreleased renderings without
 /// rebuilding the binary (#5208).
 pub(super) fn generated_workflow_for_version(version: &str) -> String {
+    let pinned = workflow_install_version(version);
+    let first_line = install_pin_first_line(version, &pinned);
+    if pinned == "0.10.0" {
+        // Do not canonicalize release artifact paths with development
+        // loop_commands constants: the installed release owns this contract.
+        let mut workflow = released_0_10_workflow_template()
+            .replace("@RIPR_VERSION@", &pinned)
+            .replace("@RIPR_PIN_FIRST_LINE@", &first_line);
+        // Repair-attempt orchestration is also absent from 0.10.0. Its
+        // proof rail uses manual snapshots/verify/receipt around a test edit.
+        for (placeholder, label) in [
+            (
+                "@RIPR_REPAIR_AFTER_PHASE@",
+                "After the test edit: take an after snapshot, then run the printed manual verify and receipt commands.",
+            ),
+            (
+                "@RIPR_MANUAL_VERIFY_LABEL@",
+                "Manual verify after the test edit (needs snapshots taken around that edit)",
+            ),
+            ("@RIPR_MANUAL_RECEIPT_LABEL@", "Manual receipt after verify"),
+            (
+                "@RIPR_VERIFY_AFTER_EDIT_LABEL@",
+                "Verify after the test edit",
+            ),
+            ("@RIPR_RECEIPT_AFTER_VERIFY_LABEL@", "Receipt after verify"),
+            (
+                "@RIPR_NO_RECEIPT_BEFORE_REPAIR@",
+                "No agent receipt yet. None is expected before the focused test edit; take an after snapshot, then run manual verify and receipt.",
+            ),
+        ] {
+            workflow = workflow.replace(placeholder, label);
+        }
+        return workflow;
+    }
+    unsupported_workflow_template()
+        .replace("@RIPR_VERSION@", &pinned)
+        .replace("@RIPR_PIN_FIRST_LINE@", &first_line)
+}
+
+#[cfg(test)]
+fn render_development_workflow(version: &str) -> String {
     let pinned = workflow_install_version(version);
     let first_line = install_pin_first_line(version, &pinned);
     generated_workflow_template()
@@ -325,7 +408,7 @@ pub(super) fn generated_workflow_for_version(version: &str) -> String {
 
 #[cfg(test)]
 mod template_pin_tests {
-    use super::generated_workflow_template;
+    use super::{generated_development_workflow, generated_workflow_template};
     use sha2::{Digest, Sha256};
 
     /// #4386: the extraction had to be byte-preserving, so this pinned the
@@ -357,6 +440,13 @@ mod template_pin_tests {
             .collect();
         assert_eq!(hex, TEMPLATE_SHA256);
     }
+
+    #[test]
+    fn development_replay_fixture_preserves_the_compact_command_contract() {
+        let fixture = include_str!("../../../tests/fixtures/development_ci_workflow.yml");
+        let workflow = fixture.lines().skip(2).collect::<Vec<_>>().join("\n") + "\n";
+        assert_eq!(workflow, generated_development_workflow());
+    }
 }
 
 #[cfg(test)]
@@ -365,6 +455,56 @@ mod install_version_tests {
         LATEST_RELEASED_VERSION, generated_workflow_for_version, parse_release_version,
         workflow_install_version,
     };
+
+    #[test]
+    fn installed_release_selects_only_qualified_command_surfaces() {
+        for generator in ["0.10.0", "0.11.0-alpha.2", "unknown"] {
+            let workflow = generated_workflow_for_version(generator);
+            assert!(workflow.contains("          version=0.10.0\n"));
+            assert!(workflow.contains("name: Verify installed RIPR compatibility"));
+            assert!(workflow.contains("name: Evaluate RIPR gate decision"));
+            assert!(!workflow.contains("@RIPR_"));
+            for unsupported in [
+                "ripr reports ci-packet",
+                "ripr reports ci-summary",
+                "ripr pr-comments existing",
+                "ripr pr-comments requests",
+                "--check-output",
+                "--attempt",
+            ] {
+                assert!(
+                    !workflow.contains(unsupported),
+                    "{generator}: {unsupported}"
+                );
+            }
+            assert!(!workflow.contains("ripr agent receipt"));
+            assert!(!workflow.contains("ripr outcome"));
+            assert!(!workflow.contains("cargo xtask"));
+        }
+    }
+
+    #[test]
+    fn unqualified_historical_install_versions_fail_before_product_commands() -> Result<(), String>
+    {
+        for generator in ["0.9.0", "0.1.0"] {
+            let workflow = generated_workflow_for_version(generator);
+            let reject = workflow
+                .find("name: Reject unsupported RIPR command contract")
+                .ok_or("missing explicit unsupported-version boundary")?;
+            let install = workflow
+                .find("name: Install ripr")
+                .ok_or("missing install")?;
+            let cleanup = workflow
+                .find("name: Remove checked-in RIPR artifacts")
+                .ok_or("missing untrusted artifact cleanup")?;
+            assert!(cleanup < reject && reject < install);
+            assert!(workflow.contains("No qualified workflow command template"));
+            assert!(!workflow.contains("ripr reports ci-packet"));
+            assert!(!workflow.contains("ripr reports ci-summary"));
+            assert!(!workflow.contains("name: Evaluate RIPR gate decision"));
+        }
+        Ok(())
+    }
 
     /// Released generators pin themselves, whatever the release (#5208).
     /// The constant itself is in the loop: the release commit carries

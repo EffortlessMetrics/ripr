@@ -641,6 +641,36 @@ covered_by = ["npm --prefix packaging/npm/launcher pack --dry-run --json --ignor
 # ---------------------------------------------------------------------------
 
 [[allow]]
+glob = "crates/ripr/src/cli/commands/init_workflow/released_0_10_producer.yml"
+kind = "installed_release_workflow_template"
+owner = "ripr/ci-workflow"
+surface = "ci"
+classification = "production"
+reason = "Embedded adopter workflow command adapter for the installed 0.10.0 release; selected by the Rust generator and qualified with the verified released binary, not executed as repository automation."
+covered_by = ["cargo test -p ripr --lib workflow"]
+covered_by_unix = ["cargo test -p ripr --test generated_review_workflow", "cargo test -p ripr --test generated_review_workflow generated_released_publish_adapter_preserves_current_request_semantics"]
+
+[[allow]]
+glob = "crates/ripr/src/cli/commands/init_workflow/released_0_10_summary.yml"
+kind = "installed_release_workflow_template"
+owner = "ripr/ci-workflow"
+surface = "ci"
+classification = "production"
+reason = "Embedded summary adapter for installed 0.10.0 artifact paths and manual snapshot prerequisites; qualified by actual released commands and explicit phase-label negative controls."
+covered_by = ["cargo test -p ripr --lib workflow"]
+covered_by_unix = ["cargo test -p ripr --test generated_review_workflow", "cargo test -p ripr --test generated_review_workflow only_explicit_post_edit_labels_defer_a_fenced_command"]
+
+[[allow]]
+glob = "crates/ripr/tests/fixtures/development_ci_workflow.yml"
+kind = "development_workflow_fixture"
+owner = "ripr/ci-workflow"
+surface = "fixtures"
+classification = "fixture"
+reason = "Original compact development command wiring retained for current-CLI replay and hash-pinned expectations; explicitly excludes installation and adopter compatibility claims."
+covered_by = ["cargo test -p ripr --lib workflow"]
+covered_by_unix = ["cargo test -p ripr --test generated_review_workflow"]
+
+[[allow]]
 glob = "crates/ripr/examples/**"
 kind = "fixture_input"
 owner = "analysis-fixtures"

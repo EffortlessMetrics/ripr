@@ -542,7 +542,9 @@ fn invoke_perl_lsp_producer(
         .map_err(|e| format!("failed to create Perl facts cache dir: {e}"))?;
 
     let root_str = input.root.display().to_string();
-    let base = input.base.as_deref();
+    // Supplied patch bytes have no loader base. Do not let a discarded
+    // caller declaration change the exporter's scope or cache identity.
+    let base = input.base.as_deref().filter(|_| input.diff_file.is_none());
     let head = "HEAD";
     let timeout_ms = perl_config.timeout_ms();
     let executable_str = executable.display().to_string();
@@ -1090,6 +1092,82 @@ mod tests {
             Some("master"),
             "the default run must record the resolved repository default branch"
         );
+        assert_eq!(
+            output
+                .analysis_outcome
+                .as_ref()
+                .and_then(|outcome| outcome.identity.base_revision.as_deref()),
+            Some("master")
+        );
+        // Genuine Git diffs require a resolvable base and retain that base.
+        let git_input = CheckInput {
+            root: repo.clone(),
+            base: Some("HEAD~1".to_string()),
+            ..CheckInput::default()
+        };
+        let git_output = check_workspace(git_input.clone())?;
+        assert_eq!(git_output.base.as_deref(), Some("HEAD~1"));
+        assert_eq!(
+            git_output
+                .analysis_outcome
+                .as_ref()
+                .and_then(|outcome| outcome.identity.base_revision.as_deref()),
+            Some("HEAD~1")
+        );
+        assert!(!git_output.findings.is_empty());
+        let worktree =
+            check_workspace_worktree_with_config(git_input.clone(), &RiprConfig::default())?;
+        assert_eq!(worktree.base.as_deref(), Some("HEAD~1"));
+        assert_eq!(
+            worktree
+                .analysis_outcome
+                .as_ref()
+                .and_then(|outcome| outcome.identity.base_revision.as_deref()),
+            Some("HEAD~1")
+        );
+        assert!(!worktree.findings.is_empty());
+        let mut invalid = git_input;
+        invalid.base = Some("missing-causal-base".to_string());
+        for result in [
+            check_workspace_worktree_with_config(invalid.clone(), &RiprConfig::default()),
+            check_workspace(invalid),
+        ] {
+            let error = match result {
+                Ok(_) => {
+                    return Err("unresolvable Git base produced a successful report".to_string());
+                }
+                Err(error) => error,
+            };
+            assert!(error.contains("missing-causal-base"), "{error}");
+        }
+
+        // Supplied patches are independent of Git base selection. Even a
+        // resolvable ref cannot establish the provenance of supplied bytes.
+        let supplied = repo.join("supplied.diff");
+        std::fs::write(&supplied, "--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\n-pub const VALUE: u32 = 1;\n+pub const VALUE: u32 = 2;\n")
+            .map_err(|error| format!("write supplied diff failed: {error}"))?;
+        let mut input_identity = None;
+        for base in [Some("HEAD~1"), Some("missing-causal-base"), None] {
+            let output = check_workspace(CheckInput {
+                root: repo.clone(),
+                diff_file: Some(supplied.clone()),
+                base: base.map(str::to_string),
+                ..CheckInput::default()
+            })?;
+            assert!(!output.findings.is_empty());
+            assert_eq!(output.base, None, "supplied diff with base {base:?}");
+            let outcome = output
+                .analysis_outcome
+                .as_ref()
+                .ok_or_else(|| "supplied diff lost typed outcome".to_string())?;
+            assert_eq!(outcome.identity.base_revision, None);
+            assert!(outcome.identity.input_identity.is_some());
+            if let Some(expected) = &input_identity {
+                assert_eq!(&outcome.identity.input_identity, expected);
+            } else {
+                input_identity = Some(outcome.identity.input_identity.clone());
+            }
+        }
         Ok(())
     }
 
@@ -1107,16 +1185,16 @@ mod tests {
     }
 
     #[test]
-    fn check_output_keeps_input_base_when_no_loader_base_applies() {
-        // Diff-file/stdin runs involve no base; an explicitly provided
-        // value passes through unchanged.
+    fn check_output_discards_input_base_when_no_loader_base_applies() {
+        // Diff-file/stdin runs involve no resolved base. Input declarations
+        // cannot manufacture one in the output.
         let mut input = sample_diff_input();
         input.base = Some("origin/main".to_string());
         let output = output_builder::check_output_from_analysis(
             input,
             minimal_result_with_effective_base(None),
         );
-        assert_eq!(output.base.as_deref(), Some("origin/main"));
+        assert_eq!(output.base, None);
     }
 
     #[test]

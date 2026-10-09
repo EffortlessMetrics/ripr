@@ -63,3 +63,16 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — wildcard_oracle_wildcard_wrong (3)
+
+Reason:
+RIPR-SPEC-0108: Same one-subject weak wildcard contract despite wrong value3; refresh witness explanation/confidence, no promotion from a tautology. Independent control: Actual wrong runtime wildcard passes; matched wildcard/exact/guarded runtime control distinguishes2 versus3.
+
+Command:
+`cargo xtask goldens bless wildcard_oracle_wildcard_wrong --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

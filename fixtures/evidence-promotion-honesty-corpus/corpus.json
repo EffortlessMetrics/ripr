@@ -1288,6 +1288,182 @@
       ]
     },
     {
+      "id": "rust_match_arm_wrapper_callable_shadow_not_credited",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/match_arm_wrapper_callable_shadow_not_credited",
+      "vector": "module_const_callable_shadows_transparent_wrapper",
+      "probe_family": "match_arm",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        },
+        {
+          "type": "expected_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
+      "id": "rust_match_arm_wrapper_variant_shadow_not_credited",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/match_arm_wrapper_variant_shadow_not_credited",
+      "vector": "associated_constant_variant_spelling_selects_sibling_arm",
+      "probe_family": "match_arm",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        },
+        {
+          "type": "expected_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
+      "id": "rust_match_arm_wrapper_workspace_import_not_credited",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/match_arm_wrapper_workspace_import_not_credited",
+      "vector": "workspace_import_overrides_parent_wrapper",
+      "probe_family": "match_arm",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
+      "id": "rust_match_arm_wrapper_unreachable_arm_not_credited",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/match_arm_wrapper_unreachable_arm_not_credited",
+      "vector": "wildcard_precedes_changed_enum_arm",
+      "probe_family": "match_arm",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
+      "id": "rust_match_arm_wrapper_parameter_callable_not_credited",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/match_arm_wrapper_parameter_callable_not_credited",
+      "vector": "wrapper_parameter_callable_shadows_owner",
+      "probe_family": "match_arm",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
+      "id": "rust_match_arm_wrapper_sibling_attribute_not_credited",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/match_arm_wrapper_sibling_attribute_not_credited",
+      "vector": "sibling_attribute_expansion_shadows_wrapper",
+      "probe_family": "match_arm",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
+      "id": "rust_match_arm_wrapper_enum_attribute_not_credited",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/match_arm_wrapper_enum_attribute_not_credited",
+      "vector": "owner_enum_attribute_changes_variant_identity",
+      "probe_family": "match_arm",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
       "id": "rust_same_method_other_type",
       "language": "rust",
       "tier": "pure",
@@ -5248,7 +5424,7 @@
         },
         {
           "type": "expected_finding_count",
-          "count": 1
+          "count": 3
         },
         {
           "type": "maximum_class",

@@ -1,0 +1,152 @@
+# Development CLI replay fixture only; its install is never executed.
+# Preserves bf35 command expectations, not an adopter install contract.
+name: RIPR
+
+# Each setting and step is explained in docs/CI.md in the ripr repository.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write # inline comments only (RIPR_COMMENT_MODE=inline)
+  security-events: write # SARIF upload only (RIPR_UPLOAD_SARIF=true)
+
+env:
+  RIPR_UPLOAD_SARIF: "true"
+  # Repository variables. RIPR_GATE_MODE: empty (advisory), visible-only,
+  # acknowledgeable, baseline-check or calibrated-gate.
+  RIPR_GATE_MODE: ${{ vars.RIPR_GATE_MODE || '' }}
+  RIPR_GATE_BASELINE: ${{ vars.RIPR_GATE_BASELINE || '' }}
+  # RIPR_COMMENT_MODE: off, plan or inline.
+  RIPR_COMMENT_MODE: ${{ vars.RIPR_COMMENT_MODE || 'off' }}
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ripr:
+    name: RIPR advisory reports
+    runs-on: ubuntu-latest
+    # Advisory unless RIPR_GATE_MODE names a blocking mode.
+    continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }} # the PR head, where comments are placed
+          fetch-depth: 0
+          persist-credentials: false # leaves no token in .git/config
+
+      - name: Remove checked-in RIPR artifacts
+        run: rm -rf target/ripr target/ci # a pull request must not supply its own RIPR inputs
+
+      # Pinned to released ripr 0.10.0 (0.11.0-alpha.2 is unreleased). The steps below use
+      # its commands. Downloads the prebuilt release and checks its SHA-256;
+      # with none for this runner, `cargo install` (needs Rust).
+      - name: Install ripr
+        id: install
+        run: |
+          version=0.10.0
+          case "$RUNNER_OS-$RUNNER_ARCH" in
+            Linux-X64) target=x86_64-unknown-linux-gnu ;;
+            Linux-ARM64) target=aarch64-unknown-linux-gnu ;;
+            macOS-X64) target=x86_64-apple-darwin ;;
+            macOS-ARM64) target=aarch64-apple-darwin ;;
+            *) target="" ;;
+          esac
+          asset="ripr-server-v$version-$target.tar.gz"
+          url="https://github.com/EffortlessMetrics/ripr/releases/download/v$version/$asset"
+          cd "$RUNNER_TEMP" && mkdir -p ripr-bin
+          if [ -n "$target" ] && curl -fsSL --retry 3 -O "$url" && curl -fsSL --retry 3 -O "$url.sha256"; then
+            expected="$(awk 'NR == 1 { print $1 }' "$asset.sha256")"
+            actual="$( { sha256sum "$asset" 2>/dev/null || shasum -a 256 "$asset"; } | awk '{ print $1 }')"
+            if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
+              echo "::error::$asset does not match its published SHA-256 (expected ${expected:-nothing}, got $actual)"; exit 1
+            fi
+            tar -xzf "$asset" -C ripr-bin; echo "$RUNNER_TEMP/ripr-bin" >> "$GITHUB_PATH"
+          else
+            why="no prebuilt ripr $version for $RUNNER_OS-$RUNNER_ARCH"; [ -z "$target" ] || why="downloading $url failed"
+            if ! command -v cargo >/dev/null 2>&1; then
+              echo "::error::Cannot install ripr: $why, and this runner has no cargo to build it. Install Rust on the runner (https://rustup.rs) or add a Rust toolchain step before Install ripr."; exit 1
+            fi
+            echo "::notice::$why; building it with cargo install"
+            cargo install ripr --version 0.10.0 --locked
+          fi
+          PATH="$RUNNER_TEMP/ripr-bin:$PATH" ripr --version
+          echo "RIPR_CACHE_DIR=$RUNNER_TEMP/ripr-cache" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0; reuses unchanged files' analysis
+        with:
+          path: ${{ runner.temp }}/ripr-cache
+          key: ripr-cache-0.10.0-${{ runner.os }}-${{ github.event.pull_request.head.sha || github.sha }}
+          restore-keys: ripr-cache-0.10.0-${{ runner.os }}-
+
+      - name: Capture existing RIPR inline comments
+        if: always() && github.event_name == 'pull_request' && env.RIPR_COMMENT_MODE != 'off'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate --slurp "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments" \
+            | ripr pr-comments existing --root . --raw -
+
+      - name: Run RIPR
+        run: ripr reports ci-packet --root .
+
+      - name: Publish RIPR inline comments
+        if: always() && github.event_name == 'pull_request' && env.RIPR_COMMENT_MODE == 'inline' && hashFiles('target/ripr/review/comment-publish-plan.json') != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ripr pr-comments requests --root . --pull-request "${{ github.event.pull_request.number }}" --head-sha "${{ github.event.pull_request.head.sha }}"
+          while IFS=$'\t' read -r method endpoint request message; do
+            gh api --method "$method" "repos/${{ github.repository }}/$endpoint" --input "$request" </dev/null >/dev/null
+            echo "$message"
+          done < target/ripr/review/publish/requests.tsv
+
+      - name: Add RIPR advisory summary
+        if: always()
+        continue-on-error: true
+        env:
+          RIPR_INSTALL_OUTCOME: ${{ steps.install.outcome }}
+        run: |
+          if [ "${RIPR_INSTALL_OUTCOME:-}" != success ]; then
+            printf '## RIPR advisory summary\n\nthe pinned ripr is not installed (Install ripr step: %s), so this run produced no RIPR reports.\n\nNext: open the Install ripr step log. Its error line names the cause and the fix; re-run the job once it is fixed.\n' "${RIPR_INSTALL_OUTCOME:-not run}" >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::the pinned ripr is not installed (Install ripr step: ${RIPR_INSTALL_OUTCOME:-not run}); see that step's log."; exit 1
+          fi
+          ripr reports ci-summary --root . >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload RIPR report artifacts
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-reports
+          path: |
+            target/ripr
+            target/ci
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload RIPR diff findings
+        if: always() && env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request' && hashFiles('target/ripr/reports/ripr-findings.sarif') != ''
+        continue-on-error: true # a code-scanning outage must not fail the gate (#2009)
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: target/ripr/reports/ripr-findings.sarif
+          category: ripr-findings
+
+      - name: Upload RIPR repo seams
+        if: always() && env.RIPR_UPLOAD_SARIF == 'true' && hashFiles('target/ripr/reports/ripr-seams.sarif') != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: target/ripr/reports/ripr-seams.sarif
+          category: ripr-seams

@@ -109,7 +109,7 @@ use super::{
     dogfood_finding_alignment_scenarios, dogfood_first_action_run, dogfood_first_action_scenarios,
     dogfood_first_pr_metrics, dogfood_first_pr_run, dogfood_first_pr_scenarios,
     dogfood_gate_adoption_run, dogfood_gate_adoption_scenarios, dogfood_gate_result,
-    dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
+    dogfood_generated_ci_cockpit_run_from_surfaces, dogfood_language_preview_run,
     dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
     dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
     dogfood_pr_review_front_panel_scenarios, dogfood_push_python_quality_ratio_json,
@@ -15285,11 +15285,13 @@ fn dogfood_reports_are_advisory() -> Result<(), String> {
     assert_eq!(dogfood_report_status(&json_inputs), "pass");
     // A failing family the #2411 exit list used to skip must still fail the
     // command, and through the same owner as the report status (#4309).
-    let failing_generated_ci_runs = [dogfood_generated_ci_cockpit_run_from_workflow(
+    let failing_generated_ci_runs = [dogfood_generated_ci_cockpit_run_from_surfaces(
         "generated-pr-ci-review-workflow",
         "cargo run --quiet -p ripr -- init --ci github --dry-run",
         10,
         "name: RIPR",
+        "",
+        "",
     )];
     let failing_preview_projection_runs = DogfoodPreviewProjectionRuns {
         generated_ci_cockpit: &failing_generated_ci_runs,
@@ -21062,46 +21064,113 @@ fn dogfood_user_surface_projection_alignment_matches_surface_projection_source()
 }
 
 #[test]
-fn dogfood_generated_ci_cockpit_receipts_are_checked() {
-    let workflow = format!(
-            "\
-name: RIPR
-jobs:
-  ripr:
-    continue-on-error: ${{{{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}}}
-    steps:
-      - uses: actions/upload-artifact@v7
-      - run: |
-          echo '### Start here'
-          echo '- Open `target/ripr/reports/start-here.md` first when it exists.'
-          echo 'name: Render RIPR first-pr start-here'
-          echo 'cat target/ripr/reports/start-here.md'
-          echo 'RIPR is advisory static evidence.'
-          echo 'Gate authority: `ripr gate evaluate` remains the pass/fail source.'
-          echo '{GENERATED_CI_FIRST_ACTION_REPAIR}'
-          echo '{GENERATED_CI_FIRST_PR_REPAIR}'
-          echo '{GENERATED_CI_FRONT_PANEL_REPAIR}'
-          echo '{GENERATED_CI_PACKET_INDEX_REPAIR}'
-          echo '### Language preview grouping'
-          echo 'if [ -n \"$preview_languages\" ]; then'
-          echo 'Grouped preview evidence languages'
-          echo 'grouped_preview_languages=\"$grouped_preview_languages javascript\"'
-          echo 'preview-language groups are advisory presentation only; `ripr gate evaluate` remains pass/fail authority when explicitly configured.'
-          echo 'missing_preview_status'
-          echo 'static_limit_kinds'
-          echo 'actionability_states'
-          echo 'actionability_categories'
-          echo 'repair_packet_ready_entries'
-          echo 'gate_impact=\\`none\\`'
-          echo 'target/ripr/reports'
-"
+fn dogfood_generated_ci_cockpit_checks_the_public_summary_renderer() -> Result<(), String> {
+    with_repo_cwd(|| {
+        let run = super::dogfood::dogfood_generated_ci_cockpit_run()?;
+        assert!(run.errors.is_empty(), "{:?}", run.errors);
+        assert!(run.start_here);
+        assert_eq!(run.repair_commands, 4);
+        assert!(run.gate_authority_boundary);
+        assert!(run.default_advisory);
+        assert!(run.artifact_upload);
+        assert_eq!(run.language_grouping_status, "checked");
+        let root = Path::new("target/ripr/dogfood/generated-ci-cockpit");
+        let workflow =
+            fs::read_to_string(root.join("workflow.txt")).map_err(|err| err.to_string())?;
+        let summary =
+            fs::read_to_string(root.join("rust-summary.md")).map_err(|err| err.to_string())?;
+        let preview =
+            fs::read_to_string(root.join("preview-summary.md")).map_err(|err| err.to_string())?;
+        let check = |workflow: &str, summary: &str, preview: &str| {
+            dogfood_generated_ci_cockpit_run_from_surfaces(
+                "control",
+                "rendered CLI surfaces",
+                0,
+                workflow,
+                summary,
+                preview,
+            )
+        };
+        // Wrong workflow wiring cannot borrow valid Markdown from a renderer.
+        let commented = workflow.replace(
+            "          ripr reports ci-summary",
+            "          # ripr reports ci-summary",
         );
+        assert!(!check(&commented, &summary, &preview).start_here);
+        let unrelated = workflow.replace("Add RIPR advisory summary", "Unrelated step");
+        assert!(!check(&unrelated, &summary, &preview).start_here);
+        let no_redirect = workflow.replace(" >> \"$GITHUB_STEP_SUMMARY\"", "");
+        assert!(!check(&no_redirect, &summary, &preview).start_here);
+        for wrong in [
+            workflow.replace(
+                "run: ripr reports ci-packet --root .",
+                "run: echo packet omitted",
+            ),
+            workflow.replace(
+                "run: ripr reports ci-packet --root .",
+                "# run: ripr reports ci-packet --root .",
+            ),
+            workflow.replace("name: Run RIPR", "name: Unrelated producer"),
+        ] {
+            assert!(!check(&wrong, &summary, &preview).gate_authority_boundary);
+        }
+        // Valid YAML cannot mask missing renderer guidance or concrete scope.
+        assert!(!check(&workflow, &summary.replace("### Start here", ""), &preview).start_here);
+        assert_eq!(
+            check(
+                &workflow,
+                &summary.replace("--base origin/main --head HEAD ", ""),
+                &preview
+            )
+            .repair_commands,
+            3
+        );
+        assert!(
+            !check(&workflow, &summary.replace("Gate authority:", ""), &preview)
+                .gate_authority_boundary
+        );
+        assert!(
+            !check(
+                &workflow,
+                &summary.replace("RIPR is advisory static evidence", ""),
+                &preview
+            )
+            .default_advisory
+        );
+        for wrong in [
+            preview.replace("artifact_entries=`2`", "artifact_entries=`1`"),
+            preview.replace("missing_preview_status=`1`", "missing_preview_status=`0`"),
+            preview.replace("gate_impact=`none`", "gate_impact=`blocking`"),
+        ] {
+            assert_eq!(
+                check(&workflow, &summary, &wrong).language_grouping_status,
+                "missing"
+            );
+        }
+        assert_eq!(
+            check(&workflow, &preview, &preview).language_grouping_status,
+            "missing",
+            "Rust-only must not group the identical preview packet"
+        );
+        Ok(())
+    })
+}
 
-    let run = dogfood_generated_ci_cockpit_run_from_workflow(
+#[test]
+fn dogfood_generated_ci_cockpit_receipts_are_checked() {
+    let workflow = "name: RIPR\njobs:\n  ripr:\n    continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}\n    steps:\n      - name: Run RIPR\n        run: ripr reports ci-packet --root .\n      - name: Add RIPR advisory summary\n        if: always()\n        continue-on-error: true\n        run: |\n          ripr reports ci-summary --root . >> \"$GITHUB_STEP_SUMMARY\"\n      - uses: actions/upload-artifact@v7\n        path: target/ripr/reports\n";
+    let summary = format!(
+        "### Start here\nOpen `target/ripr/reports/start-here.md` first\nRIPR is advisory static evidence\nGate authority: `ripr gate evaluate`\n{GENERATED_CI_FIRST_ACTION_REPAIR}\n{GENERATED_CI_FIRST_PR_REPAIR}\n{GENERATED_CI_FRONT_PANEL_REPAIR}\n{GENERATED_CI_PACKET_INDEX_REPAIR}\n"
+    );
+    let preview = "### Language preview grouping\nGrouped preview evidence languages: `javascript typescript`\npreview-language groups are advisory presentation only; `ripr gate evaluate` remains pass/fail authority\n- `typescript`: artifact_entries=`2`, preview_entries=`1`, missing_preview_status=`1`, static_limit_entries=`1`, classifications=`weakly_exposed=2`, static_limit_kinds=`unsupported`, actionability_states=`actionable=2`, actionability_categories=`test_gap=2`, repair_packet_ready=`1`, gate_impact=`none`\n- `javascript`: artifact_entries=`1`, preview_entries=`1`, missing_preview_status=`0`, static_limit_entries=`1`, classifications=`static_unknown=1`, static_limit_kinds=`unknown`, actionability_states=`static_limited=1`, actionability_categories=`unsupported=1`, repair_packet_ready=`0`, gate_impact=`none`";
+
+    let run = dogfood_generated_ci_cockpit_run_from_surfaces(
         "generated-pr-ci-review-workflow",
         "cargo run --quiet -p ripr -- init --ci github --dry-run",
         10,
-        &workflow,
+        workflow,
+        &summary,
+        preview,
     );
     assert!(run.errors.is_empty(), "{:?}", run.errors);
     assert!(run.start_here);
@@ -21111,11 +21180,13 @@ jobs:
     assert!(run.artifact_upload);
     assert_eq!(run.language_grouping_status, "checked");
 
-    let missing = dogfood_generated_ci_cockpit_run_from_workflow(
+    let missing = dogfood_generated_ci_cockpit_run_from_surfaces(
         "missing",
         "cargo run --quiet -p ripr -- init --ci github --dry-run",
         10,
         "name: RIPR",
+        "",
+        "",
     );
     assert!(
         missing
@@ -21132,15 +21203,17 @@ jobs:
 
     // Generated CI names the PR range since #4260; the unscoped form it
     // replaced must not satisfy the first-pr repair command.
-    let unscoped = workflow.replace(
+    let unscoped = summary.replace(
         GENERATED_CI_FIRST_PR_REPAIR,
         "ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json --first-action target/ripr/reports/first-useful-action.json --review-comments target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-packet.json --gate-decision target/ripr/reports/gate-decision.json --receipts-dir target/ripr/receipts --out-dir target/ripr/reports",
     );
-    let stale = dogfood_generated_ci_cockpit_run_from_workflow(
+    let stale = dogfood_generated_ci_cockpit_run_from_surfaces(
         "unscoped-first-pr",
         "cargo run --quiet -p ripr -- init --ci github --dry-run",
         10,
+        workflow,
         &unscoped,
+        preview,
     );
     assert_eq!(stale.repair_commands, 3);
 }

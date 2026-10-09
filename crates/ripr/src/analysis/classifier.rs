@@ -96,6 +96,424 @@ mod tests {
     use std::collections::BTreeMap;
     use std::path::PathBuf;
 
+    // RIPR-SPEC-0094 / public #1747: the same exact oracle must bind both
+    // changed-arm observation and transparent wrapper owner identity.
+    fn transparent_match_arm_wrapper_finding(
+        wrapper: &str,
+        assertion: &str,
+    ) -> Result<Finding, String> {
+        let source = include_str!(
+            "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
+        )
+        .replace("seconds(u)\n}", &format!("{wrapper}\n}}"))
+        .replace(
+            "assert_eq!(seconds_bridge(Unit::Fortnight), 1_209_600);",
+            assertion,
+        );
+        transparent_match_arm_source_finding(source)
+    }
+
+    fn transparent_match_arm_source_finding(source: String) -> Result<Finding, String> {
+        transparent_match_arm_index_finding(source, &[])
+    }
+
+    fn transparent_match_arm_index_finding(
+        source: String,
+        additional: &[(&str, &str)],
+    ) -> Result<Finding, String> {
+        let arm_line = source
+            .lines()
+            .position(|line| line.trim().starts_with("Unit::Fortnight =>"))
+            .ok_or("changed arm")?
+            + 1;
+
+        let file = PathBuf::from("src/lib.rs");
+        let facts = crate::analysis::rust_index::summarize_file(file.clone(), source);
+        assert!(!facts.used_lexical_fallback);
+        let owner = facts
+            .functions
+            .iter()
+            .find(|item| item.name == "seconds")
+            .ok_or("parsed owner")?;
+        let probe = Probe {
+            id: ProbeId("wrapper-arm".to_string()),
+            location: SourceLocation::new(file.clone(), arm_line, 1),
+            owner: Some(owner.id.clone()),
+            family: ProbeFamily::MatchArm,
+            delta: DeltaKind::Value,
+            before: Some("Unit::Fortnight => 604_800,".to_string()),
+            after: Some("Unit::Fortnight => 1_209_600,".to_string()),
+            expression: "Unit::Fortnight => 1_209_600,".to_string(),
+            expected_sinks: Vec::new(),
+            required_oracles: Vec::new(),
+        };
+        let mut index = RustIndex::default();
+        index.extend_functions(facts.functions.iter().cloned());
+        index.extend_tests(facts.tests.iter().cloned());
+        index.insert_file_only(file, facts);
+        for (path, source) in additional {
+            let file = PathBuf::from(path);
+            let facts =
+                crate::analysis::rust_index::summarize_file(file.clone(), (*source).to_string());
+            assert!(!facts.used_lexical_fallback);
+            index.extend_functions(facts.functions.iter().cloned());
+            index.extend_tests(facts.tests.iter().cloned());
+            index.insert_file_only(file, facts);
+        }
+
+        let finding = classify_probe(&probe, &index, true, None);
+        assert!(
+            !finding.related_tests.is_empty(),
+            "nonempty classifier subjects"
+        );
+        Ok(finding)
+    }
+
+    // Actual fixture subjects, not synthetic names or an empty refusal. Nearby
+    // exact assertions survive, but none binds the changed arm through a wrapper.
+    fn assert_actual_wrapper_refusal(name: &str, source: &str) -> Result<(), String> {
+        let additional = if name == "workspace_import" {
+            vec![(
+                "src/rival.rs",
+                include_str!(
+                    "../../../../fixtures/match_arm_wrapper_workspace_import_not_credited/input/src/rival.rs"
+                ),
+            )]
+        } else {
+            Vec::new()
+        };
+        let finding = transparent_match_arm_index_finding(source.to_string(), &additional)?;
+        assert_eq!(
+            finding.class,
+            ExposureClass::WeaklyExposed,
+            "{name}: {finding:?}"
+        );
+        assert_eq!(finding.ripr.reach.state, StageState::Yes, "{name}");
+        assert_eq!(finding.ripr.propagate.state, StageState::Yes, "{name}");
+        assert_eq!(
+            finding.ripr.reveal.discriminate.state,
+            StageState::Weak,
+            "{name}"
+        );
+        assert!(
+            finding
+                .ripr
+                .reveal
+                .discriminate
+                .summary
+                .contains("specificity_unbound"),
+            "{name}: {finding:?}"
+        );
+        let bridge = finding
+            .related_tests
+            .iter()
+            .find(|test| test.name == "bridge_fortnight")
+            .ok_or_else(|| format!("missing bridge subject: {name}"))?;
+        assert_eq!(
+            bridge.relation_reason,
+            Some(RelationReason::SameTestFile),
+            "{name}"
+        );
+        assert_eq!(bridge.oracle_strength, OracleStrength::Strong, "{name}");
+        assert!(!finding.flow_sinks.is_empty(), "{name}");
+        Ok(())
+    }
+
+    #[test]
+    fn transparent_match_arm_actual_variant_shadow_keeps_unbound_discriminator()
+    -> Result<(), String> {
+        assert_actual_wrapper_refusal(
+            "variant_shadow",
+            include_str!(
+                "../../../../fixtures/match_arm_wrapper_variant_shadow_not_credited/input/src/lib.rs"
+            ),
+        )
+    }
+
+    #[test]
+    fn transparent_match_arm_actual_workspace_import_keeps_unbound_discriminator()
+    -> Result<(), String> {
+        assert_actual_wrapper_refusal(
+            "workspace_import",
+            include_str!(
+                "../../../../fixtures/match_arm_wrapper_workspace_import_not_credited/input/src/lib.rs"
+            ),
+        )
+    }
+
+    #[test]
+    fn transparent_match_arm_actual_parameter_callable_keeps_unbound_discriminator()
+    -> Result<(), String> {
+        assert_actual_wrapper_refusal(
+            "parameter_callable",
+            include_str!(
+                "../../../../fixtures/match_arm_wrapper_parameter_callable_not_credited/input/src/lib.rs"
+            ),
+        )
+    }
+
+    #[test]
+    fn transparent_match_arm_actual_sibling_attribute_keeps_unbound_discriminator()
+    -> Result<(), String> {
+        assert_actual_wrapper_refusal(
+            "sibling_attribute",
+            include_str!(
+                "../../../../fixtures/match_arm_wrapper_sibling_attribute_not_credited/input/src/lib.rs"
+            ),
+        )
+    }
+
+    #[test]
+    fn transparent_match_arm_actual_callable_shadow_keeps_unbound_discriminator()
+    -> Result<(), String> {
+        assert_actual_wrapper_refusal(
+            "callable_shadow",
+            include_str!(
+                "../../../../fixtures/match_arm_wrapper_callable_shadow_not_credited/input/src/lib.rs"
+            ),
+        )
+    }
+
+    #[test]
+    fn transparent_match_arm_actual_unreachable_arm_keeps_unbound_discriminator()
+    -> Result<(), String> {
+        assert_actual_wrapper_refusal(
+            "unreachable_arm",
+            include_str!(
+                "../../../../fixtures/match_arm_wrapper_unreachable_arm_not_credited/input/src/lib.rs"
+            ),
+        )
+    }
+
+    #[test]
+    fn transparent_match_arm_actual_enum_attribute_keeps_unbound_discriminator()
+    -> Result<(), String> {
+        assert_actual_wrapper_refusal(
+            "enum_attribute",
+            include_str!(
+                "../../../../fixtures/match_arm_wrapper_enum_attribute_not_credited/input/src/lib.rs"
+            ),
+        )
+    }
+
+    #[test]
+    fn transparent_match_arm_wrapper_exact_oracle_binds_identity() -> Result<(), String> {
+        for assertion in [
+            "assert_eq!(seconds_bridge(Unit::Fortnight), 1_209_600);",
+            "assert_eq!(1_209_600, seconds_bridge(Unit::Fortnight));",
+        ] {
+            let finding = transparent_match_arm_wrapper_finding("seconds(u)", assertion)?;
+            assert_eq!(finding.class, ExposureClass::Exposed, "{finding:?}");
+            let bridge = finding
+                .related_tests
+                .iter()
+                .find(|test| test.name == "bridge_fortnight")
+                .ok_or("bridge oracle")?;
+            assert_eq!(bridge.relation_reason, Some(RelationReason::SameTestFile));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn transparent_match_arm_wrapper_negative_controls_stay_unbound() -> Result<(), String> {
+        for wrapper in [
+            "1_209_600",
+            "seconds(u) + 1",
+            "let _ = seconds(u); 1_209_600",
+            "seconds(Unit::Week)",
+            "if true { seconds(u) } else { 0 }",
+            "return seconds(u);",
+            "if true { return 1_209_600; } seconds(u)",
+            "other_seconds(u)",
+            "let seconds = |_| 1_209_600; seconds(u)",
+        ] {
+            let finding = transparent_match_arm_wrapper_finding(
+                wrapper,
+                "assert_eq!(seconds_bridge(Unit::Fortnight), 1_209_600);",
+            )?;
+            assert_ne!(
+                finding.class,
+                ExposureClass::Exposed,
+                "{wrapper}: {finding:?}"
+            );
+        }
+        for assertion in [
+            "let seconds_bridge = |_| 1_209_600; assert_eq!(seconds_bridge(Unit::Fortnight), 1_209_600);",
+            "let _deferred = || { assert_eq!(seconds_bridge(Unit::Fortnight), 1_209_600); };",
+            "if false { assert_eq!(seconds_bridge(Unit::Fortnight), 1_209_600); }",
+            "let _ = seconds_bridge(Unit::Fortnight); assert_eq!(Unit::Fortnight, Unit::Fortnight);",
+            "assert_eq!(seconds_bridge(Unit::Week), 1_209_600);",
+            "assert_eq!(seconds_bridge(Unit::Fortnight), seconds_bridge(Unit::Fortnight));",
+        ] {
+            let finding = transparent_match_arm_wrapper_finding("seconds(u)", assertion)?;
+            assert_ne!(
+                finding.class,
+                ExposureClass::Exposed,
+                "{assertion}: {finding:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn transparent_match_arm_wrapper_binding_and_execution_refusals() -> Result<(), String> {
+        let original = include_str!(
+            "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
+        );
+        for source in [
+            original.replace(
+                "#[test]\n    fn bridge_fortnight",
+                "#[test]\n    #[should_panic]\n    fn bridge_fortnight",
+            ),
+            format!("macro_rules! assert_eq {{ ($($tokens:tt)*) => {{}} }}\n{original}"),
+            format!(
+                "{original}\nmod rival {{ fn seconds(_: super::Unit) -> u64 {{ 1_209_600 }} }}"
+            ),
+            original.replace("seconds(u)\n}", "other_seconds(u)\n}")
+                + "\nfn other_seconds(_: Unit) -> u64 { 1_209_600 }",
+        ] {
+            assert_ne!(
+                transparent_match_arm_source_finding(source)?.class,
+                ExposureClass::Exposed
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn transparent_match_arm_wrapper_module_const_callable_is_not_owner() -> Result<(), String> {
+        let original = include_str!(
+            "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
+        );
+        let source = original.replace(
+            "use super::*;",
+            "use super::*;\n    const seconds_bridge: fn(Unit) -> u64 = |_| 1_209_600;",
+        );
+        let finding = transparent_match_arm_source_finding(source)?;
+        assert_ne!(finding.class, ExposureClass::Exposed, "{finding:?}");
+        Ok(())
+    }
+
+    #[test]
+    fn transparent_match_arm_wrapper_variant_path_shadow_does_not_select_arm() -> Result<(), String>
+    {
+        let original = include_str!(
+            "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
+        );
+        let (production, _) = original
+            .split_once("#[cfg(test)]")
+            .ok_or("fixture module")?;
+        let source = format!(
+            r#"{production}
+#[cfg(test)]
+mod tests {{
+    use super::*;
+    struct Unit;
+    impl Unit {{ const Fortnight: super::Unit = super::Unit::Week; }}
+    #[test]
+    fn seconds_total() {{ assert_eq!(seconds(super::Unit::Week), 604_800); }}
+    #[test]
+    fn bridge_fortnight() {{ assert_eq!(seconds_bridge(Unit::Fortnight), 604_800); }}
+}}
+"#
+        );
+        let finding = transparent_match_arm_source_finding(source)?;
+        assert_ne!(finding.class, ExposureClass::Exposed, "{finding:?}");
+        Ok(())
+    }
+
+    #[test]
+    fn transparent_match_arm_wrapper_workspace_import_cannot_override_parent() -> Result<(), String>
+    {
+        let original = include_str!(
+            "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
+        );
+        let source = original
+            .replace("#[cfg(test)]", "mod rival;\n#[cfg(test)]")
+            .replace(
+                "use super::*;",
+                "use super::*;\n    use crate::rival::seconds_bridge;",
+            );
+        let finding = transparent_match_arm_index_finding(
+            source,
+            &[(
+                "src/rival.rs",
+                "pub const seconds_bridge: fn(super::Unit) -> u64 = |_| 1_209_600;",
+            )],
+        )?;
+        assert_ne!(finding.class, ExposureClass::Exposed, "{finding:?}");
+        Ok(())
+    }
+
+    #[test]
+    fn transparent_match_arm_wrapper_unreachable_arm_is_not_observed() -> Result<(), String> {
+        let original = include_str!(
+            "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
+        );
+        for prefix in [
+            "_ => 1_209_600,",
+            "Unit::Fortnight if true => 1_209_600,",
+            "Unit::Week | Unit::Fortnight => 1_209_600,",
+            "crate::ALIAS => 1_209_600,",
+        ] {
+            let source = original.replace(
+                "Unit::Week => 604_800,",
+                &format!("{prefix}\n        Unit::Week => 604_800,"),
+            ) + "\nconst ALIAS: Unit = Unit::Fortnight;";
+            assert_ne!(
+                transparent_match_arm_source_finding(source)?.class,
+                ExposureClass::Exposed,
+                "{prefix}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn transparent_match_arm_wrapper_parameter_callee_is_not_owner() -> Result<(), String> {
+        let source = include_str!(
+            "../../../../fixtures/match_arm_wrapper_parameter_callable_not_credited/input/src/lib.rs"
+        );
+        assert_ne!(
+            transparent_match_arm_source_finding(source.to_string())?.class,
+            ExposureClass::Exposed
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn transparent_match_arm_wrapper_opaque_sibling_attribute_refuses_binding() -> Result<(), String>
+    {
+        let original = include_str!(
+            "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
+        );
+        let source = original.replace(
+            "use super::*;",
+            "use super::*;\n    #[external::GenerateBridge] struct Marker;",
+        );
+        assert_ne!(
+            transparent_match_arm_source_finding(source)?.class,
+            ExposureClass::Exposed
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn transparent_match_arm_wrapper_opaque_owner_enum_attribute_refuses_variant()
+    -> Result<(), String> {
+        let original = include_str!(
+            "../../../../fixtures/match_arm_proximity_wrapper_confirms/input/src/lib.rs"
+        );
+        for attribute in ["#[external::AlterUnit]", "#[derive(external::AlterUnit)]"] {
+            let source = original.replace("#[derive(Debug, PartialEq)]", attribute);
+            assert_ne!(
+                transparent_match_arm_source_finding(source)?.class,
+                ExposureClass::Exposed
+            );
+        }
+        Ok(())
+    }
+
     #[test]
     fn given_owner_symbol_when_resolving_owner_then_matches_full_identity() {
         let crate_b_fn = function("crates/crate_b/src/lib.rs", "score");
@@ -1943,6 +2361,70 @@ fn far_above_threshold_discounts() {
     // RC walk RS-1: a new function no test calls read `weakly_exposed`, with
     // "strong oracle found", through a same-file test of a sibling function.
     #[test]
+    fn unreached_return_owner_does_not_borrow_weak_sibling_discrimination() -> Result<(), String> {
+        let fixture = include_str!(
+            "../../../../fixtures/rust_uncalled_owner_same_file_tests/input/src/lib.rs"
+        );
+        for (source, expected_reach) in [
+            (
+                fixture.replace(
+                    "assert_eq!(discount(100), 90)",
+                    "assert_eq!(untested_rounding(100), 1)",
+                ),
+                StageState::Yes,
+            ),
+            (
+                format!(
+                    "{fixture}\npub fn rounding_bridge(cents: u32) -> u32 {{ untested_rounding(cents) }}\n"
+                ),
+                StageState::Weak,
+            ),
+            (fixture.to_string(), StageState::No),
+        ] {
+            let file = PathBuf::from("src/lib.rs");
+            let facts = crate::analysis::rust_index::summarize_file(file.clone(), source);
+            assert!(!facts.used_lexical_fallback);
+            assert_eq!(facts.tests.len(), 2, "parsed fixture subjects");
+            let owner = facts
+                .functions
+                .iter()
+                .find(|item| item.name == "untested_rounding")
+                .ok_or("parsed changed owner")?;
+            let probe = Probe {
+                id: ProbeId("unreached-return".to_string()),
+                location: SourceLocation::new(file.clone(), owner.start_line + 1, 1),
+                owner: Some(owner.id.clone()),
+                family: ProbeFamily::ReturnValue,
+                delta: DeltaKind::Value,
+                before: Some("(cents + 50) / 100".to_string()),
+                after: Some("(cents + 49) / 100".to_string()),
+                expression: "(cents + 49) / 100".to_string(),
+                expected_sinks: Vec::new(),
+                required_oracles: Vec::new(),
+            };
+            let mut index = RustIndex::default();
+            index.extend_functions(facts.functions.iter().cloned());
+            index.extend_tests(facts.tests.iter().cloned());
+            index.insert_file_only(file, facts);
+            let finding = classify_probe(&probe, &index, true, None);
+            assert!(
+                !finding.related_tests.is_empty(),
+                "related fixture subjects"
+            );
+            assert_eq!(finding.ripr.reach.state, expected_reach);
+            if expected_reach == StageState::No {
+                assert_eq!(finding.class, ExposureClass::NoStaticPath);
+                assert_eq!(finding.ripr.reveal.observe.state, StageState::No);
+                assert_eq!(finding.ripr.reveal.discriminate.state, StageState::No);
+            } else {
+                assert_ne!(finding.class, ExposureClass::NoStaticPath);
+                assert_eq!(finding.ripr.reveal.discriminate.state, expected_reach);
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn given_uncalled_owner_with_same_file_sibling_test_when_classified_then_no_static_path() {
         let index = uncalled_owner_index("");
         let probe = fragile_fee_probe(ProbeFamily::Predicate, "fragile_fee");
@@ -2188,5 +2670,152 @@ fn far_above_threshold_discounts() {
             observed_tokens: extract_identifier_tokens(assertion),
             ok_value_observed: None,
         }
+    }
+    #[test]
+    fn guarded_error_producer_transition_never_fabricates_infection() -> Result<(), String> {
+        let source =
+            include_str!("../../../../fixtures/error_return_unresolved_guard/input/src/lib.rs");
+        let tests =
+            include_str!("../../../../fixtures/error_return_unresolved_guard/input/tests/q.rs");
+        let patch = include_str!("../../../../fixtures/error_return_unresolved_guard/diff.patch");
+        let mut index = parser_backed_index(&[("src/lib.rs", source), ("tests/q.rs", tests)]);
+        index
+            .package_names
+            .insert("error_return_unresolved_guard".to_string());
+        let changed = crate::analysis::diff::parse_unified_diff(patch);
+        let file = changed.first().ok_or("changed fixture source")?;
+        let seeded = crate::analysis::probes::probes_for_file_with_relations(
+            std::path::Path::new(""),
+            file,
+            &index,
+        );
+        assert_eq!(seeded.len(), 3, "all actual changed-return families");
+        for seeded in seeded {
+            let probe = seeded.probe;
+            assert_eq!(probe.location.line, 16);
+            assert!(
+                probe
+                    .before
+                    .as_deref()
+                    .is_some_and(|text| text.contains("cancelled_error()"))
+            );
+            let finding = classify_probe(&probe, &index, true, None);
+            assert!(
+                !finding.related_tests.is_empty(),
+                "nonempty owner observers"
+            );
+            assert_eq!(
+                finding.class,
+                ExposureClass::InfectionUnknown,
+                "{finding:?}"
+            );
+            assert_eq!(finding.ripr.infect.state, StageState::Unknown);
+            assert!(
+                finding
+                    .evidence
+                    .iter()
+                    .any(|text| text.contains("error return guard unresolved")
+                        && text.contains("cancelled"))
+            );
+            assert!(
+                finding
+                    .recommended_next_step
+                    .as_deref()
+                    .is_some_and(|text| text.contains("Typed static limitation")
+                        && !text.contains("Add a test"))
+            );
+        }
+        Ok(())
+    }
+    fn guarded_error_transition_control_findings(
+        source: &str,
+        tests: &str,
+        patch: &str,
+    ) -> Result<Vec<Finding>, String> {
+        let mut index = parser_backed_index(&[("src/lib.rs", source), ("tests/q.rs", tests)]);
+        index
+            .package_names
+            .insert("error_return_unresolved_guard".to_string());
+        let changed = crate::analysis::diff::parse_unified_diff(patch);
+        let file = changed.first().ok_or("changed control source")?;
+        let probes = crate::analysis::probes::probes_for_file_with_relations(
+            std::path::Path::new(""),
+            file,
+            &index,
+        );
+        assert_eq!(
+            probes.len(),
+            3,
+            "nonempty production-seeded control subjects"
+        );
+        Ok(probes
+            .into_iter()
+            .map(|seeded| classify_probe(&seeded.probe, &index, true, None))
+            .collect())
+    }
+
+    #[test]
+    fn guarded_error_producer_transition_preserves_literal_and_unguarded_controls()
+    -> Result<(), String> {
+        let source =
+            include_str!("../../../../fixtures/error_return_unresolved_guard/input/src/lib.rs");
+        let tests =
+            include_str!("../../../../fixtures/error_return_unresolved_guard/input/tests/q.rs");
+        let patch = include_str!("../../../../fixtures/error_return_unresolved_guard/diff.patch");
+        let literal_patch = patch.replace(
+            "-        return Err(cancelled_error());",
+            "-        return Err(OpError { code: -32800, message: \"previous message\".to_string() });",
+        );
+        assert_ne!(literal_patch, patch, "literal value-change control setup");
+        for finding in guarded_error_transition_control_findings(source, tests, &literal_patch)? {
+            assert_eq!(
+                finding.class,
+                ExposureClass::Exposed,
+                "literal delta: {finding:?}"
+            );
+            assert_eq!(finding.ripr.infect.state, StageState::Yes);
+        }
+        let unguarded_source = source.replace("if cancelled {", "{");
+        let unguarded_patch = patch.replace("if cancelled {", "{");
+        assert_ne!(unguarded_source, source, "unguarded control setup");
+        assert_ne!(unguarded_patch, patch, "unguarded patch setup");
+        for finding in
+            guarded_error_transition_control_findings(&unguarded_source, tests, &unguarded_patch)?
+        {
+            assert_eq!(
+                finding.class,
+                ExposureClass::Exposed,
+                "unguarded boundary: {finding:?}"
+            );
+            assert!(
+                !finding
+                    .evidence
+                    .iter()
+                    .any(|text| text.contains("error return guard unresolved"))
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn guarded_error_producer_transition_does_not_admit_unrelated_observer_guidance()
+    -> Result<(), String> {
+        let source =
+            include_str!("../../../../fixtures/error_return_unresolved_guard/input/src/lib.rs");
+        let patch = include_str!("../../../../fixtures/error_return_unresolved_guard/diff.patch");
+        let tests = "use error_return_unresolved_guard::{cancelled_error, run_slow};\n#[test]\nfn unrelated_error() {\nlet _ = run_slow(true);\nlet err = cancelled_error();\nassert_eq!(err, cancelled_error());\nassert_eq!(err.message, \"operation cancelled\");\n}\n";
+        for finding in guarded_error_transition_control_findings(source, tests, patch)? {
+            assert!(
+                !finding.related_tests.is_empty(),
+                "reaching unrelated observer setup"
+            );
+            assert_eq!(finding.ripr.infect.state, StageState::Unknown);
+            assert_ne!(finding.class, ExposureClass::Exposed);
+            assert_ne!(
+                finding.recommended_next_step.as_deref(),
+                Some(finding::ERROR_RETURN_GUARD_UNRESOLVED_NEXT_STEP)
+            );
+        }
+        Ok(())
     }
 }

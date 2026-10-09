@@ -6,6 +6,9 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tar::Archive;
 
+mod workflow_contract;
+use workflow_contract::github_workflow_yaml_missing;
+
 pub(crate) mod candidate_harness;
 use candidate_harness::CandidateExecution;
 
@@ -2489,80 +2492,6 @@ fn github_workflow_check(binary: &Path) -> ReleaseReadinessCheck {
     }
 }
 
-/// The generated template uploads the whole report tree. Check the actual
-/// ripr job's named artifact step, so a cleanup command, SARIF path, comment,
-/// or another step cannot stand in for a recursive artifact upload root.
-fn github_workflow_yaml_missing(text: &str) -> Vec<String> {
-    let required = [
-        "continue-on-error: true",
-        "run: ripr reports ci-packet --root .",
-        "ripr reports ci-summary",
-        "$GITHUB_STEP_SUMMARY",
-        "target/ripr/reports",
-        "RIPR_UPLOAD_SARIF",
-        "actions/upload-artifact",
-    ];
-    let mut missing = missing_required_needles(text, &required);
-    let (mut in_jobs, mut in_ripr, mut in_steps) = (false, false, false);
-    let (mut upload_step, mut in_with, mut in_path) = (false, false, false);
-    let (mut upload_action, mut ripr_root, mut ci_root) = (false, false, false);
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        let indent = line.len() - line.trim_start().len();
-        match indent {
-            0 => {
-                in_jobs = trimmed == "jobs:";
-                in_ripr = false;
-                in_steps = false;
-            }
-            2 if in_jobs => {
-                in_ripr = trimmed == "ripr:";
-                in_steps = false;
-            }
-            4 if in_ripr => in_steps = trimmed == "steps:",
-            6 if in_steps && trimmed.starts_with("- ") => {
-                if upload_step {
-                    break;
-                }
-                upload_step = trimmed == "- name: Upload RIPR report artifacts";
-                in_with = false;
-                in_path = false;
-            }
-            8 if in_steps && upload_step => {
-                if let Some(reference) = trimmed.strip_prefix("uses: actions/upload-artifact@") {
-                    upload_action =
-                        !reference.trim().is_empty() && !reference.trim_start().starts_with('#');
-                }
-                in_with = trimmed == "with:";
-                in_path = false;
-            }
-            10 if in_steps && upload_step && in_with => in_path = trimmed == "path: |",
-            12 if in_steps && upload_step && in_with && in_path => match trimmed {
-                "target/ripr" => ripr_root = true,
-                "target/ci" => ci_root = true,
-                _ => {}
-            },
-            _ => {}
-        }
-    }
-    for (present, expected) in [
-        (
-            upload_action,
-            "report artifact upload action in jobs.ripr.steps",
-        ),
-        (ripr_root, "report artifact upload path: target/ripr"),
-        (ci_root, "report artifact upload path: target/ci"),
-    ] {
-        if !present {
-            missing.push(expected.to_string());
-        }
-    }
-    missing
-}
-
 /// Text the generated workflow's summary step must print on a first run,
 /// before any start-here packet exists (#5375).
 const CI_SUMMARY_FIRST_RUN_NEEDLES: &[&str] = &[
@@ -3286,7 +3215,7 @@ mod tests {
     use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    fn current_init_workflow_template() -> Result<String, String> {
+    fn qualified_released_workflow_fixture() -> Result<String, String> {
         fn section<'a>(source: &'a str, declaration: &str) -> Result<&'a str, String> {
             source
                 .split_once(declaration)
@@ -3295,17 +3224,50 @@ mod tests {
                 .ok_or_else(|| format!("missing current template section {declaration}"))
         }
         let source = include_str!("../../../crates/ripr/src/cli/commands/init_workflow.rs");
-        let summary =
-            include_str!("../../../crates/ripr/src/cli/commands/init_workflow/advisory_summary.rs");
-        let workflow = format!(
-            "{}{}{}",
-            section(source, "const TEMPLATE_HEAD: &str = r#\"")?,
-            section(
-                summary,
-                "pub(super) const ADVISORY_SUMMARY_STEP: &str = r#\""
-            )?,
+        // Fixture construction mirrors only the published adapter's documented
+        // substitutions. Frozen production-oracle digests remain independent;
+        // the full readiness run exercises the actual packaged CLI renderer.
+        let head = section(source, "const TEMPLATE_HEAD: &str = r#\"")?;
+        let prefix = head
+            .split("      - name: Capture existing RIPR inline comments\n")
+            .next()
+            .ok_or("fixture prefix")?;
+        let compatibility = "      - name: Verify installed RIPR compatibility\n        run: |\n          installed=\"$(ripr --version)\"\n          if [ \"$installed\" != 'ripr 0.10.0' ]; then\n            echo \"::error::Expected ripr 0.10.0 for these workflow commands; got $installed\"; exit 1\n          fi\n\n";
+        let mut workflow = format!(
+            "{}{}{}\n{}\n{}",
+            prefix,
+            compatibility,
+            include_str!(
+                "../../../crates/ripr/src/cli/commands/init_workflow/released_0_10_producer.yml"
+            ),
+            include_str!(
+                "../../../crates/ripr/src/cli/commands/init_workflow/released_0_10_summary.yml"
+            ),
             section(source, "const TEMPLATE_TAIL: &str = r#\"")?
         );
+        for (placeholder, label) in [
+            (
+                "@RIPR_REPAIR_AFTER_PHASE@",
+                "After the test edit: take an after snapshot, then run the printed manual verify and receipt commands.",
+            ),
+            (
+                "@RIPR_MANUAL_VERIFY_LABEL@",
+                "Manual verify after the test edit (needs snapshots taken around that edit)",
+            ),
+            ("@RIPR_MANUAL_RECEIPT_LABEL@", "Manual receipt after verify"),
+            (
+                "@RIPR_VERIFY_AFTER_EDIT_LABEL@",
+                "Verify after the test edit",
+            ),
+            ("@RIPR_RECEIPT_AFTER_VERIFY_LABEL@", "Receipt after verify"),
+            (
+                "@RIPR_NO_RECEIPT_BEFORE_REPAIR@",
+                "No agent receipt yet. None is expected before the focused test edit; take an after snapshot, then run manual verify and receipt.",
+            ),
+            ("@RIPR_VERSION@", "0.10.0"),
+        ] {
+            workflow = workflow.replace(placeholder, label);
+        }
         assert_eq!(workflow.matches("@RIPR_PIN_FIRST_LINE@").count(), 1);
         let rendered = workflow.replace(
             "@RIPR_PIN_FIRST_LINE@",
@@ -3317,21 +3279,21 @@ mod tests {
 
     #[test]
     fn workflow_defaults_accept_the_current_recursive_upload_template() -> Result<(), String> {
-        let workflow = current_init_workflow_template()?;
+        let workflow = qualified_released_workflow_fixture()?;
         assert_eq!(
             super::github_workflow_yaml_missing(&workflow),
             Vec::<String>::new()
         );
-        assert!(!workflow.contains("target/ripr/pilot"));
-        assert!(!workflow.contains("target/ripr/workflow"));
-        assert!(workflow.contains("run: ripr reports ci-packet --root ."));
-        assert!(workflow.contains("ripr reports ci-summary"));
+        assert!(workflow.contains("target/ripr/pilot"));
+        assert!(workflow.contains("target/ripr/workflow"));
+        assert!(!workflow.contains("run: ripr reports ci-packet --root ."));
+        assert!(!workflow.contains("          ripr reports ci-summary"));
         Ok(())
     }
 
     #[test]
     fn workflow_defaults_require_real_upload_roots_in_the_owned_path_block() -> Result<(), String> {
-        let workflow = current_init_workflow_template()?;
+        let workflow = qualified_released_workflow_fixture()?;
         let ripr_line = "            target/ripr\n";
         let ci_line = "            target/ci\n";
         assert_eq!(workflow.matches(ripr_line).count(), 1);
@@ -3383,6 +3345,109 @@ mod tests {
                 "{before}"
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn workflow_defaults_reject_wrong_or_misplaced_released_commands() -> Result<(), String> {
+        let workflow = qualified_released_workflow_fixture()?;
+        for (before, after) in [
+            ("          version=0.10.0", "          version=0.11.0"),
+            (
+                "cargo install ripr --version 0.10.0",
+                "cargo install ripr --version 0.11.0",
+            ),
+            ("if [ \"$installed\" != 'ripr 0.10.0' ]", "if false"),
+            (
+                "      - name: Verify installed RIPR compatibility\n",
+                "      - name: Other compatibility\n",
+            ),
+            ("          ripr pilot \\\n", "          # ripr pilot \\\n"),
+            ("          ripr pilot \\\n", "          ripr pilot \\ \n"),
+            (
+                "          ripr pilot \\\n",
+                "          ripr wrong-command \\\n",
+            ),
+            (
+                "      - name: Generate RIPR pilot packet\n",
+                "      - name: Other pilot\n",
+            ),
+            (
+                "      - name: Generate RIPR pilot packet\n",
+                "  other-job:\n    steps:\n      - name: Generate RIPR pilot packet\n",
+            ),
+            (
+                "      - name: Add RIPR advisory summary\n",
+                "  other-job:\n    steps:\n      - name: Add RIPR advisory summary\n",
+            ),
+            (
+                "          } >> \"$GITHUB_STEP_SUMMARY\"",
+                "          } > target/discarded-summary",
+            ),
+            ("echo '#### First-run status'", "echo 'Other status'"),
+            ("missing_start_here", "silently_missing"),
+            (
+                "          ref: ${{ github.event.pull_request.head.sha || github.sha }}",
+                "          ref: main",
+            ),
+            (
+                "        run: rm -rf target/ripr target/ci",
+                "        run: echo preserve-untrusted-artifacts",
+            ),
+            (
+                "      - name: Upload RIPR report artifacts\n",
+                "      - name: Arbitrary step\n        run: echo unqualified\n      - name: Upload RIPR report artifacts\n",
+            ),
+            ("  ripr:\n", "  ripr:\n    if: false\n"),
+            ("  ripr:\n", "  ripr:\n    env:\n      RIPR_GATE_MODE: ''\n"),
+            ("    shell: bash\n", "    shell: echo\n"),
+            (
+                "      - name: Upload RIPR report artifacts\n",
+                "      - name: Generate RIPR pilot packet\n        run: echo duplicate\n      - name: Upload RIPR report artifacts\n",
+            ),
+            (
+                "          ripr \"${gate_args[@]}\"",
+                "          ripr \"${gate_args[@]}\" || true",
+            ),
+            (
+                "    continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}",
+                "    continue-on-error: true",
+            ),
+        ] {
+            assert!(
+                workflow.contains(before),
+                "unmatched negative control {before:?}"
+            );
+            let wrong = workflow.replacen(before, after, 1);
+            assert!(
+                !super::github_workflow_yaml_missing(&wrong).is_empty(),
+                "accepted wrong released contract {before:?}"
+            );
+        }
+        let duplicate_job = format!("{workflow}\n  ripr:\n    if: false\n");
+        assert!(
+            !super::github_workflow_yaml_missing(&duplicate_job).is_empty(),
+            "accepted duplicate disabled ripr mapping"
+        );
+        let duplicate_steps = format!(
+            "{workflow}\n    steps:\n      - name: Disabled replacement\n        run: false\n"
+        );
+        assert!(
+            !super::github_workflow_yaml_missing(&duplicate_steps).is_empty(),
+            "accepted duplicate steps mapping"
+        );
+        for key in ["'ripr'", "ripr "] {
+            let duplicate = format!("{workflow}\n  {key}:\n    if: false\n");
+            assert!(
+                !super::github_workflow_yaml_missing(&duplicate).is_empty(),
+                "accepted alternate duplicate job key {key}"
+            );
+        }
+        let late_default = format!("{workflow}\ndefaults:\n  run:\n    shell: echo\n");
+        assert!(
+            !super::github_workflow_yaml_missing(&late_default).is_empty(),
+            "accepted late default-shell override"
+        );
         Ok(())
     }
 

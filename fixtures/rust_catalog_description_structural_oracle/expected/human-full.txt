@@ -2,12 +2,13 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/rust_catalog_description_structural_oracle/input
 
-Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 1 probe(s), 0 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 1 of 1 finding(s) unsuppressed
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
 WARNING fixtures/rust_catalog_description_structural_oracle/input/src/lib.rs:11
+  id: probe:src_lib.rs:return_value:90200739
 
 Changed
   before: "checks catalog consistency".to_string()
@@ -31,10 +32,13 @@ Evidence
   - related test tests/catalog.rs:6 catalog_with_single_consistent_entry_has_no_violations uses strong exact value oracle: assert_eq!(
         entry_description_violations(&catalog),
         Vec::<String>::new()
-    );
+    ); unconfirmed: ripr could not confirm that this assertion observes the changed behavior
 
 Weakness
   - No strong discriminator was detected
 
 Next step
   Replace broad assertions with exact equality or a property that constrains the changed returned value.
+Drill in:
+  ripr explain --root fixtures/rust_catalog_description_structural_oracle/input --diff fixtures/rust_catalog_description_structural_oracle/diff.patch --mode fast probe:src_lib.rs:return_value:90200739
+  ripr context --root fixtures/rust_catalog_description_structural_oracle/input --diff fixtures/rust_catalog_description_structural_oracle/diff.patch --mode fast --at probe:src_lib.rs:return_value:90200739

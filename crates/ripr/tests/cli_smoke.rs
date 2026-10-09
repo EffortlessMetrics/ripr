@@ -11531,6 +11531,183 @@ fn doctor_reports_version_only_perl_exporter_as_incompatible() -> Result<(), Str
 
 #[test]
 #[cfg(unix)]
+fn managed_perl_supplied_diff_discards_caller_base_before_export() -> Result<(), String> {
+    let root = unique_temp_workspace("perl-supplied-diff-base");
+    std::fs::create_dir_all(root.join("lib")).map_err(|error| error.to_string())?;
+    let isolated = IsolatedFixtureWorkspace(root);
+    let root = isolated.path();
+    std::fs::create_dir_all(root.join("t")).map_err(|error| error.to_string())?;
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/perl_cpan_alpha");
+    for relative in ["Makefile.PL", "lib/Pricing.pm", "t/pricing.t", "diff.patch"] {
+        std::fs::copy(fixture.join("input").join(relative), root.join(relative))
+            .map_err(|error| error.to_string())?;
+    }
+    init_git_fixture_repo(root).map_err(|error| error.to_string())?;
+    let source_path = root.join("lib/Pricing.pm");
+    let source = std::fs::read_to_string(&source_path).map_err(|error| error.to_string())?;
+    assert!(source.contains("$amount >= 100"));
+    std::fs::write(
+        &source_path,
+        source.replace("$amount >= 100", "$amount > 100"),
+    )
+    .map_err(|error| error.to_string())?;
+    run_git(
+        root,
+        &["add", "Makefile.PL", "lib/Pricing.pm", "t/pricing.t"],
+    )
+    .map_err(|error| error.to_string())?;
+    let commit = run_command(
+        "git",
+        Some(root),
+        &[
+            "-c",
+            "user.name=RIPR test",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-m",
+            "Perl input",
+        ],
+    )
+    .map_err(|error| error.to_string())?;
+    assert_success(&commit);
+    std::fs::write(&source_path, source).map_err(|error| error.to_string())?;
+    run_git(root, &["add", "lib/Pricing.pm"]).map_err(|error| error.to_string())?;
+    let commit = run_command(
+        "git",
+        Some(root),
+        &[
+            "-c",
+            "user.name=RIPR test",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-m",
+            "Perl change",
+        ],
+    )
+    .map_err(|error| error.to_string())?;
+    assert_success(&commit);
+    let exporter = root.join("exporter");
+    write_probe_stub(
+        &exporter,
+        r#"#!/bin/sh
+printf '%s\n' "$@" > "$RIPR_TEST_ARGV"
+out=''
+diff=''
+base=''
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --out) out="$2"; shift ;;
+    --diff) diff="$2"; shift ;;
+    --base) base="$2"; shift ;;
+  esac
+  shift
+done
+if [ -n "$RIPR_TEST_DIFF" ]; then
+  [ -z "$base" ] && [ "$diff" = "$RIPR_TEST_DIFF" ] || exit 31
+  cmp "$diff" "$RIPR_TEST_DIFF_COPY" || exit 32
+else
+  [ "$base" = HEAD~1 ] && [ -z "$diff" ] || exit 33
+fi
+cp "$RIPR_TEST_PACKET" "$out"
+"#,
+        "",
+    )?;
+    let config = format!(
+        "[perl]\nproducer = \"perl-ripr-facts\"\nexecutable = {:?}\n",
+        exporter
+    );
+    std::fs::write(root.join("ripr.toml"), config).map_err(|error| error.to_string())?;
+    let patch = root.join("diff.patch").display().to_string();
+    let patch_copy = root.join("expected.patch").display().to_string();
+    std::fs::copy(&patch, &patch_copy).map_err(|error| error.to_string())?;
+    let packet_path = root.join("packet.json").display().to_string();
+    let argv_path = root.join("argv.txt").display().to_string();
+    let root_arg = root.display().to_string();
+    let packet_bytes =
+        std::fs::read(fixture.join("expected/regression-packets/actionable-weak-ok.json"))
+            .map_err(|error| error.to_string())?;
+    for (supplied, base) in [
+        (true, Some("HEAD")),
+        (true, Some("missing-base")),
+        (true, None),
+        (false, Some("HEAD~1")),
+    ] {
+        if Path::new(&argv_path).exists() {
+            std::fs::remove_file(&argv_path).map_err(|error| error.to_string())?;
+        }
+        let mut packet: serde_json::Value =
+            serde_json::from_slice(&packet_bytes).map_err(|error| error.to_string())?;
+        packet["input"]["base"] = if supplied {
+            serde_json::Value::Null
+        } else {
+            serde_json::json!("HEAD~1")
+        };
+        std::fs::write(
+            &packet_path,
+            serde_json::to_vec(&packet).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        let mut args = vec!["check", "--root", &root_arg, "--format", "json"];
+        if supplied {
+            args.extend(["--diff", &patch]);
+        }
+        if let Some(base) = base {
+            args.extend(["--base", base]);
+        }
+        let output = run_command_with_env(
+            env!("CARGO_BIN_EXE_ripr"),
+            root,
+            &args,
+            &[
+                ("RIPR_ALLOW_REPO_PERL_EXECUTABLE", "1"),
+                ("RIPR_TEST_ARGV", &argv_path),
+                ("RIPR_TEST_PACKET", &packet_path),
+                ("RIPR_TEST_DIFF", if supplied { &patch } else { "" }),
+                ("RIPR_TEST_DIFF_COPY", &patch_copy),
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+        assert_success(&output);
+        assert!(
+            !String::from_utf8_lossy(&output.stderr).contains("Perl facts exporter failed"),
+            "{output:?}"
+        );
+        let argv = std::fs::read_to_string(&argv_path).map_err(|error| error.to_string())?;
+        assert_eq!(argv.lines().any(|arg| arg == "--base"), !supplied, "{argv}");
+        assert_eq!(argv.lines().any(|arg| arg == "--diff"), supplied, "{argv}");
+        let report: serde_json::Value =
+            serde_json::from_slice(&output.stdout).map_err(|error| error.to_string())?;
+        assert_eq!(
+            report["base"],
+            if supplied {
+                serde_json::Value::Null
+            } else {
+                serde_json::json!("HEAD~1")
+            }
+        );
+        assert!(report["analysis_outcome"]["outcome"]["identity"].is_object());
+        assert_eq!(
+            report["analysis_outcome"]["outcome"]["identity"]["base_revision"],
+            report["base"]
+        );
+        if cfg!(feature = "lang-perl") {
+            assert!(
+                report["findings"]
+                    .as_array()
+                    .is_some_and(|findings| findings
+                        .iter()
+                        .any(|finding| finding["language"] == "perl")),
+                "accepted fixture packet must produce a Perl finding: {report}"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[cfg(unix)]
 fn doctor_reports_ripr_facts_capable_exporter_as_compatible() -> Result<(), String> {
     // Discriminating control for the incompatible case: the same `perllsp`
     // name, but the stub accepts `ripr-facts --help` and documents
@@ -12454,14 +12631,17 @@ fn init_ci_github_dry_run_prints_config_and_workflow_without_writing() -> Result
     assert!(stdout.contains("actions/upload-artifact@v7"));
     // #5409: one upload path covers every RIPR report directory.
     assert!(stdout.contains("            target/ripr\n            target/ci\n"));
-    assert!(stdout.contains("target/ripr/review/publish/requests.tsv"));
+    assert!(stdout.contains("comment-publish-plan.json"));
     assert!(stdout.contains("RIPR advisory summary"));
-    assert!(stdout.contains("ripr pr-comments existing --root . --raw -"));
-    // #4696: the analysis steps run inside one packet command.
-    assert!(stdout.contains("run: ripr reports ci-packet --root ."));
+    assert!(!stdout.contains("ripr pr-comments existing --root . --raw -"));
+    // Published 0.10.0 uses compatible executable steps; the compact packet
+    // command remains a separately covered development capability.
+    assert!(stdout.contains("name: Generate RIPR pilot packet"));
+    assert!(!stdout.contains("ripr reports ci-packet --root ."));
     // #3906: CI writes only the before side of the repair loop.
     assert!(!stdout.contains("ripr agent receipt"));
-    assert!(stdout.contains("ripr reports ci-summary --root ."));
+    assert!(stdout.contains("echo '## RIPR advisory summary'"));
+    assert!(!stdout.contains("ripr reports ci-summary --root ."));
     assert!(stdout.contains("github/codeql-action/upload-sarif@v4"));
     assert!(!workspace.join("ripr.toml").exists());
     assert!(!workspace.join(".github/workflows/ripr.yml").exists());
@@ -12577,7 +12757,9 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     // The prebuilt install needs no third-party toolchain or cache action.
     assert!(!workflow.contains("dtolnay/rust-toolchain"));
     assert!(!workflow.contains("Swatinem/rust-cache"));
-    assert!(workflow.contains("run: ripr reports ci-packet --root ."));
+    assert!(workflow.contains("name: Generate RIPR pilot packet"));
+    assert!(workflow.contains("name: Verify installed RIPR compatibility"));
+    assert!(!workflow.contains("ripr reports ci-packet --root ."));
     // #3906 (F60-1): CI has no test edit between snapshots, so it runs no
     // verify, receipt, or outcome; the repair's after phase writes those.
     assert!(!workflow.contains("ripr agent receipt"));
@@ -12587,7 +12769,7 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     assert!(workflow.contains("Capture existing RIPR inline comments"));
     assert!(workflow.contains("Publish RIPR inline comments"));
     assert!(workflow.contains("target/ripr/review"));
-    // The packet the workflow runs declares the steps it replaced (#4696);
+    // The development packet declares the steps it replaced (#4696);
     // an unknown --step runs nothing and names them all.
     let packet = run_ripr(&[
         "reports",
@@ -12620,7 +12802,8 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
         "an unknown --step ran a step"
     );
     assert!(workflow.contains("Add RIPR advisory summary"));
-    assert!(workflow.contains("ripr reports ci-summary --root ."));
+    assert!(workflow.contains("echo '## RIPR advisory summary'"));
+    assert!(!workflow.contains("ripr reports ci-summary --root ."));
     assert!(!workflow.contains("cargo xtask"));
     assert!(workflow.contains("continue-on-error: true"));
     assert!(workflow.contains("actions/upload-artifact@v7"));
