@@ -210,12 +210,15 @@ where
     }
     let owned_file = file.to_path_buf();
     let owned_source = source.to_string();
+    let frozen_context = crate::analysis::committed_source::frozen::current();
     let spawn = std::thread::Builder::new()
         .name("ripr-ts-oxc-parse".to_string())
         .stack_size(PARSE_WORKER_STACK_BYTES)
         .spawn(move || {
-            let allocator = Allocator::default();
-            analyze(&owned_file, &owned_source, &allocator)
+            crate::analysis::committed_source::frozen::with_context(frozen_context, || {
+                let allocator = Allocator::default();
+                analyze(&owned_file, &owned_source, &allocator)
+            })
         });
     match spawn {
         Ok(handle) => handle
