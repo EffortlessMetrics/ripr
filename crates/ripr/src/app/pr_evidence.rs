@@ -211,7 +211,7 @@ fn write_pr_evidence_with_generation(
         let canonical = crate::bounded_input::read_to_string(repo.join(PR_CANONICAL_DIFF))
             .map_err(|error| format!("read owned canonical check input: {error}"))?;
         let authority = prepared
-            .frozen_source_authority(command_root_path(repo, &options.root))
+            .frozen_source_authority(&command_root_path(repo, &options.root))
             .map_err(|error| format!("bind named-head source context: {error}"))?;
         let canonical: std::sync::Arc<str> = canonical.into();
         return crate::analysis::committed_source::frozen::with_context(
