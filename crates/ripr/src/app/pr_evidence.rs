@@ -10,6 +10,8 @@
 //! resulting [`crate::CheckOutput`] as JSON via [`crate::app::render_check_json_unbounded`].
 //! This avoids recompilation and keeps the analysis in-process.
 
+mod complete_execution;
+
 use crate::app::{CheckInput, Mode, OutputFormat, check_workspace_with_config};
 use crate::cli::unknown_argument;
 use crate::config::{
@@ -78,6 +80,12 @@ impl Default for PrEvidenceOptions {
 /// When the check fails, an `error` packet is still written so downstream
 /// consumers see a contract-valid, actionable artifact rather than a gap.
 pub(crate) fn run_pr_evidence(args: &[String]) -> Result<(), String> {
+    if args
+        .first()
+        .is_some_and(|arg| arg == complete_execution::WORKER_FLAG)
+    {
+        return complete_execution::run_worker(&args[1..]);
+    }
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         print_help();
         return Ok(());
@@ -179,6 +187,15 @@ fn write_pr_evidence_with_runner(
     options: &PrEvidenceOptions,
     run_check: impl FnOnce(&Path, &PrEvidenceOptions) -> Result<String, String>,
 ) -> Result<(), String> {
+    write_pr_evidence_with_generation(repo, options, run_check, None)
+}
+
+fn write_pr_evidence_with_generation(
+    repo: &Path,
+    options: &PrEvidenceOptions,
+    run_check: impl FnOnce(&Path, &PrEvidenceOptions) -> Result<String, String>,
+    generation: Option<&Value>,
+) -> Result<(), String> {
     remove_stale_check_artifact(repo)?;
     verify_revision(repo, &options.base)?;
     verify_revision(repo, &options.head)?;
@@ -186,7 +203,13 @@ fn write_pr_evidence_with_runner(
     write_diff(repo, options)?;
     match run_check(repo, options) {
         Ok(check_json) => {
-            match write_pr_evidence_packet(repo, options, &changed_files, &check_json) {
+            match write_pr_evidence_packet_with_generation(
+                repo,
+                options,
+                &changed_files,
+                &check_json,
+                generation,
+            ) {
                 Ok(()) => Ok(()),
                 Err(err) => write_pr_evidence_error_packet(
                     repo,
@@ -215,18 +238,32 @@ fn write_pr_evidence_from_check_json(
     write_pr_evidence_packet(repo, options, &changed_files, check_json)
 }
 
+#[cfg(test)]
 fn write_pr_evidence_packet(
     repo: &Path,
     options: &PrEvidenceOptions,
     changed_files: &[String],
     check_json: &str,
 ) -> Result<(), String> {
+    write_pr_evidence_packet_with_generation(repo, options, changed_files, check_json, None)
+}
+
+fn write_pr_evidence_packet_with_generation(
+    repo: &Path,
+    options: &PrEvidenceOptions,
+    changed_files: &[String],
+    check_json: &str,
+    generation: Option<&Value>,
+) -> Result<(), String> {
     let check_value: Value = serde_json::from_str(check_json)
         .map_err(|err| format!("ripr check output was not valid JSON: {err}"))?;
     if !check_value.is_object() {
         return Err("ripr check output must be a JSON object".to_string());
     }
-    let packet = pr_evidence_packet(options, changed_files, &check_value);
+    let mut packet = pr_evidence_packet(options, changed_files, &check_value);
+    if let Some(generation) = generation {
+        packet[complete_execution::GENERATION_FIELD] = generation.clone();
+    }
     let json_text = serde_json::to_string_pretty(&packet)
         .map_err(|err| format!("serialize PR evidence packet: {err}"))?;
     let markdown = render_pr_evidence_markdown(&packet);
@@ -266,7 +303,11 @@ fn write_pr_evidence_packet(
         "canonical_finding_index_entry_count": findings.len(),
         "canonical_finding_index_byte_count": index_byte_count,
     });
-    let review_input = producer_review_input(&check_value, repo, options, &subject)?;
+    let mut review_input = producer_review_input(&check_value, repo, options, &subject)?;
+    if let Some(generation) = generation {
+        subject[complete_execution::GENERATION_FIELD] = generation.clone();
+        review_input[complete_execution::GENERATION_FIELD] = generation.clone();
+    }
     let review_input_text = format!(
         "{}\n",
         serde_json::to_string_pretty(&review_input)
@@ -392,7 +433,12 @@ fn producer_review_input(
 fn remove_stale_check_artifact(repo: &Path) -> Result<(), String> {
     // The subject is admission authority. Remove it before touching subordinate
     // artifacts or attempting setup/analysis; only missing files are harmless.
-    for relative in [PR_CHECK_SUBJECT_JSON, PR_CHECK_JSON, PR_REVIEW_INPUT_JSON] {
+    for relative in [
+        PR_CHECK_SUBJECT_JSON,
+        PR_CHECK_JSON,
+        PR_REVIEW_INPUT_JSON,
+        complete_execution::RECEIPT,
+    ] {
         match fs::remove_file(repo.join(relative)) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -440,11 +486,17 @@ fn write_pr_evidence_error_packet(
     }))
 }
 
-/// Return the fail-closed error for a producer error packet, if present.
+/// Return the fail-closed error for failed or experimental producer evidence.
 ///
 /// This is the single status-level actionability authority shared by the
 /// public `ripr pr-evidence` command and the xtask compatibility wrapper.
 pub fn reject_pr_evidence_error_packet(packet: &Value) -> Option<String> {
+    if packet.get(complete_execution::GENERATION_FIELD).is_some() {
+        return Some(
+            "experimental complete-execution evidence is not qualified for production admission"
+                .to_string(),
+        );
+    }
     (packet.get("status").and_then(Value::as_str) == Some("error")).then(|| {
         format!(
             "PR evidence producer failed; review-comments must not run: {}",
@@ -504,6 +556,9 @@ fn validate_producer_artifacts(repo: &Path, options: &PrEvidenceOptions) -> Resu
         .map_err(|error| format!("missing or unreadable {PR_REVIEW_INPUT_JSON}: {error}"))?;
     let subject: Value = serde_json::from_slice(&subject_bytes)
         .map_err(|error| format!("{PR_CHECK_SUBJECT_JSON} is not valid JSON: {error}"))?;
+    if let Some(error) = reject_pr_evidence_error_packet(&subject) {
+        return Err(error);
+    }
     let review_input: ReviewInputV1 = serde_json::from_slice(&review_input_bytes)
         .map_err(|error| format!("{PR_REVIEW_INPUT_JSON} is not valid ReviewInputV1: {error}"))?;
     if subject.get("schema_version").and_then(Value::as_str) != Some("ripr.pr_check_subject.v1") {
@@ -1338,6 +1393,9 @@ fn validate_artifacts(packet: &Value, violations: &mut Vec<String>) {
 }
 
 fn render_pr_evidence_markdown(packet: &Value) -> String {
+    if packet.get(complete_execution::GENERATION_FIELD).is_some() {
+        return "# Experimental PR Evidence\n\n**Not qualified for production admission.** Complete coverage is not established; production admission is disabled. This artifact must not route mutation or satisfy the Fast Gate.\n".to_string();
+    }
     let summary = packet.get("summary").and_then(Value::as_object);
     let changed_files = count_field(summary, "changed_files");
     let comments = count_field(summary, "comments");
@@ -2845,5 +2903,45 @@ mod tests {
         let path = std::env::temp_dir().join(unique);
         fs::create_dir_all(&path).map_err(|err| format!("create {}: {err}", path.display()))?;
         Ok(path)
+    }
+
+    #[test]
+    fn experimental_complete_generation_cannot_be_laundered_through_status_ok() {
+        for generation in [
+            Value::Null,
+            json!({"coverage":"complete","production_admission":true}),
+        ] {
+            let mut packet = json!({"status":"ok","analysis_complete":true});
+            packet["experimental_complete_execution"] = generation;
+            assert!(
+                reject_pr_evidence_error_packet(&packet).is_some(),
+                "experimental generation is not qualified for production admission"
+            );
+        }
+    }
+    #[test]
+    fn experimental_markdown_cannot_present_an_ordinary_fast_gate() -> Result<(), String> {
+        let ordinary =
+            json!({"status":"ok","summary":{"comments":17,"requires_targeted_mutation":true}});
+        assert!(render_pr_evidence_markdown(&ordinary).contains("## Fast Gate"));
+        for generation in [
+            Value::Null,
+            json!({"coverage":"complete","production_admission":true}),
+        ] {
+            let mut marked = ordinary.clone();
+            marked["experimental_complete_execution"] = generation;
+            let markdown = render_pr_evidence_markdown(&marked);
+            if !markdown.starts_with("# Experimental PR Evidence")
+                || !markdown.contains("Not qualified for production admission")
+                || markdown.contains("## Fast Gate")
+                || markdown.contains("requires_targeted_mutation: true")
+            {
+                return Err(
+                    "experimental Markdown presented ordinary gate or routing guidance".to_string(),
+                );
+            }
+        }
+        assert!(render_pr_evidence_markdown(&ordinary).contains("## Fast Gate"));
+        Ok(())
     }
 }

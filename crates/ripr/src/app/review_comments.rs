@@ -137,6 +137,9 @@ pub(crate) fn admit_producer_evidence(
             subject_path.display()
         ))
     })?;
+    if let Some(error) = crate::reject_pr_evidence_error_packet(&subject) {
+        return Err(ProducerAdmissionError::malformed(error));
+    }
     require_equal(
         "subject_schema_version",
         required_string(&subject, "schema_version")?,
@@ -508,6 +511,9 @@ pub(crate) fn admit_review_input(
             review_input_path.display()
         ))
     })?;
+    if let Some(error) = crate::reject_pr_evidence_error_packet(&raw) {
+        return Err(ProducerAdmissionError::malformed(error));
+    }
     require_equal(
         "review_input_schema_version",
         required_string(&raw, "schema_version")?,
