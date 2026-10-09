@@ -62,6 +62,15 @@ impl ArtifactDigests {
     }
 }
 
+fn require_regular(path: &Path) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|error| format!("experimental retained artifact {} unavailable: {error}", path.display()))?;
+    if !metadata.file_type().is_file() {
+        return Err(format!("experimental retained artifact {} is not a regular owned file", path.display()));
+    }
+    Ok(())
+}
+
 // The parent never parses the full check/index. Fixed-count streaming digest
 // checks close post-worker mutation without copying a large artifact body.
 fn verify_artifacts(repo: &Path, receipt: &Receipt) -> Result<(), String> {
@@ -70,6 +79,7 @@ fn verify_artifacts(repo: &Path, receipt: &Receipt) -> Result<(), String> {
     let maximum = receipt.file_bytes.checked_mul(6)
         .ok_or_else(|| "experimental artifact total bound overflow".to_string())?;
     for (relative, expected) in receipt.artifacts.entries() {
+        require_regular(&repo.join(relative))?;
         let file = fs::File::open(repo.join(relative))
             .map_err(|error| format!("experimental artifact {relative} unavailable: {error}"))?;
         let metadata = file.metadata().map_err(|error| error.to_string())?;
@@ -172,18 +182,15 @@ pub(super) fn run_experiment(args: &[String]) -> Result<(), String> {
     let repo = repo_root()?;
     revoke(&repo)?;
     let bounds = profile()?;
-    let binary = match env::var("RIPR_BIN") {
-        Ok(binary) if !binary.trim().is_empty() => binary,
-        Ok(_) => return Err("RIPR_BIN is set but empty".to_string()),
-        Err(_) => {
-            let args = ["build".to_string(), "--manifest-path".to_string(),
-                repo.join("Cargo.toml").display().to_string(), "-p".to_string(),
-                "ripr".to_string(), "--quiet".to_string()];
-            run_output_owned_with_timeout("cargo", &args, tool_build_timeout()?,
-                "build of the pinned complete-execution worker")?;
-            built_ripr_binary_path(&repo)?.display().to_string()
-        }
-    };
+    if env::var_os("RIPR_BIN").is_some() {
+        return Err("experimental complete-execution requires the pinned built worker; RIPR_BIN is supported only by the ordinary compatibility path".to_string());
+    }
+    let args = ["build".to_string(), "--manifest-path".to_string(),
+        repo.join("Cargo.toml").display().to_string(), "-p".to_string(),
+        "ripr".to_string(), "--quiet".to_string()];
+    run_output_owned_with_timeout("cargo", &args, tool_build_timeout()?,
+        "build of the pinned complete-execution worker")?;
+    let binary = built_ripr_binary_path(&repo)?.display().to_string();
     let receipt = run_candidate(&repo, &binary, &options, Path::new("/usr/bin/prlimit"), bounds)?;
     // A native success is experimental only. Never turn it into gate success.
     Err(format!("experimental worker completed under {} address-space bytes with {} index entries ({} index bytes); exhaustive coverage {} and production admission disabled",
@@ -237,6 +244,7 @@ fn run_candidate(
 
 fn read_receipt(repo: &Path, nonce: &str, bounds: (u64, u64), base: &str, head: &str, head_tree: &str) -> Result<Receipt, String> {
     let path = repo.join(RECEIPT);
+    require_regular(&path)?;
     let mut bytes = Vec::new();
     let file = fs::File::open(&path).map_err(|error| format!("experimental completion receipt missing: {error}"))?;
     if !file.metadata().map_err(|error| error.to_string())?.is_file() {
@@ -335,6 +343,26 @@ mod tests {
                 assert!(read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40)).is_err());
             }
             write(&text)?;
+
+            #[cfg(target_os = "linux")]
+            {
+                // A FIFO is a real blocking-open counterexample, not a
+                // serialization/setup failure. Both admission reads must
+                // refuse before opening it.
+                for relative in [PR_CHECK_SUBJECT_JSON, RECEIPT] {
+                    fs::remove_file(repo.join(relative)).map_err(|error| error.to_string())?;
+                    let args = vec![repo.join(relative).display().to_string()];
+                    let output = capture_bytes_in_dir_with_budget(Path::new("/usr/bin/mkfifo"),
+                        &args, (&repo, None), &[], ByteCaptureBudget {
+                            timeout: Duration::from_secs(30), stdout_bytes: STREAM_MAX,
+                            stderr_bytes: STREAM_MAX }, "owned FIFO counterexample fixture")?;
+                    assert!(!output.timed_out && output.status.is_some_and(|status| status.success()));
+                    assert!(read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40)).is_err());
+                    fs::remove_file(repo.join(relative)).map_err(|error| error.to_string())?;
+                    if relative == RECEIPT { write(&text)?; }
+                    else { super::super::tests::write_repo_file(&repo, relative, "bounded artifact")?; }
+                }
+            }
             super::super::tests::write_repo_file(&repo, PR_CHECK_JSON, "mutated")?;
             assert!(read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40)).is_err());
             fs::remove_file(repo.join(RECEIPT)).map_err(|error| error.to_string())?;
@@ -401,6 +429,11 @@ mod tests {
             check_pr_evidence(&repo, &options)?;
             assert!(review().is_ok());
             let baseline: Value = serde_json::from_slice(&fs::read(repo.join(PR_CHECK_JSON)).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+            assert_eq!(baseline.pointer("/analysis_outcome/analysis_complete").and_then(Value::as_bool), Some(true));
+            assert!(baseline["findings"].as_array().is_some_and(|findings| !findings.is_empty()));
+            let reviewed: Value = serde_json::from_slice(&fs::read(repo.join("target/review.json")).map_err(|error| error.to_string())?).map_err(|error| error.to_string())?;
+            assert_eq!(reviewed["analysis_scope"]["basis"], "producer_check_projection");
+            assert!(reviewed["analysis_scope"]["classified_seams_considered"].as_u64().is_some_and(|count| count > 0));
             let receipt = run_candidate(&repo, &binary, &options, Path::new("/usr/bin/prlimit"), profile()?)?;
             assert_eq!(receipt.coverage, "not_established");
             let experimental: Value = serde_json::from_slice(&fs::read(repo.join(PR_CHECK_JSON)).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;

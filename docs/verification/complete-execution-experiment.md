@@ -11,7 +11,8 @@ is introduced.
 
 `cargo xtask ripr-pr --experimental-complete-execution --base <literal-base>
 --head <literal-head>` resolves the pinned RIPR binary using the existing build
-authority. Subject authority and any prior experimental receipt are revoked
+authority. The new experiment rejects RIPR_BIN overrides; the ordinary
+compatibility path retains its existing override behavior. Subject authority and any prior experimental receipt are revoked
 before resource discovery, build, limiter setup or spawn.
 
 On Linux, the launcher invokes `/usr/bin/prlimit` with equal finite soft/hard
@@ -32,8 +33,11 @@ over-limit byte capture refuses. Producer progress stdout is diagnostic only.
 One designated receipt file is read with a 16 KiB limit and exact-document,
 typed parsing; unknown/duplicate fields and extra documents refuse.
 The parent stream-verifies the fixed six artifact digests with 64 KiB scratch,
-individual file bounds, a finite total bound and the configured deadline;
-post-worker body mutation, duplicate artifact keys and stale identities refuse.
+individual file bounds, a finite total bound and a cooperative regular-file
+I/O deadline. Symlinks and special files are rejected before open under the
+single-writer artifact scope; blocking filesystem reads are not preempted.
+A hard parent-I/O bound remains an activation prerequisite. The checks refuse
+post-worker body mutation, duplicate artifact keys and stale identities.
 The normal configured producer timeout remains in effect.
 
 RLIMIT_AS is an address-space ceiling per process, not RSS or a process-tree
@@ -45,7 +49,7 @@ part of this experiment.
 
 ## Publication and failure semantics
 
-Every experimental packet, subject and review input carries
+Every successfully published experimental packet, subject and review input carries
 `experimental_complete_execution`. The shared production rejection authority
 refuses any presence of that field, including null or a claimed complete
 generation. Installed saved-check, xtask saved-check and both review subject
@@ -60,7 +64,9 @@ A successful worker exit plus receipt records only a completed under-cap
 ordinary producer experiment. The public experimental launcher deliberately
 returns failure so it cannot satisfy a gate.
 
-Worker setup/analysis/serialization failure revokes authority. A failed or
+Worker setup/analysis/serialization failure revokes authority. Existing error
+packets remain unmarked status=error artifacts, rejected by the same authority,
+and never gain an experimental completion receipt. A failed or
 absent native status, timeout, incomplete capture, missing/malformed/stale
 receipt also revokes authority in the launcher. Allocation abort or signal
 may prevent a child error packet; non-success plus absent completion evidence
