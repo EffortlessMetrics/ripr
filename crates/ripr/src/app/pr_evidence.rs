@@ -2258,10 +2258,21 @@ mod tests {
                         .map_err(|error| error.to_string())?,
                 )
                 .map_err(|error| error.to_string())?;
-                assert_eq!(packet["status"], "ok");
-                assert!(
-                    check_pr_evidence(repo, options).is_err(),
-                    "experimental snapshot execution must remain inadmissible",
+                assert_eq!(packet["status"], "advisory");
+                assert_eq!(packet[complete_execution::GENERATION_FIELD], generation);
+                for path in [PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON] {
+                    let artifact: Value = serde_json::from_slice(
+                        &fs::read(repo.join(path)).map_err(|error| error.to_string())?,
+                    )
+                    .map_err(|error| error.to_string())?;
+                    assert_eq!(artifact[complete_execution::GENERATION_FIELD], generation);
+                }
+                let refusal = check_pr_evidence(repo, options)
+                    .err()
+                    .ok_or("experimental snapshot execution was admitted")?;
+                assert_eq!(
+                    refusal,
+                    "experimental complete-execution evidence is not qualified for production admission",
                 );
                 Ok(())
             })?;
