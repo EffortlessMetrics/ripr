@@ -187,6 +187,7 @@ fn parse_single_oid(bytes: &[u8], label: &str) -> Result<GitObjectId, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::fixture_git::{FIXTURE_GIT_DEADLINE, fixture_git_ok, remove_fixture_tree};
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -201,7 +202,7 @@ mod tests {
 
     impl Drop for Fixture {
         fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.repo);
+            let _ = remove_fixture_tree(&self.repo);
         }
     }
 
@@ -226,10 +227,15 @@ mod tests {
                 base_tree: String::new(),
                 head_tree: String::new(),
             };
-            fixture.git(&["init", "--quiet"])?;
-            fixture.git(&["config", "user.name", "RIPR subject fixture"])?;
-            fixture.git(&["config", "user.email", "subject-fixture@example.invalid"])?;
-            fixture.git(&["config", "commit.gpgsign", "false"])?;
+            fixture.git(&["-c", "init.templateDir=", "init", "--quiet", "-b", "subject"])?;
+            fixture.git(&["config", "--local", "user.name", "RIPR subject fixture"])?;
+            fixture.git(&[
+                "config",
+                "--local",
+                "user.email",
+                "subject-fixture@example.invalid",
+            ])?;
+            fixture.git(&["config", "--local", "commit.gpgsign", "false"])?;
             fixture.base_tree = fixture.write_tree(1)?;
             fixture.base_sha = fixture.commit(&fixture.base_tree, &[], "base")?;
             fixture.head_tree = fixture.write_tree(2)?;
@@ -240,9 +246,26 @@ mod tests {
             Ok(fixture)
         }
 
-        fn git(&self, args: &[&str]) -> Result<String, String> {
-            let output = strict_git(&self.repo, args)?;
-            String::from_utf8(output).map_err(|error| error.to_string())
+        fn git(&self, args: &[&str]) -> Result<(), String> {
+            fixture_git_ok(&self.repo, args)
+        }
+
+        fn git_output(&self, args: &[&str]) -> Result<String, String> {
+            let output = crate::git::run_git_output_with_deadline_and_limit_isolated(
+                &self.repo,
+                args,
+                FIXTURE_GIT_DEADLINE,
+                IDENTITY_OUTPUT_BYTES,
+            )
+            .map_err(|error| format!("fixture Git invocation {args:?} failed: {error}"))?;
+            if !output.status.success() {
+                return Err(format!(
+                    "fixture Git invocation {args:?} returned {}: {}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
+            String::from_utf8(output.stdout).map_err(|error| error.to_string())
         }
 
         fn write_tree(&self, value: u8) -> Result<String, String> {
@@ -252,7 +275,7 @@ mod tests {
             )
             .map_err(|error| error.to_string())?;
             self.git(&["add", "--", "source.rs"])?;
-            let tree = self.git(&["write-tree"])?;
+            let tree = self.git_output(&["write-tree"])?;
             Ok(parse_single_oid(tree.as_bytes(), "fixture tree")?.as_str().to_string())
         }
 
@@ -261,7 +284,7 @@ mod tests {
             for parent in parents {
                 args.extend(["-p", *parent]);
             }
-            let commit = self.git(&args)?;
+            let commit = self.git_output(&args)?;
             Ok(parse_single_oid(commit.as_bytes(), "fixture commit")?.as_str().to_string())
         }
 
@@ -349,7 +372,11 @@ mod tests {
         let options = fixture.options();
         let binding = resolve_subject(&fixture.repo, &options)?;
         fixture.git(&["update-ref", "-d", "refs/heads/subject"])?;
-        assert!(validate_current(&fixture.repo, &options, &binding).is_err());
+        let missing = validate_current(&fixture.repo, &options, &binding)
+            .err()
+            .ok_or("missing requested head was accepted")?;
+        assert!(missing.contains("whole-subject Git probe"), "{missing}");
+        assert!(missing.contains("HEAD^{commit}"), "{missing}");
         fixture.git(&["update-ref", "refs/heads/subject", &fixture.head_sha])?;
         validate_current(&fixture.repo, &options, &binding)?;
         let git_dir = fixture.repo.join(".git");
@@ -362,7 +389,11 @@ mod tests {
         let unavailable = validate_current(&fixture.repo, &options, &binding);
         std::fs::remove_file(&git_dir).map_err(|error| error.to_string())?;
         std::fs::rename(&held_git_dir, &git_dir).map_err(|error| error.to_string())?;
-        assert!(unavailable.is_err(), "unavailable Git identity became success");
+        let unavailable = unavailable
+            .err()
+            .ok_or("unavailable Git identity became success")?;
+        assert!(unavailable.contains("whole-subject Git probe"), "{unavailable}");
+        assert!(unavailable.contains("--show-toplevel"), "{unavailable}");
         validate_current(&fixture.repo, &options, &binding)?;
         Ok(())
     }
@@ -373,17 +404,27 @@ mod tests {
         let unrelated = fixture.commit(&fixture.head_tree, &[], "unrelated")?;
         let mut options = fixture.options();
         options.head = unrelated;
-        assert!(resolve_subject(&fixture.repo, &options).is_err());
+        let empty = resolve_subject(&fixture.repo, &options)
+            .err()
+            .ok_or("missing actual merge base was accepted")?;
+        assert!(empty.contains("whole-subject Git probe"), "{empty}");
+        assert!(empty.contains("merge-base"), "{empty}");
 
         let left = fixture.commit(&fixture.base_tree, &[&fixture.base_sha], "left")?;
         let right = fixture.commit(&fixture.head_tree, &[&fixture.base_sha], "right")?;
         let first_merge = fixture.commit(&fixture.head_tree, &[&left, &right], "first merge")?;
         let second_merge = fixture.commit(&fixture.head_tree, &[&right, &left], "second merge")?;
-        let actual = fixture.git(&["merge-base", "--all", &first_merge, &second_merge])?;
+        let actual = fixture.git_output(&["merge-base", "--all", &first_merge, &second_merge])?;
         assert_eq!(actual.lines().count(), 2, "fixture must have two actual merge bases");
         options.base = first_merge;
         options.head = second_merge;
-        assert!(resolve_subject(&fixture.repo, &options).is_err());
+        let multiple = resolve_subject(&fixture.repo, &options)
+            .err()
+            .ok_or("multiple actual merge bases were accepted")?;
+        assert_eq!(
+            multiple,
+            "three-dot origin must contain exactly one nonempty line"
+        );
         Ok(())
     }
 
@@ -394,13 +435,31 @@ mod tests {
         let binding = resolve_subject(&fixture.repo, &options)?;
         let mut alias = options.clone();
         alias.head = fixture.head_sha.clone();
-        assert!(validate_current(&fixture.repo, &alias, &binding).is_err());
+        let alias_error = validate_current(&fixture.repo, &alias, &binding)
+            .err()
+            .ok_or("changed requested head literal was accepted")?;
+        assert_eq!(
+            alias_error,
+            "whole-subject request options changed after pinning"
+        );
         let mut flags = options.clone();
         flags.check = !flags.check;
-        assert!(validate_current(&fixture.repo, &flags, &binding).is_err());
+        let check_error = validate_current(&fixture.repo, &flags, &binding)
+            .err()
+            .ok_or("changed check flag was accepted")?;
+        assert_eq!(
+            check_error,
+            "whole-subject request options changed after pinning"
+        );
         flags = options.clone();
         flags.base_explicit = !flags.base_explicit;
-        assert!(validate_current(&fixture.repo, &flags, &binding).is_err());
+        let base_error = validate_current(&fixture.repo, &flags, &binding)
+            .err()
+            .ok_or("changed explicit-base flag was accepted")?;
+        assert_eq!(
+            base_error,
+            "whole-subject request options changed after pinning"
+        );
         Ok(())
     }
 
