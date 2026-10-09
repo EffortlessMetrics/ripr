@@ -1037,3 +1037,50 @@ fn overflow_and_premature_end_are_errors_without_finish() -> Result<(), String> 
     assert!(ledger.ends.is_empty());
     Ok(())
 }
+
+#[test]
+fn no_path_or_closed_sections_cannot_anchor_later_plain_markers() -> Result<(), String> {
+    for prefix in [
+        "diff --git a/gone.rs b/gone.rs\n--- a/gone.rs\n+++ /dev/null\n@@ malformed @@\n",
+        "diff --git a/link.rs b/link.rs\nnew file mode 120000\n--- /dev/null\n+++ b/link.rs\n@@ malformed @@\n",
+        "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/../../escape.rs\n@@ malformed @@\n",
+        "diff --git a/blob.bin b/blob.bin\nBinary files a/blob.bin and b/blob.bin differ\n",
+        "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ malformed @@\n",
+    ] {
+        let input = format!("{prefix}--- a/next.rs\n+++ b/next.rs\n@@ -0,0 +1 @@\n+x\n");
+        let (_, ledger) = observed(input.as_bytes(), 2)?;
+        let tail = &ledger.reductions[ledger.reductions.len() - 4..];
+        for reduction in tail {
+            assert_eq!(reduction.section, None);
+        }
+        assert_eq!(tail[3].coordinates, Some((0, 1)));
+        assert_eq!(tail[3].projection, Some((super::RawChangeSide::Added, 0)));
+    }
+    Ok(())
+}
+
+#[test]
+fn unsupported_original_path_token_is_explicit_and_not_lossy_identity() -> Result<(), String> {
+    let input = b"diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/\xff.rs\n@@ -0,0 +1 @@\n+x\n";
+    let (_, ledger) = observed(input, 1)?;
+    let marker = &ledger.reductions[2];
+    assert_eq!(marker.token.as_deref(), Some(b"b/\xff.rs".as_slice()));
+    assert!(marker.decoded.is_none());
+    // Original capture is accounted; this is unsupported token evidence.
+    // Semantic/native acceptance is advisory and cannot authenticate identity.
+    assert_eq!(marker.section, Some(0));
+    Ok(())
+}
+
+#[test]
+fn overflowing_declared_ranges_have_no_raw_coordinates() -> Result<(), String> {
+    let input = format!("diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -0,0 +{},2 @@\n+first\n+second\n", usize::MAX - 1);
+    let (_, ledger) = observed(input.as_bytes(), 1)?;
+    for reduction in &ledger.reductions[4..] {
+        assert!(reduction.coordinates.is_none());
+    }
+    assert_eq!(ledger.reductions[4].projection, Some((super::RawChangeSide::Added, 0)));
+    assert_eq!(ledger.reductions[5].projection, None);
+    assert_eq!(ledger.reductions[5].kind, super::RawRecordKind::Body(super::BodyDisposition::CoordinateOverflow));
+    Ok(())
+}

@@ -115,6 +115,7 @@ fn admit_count(limit: usize) -> impl FnMut(usize) -> Result<(), String> {
 
 /// Original-byte data only. The producer owns subject authentication,
 /// retention budgets, inventory reconciliation and completion authority.
+#[cfg_attr(not(test), expect(dead_code, reason = "Producer-owned inactive observation fields; activation remains disabled"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct RawRecord<'a> {
     pub(crate) ordinal: usize,
@@ -143,6 +144,7 @@ pub(crate) enum RawChangeSide {
     Removed,
 }
 
+#[cfg_attr(not(test), expect(dead_code, reason = "Producer-owned inactive reduction fields; activation remains disabled"))]
 #[derive(Debug)]
 pub(crate) struct RawReduction<'a> {
     pub(crate) record: RawRecord<'a>,
@@ -297,6 +299,7 @@ impl<'a, O: RawDiffObserver> ParserObserver<RawDiffRecord<'a>, String>
             Reduction::Binary => {
                 self.hunk = None;
                 self.header = None;
+                self.marker_opened = true;
                 RawRecordKind::Binary
             }
             Reduction::SubmoduleMode => RawRecordKind::SubmoduleMode,
@@ -306,7 +309,10 @@ impl<'a, O: RawDiffObserver> ParserObserver<RawDiffRecord<'a>, String>
                 if outcome == PathMarkerOutcome::Old && self.marker_opened {
                     self.plain_boundary();
                 }
-                if matches!(outcome, PathMarkerOutcome::New { opened: true }) {
+                if matches!(outcome, PathMarkerOutcome::Old
+                    | PathMarkerOutcome::New { opened: true }
+                    | PathMarkerOutcome::New { opened: false }
+                    | PathMarkerOutcome::RejectedNew | PathMarkerOutcome::SymlinkNew) {
                     self.marker_opened = true;
                 }
                 RawRecordKind::PathMarker(outcome)
@@ -337,7 +343,10 @@ impl<'a, O: RawDiffObserver> ParserObserver<RawDiffRecord<'a>, String>
         };
         let accounting = body.map(|outcome| outcome.accounting).unwrap_or_default();
         let coordinates = match (self.header, accounting.before, accounting.after, accounting.consumed) {
-            (Some(header), Some((old, new)), Some(_), Some(_)) => {
+            (Some(header), Some((old, new)), Some(_), Some(_))
+                if header.old_start.checked_add(header.old_count).is_some()
+                    && header.new_start.checked_add(header.new_count).is_some()
+                    && !body.is_some_and(|outcome| outcome.disposition == BodyDisposition::CoordinateOverflow) => {
                 header.old_count.checked_sub(old).zip(header.new_count.checked_sub(new))
                     .and_then(|(old_used, new_used)| {
                         header.old_start.checked_add(old_used)
