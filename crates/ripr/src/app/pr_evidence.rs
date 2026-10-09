@@ -223,7 +223,7 @@ fn write_pr_evidence_with_generation(
             .frozen_source_authority(&command_root_path(repo, &execution_options.root))
             .map_err(|error| format!("bind named-head source context: {error}"))?;
         let canonical: std::sync::Arc<str> = canonical.into();
-        return crate::analysis::committed_source::frozen::with_context(
+        let result = crate::analysis::committed_source::frozen::with_context(
             Some(authority.clone()),
             || {
                 crate::analysis::committed_source::frozen::with_canonical_diff(canonical, || {
@@ -246,6 +246,21 @@ fn write_pr_evidence_with_generation(
                 })
             },
         );
+        return match authority.finalize() {
+            Ok(()) => result,
+            Err(cleanup) => {
+                let diagnostic = match result {
+                    Ok(()) => format!("frozen snapshot checked cleanup failed: {cleanup}"),
+                    Err(primary) => {
+                        format!("{primary}; frozen snapshot checked cleanup failed: {cleanup}")
+                    }
+                };
+                remove_stale_check_artifact(repo).map_err(|revocation| {
+                    format!("{diagnostic}; artifact revocation failed: {revocation}")
+                })?;
+                write_pr_evidence_error_packet(repo, execution_options, &changed_files, &diagnostic)
+            }
+        };
     }
     let result = run_check(repo, execution_options);
     finish_pr_evidence_check(repo, execution_options, &changed_files, result, generation, None)
