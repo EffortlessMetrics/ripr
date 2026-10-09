@@ -542,7 +542,9 @@ fn invoke_perl_lsp_producer(
         .map_err(|e| format!("failed to create Perl facts cache dir: {e}"))?;
 
     let root_str = input.root.display().to_string();
-    let base = input.base.as_deref();
+    // Supplied patch bytes have no loader base. Do not let a discarded
+    // caller declaration change the exporter's scope or cache identity.
+    let base = input.base.as_deref().filter(|_| input.diff_file.is_none());
     let head = "HEAD";
     let timeout_ms = perl_config.timeout_ms();
     let executable_str = executable.display().to_string();
