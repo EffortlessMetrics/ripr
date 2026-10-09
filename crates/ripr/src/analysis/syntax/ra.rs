@@ -22,9 +22,11 @@ use super::super::facts::ModulePathTarget;
 use super::super::facts::SourceRoleProvenance;
 use super::super::facts::cfg_predicates;
 use super::{
-    ChangedOwnerSpan, RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange,
-    parse_clean_source_file, rust_nesting_refusal,
+    ChangedOwnerSpan, RaRustSyntaxAdapter, RustSyntaxAdapter, TextRange, parse_clean_source_file,
+    rust_nesting_refusal,
 };
+#[cfg(test)]
+use super::SyntaxNodeFact;
 use crate::analysis::rust_index::{
     FunctionFact, OracleFact, ProbeShapeFact, ProbeShapeKind, SourceText, TestFact,
     classify_assertion, err_return_guard_oracles, extract_call_facts, extract_identifier_tokens,
@@ -357,6 +359,7 @@ impl RustSyntaxAdapter for RaRustSyntaxAdapter {
         summarize_file_with_parser(path, text)
     }
 
+    #[cfg(test)]
     fn changed_nodes(
         &self,
         functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
@@ -1837,6 +1840,7 @@ pub(super) fn slice_macro_call_text(text: &str, start: TextSize, end: TextSize) 
     text.get(start..end).unwrap_or("").trim().to_string()
 }
 
+#[cfg(test)]
 fn owner_changed_nodes(
     functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
     ranges: &[TextRange],
@@ -1866,6 +1870,7 @@ pub(crate) fn changed_owner_body_materialization_count() -> usize {
     CHANGED_OWNER_BODY_MATERIALIZATIONS.with(std::cell::Cell::get)
 }
 
+#[cfg(test)]
 fn node_for_changed_owner(function: &FunctionFact, kind: &str) -> SyntaxNodeFact {
     #[cfg(test)]
     CHANGED_OWNER_BODY_MATERIALIZATIONS.with(|count| {

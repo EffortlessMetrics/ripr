@@ -6,6 +6,7 @@ use super::super::facts::FileFacts;
 pub trait RustSyntaxAdapter {
     fn summarize_file(&self, path: &Path, text: &str) -> Result<FileFacts, String>;
 
+    #[cfg(test)]
     fn changed_nodes(
         &self,
         functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
@@ -36,6 +37,7 @@ pub(crate) struct ChangedOwnerSpan {
     pub(crate) owner: Option<SymbolId>,
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SyntaxNodeFact {
     pub file: std::path::PathBuf,

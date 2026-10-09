@@ -28,10 +28,10 @@ pub(crate) use super::facts::{
     build_analysis_index_from_loaded_files,
     build_index_from_loaded_files_with_cache_and_test_harnesses,
 };
-#[cfg(test)]
-use super::syntax::LexicalRustSyntaxAdapter;
 pub(crate) use super::syntax::ChangedOwnerSpan;
-pub use super::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange};
+#[cfg(test)]
+pub use super::syntax::{LexicalRustSyntaxAdapter, SyntaxNodeFact};
+pub use super::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter, TextRange};
 
 pub(crate) fn lexical_fallback_files(index: &RustIndex) -> Vec<PathBuf> {
     let mut files = index
@@ -341,6 +341,9 @@ fn normalize_display(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+// The copied-node route is retained for the independent legacy oracle and
+// syntax tests. Production probe emission uses lightweight owner spans.
+#[cfg(test)]
 pub fn changed_nodes_for_lines(
     index: &RustIndex,
     file: &Path,
