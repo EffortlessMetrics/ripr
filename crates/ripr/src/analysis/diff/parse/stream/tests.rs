@@ -777,6 +777,7 @@ struct ByteLedger {
     ends: Vec<super::RawEnd>,
     refuse_record: Option<usize>,
     refuse_reduction: Option<usize>,
+    refuse_finish: bool,
 }
 
 struct OwnedReduction {
@@ -826,6 +827,7 @@ impl super::RawDiffObserver for ByteLedger {
     }
 
     fn finish(&mut self, end: super::RawEnd, _parsed: &ParsedDiff) -> Result<(), String> {
+        if self.refuse_finish { return Err("finish sink refused".to_string()); }
         assert_eq!(end.records, self.records.len());
         assert_eq!(end.records, self.reductions.len());
         assert_eq!(end.bytes, self.records.last().map_or(0, |last| last.2));
@@ -1082,5 +1084,118 @@ fn overflowing_declared_ranges_have_no_raw_coordinates() -> Result<(), String> {
     assert_eq!(ledger.reductions[4].projection, Some((super::RawChangeSide::Added, 0)));
     assert_eq!(ledger.reductions[5].projection, None);
     assert_eq!(ledger.reductions[5].kind, super::RawRecordKind::Body(super::BodyDisposition::CoordinateOverflow));
+    Ok(())
+}
+
+#[test]
+fn reduction_kinds_and_associated_fields_follow_actual_winners() -> Result<(), String> {
+    use super::{BodyDisposition as B, PathMarkerOutcome as M, RawRecordKind as K};
+    for (input, expected) in [
+        ("diff --git a/a.bin b/a.bin\nBinary files a/a.bin and b/a.bin differ\n",
+         vec![K::GitBoundary, K::Binary]),
+        ("diff --git a/lib b/lib\nnew file mode 160000\nindex 1111111..2222222 160000\n",
+         vec![K::GitBoundary, K::SubmoduleMode, K::SubmoduleIndex]),
+        ("diff --git a/old.rs b/new.rs\nsimilarity index 100%\nrename from old.rs\nrename to new.rs\ncopy from opaque.rs\n",
+         vec![K::GitBoundary, K::Rename, K::Rename, K::Rename, K::Body(B::Outside)]),
+        ("diff --cc a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@@ -1,1 -1,1 +1,1 @@@\n++quarantined\n",
+         vec![K::GitBoundary, K::PathMarker(M::Old), K::PathMarker(M::New { opened: true }), K::CombinedHunk, K::Body(B::Outside)]),
+        ("diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ malformed @@\n+ignored\n",
+         vec![K::GitBoundary, K::PathMarker(M::Old), K::PathMarker(M::New { opened: true }), K::MalformedHunk, K::Body(B::Outside)]),
+        ("diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -0,0 +1,3 @@\n+<<<<<<< ours\n+conflict\n+>>>>>>> theirs\n",
+         vec![K::GitBoundary, K::PathMarker(M::Old), K::PathMarker(M::New { opened: true }), K::HunkHeader, K::Body(B::Conflict), K::Body(B::Conflict), K::Body(B::Conflict)]),
+        ("diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -0,0 +1 @@\n+x\n\\ No newline at end of file\n",
+         vec![K::GitBoundary, K::PathMarker(M::Old), K::PathMarker(M::New { opened: true }), K::HunkHeader, K::Body(B::Added(0)), K::Body(B::NoNewline)]),
+    ] {
+        let (_, ledger) = observed(input.as_bytes(), 1)?;
+        assert_eq!(ledger.reductions.iter().map(|r| r.kind).collect::<Vec<_>>(), expected);
+        let header = &ledger.reductions[0];
+        assert_eq!(header.section, Some(0));
+        assert!(header.hunk.is_none());
+        assert!(header.token.is_none());
+        assert!(header.decoded.is_none());
+        assert!(header.path.is_none());
+        assert!(header.projection.is_none());
+        assert!(header.ranges.is_none());
+        for reduction in &ledger.reductions {
+            match reduction.kind {
+                K::PathMarker(M::Old) => {
+                    assert_eq!(reduction.token.as_deref(), Some(b"a/a.rs".as_slice()));
+                    assert_eq!(reduction.decoded.as_deref(), Some(b"a/a.rs".as_slice()));
+                    assert!(reduction.projection.is_none());
+                }
+                K::PathMarker(M::New { opened: true }) => {
+                    assert_eq!(reduction.token.as_deref(), Some(b"b/a.rs".as_slice()));
+                    assert_eq!(reduction.decoded.as_deref(), Some(b"b/a.rs".as_slice()));
+                    assert_eq!(reduction.path.as_deref(), Some(Path::new("a.rs")));
+                    assert!(reduction.projection.is_none());
+                }
+                K::Body(B::Conflict) => {
+                    assert_eq!(reduction.ranges, Some(((0, 0), (1, 3))));
+                    assert_eq!(reduction.consumed, Some((0, 1)));
+                    assert_eq!(reduction.path.as_deref(), Some(Path::new("a.rs")));
+                    assert!(reduction.projection.is_none());
+                }
+                K::Body(B::Added(index)) => {
+                    assert_eq!(reduction.projection, Some((super::RawChangeSide::Added, index)));
+                    assert_eq!(reduction.coordinates, Some((0, 1)));
+                }
+                K::Body(B::NoNewline) => {
+                    assert_eq!(reduction.before, Some((0, 0)));
+                    assert_eq!(reduction.after, Some((0, 0)));
+                    assert!(reduction.consumed.is_none());
+                    assert!(reduction.coordinates.is_none());
+                    assert!(reduction.projection.is_none());
+                }
+                K::Binary | K::SubmoduleMode | K::SubmoduleIndex
+                | K::CombinedHunk | K::MalformedHunk | K::Body(B::Outside) => {
+                    assert!(reduction.ranges.is_none());
+                    assert!(reduction.coordinates.is_none());
+                    assert!(reduction.projection.is_none());
+                }
+                _ => {}
+            }
+        }
+        if input.contains("rename from ") {
+            assert_eq!(ledger.reductions[2].token.as_deref(), Some(b"old.rs".as_slice()));
+            assert_eq!(ledger.reductions[2].decoded.as_deref(), Some(b"old.rs".as_slice()));
+            assert_eq!(ledger.reductions[3].token.as_deref(), Some(b"new.rs".as_slice()));
+            assert_eq!(ledger.reductions[3].decoded.as_deref(), Some(b"new.rs".as_slice()));
+            assert_eq!(ledger.reductions[3].path.as_deref(), Some(Path::new("new.rs")));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn section_hunk_overflow_and_finish_refusal_never_return_success() -> Result<(), String> {
+    use super::ParserObserver;
+    for section in [false, true] {
+        let mut ledger = ByteLedger::default();
+        let mut observer = super::OriginalByteObserver {
+            observer: &mut ledger, expected_bytes: 1,
+            end: super::RawEnd { bytes: 0, records: 0,
+                sections: if section { usize::MAX } else { 0 },
+                hunks: if section { 0 } else { usize::MAX } },
+            pending: None, section: None, hunk: None, header: None, marker_opened: false,
+        };
+        let line = super::RawDiffRecord { bytes: b"x" };
+        observer.begin(&line)?;
+        let reduction = if section { super::Reduction::GitBoundary }
+            else { super::Reduction::Hunk(super::HunkOutcome::Malformed) };
+        let Err(error) = observer.reduce(&line, reduction, &super::parser_state::ParserState::default()) else {
+            return Err("checked section/hunk ordinal overflow succeeded".to_string());
+        };
+        assert!(error.contains("ordinal overflow"));
+        assert!(ledger.reductions.is_empty());
+        assert!(ledger.ends.is_empty());
+    }
+    let mut ledger = ByteLedger { refuse_finish: true, ..ByteLedger::default() };
+    let Err(error) = super::parse_bytes_bounded(FIRST_FILE.as_bytes(), 1, &mut ledger) else {
+        return Err("finish refusal returned a successful projection".to_string());
+    };
+    assert_eq!(error, "finish sink refused");
+    assert_eq!(ledger.records.len(), 6);
+    assert_eq!(ledger.reductions.len(), 6);
+    assert!(ledger.ends.is_empty());
     Ok(())
 }
