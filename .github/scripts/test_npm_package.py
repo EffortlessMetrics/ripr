@@ -535,8 +535,18 @@ class NpmReleaseAdmissionTests(unittest.TestCase):
         files = {"consumer.json": PACKAGE.canonical(proof), "lsp-stderr.txt": b""}
         for row in rows + [proof["reinstall_journey"]]:
             files[row["route"] + "-check.json"] = PACKAGE.canonical({"summary": {"probes": 1, "findings": 1}, "findings": [{"id": "probe:fixture"}]})
-            files[row["route"] + "-explain.txt"] = b"Useful explanation of the selected finding"
+            files[row["route"] + "-explain.txt"] = b"Useful explanation of probe:fixture"
         return proof, files
+
+    def test_retained_explanations_require_the_selected_follow_up_finding(self):
+        _, files = self.proof()
+        for route in (*PACKAGE.ROUTES, "fresh-reinstall"):
+            for explanation in (b"Useful explanation without a finding identity",
+                                b"ERROR: unrelated finding probe:wrong was not found"):
+                changed = dict(files, **{route + "-explain.txt": explanation})
+                with self.subTest(route=route, explanation=explanation):
+                    with self.assertRaisesRegex(ValueError, "follow-up finding absent from retained explanation"):
+                        PACKAGE.validate_consumer_proof(changed, "20.20.1", "10.8.2", "c" * 64, "e" * 64)
 
     def test_consumer_receipts_require_executed_distinct_routes_and_retained_journeys(self):
         proof, files = self.proof()
