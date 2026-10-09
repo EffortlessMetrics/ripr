@@ -604,6 +604,7 @@ fn partial_budget_from_env(
 
 /// Effective Rust diff-selection policy data. Construction reads the existing
 /// parsers; this value grants no execution, scope or resource permission.
+#[cfg(test)]
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct CompleteRustPolicySnapshot {
     changed_rust_lines: usize,
@@ -617,6 +618,7 @@ pub(crate) struct CompleteRustPolicySnapshot {
 
 /// Closed data projection of the existing dependent-scope mode. Selection
 /// remains owned by `DependentScopeMode`, including its contextual conditions.
+#[cfg(test)]
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum CompleteDependentScopePolicy {
     Auto,
@@ -624,6 +626,7 @@ pub(crate) enum CompleteDependentScopePolicy {
     Full,
 }
 
+#[cfg(test)]
 impl CompleteDependentScopePolicy {
     pub(crate) const fn as_str(&self) -> &'static str {
         match self {
@@ -634,6 +637,7 @@ impl CompleteDependentScopePolicy {
     }
 }
 
+#[cfg(test)]
 impl CompleteRustPolicySnapshot {
     pub(crate) const fn changed_rust_line_limit(&self) -> usize {
         self.changed_rust_lines
@@ -676,6 +680,7 @@ impl CompleteRustPolicySnapshot {
 /// re-reads, parsing errors and clamps are retained. These ordered environment
 /// reads are not an atomic environment snapshot; the complete caller must
 /// compare fresh captures at its execution checkpoints in its owned worker.
+#[cfg(test)]
 pub(crate) fn capture_complete_rust_policy() -> Result<CompleteRustPolicySnapshot, String> {
     let changed_rust_lines = diff_changed_rust_line_limit()?;
     let partial_budgets = partial_diff_budgets()?;
