@@ -676,6 +676,12 @@ struct ProbeBuildContext<'a> {
     changed_nodes: &'a [ChangedOwnerSpan],
 }
 
+
+#[cfg(test)]
+std::thread_local! {
+    static PROBE_BUILD_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 fn build_probe(
     context: &ProbeBuildContext<'_>,
     changed_line: &ChangedLine,
@@ -683,6 +689,8 @@ fn build_probe(
     before: Option<String>,
     after: Option<String>,
 ) -> Probe {
+    #[cfg(test)]
+    PROBE_BUILD_COUNT.with(|count| count.set(count.get() + 1));
     let text = changed_line.text.trim();
     let delta = delta_for_family(&family);
     // Use `new_side_line` for all index lookups and the SourceLocation: for
@@ -1081,6 +1089,66 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         assert_eq!(fields(actual), fields(expected));
+    }
+
+
+    fn many_retarget_uses(count: usize) -> (RustIndex, ChangedFile) {
+        let mut source = String::from("pub fn classify(count: usize) -> usize {\n    let ceiling = 60;\n");
+        for value in 0..count {
+            source.push_str(&format!("    if count > ceiling {{ return {value}; }}\n"));
+        }
+        source.push_str("    0\n}\n");
+        let path = PathBuf::from("src/lib.rs");
+        let changed = ChangedFile {
+            path: path.clone(),
+            added_lines: vec![ChangedLine {
+                line: 2,
+                new_side_line: 2,
+                text: "let ceiling = 60;".to_string(),
+            }],
+            removed_lines: vec![ChangedLine {
+                line: 2,
+                new_side_line: 2,
+                text: "let ceiling = 50;".to_string(),
+            }],
+        };
+        let mut index = RustIndex::default();
+        index.insert_file_only(
+            path.clone(),
+            crate::analysis::rust_index::summarize_file(path, source),
+        );
+        (index, changed)
+    }
+
+    #[test]
+    fn probe_callback_does_not_construct_retargeted_tail_after_sink_refusal() -> Result<(), String> {
+        let (index, changed) = many_retarget_uses(16);
+        let expected =
+            legacy_probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
+        assert_eq!(expected.len(), 16, "fixture must reach all direct predicate uses");
+        assert!(expected.iter().all(|seeded| seeded.binding_relation.is_some()));
+        PROBE_BUILD_COUNT.with(|count| count.set(0));
+        let mut delivered = 0;
+        let error = match try_for_each_probe_with_relations(
+            Path::new("workspace"),
+            &changed,
+            &index,
+            |_| {
+                delivered += 1;
+                Err::<(), _>("sink refused".to_string())
+            },
+        ) {
+            Err(error) => error,
+            Ok(()) => return Err("sink failure must abort the real extractor".to_string()),
+        };
+        assert_eq!(error, "sink refused");
+        assert_eq!(delivered, 1);
+        assert_eq!(
+            PROBE_BUILD_COUNT.with(|count| count.get()),
+            1,
+            "the actual probe constructor must not build the refused retarget tail",
+        );
+        Ok(())
     }
 
     #[test]
