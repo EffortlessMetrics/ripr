@@ -844,15 +844,10 @@ fn select_partial_diff_partition_with_identity(
 fn materialize_changed_files<'a>(
     files: impl IntoIterator<Item = &'a ChangedFile>,
 ) -> Vec<ChangedFile> {
-    files
-        .into_iter()
-        .map(|file| {
-            let cloned = file.clone();
-            #[cfg(test)]
-            diff_materialization::record(&cloned);
-            cloned
-        })
-        .collect()
+    let files = files.into_iter().cloned();
+    #[cfg(test)]
+    let files = files.inspect(diff_materialization::record);
+    files.collect()
 }
 
 #[cfg(test)]
@@ -892,9 +887,9 @@ mod diff_materialization {
     }
 }
 
-fn changed_rust_line_count(changed_files: &[ChangedFile]) -> usize {
+fn changed_rust_line_count<'a>(changed_files: impl IntoIterator<Item = &'a ChangedFile>) -> usize {
     changed_files
-        .iter()
+        .into_iter()
         .filter(|file| route(&file.path) == Some(LanguageId::Rust))
         .map(|file| {
             file.added_lines
@@ -904,16 +899,16 @@ fn changed_rust_line_count(changed_files: &[ChangedFile]) -> usize {
         .sum()
 }
 
-fn enforce_changed_rust_line_limit(
-    changed_files: &[ChangedFile],
+fn enforce_changed_rust_line_limit<'a>(
+    changed_files: impl IntoIterator<Item = &'a ChangedFile> + Clone,
     line_limit: usize,
 ) -> Result<(), String> {
-    let changed_line_count = changed_rust_line_count(changed_files);
+    let changed_line_count = changed_rust_line_count(changed_files.clone());
     if changed_line_count <= line_limit {
         return Ok(());
     }
     let changed_file_count = changed_files
-        .iter()
+        .into_iter()
         .filter(|file| route(&file.path) == Some(LanguageId::Rust))
         .count();
     Err(format!(
@@ -1341,11 +1336,10 @@ impl RustAdapter {
         // that protects actionable source analysis.
         let generated_sources =
             GeneratedRustSources::for_diff(&options.root, rust_config, changed_files);
-        let analyzable_changed_files = materialize_changed_files(
-            changed_files
-                .iter()
-                .filter(|file| !generated_sources.contains(&file.path)),
-        );
+        let analyzable_changed_files = changed_files
+            .iter()
+            .filter(|file| !generated_sources.contains(&file.path))
+            .collect::<Vec<_>>();
         let changed_line_limit = diff_changed_rust_line_limit()?;
         #[cfg(test)]
         if crate::analysis::source_calibration::active() {
@@ -1357,11 +1351,15 @@ impl RustAdapter {
                 "rust_eligible",
                 serde_json::json!({"input_files": changed_files.len(), "after_generated_filter": analyzable_changed_files.len(),
                 "excluded_generated_files": changed_files.len().saturating_sub(analyzable_changed_files.len()),
-                "eligible_rust_changed_lines": changed_rust_line_count(&analyzable_changed_files),
+                "eligible_rust_changed_lines": changed_rust_line_count(analyzable_changed_files.iter().copied()),
                 "paths_identity": crate::analysis::source_calibration::paths_identity(analyzable_changed_files.iter().map(|file| file.path.as_path()))}),
             );
         }
-        enforce_changed_rust_line_limit(&analyzable_changed_files, changed_line_limit)?;
+        enforce_changed_rust_line_limit(
+            analyzable_changed_files.iter().copied(),
+            changed_line_limit,
+        )?;
+        let analyzable_changed_files = materialize_changed_files(analyzable_changed_files);
         // RIPR-PROP-0019 (#1999): within the hard guards, a diff that exceeds
         // the smaller partial-selection budget is analyzed as a deterministic
         // bounded partition and reported as `limited_partial_scope` instead of
@@ -4685,7 +4683,7 @@ fn absent_delimiter_boundary_returns_head() {
         files[2].removed_lines[0].line = 42;
         files[2].removed_lines[0].new_side_line = 21;
         let borrowed = files.iter().collect::<Vec<_>>();
-        let legacy = files.iter().cloned().collect::<Vec<_>>();
+        let legacy = files.clone();
         let (materialized, snapshot) =
             super::diff_materialization::observe(|| super::materialize_changed_files(borrowed));
         assert_changed_files_equal(&materialized, &legacy);
