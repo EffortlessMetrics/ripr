@@ -724,13 +724,15 @@ pub(crate) fn load_diff_range_with_deadline_core(
     head: &str,
     git_timeout: Option<Duration>,
 ) -> Result<String, CoreError> {
-    Ok(String::from_utf8_lossy(&load_diff_range_bytes_with_deadline_core(
-        root,
-        base,
-        head,
-        git_timeout,
-    )?)
-    .into_owned())
+    Ok(
+        String::from_utf8_lossy(&load_diff_range_bytes_with_deadline_core(
+            root,
+            base,
+            head,
+            git_timeout,
+        )?)
+        .into_owned(),
+    )
 }
 
 /// One raw range assembly shared by the byte and semantic range boundaries.
@@ -745,7 +747,12 @@ fn load_diff_range_bytes_with_deadline_core(
     run_git_diff_bytes(
         root,
         &format!("{base}...{head}"),
-        &["--relative", "--unified=0", "--no-ext-diff", "--submodule=short"],
+        &[
+            "--relative",
+            "--unified=0",
+            "--no-ext-diff",
+            "--submodule=short",
+        ],
         "0",
         git_timeout,
     )
