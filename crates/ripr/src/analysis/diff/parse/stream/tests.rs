@@ -35,8 +35,7 @@ fn assert_stops_at_header(prefix: &str, limit: usize, observed: usize) -> Result
     Ok(())
 }
 
-fn assert_matches_unbounded(input: &str, actual: &ParsedDiff) {
-    let expected = parse_unbounded(input);
+fn assert_full_projection_eq(actual: &ParsedDiff, expected: &ParsedDiff) {
     assert_eq!(actual.changed_files.len(), expected.changed_files.len());
     for (actual, expected) in actual.changed_files.iter().zip(&expected.changed_files) {
         assert_eq!(actual.path, expected.path);
@@ -51,7 +50,17 @@ fn assert_matches_unbounded(input: &str, actual: &ParsedDiff) {
         expected.pure_rename_file_count
     );
     assert_eq!(actual.pure_rename_paths, expected.pure_rename_paths);
+    assert_eq!(actual.truncated_file_sections, expected.truncated_file_sections);
+    assert_eq!(actual.raw_line1_bom_paths, expected.raw_line1_bom_paths);
     assert_eq!(actual.limitations, expected.limitations);
+}
+
+fn assert_matches_unbounded(input: &str, actual: &ParsedDiff) -> Result<(), String> {
+    let expected = parse_unbounded(input);
+    assert_full_projection_eq(actual, &expected);
+    let bounded = super::parse_bounded(input, 10_000)?;
+    assert_full_projection_eq(actual, &bounded);
+    Ok(())
 }
 
 #[test]
@@ -95,7 +104,7 @@ fn exact_limit_preserves_plain_boundaries_and_old_new_coordinates() -> Result<()
     assert_eq!(b.removed_lines.len(), 1);
     assert_eq!(b.added_lines[0].text, "right");
     assert_eq!(b.added_lines[0].line, 2);
-    assert_matches_unbounded(input, &parsed);
+    assert_matches_unbounded(input, &parsed)?;
     Ok(())
 }
 
@@ -112,7 +121,7 @@ fn normalized_duplicates_and_edited_rename_share_one_file_slot() -> Result<(), S
     assert_eq!(parsed.changed_files[0].added_lines[2].text, "current");
     assert_eq!(parsed.renamed_file_count, 1);
     assert_eq!(parsed.pure_rename_file_count, 0);
-    assert_matches_unbounded(&input, &parsed);
+    assert_matches_unbounded(&input, &parsed)?;
     Ok(())
 }
 
@@ -135,7 +144,7 @@ fn exact_limit_preserves_rename_deletion_binary_and_submodule_metadata() -> Resu
     assert!(parsed.changed_files[0].removed_lines.is_empty());
     assert_eq!(parsed.changed_files[1].path, PathBuf::from("vendor/lib"));
     assert_eq!(parsed.changed_files[1].added_lines.len(), 1);
-    assert_matches_unbounded(input, &parsed);
+    assert_matches_unbounded(input, &parsed)?;
     Ok(())
 }
 
@@ -162,7 +171,7 @@ fn bounded_quarantines_preserve_limitations_and_coordinates() -> Result<(), Stri
         parsed.limitations[1].kind,
         AnalysisLimitationKind::UnresolvedConflictMarkers
     );
-    assert_matches_unbounded(input, &parsed);
+    assert_matches_unbounded(input, &parsed)?;
     Ok(())
 }
 
@@ -176,7 +185,7 @@ fn zero_limit_counts_only_accepted_paths_and_keeps_deletion_metadata() -> Result
     let parsed = parse_bounded_lines(input.lines(), 0)?;
     assert!(parsed.changed_files.is_empty());
     assert_eq!(parsed.deleted_file_count, 1);
-    assert_matches_unbounded(input, &parsed);
+    assert_matches_unbounded(input, &parsed)?;
     assert_stops_at_header("--- /dev/null\n+++ b/src/new.rs\n", 0, 1)
 }
 
@@ -190,7 +199,7 @@ fn bounded_malformed_hunk_does_not_hide_a_later_valid_hunk() -> Result<(), Strin
     assert_eq!(parsed.changed_files[0].removed_lines[0].line, 4);
     assert_eq!(parsed.changed_files[0].removed_lines[0].new_side_line, 8);
     assert_eq!(parsed.changed_files[0].added_lines[0].line, 8);
-    assert_matches_unbounded(input, &parsed);
+    assert_matches_unbounded(input, &parsed)?;
     Ok(())
 }
 
@@ -566,6 +575,197 @@ fn causal_fixture_hunks_are_complete_and_match_their_head_sources() -> Result<()
         let shifted = patch.replacen(header, bad_coordinates, 1);
         check_declared_hunk_status(&shifted, false)?;
         assert!(!fixture_added_lines_match_head(&shifted, head)?);
+    }
+    Ok(())
+}
+
+// #1627: the test-only predecessor reconstructed decoded lines. The retained
+// assertions now reach the same borrowed records used by production parsing.
+// Its RED is adapter sensitivity, not a defect in existing String input.
+fn intake_record_bytes_for_witness(input: &[u8]) -> Vec<Vec<u8>> {
+    super::RawDiffRecords::new(input)
+        .map(|record| record.bytes.to_vec())
+        .collect()
+}
+
+#[test]
+fn borrowed_intake_records_preserve_original_bytes_and_terminators() -> Result<(), String> {
+    let input = b"body:\xff\r\nbody:\xfe\nlast\r";
+    let expected: &[&[u8]] = &[b"body:\xff\r\n", b"body:\xfe\n", b"last\r"];
+    assert_eq!(expected.concat(), input);
+    let Err(_) = std::str::from_utf8(input) else {
+        return Err("raw record fixture unexpectedly became valid UTF8".to_string());
+    };
+    let semantic = String::from_utf8_lossy(input);
+    assert_eq!(
+        semantic.lines().collect::<Vec<_>>(),
+        vec!["body:\u{fffd}", "body:\u{fffd}", "last\r"]
+    );
+    let reconstructed = semantic
+        .lines()
+        .map(|line| line.as_bytes().to_vec())
+        .collect::<Vec<_>>();
+    assert_ne!(reconstructed.concat(), input);
+
+    let actual = intake_record_bytes_for_witness(input);
+    let actual = actual.iter().map(Vec::as_slice).collect::<Vec<_>>();
+    assert_eq!(
+        actual, expected,
+        "intake records lost original bytes or terminators before semantic view"
+    );
+    Ok(())
+}
+
+#[test]
+fn borrowed_record_views_match_std_lines_and_preserve_complete_slices() {
+    use super::ParserLine;
+    use std::borrow::Cow;
+
+    let cases: &[&[u8]] = &[
+        b"",
+        b"\n",
+        b"\n\n",
+        b"\r\n\r\n",
+        b"last",
+        b"last\n",
+        b"last\r",
+        b"\r",
+        b"\r\r\n",
+        b"\n\n\r\nx\r\nx\r",
+        b"unicode:\xc3\xa9\xe2\x80\xa8next\n",
+        b"\xff\n\xfe\r\n\xf0\x90\n\xf0\x90\r\n",
+    ];
+    for input in cases {
+        let records = super::RawDiffRecords::new(input)
+            .map(|record| record.bytes)
+            .collect::<Vec<_>>();
+        assert_eq!(records.concat(), *input, "original partition: {input:?}");
+        let decoded = String::from_utf8_lossy(input);
+        let expected = decoded.lines().map(str::to_string).collect::<Vec<_>>();
+        let mut actual = Vec::new();
+        for record in super::RawDiffRecords::new(input) {
+            let text = record.semantic_text();
+            actual.push(text.to_string());
+            match std::str::from_utf8(record.bytes) {
+                Ok(_) => assert!(matches!(text, Cow::Borrowed(_))),
+                Err(_) => assert!(matches!(text, Cow::Owned(_))),
+            }
+        }
+        assert_eq!(actual, expected, "semantic lines: {input:?}");
+        assert_eq!(records.len(), expected.len(), "record count: {input:?}");
+    }
+
+    let raw = b"\n\n\r\nx\r\nx\r";
+    let expected: &[&[u8]] = &[b"\n", b"\n", b"\r\n", b"x\r\n", b"x\r"];
+    let actual = super::RawDiffRecords::new(raw)
+        .map(|record| record.bytes)
+        .collect::<Vec<_>>();
+    assert_eq!(actual, expected);
+
+    let repeated = super::RawDiffRecords::new(b"same\nsame\n")
+        .map(|record| record.bytes)
+        .collect::<Vec<_>>();
+    assert_eq!(repeated, vec![b"same\n".as_slice(), b"same\n".as_slice()]);
+}
+
+#[test]
+fn borrowed_records_reject_lossy_reconstruction_and_trim_all_cr() -> Result<(), String> {
+    use super::ParserLine;
+
+    let input = b"+body:\xff\n+body:\xfe\n";
+    let records = super::RawDiffRecords::new(input)
+        .map(|record| (record.bytes, record.semantic_text().into_owned()))
+        .collect::<Vec<_>>();
+    let expected: &[&[u8]] = &[b"+body:\xff\n", b"+body:\xfe\n"];
+    let actual = records.iter().map(|(bytes, _)| *bytes).collect::<Vec<_>>();
+    assert_eq!(actual, expected);
+    let texts = records.iter().map(|(_, text)| text.as_str()).collect::<Vec<_>>();
+    assert_eq!(texts, vec!["+body:\u{fffd}", "+body:\u{fffd}"]);
+    let reconstructed = String::from_utf8_lossy(input)
+        .lines()
+        .map(|line| line.as_bytes().to_vec())
+        .collect::<Vec<_>>();
+    assert_ne!(reconstructed.concat(), input);
+    assert_ne!(
+        reconstructed.iter().map(Vec::as_slice).collect::<Vec<_>>(),
+        actual
+    );
+
+    let Some(record) = super::RawDiffRecords::new(b"last\r").next() else {
+        return Err("lone-CR fixture produced no record".to_string());
+    };
+    assert_eq!(record.semantic_text(), "last\r");
+    let wrong_trim = String::from_utf8_lossy(record.bytes)
+        .trim_end_matches('\r')
+        .to_string();
+    assert_ne!(wrong_trim, record.semantic_text());
+    Ok(())
+}
+
+#[test]
+fn borrowed_record_production_routes_preserve_all_metadata_and_final_debt() -> Result<(), String> {
+    let input = concat!(
+        "diff --git a/src/mode.rs b/src/mode.rs\nold mode 100644\nnew mode 100755\n",
+        "diff --git a/src/from.rs b/src/copied.rs\nsimilarity index 100%\ncopy from src/from.rs\ncopy to src/copied.rs\n",
+        "diff --git a/src/empty.rs b/src/empty.rs\nnew file mode 100644\nindex 0000000..e69de29\n",
+        "diff --git a/src/bom.rs b/src/bom.rs\n--- a/src/bom.rs\n+++ b/src/bom.rs\n@@ -1 +1 @@\n-\u{feff}old\n+\u{feff}new\n\\ No newline at end of file\n",
+        "diff --git a/src/truncated.rs b/src/truncated.rs\n--- a/src/truncated.rs\n+++ b/src/truncated.rs\n@@ -1 +1 @@\ngarbage",
+    );
+    let legacy = parse_bounded_lines(input.lines(), 2)?;
+    let bounded = super::parse_bounded(input, 2)?;
+    let unbounded = parse_unbounded(input);
+    assert_full_projection_eq(&bounded, &legacy);
+    assert_full_projection_eq(&unbounded, &legacy);
+    assert_eq!(bounded.changed_files.len(), 2);
+    assert_eq!(bounded.truncated_file_sections, 1);
+    assert_eq!(bounded.raw_line1_bom_paths, vec![PathBuf::from("src/bom.rs")]);
+    assert_eq!(bounded.renamed_file_count, 0);
+    assert!(
+        bounded
+            .limitations
+            .iter()
+            .any(|item| item.kind == AnalysisLimitationKind::MalformedDiff)
+    );
+
+    let payload = "--- a/src/payload.rs\n+++ b/src/payload.rs\n@@ -1 +1 @@\n--- a/name\n+++ b/name\n\\ No newline at end of file";
+    let legacy = parse_bounded_lines(payload.lines(), 1)?;
+    let actual = super::parse_bounded(payload, 1)?;
+    assert_full_projection_eq(&actual, &legacy);
+    let Some(file) = actual.changed_files.first() else {
+        return Err("payload fixture produced no changed file".to_string());
+    };
+    assert_eq!(file.path, PathBuf::from("src/payload.rs"));
+    let Some(removed) = file.removed_lines.first() else {
+        return Err("payload fixture produced no removed line".to_string());
+    };
+    let Some(added) = file.added_lines.first() else {
+        return Err("payload fixture produced no added line".to_string());
+    };
+    assert_eq!(removed.text, "-- a/name");
+    assert_eq!(added.text, "++ b/name");
+    Ok(())
+}
+
+#[test]
+fn borrowed_records_stop_at_existing_admission_sites_before_large_body() -> Result<(), String> {
+    let git = format!("{FIRST_FILE}diff --git a/src/b.rs b/src/b.rs\n--- a/src/b.rs\n+++ b/src/b.rs\n");
+    let plain = "--- a/src/a.rs\n+++ b/src/a.rs\n@@ -1 +1 @@\n-old\n+new\n--- a/src/b.rs\n+++ b/src/b.rs\n".to_string();
+    let rename = format!("{FIRST_FILE}diff --git a/src/old.rs b/src/new.rs\nsimilarity index 100%\nrename from src/old.rs\nrename to src/new.rs\n");
+    for prefix in [git, plain, rename] {
+        let input = format!(
+            "{prefix}@@ -0,0 +1,10000 @@\n{}",
+            "+unread body\n".repeat(10_000)
+        );
+        let reads = Cell::new(0);
+        let records = super::RawDiffRecords::new(input.as_bytes()).inspect(|_| {
+            reads.set(reads.get() + 1);
+        });
+        let Err(error) = super::parse_bounded_records(records, 1) else {
+            return Err("record route admitted an oversized prefix".to_string());
+        };
+        assert_eq!(reads.get(), prefix.lines().count(), "body was read");
+        assert!(error.starts_with("diff_scope_oversized: at least 2 changed files"));
+        assert!(error.contains("limit (1)"));
     }
     Ok(())
 }

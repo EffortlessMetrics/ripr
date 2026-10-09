@@ -67,7 +67,7 @@ fn parse_unified_diff_with_metadata_and_limit(
     if crate::analysis::source_calibration::active() {
         crate::analysis::source_calibration::limit(DIFF_FILE_LIMIT_ENV, limit);
     }
-    stream::parse_bounded_lines(input.lines(), limit)
+    stream::parse_bounded(input, limit)
 }
 
 fn diff_file_limit_from_env() -> usize {
