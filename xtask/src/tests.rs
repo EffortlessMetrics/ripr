@@ -10799,13 +10799,43 @@ fn server_archive_qualification_workflow_is_sha_bound_and_credential_free() -> R
                 != 4
             || !candidate.contains("git -c credential.helper= -c http.extraheader= ls-remote")
             || candidate
+                .matches("https://github.com/${REPOSITORY}.git")
+                .count()
+                != 3
+            || candidate
+                .matches("https://github.com/${RECEIPT_INSTRUMENT_REPOSITORY}.git")
+                .count()
+                != 1
+            || candidate
                 .matches("https://github.com/EffortlessMetrics/ripr-swarm.git")
                 .count()
-                != 5
+                != 1
         {
             return Err(
                 "candidate source must use four isolated unauthenticated git fetches".to_owned(),
             );
+        }
+        for (repository, count, diagnostic) in [
+            ("REPOSITORY", 4, "unsupported qualification repository"),
+            (
+                "RECEIPT_INSTRUMENT_REPOSITORY",
+                1,
+                "unsupported receipt instrument repository",
+            ),
+        ] {
+            let guard = format!(
+                "case \"${{{repository}}}\" in\n            EffortlessMetrics/ripr|EffortlessMetrics/ripr-swarm) ;;\n            *) echo \"::error::{diagnostic}\" >&2; exit 1 ;;\n          esac"
+            );
+            if candidate.matches(&guard).count() != count {
+                return Err(format!(
+                    "{repository} must reject unknown repositories before fetch"
+                ));
+            }
+        }
+        if !candidate.contains(
+            "# The optional protected pin belongs to the historical swarm transaction.\n            test \"${REPOSITORY}\" = \"EffortlessMetrics/ripr-swarm\"",
+        ) {
+            return Err("source qualification must not accept a swarm pin tag".to_string());
         }
         if !candidate.contains("permissions:\n  contents: read")
             || candidate.contains("contents: write")
@@ -10961,10 +10991,34 @@ fn server_archive_qualification_workflow_is_sha_bound_and_credential_free() -> R
             ),
         ),
         (
-            "fixed public repository",
+            "candidate repository URL mismatch",
             workflow.replacen(
-                "https://github.com/EffortlessMetrics/ripr-swarm.git",
                 "https://github.com/${REPOSITORY}.git",
+                "https://github.com/EffortlessMetrics/ripr-swarm.git",
+                1,
+            ),
+        ),
+        (
+            "receipt instrument repository URL mismatch",
+            workflow.replacen(
+                "https://github.com/${RECEIPT_INSTRUMENT_REPOSITORY}.git",
+                "https://github.com/${REPOSITORY}.git",
+                1,
+            ),
+        ),
+        (
+            "unknown repository accepted",
+            workflow.replacen(
+                "EffortlessMetrics/ripr|EffortlessMetrics/ripr-swarm) ;;",
+                "*) ;;",
+                1,
+            ),
+        ),
+        (
+            "source swarm-pin tag accepted",
+            workflow.replacen(
+                "            test \"${REPOSITORY}\" = \"EffortlessMetrics/ripr-swarm\"",
+                "            true",
                 1,
             ),
         ),
