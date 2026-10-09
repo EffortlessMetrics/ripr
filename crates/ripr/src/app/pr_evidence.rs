@@ -2846,4 +2846,14 @@ mod tests {
         fs::create_dir_all(&path).map_err(|err| format!("create {}: {err}", path.display()))?;
         Ok(path)
     }
+
+    #[test]
+    fn experimental_complete_generation_cannot_be_laundered_through_status_ok() {
+        for generation in [Value::Null, json!({"coverage":"complete","production_admission":true})] {
+            let mut packet = json!({"status":"ok","analysis_complete":true});
+            packet["experimental_complete_execution"] = generation;
+            assert!(reject_pr_evidence_error_packet(&packet).is_some(),
+                "experimental generation is not qualified for production admission");
+        }
+    }
 }
