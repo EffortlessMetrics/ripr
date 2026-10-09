@@ -228,7 +228,9 @@ pub(crate) fn admit_producer_evidence(
         .map_err(|error| ProducerAdmissionError {
             category: match error {
                 super::pr_evidence::PrEvidenceConfigurationError::Missing
-                | super::pr_evidence::PrEvidenceConfigurationError::Malformed => "malformed_producer",
+                | super::pr_evidence::PrEvidenceConfigurationError::Malformed => {
+                    "malformed_producer"
+                }
                 super::pr_evidence::PrEvidenceConfigurationError::Mismatch => {
                     "producer_identity_mismatch"
                 }

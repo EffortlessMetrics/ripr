@@ -244,9 +244,7 @@ impl PrEvidenceConfigurationError {
     pub(crate) fn message(self) -> &'static str {
         match self {
             Self::Missing => "producer analysis_outcome config_identity is missing",
-            Self::Malformed => {
-                "producer analysis_outcome config_identity must be a string or null"
-            }
+            Self::Malformed => "producer analysis_outcome config_identity must be a string or null",
             Self::Mismatch => {
                 "producer analysis_outcome config_identity does not match the loaded configuration"
             }
@@ -1654,14 +1652,13 @@ mod tests {
                 head: resolve_revision(&repo, "HEAD", "commit")?,
                 ..options()
             };
-            let run_check = |repo: &Path, options: &PrEvidenceOptions| {
-                run_ripr_check(repo, options)
-            };
+            let run_check =
+                |repo: &Path, options: &PrEvidenceOptions| run_ripr_check(repo, options);
             write_pr_evidence_with_runner(&repo, &options, |repo, options| {
                 run_check(repo, options)
             })?;
-            let check = fs::read_to_string(repo.join(PR_CHECK_JSON))
-                .map_err(|error| error.to_string())?;
+            let check =
+                fs::read_to_string(repo.join(PR_CHECK_JSON)).map_err(|error| error.to_string())?;
             let value: Value = serde_json::from_str(&check).map_err(|error| error.to_string())?;
             if value
                 .pointer("/analysis_outcome/analysis_complete")
@@ -1735,9 +1732,13 @@ mod tests {
         )
         .map_err(|error| error.to_string())?;
         if receipt["status"] != "failed"
-            || receipt.pointer("/primary_failure/phase").and_then(Value::as_str)
+            || receipt
+                .pointer("/primary_failure/phase")
+                .and_then(Value::as_str)
                 != Some("producer_evidence_admission")
-            || receipt.pointer("/primary_failure/category").and_then(Value::as_str)
+            || receipt
+                .pointer("/primary_failure/category")
+                .and_then(Value::as_str)
                 != Some(category)
         {
             return Err(format!("wrong configuration refusal receipt: {receipt}"));
@@ -1843,100 +1844,89 @@ mod tests {
     #[test]
     fn copied_configuration_identity_requires_present_string_or_null() -> Result<(), String> {
         for initial in [Some(CONFIGURATION_A), Some(""), None] {
-            with_configuration_fixture(
-                "ripr-pr-config-shape",
-                initial,
-                |repo, options, _, _| {
-                    let path = repo.join(PR_CHECK_SUBJECT_JSON);
-                    let original = fs::read(&path).map_err(|error| error.to_string())?;
-                    let subject: Value =
-                        serde_json::from_slice(&original).map_err(|error| error.to_string())?;
-                    let actual = subject
-                        .pointer("/analysis_outcome/outcome/identity/config_identity")
-                        .ok_or("actual producer did not carry config_identity")?;
-                    if initial.is_some() != actual.is_string()
-                        || initial.is_none() != actual.is_null()
-                    {
-                        return Err(
-                            "loaded-empty config and no config lost their distinction".into(),
-                        );
-                    }
-                    let mut wrong_identities = vec![
-                        None,
-                        Some(json!(7)),
-                        Some(json!(false)),
-                        Some(json!([])),
-                        Some(json!({})),
-                        Some(json!("fnv1a64:foreign")),
-                    ];
-                    if initial.is_some() {
-                        wrong_identities.push(Some(Value::Null));
-                    }
-                    for wrong in wrong_identities {
-                        let category = match wrong.as_ref() {
-                            Some(Value::String(_) | Value::Null) => "producer_identity_mismatch",
-                            _ => "malformed_producer",
-                        };
-                        let mut mutated = subject.clone();
-                        let identity = mutated
-                            .pointer_mut("/analysis_outcome/outcome/identity")
-                            .and_then(Value::as_object_mut)
-                            .ok_or("actual outcome identity is not an object")?;
-                        match wrong {
-                            Some(value) => {
-                                identity.insert("config_identity".into(), value);
-                            }
-                            None => {
-                                identity.remove("config_identity");
-                            }
+            with_configuration_fixture("ripr-pr-config-shape", initial, |repo, options, _, _| {
+                let path = repo.join(PR_CHECK_SUBJECT_JSON);
+                let original = fs::read(&path).map_err(|error| error.to_string())?;
+                let subject: Value =
+                    serde_json::from_slice(&original).map_err(|error| error.to_string())?;
+                let actual = subject
+                    .pointer("/analysis_outcome/outcome/identity/config_identity")
+                    .ok_or("actual producer did not carry config_identity")?;
+                if initial.is_some() != actual.is_string() || initial.is_none() != actual.is_null()
+                {
+                    return Err("loaded-empty config and no config lost their distinction".into());
+                }
+                let mut wrong_identities = vec![
+                    None,
+                    Some(json!(7)),
+                    Some(json!(false)),
+                    Some(json!([])),
+                    Some(json!({})),
+                    Some(json!("fnv1a64:foreign")),
+                ];
+                if initial.is_some() {
+                    wrong_identities.push(Some(Value::Null));
+                }
+                for wrong in wrong_identities {
+                    let category = match wrong.as_ref() {
+                        Some(Value::String(_) | Value::Null) => "producer_identity_mismatch",
+                        _ => "malformed_producer",
+                    };
+                    let mut mutated = subject.clone();
+                    let identity = mutated
+                        .pointer_mut("/analysis_outcome/outcome/identity")
+                        .and_then(Value::as_object_mut)
+                        .ok_or("actual outcome identity is not an object")?;
+                    match wrong {
+                        Some(value) => {
+                            identity.insert("config_identity".into(), value);
                         }
-                        fs::write(
-                            &path,
-                            serde_json::to_vec(&mutated).map_err(|error| error.to_string())?,
-                        )
-                        .map_err(|error| error.to_string())?;
+                        None => {
+                            identity.remove("config_identity");
+                        }
+                    }
+                    fs::write(
+                        &path,
+                        serde_json::to_vec(&mutated).map_err(|error| error.to_string())?,
+                    )
+                    .map_err(|error| error.to_string())?;
+                    let saved = check_pr_evidence(repo, options)
+                        .err()
+                        .ok_or("saved check admitted missing or malformed config identity")?;
+                    if !saved.contains("config_identity") {
+                        return Err(format!("wrong saved shape refusal: {saved}"));
+                    }
+                    let review = configuration_fixture_review(repo, options)
+                        .err()
+                        .ok_or("review admitted missing or malformed config identity")?;
+                    configuration_fixture_refusal(repo, &review, category)?;
+                    fs::write(&path, &original).map_err(|error| error.to_string())?;
+                    check_pr_evidence(repo, options)?;
+                    configuration_fixture_review(repo, options)?;
+                }
+                if initial.is_none() {
+                    // Adding even an empty config must differ from the
+                    // captured defaults-only null identity.
+                    for text in [CONFIGURATION_A, ""] {
+                        write_repo_file(repo, "ripr.toml", text)?;
                         let saved = check_pr_evidence(repo, options)
                             .err()
-                            .ok_or("saved check admitted missing or malformed config identity")?;
+                            .ok_or("saved check admitted newly present configuration")?;
                         if !saved.contains("config_identity") {
-                            return Err(format!("wrong saved shape refusal: {saved}"));
+                            return Err(format!("wrong new-config saved refusal: {saved}"));
                         }
                         let review = configuration_fixture_review(repo, options)
                             .err()
-                            .ok_or("review admitted missing or malformed config identity")?;
-                        configuration_fixture_refusal(repo, &review, category)?;
-                        fs::write(&path, &original).map_err(|error| error.to_string())?;
+                            .ok_or("review admitted newly present configuration")?;
+                        configuration_fixture_refusal(repo, &review, "producer_identity_mismatch")?;
+                        fs::remove_file(repo.join("ripr.toml"))
+                            .map_err(|error| error.to_string())?;
                         check_pr_evidence(repo, options)?;
                         configuration_fixture_review(repo, options)?;
                     }
-                    if initial.is_none() {
-                        // Adding even an empty config must differ from the
-                        // captured defaults-only null identity.
-                        for text in [CONFIGURATION_A, ""] {
-                            write_repo_file(repo, "ripr.toml", text)?;
-                            let saved = check_pr_evidence(repo, options)
-                                .err()
-                                .ok_or("saved check admitted newly present configuration")?;
-                            if !saved.contains("config_identity") {
-                                return Err(format!("wrong new-config saved refusal: {saved}"));
-                            }
-                            let review = configuration_fixture_review(repo, options)
-                                .err()
-                                .ok_or("review admitted newly present configuration")?;
-                            configuration_fixture_refusal(
-                                repo,
-                                &review,
-                                "producer_identity_mismatch",
-                            )?;
-                            fs::remove_file(repo.join("ripr.toml"))
-                                .map_err(|error| error.to_string())?;
-                            check_pr_evidence(repo, options)?;
-                            configuration_fixture_review(repo, options)?;
-                        }
-                    }
-                    Ok(())
-                },
-            )?;
+                }
+                Ok(())
+            })?;
         }
         Ok(())
     }
