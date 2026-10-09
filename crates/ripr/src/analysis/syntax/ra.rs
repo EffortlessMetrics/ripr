@@ -1977,7 +1977,6 @@ mod tests {
         nodes
     }
 
-
     fn changed_range(line: usize) -> TextRange {
         TextRange {
             start_line: line,

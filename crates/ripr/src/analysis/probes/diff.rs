@@ -25,7 +25,7 @@ use crate::domain::{Probe, ProbeFamily, SourceLocation};
 use std::path::Path;
 
 /// Test surface: the probe vec without the #3294 relations. Production
-/// callers use [`probes_for_file_with_relations`].
+/// callers use [`try_for_each_probe_with_relations`].
 #[cfg(test)]
 pub(crate) fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) -> Vec<Probe> {
     probes_for_file_with_relations(root, changed, index)
@@ -704,7 +704,7 @@ fn build_probe(
                 .map(|function| function.id.clone())
         });
     let norm_expr = normalize_expression(text);
-    // Ordinal 1 here; post-hoc dedup in probes_for_file handles collisions.
+    // Ordinal 1 here; ordered emission assigns original-id collision suffixes.
     let id = diff_probe_id(
         &context.changed.path,
         &family,
@@ -1085,17 +1085,14 @@ mod tests {
                     "../../../../../fixtures/binding_predicate_scope_controls/input/src/lib.rs"
                 )
                 .replace("let end = input.len();", "let end = input.trim_end().len();")
-                    .replace("let end = 1;", "let end = 3;")
-                    .replace("let mut end = seed;", "let mut end = seed + 1;")
-                    .replace("let end = delim.len_utf8();", "let end = delim.len_utf8() + 1;")
-                    .replace(
-                        "let (end, other) = pair;",
-                        "let (end, other) = (pair.0 + 1, pair.1);",
-                    ),
+                .replace("let end = 1;", "let end = 3;")
+                .replace("let mut end = seed;", "let mut end = seed + 1;")
+                .replace("let end = delim.len_utf8();", "let end = delim.len_utf8() + 1;")
+                .replace("let (end, other) = pair;", "let (end, other) = (pair.0 + 1, pair.1);"),
                 include_str!("../../../../../fixtures/binding_predicate_scope_controls/diff.patch"),
             ),
         ];
-        for (source, patch) in sources {
+        for (case, (source, patch)) in sources.into_iter().enumerate() {
             let changed_files = crate::analysis::diff::parse_unified_diff(patch);
             assert_eq!(changed_files.len(), 1, "fixture must reach a changed Rust file");
             let changed = &changed_files[0];
@@ -1107,6 +1104,14 @@ mod tests {
             let expected =
                 legacy_probes_for_file_with_relations(Path::new("workspace"), changed, &index);
             assert!(!expected.is_empty(), "fixture must emit probes");
+            assert_eq!(
+                expected
+                    .iter()
+                    .filter(|seeded| seeded.binding_relation.is_some())
+                    .count(),
+                if case == 0 { 2 } else { 0 },
+                "fixture must reach its intended retarget/scope branch",
+            );
             let mut actual = Vec::new();
             try_for_each_probe_with_relations(Path::new("workspace"), changed, &index, |seeded| {
                 actual.push(seeded);
@@ -1169,6 +1174,51 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![2, 3, 9, 10],
         );
+        Ok(())
+    }
+
+    #[test]
+    fn probe_callback_keeps_retargeted_original_id_ordinals() -> Result<(), String> {
+        let source = concat!(
+            "pub fn classify(count: usize) -> usize {\n",
+            "    let ceiling = 60;\n",
+            "    if count > ceiling {\n",
+            "        return 1;\n",
+            "    }\n",
+            "    if count > ceiling {\n",
+            "        return 2;\n",
+            "    }\n",
+            "    0\n",
+            "}\n",
+        );
+        let path = PathBuf::from("src/lib.rs");
+        let changed = ChangedFile {
+            path: path.clone(),
+            added_lines: vec![ChangedLine {
+                line: 2,
+                new_side_line: 2,
+                text: "let ceiling = 60;".to_string(),
+            }],
+            removed_lines: vec![ChangedLine {
+                line: 2,
+                new_side_line: 2,
+                text: "let ceiling = 50;".to_string(),
+            }],
+        };
+        let mut index = RustIndex::default();
+        index.insert_file_only(
+            path.clone(),
+            crate::analysis::rust_index::summarize_file(path, source.to_string()),
+        );
+        let expected =
+            legacy_probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
+        let actual = probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
+        assert_same_seeded_probes(&actual, &expected);
+        assert_eq!(actual.len(), 2);
+        assert!(actual.iter().all(|seeded| seeded.binding_relation.is_some()));
+        assert_eq!(actual[0].probe.location.line, 3);
+        assert_eq!(actual[1].probe.location.line, 6);
+        assert_eq!(actual[1].probe.id.0, format!("{}.2", actual[0].probe.id.0));
         Ok(())
     }
 

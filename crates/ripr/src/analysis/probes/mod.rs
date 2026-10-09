@@ -19,8 +19,6 @@ pub(crate) use binding_predicate::{
     resolve_changed_binding_uses,
 };
 pub(crate) use classify::parser_expression_for_probe;
-#[cfg(test)]
-pub(crate) use diff::probes_for_file_with_relations;
 pub(crate) use diff::{resolve_probe_source_currentness, try_for_each_probe_with_relations};
 pub(crate) use expectations::{expected_sinks, required_oracles};
 pub(crate) use ids::{
