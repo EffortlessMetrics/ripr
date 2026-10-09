@@ -21,12 +21,12 @@ use super::super::facts::ModuleDeclarationFact;
 use super::super::facts::ModulePathTarget;
 use super::super::facts::SourceRoleProvenance;
 use super::super::facts::cfg_predicates;
+#[cfg(test)]
+use super::SyntaxNodeFact;
 use super::{
     ChangedOwnerSpan, RaRustSyntaxAdapter, RustSyntaxAdapter, TextRange, parse_clean_source_file,
     rust_nesting_refusal,
 };
-#[cfg(test)]
-use super::SyntaxNodeFact;
 use crate::analysis::rust_index::{
     FunctionFact, OracleFact, ProbeShapeFact, ProbeShapeKind, SourceText, TestFact,
     classify_assertion, err_return_guard_oracles, extract_call_facts, extract_identifier_tokens,

@@ -13,9 +13,9 @@ pub(crate) use owner_pin::{
 pub(crate) mod ra;
 
 pub(crate) use adapter::ChangedOwnerSpan;
-pub use adapter::{LexicalRustSyntaxAdapter, RaRustSyntaxAdapter, RustSyntaxAdapter, TextRange};
 #[cfg(test)]
 pub use adapter::SyntaxNodeFact;
+pub use adapter::{LexicalRustSyntaxAdapter, RaRustSyntaxAdapter, RustSyntaxAdapter, TextRange};
 pub(crate) use module_tree::{RustModuleTreeEdge, RustModuleTreeScan, rust_module_tree_scan};
 pub(crate) use nesting::{non_code_token_end, parse_clean_source_file, rust_nesting_refusal};
 pub(crate) use ra::parser_oracles_for_function;

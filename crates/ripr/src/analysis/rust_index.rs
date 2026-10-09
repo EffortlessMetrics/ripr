@@ -29,9 +29,11 @@ pub(crate) use super::facts::{
     build_index_from_loaded_files_with_cache_and_test_harnesses,
 };
 pub(crate) use super::syntax::ChangedOwnerSpan;
+pub use super::syntax::TextRange;
 #[cfg(test)]
-pub use super::syntax::{LexicalRustSyntaxAdapter, SyntaxNodeFact};
-pub use super::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter, TextRange};
+pub use super::syntax::{
+    LexicalRustSyntaxAdapter, RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact,
+};
 
 pub(crate) fn lexical_fallback_files(index: &RustIndex) -> Vec<PathBuf> {
     let mut files = index
