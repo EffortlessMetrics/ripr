@@ -1064,7 +1064,7 @@ mod tests {
         struct RepositoryLease(PathBuf);
         impl Drop for RepositoryLease {
             fn drop(&mut self) {
-                let _ = std::fs::remove_dir_all(&self.0);
+                let _ = crate::testing::fixture_git::remove_fixture_tree(&self.0);
             }
         }
         let nonce = std::time::SystemTime::now()
@@ -1078,30 +1078,21 @@ mod tests {
         let _lease = RepositoryLease(root.clone());
         std::fs::create_dir_all(&root).map_err(|error| error.to_string())?;
         for args in [
-            &["init", "--initial-branch=main"][..],
+            &["-c", "init.templateDir=", "init", "--initial-branch=main"][..],
             &[
                 "-c",
                 "user.email=ripr@example.invalid",
                 "-c",
                 "user.name=ripr test",
+                "-c",
+                "commit.gpgSign=false",
                 "commit",
                 "--allow-empty",
                 "-m",
                 "isolated admission fixture",
             ][..],
         ] {
-            let output = crate::git::run_git_output_with_deadline(
-                &root,
-                args,
-                Some(Duration::from_secs(5)),
-            )
-            .map_err(|error| error.to_string())?;
-            if !output.status.success() {
-                return Err(format!(
-                    "initialize admission fixture: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ));
-            }
+            crate::testing::fixture_git::fixture_git_ok(&root, args)?;
         }
         let root = std::fs::canonicalize(root).map_err(|error| error.to_string())?;
         let config = crate::config::load_for_root(&root)?;
