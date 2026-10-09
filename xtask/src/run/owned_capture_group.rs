@@ -93,6 +93,17 @@ fn signal_authority(
     require_owner(expected, &observed?)?;
     members
 }
+fn read_scanned_identity(reader: impl Read, pid: u32) -> Result<Option<Identity>, String> {
+    let mut text = String::new();
+    reader
+        .take(PROC_BYTES + 1)
+        .read_to_string(&mut text)
+        .map_err(|err| format!("owned capture /proc/{pid}/stat: {err}"))?;
+    if text.len() as u64 > PROC_BYTES {
+        return Err("owned capture scanned stat exceeds its bound".to_string());
+    }
+    parse_identity(&text, pid).map(Some)
+}
 fn scan_group(group: u32, deadline: Instant) -> Result<Vec<u32>, String> {
     let entries = fs::read_dir("/proc")
         .map_err(|err| format!("owned capture complete group scan unavailable: {err}"))?;
@@ -113,15 +124,10 @@ fn scan_group(group: u32, deadline: Instant) -> Result<Vec<u32>, String> {
         // entry prevents a complete scan and therefore prevents group signals.
         match fs::File::open(entry.path().join("stat")) {
             Ok(file) => {
-                let mut text = String::new();
-                file.take(PROC_BYTES + 1)
-                    .read_to_string(&mut text)
-                    .map_err(|err| format!("owned capture /proc/{pid}/stat: {err}"))?;
-                if text.len() as u64 > PROC_BYTES {
-                    return Err("owned capture scanned stat exceeds its bound".to_string());
-                }
-                let process = parse_identity(&text, pid)?;
-                if process.group == group && process.live() {
+                if let Some(process) = read_scanned_identity(file, pid)?
+                    && process.group == group
+                    && process.live()
+                {
                     live.push(pid);
                 }
             }
@@ -517,6 +523,159 @@ wait
             Err(error) => Err(format!("expected {expected:?}, observed {error:?}")),
             Ok(_) => Err(format!("expected refusal containing {expected:?}")),
         }
+    }
+    #[test]
+    fn scanned_stat_opened_descriptor_disappearance_is_not_a_survivor() -> Result<(), String> {
+        let mut child =
+            OwnedProcess::spawn_with_bounded_drop(test_command("/usr/bin/sleep", &["30"], true))
+                .map_err(|err| format!("opened stat owned child: {err}"))?;
+        let pid = child.id();
+        let deadline = Instant::now() + POST_KILL_GROUP_CONFIRM_GRACE;
+        let before = loop {
+            let observed = identity(pid)?;
+            if observed.parent != std::process::id() || observed.group != pid || !observed.live() {
+                return Err("opened stat child has no live direct-owner identity".to_string());
+            }
+            if observed.state == 'S' {
+                break observed;
+            }
+            if Instant::now() >= deadline {
+                return Err("opened stat child did not reach its sleeping premise".to_string());
+            }
+            thread::sleep(Duration::from_millis(5));
+        };
+        // Independent open calls are essential: dup/try_clone shares the offset,
+        // which could turn the second observation into an empty EOF.
+        let path = format!("/proc/{pid}/stat");
+        let witness = fs::File::open(&path)
+            .map_err(|err| format!("opened stat witness descriptor: {err}"))?;
+        let scanned = fs::File::open(&path)
+            .map_err(|err| format!("opened stat production descriptor: {err}"))?;
+        let still_live = identity(pid)?;
+        if !before.same_owner(&still_live) || !still_live.live() {
+            return Err("opened stat identity changed before direct-owner termination".to_string());
+        }
+        child
+            .kill()
+            .map_err(|err| format!("opened stat direct-owner termination: {err}"))?;
+        let deadline = Instant::now() + POST_KILL_GROUP_CONFIRM_GRACE;
+        loop {
+            if let Some(status) = child
+                .try_wait()
+                .map_err(|err| format!("opened stat bounded reap: {err}"))?
+            {
+                if status.success() {
+                    return Err("opened stat owned child exited without termination".to_string());
+                }
+                break;
+            }
+            if Instant::now() >= deadline {
+                return Err("opened stat owned child reap unconfirmed".to_string());
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+        let mut text = String::new();
+        match witness.take(PROC_BYTES + 1).read_to_string(&mut text) {
+            Err(err) if err.raw_os_error() == Some(3) && text.is_empty() => {}
+            observed => {
+                return Err(format!(
+                    "native unread stat disappearance did not produce empty ESRCH: {observed:?}"
+                ));
+            }
+        }
+        // This is the same bounded reader called by scan_group, after the
+        // independent descriptor established the native Linux lifecycle.
+        match read_scanned_identity(scanned, pid) {
+            Ok(None) => Ok(()),
+            observed => Err(format!(
+                "opened stat disappearance must be absent after native ESRCH: {observed:?}"
+            )),
+        }
+    }
+
+    #[test]
+    fn scanned_stat_retains_exact_live_dead_and_foreign_identities() -> Result<(), String> {
+        for (state, group, live) in [
+            ('S', 9, true),
+            ('Z', 9, false),
+            ('X', 12, false),
+            ('R', 12, true),
+        ] {
+            let text = format!("9 (owned) {state} 1 {group} 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17");
+            let expected = Identity {
+                pid: 9,
+                parent: 1,
+                group,
+                start: 17,
+                state,
+            };
+            let observed = read_scanned_identity(text.as_bytes(), 9)?
+                .ok_or_else(|| "valid scanned identity was discarded".to_string())?;
+            assert_eq!(observed, expected);
+            assert_eq!(observed.live(), live);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn scanned_stat_refuses_incomplete_invalid_and_oversized_records() -> Result<(), String> {
+        for (text, expected) in [
+            ("", "no PID"),
+            ("9 (bad) S 1 9", "identity unavailable"),
+            (
+                "8 (owned) S 1 9 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17",
+                "PID mismatch",
+            ),
+            (
+                "9 (owned) Q 1 9 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17",
+                "state unsupported",
+            ),
+        ] {
+            require_error(read_scanned_identity(text.as_bytes(), 9), expected)?;
+        }
+        require_error(
+            read_scanned_identity(&[0xff][..], 9),
+            "stream did not contain valid UTF-8",
+        )?;
+        let oversized = "a".repeat((PROC_BYTES + 1) as usize);
+        require_error(read_scanned_identity(oversized.as_bytes(), 9), "exceeds its bound")?;
+        Ok(())
+    }
+
+    struct ReadFailure {
+        prefix: std::io::Cursor<Vec<u8>>,
+        code: i32,
+    }
+    impl Read for ReadFailure {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            let count = self.prefix.read(buffer)?;
+            if count == 0 {
+                Err(std::io::Error::from_raw_os_error(self.code))
+            } else {
+                Ok(count)
+            }
+        }
+    }
+
+    #[test]
+    fn scanned_stat_refuses_other_io_errors_and_partial_esrch() -> Result<(), String> {
+        for (prefix, code) in [
+            (Vec::new(), 13),
+            (Vec::new(), 5),
+            (Vec::new(), 2),
+            (b"9 (owned)".to_vec(), 3),
+            (vec![0xff], 3),
+        ] {
+            let failure = ReadFailure {
+                prefix: std::io::Cursor::new(prefix),
+                code,
+            };
+            require_error(
+                read_scanned_identity(failure, 9),
+                "owned capture /proc/9/stat",
+            )?;
+        }
+        Ok(())
     }
     fn members(marker: &Path) -> Result<(u32, u32), String> {
         let text =
