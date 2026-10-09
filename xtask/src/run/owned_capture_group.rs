@@ -106,7 +106,7 @@ fn read_scanned_identity(reader: impl Read, pid: u32) -> Result<Option<Identity>
         return Err(format!("owned capture /proc/{pid}/stat: {err}"));
     }
     // Preserve successful-read UTF-8 error precedence over the size guard.
-    let text = std::str::from_utf8(&bytes).map_err(|_| {
+    let text = std::str::from_utf8(&bytes).map_err(|_invalid_utf8| {
         format!("owned capture /proc/{pid}/stat: stream did not contain valid UTF-8")
     })?;
     if bytes.len() as u64 > PROC_BYTES {
