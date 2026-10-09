@@ -1061,16 +1061,63 @@ mod tests {
 
     #[test]
     fn complete_producer_is_admitted_with_exact_subject_identity() -> Result<(), String> {
-        let root = std::env::current_dir().map_err(|error| error.to_string())?;
-        // Hosted test jobs use a depth-one checkout; keep the fixture
-        // independent of unavailable parent objects while still exercising
-        // exact commit/tree subject binding.
+        struct RepositoryLease(PathBuf);
+        impl Drop for RepositoryLease {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "ripr-review-subject-{}-{nonce}",
+            std::process::id()
+        ));
+        let _lease = RepositoryLease(root.clone());
+        std::fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+        for args in [
+            &["init", "--initial-branch=main"][..],
+            &[
+                "-c",
+                "user.email=ripr@example.invalid",
+                "-c",
+                "user.name=ripr test",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "isolated admission fixture",
+            ][..],
+        ] {
+            let output = crate::git::run_git_output_with_deadline(
+                &root,
+                args,
+                Some(Duration::from_secs(5)),
+            )
+            .map_err(|error| error.to_string())?;
+            if !output.status.success() {
+                return Err(format!(
+                    "initialize admission fixture: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
+        }
+        let root = std::fs::canonicalize(root).map_err(|error| error.to_string())?;
+        let config = crate::config::load_for_root(&root)?;
+        assert!(config.source_text().is_none());
+        let input = CheckInput {
+            root: root.clone(),
+            ..CheckInput::default()
+        };
+        // An isolated empty commit binds the subject without inheriting the
+        // checkout's configuration or requiring parent objects.
         let base = "HEAD";
         let head = "HEAD";
         let diff_text = "fixture diff";
         let root_identity = logical_path(&root);
         let configuration_fingerprint =
-            crate::config::repo_exposure_config_identity_hash(&RiprConfig::default());
+            crate::config::repo_exposure_config_identity_hash(&config);
         let outcome = AnalysisOutcome::new(
             crate::analysis_outcome::AnalysisOutcomeKind::NoScope,
             crate::analysis_outcome::AnalysisIdentity {
@@ -1179,8 +1226,8 @@ mod tests {
 
         let admitted = admit_producer_evidence(
             &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
+            &input,
+            &config,
             base,
             head,
             diff_text,
@@ -1199,8 +1246,8 @@ mod tests {
             .map_err(|error| format!("create unreadable subject fixture: {error}"))?;
         let unreadable_subject = admit_producer_evidence(
             &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
+            &input,
+            &config,
             base,
             head,
             diff_text,
@@ -1222,8 +1269,8 @@ mod tests {
             .map_err(|error| format!("create unreadable review input: {error}"))?;
         let unreadable_review_input = admit_producer_evidence(
             &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
+            &input,
+            &config,
             base,
             head,
             diff_text,
@@ -1260,8 +1307,8 @@ mod tests {
             .map_err(|error| format!("write {name} subject: {error}"))?;
             let error = admit_producer_evidence(
                 &check_path,
-                &CheckInput::default(),
-                &RiprConfig::default(),
+                &input,
+                &config,
                 base,
                 head,
                 diff_text,
@@ -1279,8 +1326,8 @@ mod tests {
             .map_err(|error| format!("write malformed review input: {error}"))?;
         let malformed_review_input = admit_producer_evidence(
             &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
+            &input,
+            &config,
             base,
             head,
             diff_text,
@@ -1305,8 +1352,8 @@ mod tests {
         .map_err(|error| format!("write invalid byte-count subject: {error}"))?;
         let invalid_byte_count_error = admit_producer_evidence(
             &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
+            &input,
+            &config,
             base,
             head,
             diff_text,
@@ -1346,8 +1393,8 @@ mod tests {
             .map_err(|error| format!("write {name} subject: {error}"))?;
             let error = admit_producer_evidence(
                 &check_path,
-                &CheckInput::default(),
-                &RiprConfig::default(),
+                &input,
+                &config,
                 base,
                 head,
                 diff_text,
@@ -1371,8 +1418,8 @@ mod tests {
         .map_err(|error| format!("write mismatched-outcome subject: {error}"))?;
         let mismatched_outcome_error = admit_producer_evidence(
             &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
+            &input,
+            &config,
             base,
             head,
             diff_text,
@@ -1391,8 +1438,8 @@ mod tests {
         std::fs::remove_file(&check_path).map_err(|error| error.to_string())?;
         admit_producer_evidence(
             &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
+            &input,
+            &config,
             base,
             head,
             diff_text,
@@ -1423,8 +1470,8 @@ mod tests {
             .map_err(|error| format!("write incomplete review input: {error}"))?;
         let incomplete = admit_producer_evidence(
             &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
+            &input,
+            &config,
             base,
             head,
             diff_text,
@@ -1467,8 +1514,8 @@ mod tests {
             .map_err(|error| format!("write subject mutation {field}: {error}"))?;
             let error = admit_producer_evidence(
                 &check_path,
-                &CheckInput::default(),
-                &RiprConfig::default(),
+                &input,
+                &config,
                 base,
                 head,
                 diff_text,
@@ -1497,8 +1544,8 @@ mod tests {
         std::fs::remove_file(&subject_path).map_err(|error| error.to_string())?;
         let missing_subject = admit_producer_evidence(
             &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
+            &input,
+            &config,
             base,
             head,
             diff_text,
@@ -1514,8 +1561,8 @@ mod tests {
         std::fs::write(&subject_path, b"{").map_err(|error| error.to_string())?;
         let malformed_subject = admit_producer_evidence(
             &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
+            &input,
+            &config,
             base,
             head,
             diff_text,

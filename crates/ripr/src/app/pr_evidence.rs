@@ -188,12 +188,14 @@ fn write_pr_evidence_with_runner(
         Ok(check_json) => {
             match write_pr_evidence_packet(repo, options, &changed_files, &check_json) {
                 Ok(()) => Ok(()),
-                Err(err) => write_pr_evidence_error_packet(
-                    repo,
-                    options,
-                    &changed_files,
-                    &format!("RIPR check output could not be converted into PR evidence: {err}"),
-                ),
+                Err(err) => {
+                    let diagnostic =
+                        format!("RIPR check output could not be converted into PR evidence: {err}");
+                    remove_stale_check_artifact(repo).map_err(|cleanup| {
+                        format!("{diagnostic}; artifact revocation failed: {cleanup}")
+                    })?;
+                    write_pr_evidence_error_packet(repo, options, &changed_files, &diagnostic)
+                }
             }
         }
         Err(err) => write_pr_evidence_error_packet(repo, options, &changed_files, &err),

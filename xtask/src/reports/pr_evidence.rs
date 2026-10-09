@@ -152,6 +152,9 @@ fn write_pr_evidence_with_runner(
                 Err(err) => {
                     let diagnostic =
                         format!("RIPR check output could not be converted into PR evidence: {err}");
+                    remove_stale_check_artifact(repo).map_err(|cleanup| {
+                        format!("{diagnostic}; artifact revocation failed: {cleanup}")
+                    })?;
                     write_pr_evidence_error_packet(repo, options, &changed_files, &diagnostic)?;
                     Err(diagnostic)
                 }
@@ -186,7 +189,10 @@ fn validate_current_pr_evidence_configuration(
 ) -> Result<(), String> {
     let current_config = ripr::config::load_for_root(root)
         .map_err(|error| format!("load producer evidence configuration: {error}"))?;
-    ripr::app::pr_evidence::validate_pr_evidence_check_configuration(analysis_outcome, &current_config)?;
+    ripr::app::pr_evidence::validate_pr_evidence_check_configuration(
+        analysis_outcome,
+        &current_config,
+    )?;
     if ripr::config::repo_exposure_config_identity_hash(&current_config)
         != ripr::config::repo_exposure_config_identity_hash(expected_config)
     {
