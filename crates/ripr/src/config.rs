@@ -231,10 +231,12 @@ fn default_config_for_root(root: &Path) -> Result<RiprConfig, String> {
 }
 
 /// Construct configuration from the snapshot owner's captured configuration.
-/// The owner authenticates the capture and retains the physical snapshot root.
-/// The logical source path is provenance and diagnostic data; it is never read.
+/// The owner authenticates the capture and retains the snapshot lifetime.
+/// `snapshot_root` is physical during preparation, or the admitted logical root
+/// while frozen filesystem authority is installed. The source path is provenance
+/// and diagnostic data; it is never read.
 pub(crate) fn config_for_captured_snapshot(
-    physical_root: &Path,
+    snapshot_root: &Path,
     logical_source_path: &Path,
     captured: &crate::analysis::git_candidate_execution::CapturedConfiguration,
 ) -> Result<RiprConfig, String> {
@@ -244,7 +246,7 @@ pub(crate) fn config_for_captured_snapshot(
         CapturedConfiguration::NotRequested => {
             Err("snapshot configuration capture was not requested".to_string())
         }
-        CapturedConfiguration::Absent => default_config_for_root(physical_root),
+        CapturedConfiguration::Absent => default_config_for_root(snapshot_root),
         CapturedConfiguration::Present { text, .. } => {
             let mut config = parse_config(text)
                 .map_err(|error| format!("{}: {error}", logical_source_path.display()))?;

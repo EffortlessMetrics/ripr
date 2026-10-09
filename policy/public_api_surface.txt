@@ -71,6 +71,7 @@ pub enum ripr::lsp::diagnostic_budget::OmittedDiagnosticReason
 pub fn ripr::analysis::run_analysis
 pub fn ripr::analysis::run_repo_analysis
 pub fn ripr::app::pr_evidence::reject_pr_evidence_error_packet
+pub fn ripr::app::pr_evidence::validate_pr_evidence_check_configuration
 pub fn ripr::app::qualify_legacy_ripr_plus_receipt
 pub fn ripr::app::render_check
 pub fn ripr::app::repair_card_usability::repair_card_usability_report
