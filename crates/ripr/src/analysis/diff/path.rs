@@ -218,6 +218,14 @@ impl DecodedPath {
     }
 }
 
+
+/// Test-only wrong adapter: native/lossy path reconstruction is not raw identity.
+#[cfg(test)]
+pub(super) fn parse_diff_path_token_bytes(raw: &[u8]) -> Option<Vec<u8>> {
+    let text = std::str::from_utf8(raw).ok()?;
+    parse_diff_path_token(text).map(|path| path.as_path().to_string_lossy().as_bytes().to_vec())
+}
+
 fn parse_diff_path_token(raw: &str) -> Option<DecodedPath> {
     let raw = raw.trim_end_matches('\r');
     if let Some(quoted) = raw.strip_prefix('"') {
@@ -364,6 +372,33 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn raw_path_tokens_preserve_bytes_before_platform_conversion() -> Result<(), String> {
+        let invalid = parse_diff_path_token_bytes(br#""src/pricing_\377.rs""#)
+            .ok_or_else(|| "C-quoted invalid-byte token was not decoded".to_string())?;
+        let literal = parse_diff_path_token_bytes(br#""src/pricing_\\377.rs""#)
+            .ok_or_else(|| "C-quoted literal-octal token was not decoded".to_string())?;
+        assert_eq!(invalid, b"src/pricing_\xff.rs");
+        assert_eq!(literal, br"src/pricing_\377.rs");
+        assert_ne!(invalid, literal, "raw token identities coalesced before platform conversion");
+        for (input, expected) in [
+            (b"src/caf\xc3\xa9.rs\tstamp".as_slice(), b"src/caf\xc3\xa9.rs".as_slice()),
+            (br#""src/caf\303\251.rs" ignored suffix"#.as_slice(), b"src/caf\xc3\xa9.rs".as_slice()),
+            (b"src/file.rs\xe3\x80\x80\r\r".as_slice(), b"src/file.rs".as_slice()),
+            (br#""a\nb\rc\td\\e\"f\q\377""#.as_slice(), b"a\nb\rc\td\\e\"fq\xff".as_slice()),
+            (br#""\7\77\777""#.as_slice(), b"\x07\x3f\x00".as_slice()),
+        ] {
+            let actual = parse_diff_path_token_bytes(input)
+                .ok_or_else(|| format!("raw token refused legacy-valid input {input:?}"))?;
+            assert_eq!(actual, expected);
+        }
+        assert!(parse_diff_path_token_bytes(b"\xff").is_none());
+        assert!(parse_diff_path_token_bytes(br#""unterminated"#).is_none());
+        assert!(parse_diff_path_token_bytes(b"\tstamp").is_none());
+        Ok(())
+    }
+
 
     #[test]
     fn c_quoted_paths_reconstruct_utf8_names_and_keep_invalid_bytes_distinct() {
