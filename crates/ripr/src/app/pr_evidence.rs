@@ -1206,7 +1206,7 @@ fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, St
         };
     let config = configuration_for_analysis(&analysis_root)?;
     let mut input = CheckInput {
-        root: analysis_root,
+        root: analysis_root.clone(),
         base: None,
         diff_file: Some(diff_path),
         mode: Mode::Draft,
@@ -1221,6 +1221,38 @@ fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, St
     let mut output = check_workspace_with_config(input, &config)?;
     // Keep the ordinary caller-facing root while all frozen reads and analysis
     // use the authority's exact logical root.
+    if let Some(authority) = crate::analysis::committed_source::frozen::current() {
+        for finding in &mut output.findings {
+            let path = &finding.probe.location.file;
+            let absolute = path.is_absolute();
+            let relative = if absolute {
+                path.strip_prefix(&analysis_root).map_err(|_| {
+                    authority
+                        .refuse_external_effect("PR evidence probe escaped its bound logical root")
+                        .to_string()
+                })?
+            } else {
+                path.as_path()
+            };
+            if relative.as_os_str().is_empty()
+                || relative.components().any(|component| {
+                    matches!(
+                        component,
+                        std::path::Component::Prefix(_)
+                            | std::path::Component::RootDir
+                            | std::path::Component::ParentDir
+                    )
+                })
+            {
+                return Err(authority
+                    .refuse_external_effect("PR evidence probe has an escaping relative path")
+                    .to_string());
+            }
+            if absolute {
+                finding.probe.location.file = root_path.join(relative);
+            }
+        }
+    }
     output.root = root_path;
     // #5203: the internal packet input renders unbounded. Routing counts
     // the full finding set; the external findings-array byte budget must
