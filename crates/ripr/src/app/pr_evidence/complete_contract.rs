@@ -1418,13 +1418,19 @@ pub(super) mod tests {
             .as_object_mut()
             .ok_or("binding is not an object")?
             .remove("rust_execution_policy");
-        assert!(serde_json::from_value::<CompleteBinding>(missing).is_err());
+        let error = serde_json::from_value::<CompleteBinding>(missing)
+            .expect_err("missing Rust policy field was accepted");
+        assert!(error.to_string().contains("missing field `rust_execution_policy`"));
         let mut unknown = serde_json::to_value(&binding).map_err(|e| e.to_string())?;
         unknown["rust_execution_policy"]["grant"] = serde_json::json!(true);
-        assert!(serde_json::from_value::<CompleteBinding>(unknown).is_err());
+        let error = serde_json::from_value::<CompleteBinding>(unknown)
+            .expect_err("unknown Rust policy field was accepted");
+        assert!(error.to_string().contains("unknown field `grant`"));
         let mut unknown = serde_json::to_value(&binding).map_err(|e| e.to_string())?;
         unknown["rust_execution_policy"]["dependent_scope"] = serde_json::json!("core_only");
-        assert!(serde_json::from_value::<CompleteBinding>(unknown).is_err());
+        let error = serde_json::from_value::<CompleteBinding>(unknown)
+            .expect_err("unsupported dependent scope was accepted");
+        assert!(error.to_string().contains("unknown variant `core_only`"));
         for change in 0..7 {
             let mut wrong = binding.clone();
             match change {
@@ -1447,12 +1453,21 @@ pub(super) mod tests {
                 5 => wrong.rust_execution_policy.partial_selection_version = "stale".into(),
                 _ => wrong.rust_execution_policy.partial_language_tier_version = "stale".into(),
             }
-            assert!(wrong.validate().is_err());
+            let error = wrong.validate().expect_err("invalid Rust policy was accepted");
+            let expected = match change {
+                0 => "unsupported complete binding schema",
+                1..=4 => "invalid Rust execution policy limits or clamps",
+                _ => "unsupported Rust partial-selection policy version",
+            };
+            assert_eq!(error, expected);
         }
         for disclosures in [vec!["".into()], vec!["x".repeat(1025)], vec!["x".into(); 3]] {
             let mut wrong = binding.clone();
             wrong.rust_execution_policy.partial_budget_disclosures = disclosures;
-            assert!(wrong.validate().is_err());
+            let error = wrong
+                .validate()
+                .expect_err("invalid Rust policy disclosures were accepted");
+            assert_eq!(error, "invalid Rust policy disclosures");
         }
         let mut changed = binding.clone();
         changed.rust_execution_policy.dependent_scope =
