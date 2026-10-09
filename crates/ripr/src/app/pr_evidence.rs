@@ -284,7 +284,8 @@ fn validate_current_pr_evidence_configuration(
         != repo_exposure_config_identity_hash(expected_config)
     {
         return Err(
-            "producer configuration_fingerprint does not match the current configuration".to_string(),
+            "producer configuration_fingerprint does not match the current configuration"
+                .to_string(),
         );
     }
     Ok(())
@@ -435,9 +436,8 @@ fn mutate_configuration_after_load(
     root: &Path,
     point: ConfigurationObservation,
 ) -> Result<(), String> {
-    let selected = CONFIGURATION_MUTATION.with(|slot| {
-        slot.borrow().as_ref().is_some_and(|entry| entry.0 == point)
-    });
+    let selected = CONFIGURATION_MUTATION
+        .with(|slot| slot.borrow().as_ref().is_some_and(|entry| entry.0 == point));
     if !selected {
         return Ok(());
     }
