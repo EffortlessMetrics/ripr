@@ -1198,4 +1198,44 @@ mod tests {
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
     }
+    #[test]
+    fn experimental_evidence_cannot_route_mutation_and_recovery_is_ordinary() -> Result<(), String> {
+        let repo = fresh_repo("experimental-routing")?;
+        fs::create_dir_all(repo.join("target/ripr/pr")).map_err(|error| error.to_string())?;
+        let result = (|| {
+            let ordinary = json!({"status":"ok","summary":{
+                "ripr_severe_gap":true,"requires_targeted_mutation":true
+            }});
+            for generation in [
+                Value::Null,
+                json!({"coverage":"complete","production_admission":true}),
+            ] {
+                fs::write(repo.join(DEFAULT_PR_EVIDENCE_JSON),
+                    serde_json::to_vec(&ordinary).map_err(|error| error.to_string())?
+                ).map_err(|error| error.to_string())?;
+                run_impacted_evidence_at(&repo, &[])?;
+                assert!(repo.join(IMPACTED_JSON).exists());
+                let mut marked = ordinary.clone();
+                marked["experimental_complete_execution"] = generation;
+                fs::write(repo.join(DEFAULT_PR_EVIDENCE_JSON),
+                    serde_json::to_vec(&marked).map_err(|error| error.to_string())?
+                ).map_err(|error| error.to_string())?;
+                let Err(error) = run_impacted_evidence_at(&repo, &[]) else {
+                    return Err("experimental evidence routed mutation".to_string());
+                };
+                assert!(error.contains("experimental complete-execution"), "{error}");
+                assert!(!repo.join(IMPACTED_JSON).exists());
+                assert!(!repo.join(IMPACTED_MD).exists());
+            }
+            fs::write(repo.join(DEFAULT_PR_EVIDENCE_JSON),
+                serde_json::to_vec(&ordinary).map_err(|error| error.to_string())?
+            ).map_err(|error| error.to_string())?;
+            run_impacted_evidence_at(&repo, &[])?;
+            run_impacted_evidence_at(&repo, &["--check".to_string()])?;
+            Ok(())
+        })();
+        fs::remove_dir_all(&repo).map_err(|error| error.to_string())?;
+        result
+    }
+
 }

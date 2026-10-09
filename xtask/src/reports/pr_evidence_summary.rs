@@ -694,4 +694,49 @@ mod tests {
         }
         fs::write(&path, text).map_err(|err| format!("write {}: {err}", path.display()))
     }
+    #[test]
+    fn experimental_summary_withholds_preexisting_review_guidance() -> Result<(), String> {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).map_err(|error| error.to_string())?.as_nanos();
+        let repo = std::env::temp_dir().join(format!("ripr-experimental-summary-{}-{unique}", std::process::id()));
+        fs::create_dir_all(repo.join("target/ripr/pr")).map_err(|error| error.to_string())?;
+        fs::create_dir_all(repo.join("target/ripr/review")).map_err(|error| error.to_string())?;
+        let result = (|| {
+            let ordinary = serde_json::json!({"status":"advisory","summary":{
+                "comments":17,"requires_targeted_mutation":true
+            }});
+            let write = |relative: &str, value: &serde_json::Value| -> Result<(), String> {
+                fs::write(repo.join(relative), serde_json::to_vec(value)
+                    .map_err(|error| error.to_string())?).map_err(|error| error.to_string())
+            };
+            write(PR_EVIDENCE_JSON, &ordinary)?;
+            write(REVIEW_COMMENTS_JSON, &ordinary)?;
+            assert!(summary_text(&repo).contains("- changed-line comments: 17"));
+            for relative in [PR_EVIDENCE_JSON, REVIEW_COMMENTS_JSON] {
+                for generation in [
+                    serde_json::Value::Null,
+                    serde_json::json!({"coverage":"complete","production_admission":true}),
+                ] {
+                    let mut marked = ordinary.clone();
+                    marked["experimental_complete_execution"] = generation;
+                    write(relative, &marked)?;
+                    let summary = summary_text(&repo);
+                    if !summary.contains("not qualified for production admission")
+                        || summary.contains("- changed-line comments: 17")
+                        || summary.contains("- requires_targeted_mutation:")
+                    {
+                        return Err("experimental legacy summary published stale ordinary guidance".to_string());
+                    }
+                    write_summary(&repo.join(PR_SUMMARY_MD), &summary)?;
+                    check_summary(&repo.join(PR_SUMMARY_MD), &summary)?;
+                    write(relative, &ordinary)?;
+                }
+            }
+            assert!(summary_text(&repo).contains("- changed-line comments: 17"));
+            Ok(())
+        })();
+        fs::remove_dir_all(&repo).map_err(|error| error.to_string())?;
+        result
+    }
+
 }
