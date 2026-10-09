@@ -667,7 +667,10 @@ mod tests {
                     &serde_json::to_string(&subject).map_err(|error| error.to_string())?,
                 )?;
                 assert!(!ordinary(true)?);
-                let error = refusal(check_pr_evidence(&repo, &options), "experimental saved check")?;
+                let error = refusal(
+                    check_pr_evidence(&repo, &options),
+                    "experimental saved check",
+                )?;
                 assert!(error.contains("experimental complete-execution"), "{error}");
                 let error = refusal(
                     review().map_err(|error| error.message().to_string()),
@@ -726,7 +729,10 @@ mod tests {
                 );
             }
             assert!(!ordinary(true)?);
-            let error = refusal(check_pr_evidence(&repo, &options), "experimental saved check")?;
+            let error = refusal(
+                check_pr_evidence(&repo, &options),
+                "experimental saved check",
+            )?;
             assert!(error.contains("experimental complete-execution"), "{error}");
             let error = refusal(
                 review().map_err(|error| error.message().to_string()),
