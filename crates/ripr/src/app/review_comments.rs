@@ -219,17 +219,22 @@ pub(crate) fn admit_producer_evidence(
         Some(&canonical_projection_from_subject(&subject)?),
     )?;
     let outcome_envelope = required_value(&subject, "analysis_outcome")?;
-    super::pr_evidence::validate_pr_evidence_check_configuration(outcome_envelope, config)
-        .map_err(|error| ProducerAdmissionError {
-            category: "producer_identity_mismatch",
-            message: error,
-        })?;
-    let outcome_value = outcome_envelope.clone();
-    let outcome_value = outcome_value.get("outcome").cloned().ok_or_else(|| {
+    let outcome_value = outcome_envelope.get("outcome").cloned().ok_or_else(|| {
         ProducerAdmissionError::malformed(
             "producer review input analysis_outcome is missing outcome",
         )
     })?;
+    super::pr_evidence::validate_pr_evidence_check_configuration_core(outcome_envelope, config)
+        .map_err(|error| ProducerAdmissionError {
+            category: match error {
+                super::pr_evidence::PrEvidenceConfigurationError::Missing
+                | super::pr_evidence::PrEvidenceConfigurationError::Malformed => "malformed_producer",
+                super::pr_evidence::PrEvidenceConfigurationError::Mismatch => {
+                    "producer_identity_mismatch"
+                }
+            },
+            message: error.message().to_string(),
+        })?;
     let outcome: AnalysisOutcome = serde_json::from_value(outcome_value).map_err(|error| {
         ProducerAdmissionError::malformed(format!(
             "producer review input analysis_outcome is invalid: {error}"

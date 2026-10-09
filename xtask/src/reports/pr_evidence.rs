@@ -1824,6 +1824,29 @@ mod tests {
         Ok(())
     }
 
+    fn configuration_fixture_refusal(
+        repo: &Path,
+        error: &str,
+        category: &str,
+    ) -> Result<(), String> {
+        if !error.contains("config_identity") || !error.contains(category) {
+            return Err(format!("wrong configuration refusal: {error}"));
+        }
+        let receipt: Value = serde_json::from_slice(
+            &fs::read(repo.join("target/run-receipt.json")).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        if receipt["status"] != "failed"
+            || receipt.pointer("/primary_failure/phase").and_then(Value::as_str)
+                != Some("producer_evidence_admission")
+            || receipt.pointer("/primary_failure/category").and_then(Value::as_str)
+                != Some(category)
+        {
+            return Err(format!("wrong configuration refusal receipt: {receipt}"));
+        }
+        Ok(())
+    }
+
     #[test]
     fn producer_configuration_drift_is_rejected_after_actual_check() -> Result<(), String> {
         with_configuration_fixture(
@@ -1906,9 +1929,7 @@ mod tests {
                     let review = configuration_fixture_review(repo, options)
                         .err()
                         .ok_or("direct review admitted stale loaded configuration")?;
-                    if !review.contains("config_identity") {
-                        return Err(format!("wrong review configuration refusal: {review}"));
-                    }
+                    configuration_fixture_refusal(repo, &review, "producer_identity_mismatch")?;
                     write_repo_file(repo, "ripr.toml", CONFIGURATION_A)?;
                     check_pr_evidence(repo, options)?;
                     configuration_fixture_review(repo, options)?;
@@ -1951,6 +1972,10 @@ mod tests {
                         wrong_identities.push(Some(Value::Null));
                     }
                     for wrong in wrong_identities {
+                        let category = match wrong.as_ref() {
+                            Some(Value::String(_) | Value::Null) => "producer_identity_mismatch",
+                            _ => "malformed_producer",
+                        };
                         let mut mutated = subject.clone();
                         let identity = mutated
                             .pointer_mut("/analysis_outcome/outcome/identity")
@@ -1978,12 +2003,35 @@ mod tests {
                         let review = configuration_fixture_review(repo, options)
                             .err()
                             .ok_or("review admitted missing or malformed config identity")?;
-                        if !review.contains("config_identity") {
-                            return Err(format!("wrong review shape refusal: {review}"));
-                        }
+                        configuration_fixture_refusal(repo, &review, category)?;
                         fs::write(&path, &original).map_err(|error| error.to_string())?;
                         check_pr_evidence(repo, options)?;
                         configuration_fixture_review(repo, options)?;
+                    }
+                    if initial.is_none() {
+                        // Adding even an empty config must differ from the
+                        // captured defaults-only null identity.
+                        for text in [CONFIGURATION_A, ""] {
+                            write_repo_file(repo, "ripr.toml", text)?;
+                            let saved = check_pr_evidence(repo, options)
+                                .err()
+                                .ok_or("saved check admitted newly present configuration")?;
+                            if !saved.contains("config_identity") {
+                                return Err(format!("wrong new-config saved refusal: {saved}"));
+                            }
+                            let review = configuration_fixture_review(repo, options)
+                                .err()
+                                .ok_or("review admitted newly present configuration")?;
+                            configuration_fixture_refusal(
+                                repo,
+                                &review,
+                                "producer_identity_mismatch",
+                            )?;
+                            fs::remove_file(repo.join("ripr.toml"))
+                                .map_err(|error| error.to_string())?;
+                            check_pr_evidence(repo, options)?;
+                            configuration_fixture_review(repo, options)?;
+                        }
                     }
                     Ok(())
                 },
