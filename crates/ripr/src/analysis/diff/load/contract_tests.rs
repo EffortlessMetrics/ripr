@@ -538,7 +538,9 @@ fn raw_canonical_range_preserves_non_utf8_body_before_semantic_decode() -> io::R
     assert!(contains_bytes(&expected, b"-body:\xfe\n"));
     assert!(contains_bytes(&expected, b"+body:\xff\n"));
     let Err(_) = std::str::from_utf8(&expected) else {
-        return Err(io::Error::other("fixture must contain non-UTF8 source bytes"));
+        return Err(io::Error::other(
+            "fixture must contain non-UTF8 source bytes",
+        ));
     };
     let legacy = super::load_canonical_pr_evidence_diff_range(&repo.root, &base, &head)
         .map_err(io::Error::other)?;
