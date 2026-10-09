@@ -27,6 +27,7 @@ use super::super::{
 };
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
 use crate::analysis::cancellation;
+use crate::analysis::committed_source::frozen::{self, fs as frozen_fs};
 use crate::analysis::committed_source::{self, CommittedSourceRead};
 use crate::analysis::diagnostic_origin::{OriginBuildContext, origins_for_rust_findings};
 use crate::analysis::facts::RustIndex;
@@ -1236,6 +1237,9 @@ impl<'a> GeneratedRustSources<'a> {
     }
 
     fn subject_file_exists(&self, relative: &Path) -> bool {
+        if frozen::current().is_some() {
+            return frozen_fs::is_file(self.root.join(relative));
+        }
         match committed_source::lookup(self.root, relative) {
             CommittedSourceRead::Worktree => self.root.join(relative).is_file(),
             CommittedSourceRead::Committed(_) => true,
@@ -1244,6 +1248,10 @@ impl<'a> GeneratedRustSources<'a> {
     }
 
     fn has_generated_header(&self, path: &Path) -> bool {
+        if frozen::current().is_some() {
+            return frozen_fs::read_prefix(self.root.join(path), GENERATED_HEADER_BYTES)
+                .is_ok_and(|bytes| has_generated_rust_header(bytes.as_slice()));
+        }
         match committed_source::lookup(self.root, path) {
             CommittedSourceRead::Worktree => std::fs::File::open(self.root.join(path))
                 .is_ok_and(|file| has_generated_rust_header(std::io::BufReader::new(file))),
@@ -1304,6 +1312,14 @@ fn generated_pattern_matches(pattern: &str, path: &Path) -> bool {
 }
 
 impl RustAdapter {
+    #[cfg(test)]
+    pub(crate) fn with_forced_diff_limits_for_test<T>(
+        values: &[(&'static str, &str)],
+        work: impl FnOnce() -> T,
+    ) -> T {
+        with_forced_diff_limit_env(values, work)
+    }
+
     /// Diff analysis with the enabled-language set the pipeline will
     /// dispatch, so the partial-diff partition (RIPR-PROP-0019) never selects
     /// a file no enabled adapter will inspect (#2142 review).
@@ -2293,7 +2309,7 @@ impl RustAdapter {
             .iter()
             .map(|file| {
                 let full = options.root.join(file);
-                let bytes = std::fs::read(&full)
+                let bytes = frozen_fs::read(&full)
                     .map_err(|err| format!("failed to read {}: {err}", full.display()))?;
                 rust_consumed_sources.record(file, Some(&bytes));
                 Ok((file.clone(), bytes))

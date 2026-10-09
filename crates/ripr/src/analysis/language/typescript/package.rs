@@ -18,6 +18,7 @@
 //! `typescript_package_root_unresolved` limitation is emitted. No value is
 //! ever invented from the file extension alone.
 
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use super::*;
 
 // ─── Public types ─────────────────────────────────────────────────────────────
@@ -342,7 +343,7 @@ pub(crate) fn resolve_package_discovery(
 fn find_nearest_package_json(start: &Path, stop_at: &Path) -> Option<PathBuf> {
     let mut current = start.to_path_buf();
     loop {
-        if current.join("package.json").is_file() {
+        if frozen_fs::is_file(current.join("package.json")) {
             return Some(current);
         }
         // Stop when we have reached the workspace boundary or the filesystem root.
@@ -357,7 +358,7 @@ fn find_nearest_package_json(start: &Path, stop_at: &Path) -> Option<PathBuf> {
         }
     }
     // One final check at stop_at.
-    if current.join("package.json").is_file() {
+    if frozen_fs::is_file(current.join("package.json")) {
         return Some(current);
     }
     None
@@ -374,7 +375,7 @@ fn find_workspace_root(pkg_root: &Path, stop_at: &Path) -> Option<PathBuf> {
     let mut current = pkg_root.to_path_buf();
     // Check current dir (pkg_root) first — it may also be the monorepo root.
     loop {
-        if current.join("pnpm-workspace.yaml").is_file() {
+        if frozen_fs::is_file(current.join("pnpm-workspace.yaml")) {
             return Some(current.clone());
         }
         if let Ok(text) = read_config_capped(&current.join("package.json"))
@@ -411,19 +412,19 @@ pub(crate) fn detect_framework_for_root(root: &Path) -> Option<TsFramework> {
         "jest.config.cjs",
     ]
     .iter()
-    .any(|file| root.join(file).exists())
+    .any(|file| frozen_fs::exists(root.join(file)))
     {
         return Some(TsFramework::Jest);
     }
     if ["vitest.config.ts", "vitest.config.js", "vitest.config.mjs"]
         .iter()
-        .any(|file| root.join(file).exists())
+        .any(|file| frozen_fs::exists(root.join(file)))
     {
         return Some(TsFramework::Vitest);
     }
     // Both bun lockfile names count, matching the adapter's runner
     // detection: bun.lockb (binary) and bun.lock (text) (#2106 review).
-    if root.join("bun.lockb").exists() || root.join("bun.lock").exists() {
+    if frozen_fs::exists(root.join("bun.lockb")) || frozen_fs::exists(root.join("bun.lock")) {
         return Some(TsFramework::Bun);
     }
     None
@@ -616,16 +617,16 @@ fn detect_runner_from_scripts(pkg_json: &str) -> Option<TsRunner> {
 fn detect_runner_from_lockfile(workspace_root: &Path, pkg_root: &Path) -> Option<TsRunner> {
     let dirs = [workspace_root, pkg_root];
     for dir in dirs {
-        if dir.join("bun.lock").is_file() || dir.join("bun.lockb").is_file() {
+        if frozen_fs::is_file(dir.join("bun.lock")) || frozen_fs::is_file(dir.join("bun.lockb")) {
             return Some(TsRunner::Bun);
         }
-        if dir.join("pnpm-lock.yaml").is_file() {
+        if frozen_fs::is_file(dir.join("pnpm-lock.yaml")) {
             return Some(TsRunner::Pnpm);
         }
-        if dir.join("yarn.lock").is_file() {
+        if frozen_fs::is_file(dir.join("yarn.lock")) {
             return Some(TsRunner::Yarn);
         }
-        if dir.join("package-lock.json").is_file() {
+        if frozen_fs::is_file(dir.join("package-lock.json")) {
             return Some(TsRunner::Npm);
         }
     }

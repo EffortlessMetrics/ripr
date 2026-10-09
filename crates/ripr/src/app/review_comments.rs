@@ -111,6 +111,25 @@ impl ProducerAdmissionError {
         }
     }
 }
+fn validate_configuration_for_producer_admission(
+    outcome_envelope: &Value,
+    config: &RiprConfig,
+) -> Result<(), ProducerAdmissionError> {
+    super::pr_evidence::validate_pr_evidence_check_configuration_core(outcome_envelope, config)
+        .map_err(|error| ProducerAdmissionError {
+            category: match error {
+                super::pr_evidence::PrEvidenceConfigurationError::Missing
+                | super::pr_evidence::PrEvidenceConfigurationError::Malformed => {
+                    "malformed_producer"
+                }
+                super::pr_evidence::PrEvidenceConfigurationError::Mismatch => {
+                    "producer_identity_mismatch"
+                }
+            },
+            message: error.message().to_string(),
+        })
+}
+
 pub(crate) fn admit_producer_evidence(
     check_path: &Path,
     input: &CheckInput,
@@ -221,12 +240,13 @@ pub(crate) fn admit_producer_evidence(
         review_input.total_finding_count,
         Some(&canonical_projection_from_subject(&subject)?),
     )?;
-    let outcome_value = required_value(&subject, "analysis_outcome")?.clone();
-    let outcome_value = outcome_value.get("outcome").cloned().ok_or_else(|| {
+    let outcome_envelope = required_value(&subject, "analysis_outcome")?;
+    let outcome_value = outcome_envelope.get("outcome").cloned().ok_or_else(|| {
         ProducerAdmissionError::malformed(
             "producer review input analysis_outcome is missing outcome",
         )
     })?;
+    validate_configuration_for_producer_admission(outcome_envelope, config)?;
     let outcome: AnalysisOutcome = serde_json::from_value(outcome_value).map_err(|error| {
         ProducerAdmissionError::malformed(format!(
             "producer review input analysis_outcome is invalid: {error}"
@@ -246,6 +266,16 @@ pub(crate) fn admit_producer_evidence(
                 "producer review input projection is invalid: {error}"
             ))
         })?;
+    // Diff discovery and receipt validation may outlive the caller's config load.
+    let current_config = crate::config::load_for_root(&input.root).map_err(|error| {
+        ProducerAdmissionError::malformed(format!("load producer evidence configuration: {error}"))
+    })?;
+    validate_configuration_for_producer_admission(outcome_envelope, &current_config)?;
+    require_equal(
+        "configuration_fingerprint",
+        &repo_exposure_config_identity_hash(&current_config),
+        &identity.configuration_fingerprint,
+    )?;
     Ok(AdmittedReviewAnalysis {
         identity,
         outcome,
@@ -1037,16 +1067,53 @@ mod tests {
 
     #[test]
     fn complete_producer_is_admitted_with_exact_subject_identity() -> Result<(), String> {
-        let root = std::env::current_dir().map_err(|error| error.to_string())?;
-        // Hosted test jobs use a depth-one checkout; keep the fixture
-        // independent of unavailable parent objects while still exercising
-        // exact commit/tree subject binding.
+        struct RepositoryLease(PathBuf);
+        impl Drop for RepositoryLease {
+            fn drop(&mut self) {
+                let _ = crate::testing::fixture_git::remove_fixture_tree(&self.0);
+            }
+        }
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "ripr-review-subject-{}-{nonce}",
+            std::process::id()
+        ));
+        let _lease = RepositoryLease(root.clone());
+        std::fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+        for args in [
+            &["-c", "init.templateDir=", "init", "--initial-branch=main"][..],
+            &[
+                "-c",
+                "user.email=ripr@example.invalid",
+                "-c",
+                "user.name=ripr test",
+                "-c",
+                "commit.gpgSign=false",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "isolated admission fixture",
+            ][..],
+        ] {
+            crate::testing::fixture_git::fixture_git_ok(&root, args)?;
+        }
+        let root = std::fs::canonicalize(root).map_err(|error| error.to_string())?;
+        let config = crate::config::load_for_root(&root)?;
+        assert!(config.source_text().is_none());
+        let input = CheckInput {
+            root: root.clone(),
+            ..CheckInput::default()
+        };
+        // An isolated empty commit binds the subject without inheriting the
+        // checkout's configuration or requiring parent objects.
         let base = "HEAD";
         let head = "HEAD";
         let diff_text = "fixture diff";
         let root_identity = logical_path(&root);
-        let configuration_fingerprint =
-            crate::config::repo_exposure_config_identity_hash(&RiprConfig::default());
+        let configuration_fingerprint = crate::config::repo_exposure_config_identity_hash(&config);
         let outcome = AnalysisOutcome::new(
             crate::analysis_outcome::AnalysisOutcomeKind::NoScope,
             crate::analysis_outcome::AnalysisIdentity {
@@ -1153,15 +1220,8 @@ mod tests {
         std::fs::write(&review_input_path, &review_input_bytes)
             .map_err(|error| format!("write review input fixture: {error}"))?;
 
-        let admitted = admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .map_err(|error| error.message)?;
+        let admitted = admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+            .map_err(|error| error.message)?;
         if admitted.identity.mode != "draft"
             || admitted.identity.base_sha != base_sha
             || admitted.identity.head_sha != head_sha
@@ -1173,16 +1233,10 @@ mod tests {
         std::fs::remove_file(&subject_path).map_err(|error| error.to_string())?;
         std::fs::create_dir(&subject_path)
             .map_err(|error| format!("create unreadable subject fixture: {error}"))?;
-        let unreadable_subject = admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .err()
-        .ok_or_else(|| "directory subject receipt must fail".to_string())?;
+        let unreadable_subject =
+            admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                .err()
+                .ok_or_else(|| "directory subject receipt must fail".to_string())?;
         if unreadable_subject.category != "malformed_producer" {
             return Err(format!(
                 "directory subject receipt returned {}",
@@ -1196,16 +1250,10 @@ mod tests {
         std::fs::remove_file(&review_input_path).map_err(|error| error.to_string())?;
         std::fs::create_dir(&review_input_path)
             .map_err(|error| format!("create unreadable review input: {error}"))?;
-        let unreadable_review_input = admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .err()
-        .ok_or_else(|| "directory review input must fail".to_string())?;
+        let unreadable_review_input =
+            admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                .err()
+                .ok_or_else(|| "directory review input must fail".to_string())?;
         if unreadable_review_input.category != "malformed_producer" {
             return Err(format!(
                 "directory review input returned {}",
@@ -1234,16 +1282,10 @@ mod tests {
                 serde_json::to_vec(&mutated).map_err(|error| error.to_string())?,
             )
             .map_err(|error| format!("write {name} subject: {error}"))?;
-            let error = admit_producer_evidence(
-                &check_path,
-                &CheckInput::default(),
-                &RiprConfig::default(),
-                base,
-                head,
-                diff_text,
-            )
-            .err()
-            .ok_or_else(|| format!("{name} must fail"))?;
+            let error =
+                admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                    .err()
+                    .ok_or_else(|| format!("{name} must fail"))?;
             if error.category != "malformed_producer" {
                 return Err(format!("{name} returned {}", error.category));
             }
@@ -1253,16 +1295,10 @@ mod tests {
 
         std::fs::write(&review_input_path, b"{")
             .map_err(|error| format!("write malformed review input: {error}"))?;
-        let malformed_review_input = admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .err()
-        .ok_or_else(|| "malformed review input must fail".to_string())?;
+        let malformed_review_input =
+            admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                .err()
+                .ok_or_else(|| "malformed review input must fail".to_string())?;
         if malformed_review_input.category != "malformed_producer" {
             return Err(format!(
                 "malformed review input returned {}",
@@ -1279,16 +1315,10 @@ mod tests {
             serde_json::to_vec(&invalid_byte_count).map_err(|error| error.to_string())?,
         )
         .map_err(|error| format!("write invalid byte-count subject: {error}"))?;
-        let invalid_byte_count_error = admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .err()
-        .ok_or_else(|| "invalid review-input byte count must fail".to_string())?;
+        let invalid_byte_count_error =
+            admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                .err()
+                .ok_or_else(|| "invalid review-input byte count must fail".to_string())?;
         if invalid_byte_count_error.category != "malformed_producer" {
             return Err(format!(
                 "invalid review-input byte count returned {}",
@@ -1320,16 +1350,10 @@ mod tests {
                 serde_json::to_vec(&mutated).map_err(|error| error.to_string())?,
             )
             .map_err(|error| format!("write {name} subject: {error}"))?;
-            let error = admit_producer_evidence(
-                &check_path,
-                &CheckInput::default(),
-                &RiprConfig::default(),
-                base,
-                head,
-                diff_text,
-            )
-            .err()
-            .ok_or_else(|| format!("{name} must fail"))?;
+            let error =
+                admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                    .err()
+                    .ok_or_else(|| format!("{name} must fail"))?;
             if error.category != expected_category {
                 return Err(format!("{name} returned {}", error.category));
             }
@@ -1345,16 +1369,10 @@ mod tests {
             serde_json::to_vec(&mismatched_outcome).map_err(|error| error.to_string())?,
         )
         .map_err(|error| format!("write mismatched-outcome subject: {error}"))?;
-        let mismatched_outcome_error = admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .err()
-        .ok_or_else(|| "mismatched outcome must fail".to_string())?;
+        let mismatched_outcome_error =
+            admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                .err()
+                .ok_or_else(|| "mismatched outcome must fail".to_string())?;
         if mismatched_outcome_error.category != "incomplete_producer" {
             return Err(format!(
                 "mismatched outcome returned {}",
@@ -1365,20 +1383,14 @@ mod tests {
         std::fs::write(&subject_path, &original_subject_bytes)
             .map_err(|error| format!("restore subject before cleanup: {error}"))?;
         std::fs::remove_file(&check_path).map_err(|error| error.to_string())?;
-        admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .map_err(|error| {
-            format!(
-                "consumer unexpectedly required check.json: {}",
-                error.message
-            )
-        })?;
+        admit_producer_evidence(&check_path, &input, &config, base, head, diff_text).map_err(
+            |error| {
+                format!(
+                    "consumer unexpectedly required check.json: {}",
+                    error.message
+                )
+            },
+        )?;
 
         let original_subject = subject.clone();
         let mut incomplete_input = review_input.clone();
@@ -1397,16 +1409,10 @@ mod tests {
         .map_err(|error| format!("write incomplete subject: {error}"))?;
         std::fs::write(&review_input_path, &incomplete_bytes)
             .map_err(|error| format!("write incomplete review input: {error}"))?;
-        let incomplete = admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .err()
-        .ok_or_else(|| "incomplete producer must fail closed".to_string())?;
+        let incomplete =
+            admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                .err()
+                .ok_or_else(|| "incomplete producer must fail closed".to_string())?;
         if incomplete.category != "incomplete_producer" {
             return Err(format!(
                 "unexpected incomplete-producer category: {}",
@@ -1441,16 +1447,10 @@ mod tests {
                 serde_json::to_vec(&mutated).map_err(|error| error.to_string())?,
             )
             .map_err(|error| format!("write subject mutation {field}: {error}"))?;
-            let error = admit_producer_evidence(
-                &check_path,
-                &CheckInput::default(),
-                &RiprConfig::default(),
-                base,
-                head,
-                diff_text,
-            )
-            .err()
-            .ok_or_else(|| format!("subject mutation {field} must fail"))?;
+            let error =
+                admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                    .err()
+                    .ok_or_else(|| format!("subject mutation {field} must fail"))?;
             let expected_category = if field == "mode" {
                 "producer_mode_mismatch"
             } else if field == "review_input_byte_count" {
@@ -1471,16 +1471,10 @@ mod tests {
         )
         .map_err(|error| format!("restore subject before cleanup: {error}"))?;
         std::fs::remove_file(&subject_path).map_err(|error| error.to_string())?;
-        let missing_subject = admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .err()
-        .ok_or_else(|| "missing subject receipt must fail closed".to_string())?;
+        let missing_subject =
+            admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                .err()
+                .ok_or_else(|| "missing subject receipt must fail closed".to_string())?;
         if missing_subject.category != "missing_producer" {
             return Err(format!(
                 "unexpected missing-subject category: {}",
@@ -1488,16 +1482,10 @@ mod tests {
             ));
         }
         std::fs::write(&subject_path, b"{").map_err(|error| error.to_string())?;
-        let malformed_subject = admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .err()
-        .ok_or_else(|| "malformed subject receipt must fail closed".to_string())?;
+        let malformed_subject =
+            admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                .err()
+                .ok_or_else(|| "malformed subject receipt must fail closed".to_string())?;
         if malformed_subject.category != "malformed_producer" {
             return Err(format!(
                 "unexpected malformed-subject category: {}",

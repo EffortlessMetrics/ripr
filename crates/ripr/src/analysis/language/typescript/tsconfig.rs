@@ -22,6 +22,7 @@
 //! specifier.  Building it is opt-in: `AnalysisOptions::resolve_tsconfig_paths`
 //! must be `true`; otherwise `TsAliasMap::empty()` (no-op) is returned.
 
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -395,7 +396,7 @@ impl TsAliasMap {
         let mut found: Vec<PathBuf> = Vec::new();
         for ext in &extensions {
             let candidate = base_dir.join(format!("{candidate_base}{ext}"));
-            if candidate.is_file() {
+            if frozen_fs::is_file(&candidate) {
                 // Normalize to forward-slash workspace-relative path.
                 if let Ok(rel) = candidate.strip_prefix(&self.root) {
                     found.push(rel.to_path_buf());
@@ -450,7 +451,7 @@ pub(crate) fn load_alias_map_with_read_error(
 ) {
     for &filename in &["tsconfig.json", "jsconfig.json"] {
         let path = root.join(filename);
-        if !path.is_file() {
+        if !frozen_fs::is_file(&path) {
             continue;
         }
         // Capped read: a read failure fail-closes the alias map; size-limit
@@ -646,7 +647,7 @@ impl TsOutDirMap {
             format!("{}/{stem}", self.root_dir)
         };
         let mut found = extensions.iter().filter(|extension| {
-            std::fs::symlink_metadata(root.join(format!("{module}.{extension}")))
+            frozen_fs::symlink_metadata(root.join(format!("{module}.{extension}")))
                 .is_ok_and(|metadata| metadata.file_type().is_file())
         });
         // Exactly one source file: `x.ts` and `x.tsx` both present is

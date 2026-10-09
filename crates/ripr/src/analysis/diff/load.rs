@@ -681,7 +681,7 @@ pub fn load_diff_range(root: &Path, base: &str, head: &str) -> Result<String, St
     load_diff_range_with_deadline(root, base, head, None)
 }
 
-/// Canonical zero-context analysis bytes for both PR-evidence producers.
+/// Canonical zero-context analysis text for both PR-evidence producers.
 /// Retain their existing five-minute full-diff ceiling and the shared pinned
 /// Git assembly used by review-comments.
 pub fn load_canonical_pr_evidence_diff_range(
@@ -690,6 +690,22 @@ pub fn load_canonical_pr_evidence_diff_range(
     head: &str,
 ) -> Result<String, String> {
     load_diff_range_with_deadline(root, base, head, Some(Duration::from_mins(5)))
+}
+
+/// Original bytes of the canonical zero-context PR analysis range.
+///
+/// Uses the same pinned Git assembly, head verification and five-minute
+/// deadline as the canonical text loader, before its lossy semantic decode.
+/// These are analysis-range stdout bytes, not the different three-context
+/// binary packet diff. Callers own immutable subject binding and exhaustive
+/// occurrence accounting; raw bytes alone establish neither.
+pub fn load_canonical_pr_evidence_diff_bytes(
+    root: &Path,
+    base: &str,
+    head: &str,
+) -> Result<Vec<u8>, String> {
+    load_diff_range_bytes_with_deadline_core(root, base, head, Some(Duration::from_mins(5)))
+        .map_err(Into::into)
 }
 
 /// [`load_diff_range`] under a caller's cooperative git deadline.
@@ -708,11 +724,36 @@ pub(crate) fn load_diff_range_with_deadline_core(
     head: &str,
     git_timeout: Option<Duration>,
 ) -> Result<String, CoreError> {
+    Ok(
+        String::from_utf8_lossy(&load_diff_range_bytes_with_deadline_core(
+            root,
+            base,
+            head,
+            git_timeout,
+        )?)
+        .into_owned(),
+    )
+}
+
+/// One raw range assembly shared by the byte and semantic range boundaries.
+/// Keep the legacy ordered extras, including the relative root, unchanged.
+fn load_diff_range_bytes_with_deadline_core(
+    root: &Path,
+    base: &str,
+    head: &str,
+    git_timeout: Option<Duration>,
+) -> Result<Vec<u8>, CoreError> {
     verify_head_revision(root, head, git_timeout)?;
-    run_git_diff(
+    run_git_diff_bytes(
         root,
         &format!("{base}...{head}"),
-        &["--unified=0", "--no-ext-diff", "--submodule=short"],
+        &[
+            "--relative",
+            "--unified=0",
+            "--no-ext-diff",
+            "--submodule=short",
+        ],
+        "0",
         git_timeout,
     )
 }

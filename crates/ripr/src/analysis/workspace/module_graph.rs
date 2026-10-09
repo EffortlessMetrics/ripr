@@ -50,6 +50,7 @@ use super::cargo_targets::{
     normalize, owning_package_dir,
 };
 use super::source_role::SourceRoleContext;
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use crate::analysis::syntax::{RustModuleTreeEdge, RustModuleTreeScan, rust_module_tree_scan};
 
 /// Files one package walk may visit before it stops and reports itself
@@ -179,7 +180,7 @@ where
         // A symlinked module directory reaches the file under another
         // spelling, so the walk also matches the canonical path.
         let mut targets = vec![anchored.clone()];
-        if let Ok(canonical) = std::fs::canonicalize(&anchored)
+        if let Ok(canonical) = frozen_fs::canonicalize(&anchored)
             && canonical != anchored
         {
             targets.push(canonical);
@@ -349,7 +350,7 @@ fn escaping_scan_skips(dir: &Path) -> bool {
         Some(".git") => true,
         Some("target") => dir
             .parent()
-            .is_some_and(|parent| parent.join("Cargo.toml").is_file()),
+            .is_some_and(|parent| frozen_fs::is_file(parent.join("Cargo.toml"))),
         _ => false,
     }
 }
@@ -385,7 +386,7 @@ fn list_workspace(workspace_root: &Path) -> Option<WorkspaceListing> {
     let mut pending = vec![lexical(&normalize(workspace_root))];
     let mut visited_entries = 0usize;
     while let Some(dir) = pending.pop() {
-        for entry in std::fs::read_dir(&dir).ok()? {
+        for entry in frozen_fs::read_dir(&dir).ok()? {
             crate::analysis::cancellation::checkpoint().ok()?;
             visited_entries += 1;
             if visited_entries > MAX_ESCAPING_SCAN_ENTRIES {
@@ -396,7 +397,7 @@ fn list_workspace(workspace_root: &Path) -> Option<WorkspaceListing> {
             let file_type = entry.file_type().ok()?;
             if file_type.is_symlink() {
                 // A dangling link aliases nothing.
-                if let Ok(target) = std::fs::canonicalize(&path) {
+                if let Ok(target) = frozen_fs::canonicalize(&path) {
                     listing.symlink_targets.push(target);
                 }
             } else if file_type.is_dir() {
@@ -535,7 +536,7 @@ impl EscapingReach {
     /// Whether nothing outside the asked walks reaches any of `targets`.
     fn proves_unreached(&mut self, workspace_root: &Path, targets: &[PathBuf]) -> bool {
         let aliased = targets.iter().any(|target| {
-            let canonical = std::fs::canonicalize(target).unwrap_or_else(|_| target.clone());
+            let canonical = frozen_fs::canonicalize(target).unwrap_or_else(|_| target.clone());
             self.symlink_targets
                 .iter()
                 .any(|link| canonical.starts_with(link))
@@ -659,13 +660,13 @@ fn evidence_roots(
 /// Cargo's autodiscovery shapes under one directory: `<dir>/<name>.rs` and
 /// `<dir>/<name>/main.rs`.
 fn autodiscovered(dir: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
+    let Ok(entries) = frozen_fs::read_dir(dir) else {
         return Vec::new();
     };
     let mut roots = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.is_dir() {
+        if frozen_fs::is_dir(&path) {
             roots.push(path.join("main.rs"));
         } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
             roots.push(path);
@@ -850,7 +851,7 @@ impl PackageWalk {
         if let Some(tag) = tag {
             self.reached_tags.entry(file.clone()).or_insert(tag);
         }
-        if let Ok(canonical) = std::fs::canonicalize(&file)
+        if let Ok(canonical) = frozen_fs::canonicalize(&file)
             && canonical != file
         {
             self.reached.entry(canonical.clone()).or_insert(self.phase);
@@ -1017,7 +1018,7 @@ fn read_source(workspace_root: &Path, file: &Path) -> SourceRead {
             }
         }
         // A module outside the analyzed workspace still belongs to the tree.
-        Err(_) => match std::fs::read(file) {
+        Err(_) => match frozen_fs::read(file) {
             Ok(bytes) => bytes,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 return SourceRead::Absent;

@@ -1,5 +1,6 @@
 //! Related test candidate discovery for the TypeScript preview adapter.
 
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use super::tsconfig::{TsAliasMap, TsOutDirMap, load_out_dir_map};
 use super::*;
 use std::collections::{HashMap, HashSet};
@@ -532,7 +533,7 @@ fn file_parent_dir(file: &Path, workspace_root: &Path) -> Option<PathBuf> {
 fn package_root_for_dir(start: &Path, workspace_root: &Path) -> Option<PathBuf> {
     let mut current = start.to_path_buf();
     loop {
-        if current.join("package.json").is_file() {
+        if frozen_fs::is_file(current.join("package.json")) {
             // Convert back to workspace-relative.
             return current.strip_prefix(workspace_root).ok().map(|rel| {
                 if rel == Path::new("") {
@@ -551,7 +552,7 @@ fn package_root_for_dir(start: &Path, workspace_root: &Path) -> Option<PathBuf> 
         }
     }
     // Check workspace root itself.
-    if workspace_root.join("package.json").is_file() {
+    if frozen_fs::is_file(workspace_root.join("package.json")) {
         return Some(PathBuf::from("."));
     }
     None
@@ -2191,7 +2192,7 @@ pub(crate) fn normalized_relative_import_module(
             && !escaped_root
             && let Some(out_dir_map) = out_dir_map_for(root)
             && out_dir_map.contains(&joined)
-            && std::fs::symlink_metadata(root.join(&joined)).is_err()
+            && frozen_fs::symlink_metadata(root.join(&joined)).is_err()
             && !file_module_exists(root, &module)
             && let Some(source_module) = out_dir_map.source_module_for(root, &joined)
         {
@@ -2337,7 +2338,7 @@ fn resolve_directory_module_uncached(root: &Path, module: &str) -> Option<String
         return None;
     }
     let manifest = directory.join("package.json");
-    match std::fs::symlink_metadata(&manifest) {
+    match frozen_fs::symlink_metadata(&manifest) {
         // No package.json at all: plain directory index lookup.
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return index_module(root, module);
@@ -2417,11 +2418,11 @@ fn file_module_exists(root: &Path, module: &str) -> bool {
 }
 
 fn is_real_file(path: &Path) -> bool {
-    std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
+    frozen_fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
 }
 
 fn is_real_directory(path: &Path) -> bool {
-    std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_dir())
+    frozen_fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_dir())
 }
 
 fn normalized_module_path(path: &Path) -> String {
@@ -3164,4 +3165,115 @@ mod module_extension_tests {
         }
         Ok(())
     }
+}
+
+#[cfg(test)]
+#[test]
+fn reexport_worker_preserves_frozen_paths_and_swallowed_refusal() -> Result<(), String> {
+    use crate::analysis::committed_source::frozen;
+    use crate::analysis::git_candidate_execution::prepare_named_tree;
+    use crate::analysis::source_calibration::OwnedFixture;
+    use crate::testing::fixture_git::fixture_git_ok;
+
+    let fixture = OwnedFixture::new()?;
+    fixture.seed(
+        "src/barrel.ts",
+        concat!(
+            "export { owner as directoryOwner } from './pkg';\n",
+            "export { owner as outputOwner } from '../dist/owner.js';\n",
+        )
+        .as_bytes(),
+    )?;
+    fixture.seed(
+        "src/pkg/index.ts",
+        b"export function owner() { return 1; }\n",
+    )?;
+    fixture.seed(
+        "src/pkg/decoy.ts",
+        b"export function owner() { return 2; }\n",
+    )?;
+    fixture.seed("src/owner.ts", b"export function owner() { return 3; }\n")?;
+    fixture.seed("src/pkg/package.json", br#"{"main":"index.ts"}"#)?;
+    fixture.seed(
+        "tsconfig.json",
+        br#"{"compilerOptions":{"outDir":"dist","rootDir":"src"}}"#,
+    )?;
+    fixture_git_ok(&fixture.root, &["init", "--initial-branch=main"])?;
+    fixture_git_ok(&fixture.root, &["add", "."])?;
+    fixture_git_ok(
+        &fixture.root,
+        &[
+            "-c",
+            "user.name=ripr fixture",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-qm",
+            "frozen worker mappings",
+        ],
+    )?;
+    let prepared =
+        prepare_named_tree(&fixture.root, "HEAD", None).map_err(|error| error.to_string())?;
+    let authority = prepared
+        .frozen_source_authority(&fixture.root)
+        .map_err(|error| error.to_string())?;
+    let files = vec![
+        PathBuf::from("src/barrel.ts"),
+        PathBuf::from("src/pkg/index.ts"),
+        PathBuf::from("src/pkg/decoy.ts"),
+        PathBuf::from("src/owner.ts"),
+    ];
+    let sources = frozen::with_context(Some(authority.clone()), || {
+        super::bounded_read::read_workspace_sources_capped(&fixture.root, &files, 4096, 65_536)
+    });
+    assert_eq!(sources.sources.len(), files.len());
+    assert!(sources.limits.is_empty());
+    assert!(sources.io_failures.is_empty());
+    authority.ensure_clean().map_err(|error| error.to_string())?;
+    fixture.seed("src/pkg/package.json", br#"{"main":"decoy.ts"}"#)?;
+    fixture.seed(
+        "tsconfig.json",
+        br#"{"compilerOptions":{"outDir":"dist","rootDir":"live_src"}}"#,
+    )?;
+    fixture.seed("live_src/owner.ts", b"export function owner() { return 4; }\n")?;
+
+    let build =
+        |root: &Path| ReExportIndex::build(&files, &sources.sources, root, None, |_| false);
+    let directory_key = ("src/barrel".to_string(), "directoryOwner".to_string());
+    let output_key = ("src/barrel".to_string(), "outputOwner".to_string());
+    let ordinary = frozen::with_context(None, || build(&fixture.root));
+    assert_eq!(
+        ordinary.entries.get(&directory_key),
+        Some(&("owner".to_string(), "src/pkg/decoy".to_string()))
+    );
+    assert_eq!(
+        ordinary.entries.get(&output_key),
+        Some(&("owner".to_string(), "live_src/owner".to_string()))
+    );
+    let actual = frozen::with_context(Some(authority.clone()), || build(&fixture.root));
+    assert_eq!(
+        actual.entries.get(&directory_key),
+        Some(&("owner".to_string(), "src/pkg/index".to_string()))
+    );
+    assert_eq!(
+        actual.entries.get(&output_key),
+        Some(&("owner".to_string(), "src/owner".to_string()))
+    );
+    authority.ensure_clean().map_err(|error| error.to_string())?;
+    let recovered = frozen::with_context(None, || build(&fixture.root));
+    assert_eq!(recovered.entries, ordinary.entries);
+    assert_eq!(recovered.local_exports, ordinary.local_exports);
+
+    let escaped_root = fixture.root.join("../outside-reexport-root");
+    let refused = frozen::with_context(Some(authority.clone()), || build(&escaped_root));
+    assert!(
+        !refused.entries.is_empty(),
+        "the legacy resolver must return facts after swallowing its filesystem refusal"
+    );
+    let fault = authority
+        .ensure_clean()
+        .err()
+        .ok_or("parser worker lost the shared outside-read refusal")?;
+    assert!(!fault.to_string().is_empty());
+    Ok(())
 }

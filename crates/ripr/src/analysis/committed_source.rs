@@ -21,6 +21,8 @@
 //! workers) do not see it, so every overlay-aware read site runs on the
 //! pipeline thread.
 
+pub(crate) mod frozen;
+
 use crate::core_error::CoreError;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -227,6 +229,11 @@ pub(crate) fn committed_paths_missing_on_disk(root: &Path) -> Vec<String> {
 /// What a read of `root.join(relative)` should observe under the installed
 /// overlay. Without an overlay every path reads the working tree.
 pub(crate) fn lookup(root: &Path, relative: &Path) -> CommittedSourceRead {
+    if frozen::current().is_some() {
+        // Active complete contexts own every read; bypass legacy overlay
+        // shortcuts so the adapter reaches its verified frozen filesystem.
+        return CommittedSourceRead::Worktree;
+    }
     CURRENT_OVERLAY.with(|slot| {
         slot.borrow()
             .as_ref()
@@ -240,6 +247,18 @@ pub(crate) fn lookup(root: &Path, relative: &Path) -> CommittedSourceRead {
 /// path, `Ok(None)` for a dirty path with no content at `HEAD`, and the
 /// working-tree bytes otherwise.
 pub(crate) fn read_source_bytes(root: &Path, relative: &Path) -> std::io::Result<Option<Vec<u8>>> {
+    if let Some(authority) = frozen::current() {
+        return match frozen::fs::read(root.join(relative)) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(error)
+                if error.kind() == std::io::ErrorKind::NotFound
+                    && authority.ensure_clean().is_ok() =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(error),
+        };
+    }
     match lookup(root, relative) {
         CommittedSourceRead::Worktree => std::fs::read(root.join(relative)).map(Some),
         CommittedSourceRead::Committed(bytes) => Ok(Some(bytes)),

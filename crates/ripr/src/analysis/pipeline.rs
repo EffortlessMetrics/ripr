@@ -14,6 +14,7 @@ use super::{
 };
 use crate::analysis::cancellation;
 use crate::analysis::committed_source;
+use crate::analysis::committed_source::frozen;
 use crate::analysis_outcome::{
     AnalysisIdentity, AnalysisLimitation, AnalysisLimitationKind, AnalysisOutcome,
     AnalysisOutcomeCounts, AnalysisOutcomeKind, AnalysisRecovery, AnalysisRecoveryKind,
@@ -57,6 +58,41 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy_and_rust_config(
     languages: &[LanguageId],
     rust_config: &crate::config::RustLanguageConfig,
 ) -> Result<AnalysisResult, CoreError> {
+    if let Some(authority) = frozen::current() {
+        if options.root.as_os_str() != authority.logical_root().as_os_str()
+            || options.git_candidate.is_some()
+            || options.resolved_subject_identity.is_some()
+        {
+            return Err(authority
+                .refuse_external_effect("frozen diff requires its exact logical root and no GitCandidate")
+                .to_string()
+                .into());
+        }
+        let Some(canonical_diff) = frozen::canonical_diff() else {
+            return Err(authority
+                .refuse_external_effect("frozen diff has no owned canonical input")
+                .to_string()
+                .into());
+        };
+        let result = committed_source::with_overlay(None, || {
+            run_pipeline_for_diff_text(
+                options,
+                oracle_policy,
+                languages,
+                rust_config,
+                &canonical_diff,
+            )
+        });
+        let clean = authority.ensure_clean();
+        return match (result, clean) {
+            (Ok(result), Ok(())) => Ok(result),
+            (Err(primary), Ok(())) => Err(primary.into()),
+            (Ok(_), Err(fault)) => Err(fault.to_string().into()),
+            (Err(primary), Err(fault)) => {
+                Err(format!("{primary}; frozen source authority: {fault}").into())
+            }
+        };
+    }
     // Immutable Git candidate subject (#3237 / #3277): resolve the
     // bound identity through object plumbing, derive the exact
     // base→candidate diff, and analyze the materialized candidate root.
@@ -1906,6 +1942,46 @@ fn zero_file_diff_disclosure(diff_text: &str) -> &'static str {
     reason = "Tests assert an expected file-system error via `.expect_err(\"why\")`; the closure-style helper makes the expected failure mode part of the assertion message."
 )]
 mod tests {
+    #[test]
+    fn actual_frozen_diff_entry_refuses_missing_owned_input_and_root_alias()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = frozen::tests::Fixture::new(&[("src/lib.rs", b"pub fn owner() {}\n")])?;
+        let options = AnalysisOptions {
+            root: fixture.logical.clone(),
+            ..AnalysisOptions::default()
+        };
+        let missing = frozen::with_context(Some(fixture.authority.clone()), || {
+            run_diff_pipeline_with_oracle_policy_and_rust_config(
+                &options,
+                &OraclePolicy::default(),
+                &[LanguageId::Rust],
+                &crate::config::RustLanguageConfig::default(),
+            )
+        }).err().ok_or("frozen entry accepted missing owned canonical diff")?;
+        assert!(missing.to_string().contains("no owned canonical input"), "{missing}");
+        let retained = fixture.authority.ensure_clean().err()
+            .ok_or("missing canonical input did not poison authority")?;
+        assert_eq!(retained.kind(), std::io::ErrorKind::PermissionDenied);
+
+        let alias = frozen::tests::Fixture::new(&[("src/lib.rs", b"pub fn owner() {}\n")])?;
+        let options = AnalysisOptions {
+            root: alias.logical.join("."),
+            ..AnalysisOptions::default()
+        };
+        let mismatch = frozen::with_context(Some(alias.authority.clone()), || {
+            frozen::with_canonical_diff(std::sync::Arc::from(""), || {
+                run_diff_pipeline_with_oracle_policy_and_rust_config(
+                    &options,
+                    &OraclePolicy::default(),
+                    &[LanguageId::Rust],
+                    &crate::config::RustLanguageConfig::default(),
+                )
+            })
+        }).err().ok_or("frozen entry accepted a different logical root spelling")?;
+        assert!(mismatch.to_string().contains("exact logical root"), "{mismatch}");
+        Ok(())
+    }
+
     use super::*;
     use std::fs;
     use std::path::PathBuf;
