@@ -230,6 +230,31 @@ fn default_config_for_root(root: &Path) -> Result<RiprConfig, String> {
     Ok(config)
 }
 
+/// Construct configuration from the snapshot owner's captured configuration.
+/// The owner authenticates the capture and retains the physical snapshot root.
+/// The logical source path is provenance and diagnostic data; it is never read.
+pub(crate) fn config_for_captured_snapshot(
+    physical_root: &Path,
+    logical_source_path: &Path,
+    captured: &crate::analysis::git_candidate_execution::CapturedConfiguration,
+) -> Result<RiprConfig, String> {
+    use crate::analysis::git_candidate_execution::CapturedConfiguration;
+
+    match captured {
+        CapturedConfiguration::NotRequested => {
+            Err("snapshot configuration capture was not requested".to_string())
+        }
+        CapturedConfiguration::Absent => default_config_for_root(physical_root),
+        CapturedConfiguration::Present { text, .. } => {
+            let mut config = parse_config(text)
+                .map_err(|error| format!("{}: {error}", logical_source_path.display()))?;
+            config.source_path = Some(logical_source_path.to_path_buf());
+            config.source_text = Some(text.clone());
+            Ok(config)
+        }
+    }
+}
+
 pub(crate) fn generated_init_config() -> &'static str {
     INIT_CONFIG_TEXT
 }
@@ -1205,4 +1230,222 @@ pub(crate) fn config_for_candidate(
     config.source_path = None;
     config.source_text = Some(text);
     Ok(config)
+}
+
+#[cfg(test)]
+mod captured_snapshot_tests {
+    use super::*;
+    use crate::analysis::git_candidate_execution::CapturedConfiguration;
+    use crate::domain::GitObjectId;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn with_snapshot_fixture(
+        name: &str,
+        run: impl FnOnce(&Path, &Path) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| format!("fixture clock: {error}"))?
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "ripr-captured-config-{name}-{}-{stamp}",
+            std::process::id()
+        ));
+        fs::create_dir(&root).map_err(|error| format!("create fixture root: {error}"))?;
+        let result = (|| {
+            fs::create_dir(root.join(".git"))
+                .map_err(|error| format!("create fixture boundary: {error}"))?;
+            let snapshot = root.join("snapshot");
+            fs::create_dir(&snapshot)
+                .map_err(|error| format!("create snapshot root: {error}"))?;
+            run(&root, &snapshot)
+        })();
+        let cleanup = fs::remove_dir_all(&root)
+            .map_err(|error| format!("remove fixture {}: {error}", root.display()));
+        match (result, cleanup) {
+            (Err(run_error), Err(cleanup_error)) => Err(format!("{run_error}; {cleanup_error}")),
+            (result, cleanup) => result.and(cleanup),
+        }
+    }
+
+    fn write_fixture(path: &Path, text: &str) -> Result<(), String> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("create {}: {error}", parent.display()))?;
+        }
+        fs::write(path, text).map_err(|error| format!("write {}: {error}", path.display()))
+    }
+
+    fn present(text: &str) -> Result<CapturedConfiguration, String> {
+        // This fixture exercises construction from a capture. Object authentication
+        // belongs to prepare_named_tree and is not asserted by a synthetic object ID.
+        let blob_oid = GitObjectId::parse("0123456789abcdef0123456789abcdef01234567")
+            .map_err(|error| error.to_string())?;
+        Ok(CapturedConfiguration::Present {
+            blob_oid,
+            text: text.to_string(),
+        })
+    }
+
+    #[test]
+    fn captured_snapshot_present_ignores_live_and_ancestor_configuration() -> Result<(), String> {
+        with_snapshot_fixture("present-decoys", |root, snapshot| {
+            write_fixture(&root.join(CONFIG_FILE_NAME), "not valid TOML")?;
+            let live_text = "[analysis]\nmode = \"fast\"\n";
+            write_fixture(&snapshot.join(CONFIG_FILE_NAME), live_text)?;
+            assert_eq!(
+                load_for_root(snapshot)?.analysis.mode,
+                Some(Mode::Fast),
+                "the live decoy must affect the ordinary loader"
+            );
+            let text = "# captured Δ\n[analysis]\nmode = \"deep\"\ninclude_unchanged_tests = false\n";
+            let logical = Path::new("logical/repository/ripr.toml");
+            let captured = present(text)?;
+            let config = config_for_captured_snapshot(snapshot, logical, &captured)?;
+            let mut expected = parse_config(text)?;
+            expected.source_path = Some(logical.to_path_buf());
+            expected.source_text = Some(text.to_string());
+            assert_eq!(config, expected);
+            assert_eq!(
+                loaded_config_identity(&config),
+                Some(config_fingerprint(text))
+            );
+            assert_eq!(
+                fs::read_to_string(snapshot.join(CONFIG_FILE_NAME))
+                    .map_err(|error| error.to_string())?,
+                live_text
+            );
+
+            fs::remove_file(snapshot.join(CONFIG_FILE_NAME))
+                .map_err(|error| format!("remove live decoy: {error}"))?;
+            assert!(
+                load_for_root(snapshot).is_err(),
+                "the ancestor decoy must be invalid"
+            );
+            assert_eq!(
+                config_for_captured_snapshot(snapshot, logical, &captured)?,
+                expected
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn captured_snapshot_absent_ignores_ancestor_policy_and_python_markers() -> Result<(), String> {
+        with_snapshot_fixture("absent-ancestor", |root, snapshot| {
+            write_fixture(&root.join(CONFIG_FILE_NAME), "[analysis]\nmode = \"ready\"\n")?;
+            write_fixture(&root.join("pyproject.toml"), "[project]\nname = \"ambient\"\n")?;
+            assert!(detect_python_project(root));
+            assert!(!detect_python_project(snapshot));
+            assert_eq!(
+                load_for_root(snapshot)?.analysis.mode,
+                Some(Mode::Ready),
+                "the ordinary loader must see the ancestor policy"
+            );
+            let logical = root.join(CONFIG_FILE_NAME);
+            let config =
+                config_for_captured_snapshot(snapshot, &logical, &CapturedConfiguration::Absent)?;
+            assert_eq!(config, RiprConfig::default());
+            assert_eq!(loaded_config_identity(&config), None);
+            write_fixture(&logical, "not valid TOML")?;
+            assert!(load_for_root(snapshot).is_err());
+            assert_eq!(
+                config_for_captured_snapshot(snapshot, &logical, &CapturedConfiguration::Absent)?,
+                config
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn captured_snapshot_absent_preserves_snapshot_python_detection() -> Result<(), String> {
+        for marker in ["pyproject.toml", "src/owned.py"] {
+            with_snapshot_fixture("snapshot-python", |root, snapshot| {
+                write_fixture(&root.join(CONFIG_FILE_NAME), "not valid TOML")?;
+                write_fixture(&snapshot.join(marker), "owned = 1\n")?;
+                assert!(
+                    detect_python_project(snapshot),
+                    "snapshot marker must be detected"
+                );
+                let result = config_for_captured_snapshot(
+                    snapshot,
+                    &root.join(CONFIG_FILE_NAME),
+                    &CapturedConfiguration::Absent,
+                );
+                if LanguageId::Python.is_available() {
+                    let mut expected = RiprConfig::default();
+                    expected.languages.enabled.push(LanguageId::Python);
+                    assert_eq!(result?, expected);
+                } else {
+                    let error = result.err().ok_or("unavailable Python was admitted")?;
+                    assert!(error.starts_with("Python project markers were detected,"));
+                    assert!(error.contains("without Cargo feature `lang-python`"));
+                }
+                Ok(())
+            })?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn captured_snapshot_empty_is_explicit_without_python_detection() -> Result<(), String> {
+        with_snapshot_fixture("present-empty", |root, snapshot| {
+            write_fixture(&snapshot.join("pyproject.toml"), "[project]\nname = \"snapshot\"\n")?;
+            write_fixture(&root.join(CONFIG_FILE_NAME), "not valid TOML")?;
+            assert!(detect_python_project(snapshot));
+            let logical = Path::new("logical/empty/ripr.toml");
+            let config = config_for_captured_snapshot(snapshot, logical, &present("")?)?;
+            let expected = RiprConfig {
+                source_path: Some(logical.to_path_buf()),
+                source_text: Some(String::new()),
+                ..RiprConfig::default()
+            };
+            assert_eq!(config, expected);
+            assert_eq!(config.source_text(), Some(""));
+            assert_eq!(
+                loaded_config_identity(&config),
+                Some(config_fingerprint(""))
+            );
+            assert!(!config.languages.enabled.contains(&LanguageId::Python));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn captured_snapshot_not_requested_refuses_live_config_and_defaults() -> Result<(), String> {
+        with_snapshot_fixture("not-requested", |root, snapshot| {
+            write_fixture(&snapshot.join("pyproject.toml"), "[project]\nname = \"snapshot\"\n")?;
+            write_fixture(&snapshot.join(CONFIG_FILE_NAME), "[analysis]\nmode = \"fast\"\n")?;
+            assert!(detect_python_project(snapshot));
+            assert!(load_for_root(snapshot).is_ok());
+            let error = config_for_captured_snapshot(
+                snapshot,
+                &root.join(CONFIG_FILE_NAME),
+                &CapturedConfiguration::NotRequested,
+            )
+            .err()
+            .ok_or("unrequested capture was admitted")?;
+            assert_eq!(error, "snapshot configuration capture was not requested");
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn captured_snapshot_malformed_text_preserves_logical_diagnostic() -> Result<(), String> {
+        with_snapshot_fixture("malformed-capture", |root, snapshot| {
+            write_fixture(&snapshot.join(CONFIG_FILE_NAME), "[analysis]\nmode = \"fast\"\n")?;
+            assert_eq!(load_for_root(snapshot)?.analysis.mode, Some(Mode::Fast));
+            let text = "[analysis]\nmode = \"unknown-captured-mode\"\n";
+            let logical = root.join("logical").join(CONFIG_FILE_NAME);
+            let parse_error = parse_config(text)
+                .err()
+                .ok_or("malformed control was valid")?;
+            let error = config_for_captured_snapshot(snapshot, &logical, &present(text)?)
+                .err()
+                .ok_or("malformed captured configuration was admitted")?;
+            assert_eq!(error, format!("{}: {parse_error}", logical.display()));
+            Ok(())
+        })
+    }
 }
