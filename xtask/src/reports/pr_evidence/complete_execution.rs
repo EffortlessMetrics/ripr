@@ -185,9 +185,147 @@ fn profile() -> Result<(u64, u64), String> {
     }
 }
 
+
+const BUILD_STDOUT_MAX: usize = 8 * 1024 * 1024;
+
+#[derive(Deserialize)]
+struct CargoMessage {
+    reason: String,
+    manifest_path: Option<String>,
+    target: Option<CargoTarget>,
+    executable: Option<String>,
+    success: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct CargoTarget {
+    name: String,
+    kind: Vec<String>,
+}
+
+// Cargo owns target/compiler/config selection. Admit its actual executable
+// only after this bounded, successful build; never infer a debug host path.
+fn executable_from_cargo(repo: &Path, bytes: &[u8]) -> Result<PathBuf, String> {
+    if bytes.len() > BUILD_STDOUT_MAX {
+        return Err("experimental worker build JSON exceeds its construction bound".to_string());
+    }
+    let manifest = fs::canonicalize(repo.join("crates/ripr/Cargo.toml"))
+        .map_err(|error| format!("experimental worker manifest unavailable: {error}"))?;
+    let mut executable = None;
+    let mut finished = false;
+    for line in bytes.split(|byte| *byte == b'\n') {
+        if line.iter().all(u8::is_ascii_whitespace) {
+            continue;
+        }
+        if finished {
+            return Err("experimental worker build JSON follows build-finished".to_string());
+        }
+        let message: CargoMessage = serde_json::from_slice(line)
+            .map_err(|error| format!("experimental worker build JSON malformed: {error}"))?;
+        match message.reason.as_str() {
+            "compiler-artifact" => {
+                let target = message.target.ok_or_else(|| {
+                    "experimental worker build artifact lacks target".to_string()
+                })?;
+                let path = message.manifest_path.ok_or_else(|| {
+                    "experimental worker build artifact lacks manifest".to_string()
+                })?;
+                if target.name != "ripr" || target.kind != ["bin"] {
+                    continue;
+                }
+                let path = Path::new(&path);
+                if !path.is_absolute()
+                    || fs::canonicalize(path).map_err(|error| {
+                        format!("experimental worker artifact manifest unavailable: {error}")
+                    })? != manifest
+                {
+                    continue;
+                }
+                let selected = message.executable.filter(|path| !path.is_empty())
+                    .ok_or_else(|| "experimental worker build artifact lacks executable".to_string())?;
+                let selected = PathBuf::from(selected);
+                if !selected.is_absolute() {
+                    return Err("experimental worker executable is not absolute".to_string());
+                }
+                require_regular(&selected)?;
+                if executable.replace(selected).is_some() {
+                    return Err("experimental worker build executable is ambiguous".to_string());
+                }
+            }
+            "build-finished" => {
+                if message.success != Some(true) {
+                    return Err("experimental worker build did not finish successfully".to_string());
+                }
+                finished = true;
+            }
+            "compiler-message" | "build-script-executed" => {}
+            other => return Err(format!("experimental worker build JSON unknown reason {other:?}")),
+        }
+    }
+    if !finished {
+        return Err("experimental worker build lacks final successful build-finished".to_string());
+    }
+    executable.ok_or_else(|| "experimental worker build lacks the expected executable".to_string())
+}
+
+fn build_worker(repo: &Path) -> Result<PathBuf, String> {
+    build_worker_with_target_dir(repo, None)
+}
+
+fn build_worker_with_target_dir(repo: &Path, target_dir: Option<&Path>) -> Result<PathBuf, String> {
+    let mut args = vec![
+        "build".to_string(),
+        "--locked".to_string(),
+        "--manifest-path".to_string(),
+        repo.join("Cargo.toml").display().to_string(),
+        "-p".to_string(),
+        "ripr".to_string(),
+        "--message-format=json".to_string(),
+        "--quiet".to_string(),
+    ];
+    if let Some(target_dir) = target_dir {
+        args.extend(["--target-dir".to_string(), target_dir.display().to_string()]);
+    }
+    let output = capture_bytes_in_dir_with_budget(
+        Path::new("cargo"),
+        &args,
+        (repo, None),
+        &[],
+        ByteCaptureBudget {
+            timeout: tool_build_timeout()?,
+            stdout_bytes: BUILD_STDOUT_MAX,
+            stderr_bytes: STREAM_MAX,
+        },
+        "build of the pinned complete-execution worker",
+    )?;
+    if output.timed_out || !output.status.is_some_and(|status| status.success()) {
+        return Err(format!(
+            "experimental worker build refused (timeout={}, {}): {}",
+            output.timed_out, describe_native_status(output.status),
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    executable_from_cargo(repo, &output.stdout)
+}
+
+fn completion_report(receipt: &Receipt) -> String {
+    format!(
+        "experimental worker completed under {} address-space bytes; worker-reported configuration fingerprint {} and {} index entries ({} index bytes) are not independently validated; exhaustive coverage {} and production admission disabled",
+        receipt.address_space_bytes, receipt.configuration_fingerprint,
+        receipt.index_entries, receipt.index_bytes, receipt.coverage
+    )
+}
+
 fn revoke(repo: &Path) -> Result<(), String> {
     // Revoke before resource discovery, binary build, limiter setup or spawn.
     remove_stale_check_artifact(repo)?;
+    for relative in [PR_EVIDENCE_JSON, PR_EVIDENCE_MD] {
+        match fs::remove_file(repo.join(relative)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("experimental launcher {relative} revocation: {error}")),
+        }
+    }
     match fs::remove_file(repo.join(RECEIPT)) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -219,21 +357,7 @@ pub(super) fn run_experiment(args: &[String]) -> Result<(), String> {
     if env::var_os("RIPR_BIN").is_some() {
         return Err("experimental complete-execution requires the pinned built worker; RIPR_BIN is supported only by the ordinary compatibility path".to_string());
     }
-    let args = [
-        "build".to_string(),
-        "--manifest-path".to_string(),
-        repo.join("Cargo.toml").display().to_string(),
-        "-p".to_string(),
-        "ripr".to_string(),
-        "--quiet".to_string(),
-    ];
-    run_output_owned_with_timeout(
-        "cargo",
-        &args,
-        tool_build_timeout()?,
-        "build of the pinned complete-execution worker",
-    )?;
-    let binary = built_ripr_binary_path(&repo)?.display().to_string();
+    let binary = build_worker(&repo)?.display().to_string();
     let receipt = run_candidate(
         &repo,
         &binary,
@@ -242,10 +366,7 @@ pub(super) fn run_experiment(args: &[String]) -> Result<(), String> {
         bounds,
     )?;
     // A native success is experimental only. Never turn it into gate success.
-    Err(format!(
-        "experimental worker completed under {} address-space bytes with {} index entries ({} index bytes); exhaustive coverage {} and production admission disabled",
-        receipt.address_space_bytes, receipt.index_entries, receipt.index_bytes, receipt.coverage
-    ))
+    Err(completion_report(&receipt))
 }
 
 fn run_candidate(
@@ -469,6 +590,20 @@ mod tests {
             let text = serde_json::to_string(&valid).map_err(|error| error.to_string())?;
             write(&text)?;
             read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40))?;
+            for (field, reported) in [
+                ("configuration_fingerprint", json!("different-worker-report")),
+                ("index_entries", json!(1)),
+                ("index_bytes", json!(101)),
+            ] {
+                let mut changed = valid.clone();
+                changed[field] = reported;
+                write(&serde_json::to_string(&changed).map_err(|error| error.to_string())?)?;
+                let receipt = read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40))?;
+                assert!(completion_report(&receipt).contains("worker-reported"));
+                assert!(completion_report(&receipt).contains("not independently validated"));
+                assert!(!receipt.production_admission);
+            }
+            write(&text)?;
             for (field, wrong, expected) in [
                 ("nonce", json!("stale"), "inconsistent"),
                 ("coverage", json!("complete"), "inconsistent"),
@@ -566,7 +701,7 @@ mod tests {
     fn native_experiment_uses_real_producer_and_refuses_consumers_then_recovers()
     -> Result<(), String> {
         let _cwd_guard = crate::acquire_test_cwd_read_guard();
-        let binary = crate::reports::fixtures::ripr_fixture_binary()?;
+        let binary = build_worker(&repo_root()?)?.display().to_string();
         let repo = super::super::tests::temp_repo("ripr-complete-execution-native")?;
         let result = (|| {
             super::super::tests::run_git(
@@ -831,4 +966,120 @@ mod tests {
         );
         Ok(())
     }
+    #[test]
+    fn cargo_artifact_resolution_refuses_missing_malformed_ambiguous_and_trailing_output()
+    -> Result<(), String> {
+        let repo = super::super::tests::temp_repo("ripr-cargo-artifact-resolution")?;
+        let result = (|| {
+            super::super::tests::write_repo_file(&repo, "crates/ripr/Cargo.toml", "manifest")?;
+            super::super::tests::write_repo_file(&repo, "actual-worker", "regular fixture")?;
+            super::super::tests::write_repo_file(&repo, "target/debug/ripr", "stale guessed worker")?;
+            let binary = fs::canonicalize(repo.join("actual-worker")).map_err(|error| error.to_string())?;
+            let manifest = fs::canonicalize(repo.join("crates/ripr/Cargo.toml"))
+                .map_err(|error| error.to_string())?;
+            let artifact = json!({"reason":"compiler-artifact","manifest_path":manifest,
+                "target":{"name":"ripr","kind":["bin"]},"executable":binary,"fresh":true});
+            let finish = json!({"reason":"build-finished","success":true});
+            let record = |value: &Value| serde_json::to_string(value).map_err(|error| error.to_string());
+            let valid = format!("{}\n{}\n", record(&artifact)?, record(&finish)?);
+            assert_eq!(executable_from_cargo(&repo, valid.as_bytes())?, binary);
+            let mut missing_executable = artifact.clone();
+            missing_executable["executable"] = Value::Null;
+            let mut relative_executable = artifact.clone();
+            relative_executable["executable"] = json!("target/debug/ripr");
+            let mut wrong_target = artifact.clone();
+            wrong_target["target"]["name"] = json!("other");
+            let mut missing_file = artifact.clone();
+            missing_file["executable"] = json!(repo.join("absent-worker"));
+            for invalid in [
+                record(&finish)?,
+                record(&artifact)?,
+                format!("{{malformed\n{}", record(&finish)?),
+                format!("{}\n{}\n{}", record(&artifact)?, record(&artifact)?, record(&finish)?),
+                format!("{valid}{}", record(&artifact)?),
+                format!("{valid}{}", record(&finish)?),
+                format!("{}\n{{\"reason\":\"build-finished\",\"success\":false}}", record(&artifact)?),
+                format!("{}\n{}", record(&missing_executable)?, record(&finish)?),
+                format!("{}\n{}", record(&relative_executable)?, record(&finish)?),
+                format!("{}\n{}", record(&wrong_target)?, record(&finish)?),
+                format!("{}\n{}", record(&missing_file)?, record(&finish)?),
+            ] {
+                let error = refusal(executable_from_cargo(&repo, invalid.as_bytes()), "invalid Cargo artifact")?;
+                assert!(error.starts_with("experimental"), "{error}");
+            }
+            let error = refusal(executable_from_cargo(&repo, &vec![b' '; BUILD_STDOUT_MAX + 1]), "build cap")?;
+            assert!(error.contains("construction bound"), "{error}");
+            assert_eq!(executable_from_cargo(&repo, valid.as_bytes())?, binary);
+            Ok(())
+        })();
+        fs::remove_dir_all(&repo).map_err(|error| error.to_string())?;
+        result
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn actual_cargo_artifact_executes_compiled_content_with_a_stale_guessed_path()
+    -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
+        let repo = super::super::tests::temp_repo("ripr-cargo-native-artifact")?;
+        let result = (|| {
+            super::super::tests::write_repo_file(&repo, "Cargo.toml",
+                "[workspace]\nmembers = [\"crates/ripr\"]\nresolver = \"3\"\n")?;
+            super::super::tests::write_repo_file(&repo, "crates/ripr/Cargo.toml",
+                "[package]\nname = \"ripr\"\nversion = \"0.0.0\"\nedition = \"2024\"\n")?;
+            super::super::tests::write_repo_file(&repo, "Cargo.lock",
+                "version = 4\n\n[[package]]\nname = \"ripr\"\nversion = \"0.0.0\"\n")?;
+            super::super::tests::write_repo_file(&repo, "crates/ripr/src/main.rs",
+                "fn main() { println!(\"RIPR_ACTUAL_COMPILED_ARTIFACT\"); }\n")?;
+            super::super::tests::write_repo_file(&repo, "target/debug/ripr", "STALE_GUESSED_PATH_DECOY")?;
+            // The fixture owns its construction directory; production keeps
+            // inherited Cargo target/config selection with no override.
+            let target = repo.join("actual-built-artifacts");
+            let binary = build_worker_with_target_dir(&repo, Some(&target))?;
+            assert_ne!(binary, repo.join("target/debug/ripr"));
+            let output = capture_bytes_in_dir_with_budget(
+                &binary, &[], (&repo, None), &[],
+                ByteCaptureBudget {
+                    timeout: Duration::from_secs(30),
+                    stdout_bytes: STREAM_MAX,
+                    stderr_bytes: STREAM_MAX,
+                },
+                "actual Cargo compiled-content control",
+            )?;
+            assert!(!output.timed_out);
+            assert!(output.status.is_some_and(|status| status.success()));
+            assert_eq!(output.stdout, b"RIPR_ACTUAL_COMPILED_ARTIFACT\n");
+            assert_eq!(fs::read(repo.join("target/debug/ripr")).map_err(|error| error.to_string())?,
+                b"STALE_GUESSED_PATH_DECOY");
+            Ok(())
+        })();
+        fs::remove_dir_all(&repo).map_err(|error| error.to_string())?;
+        result
+    }
+
+    #[test]
+    fn launcher_revokes_packets_before_preworker_profile_failure() -> Result<(), String> {
+        let repo = super::super::tests::temp_repo("ripr-experiment-preworker-revocation")?;
+        let result = (|| {
+            for relative in [PR_EVIDENCE_JSON, PR_EVIDENCE_MD, PR_CHECK_JSON,
+                PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON, RECEIPT] {
+                super::super::tests::write_repo_file(&repo, relative, "old ordinary authority")?;
+            }
+            let error = refusal(run_candidate(&repo, "unused", &PrEvidenceOptions::default(),
+                Path::new("/missing-limiter"), (0, FILE_MAX)), "preworker profile")?;
+            assert!(error.contains("invalid finite resource profile"), "{error}");
+            for relative in [PR_EVIDENCE_JSON, PR_EVIDENCE_MD, PR_CHECK_JSON,
+                PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON, RECEIPT] {
+                assert!(!repo.join(relative).exists(), "{relative} retained");
+            }
+            fs::create_dir(repo.join(PR_EVIDENCE_JSON)).map_err(|error| error.to_string())?;
+            let error = refusal(revoke(&repo), "packet cleanup failure")?;
+            assert!(error.contains("revocation"), "{error}");
+            assert!(repo.join(PR_EVIDENCE_JSON).is_dir());
+            Ok(())
+        })();
+        fs::remove_dir_all(&repo).map_err(|error| error.to_string())?;
+        result
+    }
+
 }

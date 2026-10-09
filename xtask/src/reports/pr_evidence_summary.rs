@@ -103,6 +103,15 @@ fn summary_text(repo: &Path) -> String {
     let pr_evidence = load_json(repo, PR_EVIDENCE_JSON);
     let review_comments = load_json(repo, REVIEW_COMMENTS_JSON);
     let start_here = load_json(repo, START_HERE_JSON);
+    for packet in [pr_evidence.value.as_ref(), review_comments.value.as_ref()]
+        .into_iter().flatten()
+    {
+        if packet.get("experimental_complete_execution").is_some()
+            && let Some(error) = ripr::app::pr_evidence::reject_pr_evidence_error_packet(packet)
+        {
+            return format!("# Experimental PR Evidence Summary\n\n**{error}.**\n\nComplete coverage is not established. Mutation routing and review guidance are withheld, including any previously saved guidance.\n");
+        }
+    }
     render_pr_evidence_summary(&SummaryRenderInput {
         repo,
         pr_evidence_json: PR_EVIDENCE_JSON,

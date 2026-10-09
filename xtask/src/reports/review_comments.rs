@@ -361,6 +361,10 @@ fn validate_check_output_against_packet(
             return;
         }
     };
+    if let Some(error) = ripr::app::pr_evidence::reject_pr_evidence_error_packet(&subject) {
+        violations.push(format!("--check-output subject receipt: {error}"));
+        return;
+    }
     let receipt_root = PathBuf::from(command_root_arg(repo, &options.root));
     let expected_subject = [
         ("schema_version", "ripr.pr_check_subject.v1".to_string()),
@@ -421,15 +425,45 @@ fn validate_check_output_against_packet(
                     subject_path.display()
                 ));
             }
-            if let Ok(review) =
-                serde_json::from_slice::<ripr::review_input::ReviewInputV1>(&review_bytes)
-                && let Some(index_value) = subject.get("canonical_finding_index")
-                && let Ok(index) = serde_json::from_value::<
-                    ripr::review_input::CanonicalFindingIndexV1,
-                >(index_value.clone())
-                && let Ok(expected) = ripr::review_input::canonical_projection_from_index(&index)
-                && review.findings != expected
-            {
+            let raw_review: Value = match serde_json::from_slice(&review_bytes) {
+                Ok(value) => value,
+                Err(error) => {
+                    violations.push(format!("--check-output review input is invalid JSON: {error}"));
+                    return;
+                }
+            };
+            if let Some(error) = ripr::app::pr_evidence::reject_pr_evidence_error_packet(&raw_review) {
+                violations.push(format!("--check-output review input: {error}"));
+                return;
+            }
+            let review = match serde_json::from_slice::<ripr::review_input::ReviewInputV1>(&review_bytes) {
+                Ok(value) => value,
+                Err(error) => {
+                    violations.push(format!("--check-output review input is malformed: {error}"));
+                    return;
+                }
+            };
+            let Some(index_value) = subject.get("canonical_finding_index") else {
+                violations.push("--check-output canonical finding index is missing".to_string());
+                return;
+            };
+            let index = match serde_json::from_value::<ripr::review_input::CanonicalFindingIndexV1>(
+                index_value.clone()
+            ) {
+                Ok(value) => value,
+                Err(error) => {
+                    violations.push(format!("--check-output canonical finding index is malformed: {error}"));
+                    return;
+                }
+            };
+            let expected = match ripr::review_input::canonical_projection_from_index(&index) {
+                Ok(value) => value,
+                Err(error) => {
+                    violations.push(format!("--check-output canonical projection failed: {error}"));
+                    return;
+                }
+            };
+            if review.findings != expected {
                 violations.push(format!(
                     "--check-output {} is not derived from the canonical finding index",
                     review_path.display()
@@ -912,6 +946,17 @@ fn static_gap_fallback(repo: &Path, options: &ReviewCommentsOptions) -> Option<V
     } else {
         repo.join(path)
     };
+    let subject_path = path.with_extension("subject.json");
+    match fs::read(&subject_path) {
+        Ok(bytes) => {
+            let subject: Value = serde_json::from_slice(&bytes).ok()?;
+            if subject.get("experimental_complete_execution").is_some() {
+                return None;
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return None,
+    }
     let text = fs::read_to_string(&path).ok()?;
     let producer: Value = serde_json::from_str(&text).ok()?;
     if producer.get("tool").and_then(Value::as_str) != Some("ripr")
@@ -964,6 +1009,9 @@ fn producer_analysis_outcome(repo: &Path, options: &ReviewCommentsOptions) -> Op
     let subject_path = path.with_extension("subject.json");
     let text = fs::read_to_string(subject_path).ok()?;
     let producer: Value = serde_json::from_str(&text).ok()?;
+    if ripr::app::pr_evidence::reject_pr_evidence_error_packet(&producer).is_some() {
+        return None;
+    }
     producer
         .get("analysis_outcome")
         .filter(|outcome| !outcome.is_null())

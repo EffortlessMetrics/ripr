@@ -1393,6 +1393,9 @@ fn validate_artifacts(packet: &Value, violations: &mut Vec<String>) {
 }
 
 fn render_pr_evidence_markdown(packet: &Value) -> String {
+    if packet.get(complete_execution::GENERATION_FIELD).is_some() {
+        return "# Experimental PR Evidence\n\n**Not qualified for production admission.** Complete coverage is not established; production admission is disabled. This artifact must not route mutation or satisfy the Fast Gate.\n".to_string();
+    }
     let summary = packet.get("summary").and_then(Value::as_object);
     let changed_files = count_field(summary, "changed_files");
     let comments = count_field(summary, "comments");

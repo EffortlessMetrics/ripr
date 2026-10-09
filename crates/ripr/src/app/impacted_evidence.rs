@@ -308,6 +308,11 @@ fn require_pr_evidence(repo: &Path, relative: &str) -> Result<PrEvidenceInput, S
     let input = load_pr_evidence(repo, relative);
     match &input.state {
         InputState::Present => {
+            if let Some(error) = input.value.as_ref()
+                .and_then(crate::app::pr_evidence::reject_pr_evidence_error_packet)
+            {
+                return Err(format!("impacted-evidence: {error}"));
+            }
             let missing: Vec<&str> = ROUTING_FIELDS
                 .into_iter()
                 .filter(|field| {
