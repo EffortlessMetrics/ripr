@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod limitations_tests;
-mod load;
+pub(crate) mod load;
 mod model;
-mod parse;
+pub(crate) mod parse;
 mod path;
 pub mod records;
 

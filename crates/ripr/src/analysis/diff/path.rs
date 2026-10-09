@@ -219,17 +219,24 @@ impl DecodedPath {
 }
 
 fn parse_diff_path_token(raw: &str) -> Option<DecodedPath> {
-    let raw = raw.trim_end_matches('\r');
+    parse_diff_path_token_bytes(raw.as_bytes()).map(decode_path_bytes)
+}
+
+/// Decode the existing Git token grammar before native path conversion.
+/// Non-UTF-8 token syntax is refused rather than repaired through lossy text.
+/// C-quoted octal escapes still carry arbitrary original path bytes.
+pub(super) fn parse_diff_path_token_bytes(raw: &[u8]) -> Option<Vec<u8>> {
+    let raw = std::str::from_utf8(raw).ok()?.trim_end_matches('\r');
     if let Some(quoted) = raw.strip_prefix('"') {
         return parse_c_quoted_path(quoted);
     }
 
     let token = raw.split_once('\t').map_or(raw, |(path, _metadata)| path);
     let token = token.trim_end();
-    (!token.is_empty()).then(|| DecodedPath::Text(token.to_string()))
+    (!token.is_empty()).then(|| token.as_bytes().to_vec())
 }
 
-fn parse_c_quoted_path(raw: &str) -> Option<DecodedPath> {
+fn parse_c_quoted_path(raw: &str) -> Option<Vec<u8>> {
     // Decode at the byte level: git's octal escapes carry raw bytes, so
     // mapping each escaped byte to one Unicode scalar would turn a valid
     // UTF-8 name like `caf\303\251.rs` into `cafÃ©.rs` and lose workspace
@@ -242,7 +249,7 @@ fn parse_c_quoted_path(raw: &str) -> Option<DecodedPath> {
 
     while let Some(ch) = chars.next() {
         match ch {
-            '"' => return Some(decode_path_bytes(bytes)),
+            '"' => return Some(bytes),
             '\\' => parse_c_escape(&mut chars, &mut bytes),
             _ => {
                 let mut buf = [0u8; 4];
@@ -364,6 +371,47 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn raw_path_tokens_preserve_bytes_before_platform_conversion() -> Result<(), String> {
+        let invalid = parse_diff_path_token_bytes(br#""src/pricing_\377.rs""#)
+            .ok_or_else(|| "C-quoted invalid-byte token was not decoded".to_string())?;
+        let literal = parse_diff_path_token_bytes(br#""src/pricing_\\377.rs""#)
+            .ok_or_else(|| "C-quoted literal-octal token was not decoded".to_string())?;
+        assert_eq!(invalid, b"src/pricing_\xff.rs");
+        assert_eq!(literal, br"src/pricing_\377.rs");
+        assert_ne!(
+            invalid, literal,
+            "raw token identities coalesced before platform conversion"
+        );
+        for (input, expected) in [
+            (
+                b"src/caf\xc3\xa9.rs\tstamp".as_slice(),
+                b"src/caf\xc3\xa9.rs".as_slice(),
+            ),
+            (
+                br#""src/caf\303\251.rs" ignored suffix"#.as_slice(),
+                b"src/caf\xc3\xa9.rs".as_slice(),
+            ),
+            (
+                b"src/file.rs\xe3\x80\x80\r\r".as_slice(),
+                b"src/file.rs".as_slice(),
+            ),
+            (
+                br#""a\nb\rc\td\\e\"f\q\377""#.as_slice(),
+                b"a\nb\rc\td\\e\"fq\xff".as_slice(),
+            ),
+            (br#""\7\77\777""#.as_slice(), b"\x07\x3f\x00".as_slice()),
+        ] {
+            let actual = parse_diff_path_token_bytes(input)
+                .ok_or_else(|| format!("raw token refused legacy-valid input {input:?}"))?;
+            assert_eq!(actual, expected);
+        }
+        assert!(parse_diff_path_token_bytes(b"\xff").is_none());
+        assert!(parse_diff_path_token_bytes(br#""unterminated"#).is_none());
+        assert!(parse_diff_path_token_bytes(b"\tstamp").is_none());
+        Ok(())
+    }
 
     #[test]
     fn c_quoted_paths_reconstruct_utf8_names_and_keep_invalid_bytes_distinct() {

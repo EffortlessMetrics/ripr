@@ -708,6 +708,51 @@ pub fn load_canonical_pr_evidence_diff_bytes(
         .map_err(Into::into)
 }
 
+/// Complete-route capture only. The caller authenticates literal commits,
+/// both trees and the actual three-dot origin before using these bytes.
+/// This function owns finite stdout/stderr capture, never completion authority.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Inactive producer-owned route consumes this crate-private capture seam"
+    )
+)]
+pub(crate) fn load_canonical_pr_evidence_diff_bytes_bounded(
+    root: &Path,
+    base: &str,
+    head: &str,
+    max_output_bytes: usize,
+) -> Result<Vec<u8>, CoreError> {
+    // Existing complete-worker file admission, or a lower assigned profile.
+    if max_output_bytes == 0 || max_output_bytes > 256 * 1024 * 1024 {
+        return Err(CoreError::message(
+            "canonical diff capture requires a positive limit within the existing 256 MiB worker admission",
+        ));
+    }
+    if ![base, head].into_iter().all(|revision| {
+        matches!(revision.len(), 40 | 64) && revision.bytes().all(|byte| byte.is_ascii_hexdigit())
+    }) {
+        return Err(CoreError::message(
+            "canonical bounded diff requires literal full base and head commit IDs",
+        ));
+    }
+    // Deliberately no permissive legacy verify_head_revision preflight.
+    run_git_diff_bytes_with_capture(
+        root,
+        &format!("{base}...{head}"),
+        &[
+            "--relative",
+            "--unified=0",
+            "--no-ext-diff",
+            "--submodule=short",
+        ],
+        "0",
+        Some(Duration::from_mins(5)),
+        Some(max_output_bytes),
+    )
+}
+
 /// [`load_diff_range`] under a caller's cooperative git deadline.
 pub(crate) fn load_diff_range_with_deadline(
     root: &Path,
@@ -1041,6 +1086,17 @@ fn run_git_diff_bytes(
     unified: &str,
     git_timeout: Option<Duration>,
 ) -> Result<Vec<u8>, CoreError> {
+    run_git_diff_bytes_with_capture(root, range, extra_args, unified, git_timeout, None)
+}
+
+fn run_git_diff_bytes_with_capture(
+    root: &Path,
+    range: &str,
+    extra_args: &[&str],
+    unified: &str,
+    git_timeout: Option<Duration>,
+    capture_limit: Option<usize>,
+) -> Result<Vec<u8>, CoreError> {
     // Delegate the spawn to the shared git authority (#1921, #2303), which
     // spawns with `current_dir(root)`. A missing root never reaches the
     // spawn: `load_diff_with_effective_base` rejects non-directories up
@@ -1091,7 +1147,16 @@ fn run_git_diff_bytes(
         "--inter-hunk-context=0",
     ]);
     args.push(range);
-    let output = match crate::git::run_git_output_with_deadline(root, &args, git_timeout) {
+    let captured = match capture_limit {
+        Some(limit) => {
+            let timeout = git_timeout.ok_or_else(|| {
+                CoreError::message("bounded canonical capture requires a deadline")
+            })?;
+            crate::git::run_git_output_with_deadline_and_limit_strict(root, &args, timeout, limit)
+        }
+        None => crate::git::run_git_output_with_deadline(root, &args, git_timeout),
+    };
+    let output = match captured {
         Ok(output) => output,
         Err(err)
             if err.is_git_invocation_timeout()
@@ -1107,7 +1172,7 @@ fn run_git_diff_bytes(
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stderr = stderr.trim();
-        let hint = if stderr.contains("no merge base") {
+        let hint = if capture_limit.is_none() && stderr.contains("no merge base") {
             no_merge_base_hint(root, range, git_timeout)
         } else {
             String::new()
