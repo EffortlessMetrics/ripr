@@ -1046,7 +1046,7 @@ fn serialize_bounded<T: Serialize>(value: &T, limit: u64) -> Result<Vec<u8>, Str
 pub(super) mod tests {
     use super::*;
 
-    pub(super) fn fixture_binding() -> CompleteBinding {
+    pub(in crate::app::pr_evidence) fn fixture_binding() -> CompleteBinding {
         CompleteBinding {
             schema_version: BINDING_SCHEMA.into(),
             subject: SubjectBinding {
@@ -1154,7 +1154,7 @@ pub(super) mod tests {
         }
     }
 
-    pub(super) fn fixture_manifest(binding: CompleteBinding) -> Result<CompleteManifest, String> {
+    pub(in crate::app::pr_evidence) fn fixture_manifest(binding: CompleteBinding) -> Result<CompleteManifest, String> {
         let mut artifacts = ArtifactRole::ALL
             .iter()
             .map(|role| ArtifactDescriptor {
