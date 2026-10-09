@@ -601,7 +601,7 @@ wait
             ('X', 12, false),
             ('R', 12, true),
         ] {
-            let text = format!("9 (owned) {state} 1 {group} 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17");
+            let text = format!("9 (owned) {state} 1 {group} 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17");
             let expected = Identity {
                 pid: 9,
                 parent: 1,
@@ -623,11 +623,11 @@ wait
             ("", "no PID"),
             ("9 (bad) S 1 9", "identity unavailable"),
             (
-                "8 (owned) S 1 9 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17",
+                "8 (owned) S 1 9 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17",
                 "PID mismatch",
             ),
             (
-                "9 (owned) Q 1 9 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17",
+                "9 (owned) Q 1 9 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17",
                 "state unsupported",
             ),
         ] {
