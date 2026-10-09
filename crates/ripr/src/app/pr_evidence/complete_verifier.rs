@@ -1108,7 +1108,7 @@ impl StagedFile {
 
 #[cfg(test)]
 mod tests {
-    use super::super::complete_contract::tests::{fixture_binding, fixture_manifest};
+    use super::super::complete_contract::tests::{fixture_binding, fixture_manifest, require_error};
     #[cfg(target_os = "linux")]
     use super::super::complete_contract::tests::fixture_policy_bytes;
     #[cfg(target_os = "linux")]
@@ -1124,27 +1124,45 @@ mod tests {
             payload::<Value>(&bytes, ArtifactRole::PrJson, &generation)?["status"],
             "advisory"
         );
-        assert!(payload::<Value>(&bytes, ArtifactRole::FullCheck, &generation).is_err());
-        assert!(payload::<Value>(&bytes, ArtifactRole::PrJson, "stale").is_err());
-        assert!(
+        let error = require_error(
+            payload::<Value>(&bytes, ArtifactRole::FullCheck, &generation),
+            "mismatched payload role was accepted",
+        )?;
+        assert_eq!(
+            error,
+            "complete payload role/schema/generation marker mismatch or downgrade"
+        );
+        let error = require_error(
+            payload::<Value>(&bytes, ArtifactRole::PrJson, "stale"),
+            "stale payload generation was accepted",
+        )?;
+        assert_eq!(
+            error,
+            "complete payload role/schema/generation marker mismatch or downgrade"
+        );
+        let _error = require_error(
             payload::<Value>(
                 b"{\"status\":\"advisory\"}",
                 ArtifactRole::PrJson,
-                &generation
-            )
-            .is_err()
-        );
-        assert!(strict_json::<Value>(b"{\"a\":{\"x\":1,\"x\":2}}").is_err());
+                &generation,
+            ),
+            "unexpected success in payload_rejects_duplicate_unknown_stale_role_and_removed_markers",
+        )?;
+        let error = require_error(
+            strict_json::<Value>(b"{\"a\":{\"x\":1,\"x\":2}}"),
+            "nested duplicate JSON key was accepted",
+        )?;
+        assert!(error.contains("duplicate JSON object key"));
         let mut wrong = good.clone();
         wrong["permission"] = Value::Bool(true);
-        assert!(
+        let _error = require_error(
             payload::<Value>(
                 &serde_json::to_vec(&wrong).map_err(|e| e.to_string())?,
                 ArtifactRole::PrJson,
-                &generation
-            )
-            .is_err()
-        );
+                &generation,
+            ),
+            "unexpected success in payload_rejects_duplicate_unknown_stale_role_and_removed_markers",
+        )?;
         Ok(())
     }
 
@@ -1156,16 +1174,25 @@ mod tests {
         let mut limits = binding.profile.clone();
         let required = 506 + 8 * limits.max_relation_bytes;
         limits.max_buffered_bytes = required - 1;
-        assert!(admit_buffers(&manifest, 0, &limits).is_err());
+        let _error = require_error(
+            admit_buffers(&manifest, 0, &limits),
+            "unexpected success in buffer_admission_counts_original_raw_decoder_copy_and_expansion",
+        )?;
         limits.max_buffered_bytes = required;
         admit_buffers(&manifest, 0, &limits)?;
         manifest.artifacts[4].bytes = 1;
         limits.max_buffered_bytes = required + 64;
-        assert!(admit_buffers(&manifest, 0, &limits).is_err());
+        let _error = require_error(
+            admit_buffers(&manifest, 0, &limits),
+            "unexpected success in buffer_admission_counts_original_raw_decoder_copy_and_expansion",
+        )?;
         limits.max_buffered_bytes += 1;
         admit_buffers(&manifest, 0, &limits)?;
         manifest.artifacts[0].bytes = u64::MAX;
-        assert!(admit_buffers(&manifest, 0, &limits).is_err());
+        let _error = require_error(
+            admit_buffers(&manifest, 0, &limits),
+            "unexpected success in buffer_admission_counts_original_raw_decoder_copy_and_expansion",
+        )?;
         Ok(())
     }
 
@@ -1179,10 +1206,19 @@ mod tests {
         verify_summary(&summary, &findings)?;
         let mut wrong = summary.clone();
         wrong["weakly_exposed"] = 0.into();
-        assert!(verify_summary(&wrong, &findings).is_err());
+        let _error = require_error(
+            verify_summary(&wrong, &findings),
+            "unexpected success in full_finding_summary_refuses_counts_duplicate_ids_and_false_zero",
+        )?;
         let duplicate = vec![findings[0].clone(), findings[0].clone()];
-        assert!(verify_summary(&summary, &duplicate).is_err());
-        assert!(verify_summary(&summary, &[]).is_err());
+        let _error = require_error(
+            verify_summary(&summary, &duplicate),
+            "unexpected success in full_finding_summary_refuses_counts_duplicate_ids_and_false_zero",
+        )?;
+        let _error = require_error(
+            verify_summary(&summary, &[]),
+            "unexpected success in full_finding_summary_refuses_counts_duplicate_ids_and_false_zero",
+        )?;
         Ok(())
     }
 
@@ -1202,14 +1238,23 @@ mod tests {
             ledger[..ledger.len() - 1].to_vec(),
             [ledger, ledger].concat(),
         ] {
-            assert!(verify_raw_coverage(raw, &changed, limits).is_err());
+            let _error = require_error(
+                verify_raw_coverage(raw, &changed, limits),
+                "unexpected success in exact_raw_replay_refuses_occurrence_eof_and_coalescing_corruption",
+            )?;
         }
         let mut changed_raw = raw.to_vec();
         changed_raw[0] = b'D';
-        assert!(verify_raw_coverage(&changed_raw, ledger, limits).is_err());
+        let _error = require_error(
+            verify_raw_coverage(&changed_raw, ledger, limits),
+            "unexpected success in exact_raw_replay_refuses_occurrence_eof_and_coalescing_corruption",
+        )?;
         let mut expected = binding.raw;
         expected.raw_sha256 = summary.raw_sha256.clone();
-        assert!(verify_raw_summary(&summary, &expected).is_err());
+        let _error = require_error(
+            verify_raw_summary(&summary, &expected),
+            "unexpected success in exact_raw_replay_refuses_occurrence_eof_and_coalescing_corruption",
+        )?;
         Ok(())
     }
 
@@ -1218,25 +1263,29 @@ mod tests {
         let nine = serde_json::json!({"artifacts": vec![0; 9]});
         strict_json::<Value>(&serde_json::to_vec(&nine).map_err(|e| e.to_string())?)?;
         let ten = serde_json::json!({"artifacts": vec![0; 10]});
-        assert!(
-            strict_json::<Value>(&serde_json::to_vec(&ten).map_err(|e| e.to_string())?).is_err()
-        );
+        let _error = require_error(
+            strict_json::<Value>(&serde_json::to_vec(&ten).map_err(|e| e.to_string())?),
+            "unexpected success in json_entry_and_representation_admission_precede_collection_growth",
+        )?;
         let overflow = serde_json::json!({"findings": vec![0; crate::review_input::REVIEW_INDEX_MAX_ENTRIES + 1]});
-        assert!(
-            strict_json::<Value>(&serde_json::to_vec(&overflow).map_err(|e| e.to_string())?)
-                .is_err()
-        );
+        let _error = require_error(
+            strict_json::<Value>(&serde_json::to_vec(&overflow).map_err(|e| e.to_string())?),
+            "unexpected success in json_entry_and_representation_admission_precede_collection_growth",
+        )?;
         let mut budget = JsonBudget { remaining: 63 };
         let mut decoder = serde_json::Deserializer::from_slice(b"[]");
-        assert!(
+        let _error = require_error(
             UniqueSeed {
                 budget: &mut budget,
-                array_limit: usize::MAX
+                array_limit: usize::MAX,
             }
-            .deserialize(&mut decoder)
-            .is_err()
-        );
-        assert!(json_allowance(u64::MAX).is_err());
+            .deserialize(&mut decoder),
+            "unexpected success in json_entry_and_representation_admission_precede_collection_growth",
+        )?;
+        let _error = require_error(
+            json_allowance(u64::MAX),
+            "unexpected success in json_entry_and_representation_admission_precede_collection_growth",
+        )?;
         Ok(())
     }
 
@@ -1581,10 +1630,10 @@ mod tests {
                     .ok_or("fixture mutation target missing")? = wrong;
                 changed[role.ordinal()] = serde_json::to_vec(&wire).map_err(|e| e.to_string())?;
                 save_fixture(&stage.0, &binding, &changed)?;
-                assert!(
-                    verify_staged_generation(&stage.0, &binding, &binding.profile).is_err(),
-                    "{pointer}"
-                );
+                let _error = require_error(
+                    verify_staged_generation(&stage.0, &binding, &binding.profile),
+                    pointer,
+                )?;
             }
             for key in [
                 "analysis_scope",
@@ -1597,19 +1646,25 @@ mod tests {
                 wire["value"]["check"][key] = serde_json::json!([{"run_status":"failed"}]);
                 changed[4] = serde_json::to_vec(&wire).map_err(|e| e.to_string())?;
                 save_fixture(&stage.0, &binding, &changed)?;
-                assert!(
-                    verify_staged_generation(&stage.0, &binding, &binding.profile).is_err(),
-                    "{key}"
-                );
+                let _error = require_error(
+                    verify_staged_generation(&stage.0, &binding, &binding.profile),
+                    key,
+                )?;
             }
             let mut changed = original.clone();
             changed[1][0] = b'D';
             save_fixture(&stage.0, &binding, &changed)?;
-            assert!(verify_staged_generation(&stage.0, &binding, &binding.profile).is_err());
+            let _error = require_error(
+                verify_staged_generation(&stage.0, &binding, &binding.profile),
+                "unexpected success in all_nine_nonempty_saved_relations_and_resigned_tampering",
+            )?;
             let mut changed = original.clone();
             changed[8] = b"marker removed".to_vec();
             save_fixture(&stage.0, &binding, &changed)?;
-            assert!(verify_staged_generation(&stage.0, &binding, &binding.profile).is_err());
+            let _error = require_error(
+                verify_staged_generation(&stage.0, &binding, &binding.profile),
+                "unexpected success in all_nine_nonempty_saved_relations_and_resigned_tampering",
+            )?;
             save_fixture(&stage.0, &binding, &original)?;
             verify_staged_generation(&stage.0, &binding, &binding.profile)
                 .map_err(|e| e.to_string())?;
@@ -1653,23 +1708,34 @@ mod tests {
         let mut file = directory.open_file("check.json", 8)?;
         let (_, digest) = file.read(Some(8), None)?;
         std::fs::write(fixture.0.join("extra"), b"x").map_err(|e| e.to_string())?;
-        assert!(directory.verify_closed().is_err());
+        let _error = require_error(
+            directory.verify_closed(),
+            "unexpected success in closed_stage_rejects_missing_extra_symlink_hardlink_and_replacement",
+        )?;
         std::fs::remove_file(fixture.0.join("extra")).map_err(|e| e.to_string())?;
         std::fs::remove_file(fixture.0.join("check.json")).map_err(|e| e.to_string())?;
-        assert!(directory.verify_closed().is_err());
+        let _error = require_error(
+            directory.verify_closed(),
+            "unexpected success in closed_stage_rejects_missing_extra_symlink_hardlink_and_replacement",
+        )?;
         symlink("pr.diff", fixture.0.join("check.json")).map_err(|e| e.to_string())?;
-        assert!(directory.open_file("check.json", 100).is_err());
+        let _error = require_error(
+            directory.open_file("check.json", 100),
+            "unexpected success in closed_stage_rejects_missing_extra_symlink_hardlink_and_replacement",
+        )?;
         std::fs::remove_file(fixture.0.join("check.json")).map_err(|e| e.to_string())?;
         std::fs::hard_link(fixture.0.join("pr.diff"), fixture.0.join("check.json"))
             .map_err(|e| e.to_string())?;
-        assert!(directory.open_file("check.json", 100).is_err());
+        let _error = require_error(
+            directory.open_file("check.json", 100),
+            "unexpected success in closed_stage_rejects_missing_extra_symlink_hardlink_and_replacement",
+        )?;
         std::fs::remove_file(fixture.0.join("check.json")).map_err(|e| e.to_string())?;
         std::fs::write(fixture.0.join("check.json"), b"original").map_err(|e| e.to_string())?;
-        assert!(
-            directory
-                .verify_same_file("check.json", &file.identity, &digest)
-                .is_err()
-        );
+        let _error = require_error(
+            directory.verify_same_file("check.json", &file.identity, &digest),
+            "unexpected success in closed_stage_rejects_missing_extra_symlink_hardlink_and_replacement",
+        )?;
         Ok(())
     }
 
@@ -1679,16 +1745,28 @@ mod tests {
     -> Result<(), String> {
         let fixture = stage()?;
         let directory = StagedDirectory::open(&fixture.0)?;
-        assert!(directory.open_file("check.json", 7).is_err());
+        let _error = require_error(
+            directory.open_file("check.json", 7),
+            "unexpected success in stream_hash_caps_growth_same_length_mutation_and_manifest_removal_refuse",
+        )?;
         let mut file = directory.open_file("check.json", 8)?;
         let (_, digest) = file.read(Some(8), None)?;
         std::fs::write(fixture.0.join("check.json"), b"mutated!").map_err(|e| e.to_string())?;
-        assert!(file.read(None, Some(&digest)).is_err());
+        let _error = require_error(
+            file.read(None, Some(&digest)),
+            "unexpected success in stream_hash_caps_growth_same_length_mutation_and_manifest_removal_refuse",
+        )?;
         std::fs::write(fixture.0.join("check.json"), b"original-longer")
             .map_err(|e| e.to_string())?;
-        assert!(file.read(None, Some(&digest)).is_err());
+        let _error = require_error(
+            file.read(None, Some(&digest)),
+            "unexpected success in stream_hash_caps_growth_same_length_mutation_and_manifest_removal_refuse",
+        )?;
         std::fs::remove_file(fixture.0.join(MANIFEST_FILE)).map_err(|e| e.to_string())?;
-        assert!(directory.verify_closed().is_err());
+        let _error = require_error(
+            directory.verify_closed(),
+            "unexpected success in stream_hash_caps_growth_same_length_mutation_and_manifest_removal_refuse",
+        )?;
         Ok(())
     }
     #[cfg(target_os = "linux")]
@@ -1764,8 +1842,10 @@ mod tests {
                 save_fixture(&stage.0, &wrong, &resigned)?;
                 let absent = stage.0.join("absent-generation");
                 for root in [&stage.0, &absent] {
-                    let error = verify_staged_generation(root, &wrong, &wrong.profile)
-                        .expect_err("re-signed committed request drift was accepted");
+                    let error = require_error(
+                        verify_staged_generation(root, &wrong, &wrong.profile),
+                        "re-signed committed request drift was accepted",
+                    )?;
                     assert_eq!(
                         error.to_string(),
                         "frozen committed request mode/blob/size/digest differs from binding"
@@ -1803,8 +1883,10 @@ mod tests {
         frozen::with_context(Some(missing.authority.clone()), || -> Result<(), String> {
             let absent = stage.0.join("absent-generation");
             for root in [&stage.0, &absent] {
-                let error = verify_staged_generation(root, &wrong, &wrong.profile)
-                    .expect_err("missing frozen committed request was accepted");
+                let error = require_error(
+                    verify_staged_generation(root, &wrong, &wrong.profile),
+                    "missing frozen committed request was accepted",
+                )?;
                 assert_eq!(
                     error.to_string(),
                     "committed request is missing from frozen inventory"
@@ -1834,12 +1916,14 @@ mod tests {
         std::fs::write(source.physical.join(POLICY_PATH), &changed)
             .map_err(|error| error.to_string())?;
         frozen::with_context(Some(source.authority.clone()), || -> Result<(), String> {
-            let error = verify_staged_generation(
-                &source.logical.join("absent-generation"),
-                &binding,
-                &binding.profile,
-            )
-            .expect_err("changed original frozen request bytes were accepted");
+            let error = require_error(
+                verify_staged_generation(
+                    &source.logical.join("absent-generation"),
+                    &binding,
+                    &binding.profile,
+                ),
+                "changed original frozen request bytes were accepted",
+            )?;
             let error = error.to_string();
             assert!(error.starts_with("read original frozen committed request: "));
             assert!(error.contains("source bytes differ from admitted blob"));
@@ -1942,8 +2026,10 @@ mod tests {
                 wrong.validate()?;
                 let resigned = resign_policy_fixture(&wrong, &original, &old_generation)?;
                 save_fixture(&stage.0, &wrong, &resigned)?;
-                let error = verify_staged_generation(&stage.0, &wrong, &wrong.profile)
-                    .expect_err("re-signed policy drift was accepted");
+                let error = require_error(
+                    verify_staged_generation(&stage.0, &wrong, &wrong.profile),
+                    "re-signed policy drift was accepted",
+                )?;
                 assert_eq!(
                     error.to_string(),
                     "fresh Rust execution policy differs from complete binding"
@@ -1961,8 +2047,10 @@ mod tests {
                 .partial_diff_line_budget
                 .min(wrong.rust_execution_policy.changed_rust_line_limit);
             let missing = stage.0.join("absent-generation");
-            let error = verify_staged_generation(&missing, &wrong, &wrong.profile)
-                .expect_err("policy drift with absent stage was accepted");
+            let error = require_error(
+                verify_staged_generation(&missing, &wrong, &wrong.profile),
+                "policy drift with absent stage was accepted",
+            )?;
             assert_eq!(
                 error.to_string(),
                 "fresh Rust execution policy differs from complete binding"

@@ -1165,6 +1165,17 @@ fn serialize_bounded<T: Serialize>(value: &T, limit: u64) -> Result<Vec<u8>, Str
 pub(super) mod tests {
     use super::*;
 
+    pub(in crate::app::pr_evidence) fn require_error<T, E>(
+        result: Result<T, E>,
+        accepted: &str,
+    ) -> Result<E, String> {
+        match result {
+            Err(error) => Ok(error),
+            Ok(_) => Err(accepted.into()),
+        }
+    }
+
+
     pub(in crate::app::pr_evidence) fn fixture_policy_bytes() -> &'static [u8] {
         br#"{"schema_version":"ripr.complete_request.v1","request":"complete","profile":"whole-head-v1"}"#
     }
@@ -1317,7 +1328,11 @@ pub(super) mod tests {
         let mut binding = fixture_binding()?;
         binding.validate()?;
         binding.effective_options.enabled_languages = vec!["perl".into(), "rust".into()];
-        assert!(binding.validate().is_err());
+        let error = require_error(
+            binding.validate(),
+            "configured external Perl route was accepted",
+        )?;
+        assert_eq!(error, "noncanonical or unsupported effective policy");
         // Configuration remains exhaustive data, including inactive Perl
         // settings; their presence cannot expand the admitted language route.
         binding.effective_options.enabled_languages = vec!["rust".into()];
@@ -1334,24 +1349,44 @@ pub(super) mod tests {
         for index in 0..9 {
             let mut wrong = manifest.clone();
             wrong.artifacts.remove(index);
-            assert!(wrong.validate(&binding, &binding.profile).is_err());
+            let error = require_error(
+                wrong.validate(&binding, &binding.profile),
+                "missing artifact role was accepted",
+            )?;
+            assert_eq!(error, "complete manifest must have exactly nine roles");
             let mut wrong = manifest.clone();
             wrong.artifacts[index].role = ArtifactRole::OriginalRaw;
             wrong.artifacts[index].path = "alias".into();
-            assert!(wrong.validate(&binding, &binding.profile).is_err());
+            let error = require_error(
+                wrong.validate(&binding, &binding.profile),
+                "aliased artifact role/path was accepted",
+            )?;
+            assert_eq!(
+                error,
+                "missing, duplicate, unknown or overlapping artifact role/path"
+            );
         }
         let mut value = serde_json::to_value(&manifest).map_err(|e| e.to_string())?;
         value["binding"]["subject"]["execution_permission"] = serde_json::json!(true);
-        assert!(serde_json::from_value::<CompleteManifest>(value).is_err());
+        let _error = require_error(
+            serde_json::from_value::<CompleteManifest>(value),
+            "unexpected success in closed_nine_roles_and_no_unknown_or_missing_schema_fields",
+        )?;
         let mut value = serde_json::to_value(&manifest).map_err(|e| e.to_string())?;
         value["artifacts"][0]["role"] = serde_json::json!("unknown");
-        assert!(serde_json::from_value::<CompleteManifest>(value).is_err());
+        let _error = require_error(
+            serde_json::from_value::<CompleteManifest>(value),
+            "unexpected success in closed_nine_roles_and_no_unknown_or_missing_schema_fields",
+        )?;
         let mut value = serde_json::to_value(&binding).map_err(|e| e.to_string())?;
         value
             .as_object_mut()
             .ok_or("object")?
             .remove("schema_version");
-        assert!(serde_json::from_value::<CompleteBinding>(value).is_err());
+        let _error = require_error(
+            serde_json::from_value::<CompleteBinding>(value),
+            "unexpected success in closed_nine_roles_and_no_unknown_or_missing_schema_fields",
+        )?;
         Ok(())
     }
 
@@ -1373,11 +1408,10 @@ pub(super) mod tests {
                 _ => other.nonce = "b".repeat(32),
             }
             assert_ne!(other.generation_id()?, id);
-            assert!(
-                fixture_manifest(other)?
-                    .validate(&binding, &binding.profile)
-                    .is_err()
-            );
+            let _error = require_error(
+                fixture_manifest(other)?.validate(&binding, &binding.profile),
+                "unexpected success in generation_binds_same_tree_commit_literals_mode_include_languages_and_nonce",
+            )?;
         }
         let mut manifest = fixture_manifest(binding.clone())?;
         let prior = serialized_digest(&manifest, binding.profile.max_manifest_bytes, b"")?;
@@ -1420,7 +1454,10 @@ pub(super) mod tests {
                 5 => wrong.profile.max_inventory_bytes = 1,
                 _ => wrong.profile.max_binding_bytes = 1,
             }
-            assert!(wrong.validate().is_err());
+            let _error = require_error(
+                wrong.validate(),
+                "unexpected success in inventory_config_order_paths_modes_counts_and_caps_refuse",
+            )?;
         }
         Ok(())
     }
@@ -1431,19 +1468,25 @@ pub(super) mod tests {
         let binding = fixture_binding()?;
         let mut manifest = fixture_manifest(binding.clone())?;
         manifest.artifacts[8].bytes = u64::MAX;
-        assert!(manifest.validate(&binding, &binding.profile).is_err());
+        let _error = require_error(
+            manifest.validate(&binding, &binding.profile),
+            "unexpected success in aggregate_overflow_profile_mismatch_and_payload_marker_removal_refuse",
+        )?;
         let mut limits = binding.profile.clone();
         limits.deadline_ms += 1;
-        assert!(
-            fixture_manifest(binding.clone())?
-                .validate(&binding, &limits)
-                .is_err()
-        );
-        assert!(
-            serde_json::from_str::<CompletePayload<serde_json::Value>>("{\"findings\":[]}")
-                .is_err()
-        );
-        assert!(serialized_digest(&vec!["oversized"; 100], 1, b"").is_err());
+        let error = require_error(
+            fixture_manifest(binding.clone())?.validate(&binding, &limits),
+            "verification profile mismatch was accepted",
+        )?;
+        assert_eq!(error, "verification profile differs from admitted binding");
+        let _error = require_error(
+            serde_json::from_str::<CompletePayload<serde_json::Value>>("{\"findings\":[]}"),
+            "unexpected success in aggregate_overflow_profile_mismatch_and_payload_marker_removal_refuse",
+        )?;
+        let _error = require_error(
+            serialized_digest(&vec!["oversized"; 100], 1, b""),
+            "unexpected success in aggregate_overflow_profile_mismatch_and_payload_marker_removal_refuse",
+        )?;
         Ok(())
     }
     #[test]
@@ -1456,27 +1499,32 @@ pub(super) mod tests {
             .as_object_mut()
             .ok_or("binding is not an object")?
             .remove("committed_request");
-        let error = serde_json::from_value::<CompleteBinding>(missing)
-            .expect_err("missing committed request was accepted");
+        let error = require_error(
+            serde_json::from_value::<CompleteBinding>(missing),
+            "missing committed request was accepted",
+        )?;
         assert!(error.to_string().contains("missing field `committed_request`"));
         let mut unknown = serde_json::to_value(&binding).map_err(|error| error.to_string())?;
         unknown["committed_request"]["grant"] = serde_json::json!(true);
-        let error = serde_json::from_value::<CompleteBinding>(unknown)
-            .expect_err("unknown committed request field was accepted");
+        let error = require_error(
+            serde_json::from_value::<CompleteBinding>(unknown),
+            "unknown committed request field was accepted",
+        )?;
         assert!(error.to_string().contains("unknown field `grant`"));
         let mut stale = binding.clone();
         stale.schema_version = "ripr.complete_binding.v2".into();
         assert_eq!(
-            stale.validate().expect_err("stale binding v2 was accepted"),
+            require_error(stale.validate(), "stale binding v2 was accepted")?,
             "unsupported complete binding schema"
         );
         let mut missing = binding.clone();
         missing.inventory.files.clear();
         missing.inventory.logical_bytes = 0;
         assert_eq!(
-            missing
-                .validate()
-                .expect_err("request absent from inventory was accepted"),
+            require_error(
+                missing.validate(),
+                "request absent from inventory was accepted",
+            )?,
             "committed request is missing from full inventory"
         );
         for change in 0..4 {
@@ -1494,9 +1542,10 @@ pub(super) mod tests {
             }
             wrong.inventory.logical_bytes = wrong.inventory.files.iter().map(|file| file.bytes).sum();
             assert_eq!(
-                wrong
-                    .validate()
-                    .expect_err("request inventory mismatch was accepted"),
+                require_error(
+                    wrong.validate(),
+                    "request inventory mismatch was accepted",
+                )?,
                 "committed request disagrees with admitted inventory"
             );
         }
@@ -1532,7 +1581,7 @@ pub(super) mod tests {
         let mut subroot = binding.clone();
         subroot.subject.logical_root = "/repo/sub".into();
         assert_eq!(
-            subroot.validate().expect_err("whole-head subroot was accepted"),
+            require_error(subroot.validate(), "whole-head subroot was accepted")?,
             "whole-head-v1 requires repository-root analysis"
         );
         let mut nested_invocation = binding.clone();
@@ -1554,18 +1603,24 @@ pub(super) mod tests {
             .as_object_mut()
             .ok_or("binding is not an object")?
             .remove("rust_execution_policy");
-        let error = serde_json::from_value::<CompleteBinding>(missing)
-            .expect_err("missing Rust policy field was accepted");
+        let error = require_error(
+            serde_json::from_value::<CompleteBinding>(missing),
+            "missing Rust policy field was accepted",
+        )?;
         assert!(error.to_string().contains("missing field `rust_execution_policy`"));
         let mut unknown = serde_json::to_value(&binding).map_err(|e| e.to_string())?;
         unknown["rust_execution_policy"]["grant"] = serde_json::json!(true);
-        let error = serde_json::from_value::<CompleteBinding>(unknown)
-            .expect_err("unknown Rust policy field was accepted");
+        let error = require_error(
+            serde_json::from_value::<CompleteBinding>(unknown),
+            "unknown Rust policy field was accepted",
+        )?;
         assert!(error.to_string().contains("unknown field `grant`"));
         let mut unknown = serde_json::to_value(&binding).map_err(|e| e.to_string())?;
         unknown["rust_execution_policy"]["dependent_scope"] = serde_json::json!("core_only");
-        let error = serde_json::from_value::<CompleteBinding>(unknown)
-            .expect_err("unsupported dependent scope was accepted");
+        let error = require_error(
+            serde_json::from_value::<CompleteBinding>(unknown),
+            "unsupported dependent scope was accepted",
+        )?;
         assert!(error.to_string().contains("unknown variant `core_only`"));
         for change in 0..7 {
             let mut wrong = binding.clone();
@@ -1589,7 +1644,7 @@ pub(super) mod tests {
                 5 => wrong.rust_execution_policy.partial_selection_version = "stale".into(),
                 _ => wrong.rust_execution_policy.partial_language_tier_version = "stale".into(),
             }
-            let error = wrong.validate().expect_err("invalid Rust policy was accepted");
+            let error = require_error(wrong.validate(), "invalid Rust policy was accepted")?;
             let expected = match change {
                 0 => "unsupported complete binding schema",
                 1..=4 => "invalid Rust execution policy limits or clamps",
@@ -1600,9 +1655,7 @@ pub(super) mod tests {
         for disclosures in [vec!["".into()], vec!["x".repeat(1025)], vec!["x".into(); 3]] {
             let mut wrong = binding.clone();
             wrong.rust_execution_policy.partial_budget_disclosures = disclosures;
-            let error = wrong
-                .validate()
-                .expect_err("invalid Rust policy disclosures were accepted");
+            let error = require_error(wrong.validate(), "invalid Rust policy disclosures were accepted")?;
             assert_eq!(error, "invalid Rust policy disclosures");
         }
         let mut changed = binding.clone();
