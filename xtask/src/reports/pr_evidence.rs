@@ -3151,15 +3151,20 @@ mod tests {
         Ok(())
     }
 
-
     #[test]
     fn failed_producer_rerun_does_not_replay_same_subject() -> Result<(), String> {
         let _cwd_guard = crate::acquire_test_cwd_read_guard();
         crate::reports::fixtures::ripr_fixture_binary()?;
         let repo = temp_repo("ripr-pr-subject-transaction")?;
         let result = (|| {
-            run_git(&repo, &["-c", "init.templateDir=", "init", "--quiet", "-b", "trunk"])?;
-            run_git(&repo, &["config", "user.email", "subject-fixture@example.invalid"])?;
+            run_git(
+                &repo,
+                &["-c", "init.templateDir=", "init", "--quiet", "-b", "trunk"],
+            )?;
+            run_git(
+                &repo,
+                &["config", "user.email", "subject-fixture@example.invalid"],
+            )?;
             run_git(&repo, &["config", "user.name", "RIPR Subject Fixture"])?;
             run_git(&repo, &["config", "commit.gpgSign", "false"])?;
             write_repo_file(&repo, ".gitignore", "target/\n")?;
@@ -3239,10 +3244,14 @@ mod tests {
                 check_pr_evidence(&repo, &options)?;
                 review()?;
                 let rendered: Value = serde_json::from_slice(
-                    &fs::read(repo.join("target/review.json")).map_err(|error| error.to_string())?,
+                    &fs::read(repo.join("target/review.json"))
+                        .map_err(|error| error.to_string())?,
                 )
                 .map_err(|error| error.to_string())?;
-                assert_eq!(rendered["analysis_scope"]["basis"], "producer_check_projection");
+                assert_eq!(
+                    rendered["analysis_scope"]["basis"],
+                    "producer_check_projection"
+                );
                 assert!(
                     rendered["analysis_scope"]["classified_seams_considered"]
                         .as_u64()
@@ -3251,9 +3260,9 @@ mod tests {
                 Ok(())
             };
             let refused = |label: &str| -> Result<(), String> {
-                let error = review().err().ok_or_else(|| {
-                    format!("{label}: stale same-identity producer was admitted")
-                })?;
+                let error = review()
+                    .err()
+                    .ok_or_else(|| format!("{label}: stale same-identity producer was admitted"))?;
                 assert!(
                     error.contains("missing_producer") || error.contains("malformed_producer"),
                     "{label}: unexpected review refusal: {error}"
@@ -3290,7 +3299,10 @@ mod tests {
                     "oversized conversion" => "exceeds entry limit",
                     _ => return Err(format!("unknown failure control: {label}")),
                 };
-                assert!(failure.contains(expected), "{label}: wrong failure: {failure}");
+                assert!(
+                    failure.contains(expected),
+                    "{label}: wrong failure: {failure}"
+                );
                 refused(label)?;
             }
             // This late failure distinguishes subject-last publication from
@@ -3319,7 +3331,10 @@ mod tests {
             })
             .err()
             .ok_or_else(|| "blocked subject publication returned success".to_string())?;
-            assert!(failure.contains("finalize"), "wrong publication failure: {failure}");
+            assert!(
+                failure.contains("finalize"),
+                "wrong publication failure: {failure}"
+            );
             refused("subject rename failure")?;
             for entry in fs::read_dir(subject.parent().ok_or("subject has no parent")?)
                 .map_err(|error| error.to_string())?
@@ -3345,7 +3360,10 @@ mod tests {
             .err()
             .ok_or_else(|| "invalidation failure returned success".to_string())?;
             assert!(!runner_called);
-            assert!(failure.contains("remove stale"), "wrong invalidation failure: {failure}");
+            assert!(
+                failure.contains("remove stale"),
+                "wrong invalidation failure: {failure}"
+            );
             assert_eq!(
                 fs::read(repo.join(PR_CHECK_JSON)).map_err(|error| error.to_string())?,
                 retained_check,
