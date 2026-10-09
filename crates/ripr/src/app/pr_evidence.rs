@@ -482,6 +482,7 @@ fn validate_current_pr_evidence_configuration(
     Ok(())
 }
 
+#[cfg(test)]
 fn write_pr_evidence_packet(
     repo: &Path,
     options: &PrEvidenceOptions,
