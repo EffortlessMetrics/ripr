@@ -154,7 +154,9 @@ fn inherited_limit(text: &str, name: &str, maximum: u64) -> Result<u64, String> 
             limit = limit.min(
                 field
                     .parse::<u64>()
-                    .map_err(|_| format!("experimental launcher malformed {name} ceiling"))?,
+                    .map_err(|error| {
+                        format!("experimental launcher malformed {name} ceiling: {error}")
+                    })?,
             );
         }
     }
