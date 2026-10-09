@@ -508,6 +508,11 @@ fn materialize_with_configuration(
     let mut directories = Vec::new();
     let mut pending_configuration: Option<(GitObjectId, Vec<u8>)> = None;
     let mut entries: Vec<(String, String)> = Vec::new();
+    // Only Requested capture retains one closed mode value per admitted blob.
+    // Ordinary entries and blob requests keep their original representation.
+    let mut original_modes = inventory
+        .as_ref()
+        .map(|_| Vec::<super::committed_source::frozen::FrozenFileMode>::new());
     for entry in listing.stdout.split(|byte| *byte == 0) {
         if entry.is_empty() {
             continue;
@@ -549,6 +554,18 @@ fn materialize_with_configuration(
         // Validate the join up front so a traversal attempt fails before
         // any byte is materialized.
         let _destination = safe_join(&target, path)?;
+        if let Some(modes) = &mut original_modes {
+            use super::committed_source::frozen::FrozenFileMode;
+            let original_mode = match mode {
+                "100644" => FrozenFileMode::Regular,
+                "100755" => FrozenFileMode::Executable,
+                _ => return Err(failed("named-tree original mode is unsupported".into())),
+            };
+            modes.try_reserve(1).map_err(|error| {
+                failed(format!("named-tree mode inventory allocation failed: {error}"))
+            })?;
+            modes.push(original_mode);
+        }
         entries.push((path.to_string(), object.to_string()));
     }
     // Requested inventory includes empty directories; the ordinary -r listing
@@ -567,7 +584,7 @@ fn materialize_with_configuration(
         .map_err(|error| failed(format!("git cat-file --batch failed: {error}")))?;
     let mut total_bytes: u64 = 0;
     let mut chunk = vec![0_u8; 64 * 1024];
-    for (path, object) in &entries {
+    for (entry_index, (path, object)) in entries.iter().enumerate() {
         let destination = safe_join(&target, path)?;
         if let Some(parent) = destination.parent() {
             std::fs::create_dir_all(parent)
@@ -637,6 +654,11 @@ fn materialize_with_configuration(
             inventory.insert_file(
                 PathBuf::from(path),
                 super::committed_source::frozen::FrozenFile {
+                    mode: original_modes
+                        .as_ref()
+                        .and_then(|modes| modes.get(entry_index))
+                        .copied()
+                        .ok_or_else(|| failed("named-tree mode inventory is missing".into()))?,
                     blob_oid: GitObjectId::parse(object)
                         .map_err(|error| failed(error.to_string()))?,
                     size,
@@ -820,6 +842,145 @@ mod tests {
         run(&["commit", "-m", "candidate"])?;
         let candidate = run(&["rev-parse", "HEAD"])?;
         Ok((RepoGuard(root), base, candidate))
+    }
+
+    #[test]
+    fn named_inventory_retains_original_modes_and_order_with_ordinary_blob_parity()
+    -> Result<(), String> {
+        use super::super::committed_source::frozen::{self, FrozenFileMode};
+        let (guard, _, _) = fixture_repo("frozen-original-modes")?;
+        let bytes = b"pub fn shared() -> u8 { 7 }\n";
+        for name in ["regular.rs", "executable.rs"] {
+            std::fs::write(guard.0.join(name), bytes).map_err(|error| error.to_string())?;
+        }
+        for args in [
+            &["add", "regular.rs", "executable.rs"][..],
+            &["update-index", "--chmod=-x", "regular.rs"][..],
+            &["update-index", "--chmod=+x", "executable.rs"][..],
+        ] {
+            crate::testing::fixture_git::fixture_git_ok(&guard.0, args)?;
+        }
+        let tree =
+            git(&guard.0, &["write-tree"], GIT_DEADLINE).map_err(|error| error.to_string())?;
+        let oid = git(
+            &guard.0,
+            &["rev-parse", &format!("{tree}:regular.rs")],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        let executable_oid = git(
+            &guard.0,
+            &["rev-parse", &format!("{tree}:executable.rs")],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        assert_eq!(
+            oid, executable_oid,
+            "the mode discriminator must share one blob"
+        );
+        let listing = crate::git::run_git_output_with_deadline(
+            &guard.0,
+            &["ls-tree", "-r", "-z", &tree],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        assert!(listing.status.success(), "actual mode listing failed");
+        for (name, mode) in [("regular.rs", "100644"), ("executable.rs", "100755")] {
+            let expected = format!("{mode} blob {oid}\t{name}");
+            assert!(
+                listing
+                    .stdout
+                    .split(|byte| *byte == 0)
+                    .any(|row| row == expected.as_bytes()),
+                "actual Git tree did not contain {expected}"
+            );
+        }
+        let prepared =
+            prepare_named_tree(&guard.0, &tree, None).map_err(|error| error.to_string())?;
+        let authority = prepared
+            .frozen_source_authority(&guard.0)
+            .map_err(|error| error.to_string())?;
+        assert_eq!(authority.head_tree().as_str(), tree);
+        for (name, expected, git_mode) in [
+            ("regular.rs", FrozenFileMode::Regular, "100644"),
+            ("executable.rs", FrozenFileMode::Executable, "100755"),
+        ] {
+            let (_, file) = authority
+                .inventory()
+                .files()
+                .find(|(path, _)| *path == Path::new(name))
+                .ok_or_else(|| format!("mode inventory lost {name}"))?;
+            assert_eq!(file.mode, expected, "original Git mode was lost for {name}");
+            assert_eq!(file.mode.git_mode(), git_mode);
+            assert_eq!(file.blob_oid.as_str(), oid);
+            assert_eq!(file.size, bytes.len() as u64);
+        }
+        let records = |authority: &frozen::FrozenSourceAuthority| {
+            authority
+                .inventory()
+                .files()
+                .map(|(path, file)| {
+                    (
+                        path.to_path_buf(),
+                        file.mode,
+                        file.blob_oid.clone(),
+                        file.size,
+                        file.sha256,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let first = records(&authority);
+        assert!(
+            !first.is_empty(),
+            "fixture must yield authenticated file records"
+        );
+        assert!(first.windows(2).all(|pair| pair[0].0 < pair[1].0));
+        let directories = authority
+            .inventory()
+            .directories()
+            .map(Path::to_path_buf)
+            .collect::<Vec<_>>();
+        assert!(directories.windows(2).all(|pair| pair[0] < pair[1]));
+        let repeated = prepare_named_tree(&guard.0, &tree, None)
+            .map_err(|error| error.to_string())?
+            .frozen_source_authority(&guard.0)
+            .map_err(|error| error.to_string())?;
+        assert_eq!(
+            records(&repeated),
+            first,
+            "physical roots must not enter records"
+        );
+        assert_eq!(
+            repeated
+                .inventory()
+                .directories()
+                .map(Path::to_path_buf)
+                .collect::<Vec<_>>(),
+            directories
+        );
+        std::fs::write(guard.0.join("regular.rs"), b"live decoy").map_err(|error| error.to_string())?;
+        let (ordinary, _cleanup) =
+            materialize(&guard.0, &tree, None).map_err(|error| error.to_string())?;
+        frozen::with_context(Some(authority.clone()), || -> Result<(), String> {
+            for (path, file) in authority.inventory().files() {
+                let snapshot =
+                    frozen::fs::read(guard.0.join(path)).map_err(|error| error.to_string())?;
+                let legacy =
+                    std::fs::read(ordinary.join(path)).map_err(|error| error.to_string())?;
+                assert_eq!(
+                    snapshot,
+                    legacy,
+                    "ordinary bytes changed for {}",
+                    path.display()
+                );
+                assert_eq!(snapshot.len() as u64, file.size);
+                let digest: [u8; 32] = sha2::Sha256::digest(&snapshot).into();
+                assert_eq!(digest, file.sha256);
+            }
+            authority.ensure_clean().map_err(|error| error.to_string())
+        })?;
+        Ok(())
     }
 
     #[test]
@@ -1034,6 +1195,15 @@ mod tests {
         let authority = prepared
             .frozen_source_authority(&guard.0)
             .map_err(|error| error.to_string())?;
+        assert_eq!(authority.inventory().files().len(), 0);
+        assert_eq!(
+            authority
+                .inventory()
+                .directories()
+                .map(Path::to_path_buf)
+                .collect::<Vec<_>>(),
+            vec![PathBuf::new(), PathBuf::from("empty")]
+        );
         frozen::with_context(Some(authority.clone()), || -> Result<(), String> {
             assert!(frozen::fs::is_dir(guard.0.join("empty")));
             assert_eq!(

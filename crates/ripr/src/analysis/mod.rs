@@ -5,7 +5,7 @@ mod classify;
 pub(crate) mod committed_source;
 pub(crate) mod consumed_source;
 pub(crate) mod diagnostic_origin;
-mod diff;
+pub(crate) mod diff;
 mod extract;
 mod facts;
 mod generated_rust_corpus;

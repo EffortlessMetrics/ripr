@@ -14,8 +14,24 @@ use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FrozenFileMode {
+    Regular,
+    Executable,
+}
+
+impl FrozenFileMode {
+    pub(crate) const fn git_mode(self) -> &'static str {
+        match self {
+            Self::Regular => "100644",
+            Self::Executable => "100755",
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct FrozenFile {
+    pub(crate) mode: FrozenFileMode,
     pub(crate) blob_oid: GitObjectId,
     pub(crate) size: u64,
     pub(crate) sha256: [u8; 32],
@@ -38,6 +54,20 @@ impl FrozenInventory {
             files: BTreeMap::new(),
             directories: BTreeSet::from([PathBuf::new()]),
         }
+    }
+
+    /// Authenticated root-relative records in deterministic path order.
+    pub(crate) fn files(
+        &self,
+    ) -> impl ExactSizeIterator<Item = (&Path, &FrozenFile)> + DoubleEndedIterator {
+        self.files.iter().map(|(path, file)| (path.as_path(), file))
+    }
+
+    /// Directory presence includes the root and authenticated empty trees.
+    pub(crate) fn directories(
+        &self,
+    ) -> impl ExactSizeIterator<Item = &Path> + DoubleEndedIterator {
+        self.directories.iter().map(PathBuf::as_path)
     }
 
     pub(crate) fn insert_directory(&mut self, path: &Path) {
@@ -134,6 +164,10 @@ impl FrozenSourceAuthority {
 
     pub(crate) fn logical_root(&self) -> &Path {
         &self.logical_root
+    }
+
+    pub(crate) fn inventory(&self) -> &FrozenInventory {
+        &self.inventory
     }
 
     pub(crate) fn captured_configuration(
@@ -772,6 +806,7 @@ pub(crate) mod tests {
                 inventory.insert_file(
                     relative,
                     FrozenFile {
+                        mode: FrozenFileMode::Regular,
                         blob_oid: GitObjectId::parse("1111111111111111111111111111111111111111")
                             .map_err(|error| io::Error::other(error.to_string()))?,
                         size: bytes.len() as u64,

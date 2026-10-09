@@ -14,7 +14,13 @@ mod complete_execution;
 mod generation;
 
 #[cfg(test)]
+mod complete_contract;
+#[cfg(test)]
 mod complete_contract_tests;
+#[cfg(test)]
+mod complete_verifier;
+#[cfg(test)]
+mod raw_coverage;
 
 use crate::app::{CheckInput, Mode, OutputFormat, check_workspace_with_config};
 use crate::cli::unknown_argument;
