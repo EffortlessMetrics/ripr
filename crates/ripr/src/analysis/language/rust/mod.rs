@@ -4523,7 +4523,10 @@ fn absent_delimiter_boundary_returns_head() {
             message,
             "diff_scope_oversized: 4 changed Rust lines across 2 Rust files exceed the RIPR_MAX_DIFF_CHANGED_RUST_LINES limit (3); analysis was not run to protect runner memory before probe expansion. Repair route: reduce the diff scope, split the extraction PR, run a narrower diff, or raise the limit via RIPR_MAX_DIFF_CHANGED_RUST_LINES=<number>."
         );
-        assert!(copied.is_empty(), "denied input was deep-copied: {copied:?}");
+        assert!(
+            copied.is_empty(),
+            "denied input was deep-copied: {copied:?}"
+        );
         assert!(report["stages"].get("rust_eligible").is_some());
         assert!(report["stages"].get("rust_partition").is_none());
         assert!(report["stages"].get("rust_pre_ast").is_none());
@@ -4575,9 +4578,15 @@ fn absent_delimiter_boundary_returns_head() {
             &root.join("src/marker.rs"),
             "pub const MARKER: &str = \"@generated\";\n",
         )?;
-        write(&root.join("src/header.rs"), "// @generated\npub fn generated() {}\n")?;
+        write(
+            &root.join("src/header.rs"),
+            "// @generated\npub fn generated() {}\n",
+        )?;
         write(&root.join("vendor/pkg/.cargo-checksum.json"), "{}")?;
-        write(&root.join("vendor/pkg/src/lib.rs"), "pub fn vendored() {}\n")?;
+        write(
+            &root.join("vendor/pkg/src/lib.rs"),
+            "pub fn vendored() {}\n",
+        )?;
         let mut files = vec![
             changed_file("src/marker.rs", 1, 1),
             changed_file("src/client.ts", 2, 2),
@@ -4619,7 +4628,10 @@ fn absent_delimiter_boundary_returns_head() {
             PathBuf::from("src/lib.rs"),
         ];
         assert_eq!(
-            legacy.iter().map(|file| file.path.clone()).collect::<Vec<_>>(),
+            legacy
+                .iter()
+                .map(|file| file.path.clone())
+                .collect::<Vec<_>>(),
             expected_paths
         );
         let total = changed_rust_line_count(&legacy);
@@ -4649,7 +4661,10 @@ fn absent_delimiter_boundary_returns_head() {
         result?;
         assert_changed_files_equal(&copied, &legacy);
         assert_eq!(
-            copied.iter().map(|file| file.path.clone()).collect::<Vec<_>>(),
+            copied
+                .iter()
+                .map(|file| file.path.clone())
+                .collect::<Vec<_>>(),
             expected_paths,
             "each admitted entry is copied once in legacy order"
         );
