@@ -2405,6 +2405,93 @@ mod tests {
         result.and(cleanup)
     }
 
+    /// Experimental preparation must reject config drift before analysis; the
+    /// ordinary producer retains its live-config contract.
+    #[cfg(feature = "lang-rust")]
+    #[test]
+    fn experimental_preparation_refuses_committed_config_drift_before_runner()
+    -> Result<(), String> {
+        use crate::testing::fixture_git::fixture_git_ok;
+
+        struct Fixture(PathBuf);
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                let _ = crate::testing::fixture_git::remove_fixture_tree(&self.0);
+            }
+        }
+        let repo = temp_repo("ripr-experimental-config-drift")?;
+        let _fixture = Fixture(repo.clone());
+        fixture_git_ok(
+            &repo,
+            &["-c", "init.templateDir=", "init", "--quiet", "-b", "trunk"],
+        )?;
+        fixture_git_ok(&repo, &["config", "user.name", "RIPR Config Fixture"])?;
+        fixture_git_ok(
+            &repo,
+            &["config", "user.email", "config-fixture@example.invalid"],
+        )?;
+        fixture_git_ok(&repo, &["config", "commit.gpgSign", "false"])?;
+        write_repo_file(
+            &repo,
+            "Cargo.toml",
+            "[package]\nname = \"frozen_config\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )?;
+        let original = "pub fn boundary(value: u64) -> bool {\n    value > 10\n}\n";
+        write_repo_file(&repo, "src/lib.rs", original)?;
+        let committed = "[analysis]\nmode = \"draft\"\n[languages]\nenabled = [\"rust\"]\n";
+        write_repo_file(&repo, "ripr.toml", committed)?;
+        fixture_git_ok(&repo, &["add", "-A"])?;
+        fixture_git_ok(&repo, &["commit", "--quiet", "-m", "base"])?;
+        write_repo_file(&repo, "src/lib.rs", &original.replace("> 10", ">= 10"))?;
+        fixture_git_ok(&repo, &["commit", "--quiet", "-a", "-m", "boundary"])?;
+        let options = PrEvidenceOptions {
+            base: "HEAD~1".to_string(),
+            head: "HEAD".to_string(),
+            ..options()
+        };
+        write_repo_file(&repo, "ripr.toml", &committed.replace("draft", "fast"))?;
+        write_pr_evidence(&repo, &options)?;
+        check_pr_evidence(&repo, &options)?;
+        let ordinary: Value = serde_json::from_slice(
+            &fs::read(repo.join(PR_CHECK_JSON)).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        assert_eq!(ordinary["mode"], "fast");
+        assert_eq!(ordinary["analysis_outcome"]["analysis_complete"], true);
+        let generation = json!({
+            "schema_version": "ripr.complete_execution_experiment.v1",
+            "coverage": "not_established",
+            "production_admission": false,
+        });
+        let mut entered = false;
+        let result = write_pr_evidence_with_generation(
+            &repo,
+            &options,
+            |repo, options| {
+                entered = true;
+                run_ripr_check(repo, options)
+            },
+            Some(&generation),
+        );
+        assert!(
+            result.is_err(),
+            "experimental producer accepted live config different from committed head"
+        );
+        assert!(!entered, "config mismatch reached the experimental analyzer");
+        let packet: Value = serde_json::from_slice(
+            &fs::read(repo.join(PR_EVIDENCE_JSON)).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        assert_eq!(packet["status"], "error");
+        for path in [PR_CHECK_JSON, PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON] {
+            assert!(!repo.join(path).exists(), "stale authority survived: {path}");
+        }
+        assert!(check_pr_evidence(&repo, &options).is_err());
+        write_pr_evidence(&repo, &options)?;
+        check_pr_evidence(&repo, &options)?;
+        Ok(())
+    }
+
     /// The actual producer must be reusable by the strict consumer, including
     /// a nondefault effective mode. Wrong inputs cannot become admitted simply
     /// because nearby JSON or an internally consistent presentation diff exists.
