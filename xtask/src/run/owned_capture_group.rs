@@ -677,16 +677,24 @@ wait
             (Vec::new(), 5),
             (Vec::new(), 2),
             (b"9 (owned)".to_vec(), 3),
+            (
+                b"9 (owned) S 1 9 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17".to_vec(),
+                3,
+            ),
             (vec![0xff], 3),
         ] {
             let failure = ReadFailure {
                 prefix: std::io::Cursor::new(prefix),
                 code,
             };
-            require_error(
-                read_scanned_identity(failure, 9),
-                "owned capture /proc/9/stat",
-            )?;
+            let expected = format!(
+                "owned capture /proc/9/stat: {}",
+                std::io::Error::from_raw_os_error(code)
+            );
+            match read_scanned_identity(failure, 9) {
+                Err(observed) => assert_eq!(observed, expected),
+                Ok(_) => return Err("scanned stat discarded an original I/O failure".to_string()),
+            }
         }
         Ok(())
     }
