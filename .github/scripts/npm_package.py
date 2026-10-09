@@ -156,6 +156,7 @@ def inspect_wheel(data, pin, root=ROOT):
         entries = archive.infolist()
         require(len(entries) == len({x.filename for x in entries}), "duplicate wheel entry")
         for entry in entries:
+            require(entry.orig_filename == entry.filename, "noncanonical wheel filename")
             path = PurePosixPath(entry.filename)
             require(not path.is_absolute() and ".." not in path.parts and "\\" not in entry.filename, "unsafe wheel path")
             require(not stat.S_ISLNK(entry.external_attr >> 16), "wheel symlink")
@@ -320,6 +321,7 @@ def read_qualification_zip(data, expected_digest):
         require(sum(entry.file_size for entry in entries) <= 60_000_000, "oversized artifact content")
         files = {}
         for entry in entries:
+            require(entry.orig_filename == entry.filename, "noncanonical artifact filename")
             path = PurePosixPath(entry.filename)
             require(entry.filename and not path.is_absolute() and ".." not in path.parts and "\\" not in entry.filename and str(path) == entry.filename.rstrip("/"), "unsafe artifact path")
             mode = entry.external_attr >> 16

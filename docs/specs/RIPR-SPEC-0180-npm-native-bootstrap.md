@@ -27,6 +27,9 @@ relabelled or used as a fallback. Version authority remains Cargo. Packaging com
 fields. Package creation fails on an uncommitted tracked tree, wrong input
 bytes, unsupported metadata, unsafe archive entries, stale RECORD, missing
 notices, or tarball identity/mode/provenance drift.
+ZIP member names must retain their literal wire identity: backslashes and NUL
+suffixes cannot be normalized into an otherwise expected artifact or wheel member.
+This refusal applies on both Unix and Windows readers before member bytes are read.
 
 Native execution and qualification retain explicit denominators. Each selected
 client must independently install the actual tarball project-locally, globally,

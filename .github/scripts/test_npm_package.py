@@ -59,7 +59,11 @@ def zip_bytes(files, link=None, no_exec=False):
     with zipfile.ZipFile(out, "w") as archive:
         for name, data in files.items():
             entry = zipfile.ZipInfo(name)
-            entry.external_attr = (0o100755 if name.endswith("/ripr") and not no_exec else 0o100644) << 16
+            # Preserve the wire name: ZipInfo normalizes backslashes on Windows
+            # and truncates NUL suffixes before a malformed fixture is written.
+            entry.filename = name
+            logical_name = name.split("\x00", 1)[0].replace("\\", "/")
+            entry.external_attr = (0o100755 if logical_name.endswith("/ripr") and not no_exec else 0o100644) << 16
             if name == link:
                 entry.external_attr = 0o120755 << 16
             archive.writestr(entry, data)
@@ -489,6 +493,36 @@ class NpmReleaseAdmissionTests(unittest.TestCase):
                      zip_bytes({"oversized": b"x" * 30_000_001})):
             with self.assertRaises(ValueError):
                 PACKAGE.read_qualification_zip(data, "sha256:" + PACKAGE.digest(data))
+
+    def test_artifact_zip_rejects_wire_names_normalized_by_zipinfo(self):
+        for separator in ("/", "\\"):
+            for name in ("a\\b", "consumer.json\x00suffix"):
+                data = zip_bytes({name: b"{}"})
+                with self.subTest(separator=separator, name=name):
+                    # Exercise both reader behaviors on every host. Native
+                    # Windows execution also reaches its real normalization.
+                    with mock.patch.object(zipfile.os, "sep", separator):
+                        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                            self.assertEqual(archive.infolist()[0].orig_filename, name)
+                        with self.assertRaises(ValueError):
+                            PACKAGE.read_qualification_zip(data, "sha256:" + PACKAGE.digest(data))
+
+    def test_wheel_zip_rejects_wire_alias_of_expected_member(self):
+        pin, files = wheel_fixture()
+        native = next(name for name in files if name.endswith("/scripts/ripr"))
+        for separator in ("/", "\\"):
+            for alias in (native.replace("/", "\\"), native + "\x00suffix"):
+                malformed = dict(files)
+                malformed[alias] = malformed.pop(native)
+                data = zip_bytes(malformed)
+                expected = dict(pin, wheel_sha256=PACKAGE.digest(data))
+                with self.subTest(separator=separator, alias=alias):
+                    with mock.patch.object(zipfile.os, "sep", separator):
+                        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                            entry = next(item for item in archive.infolist() if item.orig_filename == alias)
+                            self.assertTrue(entry.external_attr >> 16 & 0o111)
+                        with self.assertRaises(ValueError):
+                            PACKAGE.inspect_wheel(data, expected)
 
     def proof(self):
         rows = [dict(route=route, probes=1, findings=1, follow_up_finding="probe:fixture")
